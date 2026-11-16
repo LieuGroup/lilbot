@@ -43,7 +43,7 @@ export class MemoryReviewer {
 
   constructor(
     private queue: ReviewQueue,
-    private engine: BotEngine,
+    private engine: Pick<BotEngine, 'reviewMemory'>,
     private settings: ReviewSettings = defaultReviewSettings,
     private now: () => number = Date.now
   ) {}

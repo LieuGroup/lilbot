@@ -30,6 +30,7 @@ server/            The LilBot server (runs on the leader).
     engine-api.ts        the local door engines use to reach memory
   bots/              The bot.
     bot-service.ts       everything the app can do with a bot (list, create, open its chat, ...)
+    bot-store.ts         identity, instructions, model and engine binding (SQLite)
     bot-prefs-store.ts   the user's own settings for a bot (avatar, section, pinned, main chat)
     workspaces.ts        each bot's folder
   memory/            The memory system. Works the same for any engine.
@@ -114,23 +115,29 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
 - `server/engines/bot-engine.ts`: the interface an engine must satisfy. Nothing outside `server/engines/hermes/` may
   know about Hermes, so another engine (for example one speaking ACP) can be added without touching the web app.
   The one exception is `server/main.ts`, which picks the engine.
-- `server/engines/hermes/`: Hermes as the engine. A bot is a Hermes profile (the bot id is the profile id; LilBot's
-  display name is stored in the profile's `ui_meta.lilbot`). A chat is a Hermes session. Bot management uses one
-  shared gateway connection on the default profile; each open chat has its own connection for its bot's profile,
+- `server/engines/hermes/`: Hermes as the engine. Each bot has a profile binding; a chat is a Hermes session.
+  LilBot supplies instructions and model, repairing drift before use; it never writes a display name to the profile.
+  Bot management uses one shared gateway connection on the default profile; each open chat has its own connection for its bot's profile,
   because Hermes binds sessions to the profile the connection was attached with (checked live: another profile's
   session is refused with `profile_mismatch`). Sessions use Hermes' canonical methods (`x-canonical-methods` in
   the contract); profiles and models use the general `methods` table. Each connection starts with a
   single-use ticket from `hermes gateway attach --json` (about one second, the slowest step in opening a chat).
 - `server/bots/bot-service.ts`: what LilBot does with bots, whichever client asks. It joins the three owners of a bot:
-  the engine (identity, setup, chats), the user's preferences (`server/bots/bot-prefs-store.ts`) and the bot's workspace folder
-  (`server/bots/workspaces.ts`). It decides which chat is a bot's main conversation and resolves the user's primary
-  bot. Layers, top to bottom:
+  LilBot's identity (`server/bots/bot-store.ts`), the engine (abilities and chats), and the user's preferences
+  (`server/bots/bot-prefs-store.ts`), with the bot's workspace folder (`server/bots/workspaces.ts`).
+  `bot-runtimes.ts` resolves the engine binding and applies saved identity; `bot-memory.ts` connects memory.
+  The first import is atomic and idempotent: existing bots keep their profile ids, so memory, preferences,
+  main chats and workspaces need no rewrite. New bots get UUIDs. A missing runtime stays in the roster
+  as unavailable; its identity and memory stay in LilBot. The service decides which chat is a bot's main
+  conversation and resolves the user's primary bot. Layers, top to bottom:
   `http/browser-session.ts` (transport) -> `bots/bot-service.ts` -> engine and stores. Keep it that way.
 - `server/http/browser-session.ts`: one per browser connection. Validates requests, runs them on the service, forwards
   chat events. A typed handler map: a protocol method without a handler does not compile.
 - `server/database/`: LilBot's own SQLite database (`bun:sqlite`), by default `~/.local/share/lilbot/lilbot.db`
-  (`LILBOT_DATA_DIR`). It holds only what belongs to LilBot and the user: sidebar preferences, sections, and each
-  bot's main-conversation pointer, plus the single primary-bot choice. Never copy into it what the engine stores.
+  (`LILBOT_DATA_DIR`). It owns bot identity (name, function, instructions, model), engine/native-id bindings,
+  memory, sidebar preferences, sections, main-conversation pointers and the primary-bot choice.
+  Abilities and conversation transcripts stay with the engine. Identity is imported once, then LilBot wins
+  on mismatch; edits are saved in the database before they are applied to the runtime.
   `database.ts` owns the schema as an
   ordered list of migration steps (add a step, never edit a shipped one); each store file owns the SQL of its tables.
 - Workspaces: one folder per bot under `~/lilbot/workspaces/<bot id>` (`LILBOT_WORKSPACES_DIR`), created on first use
@@ -163,7 +170,8 @@ What a bot is and who owns each part. Decided with Oscar on 2026-11-16 unless ma
 
 | Part | Owner | Where it lives |
 |---|---|---|
-| Identity (name, function), instructions, model, abilities | the engine | Hermes profile |
+| Identity (name, function), instructions, model, engine binding | LilBot | `bots` table in LilBot's database |
+| Abilities | the engine | Hermes profile |
 | Workspace: one folder per bot on the shared computer | the bot | `~/lilbot/workspaces/<bot id>`, the working directory of its chats |
 | Conversation: one main conversation per bot; a new session replaces it as the main one | the engine | Hermes sessions; LilBot's database names the main one |
 | Memory | LilBot | facts in LilBot's database; the engine reads and writes them through an adapter |
@@ -218,7 +226,7 @@ lasting facts than it is shown, so it tidies. Hermes fences what a provider supp
 user input" on its own.
 
 Hermes keeps a plug-in's code loaded per folder until the gateway restarts. So each version is installed under its
-own folder and provider name (`lilbot-memory-v0-3-0`): a new version is a new folder, loaded fresh on the bot's next
+own folder and provider name (`lilbot-memory-v0-4-0`): a new version is a new folder, loaded fresh on the bot's next
 session. To ship a plug-in change: bump `version` in `plugin.yaml` and `VERSION` in `__init__.py`, and restart
 LilBot. At start-up `BotEngine.refreshMemory` reinstalls the adapter for every connected bot on an older version.
 No Hermes restart is needed. LilBot logs a warning when a bot still calls with an older adapter.
@@ -302,8 +310,6 @@ artwork, names or text.
   an open chat reports it. Add a `last_read` column and an activity event when the roster is built.
 - Opening a chat loads its whole history. A long-lived conversation needs paging and stable item ids
   (Hermes: `omit_messages` on resume plus `session.transcript`).
-- A bot's display name is still stored on the Hermes profile (`ui_meta.lilbot.name`), written as one whole value.
-  Nothing else may be added there; the user's data goes in the database.
 - Deleting a bot is not in the app. When it is added: refuse the default bot, delete through the engine, call
   `BotPrefsStore.forgetBot`, and decide with Oscar whether the workspace folder is kept.
 - Chats made before slice 3 are not a bot's main conversation; they are still in Hermes.
@@ -314,7 +320,9 @@ artwork, names or text.
 - The attach ticket and anything under `~/.hermes` that holds credentials are never printed, logged or committed.
 - Test on a second server (`LILBOT_PORT=3371 LILBOT_DATA_DIR=<tmp> LILBOT_WORKSPACES_DIR=<tmp> bun server/main.ts`)
   with temporary bots, never Oscar's real bots, and
-  delete them afterwards with `hermes profile delete <id> -y`.
+  delete them afterwards with `hermes profile delete <id> -y`. Set `LILBOT_SKIP_MEMORY_SETUP=1` on a test
+  server that imports real profiles so start-up does not change their memory plug-ins or endpoints.
+  Do not chat with or edit real bots on the test server.
 - Each slice ends with a real check against the running service: `bun run verify`, `bun run check:live`, then drive
   the page in a browser.
 - Logic that can be tested without a browser or Hermes gets a test in `tests/` in the same change.

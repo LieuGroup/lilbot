@@ -44,7 +44,7 @@ export function BotSidebar() {
                     </span>
                   )}
                 </span>
-                <span className="block truncate text-sm text-muted-foreground">{bot.function || 'No function set'}</span>
+                <span className="block truncate text-sm text-muted-foreground">{bot.runnable ? bot.function || 'No function set' : 'Runtime unavailable'}</span>
               </span>
             </Link>
           </li>

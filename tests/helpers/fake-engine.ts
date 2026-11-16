@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { BotPrefsStore } from '../../server/bots/bot-prefs-store'
 import { BotService } from '../../server/bots/bot-service'
+import { BotStore } from '../../server/bots/bot-store'
 import { Workspaces } from '../../server/bots/workspaces'
 import { openDatabase } from '../../server/database/database'
 import type { BotEngine, EngineBotDetail, OpenChat } from '../../server/engines/bot-engine'
@@ -25,14 +26,18 @@ export function fakeEngine(options: { earlyEvents?: ChatEvent[] } = {}) {
   let chats = 0
   const reviews: string[] = []
   const failReviews = { value: false }
+  const runtimeIds = new Set(['b1'])
   const engine: BotEngine = {
-    listBots: async () => [bot],
-    getBot: async botId => {
-      if (botId !== bot.id) throw new LilBotError('bot_not_found', 'That bot does not exist.')
-      return detail
+    id: 'test',
+    importBots: async () => [detail],
+    createRuntime: async identity => {
+      runtimeIds.add(identity.id)
+      return identity.id
     },
-    createBot: async input => ({ ...bot, id: 'made', name: input.name }),
-    updateBot: async () => detail,
+    applyIdentity: async id => {
+      if (!runtimeIds.has(id)) throw new LilBotError('bot_not_found', 'That bot does not exist.')
+      return { abilities: [], memoryConnected: false }
+    },
     listModels: async () => [],
     onBotsChanged: () => () => {},
     refreshMemory: async () => [],
@@ -60,21 +65,23 @@ export function fakeEngine(options: { earlyEvents?: ChatEvent[] } = {}) {
       }
     }
   }
-  return { engine, log, stored, reviews, failReviews, emit: (chatId: string, event: ChatEvent) => emitters.get(chatId)?.(event) }
+  return { engine, runtimeIds, log, stored, reviews, failReviews, emit: (chatId: string, event: ChatEvent) => emitters.get(chatId)?.(event) }
 }
 
 export function fakeService(options?: Parameters<typeof fakeEngine>[0]) {
   const fake = fakeEngine(options)
   const database = openDatabase(':memory:')
+  const store = new BotStore(database)
+  store.import('test', [{ ...detail, engineId: 'test', engineBotId: bot.id }])
   const prefs = new BotPrefsStore(database)
   const memory = new MemoryService(new MemoryStore(database))
   const root = mkdtempSync(join(tmpdir(), 'lilbot-ws-'))
   let changes = 0
   let memoryChanges = 0
-  const service = new BotService(fake.engine, prefs, new Workspaces(root), memory, {
+  const service = new BotService(fake.engine, store, prefs, new Workspaces(root), memory, {
     changed: () => changes++,
     memoryChanged: () => memoryChanges++,
     memoryConnection: { url: 'http://127.0.0.1:3370', tokenFile: '/nowhere/engine-token' }
   })
-  return { ...fake, service, prefs, memory, root, changes: () => changes, memoryChanges: () => memoryChanges }
+  return { ...fake, service, store, prefs, memory, root, changes: () => changes, memoryChanges: () => memoryChanges }
 }

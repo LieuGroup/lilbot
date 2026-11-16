@@ -1,5 +1,4 @@
-/** LilBot's own database: one SQLite file holding only what belongs to LilBot and the user.
- *  Nothing the engine already stores (bots, chats, memory) is copied here. */
+/** LilBot owns bot identity, engine bindings, preferences and memory. Chats stay with engines. */
 import { Database } from 'bun:sqlite'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
@@ -55,7 +54,15 @@ const migrations: string[] = [
    );
    CREATE INDEX review_turns_bot ON review_turns (bot_id, id);`,
   // One user-selected primary, independent of the engine and per-bot preferences.
-  `CREATE TABLE primary_bot (id INTEGER PRIMARY KEY CHECK (id = 1), bot_id TEXT NOT NULL);`
+  `CREATE TABLE primary_bot (id INTEGER PRIMARY KEY CHECK (id = 1), bot_id TEXT NOT NULL);`,
+  // Stable identity; legacy ids keep all existing preferences, memory and chat pointers intact.
+  `CREATE TABLE bots (
+     id TEXT PRIMARY KEY, name TEXT NOT NULL, function TEXT NOT NULL, instructions TEXT NOT NULL,
+     model TEXT, is_default INTEGER NOT NULL DEFAULT 0,
+     engine_id TEXT NOT NULL, engine_bot_id TEXT NOT NULL,
+     UNIQUE(engine_id, engine_bot_id)
+   );
+   CREATE TABLE bot_imports (engine_id TEXT PRIMARY KEY);`
 ]
 
 /** `path` may be ':memory:' for tests. Applies any migration steps the file has not seen. */

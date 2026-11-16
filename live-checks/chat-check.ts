@@ -7,6 +7,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { BotPrefsStore } from '../server/bots/bot-prefs-store'
 import { BotService } from '../server/bots/bot-service'
+import { BotStore } from '../server/bots/bot-store'
 import { Workspaces } from '../server/bots/workspaces'
 import { openDatabase } from '../server/database/database'
 import { HermesEngine } from '../server/engines/hermes/hermes-engine'
@@ -18,7 +19,7 @@ import { ReviewQueue } from '../server/memory/review-queue'
 import type { ChatEvent } from '../shared/chat-schema'
 
 const BOT_NAME = `LilBot Live Check ${Date.now().toString(36)}`
-const PORT = 3378
+const PORT = Number(process.env.LILBOT_CHECK_PORT ?? 3378)
 const TURN_TIMEOUT_MS = 90_000
 
 // The real engine, with a throwaway database and workspaces folder so nothing of the user's is touched.
@@ -27,16 +28,17 @@ const engine = new HermesEngine()
 const database = openDatabase(join(scratch, 'lilbot.db'))
 const memory = new MemoryService(new MemoryStore(database))
 const queue = new ReviewQueue(database)
-const reviewer = new MemoryReviewer(queue, engine)
+const bots = new BotService(engine, new BotStore(database), new BotPrefsStore(database), new Workspaces(join(scratch, 'workspaces')), memory, {
+  memoryConnection: { url: `http://127.0.0.1:${PORT}`, tokenFile: join(scratch, 'engine-token') }
+})
+const reviewer = new MemoryReviewer(queue, bots)
 const api = createEngineApi(memory, engineToken(scratch), PORT, { reviewer })
 const server = Bun.serve({
   hostname: '127.0.0.1',
   port: PORT,
   fetch: request => api(request, new URL(request.url).pathname)
 })
-const bots = new BotService(engine, new BotPrefsStore(database), new Workspaces(join(scratch, 'workspaces')), memory, {
-  memoryConnection: { url: `http://127.0.0.1:${PORT}`, tokenFile: join(scratch, 'engine-token') }
-})
+
 let botId = ''
 let failures = 0
 
@@ -86,7 +88,8 @@ try {
   const bot = await bots.createBot({
     name: BOT_NAME,
     function: 'Temporary bot for the LilBot live check.',
-    instructions: 'Follow the user exactly. Never use tools. Answer in plain text.'
+    instructions: 'Follow the user exactly. Never use tools. Answer in plain text.',
+    ...(process.env.LILBOT_LIVE_MODEL ? { model: { provider: process.env.LILBOT_LIVE_MODEL.split('::')[0], model: process.env.LILBOT_LIVE_MODEL.split('::')[1] } } : {})
   })
   botId = bot.id
   check('create bot', bot.name === BOT_NAME && !bot.isDefault, bot.id)

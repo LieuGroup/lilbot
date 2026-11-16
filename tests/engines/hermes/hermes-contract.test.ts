@@ -42,6 +42,7 @@ const methods: Record<string, Uses> = {
     sends: ['source', 'request_id', 'client', 'cwd', 'cwd_explicit'],
     reads: ['session_id', 'stored_session_id', 'running', 'execution_generation', 'info']
   },
+  'session.info': { table: 'x-canonical-methods', sends: ['session_id'], reads: ['system_prompt'] },
   'session.resume': {
     table: 'x-canonical-methods',
     sends: ['session_id', 'source', 'display_projection'],
@@ -52,7 +53,7 @@ const methods: Record<string, Uses> = {
   'profiles.list': { table: 'methods', sends: ['include_sessions'], reads: ['profiles'] },
   'profiles.describe': { table: 'methods', sends: ['name'], reads: ['name', 'description', 'soul', 'model', 'skills', 'toolsets', 'mcp_servers'] },
   'profiles.create': { table: 'methods', sends: ['name', 'description', 'soul', 'no_alias', 'clone_from', 'model', 'provider'], reads: [] },
-  'profiles.configure': { table: 'methods', sends: ['name', 'description', 'soul', 'model', 'provider', 'ui_meta'], reads: ['ok', 'confirm_required', 'confirm_message'] },
+  'profiles.configure': { table: 'methods', sends: ['name', 'description', 'soul', 'model', 'provider'], reads: ['ok', 'confirm_required', 'confirm_message'] },
   'model.options': { table: 'methods', sends: [], reads: ['providers'] }
 }
 

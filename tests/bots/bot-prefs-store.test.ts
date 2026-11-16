@@ -95,7 +95,7 @@ test('the primary migration upgrades an existing database without losing prefere
   try {
     const db = openDatabase(path)
     new BotPrefsStore(db).setPrefs('b1', { pinned: true })
-    db.exec('DROP TABLE primary_bot; PRAGMA user_version = 3')
+    db.exec('DROP TABLE bots; DROP TABLE bot_imports; DROP TABLE primary_bot; PRAGMA user_version = 3')
     db.close()
     const upgraded = openDatabase(path)
     const prefs = new BotPrefsStore(upgraded)
@@ -103,7 +103,7 @@ test('the primary migration upgrades an existing database without losing prefere
     expect(prefs.prefs('b1').pinned).toBe(true)
     prefs.setPrimaryBot('b1')
     expect(prefs.primaryBot()).toBe('b1')
-    expect((upgraded.query('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(4)
+    expect((upgraded.query('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(5)
     upgraded.close()
   } finally {
     rmSync(dir, { recursive: true, force: true })
