@@ -50,6 +50,13 @@ const stopWriting = (items: ViewItem[]): ViewItem[] => items.map(item => (isWrit
 
 export function applyChatEvent(chat: ChatView, event: ChatEvent): ChatView {
   switch (event.type) {
+    case 'thread':
+      return chat.items.some(i => i.kind === 'tool' && i.threadId === event.threadId)
+        ? chat
+        : {
+            ...chat,
+            items: [...chat.items, { kind: 'tool', toolId: `thread:${event.threadId}`, threadId: event.threadId, name: event.name, detail: event.detail, running: false }]
+          }
     case 'turn.started': {
       // This turn belongs to the message already in the transcript, or to the oldest queued one.
       if (chat.awaitingStart) return { ...chat, awaitingStart: false, running: true, activity: 'Thinking...' }

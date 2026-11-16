@@ -14,18 +14,27 @@ export async function runRoutine(botId: string, prompt: string, options: Routine
   )
   try {
     await ensureFullAccess(socket)
-    const session = await socket.request('session.create', {
-      source: 'tool',
-      hidden: true,
-      yolo: true,
-      request_id: `routine-${options.runId}`,
-      client: { name: 'lilbot', version: '0.2.0' },
-      cwd: options.workspace,
-      cwd_explicit: true
-    })
+    const session = options.chatId
+      ? await socket.request('session.resume', { session_id: options.chatId, source: 'tool', display_projection: true })
+      : await socket.request('session.create', {
+          source: 'tool',
+          hidden: true,
+          yolo: true,
+          request_id: `routine-${options.runId}`,
+          client: { name: 'lilbot', version: '0.2.0' },
+          cwd: options.workspace,
+          cwd_explicit: true
+        })
     // Both identities are persisted before the prompt can run (also excludes memory reviews).
     for (const id of new Set([session.stored_session_id, session.session_id])) if (typeof id === 'string') options.onChat(id)
-    const submitted = await socket.request('prompt.submit', { session_id: session.session_id, text: prompt, input_id: `routine-${options.runId}` })
+    const base = options.baseline?.(itemsFromRows(session.display_messages).length) ?? 0
+    const submitted = await socket.request('prompt.submit', {
+      session_id: session.session_id,
+      text: prompt,
+      input_id: `routine-${options.runId}`,
+      queued: !!options.chatId,
+      ...(options.hiddenInput ? { display_kind: 'hidden' } : {})
+    })
     // Receipts survive event replay truncation and process/gateway restarts.
     for (;;) {
       const receipt = await socket.request('prompt.receipt', { session_id: session.session_id, admission_id: submitted.admission_id })
@@ -35,6 +44,7 @@ export async function runRoutine(botId: string, prompt: string, options: Routine
           .filter(item => item.kind === 'assistant')
           .at(-1)
         return {
+          items: itemsFromRows(snapshot.display_messages).slice(base),
           status: receipt.outcome === 'completed' ? ('completed' as const) : receipt.outcome === 'interrupted' ? ('stopped' as const) : ('failed' as const),
           text: last?.kind === 'assistant' ? last.text : `Routine ended: ${receipt.outcome ?? receipt.status}. Execution was not retried.`
         }

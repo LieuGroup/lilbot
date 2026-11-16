@@ -89,7 +89,14 @@ const migrations: string[] = [
   `CREATE TABLE skills (name TEXT PRIMARY KEY, description TEXT NOT NULL, author TEXT NOT NULL, updated_at INTEGER NOT NULL);
    CREATE TABLE skill_off (bot_id TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY(bot_id,name));
    CREATE TABLE skill_imports (source TEXT PRIMARY KEY, name TEXT NOT NULL);`,
-  `ALTER TABLE bot_prefs ADD COLUMN avatar_face_color TEXT;`
+  `ALTER TABLE bot_prefs ADD COLUMN avatar_face_color TEXT;`,
+  `CREATE TABLE threads (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+   CREATE TABLE thread_deliveries (
+     id TEXT PRIMARY KEY, threadId TEXT NOT NULL, sender TEXT NOT NULL, target TEXT NOT NULL,
+     sourceChat TEXT NOT NULL, text TEXT NOT NULL, kind TEXT NOT NULL, chatId TEXT, base INTEGER,
+     status TEXT NOT NULL DEFAULT 'pending'
+   );
+   CREATE TABLE thread_chats (chat_id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, thread_id TEXT NOT NULL);`
 ]
 
 /** `path` may be ':memory:' for tests. Applies any migration steps the file has not seen. */

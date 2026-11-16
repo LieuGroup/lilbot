@@ -92,3 +92,9 @@ describe('bots', () => {
     expect(providers).toEqual([{ provider: 'a', name: 'A', models: ['m1', 'm2'] }])
   })
 })
+
+test('thread transcripts retain tool output using the declared content field', () => {
+  expect(itemsFromRows([{ role: 'tool', name: 'terminal', tool_call_id: 't', content: { stdout: '437', exit_code: 0 } }])).toEqual([
+    { kind: 'tool', toolId: 't', name: 'terminal', detail: '', running: false, result: '{"stdout":"437","exit_code":0}' }
+  ])
+})

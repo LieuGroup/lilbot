@@ -37,6 +37,7 @@ server/            The LilBot server (runs on the leader).
     memory-service.ts    the rules        memory-store.ts    the facts table
     memory-safety.ts     what may not be saved
     memory-reviewer.ts   the after-chat review        review-queue.ts   turns waiting for it
+  threads/           shared bot exchanges, transcripts and durable deliveries
   routines/          app-owned schedules, run history and scheduler
   library/           Delivered workspace files, metadata, safe reads and folder listings.
   database/          LilBot's own SQLite file and its schema steps.
@@ -63,7 +64,7 @@ live-checks/       Checks that talk to the real Hermes with a temporary bot.
 
 Rules that keep it this way:
 
-- A request flows downward only: `http/` -> `bots/`, `memory/` `routines/` or `library/` -> `engines/` and `database/`. Nothing lower may
+- A request flows downward only: `http/` -> `bots/`, `memory/`, `routines/`, `threads/` or `library/` -> `engines/` and `database/`. Nothing lower may
   import from something higher.
 - Nothing outside `server/engines/hermes/` knows about Hermes, except `main.ts`, which picks the engine. A second
   engine is a second folder under `server/engines/`.
@@ -276,8 +277,9 @@ What a bot is and who owns each part. Decided with Oscar on 2026-11-16 unless ma
 - Instructions define what makes bots different; every bot has the same skills and tools by default.
 - The user chooses one primary bot and can still talk to any bot directly. The choice lives in LilBot's
   database, defaults to the engine's default bot, and falls back to that bot if the chosen one disappears.
-  Changing it only moves the mark. The roster puts it first; app entry opens its conversation. Handoff
-  between bots and extra knowledge for the primary bot are not decided.
+  Changing it only moves the mark. The roster puts it first; app entry opens its conversation. Bots answer
+  whoever gave them the work: Oscar in that chat, another bot in their shared thread. Nothing routes
+  to the primary automatically; extra knowledge for the primary is not decided.
 - "Workspace" means exactly this: each bot has its own folder on the shared computer. It is not a level above bots.
   All bots share one machine (the leader); other machines come later as execution environments.
 - Long conversations are the engine's job, and Hermes already does it: it compresses the conversation
@@ -288,11 +290,46 @@ What a bot is and who owns each part. Decided with Oscar on 2026-11-16 unless ma
 - A bot's live state (running, writing, waiting, current activity) is separate from unread and from the health of
   its computer.
 
+## Threads
+
+`server/threads/` owns shared bot exchanges, authored messages (including tool rows), and the durable
+outbox in SQLite migration 14. `shared/thread-schema.ts` defines them. `ask_bot` and `list_bots` in
+memory adapter **0.8.0** use the existing bot-bound capability. The caller is never a body bot id.
+Any bot may ask any other; a new request creates a thread, while `threadId` continues the same work.
+Oscar only reads: `threads.list`, `threads.open` and `threads.changed`; no thread write protocol.
+The two participants read the same persisted transcript, including the other bot's work. Deletion
+retains these records and the names captured at creation; the surviving bot can still read them.
+
+The receiver works in its own hidden session, with its instructions, memory, skills, workspace and
+full-access policy. Follow-ups reuse that session. The asking bot returns immediately; the answer is
+queued as a hidden input in the exact originating session, even if Oscar has since started a new chat.
+For nested asks this resumes the parent thread, then reports back to its requester. Main conversations
+receive one `tool` reference with `threadId` per exchange in snapshots and through idempotent `thread` chat events; the
+`threads.changed` push tells clients to refresh thread data. These lines are merged at the HTTP edge,
+never written as fake user messages. They currently appear as plain tool lines; opening them is future UI.
+Hidden request and continuation session aliases are persisted before submission and excluded from
+after-chat reviews, including after restart. Thread activity sets working/finished on both participants
+without unread; only the asking bot's eventual visible answer to Oscar can mark it unread.
+
+Limits live in `thread-limits.ts`: depth **3**, **20 messages** per thread (requests reserve their answer),
+**20,000 characters** per request and **2 concurrent deliveries**. No self-asking. Reaching a limit
+refuses further asks and tells the bot to report back. Bot text passes memory-style secret, hidden
+character and instruction-override checks and is delivered in a named, JSON-quoted fence, never as
+Oscar's instructions. Delivery and admission ids are persisted and reused across transport failures
+and restarts, using the routine runner's receipt machinery. A terminal unknown receipt is never
+resubmitted with a new identity. Engine crashes cannot guarantee exactly-once external side effects.
+
+Deploy: back up the live database, deploy, restart LilBot once to apply migration 14 and install the
+versioned memory provider folder `lilbot-memory-v0-8-0`. Existing sessions keep their loaded tools;
+start new sessions to expose `ask_bot` and `list_bots`. No Hermes patch or live profile cleanup.
+`bun run check:threads` uses a free port, isolated data/workspace/skills directories and an unmatched
+profile allowlist before creating two throwaway bots, then removes both profiles and directories.
+
 ## Library
 
 `server/library/` owns delivered items in the `library_items` table; `shared/library-schema.ts`
 defines the data. The engine-neutral service takes workspace and active-bot lookups. `give_file`
-in the memory adapter (v0.7.0) calls `/engine/library/give` with its bot-bound capability; the
+in the memory adapter (v0.8.0) calls `/engine/library/give` with its bot-bound capability; the
 server ignores body bot ids and refuses unknown/deleted callers. A title and chat or routine run
 are required. The endpoint resolves routine session aliases to the persisted run id for that bot,
 ignoring caller-supplied run ids; ordinary deliveries retain chat provenance.
@@ -377,7 +414,7 @@ lasting facts than it is shown, so it tidies. Hermes fences what a provider supp
 user input" on its own.
 
 Hermes keeps a plug-in's code loaded per folder until the gateway restarts. So each version is installed under its
-own folder and provider name (`lilbot-memory-v0-7-0`): a new version is a new folder, loaded fresh on the bot's next
+own folder and provider name (`lilbot-memory-v0-8-0`): a new version is a new folder, loaded fresh on the bot's next
 session. To ship a plug-in change: bump `version` in `plugin.yaml` and `VERSION` in `__init__.py`, and restart
 LilBot. At start-up `BotEngine.refreshMemory` takes only the non-deleted database bindings for its engine, by native id,
 and reinstalls older adapters only for those profiles. All start-up passes that touch profiles must use these
@@ -440,7 +477,7 @@ it never creates, changes or removes Hermes cron jobs. Existing external jobs st
   day's nonexistent time; repeated times run at their first occurrence only. The API includes a plain
   description such as "every day at 08:00 (Australia/Adelaide)".
 - `create_routine`, `list_routines`, `pause_routine`, `resume_routine` and `delete_routine` come from
-  adapter **0.6.0** and remain in **0.7.0** alongside `give_file`. They use the existing bot-bound capability; a body cannot select another bot.
+  adapter **0.6.0** and remain in **0.8.0** alongside `give_file`. They use the existing bot-bound capability; a body cannot select another bot.
   `createdBy: oscar` means the bot is acting on an explicit request, `bot` means its own initiative.
   Attribution relies on the bot following that instruction, not a security boundary. The self-created
   limit is five, including paused routines; the minimum interval is five minutes for all routines.
@@ -456,8 +493,7 @@ it never creates, changes or removes Hermes cron jobs. Existing external jobs st
   run's outcome is unknown, show a failed run rather than risk repeating side effects. This guarantees
   one admission per occurrence, not exactly-once external effects if the engine itself crashes mid-task.
 - Runs emit activity and can mark the bot unread. Both session aliases are persisted before submission
-  and excluded from the after-chat review, including after restart. Results remain in Routines until
-  reports (#11); no message is posted into the main chat. Deleting a bot removes schedules and history,
+  and excluded from the after-chat review, including after restart. Results remain in Routines; no message is posted into the main chat. Deleting a bot removes schedules and history,
   and tombstoned bots cannot dispatch even if runtime deletion is still retrying.
 - Browser methods: `routines.list`, `routines.pause`, `routines.resume`, `routines.delete`, and
   `routines.openRun` (returns a tracked chat snapshot, preserving main chat). Lists include the newest

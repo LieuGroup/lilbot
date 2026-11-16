@@ -114,3 +114,10 @@ test('closed and error stop the running state', () => {
   expect(failed.running).toBe(false)
   expect(failed.items.at(-1)).toEqual({ kind: 'error', text: 'boom' })
 })
+
+test('thread references arrive once in the live stream and deduplicate snapshot references', () => {
+  const event = { type: 'thread', threadId: 'shared-thread', name: 'message to', detail: 'Engineer' } as const
+  const next = applyChatEvent(emptyChat, event)
+  expect(next.items).toEqual([{ kind: 'tool', toolId: 'thread:shared-thread', threadId: 'shared-thread', name: 'message to', detail: 'Engineer', running: false }])
+  expect(applyChatEvent(next, event)).toBe(next)
+})

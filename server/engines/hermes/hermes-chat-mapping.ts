@@ -15,7 +15,15 @@ export function itemsFromRows(rows: unknown): ChatItem[] {
     const body = text((row as Record<string, unknown>).text)
     if (role === 'user' && body) items.push({ kind: 'user', text: body })
     if (role === 'assistant' && body) items.push({ kind: 'assistant', text: body })
-    if (role === 'tool') items.push({ kind: 'tool', toolId: text(tool_call_id) || `stored-${items.length}`, name: text(name) || 'tool', detail: text(context), running: false })
+    if (role === 'tool')
+      items.push({
+        kind: 'tool',
+        toolId: text(tool_call_id) || `stored-${items.length}`,
+        name: text(name) || 'tool',
+        detail: text(context),
+        running: false,
+        ...(row.content == null ? {} : { result: typeof row.content === 'string' ? row.content : JSON.stringify(row.content) })
+      })
   }
   return items
 }

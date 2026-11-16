@@ -7,6 +7,7 @@ import type { BotService } from '../bots/bot-service'
 import type { OpenChat } from '../engines/bot-engine'
 import type { LibraryService } from '../library/library-service'
 import type { RoutineService } from '../routines/routine-service'
+import { threadLine } from './thread-events'
 
 const MAX_OPEN_CHATS = 8
 
@@ -27,7 +28,8 @@ export class BrowserSession {
     private sendFrame: (frame: ResponseFrame | EventFrame) => void,
     private activity?: ActivityService,
     private routines?: RoutineService,
-    private library?: LibraryService
+    private library?: LibraryService,
+    private threads?: import('../threads/thread-service').ThreadService
   ) {}
 
   private routineService() {
@@ -39,6 +41,8 @@ export class BrowserSession {
     return this.library
   }
   private handlers: Handlers = {
+    'threads.list': ({ botId }) => this.threads!.list(botId),
+    'threads.open': ({ botId, threadId }) => this.threads!.open(botId, threadId),
     'skills.list': ({ botId }) => this.bots.listSkills(botId),
     'skills.read': ({ botId, name }) => this.bots.readSkill(botId, name),
     'skills.setEnabled': ({ botId, name, enabled }) => this.bots.setSkill(botId, name, enabled),
@@ -174,6 +178,10 @@ export class BrowserSession {
       responded = true
       for (const data of early) forward(data)
     })
+    if (this.threads && this.bots.isMainChat(chat.snapshot.botId, chat.snapshot.chatId)) {
+      const threads = await this.threads.list(chat.snapshot.botId)
+      chat.snapshot.items.push(...threads.map(thread => threadLine(thread, chat.snapshot.botId)))
+    }
     return chat.snapshot
   }
 

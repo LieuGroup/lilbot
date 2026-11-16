@@ -235,6 +235,10 @@ export class BotService {
     return chat
   }
 
+  isMainChat(botId: string, chatId: string) {
+    return this.prefs.mainChat(botId) === chatId
+  }
+
   /** A new session, which becomes the bot's main conversation. The earlier one stays in the engine. */
   async newChat(botId: string, onEvent: (event: ChatEvent) => void): Promise<OpenChat> {
     const bot = await this.requireBot(botId)

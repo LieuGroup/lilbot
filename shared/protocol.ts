@@ -13,6 +13,8 @@ const chatId = z.string().min(1)
 
 /** Each method's params schema (checked on the server) and result type (trusted by the browser). */
 export const methods = {
+  'threads.list': z.object({ botId }),
+  'threads.open': z.object({ botId, threadId: z.string().min(1) }),
   'skills.list': z.object({ botId }),
   'skills.read': z.object({ botId, name: z.string() }),
   'skills.setEnabled': z.object({ botId, name: z.string(), enabled: z.boolean() }),
@@ -63,6 +65,8 @@ export type Method = keyof typeof methods
 export type Params<M extends Method> = z.input<(typeof methods)[M]>
 
 export interface Results {
+  'threads.list': import('./thread-schema').BotThread[]
+  'threads.open': import('./thread-schema').BotThread
   'skills.list': import('./skills-schema').Skill[]
   'skills.read': Record<string, string>
   'skills.setEnabled': { ok: true }
@@ -116,6 +120,7 @@ export type EventFrame =
   | { event: 'routines.changed' }
   | { event: 'library.changed'; botId: string }
   | { event: 'skills.changed' }
+  | { event: 'threads.changed' }
 
 /** An error whose message is safe and useful to show to the user. */
 export class LilBotError extends Error {

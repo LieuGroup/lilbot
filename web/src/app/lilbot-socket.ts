@@ -17,6 +17,7 @@ class LilBotSocket {
   private connectionListeners = new Set<(connected: boolean) => void>()
   private botsChangedListeners = new Set<() => void>()
   private skillsChangedListeners = new Set<() => void>()
+  private threadsChangedListeners = new Set<() => void>()
   private routinesChangedListeners = new Set<() => void>()
   private memoryChangedListeners = new Set<() => void>()
   connected = false
@@ -84,6 +85,11 @@ class LilBotSocket {
     return () => void this.skillsChangedListeners.delete(listener)
   }
 
+  onThreadsChanged(listener: () => void) {
+    this.threadsChangedListeners.add(listener)
+    return () => void this.threadsChangedListeners.delete(listener)
+  }
+
   onRoutinesChanged(listener: () => void) {
     this.routinesChangedListeners.add(listener)
     return () => void this.routinesChangedListeners.delete(listener)
@@ -117,6 +123,10 @@ class LilBotSocket {
     }
     if (frame.event === 'skills.changed') {
       for (const listener of this.skillsChangedListeners) listener()
+      return
+    }
+    if (frame.event === 'threads.changed') {
+      for (const listener of this.threadsChangedListeners) listener()
       return
     }
     if (frame.event === 'routines.changed') {

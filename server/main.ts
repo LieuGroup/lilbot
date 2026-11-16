@@ -15,6 +15,7 @@ import { MEMORY_ADAPTER_VERSION } from './engines/hermes/hermes-memory-setup'
 import { BrowserSession } from './http/browser-session'
 import { createEngineApi, engineToken } from './http/engine-api'
 import { allowedHosts, socketAllowed } from './http/socket-guard'
+import { threadEvents } from './http/thread-events'
 import { LibraryService } from './library/library-service'
 import { LibraryStore } from './library/library-store'
 import { defaultReviewSettings, MemoryReviewer } from './memory/memory-reviewer'
@@ -25,6 +26,8 @@ import { RoutineScheduler } from './routines/routine-scheduler'
 import { defaultRoutineSettings, RoutineService } from './routines/routine-service'
 import { RoutineStore } from './routines/routine-store'
 import { SkillsService } from './skills/skills-service'
+import { ThreadService } from './threads/thread-service'
+import { ThreadStore } from './threads/thread-store'
 
 interface SocketData {
   session?: BrowserSession
@@ -54,6 +57,7 @@ const memory = new MemoryService(new MemoryStore(database))
 const memoryChanged = () => server.publish(EVERYONE, JSON.stringify({ event: 'memory.changed' }))
 const token = engineToken(DATA_DIR)
 const store = new BotStore(database)
+const threadStore = new ThreadStore(database)
 const routineStore = new RoutineStore(database)
 const library = new LibraryService(
   new LibraryStore(database),
@@ -65,7 +69,8 @@ const skills = new SkillsService(process.env.LILBOT_SKILLS_DIR ?? join(homedir()
   server.publish(EVERYONE, JSON.stringify({ event: 'skills.changed' }))
   botsChanged()
 })
-const bots = new BotService(engine, store, new BotPrefsStore(database), new Workspaces(WORKSPACES_DIR), memory, {
+const prefs = new BotPrefsStore(database)
+const bots = new BotService(engine, store, prefs, new Workspaces(WORKSPACES_DIR), memory, {
   skills,
   cleanupBot: botId => {
     routineStore.forgetBot(botId)
@@ -84,6 +89,16 @@ const routines = new RoutineService(routineStore, bots, () => server.publish(EVE
       ? Math.max(1, Number(process.env.LILBOT_ROUTINE_TEST_INTERVAL_SECONDS))
       : defaultRoutineSettings.minIntervalSeconds
 })
+const threads = new ThreadService(
+  threadStore,
+  bots,
+  () => threadEvents(threadStore, store, prefs, frame => server.publish(EVERYONE, JSON.stringify(frame))),
+  (d, working) => {
+    for (const botId of [d.sender, d.target])
+      if (store.exists(botId)) activity.observe({ botId, chatId: `thread:${d.id}`, key: `${d.id}:${working}:${Date.now()}`, status: working ? 'working' : 'finished' })
+  }
+)
+setInterval(() => threads.tick(), 1000)
 const scheduler = new RoutineScheduler(routines, event => {
   if (store.exists(event.botId)) activity.observe(event)
 })
@@ -131,13 +146,16 @@ const engineApi = createEngineApi(memory, token, PORT, {
   skills,
   routines,
   library,
+  threads,
   botExists: id => store.exists(id),
   onMemoryChanged: memoryChanged,
   adapterVersion: MEMORY_ADAPTER_VERSION,
   reviewer
 })
 engine.onBotsChanged(botsChanged)
-bots.watchActivity(event => activity.observe(event), activity.cursor)
+bots.watchActivity(event => {
+  if (!threadStore.isInternal(event.chatId)) activity.observe(event)
+}, activity.cursor)
 const DIST = join(import.meta.dir, '..', 'dist')
 
 const ALLOWED_HOSTS = allowedHosts(PORT, process.env.LILBOT_ALLOWED_HOSTS)
@@ -209,7 +227,8 @@ const server = Bun.serve<SocketData>({
         },
         activity,
         routines,
-        library
+        library,
+        threads
       )
     },
     message(socket, message) {
