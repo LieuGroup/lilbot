@@ -37,7 +37,7 @@ function Editor({ name: initialName, avatar: initialAvatar, onSave, onOpenChange
       className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-[432px] gap-5 overflow-y-auto rounded-2xl bg-card p-6 sm:max-w-[432px]"
       aria-describedby={undefined}
     >
-      <DialogTitle className="sr-only">Edit avatar</DialogTitle>
+      <DialogTitle className="sr-only">Name and avatar</DialogTitle>
       <form
         className="flex flex-col gap-5"
         onSubmit={async event => {

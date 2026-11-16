@@ -4,6 +4,7 @@ import type { Bot, BotPrefs } from '../../shared/bot-schema'
 
 interface Options {
   isPrimary?: boolean
+  isDefault?: boolean
   prefs?: Partial<BotPrefs>
   activity?: Partial<BotActivity>
   function?: string
@@ -19,7 +20,7 @@ export function testBot(id: string, options: Options = {}): Bot {
     function: options.function ?? '',
     model: null,
     permissionMode: 'full-access',
-    isDefault: false,
+    isDefault: options.isDefault ?? false,
     isPrimary: options.isPrimary ?? false,
     runnable: options.runnable ?? true,
     runtimePending: options.runtimePending,

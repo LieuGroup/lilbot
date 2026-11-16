@@ -5,13 +5,14 @@ import { EllipsisIcon, StarIcon } from 'lucide-react'
 import { BotBadge } from '@/ui/bot-badge'
 import { Button } from '@/ui/button'
 import type { Bot } from '../../../shared/bot-schema'
+import { openBotMenu, pointAnchor } from './bot-menu-target'
 import type { DetailsTab } from './details-tabs'
 import { rowState } from './row-state'
 import { StatusIcon } from './status-icon'
 
 /** One bot in the roster: avatar, name, one line of live state or preview, and a 16px trailing
- *  slot for the unread dot (the "more" button takes its place on hover). Opening another bot
- *  keeps the details tab that is open. */
+ *  slot for the unread dot (the "more" button takes its place on hover). The "more" button and
+ *  a right-click open the bot menu. Opening another bot keeps the details tab that is open. */
 export function RosterRow({ bot, active, tab }: { bot: Bot; active: boolean; tab?: DetailsTab }) {
   const state = rowState(bot)
   const quiet = state.tone === 'idle' && !state.unread && !bot.isPrimary
@@ -44,7 +45,13 @@ export function RosterRow({ bot, active, tab }: { bot: Bot; active: boolean; tab
   )
 
   return (
-    <li className="group relative">
+    <li
+      className="group relative"
+      onContextMenu={event => {
+        event.preventDefault()
+        openBotMenu(bot.id, pointAnchor(event.clientX, event.clientY))
+      }}
+    >
       {tab ? (
         <Link to="/bots/$botId/$tab" params={{ botId: bot.id, tab }} aria-current={active ? 'page' : undefined} className={row}>
           {content}
@@ -54,10 +61,11 @@ export function RosterRow({ bot, active, tab }: { bot: Bot; active: boolean; tab
           {content}
         </Link>
       )}
-      {/* The bot menu (#37) opens from here. */}
       <Button
         variant="ghost"
         aria-label={`More for ${bot.name}`}
+        aria-haspopup="menu"
+        onClick={event => openBotMenu(bot.id, event.currentTarget)}
         className="absolute top-1/2 right-2 size-4 -translate-y-1/2 rounded-sm p-0 text-muted-foreground opacity-0 group-hover:opacity-100 group-has-focus-visible:opacity-100 hover:bg-transparent hover:text-foreground"
       >
         <EllipsisIcon strokeWidth={1.75} />

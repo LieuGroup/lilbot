@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { Button } from '@/ui/button'
 import { Notice } from '@/ui/notice'
 import { Panel } from '@/ui/panel'
 import { Separator } from '@/ui/separator'
@@ -7,7 +6,6 @@ import type { Ability, BotDetail } from '../../../shared/bot-schema'
 import { lilbot, messageOf } from '../app/lilbot-socket'
 import { BotForm } from './bot-form'
 import { useBotStore } from './bot-store'
-import { EditAvatarDialog } from './edit-avatar-dialog'
 import { PrimaryBotAction } from './primary-bot-action'
 
 const kindLabels: Record<Ability['kind'], string> = { toolset: 'Toolsets', skill: 'Skills', connector: 'Connectors' }
@@ -46,14 +44,15 @@ function AbilitySummary({ abilities }: { abilities: Ability[] }) {
 export function BotSetupPanel({ botId }: { botId: string }) {
   const connected = useBotStore(state => state.connected)
   const upsert = useBotStore(state => state.upsert)
-  const [bot, setBot] = useState<BotDetail | null>(null)
-  const [editingAvatar, setEditingAvatar] = useState(false)
+  // A rename from the bot menu reloads the form, so saving it cannot bring the old name back.
+  const name = useBotStore(state => state.bots.find(bot => bot.id === botId)?.name)
+  const [loaded, setBot] = useState<BotDetail | null>(null)
   const [error, setError] = useState('')
+  const bot = loaded?.id === botId ? loaded : null
 
   useEffect(() => {
-    if (!connected) return
+    if (!connected || name === undefined) return
     let cancelled = false
-    setBot(null)
     setError('')
     lilbot
       .call('bots.get', { botId })
@@ -62,7 +61,7 @@ export function BotSetupPanel({ botId }: { botId: string }) {
     return () => {
       cancelled = true
     }
-  }, [botId, connected])
+  }, [botId, connected, name])
 
   return (
     <Panel>
@@ -70,25 +69,9 @@ export function BotSetupPanel({ botId }: { botId: string }) {
       {!bot && !error && <p className="text-muted-foreground">Loading...</p>}
       {bot && (
         <>
-          <Button variant="outline" onClick={() => setEditingAvatar(true)}>
-            Edit avatar
-          </Button>
-          <EditAvatarDialog
-            open={editingAvatar}
-            onOpenChange={setEditingAvatar}
-            name={bot.name}
-            avatar={bot.prefs.avatar}
-            onSave={async ({ name, avatar }) => {
-              if (name !== bot.name) await lilbot.call('bots.update', { botId, name })
-              await lilbot.call('bots.setPrefs', { botId, avatar })
-              const updated = await lilbot.call('bots.get', { botId })
-              setBot(updated)
-              upsert(updated)
-            }}
-          />
           <PrimaryBotAction botId={botId} />
           <BotForm
-            key={bot.id}
+            key={`${bot.id}:${bot.name}`}
             initial={{ name: bot.name, function: bot.function, instructions: bot.instructions, model: bot.model }}
             submitLabel="Save changes"
             onSubmit={async values => {
