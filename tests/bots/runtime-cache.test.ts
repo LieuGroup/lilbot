@@ -40,18 +40,21 @@ test('runtime disappearance invalidates cached availability and return refreshes
 
 test('failed startup retries do not prepare successfully prepared bots again', async () => {
   const { store, engine } = fakeService()
-  let prepares = 0
-  engine.prepareRuntime = async () => {
-    prepares++
+  store.save({ ...store.get('b1'), id: 'b2', engineBotId: 'b2' })
+  const prepared: string[] = []
+  engine.prepareRuntime = async id => {
+    prepared.push(id)
   }
-  engine.applyIdentity = async () => {
-    throw new Error('temporary failure')
+  let fail = true
+  engine.applyIdentity = async id => {
+    if (id === 'b2' && fail) throw new Error('temporary failure')
+    return { abilities: [], memoryConnected: false }
   }
   const runtimes = new BotRuntimes(store, engine)
   await expect(runtimes.initialize()).rejects.toThrow('temporary failure')
-  engine.applyIdentity = async () => ({ abilities: [], memoryConnected: false })
+  fail = false
   await runtimes.initialize()
-  expect(prepares).toBe(1)
+  expect(prepared).toEqual(['b1', 'b2'])
 })
 
 test('missing runtime reported during use makes subsequent reads unavailable without retries', async () => {
@@ -63,4 +66,18 @@ test('missing runtime reported during use makes subsequent reads unavailable wit
   }
   await expect(runtimes.state(store.get('b1'))).rejects.toThrow('gone')
   expect(await runtimes.available(store.get('b1'))).toBe(false)
+})
+
+test('only a changed permission mode prepares policy during updates', async () => {
+  const { store, engine } = fakeService()
+  Object.defineProperty(engine, 'supportedPermissionModes', { value: ['full-access', 'auto'] })
+  const prepared: string[] = []
+  engine.prepareRuntime = async (_id, identity) => {
+    prepared.push(identity.permissionMode)
+  }
+  const runtimes = new BotRuntimes(store, engine)
+  await runtimes.initialize()
+  await runtimes.update({ botId: 'b1', permissionMode: 'full-access' })
+  await runtimes.update({ botId: 'b1', permissionMode: 'auto' })
+  expect(prepared).toEqual(['full-access', 'auto'])
 })

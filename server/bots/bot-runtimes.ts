@@ -91,7 +91,13 @@ export class BotRuntimes {
     const bot = this.store.list().find(bot => bot.engineId === this.engine.id && bot.engineBotId === nativeId)
     if (!bot) return
     if (!available) this.states.set(bot.id, null)
-    else await this.state(bot)
+    else {
+      await this.state(bot)
+      if (!this.prepared.has(bot.id)) {
+        await this.engineFor(bot).prepareRuntime?.(bot.engineBotId, bot)
+        this.prepared.add(bot.id)
+      }
+    }
   }
 
   async available(bot: BotRecord): Promise<boolean> {
