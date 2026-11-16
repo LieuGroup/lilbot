@@ -2,19 +2,26 @@ import { createHash, createPublicKey, randomBytes, verify } from 'node:crypto'
 import { z } from 'zod'
 import { ComputerHello } from '../../shared/computer-schema'
 import type { ComputerStore } from './computer-store'
+import type { ServerKey } from './server-key'
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex')
-export const Registration = z.object({ code: z.string().max(100), publicKey: z.string().max(1000), hello: ComputerHello, signature: z.string().max(200) })
+export const Registration = z.object({ code: z.string().max(200), publicKey: z.string().max(1000), hello: ComputerHello, signature: z.string().max(200) })
 export class ComputerAuth {
-  constructor(private store: ComputerStore) {}
-  code() {
-    const code = randomBytes(24).toString('base64url')
+  constructor(
+    private store: ComputerStore,
+    readonly serverKey: ServerKey
+  ) {}
+  code(name: string) {
+    name = z.string().trim().min(1).max(100).parse(name)
+    const code = `${randomBytes(24).toString('base64url')}.${this.serverKey.fingerprint}`
     const expiresAt = Date.now() + 10 * 60_000
     this.store.db.query('DELETE FROM computer_codes WHERE expires_at < ?').run(Date.now())
-    this.store.db.query('INSERT INTO computer_codes VALUES(?,?)').run(hash(code), expiresAt)
+    this.store.db.query('INSERT INTO computer_codes VALUES(?,?,?)').run(hash(code), expiresAt, name)
     return { code, expiresAt }
   }
   register(input: z.infer<typeof Registration>) {
+    const code = this.store.db.query('SELECT name FROM computer_codes WHERE hash=? AND expires_at>?').get(hash(input.code), Date.now()) as { name: string } | null
+    if (!code) throw new Error('Invalid registration.')
     const key = createPublicKey(input.publicKey)
     if (
       key.asymmetricKeyType !== 'ed25519' ||
@@ -25,7 +32,7 @@ export class ComputerAuth {
       const used = this.store.db.query('DELETE FROM computer_codes WHERE hash=? AND expires_at>? RETURNING hash').get(hash(input.code), Date.now())
       if (!used) throw new Error('Invalid registration.')
       const id = crypto.randomUUID()
-      this.store.add(id, input.hello, input.publicKey)
+      this.store.add(id, { ...input.hello, name: code.name }, input.publicKey)
       return { id }
     })()
   }

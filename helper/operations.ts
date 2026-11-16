@@ -4,6 +4,14 @@ import { open, readdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import type { ComputerOperation, ComputerResult } from '../shared/computer-schema'
 
+const children = new Set<number>()
+process.on('exit', () => {
+  for (const pid of children) {
+    try {
+      process.kill(-pid, 'SIGKILL')
+    } catch {}
+  }
+})
 const LIMIT = 4 * 1024 * 1024
 export async function operate(op: ComputerOperation, signal: AbortSignal, progress: (result: ComputerResult) => void = () => {}): Promise<ComputerResult> {
   signal.throwIfAborted()
@@ -34,10 +42,21 @@ export async function operate(op: ComputerOperation, signal: AbortSignal, progre
   }
 }
 async function execute(op: Extract<ComputerOperation, { kind: 'exec' }>, signal: AbortSignal, progress: (result: ComputerResult) => void): Promise<ComputerResult> {
-  const child = Bun.spawn([process.env.SHELL || '/bin/sh', '-lc', op.command], { cwd: op.cwd || homedir(), stdout: 'pipe', stderr: 'pipe', detached: true })
+  // A separate shell watchdog survives an abrupt helper death (including SIGKILL).
+  // It shares the command's process group and kills that group if its owner disappears.
+  const wrapper = `owner=$1; shift; group=$$; (while kill -0 "$owner" 2>/dev/null; do sleep 1; done; kill -9 -"$group") & guard=$!; "$@"; status=$?; kill "$guard" 2>/dev/null; wait "$guard" 2>/dev/null; exit "$status"`
+  const child = Bun.spawn(['/bin/sh', '-c', wrapper, 'lilbot-command', String(process.pid), process.env.SHELL || '/bin/sh', '-lc', op.command], {
+    cwd: op.cwd || homedir(),
+    stdout: 'pipe',
+    stderr: 'pipe',
+    detached: true
+  })
+  children.add(child.pid)
+  const readers: ReadableStreamDefaultReader<Uint8Array>[] = []
   let stopped = false
   const stop = () => {
     stopped = true
+    for (const reader of readers) void reader.cancel().catch(() => {})
     try {
       process.kill(-child.pid, 'SIGKILL')
     } catch {
@@ -52,6 +71,11 @@ async function execute(op: Extract<ComputerOperation, { kind: 'exec' }>, signal:
   const read = async (stream: ReadableStream<Uint8Array>) => {
     const decoder = new TextDecoder()
     const reader = stream.getReader()
+    readers.push(reader)
+    if (stopped) {
+      await reader.cancel()
+      return
+    }
     while (true) {
       const { done, value: chunk } = await reader.read()
       if (done) break
@@ -66,6 +90,7 @@ async function execute(op: Extract<ComputerOperation, { kind: 'exec' }>, signal:
     await Promise.all([read(child.stdout), read(child.stderr), child.exited])
     return { output, exitCode: child.exitCode, ...(stopped ? { error: signal.aborted ? 'Cancelled.' : 'Command timed out.' } : {}) }
   } finally {
+    children.delete(child.pid)
     clearTimeout(timer)
     signal.removeEventListener('abort', stop)
   }

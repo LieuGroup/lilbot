@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { botCapability } from '../../server/bots/bot-capability'
 import { ComputerService } from '../../server/computers/computer-service'
 import { ComputerStore } from '../../server/computers/computer-store'
+import { loadServerKey } from '../../server/computers/server-key'
 import { workspaceFile } from '../../server/computers/workspace-file'
 import { openDatabase } from '../../server/database/database'
 import { createEngineApi } from '../../server/http/engine-api'
@@ -23,8 +24,11 @@ function fixture() {
   const store = new ComputerStore(db)
   const service = new ComputerService(
     store,
+    loadServerKey(root),
     id => id === 'bot',
-    () => root
+    () => root,
+    () => {},
+    () => 'full-access'
   )
   cleanups.push(() => {
     service.close()
@@ -34,9 +38,9 @@ function fixture() {
   const pair = generateKeyPairSync('ed25519')
   const publicKey = pair.publicKey.export({ type: 'spki', format: 'pem' }).toString()
   const body = {
-    code: service.auth.code().code,
+    code: service.auth.code('Test').code,
     publicKey,
-    hello: { name: 'Test', os: 'linux', home: root, capabilities: ['exec', 'read', 'write', 'list', 'copy'] as ('exec' | 'read' | 'write' | 'list' | 'copy')[] }
+    hello: { name: 'Attacker choice', os: 'linux', home: root, capabilities: ['exec', 'read', 'write', 'list', 'copy'] as ('exec' | 'read' | 'write' | 'list' | 'copy')[] }
   }
   const registration = { ...body, signature: sign(null, Buffer.from(JSON.stringify(body)), pair.privateKey).toString('base64') }
   const { id } = service.auth.register(registration)
@@ -53,8 +57,9 @@ function fixture() {
 }
 test('one-time codes, expiry, wrong keys, replay and immediate revocation', () => {
   const { service, db, id, registration, request, pair } = fixture()
+  expect(service.list().find(c => c.id === id)?.name).toBe('Test')
   expect(() => service.auth.register(registration)).toThrow()
-  const expired = service.auth.code()
+  const expired = service.auth.code('Test')
   db.query('UPDATE computer_codes SET expires_at=0').run()
   const body = { code: expired.code, publicKey: registration.publicKey, hello: registration.hello }
   expect(() => service.auth.register({ ...body, signature: sign(null, Buffer.from(JSON.stringify(body)), pair.privateKey).toString('base64') })).toThrow()
@@ -101,7 +106,7 @@ test('idempotent durable queue, output isolation, cancellation and no implicit o
   )
   expect(frames.at(-1).type).toBe('cancel')
   service.result(id, (await service.submit('bot', input)).id, { output: 'late result' }, true)
-  expect(service.read('bot', input).status).toBe('cancelled')
+  expect(service.read('bot', input).status).toBe('cancel_acked')
 })
 test('leader execution and binary workspace copy reject traversal and symlinks', async () => {
   const { service, root } = fixture()
@@ -193,5 +198,5 @@ test('background command output is readable and cancellation terminates it', asy
   expect(service.read('bot', input).result?.output).toContain('STARTED')
   service.cancel('bot', input)
   await Bun.sleep(200)
-  expect(service.read('bot', input).status).toBe('cancelled')
+  expect(service.read('bot', input).status).toBe('cancel_acked')
 })

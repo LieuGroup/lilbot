@@ -1,4 +1,5 @@
-import { copyFile, mkdir, rm, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { chmod, copyFile, mkdir, rename, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { configDir } from './identity'
@@ -23,7 +24,9 @@ export async function service(action: 'install' | 'uninstall') {
     return
   }
   await mkdir(directory, { recursive: true })
-  if (process.execPath !== binary) await copyFile(process.execPath, binary)
+  if (mac) await command(['launchctl', 'bootout', `gui/${process.getuid!()}`, path], false)
+  else await command(['systemctl', '--user', 'stop', 'lilbot-helper.service'], false)
+  if (process.execPath !== binary) await installBinary(process.execPath, binary)
   if (mac) {
     await writeFile(
       path,
@@ -42,5 +45,20 @@ export async function service(action: 'install' | 'uninstall') {
     )
     await command(['systemctl', '--user', 'daemon-reload'])
     await command(['systemctl', '--user', 'enable', '--now', 'lilbot-helper.service'])
+  }
+}
+
+export async function installBinary(source: string, target: string) {
+  const checksum = (await Bun.file(`${source}.sha256`).text()).trim().split(/\s+/)[0]
+  const digest = (bytes: ArrayBuffer) => createHash('sha256').update(Buffer.from(bytes)).digest('hex')
+  if (!/^[a-f0-9]{64}$/.test(checksum) || digest(await Bun.file(source).arrayBuffer()) !== checksum) throw new Error('Helper checksum mismatch.')
+  const temporary = `${target}.${crypto.randomUUID()}.tmp`
+  try {
+    await copyFile(source, temporary)
+    if (digest(await Bun.file(temporary).arrayBuffer()) !== checksum) throw new Error('Helper checksum mismatch.')
+    await chmod(temporary, 0o700)
+    await rename(temporary, target)
+  } finally {
+    await rm(temporary, { force: true })
   }
 }

@@ -16,7 +16,7 @@ export const methods = {
   'threads.list': z.object({ botId }),
   'threads.open': z.object({ botId, threadId: z.string().min(1) }),
   'computers.list': z.object({}),
-  'computers.installCode': z.object({}),
+  'computers.installCode': z.object({ name: z.string().trim().min(1).max(100) }),
   'computers.remove': z.object({ computer: z.string().min(1) }),
   'skills.list': z.object({ botId }),
   'skills.read': z.object({ botId, name: z.string() }),

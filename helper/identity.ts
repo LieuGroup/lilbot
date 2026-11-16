@@ -7,6 +7,7 @@ export const configDir = process.env.LILBOT_HELPER_CONFIG_DIR || join(homedir(),
 export interface Identity {
   url: string
   id: string
+  serverFingerprint: string
   privateKey: string
 }
 export function loadIdentity(): Identity {
@@ -27,6 +28,8 @@ export function validateUrl(raw: string) {
 }
 export async function register(url: string, code: string) {
   url = validateUrl(url)
+  const serverFingerprint = code.split('.')[1]
+  if (!/^[a-f0-9]{64}$/.test(serverFingerprint ?? '')) throw new Error('Install code must include the server fingerprint.')
   const pair = generateKeyPairSync('ed25519')
   const privateKey = pair.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()
   const publicKey = pair.publicKey.export({ type: 'spki', format: 'pem' }).toString()
@@ -43,7 +46,10 @@ export async function register(url: string, code: string) {
   const { id } = (await response.json()) as { id: string }
   mkdirSync(configDir, { recursive: true, mode: 0o700 })
   chmodSync(configDir, 0o700)
-  writeFileSync(join(configDir, 'identity.json'), JSON.stringify({ url, id, privateKey }), { mode: 0o600, flag: 'wx' })
+  writeFileSync(join(configDir, 'identity.json'), JSON.stringify({ url, id, privateKey, serverFingerprint }), {
+    mode: 0o600,
+    flag: 'wx'
+  })
 }
 export function connectionHeaders(identity: Identity) {
   const timestamp = String(Date.now())

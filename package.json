@@ -13,7 +13,7 @@
     "format": "biome check --write .",
     "test": "bun test tests",
     "check:threads": "bun live-checks/threads-check.ts",
-    "build:helper": "bun build --compile helper/main.ts --outfile dist/lilbot-helper",
+    "build:helper": "bun scripts/build-helper.ts",
     "check:computers": "bun live-checks/computers-check.ts",
     "check:skills": "bun live-checks/skills-check.ts",
     "check:live": "bun live-checks/chat-check.ts",

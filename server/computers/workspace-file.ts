@@ -14,7 +14,7 @@ export async function workspaceFile<T>(root: string, path: string, use: (file: {
       const handle = await open(target, (write ? constants.O_WRONLY | constants.O_CREAT : constants.O_RDONLY) | constants.O_NOFOLLOW | constants.O_NONBLOCK, 0o600)
       try {
         const stat = await handle.stat()
-        if (!stat.isFile() || stat.size > 4 * 1024 * 1024) throw new Error('Use a regular file at most 4 MiB.')
+        if (!stat.isFile() || stat.nlink !== 1 || stat.size > 4 * 1024 * 1024) throw new Error('Use a regular file at most 4 MiB.')
         if (write) {
           const bytes = Buffer.from(data!, 'base64')
           if (bytes.length > 4 * 1024 * 1024) throw new Error('File too large.')

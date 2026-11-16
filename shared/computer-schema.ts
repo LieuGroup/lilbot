@@ -46,8 +46,8 @@ export interface ComputerRequest {
   id: string
   computer: string
   requestId: string
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
-  operation: ComputerOperation
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'cancel_acked'
+  operation: ComputerOperation | null
   result: ComputerResult | null
   createdAt: number
 }
@@ -58,5 +58,6 @@ export const HelperFrame = z.discriminatedUnion('type', [
 export const HelperWork = z.discriminatedUnion('type', [
   z.object({ type: z.literal('work'), id: z.string(), operation: ComputerOperation }),
   z.object({ type: z.literal('cancel'), id: z.string() }),
-  z.object({ type: z.literal('heartbeat') })
+  z.object({ type: z.literal('heartbeat') }),
+  z.object({ type: z.literal('ack'), id: z.string() })
 ])

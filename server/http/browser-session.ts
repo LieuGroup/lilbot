@@ -51,7 +51,7 @@ export class BrowserSession {
     'threads.list': ({ botId }) => this.threads!.list(botId),
     'threads.open': ({ botId, threadId }) => this.threads!.open(botId, threadId),
     'computers.list': async () => this.computerService().list(),
-    'computers.installCode': async () => this.computerService().auth.code(),
+    'computers.installCode': async ({ name }) => this.computerService().auth.code(name),
     'computers.remove': async ({ computer }) => this.computerService().remove(computer),
     'skills.list': ({ botId }) => this.bots.listSkills(botId),
     'skills.read': ({ botId, name }) => this.bots.readSkill(botId, name),

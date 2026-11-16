@@ -1,40 +1,50 @@
 import { homedir, hostname, platform } from 'node:os'
 import { operate } from '../../helper/operations'
-import { ComputerCopy, type ComputerRequest, ComputerRequestRef, ComputerSubmit } from '../../shared/computer-schema'
+import { ComputerCopy, ComputerRequestRef, ComputerSubmit } from '../../shared/computer-schema'
 import { ComputerAuth } from './computer-auth'
 import type { ComputerStore } from './computer-store'
+import type { ServerKey } from './server-key'
 import { workspaceFile } from './workspace-file'
 
-type Peer = { send: (frame: string) => unknown; close: () => void; seen: number; sent: Set<string> }
+type Peer = { send: (frame: string) => unknown; close: (code?: number) => void; disconnect?: () => void; seen: number; sent: Set<string> }
 export class ComputerService {
   readonly auth: ComputerAuth
   private peers = new Map<string, Peer>()
   private local = new Map<string, AbortController>()
   constructor(
     readonly store: ComputerStore,
+    serverKey: ServerKey,
     private botExists: (id: string) => boolean,
     private workspace: (id: string) => string,
-    private changed = () => {}
+    private changed = () => {},
+    private permissionMode: (id: string) => string | undefined = () => undefined
   ) {
-    this.auth = new ComputerAuth(store)
+    this.auth = new ComputerAuth(store, serverKey)
     store.add('leader', { name: hostname(), os: platform(), home: homedir(), capabilities: ['exec', 'read', 'write', 'list', 'copy'] }, null)
   }
   list() {
     return this.store.list().map(c => ({ ...c, lastSeen: c.id === 'leader' ? Date.now() : c.lastSeen, online: c.id === 'leader' || this.peers.has(c.id) }))
   }
   connect(id: string, send: Peer['send'], close: Peer['close']) {
-    this.peers.get(id)?.close()
-    const peer = { send, close, seen: Date.now(), sent: new Set<string>() }
+    if (this.peers.has(id)) {
+      console.warn('[computers] concurrent connection replaced')
+      this.peers.get(id)?.close(4001)
+    }
+    const peer: Peer = { send, close, seen: Date.now(), sent: new Set<string>() }
     this.peers.set(id, peer)
     this.store.seen(id)
     this.changed()
     this.dispatch(id)
-    return () => {
+    peer.disconnect = () => {
       if (this.peers.get(id) === peer) {
         this.peers.delete(id)
         this.changed()
       }
     }
+    return peer.disconnect
+  }
+  isPeer(id: string, disconnect?: () => void) {
+    return this.peers.get(id)?.disconnect === disconnect
   }
   heartbeat(id: string) {
     const peer = this.peers.get(id)
@@ -45,6 +55,7 @@ export class ComputerService {
     }
   }
   tick() {
+    this.store.prune()
     for (const [id, peer] of this.peers) {
       if (Date.now() - peer.seen > 35_000) {
         this.peers.delete(id)
@@ -69,6 +80,7 @@ export class ComputerService {
   }
   private require(bot: string, computer: string) {
     if (!this.botExists(bot)) throw new Error('Unknown or deleted bot.')
+    if (this.permissionMode(bot) !== 'full-access') throw new Error('Computer operations require full-access mode.')
     const found = this.list().find(c => c.id === computer)
     if (!found) throw new Error('Unknown or removed computer.')
     return found
@@ -111,12 +123,18 @@ export class ComputerService {
   }
   result(computer: string, id: string, result: Parameters<ComputerStore['result']>[2], final: boolean) {
     this.store.result(computer, id, result, final)
-    if (final) this.peers.get(computer)?.sent.delete(id)
+    if (final) {
+      const peer = this.peers.get(computer)
+      peer?.sent.delete(id)
+      peer?.sent.delete(`cancel:${id}`)
+      peer?.send(JSON.stringify({ type: 'ack', id }))
+    }
   }
   private dispatch(computer: string) {
     for (const request of this.store.pending(computer)) {
       if (request.status === 'cancelled') {
         this.local.get(request.id)?.abort()
+        if (computer === 'leader' && !this.local.has(request.id)) this.store.result(computer, request.id, { output: '' }, true)
         const peer = this.peers.get(computer)
         if (peer && !peer.sent.has(`cancel:${request.id}`)) {
           peer.send(JSON.stringify({ type: 'cancel', id: request.id }))
@@ -125,7 +143,7 @@ export class ComputerService {
         continue
       }
       if (computer === 'leader') {
-        this.runLocal(request)
+        if (this.local.size < 8) this.runLocal(request)
         continue
       }
       const peer = this.peers.get(computer)
@@ -133,10 +151,10 @@ export class ComputerService {
       if ([...peer.sent].filter(id => !id.startsWith('cancel:')).length >= 8) continue
       peer.sent.add(request.id)
       this.store.running(request.id)
-      peer.send(JSON.stringify({ type: 'work', id: request.id, operation: request.operation }))
+      peer.send(JSON.stringify({ type: 'work', id: request.id, operation: this.store.operation(request.id) }))
     }
   }
-  private runLocal(request: ComputerRequest) {
+  private runLocal(request: { id: string; status: string }) {
     if (this.local.has(request.id)) return
     if (request.status === 'running') {
       this.store.result('leader', request.id, { output: '', error: 'Leader restarted; outcome unknown. Not re-executed.' }, true)
@@ -145,7 +163,7 @@ export class ComputerService {
     const controller = new AbortController()
     this.local.set(request.id, controller)
     this.store.running(request.id)
-    void operate(request.operation, controller.signal, result => this.store.result('leader', request.id, result, false))
+    void operate(this.store.operation(request.id), controller.signal, result => this.store.result('leader', request.id, result, false))
       .then(result => this.store.result('leader', request.id, result, true))
       .catch(() => this.store.result('leader', request.id, { output: '', error: 'Operation failed.' }, true))
       .finally(() => this.local.delete(request.id))

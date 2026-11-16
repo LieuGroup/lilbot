@@ -31,7 +31,13 @@ def call(action, args):
 def register(ctx):
     def tool(name, description, properties, required, action, transform=lambda a: a):
         def handler(args, **kwargs):
-            return json.dumps(call(action, transform(args)))
+            payload = transform(args)
+            if action == 'submit' and payload['operation']['kind'] == 'exec':
+                from tools.approval_detection import detect_hardline_command
+                blocked, reason = detect_hardline_command(payload['operation']['command'])
+                if blocked:
+                    return json.dumps({'error': 'Command refused by engine hard stop: ' + reason})
+            return json.dumps(call(action, payload))
         ctx.register_tool(name=name, toolset='lilbot_computers', schema={'name': name,
             'description': description, 'parameters': {'type': 'object', 'properties': properties,
             'required': required}}, handler=handler)

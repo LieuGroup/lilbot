@@ -400,52 +400,65 @@ is shared with the standalone `helper/` client. The leader is always `leader` an
 locally through the same bounded operation runner without a helper. Every bot can use every
 computer; the authenticated bot id owns its requests, never an id from the body.
 
-- Private browser methods: `computers.list`, `computers.installCode` (10 minutes, single use),
-  `computers.remove`; changes push `computers.changed`. No UI is built yet (`needs-ui`).
+- Private browser methods: `computers.list`, `computers.installCode({ name })` (10 minutes,
+  single use), `computers.remove`; changes push `computers.changed`. The minted name wins over
+  the helper's advisory hostname. No UI is built yet (`needs-ui`).
 - The public door is a separate loopback listener, off by default. Enable with
-  `LILBOT_PUBLIC_ENABLED=1`, `LILBOT_PUBLIC_PORT=3372`. It accepts only POST `/helper/register`
-  and GET `/helper/connect` (WebSocket). Other paths/methods fail closed; no app, browser socket,
-  engine API or proxy. A LilBot-only Cloudflare tunnel may point here after deployment approval.
-  The existing service on 3370 and its allowed-host list must never receive the public hostname.
-  Webhooks may add verified routes later; none are built here.
-- Registration signs the code, public key and machine description with a locally generated
-  Ed25519 key. Connections sign method, exact path, computer id, timestamp and a one-use nonce
-  (60-second clock window). Frames then travel on that authenticated connection over TLS.
-  Revocation immediately closes it and cancels unfinished work. Codes/keys never enter logs or URLs.
-- `lilbot-computers-v1` is a separate Hermes tool plugin, installed for active bound bots during
-  preparation. It uses the existing bot-bound capability and leaves the memory adapter untouched.
-  `list_computers`, `computer_exec`, `computer_read_file`, `computer_write_file`,
-  `computer_list_folder`, `computer_request`, `computer_cancel`, `computer_copy` return tool data.
-  Callers name the computer explicitly. Reads return base64; writes accept UTF-8 or base64.
-- Offline synchronous calls fail immediately. Explicit background calls queue durably, including
-  while offline, and execute on reconnect; foreground calls return the request after at most 25s.
-  `computer_request` reads current output/status; `computer_cancel` stops queued/running work.
-  Request ids are scoped to bot and computer; changed arguments are rejected. Deleting a bot
-  cancels its outstanding work and immediately refuses further calls.
-- The helper sends heartbeats every 10s and reconnects with capped exponential backoff. A
-  35-second heartbeat gap means offline. SQLite receipts are committed before execution and
-  retained across restart; duplicate deliveries return the result. A crash during execution
-  reports unknown outcome instead of replaying side effects. This is not an exactly-once
-  guarantee for external side effects. One process holds the helper's journal lock.
-- Commands have a timeout (default 60s, maximum 1h), process-group cancellation and bounded
-  output. Files/copies are limited to 4 MiB; folders return up to 10,000 entries. Workspace copy
-  uses no-follow descriptor-relative access on the Linux leader, blocking symlink/traversal escapes.
-  Full-access remote operations have the helper user's filesystem and shell privileges.
-- Build: `bun run build:helper`; cross-compile with `bun build --compile --target=bun-darwin-arm64
-  helper/main.ts --outfile dist/lilbot-helper-macos-arm64` (x64 target also supported). No Bun
-  runtime is needed on the target. Deliver the matching binary, make it executable, then run
-  `./lilbot-helper install https://lilbot-connect.oscarapp.info` with the one-time code on stdin.
-  macOS installs `~/Library/LaunchAgents/info.lilbot.helper.plist`; Linux installs the
-  `lilbot-helper.service` systemd user unit. `uninstall` removes the service; remove the computer
-  in LilBot to revoke it. Config/journal live in `~/.config/lilbot-helper` (override with
-  `LILBOT_HELPER_CONFIG_DIR`). Never install on Oscar's Macs as part of tests.
-- `bun run check:computers` compiles and runs the helper without installing a service, on free
-  private/public ports with temporary data/workspaces/skills and a sentinel profile allowlist.
-  It uses one real temporary bot and always deletes its profile and temporary files in finally.
-  Linux x64 measured 81,503,712 bytes and about 41 MiB connected idle RSS; macOS arm64
-  cross-build is 62,408,562 bytes and x64 is 69,513,488 bytes (not run on a Mac).
-  It checks registration, real tool calls, offline queue/reconnect, copy, key revocation, reused
-  codes, wrong keys and refused public paths; it prints binary size and connected idle RSS.
+  `LILBOT_PUBLIC_ENABLED=1`, `LILBOT_PUBLIC_PORT=3372`. Its port must differ from the private app.
+  It accepts only POST `/helper/register` and GET `/helper/connect` (WebSocket), with 8 KiB bodies.
+  Both listeners disable development errors and return plain 500s. The private listener refuses
+  `cf-connecting-ip`, `cf-ray` and Cloudflare `cdn-loop` headers before routing, even with a valid Host.
+  Never add the public name to `LILBOT_ALLOWED_HOSTS`. No webhook, app, browser socket or engine
+  endpoint is exposed by the door. A separate tunnel requires deployment approval.
+- The door limits attempts to 20/address/minute with at most 4096 tracked addresses. Behind
+  Cloudflare it keys on `cf-connecting-ip`. Deploy a matching Cloudflare rate-limit rule on both
+  helper paths (20/minute/IP, block 60s), so rejected traffic does not reach the leader. Registration
+  checks the hashed code with a read-only query before key parsing or signature work; consumption
+  remains atomic. Codes, private keys and request contents never enter logs or URLs.
+- LilBot creates `computer-server-key.pem` under its data directory, mode 0600. Back it up securely
+  alongside the database and preserve it on redeploy. The install code carries its SHA-256 public-key
+  fingerprint: one paste registers and pins the server. Every connection proves the fresh helper
+  nonce with that key; subsequent frames are signed with the connection nonce and ordered sequence.
+  Unauthenticated, altered, replayed or different-key work is ignored. Key replacement requires
+  explicit helper re-registration with a new install code. TLS remains required except on loopback.
+- Helpers sign method, path, computer id, timestamp and one-use nonce (60s window). Revocation closes
+  the socket with 1008 and aborts work. Replacements use 4001, log a generic concurrent-connection
+  warning, invalidate the older peer and back off without aborting its work. The helper identity is
+  still a 0600 PEM file in a 0700 directory. Keychain is deferred: the built-in security CLI's shared
+  trust would also allow same-user bot commands; a useful per-helper boundary needs a signed native
+  Security.framework integration. Full-access bots share the OS user's authority.
+- `lilbot-computers-v1` is an independent Hermes plugin; the memory adapter is unchanged. Its
+  `computer_exec` invokes Hermes' own `detect_hardline_command` before submitting, with no Hermes
+  fork or patch. The engine-neutral service requires `full-access` for all computer operations.
+  Tools: `list_computers`, `computer_exec`, `computer_read_file`, `computer_write_file`,
+  `computer_list_folder`, `computer_request`, `computer_cancel`, `computer_copy`. Machine output
+  is untrusted data. Reads return base64; writes accept UTF-8 or base64.
+- Offline synchronous calls fail immediately; explicit background calls queue. Foreground waits
+  stop at 25s. Per bot, at most 32 pending/running/cancelling requests; at most 8 executions per
+  leader/helper. Pending dispatch reads only id/status, loading payloads only when sent. Cancellation
+  remains `cancelled` until the final helper result makes it terminal `cancel_acked`, including
+  across restarts; acknowledged cancellations are never resent. Removing a bot cancels its work.
+- Results and operations expire after seven days (operation becomes a SHA-256 digest, result null).
+  Compact request ids/digests remain to refuse re-execution and changed-argument retries. Expired
+  requests expose `operation: null`. Helper journals drop output as soon as the server acknowledges
+  receipt, otherwise after seven days; compact receipts remain. Old backups retain their original
+  contents and need their own retention policy. Heartbeats run every 10s; 35s without one is offline.
+- Commands have bounded output and a timeout (60s default, 1h maximum). Cancellation kills the process
+  group and cancels pipe readers, so escaped descendants cannot keep requests busy. Child groups are
+  tracked; an independent shell watchdog kills a group after abrupt helper death. Deliberate process
+  detachment is not a sandbox boundary for full-access users. Files/copies are capped at 4 MiB;
+  workspace transfers use descriptor-relative, no-follow opens and require single-link regular files.
+- Build native with `bun run build:helper`; cross-compile with
+  `bun scripts/build-helper.ts bun-darwin-arm64 dist/lilbot-helper-macos-arm64` (x64 also supported).
+  Deliver both binary and `.sha256` from a trusted channel. Run `./lilbot-helper install <https-origin>`
+  with the install code on stdin. Updating stops the service, checks SHA-256, writes/chmods a sibling
+  temporary file, atomically renames it, then starts the service. macOS uses launchd and Linux systemd
+  user units. Config/journal: `~/.config/lilbot-helper` (`LILBOT_HELPER_CONFIG_DIR` overrides).
+- `bun run check:computers` uses free ports, temporary data/workspaces/skills, a sentinel profile
+  allowlist and one temporary bot, always cleaning up in finally. It checks real plugin calls,
+  Hermes hard-stop refusal before submission, queue/reconnect, cancellation termination, a second
+  door with a different key, copies, reused codes, wrong/revoked keys and private routes/headers.
+  It prints binary size and idle RSS. Mac runtime/launchd is not tested on the Linux leader.
 
 ## Skills
 

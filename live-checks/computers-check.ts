@@ -1,6 +1,7 @@
+import { checkPinning } from './computers-pinning'
 /** Isolated server + compiled helper. Never installs a service or changes real bots. */
 
-import { generateKeyPairSync } from 'node:crypto'
+import { createPublicKey, generateKeyPairSync } from 'node:crypto'
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -29,6 +30,8 @@ const launchHelper = () => {
   helper = Bun.spawn([binary, 'run'], { env, stdout: 'ignore', stderr: 'inherit' })
 }
 try {
+  const hardStop = Bun.spawn(['python3', '-B', 'live-checks/computers-hard-stop.py'], { stdout: 'inherit', stderr: 'inherit' })
+  if (await hardStop.exited) throw new Error('Hard-stop check failed')
   const build = Bun.spawn(['bun', 'build', '--compile', 'helper/main.ts', '--outfile', binary], { stdout: 'ignore', stderr: 'inherit' })
   if (await build.exited) throw new Error('Helper build failed')
   server = Bun.spawn(['bun', 'server/main.ts'], {
@@ -52,9 +55,12 @@ try {
       .then(r => r.ok)
       .catch(() => false)
   )
+  for (const headers of [{ 'cf-ray': 'test' }, { 'cf-connecting-ip': '127.0.0.1' }, { 'cdn-loop': 'cloudflare' }] as Record<string, string>[]) {
+    if ((await fetch(`http://127.0.0.1:${port}/api/health`, { headers: headers })).status !== 403) throw new Error('Private listener accepted tunnel headers')
+  }
   client = await browser(port)
   const call = client.call
-  const { code } = await call('computers.installCode')
+  const { code } = await call('computers.installCode', { name: 'Isolated helper' })
   const register = Bun.spawn([binary, 'register', door], { env, stdin: 'pipe', stdout: 'ignore', stderr: 'inherit' })
   register.stdin.write(code)
   register.stdin.end()
@@ -116,6 +122,24 @@ try {
   await engine('submit', input)
   if (readFileSync(join(scratch, 'once'), 'utf8') !== 'ONCE') throw new Error('Command executed twice')
   console.log('PASS: offline queue reconnects and executes once across helper restart; sync fails clearly')
+  const long = {
+    computer: identity.id,
+    requestId: 'cancel-live',
+    background: true,
+    operation: { kind: 'exec', command: `printf '%s' $$ > '${scratch}/cancel-pid'; exec sleep 120` }
+  }
+  await engine('submit', long)
+  await eventually(async () => existsSync(join(scratch, 'cancel-pid')))
+  const pid = Number(readFileSync(join(scratch, 'cancel-pid'), 'utf8'))
+  await engine('cancel', long)
+  await eventually(async () => (await engine('read', long)).status === 'cancel_acked')
+  try {
+    process.kill(pid, 0)
+    throw new Error('Cancelled command survived')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error
+  }
+  console.log('PASS: cancellation acknowledged and command process terminated')
   const copy = await engine('copy', { computer: identity.id, requestId: 'copy-file', direction: 'toWorkspace', path: join(scratch, 'bot-file'), workspacePath: 'copied' })
   if (copy.status !== 'completed' || readFileSync(join(bot.workspace, 'copied'), 'utf8') !== 'FILE_OK') throw new Error('Workspace copy failed')
   await Bun.sleep(2000)
@@ -131,6 +155,11 @@ try {
   for (const path of ['/ws', '/engine/memory/context', '/', '/api/health', '/index.html']) {
     if ((await fetch(door + path)).status !== 404) throw new Error('Door leaked a private route')
   }
+  await stopHelper()
+  const pinRoot = join(scratch, 'pinning')
+  const { mkdirSync } = await import('node:fs')
+  mkdirSync(pinRoot)
+  await checkPinning(binary, pinRoot, helperConfig, identity, createPublicKey(identity.privateKey).export({ type: 'spki', format: 'pem' }).toString())
   await call('computers.remove', { computer: identity.id })
   if ((await fetch(`${door}/helper/connect`, { headers: connectionHeaders(identity) })).status !== 403) throw new Error('Removed key accepted')
   console.log('PASS: wrong key, consumed code, removed key and private paths refused')
