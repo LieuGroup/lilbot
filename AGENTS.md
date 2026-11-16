@@ -142,6 +142,8 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
   `bots.deleteDefaults.get/set` persists defaults (archive and forget) in SQLite. Both the primary and engine
   default bot are protected. `bot-deletion.ts` saves a tombstone with the name and choices before teardown,
   removes the runtime using its native binding, then handles workspace, memory, prefs, activity and queued reviews.
+  Deletion clears the creation marker and removes the profile settings that hold its capability and memory binding.
+  Deleted capabilities are refused immediately, even if teardown needs a retry; creation retries cannot revive tombstones.
   Retrying the same id finishes incomplete cleanup with its original choices. Tombstones stay out of the roster;
   `memory.list` still exposes their active/forgotten facts for attribution and restoration. Shared facts stay.
   Archived workspace entries move to `<workspaces>/.archive/<bot id>` without following links.

@@ -61,3 +61,54 @@ test('a new service after restart remembers the completed request', async () => 
   expect(store.list()).toHaveLength(2)
   expect(log.filter(line => line.startsWith('send:'))).toHaveLength(1)
 })
+
+test('a bot created by the primary can be deleted without reviving it on a retried request', async () => {
+  const f = fakeService()
+  try {
+    f.prefs.setPrimaryBot('b1')
+    const created = await f.service.createFromBot('b1', input)
+    expect(f.store.creationDone(created.id)).toBe(true)
+    await f.service.deleteBot({ botId: created.id })
+    expect(f.store.creationDone(created.id)).toBe(false)
+    expect(f.runtimeIds.has(created.id)).toBe(false)
+    expect((await f.service.listBots()).map(bot => bot.id)).toEqual(['b1'])
+    await expect(f.service.createFromBot('b1', input)).rejects.toThrow('deleted')
+    // A late greeting completion must not restore the creation marker.
+    f.store.finishCreation(created.id)
+    expect(f.store.creationDone(created.id)).toBe(false)
+    await expect(f.service.deleteBot({ botId: 'b1' })).rejects.toThrow('Choose another primary bot')
+  } finally {
+    await import('node:fs/promises').then(fs => fs.rm(f.root, { recursive: true, force: true }))
+  }
+})
+
+test('a deleted primary capability is refused even after engine deletion fails', async () => {
+  const f = fakeService()
+  try {
+    f.prefs.setPrimaryBot('b1')
+    const created = await f.service.createFromBot('b1', input)
+    f.prefs.setPrimaryBot(created.id)
+    const api = createEngineApi(f.memory, 'secret', 3399, { bots: f.service })
+    const call = () =>
+      api(
+        new Request('http://localhost:3399/engine/bots/create', {
+          method: 'POST',
+          headers: { host: 'localhost:3399', authorization: 'Bearer secret', 'x-lilbot-bot-capability': botCapability('secret', 'b1') },
+          body: JSON.stringify({ ...input, requestId: 'after-delete', botId: created.id })
+        }),
+        '/engine/bots/create'
+      )
+    f.engine.deleteRuntime = async () => {
+      throw new Error('offline')
+    }
+    await expect(f.service.deleteBot({ botId: 'b1' })).rejects.toThrow('offline')
+    expect((await call()).status).toBe(403)
+    f.engine.deleteRuntime = async id => {
+      f.runtimeIds.delete(id)
+    }
+    await f.service.deleteBot({ botId: 'b1' })
+    expect((await call()).status).toBe(403)
+  } finally {
+    await import('node:fs/promises').then(fs => fs.rm(f.root, { recursive: true, force: true }))
+  }
+})

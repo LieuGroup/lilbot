@@ -1,7 +1,7 @@
 /** Isolated browser-protocol check: no model calls and only profiles created by this server. */
 import { Database } from 'bun:sqlite'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -69,6 +69,12 @@ try {
     for (const privateMemories of ['forget', 'keep']) {
       const bot = await call('bots.create', { name: `Delete Check ${Date.now()}`, function: '', instructions: '' })
       created.push(bot.id)
+      const native = db.query('SELECT engine_bot_id FROM bots WHERE id = ?').get(bot.id) as { engine_bot_id: string }
+      const profile = join(homedir(), '.hermes', 'profiles', native.engine_bot_id)
+      const binding = join(profile, 'lilbot-memory.json')
+      const capability = JSON.parse(await readFile(binding, 'utf8')).creation_capability
+      assert(typeof capability === 'string' && capability.length > 0, 'Missing capability')
+      const token = (await readFile(join(root, 'engine-token'), 'utf8')).trim()
       await mkdir(bot.workspace, { recursive: true })
       await writeFile(join(bot.workspace, 'proof.txt'), 'temporary')
       const own = await call('memory.write', { botId: bot.id, kind: 'journal', text: 'Private deletion test.' })
@@ -84,7 +90,14 @@ try {
       }
       await call('bots.delete', { botId: bot.id })
       assert(!(await call('bots.list')).some((b: any) => b.id === bot.id), 'Still in roster')
-      assert(!existsSync(join(homedir(), '.hermes', 'profiles', bot.id)), 'Runtime remains')
+      assert(!existsSync(profile), 'Runtime remains')
+      assert(!existsSync(binding), 'Capability binding remains')
+      const denied = await fetch(`http://127.0.0.1:${port}/engine/bots/create`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'x-lilbot-bot-capability': capability, 'content-type': 'application/json' },
+        body: JSON.stringify({ requestId: 'deleted-caller', name: 'Must not exist', function: '', instructions: '' })
+      })
+      assert(denied.status === 403, 'Deleted capability still accepted')
       assert(!existsSync(bot.workspace), 'Workspace remains')
       const archived = existsSync(join(root, 'workspaces', '.archive', bot.id, 'proof.txt'))
       assert(archived === (files === 'archive'), 'Archive mismatch')
@@ -94,7 +107,7 @@ try {
         memory.facts.some((f: any) => f.id === shared.id),
         'Shared fact missing'
       )
-      for (const table of ['bot_prefs', 'primary_bot', 'bot_activity', 'activity_cursors', 'review_turns']) {
+      for (const table of ['bot_prefs', 'primary_bot', 'bot_activity', 'activity_cursors', 'review_turns', 'bot_creations']) {
         assert(!db.query(`SELECT 1 FROM ${table} WHERE bot_id = ?`).get(bot.id), `Stale ${table}`)
       }
       console.log(
