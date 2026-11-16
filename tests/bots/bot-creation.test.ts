@@ -24,10 +24,10 @@ test('only the primary creates; concurrent and later retries return the same bot
 })
 
 test('endpoint resolves credential owner and ignores model-supplied bot ids and model', async () => {
-  const { service, prefs, memory } = fakeService()
+  const { service, prefs, memory, store } = fakeService()
   prefs.setPrimaryBot('b1')
   const other = await service.createBot({ name: 'Other', function: '', instructions: '' })
-  const api = createEngineApi(memory, 'secret', 3399, { bots: service })
+  const api = createEngineApi(memory, 'secret', 3399, { bots: service, botExists: id => store.exists(id) })
   async function call(owner: string, extra: object) {
     return api(
       new Request('http://localhost:3399/engine/bots/create', {
@@ -88,7 +88,7 @@ test('a deleted primary capability is refused even after engine deletion fails',
     f.prefs.setPrimaryBot('b1')
     const created = await f.service.createFromBot('b1', input)
     f.prefs.setPrimaryBot(created.id)
-    const api = createEngineApi(f.memory, 'secret', 3399, { bots: f.service })
+    const api = createEngineApi(f.memory, 'secret', 3399, { bots: f.service, botExists: id => f.store.exists(id) })
     const call = () =>
       api(
         new Request('http://localhost:3399/engine/bots/create', {
@@ -108,6 +108,30 @@ test('a deleted primary capability is refused even after engine deletion fails',
     }
     await f.service.deleteBot({ botId: 'b1' })
     expect((await call()).status).toBe(403)
+  } finally {
+    await import('node:fs/promises').then(fs => fs.rm(f.root, { recursive: true, force: true }))
+  }
+})
+
+test('unknown capability owners are refused, including a stale resolved roster entry', async () => {
+  const f = fakeService()
+  const roster = await f.service.listBots()
+  const api = createEngineApi(f.memory, 'secret', 3399, { bots: f.service, botExists: id => f.store.exists(id) })
+  const call = (id: string) =>
+    api(
+      new Request('http://localhost:3399/engine/bots/create', {
+        method: 'POST',
+        headers: { host: 'localhost:3399', authorization: 'Bearer secret', 'x-lilbot-bot-capability': botCapability('secret', id) },
+        body: JSON.stringify(input)
+      }),
+      '/engine/bots/create'
+    )
+  try {
+    expect((await call('never-owned')).status).toBe(403)
+    // A roster fetched just before deletion must not authorize a now-deleted owner.
+    f.store.markDeleted(f.store.get('b1'), { files: 'archive', privateMemories: 'keep' })
+    f.service.listBots = async () => roster
+    expect((await call('b1')).status).toBe(403)
   } finally {
     await import('node:fs/promises').then(fs => fs.rm(f.root, { recursive: true, force: true }))
   }

@@ -46,7 +46,8 @@ const activity = new ActivityService(new ActivityStore(database), botsChanged)
 const memory = new MemoryService(new MemoryStore(database))
 const memoryChanged = () => server.publish(EVERYONE, JSON.stringify({ event: 'memory.changed' }))
 const token = engineToken(DATA_DIR)
-const bots = new BotService(engine, new BotStore(database), new BotPrefsStore(database), new Workspaces(WORKSPACES_DIR), memory, {
+const store = new BotStore(database)
+const bots = new BotService(engine, store, new BotPrefsStore(database), new Workspaces(WORKSPACES_DIR), memory, {
   cleanupBot: botId => {
     activity.forgetBot(botId)
     new ReviewQueue(database).forgetBot(botId)
@@ -60,13 +61,19 @@ const bots = new BotService(engine, new BotStore(database), new BotPrefsStore(da
 // The after-chat memory review. LILBOT_REVIEW=off disables it; LILBOT_REVIEW_MODEL is
 // "provider::model" (without it a review runs on the bot's own model, which costs more).
 const [reviewProvider, reviewModel] = (process.env.LILBOT_REVIEW_MODEL ?? '').split('::')
-const reviewer = new MemoryReviewer(new ReviewQueue(database), bots, {
-  ...defaultReviewSettings,
-  enabled: process.env.LILBOT_REVIEW !== 'off',
-  turns: Number(process.env.LILBOT_REVIEW_TURNS ?? defaultReviewSettings.turns),
-  quietMs: Number(process.env.LILBOT_REVIEW_QUIET_SECONDS ?? defaultReviewSettings.quietMs / 1000) * 1000,
-  model: reviewProvider && reviewModel ? { provider: reviewProvider, model: reviewModel } : undefined
-})
+const reviewer = new MemoryReviewer(
+  new ReviewQueue(database),
+  bots,
+  {
+    ...defaultReviewSettings,
+    enabled: process.env.LILBOT_REVIEW !== 'off',
+    turns: Number(process.env.LILBOT_REVIEW_TURNS ?? defaultReviewSettings.turns),
+    quietMs: Number(process.env.LILBOT_REVIEW_QUIET_SECONDS ?? defaultReviewSettings.quietMs / 1000) * 1000,
+    model: reviewProvider && reviewModel ? { provider: reviewProvider, model: reviewModel } : undefined
+  },
+  Date.now,
+  id => store.exists(id)
+)
 setInterval(() => reviewer.tick(), 20_000)
 
 // Every bot uses LilBot's memory: bots on an older adapter are updated, and a bot that is not
@@ -75,7 +82,12 @@ async function prepareMemory() {
   // Temporary test servers must opt in: never rewrite real profiles' memory endpoints.
   await bots.listBots()
   if (process.env.LILBOT_SKIP_MEMORY_SETUP === '1') return
-  const updated = await engine.refreshMemory()
+  const updated = await engine.refreshMemory(
+    store
+      .list()
+      .filter(bot => bot.engineId === engine.id)
+      .map(bot => bot.engineBotId)
+  )
   if (updated.length) console.log(`Memory adapter updated to ${MEMORY_ADAPTER_VERSION} for: ${updated.join(', ')}`)
   const connected = await bots.connectAllMemory()
   if (connected.length) console.log(`Connected to LilBot memory: ${connected.join(', ')}`)
@@ -84,7 +96,7 @@ prepareMemory().catch(error => console.error('[memory] could not prepare memory 
 
 const engineApi = createEngineApi(memory, token, PORT, {
   bots,
-  botExists: id => !new BotStore(database).deleted(id),
+  botExists: id => store.exists(id),
   onMemoryChanged: memoryChanged,
   adapterVersion: MEMORY_ADAPTER_VERSION,
   reviewer

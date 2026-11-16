@@ -110,14 +110,15 @@ export class HermesEngine implements BotEngine {
     await deleteRuntime(id)
   }
 
-  async refreshMemory(): Promise<string[]> {
+  async refreshMemory(botIds: string[]): Promise<string[]> {
     const updated: string[] = []
-    for (const bot of await this.profiles(false)) {
-      if (!memoryInstalled(bot.id) || memoryCurrent(bot.id)) continue
-      const connection = await memoryConnection(bot.id)
+    for (const id of botIds) {
+      if (this.botIds && !this.botIds.includes(id)) continue
+      if (!memoryInstalled(id) || memoryCurrent(id)) continue
+      const connection = await memoryConnection(id)
       if (!connection) continue
-      await installMemory(bot.id, connection)
-      updated.push(bot.id)
+      await installMemory(id, connection)
+      updated.push(id)
     }
     return updated
   }
