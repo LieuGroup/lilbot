@@ -60,6 +60,7 @@ const forBot = (fact: MemoryFact, reader: string) => ({
 const json = (status: number, body: unknown) => Response.json(body, { status })
 
 export interface EngineApiOptions {
+  threads?: import('../threads/thread-service').ThreadService
   skills?: import('../skills/skills-service').SkillsService
   bots?: BotService
   routines?: RoutineService
@@ -103,11 +104,24 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
         return json(422, { error: 'Cannot give this file. Use a regular file inside your workspace, at most 50 MiB.' })
       }
     }
-    if (pathname === '/engine/bots/create' || pathname.startsWith('/engine/routines/') || pathname.startsWith('/engine/skills/')) {
+    if (pathname === '/engine/bots/create' || pathname.startsWith('/engine/routines/') || pathname.startsWith('/engine/skills/') || pathname.startsWith('/engine/threads/')) {
       try {
         const capability = request.headers.get('x-lilbot-bot-capability') ?? ''
         const caller = (await options.bots?.listBots())?.find(bot => matchesCapability(token, bot.id, capability))
         if (!caller || !options.bots || !options.botExists(caller.id)) return json(403, { error: 'Unknown bot credential.' })
+        if (pathname.startsWith('/engine/threads/')) {
+          if (!options.threads) return json(503, { error: 'Threads unavailable.' })
+          const body = await request.json()
+          if (pathname.endsWith('/bots'))
+            return json(
+              200,
+              (await options.bots.listBots()).map(b => ({ id: b.id, name: b.name, function: b.function }))
+            )
+          if (pathname.endsWith('/ask')) return json(200, await options.threads.ask(caller.id, body))
+          if (pathname.endsWith('/list')) return json(200, await options.threads.list(caller.id))
+          if (pathname.endsWith('/open')) return json(200, await options.threads.open(caller.id, String(body.threadId)))
+          return json(404, { error: 'Unknown thread operation.' })
+        }
         if (pathname.startsWith('/engine/skills/')) {
           if (!options.skills) return json(404, { error: 'Skills unavailable.' })
           const body = (await request.json()) as Record<string, unknown>
@@ -177,7 +191,8 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
           return json(200, { forgotten: forBot(fact, body.botId) })
         }
         case '/engine/memory/turn':
-          if (!options.routines?.store.isRoutineChat(body.chatId)) options.reviewer?.record(body.botId, body.chatId, body.user, body.assistant)
+          if (!options.routines?.store.isRoutineChat(body.chatId) && !options.threads?.store.isInternal(body.chatId))
+            options.reviewer?.record(body.botId, body.chatId, body.user, body.assistant)
           return json(200, { ok: true })
       }
     } catch (error) {

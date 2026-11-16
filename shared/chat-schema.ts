@@ -4,13 +4,23 @@ import { z } from 'zod'
 export const ChatItem = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('user'), text: z.string() }),
   z.object({ kind: z.literal('assistant'), text: z.string(), stopped: z.boolean().optional() }),
-  z.object({ kind: z.literal('tool'), toolId: z.string(), name: z.string(), detail: z.string(), running: z.boolean(), failed: z.boolean().optional() }),
+  z.object({
+    kind: z.literal('tool'),
+    toolId: z.string(),
+    name: z.string(),
+    detail: z.string(),
+    threadId: z.string().optional(),
+    result: z.string().optional(),
+    running: z.boolean(),
+    failed: z.boolean().optional()
+  }),
   z.object({ kind: z.literal('error'), text: z.string() })
 ])
 export type ChatItem = z.infer<typeof ChatItem>
 
 export const ChatEvent = z.discriminatedUnion('type', [
   z.object({ type: z.literal('turn.started') }),
+  z.object({ type: z.literal('thread'), threadId: z.string(), name: z.string(), detail: z.string() }),
   /** Short status while the bot thinks, e.g. "pondering...". */
   z.object({ type: z.literal('activity'), text: z.string() }),
   z.object({ type: z.literal('text.delta'), text: z.string() }),

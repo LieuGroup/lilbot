@@ -12,6 +12,7 @@
     "lint": "biome check .",
     "format": "biome check --write .",
     "test": "bun test tests",
+    "check:threads": "bun live-checks/threads-check.ts",
     "check:skills": "bun live-checks/skills-check.ts",
     "check:live": "bun live-checks/chat-check.ts",
     "check:routines": "bun live-checks/routines-check.ts",

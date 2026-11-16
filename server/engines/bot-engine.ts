@@ -30,6 +30,10 @@ export interface ReviewOptions {
 
 export interface RoutineOptions {
   runId: string
+  /** Continue the initiating context when an asynchronous answer arrives. */
+  chatId?: string
+  hiddenInput?: boolean
+  baseline?: (length: number) => number
   onChat: (chatId: string) => void
 }
 
@@ -81,7 +85,11 @@ export interface BotEngine {
    *  the bot has finished. Used by the after-chat memory review. */
   reviewMemory(botId: string, prompt: string, options: ReviewOptions): Promise<void>
   /** Run or recover one scheduled task, using runId as a durable execution identity. */
-  runRoutine(botId: string, prompt: string, options: RoutineOptions & ChatOptions): Promise<{ status: 'completed' | 'failed' | 'stopped'; text: string }>
+  runRoutine(
+    botId: string,
+    prompt: string,
+    options: RoutineOptions & ChatOptions
+  ): Promise<{ status: 'completed' | 'failed' | 'stopped'; text: string; items?: import('../../shared/chat-schema').ChatItem[] }>
   /** Told when bots or their chats changed outside this server. Returns the function that stops it. */
   onBotsChanged(listener: () => void): () => void
 }
