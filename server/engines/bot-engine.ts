@@ -1,6 +1,6 @@
 /** Engines run identities supplied by LilBot. Native runtime ids never become public bot ids. */
 import type { ActivityEvent } from '../../shared/activity-schema'
-import type { BotIdentity, BotModel, BotSetup, ModelProvider } from '../../shared/bot-schema'
+import type { BotIdentity, BotModel, BotSetup, ModelProvider, PermissionMode } from '../../shared/bot-schema'
 import type { ChatEvent, ChatSnapshot } from '../../shared/chat-schema'
 
 export type EngineBotDetail = BotIdentity & BotSetup
@@ -38,7 +38,13 @@ export type ActivityCursor = (botId: string, chatId: string) => string | undefin
 
 export interface BotEngine {
   /** Observe existing bound runtimes; emit and persist cursors using the LilBot id. */
-  watchActivity?(bots: () => Promise<RuntimeBinding[]>, listener: (event: ActivityEvent) => void, cursor: ActivityCursor): () => void
+  watchActivity?(
+    bots: () => Promise<RuntimeBinding[]>,
+    listener: (event: ActivityEvent) => void,
+    cursor: ActivityCursor,
+    availability?: (nativeId: string, available: boolean) => void
+  ): () => void
+  readonly supportedPermissionModes: readonly PermissionMode[]
   readonly id: string
   /** Only used for the one-time migration of identities that predate LilBot ownership. */
   importBots(): Promise<EngineBotDetail[]>
@@ -48,6 +54,8 @@ export interface BotEngine {
   applyIdentity(engineBotId: string, identity: RuntimeIdentity): Promise<RuntimeState>
   /** Stop this runtime and delete its conversations. Safe to repeat when already missing. */
   deleteRuntime(engineBotId: string): Promise<void>
+  /** Prepare persistent policy at startup and when the saved mode changes. */
+  prepareRuntime?(engineBotId: string, identity: RuntimeIdentity): Promise<void>
   listModels(): Promise<ModelProvider[]>
   /** Open a new chat (`chatId` null) or continue a stored one. A stored chat that no longer exists
    *  is replaced by a new one; the snapshot says which chat was opened. Events arrive until `close()`. */

@@ -32,7 +32,7 @@ const TURN_TIMEOUT_MS = 120_000
 const scratch = mkdtempSync(join(homedir(), 'agent-tmp', 'lilbot-memory-'))
 const database = openDatabase(join(scratch, 'lilbot.db'))
 const memory = new MemoryService(new MemoryStore(database))
-const engine = new HermesEngine()
+const engine = new HermesEngine([])
 const queue = new ReviewQueue(database)
 // The review model: the same setting the server reads, with the measured default.
 const [reviewProvider, reviewModel] = (process.env.LILBOT_REVIEW_MODEL ?? 'cliproxyapi::anthropic/claude-sonnet-5-5').split('::')
@@ -115,7 +115,9 @@ try {
     name: BOT_NAME,
     function: 'Temporary bot for the LilBot memory check.',
     instructions: 'Be brief. Answer in plain text.',
-    ...(process.env.LILBOT_LIVE_MODEL ? { model: { provider: process.env.LILBOT_LIVE_MODEL.split('::')[0], model: process.env.LILBOT_LIVE_MODEL.split('::')[1] } } : {})
+    ...(process.env.LILBOT_LIVE_MODEL
+      ? { model: { provider: process.env.LILBOT_LIVE_MODEL.split('::')[0], model: process.env.LILBOT_LIVE_MODEL.split('::')[1] } }
+      : { model: { provider: 'cliproxyapi', model: 'anthropic/claude-sonnet-5-5' } })
   })
   botId = bot.id
 

@@ -16,9 +16,11 @@ describe('a bot is the app identity plus the user’s preferences plus its works
         name: 'Bot One',
         function: '',
         model: null,
+        permissionMode: 'full-access',
         isDefault: false,
         isPrimary: false,
-        runnable: true,
+        runnable: false,
+        runtimePending: true,
         prefs: { avatar: defaultAvatar('b1'), sectionId: null, pinned: false, hidden: false },
         workspace: join(root, 'b1')
       }

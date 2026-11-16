@@ -6,6 +6,9 @@ import { z } from 'zod'
 import { BotActivity } from './activity-schema'
 import { Avatar } from './avatar'
 
+export const PermissionMode = z.enum(['approval-required', 'auto-accept-edits', 'auto', 'full-access'])
+export type PermissionMode = z.infer<typeof PermissionMode>
+
 export const BotModel = z.object({ provider: z.string(), model: z.string() })
 export type BotModel = z.infer<typeof BotModel>
 
@@ -16,6 +19,7 @@ export const BotIdentity = z.object({
   /** What the bot is for, in a sentence or two. */
   function: z.string(),
   model: BotModel.nullable(),
+  permissionMode: PermissionMode.default('full-access'),
   /** The engine's built-in main bot; it cannot be deleted. */
   isDefault: z.boolean()
 })
@@ -37,6 +41,8 @@ export const Bot = BotIdentity.extend({
   isPrimary: z.boolean(),
   /** False when the saved bot has no available engine runtime. */
   runnable: z.boolean().default(true),
+  /** Runtime preparation has not finished; runnable is not yet known. */
+  runtimePending: z.boolean().optional(),
   activity: BotActivity.optional(),
   prefs: BotPrefs,
   /** The bot's own folder on the shared computer; its chats work there. */
@@ -65,7 +71,14 @@ const name = z.string().trim().min(1, 'Give the bot a name.').max(60)
 const botFunction = z.string().trim().max(500)
 const instructions = z.string().max(20_000)
 
-export const BotCreateInput = z.object({ name, function: botFunction.default(''), instructions: instructions.default(''), model: BotModel.optional(), avatar: Avatar.optional() })
+export const BotCreateInput = z.object({
+  name,
+  function: botFunction.default(''),
+  instructions: instructions.default(''),
+  model: BotModel.optional(),
+  permissionMode: PermissionMode.optional(),
+  avatar: Avatar.optional()
+})
 export type BotCreateInput = z.infer<typeof BotCreateInput>
 
 export const BotUpdateInput = z.object({
@@ -73,7 +86,8 @@ export const BotUpdateInput = z.object({
   name: name.optional(),
   function: botFunction.optional(),
   instructions: instructions.optional(),
-  model: BotModel.optional()
+  model: BotModel.optional(),
+  permissionMode: PermissionMode.optional()
 })
 export type BotUpdateInput = z.infer<typeof BotUpdateInput>
 

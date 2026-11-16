@@ -24,7 +24,7 @@ const TURN_TIMEOUT_MS = 90_000
 
 // The real engine, with a throwaway database and workspaces folder so nothing of the user's is touched.
 const scratch = mkdtempSync(join(homedir(), 'agent-tmp', 'lilbot-live-'))
-const engine = new HermesEngine()
+const engine = new HermesEngine([])
 const database = openDatabase(join(scratch, 'lilbot.db'))
 const memory = new MemoryService(new MemoryStore(database))
 const queue = new ReviewQueue(database)
@@ -83,13 +83,15 @@ async function deleteBot(id: string) {
 
 try {
   const before = await bots.listBots()
-  check('list bots', before.length > 0 && before.some(bot => bot.isDefault), `${before.length} bots`)
+  check('isolated roster starts empty', before.length === 0, `${before.length} bots`)
 
   const bot = await bots.createBot({
     name: BOT_NAME,
     function: 'Temporary bot for the LilBot live check.',
     instructions: 'Follow the user exactly. Never use tools. Answer in plain text.',
-    ...(process.env.LILBOT_LIVE_MODEL ? { model: { provider: process.env.LILBOT_LIVE_MODEL.split('::')[0], model: process.env.LILBOT_LIVE_MODEL.split('::')[1] } } : {})
+    ...(process.env.LILBOT_LIVE_MODEL
+      ? { model: { provider: process.env.LILBOT_LIVE_MODEL.split('::')[0], model: process.env.LILBOT_LIVE_MODEL.split('::')[1] } }
+      : { model: { provider: 'cliproxyapi', model: 'anthropic/claude-sonnet-5-5' } })
   })
   botId = bot.id
   check('create bot', bot.name === BOT_NAME && !bot.isDefault, bot.id)

@@ -20,7 +20,10 @@ test('bound activity uses native sockets and LilBot ids for unread and durable c
     { ...detail, id: 'missing', engineId: 'hermes', engineBotId: 'deleted' },
     { ...detail, id: 'other', engineId: 'other-engine', engineBotId: 'other' }
   ])
-  const service = new BotService(new HermesEngine(), store, new BotPrefsStore(db), new Workspaces('/unused'), new MemoryService(new MemoryStore(db)))
+  const engine = new HermesEngine()
+  const prepare = spyOn(engine, 'prepareRuntime').mockResolvedValue(undefined)
+  const apply = spyOn(engine, 'applyIdentity').mockResolvedValue({ abilities: [], memoryConnected: false })
+  const service = new BotService(engine, store, new BotPrefsStore(db), new Workspaces('/unused'), new MemoryService(new MemoryStore(db)))
   const activityStore = new ActivityStore(db)
   activityStore.accept('lilbot', 'chat', 'epoch:1')
   const activity = new ActivityService(activityStore, () => {})
@@ -57,11 +60,14 @@ test('bound activity uses native sockets and LilBot ids for unread and durable c
     present = false
     await Bun.sleep(1100)
     expect(closed).toEqual(['native'])
+    expect((await service.listBots()).find(bot => bot.id === 'lilbot')?.runnable).toBe(false)
     expect(connect.mock.calls.map(call => call[0])).toEqual(['', 'native'])
   } finally {
     stop()
     activity.close()
     connect.mockRestore()
+    prepare.mockRestore()
+    apply.mockRestore()
     db.close()
   }
 })

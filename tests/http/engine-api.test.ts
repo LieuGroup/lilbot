@@ -83,7 +83,17 @@ describe('what a bot can do through it', () => {
 test('unknown and deleted bots cannot read, write, forget or enqueue turns', async () => {
   const database = openDatabase(':memory:')
   const store = new BotStore(database)
-  store.save({ id: 'gone', name: 'Gone', function: '', instructions: '', model: null, isDefault: false, engineId: 'test', engineBotId: 'gone' })
+  store.save({
+    id: 'gone',
+    name: 'Gone',
+    function: '',
+    instructions: '',
+    model: null,
+    permissionMode: 'full-access' as const,
+    isDefault: false,
+    engineId: 'test',
+    engineBotId: 'gone'
+  })
   store.markDeleted(store.get('gone'), { files: 'archive', privateMemories: 'keep' })
   const memory = new MemoryService(new MemoryStore(database))
   const queue = new ReviewQueue(database)

@@ -14,7 +14,15 @@ const db = openDatabase(join(root, 'lilbot.db'))
 const engine = new HermesEngine()
 const ids: string[] = []
 let server: ReturnType<typeof Bun.spawn> | undefined
-const identity = { id: '', name: 'Temporary startup check', function: 'Temporary startup isolation check', instructions: 'Reply briefly.', model: null, isDefault: false }
+const identity = {
+  id: '',
+  name: 'Temporary startup check',
+  function: 'Temporary startup isolation check',
+  instructions: 'Reply briefly.',
+  model: null,
+  permissionMode: 'full-access' as const,
+  isDefault: false
+}
 const profile = (id: string) => join(process.env.HERMES_HOME ?? join(homedir(), '.hermes'), 'profiles', id)
 function digest(path: string): Record<string, string> {
   const files: Record<string, string> = {}

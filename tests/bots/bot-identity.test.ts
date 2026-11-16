@@ -65,6 +65,8 @@ test('a missing runtime remains in the roster and setup with identity and memory
   engine.applyIdentity = async () => {
     throw new LilBotError('bot_not_found', 'Missing runtime')
   }
+  // Explicit engine refresh invalidates the snapshot; reads themselves never call the engine.
+  await expect(service.newChat('b1', () => {})).rejects.toThrow('Missing runtime')
   expect(await service.listBots()).toMatchObject([{ id: 'b1', name: 'Bot One', runnable: false }])
   expect(await service.getBot('b1')).toMatchObject({ id: 'b1', runnable: false, instructions: '' })
   expect((await service.listMemory('b1')).facts).toHaveLength(1)
@@ -93,7 +95,7 @@ test('different native ids never leak into workspace, memory, chat snapshots or 
   expect(chat.snapshot.botId).toBe('b1')
   expect(chat.snapshot.workspace.endsWith('/b1')).toBe(true)
   await service.reviewMemory('b1', 'Review', { onChat: () => {} })
-  expect(applied).toEqual(['native-123', 'native-123'])
+  expect(applied).toEqual(['native-123', 'native-123', 'native-123'])
   expect(log).toContain('review:native-123:bot model')
 })
 

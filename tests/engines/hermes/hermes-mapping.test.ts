@@ -63,7 +63,7 @@ describe('bots', () => {
     const base = { name: 'researcher', description: 'Finds sources', is_default: false, skill_count: 3 }
     expect(botFromProfile({ ...base, display_name: 'Hermes Name', ui_meta: { lilbot: { name: 'My Researcher' } } }).name).toBe('My Researcher')
     expect(botFromProfile({ ...base, display_name: 'Hermes Name' }).name).toBe('Hermes Name')
-    expect(botFromProfile(base)).toEqual({ id: 'researcher', name: 'researcher', function: 'Finds sources', model: null, isDefault: false })
+    expect(botFromProfile(base)).toEqual({ id: 'researcher', name: 'researcher', function: 'Finds sources', model: null, permissionMode: 'full-access', isDefault: false })
   })
 
   test('skills, toolsets and MCP servers become one neutral list of abilities', () => {

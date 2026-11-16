@@ -18,7 +18,7 @@ import type { BotIdentity } from '../../shared/bot-schema'
 import type { ChatEvent } from '../../shared/chat-schema'
 import { LilBotError } from '../../shared/protocol'
 
-export const bot: BotIdentity = { id: 'b1', name: 'Bot One', function: '', model: null, isDefault: false }
+export const bot: BotIdentity = { id: 'b1', name: 'Bot One', function: '', model: null, isDefault: false, permissionMode: 'full-access' }
 export const detail: EngineBotDetail = { ...bot, instructions: '', abilities: [], memoryConnected: false }
 
 export function fakeEngine(options: { earlyEvents?: ChatEvent[] } = {}) {
@@ -36,6 +36,7 @@ export function fakeEngine(options: { earlyEvents?: ChatEvent[] } = {}) {
       runtimeIds.delete(id)
       log.push(`delete:${id}`)
     },
+    supportedPermissionModes: ['full-access'],
     importBots: async () => [detail],
     createRuntime: async identity => {
       runtimeIds.add(identity.id)

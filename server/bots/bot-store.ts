@@ -4,7 +4,17 @@ import type { BotIdentity } from '../../shared/bot-schema'
 import { LilBotError } from '../../shared/protocol'
 
 export type BotRecord = BotIdentity & { instructions: string; engineId: string; engineBotId: string }
-type Row = { id: string; name: string; function: string; instructions: string; model: string | null; is_default: number; engine_id: string; engine_bot_id: string }
+type Row = {
+  id: string
+  name: string
+  function: string
+  instructions: string
+  model: string | null
+  permission_mode: BotIdentity['permissionMode']
+  is_default: number
+  engine_id: string
+  engine_bot_id: string
+}
 const fromRow = (row: Row): BotRecord => ({
   id: row.id,
   name: row.name,
@@ -12,6 +22,7 @@ const fromRow = (row: Row): BotRecord => ({
   instructions: row.instructions,
   model: row.model ? JSON.parse(row.model) : null,
   isDefault: Boolean(row.is_default),
+  permissionMode: row.permission_mode,
   engineId: row.engine_id,
   engineBotId: row.engine_bot_id
 })
@@ -63,10 +74,10 @@ export class BotStore {
 
   save(bot: BotRecord) {
     this.db
-      .query(`INSERT INTO bots (id, name, function, instructions, model, is_default, engine_id, engine_bot_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET
-      name=excluded.name, function=excluded.function, instructions=excluded.instructions, model=excluded.model, is_default=excluded.is_default`)
-      .run(bot.id, bot.name, bot.function, bot.instructions, bot.model ? JSON.stringify(bot.model) : null, Number(bot.isDefault), bot.engineId, bot.engineBotId)
+      .query(`INSERT INTO bots (id, name, function, instructions, model, is_default, engine_id, engine_bot_id, permission_mode)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET
+      name=excluded.name, function=excluded.function, instructions=excluded.instructions, model=excluded.model, is_default=excluded.is_default, permission_mode=excluded.permission_mode`)
+      .run(bot.id, bot.name, bot.function, bot.instructions, bot.model ? JSON.stringify(bot.model) : null, Number(bot.isDefault), bot.engineId, bot.engineBotId, bot.permissionMode)
   }
 
   creationDone(id: string): boolean {

@@ -61,7 +61,17 @@ test('ticks discard even single turns of unknown or deleted bots while preservin
   const queue = new ReviewQueue(database)
   const { engine } = fakeEngine()
   const store = new BotStore(database)
-  const bot = { id: 'owned', name: 'Owned', function: '', instructions: '', model: null, isDefault: false, engineId: 'fake', engineBotId: 'missing-runtime' }
+  const bot = {
+    id: 'owned',
+    name: 'Owned',
+    function: '',
+    instructions: '',
+    model: null,
+    permissionMode: 'full-access' as const,
+    isDefault: false,
+    engineId: 'fake',
+    engineBotId: 'missing-runtime'
+  }
   store.save(bot)
   store.save({ ...bot, id: 'deleted', engineBotId: 'deleted-native' })
   store.markDeleted(store.get('deleted'), { files: 'archive', privateMemories: 'keep' })

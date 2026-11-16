@@ -87,8 +87,8 @@ and task suggestions. Normal activity observation marks that reply unread. The p
 The app's create form stays available.
 Next: the Grok Bot style roster and details panel (sections, pin, hide, avatars, unread, Activity and Library
 tabs), the nightly memory tidy-up, delete-bot UI, edit abilities, routines.
-Desktop (Tauri) and iOS (Expo) come after the web app. Approvals are off in Hermes by Oscar's choice, so there are
-no approval cards.
+Desktop (Tauri) and iOS (Expo) come after the web app. Each bot defaults to full access; LilBot verifies
+and repairs its Hermes profile's approvals-off setting on startup and before use. There are no approval cards.
 
 ## Stack
 
@@ -123,7 +123,7 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
   know about Hermes, so another engine (for example one speaking ACP) can be added without touching the web app.
   The one exception is `server/main.ts`, which picks the engine.
 - `server/engines/hermes/`: Hermes as the engine. Each bot has a profile binding; a chat is a Hermes session.
-  LilBot supplies instructions and model, repairing drift before use; it never writes a display name to the profile.
+  LilBot supplies instructions, model and permission mode, repairing drift before use; it never writes a display name to the profile.
   Bot management uses one shared gateway connection on the default profile; each open chat has its own connection for its bot's profile,
   because Hermes binds sessions to the profile the connection was attached with (checked live: another profile's
   session is refused with `profile_mismatch`). Sessions use Hermes' canonical methods (`x-canonical-methods` in
@@ -132,7 +132,7 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
 - `server/bots/bot-service.ts`: what LilBot does with bots, whichever client asks. It joins the three owners of a bot:
   LilBot's identity (`server/bots/bot-store.ts`), the engine (abilities and chats), and the user's preferences
   (`server/bots/bot-prefs-store.ts`), with the bot's workspace folder (`server/bots/workspaces.ts`).
-  `bot-runtimes.ts` resolves the engine binding and applies saved identity; `bot-memory.ts` connects memory.
+  `bot-runtimes.ts` resolves the engine binding and applies saved identity; runtime availability and abilities are cached at startup and refreshed on creation, updates, memory connection and observed profile disappearance/return. Roster and detail reads use this snapshot without engine calls; `bot-memory.ts` connects memory.
   The first import is atomic and idempotent: existing bots keep their profile ids, so memory, preferences,
   main chats and workspaces need no rewrite. New bots get UUIDs independent of their native runtime ids. A missing runtime stays in the roster
   as unavailable; its identity and memory stay in LilBot. The service decides which chat is a bot's main
@@ -202,7 +202,7 @@ What a bot is and who owns each part. Decided with Oscar on 2026-11-16 unless ma
 
 | Part | Owner | Where it lives |
 |---|---|---|
-| Identity (name, function), instructions, model, engine binding | LilBot | `bots` table in LilBot's database |
+| Identity (name, function), instructions, model, permission mode, engine binding | LilBot | `bots` table in LilBot's database |
 | Abilities | the engine | Hermes profile |
 | Workspace: one folder per bot on the shared computer | the bot | `~/lilbot/workspaces/<bot id>`, the working directory of its chats |
 | Conversation: one main conversation per bot; a new session replaces it as the main one | the engine | Hermes sessions; LilBot's database names the main one |
@@ -210,6 +210,13 @@ What a bot is and who owns each part. Decided with Oscar on 2026-11-16 unless ma
 | Primary bot, avatar, section, pinned, hidden, unread | the user | LilBot's own SQLite database |
 
 - A bot has no type, role or template. Its `function` is a short roster description, not a category.
+- Each bot has one permission mode, stored with its identity: `full-access` by default. The protocol names
+  `approval-required`, `auto-accept-edits`, `auto` and `full-access`; only full access is supported now.
+  Engines declare supported modes, and unsupported choices fail before saving. LilBot applies the mode on
+  creation, once per bot at startup, mode changes, chats and reviews. Chat and review checks reuse their profile-bound sockets; list/get reads never prepare permissions. Future routine and webhook runs must use the bot's mode.
+  Hermes uses persistent per-profile `approvals.mode: off`, so background runs inherit it too.
+  LilBot bots do not follow the home rule requiring approval for App Store Connect or submissions to Apple.
+  They may still ask task questions, and engine hard stops remain.
 - Instructions define what makes bots different; every bot has the same skills and tools by default.
 - The user chooses one primary bot and can still talk to any bot directly. The choice lives in LilBot's
   database, defaults to the engine's default bot, and falls back to that bot if the chosen one disappears.
@@ -263,7 +270,10 @@ own folder and provider name (`lilbot-memory-v0-5-0`): a new version is a new fo
 session. To ship a plug-in change: bump `version` in `plugin.yaml` and `VERSION` in `__init__.py`, and restart
 LilBot. At start-up `BotEngine.refreshMemory` takes only the non-deleted database bindings for its engine, by native id,
 and reinstalls older adapters only for those profiles. All start-up passes that touch profiles must use these
-bindings, never all engine profiles. Memory connection also walks only non-deleted database bots.
+bindings, never all engine profiles. Permission preparation follows the same active native-id bindings.
+Roster/detail reads use database identities and cached runtime state, with `runtimePending` until preparation
+finishes; they never wait for profile preparation, memory refresh, or the activity observer. Only the
+one-time import into a new database needs engine discovery. Memory connection also walks only non-deleted database bots.
 No Hermes restart is needed. LilBot logs a warning when a bot still calls with an older adapter.
 
 ### The after-chat review
@@ -357,6 +367,8 @@ artwork, names or text.
   with temporary bots, never Oscar's real bots, and
   delete them afterwards with `hermes profile delete <id> -y`. Set `LILBOT_SKIP_MEMORY_SETUP=1` on a test
   server that imports real profiles so start-up does not change their memory plug-ins or endpoints.
+  Always set `LILBOT_BOT_IDS` to a temporary profile allowlist (or an unmatched sentinel before creating one):
+  startup applies permission settings as well as identity. Never use an unrestricted test roster.
   Do not chat with or edit real bots on the test server.
 - Each slice ends with a real check against the running service: `bun run verify`, `bun run check:live`, then drive
   the page in a browser.
@@ -404,6 +416,8 @@ Cleaning up after a merge:
   applies formatting.
 - `bun run check:live`: creates a uniquely named temporary bot in Hermes, connects it to a throwaway memory endpoint,
   chats, stops, resumes, then deletes it. A few model calls.
+- `bun live-checks/permissions-check.ts`: isolated second server; repairs a temporary profile from manual to off,
+  runs a harmless recursive delete and file write, and checks no approvals remain. Deletes its profile and folders.
 - `bun run check:memory`: connects a temporary bot to a throwaway memory, tells it facts, checks a new session knows
   them, prints tokens per turn, then deletes it. Inherited memory is disconnected before the baseline turn. A few model calls.
 - `bun run start`: run the server. `LILBOT_PORT` and `LILBOT_HOST` override the defaults.
