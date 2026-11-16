@@ -264,7 +264,8 @@ bot end to end, including the push, protocol list, separate workspace, and downl
 ## Skills
 
 `server/skills/` owns a shared standard SKILL.md library at `~/lilbot/skills`
-(`LILBOT_SKILLS_DIR` overrides it), metadata/authorship and per-bot off switches in SQLite.
+(`LILBOT_SKILLS_DIR` overrides it), metadata/authorship and per-bot off switches in SQLite (migration 12, after routines 10 and Library 11).
+Chat, routine runs and memory reviews prepare the same catalogue and per-bot off switches. Deleting a bot removes its off switches, retaining library skills and their authorship.
 All skills default on. `skills.list`, `skills.read`, `skills.setEnabled` and `skills.changed`
 serve clients; Setup receives the same skill states through its existing abilities data.
 A separate Hermes skills plug-in leaves the memory adapter version alone. It overrides the

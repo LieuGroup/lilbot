@@ -100,6 +100,7 @@ try {
   if (!existsSync(join(bot.workspace, 'skill-proof.txt'))) throw new Error('Library skill was not used')
   console.log('Checking per-bot switch')
   await call('skills.setEnabled', { botId: bot.id, name: 'proof-skill', enabled: false })
+  console.log('Checking disabled catalogue in next session')
   const inspector = await HermesSocket.connect(
     nativeId,
     () => {},
@@ -113,6 +114,7 @@ try {
   } finally {
     inspector.close()
   }
+  console.log('Creating second temporary bot')
   const second = await call('bots.create', { name: 'Other skills bot', model: { provider: 'cliproxyapi', model: 'anthropic/claude-sonnet-5-5' } })
   if (!(await call('skills.list', { botId: second.id })).find((s: any) => s.name === 'proof-skill')?.enabled) throw new Error('Switch leaked to other bot')
   console.log('Checking bot-authored skill')

@@ -200,7 +200,12 @@ export class HermesEngine implements BotEngine {
     await this.requireBot(id)
     const key = JSON.stringify(settings)
     if (this.skillSettings.get(id) === key) return
-    await configureSkills(id, settings)
+    const activate = !this.skillSettings.has(id)
+    await configureSkills(id, settings, activate)
+    if (!activate) {
+      this.skillSettings.set(id, key)
+      return
+    }
     const socket = await HermesSocket.connect(
       id === DEFAULT_PROFILE ? '' : id,
       () => {},

@@ -35,7 +35,7 @@ export function userSkillPaths(id: string) {
   walk(root)
   return result
 }
-export async function configureSkills(id: string, settings: { root: string; url: string; tokenFile: string; botId: string; disabled: string[]; names: string[] }) {
+export async function configureSkills(id: string, settings: { root: string; url: string; tokenFile: string; botId: string; disabled: string[]; names: string[] }, activate = true) {
   const home = skillHome(id)
   const plugin = 'lilbot-skills-v1'
   await mkdir(join(home, 'plugins'), { recursive: true })
@@ -68,6 +68,8 @@ export async function configureSkills(id: string, settings: { root: string; url:
     const error = await new Response(child.stderr).text()
     if ((await child.exited) !== 0) throw new Error(`Could not configure ${key}: ${error.slice(0, 200)}`)
   }
+  // Live handlers read this file for each request; catalogue changes need no plugin reload.
+  if (!activate) return
   const enable = Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', ...(id === 'default' ? [] : ['-p', id]), 'plugins', 'enable', plugin, '--allow-tool-override'], {
     stdout: 'ignore',
     stderr: 'pipe'

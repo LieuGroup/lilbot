@@ -47,13 +47,20 @@ export class BotService {
     this.creation = new BotCreation(this, store)
     this.changed = options.changed ?? (() => {})
     this.memoryChanged = options.memoryChanged ?? (() => {})
-    this.deletion = new BotDeletion(this.runtimes, prefs, workspaces, memory, botId => {
-      this.skills?.forgetBot(botId)
-      options.cleanupBot?.(botId)
-    }, () => {
-      this.changed()
-      this.memoryChanged()
-    })
+    this.deletion = new BotDeletion(
+      this.runtimes,
+      prefs,
+      workspaces,
+      memory,
+      botId => {
+        this.skills?.forgetBot(botId)
+        options.cleanupBot?.(botId)
+      },
+      () => {
+        this.changed()
+        this.memoryChanged()
+      }
+    )
     this.botMemory = new BotMemory(this.runtimes, memory, options.memoryConnection, this.memoryChanged)
   }
 
