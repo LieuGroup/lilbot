@@ -32,7 +32,7 @@ test('saved mode reaches engine for roster startup, updates, chats and reviews',
     applied++
     return { abilities: [], memoryConnected: false }
   }
-  await service.listBots()
+  await service.prepareRuntimes()
   await service.updateBot({ botId: 'b1', permissionMode: 'full-access' })
   const chat = await service.openChat('b1', undefined, () => {})
   chat.close()
@@ -61,5 +61,44 @@ test('migration gives an existing identity full access without losing fields', a
     db.close()
   } finally {
     rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('shipped deletion schema upgrades without changing tombstones or deletion defaults', async () => {
+  const { openDatabase } = await import('../../server/database/database')
+  const { BotStore } = await import('../../server/bots/bot-store')
+  const { mkdtempSync, rmSync } = await import('node:fs')
+  const { homedir } = await import('node:os')
+  const { join } = await import('node:path')
+  const root = mkdtempSync(join(homedir(), 'agent-tmp/lilbot-deletion-upgrade-'))
+  try {
+    const path = join(root, 'db')
+    const db = openDatabase(path)
+    const store = new BotStore(db)
+    store.save({
+      id: 'deleted',
+      name: 'Remembered',
+      function: '',
+      instructions: '',
+      model: null,
+      isDefault: false,
+      permissionMode: 'full-access',
+      engineId: 'test',
+      engineBotId: 'native'
+    })
+    const choices = { files: 'delete' as const, privateMemories: 'keep' as const }
+    store.markDeleted(store.get('deleted'), choices)
+    store.setDeleteDefaults(choices)
+    db.exec('ALTER TABLE bots DROP COLUMN permission_mode; PRAGMA user_version = 8')
+    db.close()
+    const upgraded = openDatabase(path)
+    const restored = new BotStore(upgraded)
+    expect(restored.list()).toEqual([])
+    expect(restored.deleted('deleted')).toMatchObject({ bot: { name: 'Remembered', permissionMode: 'full-access' }, choices })
+    expect(restored.deleteDefaults()).toEqual(choices)
+    expect(upgraded.query('PRAGMA user_version').get()).toEqual({ user_version: 9 })
+    upgraded.close()
+  } finally {
+    rmSync(root, { recursive: true, force: true })
   }
 })

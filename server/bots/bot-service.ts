@@ -65,7 +65,7 @@ export class BotService {
     return (
       this.engine.watchActivity?.(
         async () => {
-          await this.runtimes.initialize()
+          await this.runtimes.load()
           return this.runtimes.store.list().filter(bot => bot.engineId === this.engine.id)
         },
         event => {
@@ -82,8 +82,12 @@ export class BotService {
     )
   }
 
+  prepareRuntimes() {
+    return this.runtimes.initialize().finally(this.changed)
+  }
+
   async listBots(): Promise<Bot[]> {
-    await this.runtimes.initialize()
+    await this.runtimes.load()
     const identities = this.runtimes.store.list()
     const prefs = this.prefs.prefsFor(identities.map(bot => bot.id))
     const primaryId = this.primaryId(identities)
@@ -91,6 +95,7 @@ export class BotService {
       identities.map(async identity => ({
         ...this.identity(identity),
         runnable: await this.runtimes.available(identity),
+        runtimePending: this.runtimes.pending(identity),
         isPrimary: identity.id === primaryId,
         prefs: prefs.get(identity.id) ?? this.prefs.prefs(identity.id),
         workspace: this.workspaces.pathFor(identity.id)
@@ -102,7 +107,14 @@ export class BotService {
     const bot = await this.requireBot(botId)
     const state = await this.runtimes.optionalState(bot)
     const runnable = state !== null
-    return { ...this.identity(bot), instructions: bot.instructions, ...(state ?? { abilities: [], memoryConnected: false }), runnable, ...this.own(bot) }
+    return {
+      ...this.identity(bot),
+      instructions: bot.instructions,
+      ...(state ?? { abilities: [], memoryConnected: false }),
+      runnable,
+      runtimePending: this.runtimes.pending(bot),
+      ...this.own(bot)
+    }
   }
 
   async createBot(input: BotCreateInput, id?: string): Promise<Bot> {
@@ -111,7 +123,7 @@ export class BotService {
       if (input.avatar) this.prefs.setPrefs(identity.id, { avatar: input.avatar })
       await this.workspaces.ensure(identity.id)
       await this.botMemory.connectNew(identity.id)
-      return { ...this.identity(identity), runnable: await this.runtimes.available(identity), ...this.own(identity) }
+      return { ...this.identity(identity), runnable: await this.runtimes.available(identity), runtimePending: this.runtimes.pending(identity), ...this.own(identity) }
     } finally {
       this.changed()
     }
@@ -130,7 +142,7 @@ export class BotService {
     const identity = await this.requireBot(botId)
     this.prefs.setPrefs(botId, patch)
     this.changed()
-    return { ...this.identity(identity), runnable: await this.runtimes.available(identity), ...this.own(identity) }
+    return { ...this.identity(identity), runnable: await this.runtimes.available(identity), runtimePending: this.runtimes.pending(identity), ...this.own(identity) }
   }
 
   /** The user adds a fact from the app. */
@@ -195,6 +207,7 @@ export class BotService {
    *  device from then on. With `chatId`: that chat, leaving the main conversation as it is. */
   async openChat(botId: string, chatId: string | undefined, onEvent: (event: ChatEvent) => void): Promise<OpenChat> {
     const bot = await this.requireBot(botId)
+    await this.runtimes.initialize()
     await this.runtimes.state(bot)
     const workspace = await this.workspaces.ensure(botId)
     const main = this.prefs.mainChat(botId)
@@ -208,6 +221,7 @@ export class BotService {
   /** A new session, which becomes the bot's main conversation. The earlier one stays in the engine. */
   async newChat(botId: string, onEvent: (event: ChatEvent) => void): Promise<OpenChat> {
     const bot = await this.requireBot(botId)
+    await this.runtimes.initialize()
     await this.runtimes.state(bot)
     const workspace = await this.workspaces.ensure(botId)
     const chat = await this.runtimes.engineFor(bot).openChat(bot.engineBotId, null, { workspace }, onEvent)
@@ -238,6 +252,7 @@ export class BotService {
   async reviewMemory(botId: string, prompt: string, options: import('../engines/bot-engine').ReviewOptions): Promise<void> {
     const bot = await this.requireBot(botId)
     try {
+      await this.runtimes.initialize()
       await this.runtimes.state(bot)
       return await this.runtimes.engineFor(bot).reviewMemory(bot.engineBotId, prompt, options)
     } catch (error) {

@@ -80,7 +80,7 @@ setInterval(() => reviewer.tick(), 20_000)
 // connected yet is connected. Both take effect from the bot's next session.
 async function prepareMemory() {
   // Temporary test servers must opt in: never rewrite real profiles' memory endpoints.
-  await bots.listBots()
+  await bots.prepareRuntimes()
   if (process.env.LILBOT_SKIP_MEMORY_SETUP === '1') return
   const updated = await engine.refreshMemory(
     store

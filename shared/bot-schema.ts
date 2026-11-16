@@ -41,6 +41,8 @@ export const Bot = BotIdentity.extend({
   isPrimary: z.boolean(),
   /** False when the saved bot has no available engine runtime. */
   runnable: z.boolean().default(true),
+  /** Runtime preparation has not finished; runnable is not yet known. */
+  runtimePending: z.boolean().optional(),
   activity: BotActivity.optional(),
   prefs: BotPrefs,
   /** The bot's own folder on the shared computer; its chats work there. */

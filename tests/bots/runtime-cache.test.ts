@@ -14,6 +14,7 @@ test('concurrent startup prepares once; repeated roster, detail and preference r
     applies++
     return { abilities: [{ kind: 'toolset', id: 'terminal', label: 'Terminal', enabled: true }], memoryConnected: true }
   }
+  await service.prepareRuntimes()
   await Promise.all([service.listBots(), service.getBot('b1'), service.listBots()])
   for (let i = 0; i < 5; i++) {
     expect((await service.getBot('b1')).abilities).toEqual([{ kind: 'toolset', id: 'terminal', label: 'Terminal', enabled: true }])
@@ -43,6 +44,7 @@ test('failed startup retries do not prepare successfully prepared bots again', a
   store.save({ ...store.get('b1'), id: 'b2', engineBotId: 'b2' })
   const prepared: string[] = []
   engine.prepareRuntime = async id => {
+    if (id === 'b2' && fail) throw new Error('temporary failure')
     prepared.push(id)
   }
   let fail = true
@@ -80,4 +82,38 @@ test('only a changed permission mode prepares policy during updates', async () =
   await runtimes.update({ botId: 'b1', permissionMode: 'full-access' })
   await runtimes.update({ botId: 'b1', permissionMode: 'auto' })
   expect(prepared).toEqual(['full-access', 'auto'])
+})
+
+test('roster reads return pending identities while preparation is blocked', async () => {
+  const { service, engine } = fakeService()
+  let release!: () => void
+  engine.prepareRuntime = () =>
+    new Promise<void>(resolve => {
+      release = resolve
+    })
+  const preparation = service.prepareRuntimes()
+  await Bun.sleep(0)
+  expect(await service.listBots()).toMatchObject([{ id: 'b1', runnable: false, runtimePending: true }])
+  expect(await service.getBot('b1')).toMatchObject({ runtimePending: true })
+  release()
+  await preparation
+  expect(await service.listBots()).toMatchObject([{ id: 'b1', runnable: true, runtimePending: false }])
+})
+
+test('startup prepares only active bindings for this engine using native ids', async () => {
+  const { store, engine } = fakeService()
+  store.bind('b1', 'owned-native')
+  store.save({ ...store.get('b1'), id: 'deleted', engineBotId: 'deleted-native' })
+  store.markDeleted(store.get('deleted'), { files: 'archive', privateMemories: 'forget' })
+  store.save({ ...store.get('b1'), id: 'other', engineId: 'other', engineBotId: 'other-native' })
+  const prepared: string[] = []
+  engine.prepareRuntime = async id => {
+    prepared.push(id)
+  }
+  engine.importBots = async () => {
+    throw new Error('must not enumerate profiles')
+  }
+  engine.applyIdentity = async () => ({ abilities: [], memoryConnected: false })
+  await new BotRuntimes(store, engine).initialize()
+  expect(prepared).toEqual(['owned-native'])
 })

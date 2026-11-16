@@ -270,7 +270,10 @@ own folder and provider name (`lilbot-memory-v0-5-0`): a new version is a new fo
 session. To ship a plug-in change: bump `version` in `plugin.yaml` and `VERSION` in `__init__.py`, and restart
 LilBot. At start-up `BotEngine.refreshMemory` takes only the non-deleted database bindings for its engine, by native id,
 and reinstalls older adapters only for those profiles. All start-up passes that touch profiles must use these
-bindings, never all engine profiles. Memory connection also walks only non-deleted database bots.
+bindings, never all engine profiles. Permission preparation follows the same active native-id bindings.
+Roster/detail reads use database identities and cached runtime state, with `runtimePending` until preparation
+finishes; they never wait for profile preparation, memory refresh, or the activity observer. Only the
+one-time import into a new database needs engine discovery. Memory connection also walks only non-deleted database bots.
 No Hermes restart is needed. LilBot logs a warning when a bot still calls with an older adapter.
 
 ### The after-chat review
