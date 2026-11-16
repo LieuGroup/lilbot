@@ -299,6 +299,34 @@ artwork, names or text.
 - Logic that can be tested without a browser or Hermes gets a test in `tests/` in the same change.
 - Keep docs in this file. Replace outdated text; do not append history.
 
+## Issues and labels
+
+Work is tracked as GitHub issues on this repo, split across threads: a discussion thread files backend issues, an
+orchestrator builds them, and a separate UI thread prototypes screens. The discussion thread does not talk about
+layout, so the labels say whether a screen still has to be designed.
+
+- One issue per agreed decision. A part of an issue marked "proposed, not confirmed by Oscar" is checked with him
+  in that issue before anyone relies on it.
+- `backend`: server, data and engine work. The issue describes the data and the API, never the layout.
+- `ui`: screens. Designed in the UI prototype thread.
+- `spike`: investigate and report before building.
+- `needs-ui`: a note that this feature has a screen nobody has designed yet.
+
+How `needs-ui` works:
+
+- It is a note, not a blocker. A `backend` issue with `needs-ui` is built and closed as normal, without waiting for
+  a prototype.
+- Closing the issue does not remove the label. Whoever builds or closes a backend issue leaves `needs-ui` on it.
+- Only the UI thread removes it. It finds the screens waiting for a prototype by listing the label across open and
+  closed issues: `gh issue list --label needs-ui --state all`.
+- For each one, the UI thread prototypes the screen, opens a `ui` issue that links to the backend issue, and then
+  removes `needs-ui` from the backend issue.
+- A backend issue must not stay open only because its screen is missing. If its backend part is done and merged,
+  close it once the prototype exists and the `ui` issue that will build the screen has been created and linked. The
+  remaining work lives in the `ui` issue.
+- So `needs-ui` on an issue, open or closed, means "no prototype yet". No `needs-ui` means "no screen, or a linked
+  `ui` issue exists".
+
 ## Commands
 
 - `bun run verify`: lint, typecheck, unit and contract tests, and build the web app into `dist/`. `bun run format`
