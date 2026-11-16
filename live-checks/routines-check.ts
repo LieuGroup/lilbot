@@ -13,6 +13,7 @@ const env = {
   ...process.env,
   LILBOT_PORT: String(port),
   LILBOT_DATA_DIR: root,
+  LILBOT_SKILLS_DIR: join(root, 'skills'),
   LILBOT_WORKSPACES_DIR: join(root, 'workspaces'),
   LILBOT_BOT_IDS: 'isolation-no-existing-profile',
   LILBOT_SKIP_MEMORY_SETUP: '1',

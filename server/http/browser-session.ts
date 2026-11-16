@@ -39,6 +39,9 @@ export class BrowserSession {
     return this.library
   }
   private handlers: Handlers = {
+    'skills.list': ({ botId }) => this.bots.listSkills(botId),
+    'skills.read': ({ botId, name }) => this.bots.readSkill(botId, name),
+    'skills.setEnabled': ({ botId, name, enabled }) => this.bots.setSkill(botId, name, enabled),
     'routines.list': ({ botId }) => this.routineService().list(botId),
     'routines.pause': ({ botId, id }) => this.routineService().pause(botId, id, true),
     'routines.resume': ({ botId, id }) => this.routineService().pause(botId, id, false),

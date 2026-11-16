@@ -1,5 +1,5 @@
 /** The Bot: LilBot's own definition, independent of the engine that runs it. Three owners:
- *  LilBot holds identity, instructions and model; the engine holds abilities; the user holds sidebar
+ *  LilBot holds identity, instructions and model; LilBot holds skills; the engine holds tools and connectors; the user holds sidebar
  *  preferences (LilBot's database); the bot holds its workspace folder. */
 import { z } from 'zod'
 

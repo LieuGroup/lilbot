@@ -17,10 +17,10 @@ test('library migration preserves shipped routines and their run aliases', () =>
     store.create('b1', { requestId: 'one', description: 'Check', schedule: { kind: 'interval', seconds: 300 }, createdBy: 'oscar' }, 0, 5)
     const [run] = store.claimDue(300_000)
     store.attach(run.id, 'stored', 300_000)
-    db.exec('DROP TABLE library_items; PRAGMA user_version = 10')
+    db.exec('DROP TABLE skills; DROP TABLE skill_off; DROP TABLE skill_imports; DROP TABLE library_items; PRAGMA user_version = 10')
     db.close()
     db = openDatabase(path)
-    expect(db.query('PRAGMA user_version').get()).toEqual({ user_version: 11 })
+    expect(db.query('PRAGMA user_version').get()).toEqual({ user_version: 12 })
     expect(new RoutineStore(db).runForChat('b1', 'stored')).toBe(run.id)
     expect(db.query('SELECT * FROM library_items').all()).toEqual([])
   } finally {

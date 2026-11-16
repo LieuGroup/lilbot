@@ -24,6 +24,7 @@ import { installMemory, legacyNotes, memoryConnection, memoryCurrent, memoryInst
 import { ensureFullAccess } from './hermes-permissions'
 import { runRoutine } from './hermes-routines'
 import { applyIdentity, createRuntime } from './hermes-runtime'
+import { configureSkills, userSkillPaths } from './hermes-skills'
 import { HermesSocket } from './hermes-socket'
 
 const CLIENT = { name: 'lilbot', version: '0.2.0' }
@@ -193,6 +194,32 @@ export class HermesEngine implements BotEngine {
     return runRoutine(botId, prompt, options)
   }
 
+  private skillSettings = new Map<string, string>()
+  userSkillPaths = userSkillPaths
+  async configureSkills(id: string, settings: Parameters<typeof configureSkills>[1]) {
+    await this.requireBot(id)
+    const key = JSON.stringify(settings)
+    if (this.skillSettings.get(id) === key) return
+    const activate = !this.skillSettings.has(id)
+    await configureSkills(id, settings, activate)
+    if (!activate) {
+      this.skillSettings.set(id, key)
+      return
+    }
+    const socket = await HermesSocket.connect(
+      id === DEFAULT_PROFILE ? '' : id,
+      () => {},
+      () => {}
+    )
+    try {
+      await socket.request('plugins.manage', { action: 'toggle', name: 'lilbot-skills-v1', enable: false })
+      const result = await socket.request('plugins.manage', { action: 'toggle', name: 'lilbot-skills-v1', enable: true })
+      if (!result.ok) throw new Error('Skills plugin activation failed')
+    } finally {
+      socket.close()
+    }
+    this.skillSettings.set(id, key)
+  }
   async listModels(): Promise<ModelProvider[]> {
     return providersFromModelOptions(await (await this.manage()).request('model.options'))
   }

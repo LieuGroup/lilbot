@@ -1,0 +1,5 @@
+name: lilbot-skills-v1
+version: 1.0.0
+description: LilBot authoritative shared skills catalog and validated writes.
+kind: standalone
+provides_tools: [skills_list, skill_view, skill_manage]

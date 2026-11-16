@@ -63,6 +63,7 @@ try {
       ...process.env,
       LILBOT_PORT: String(port),
       LILBOT_DATA_DIR: root,
+      LILBOT_SKILLS_DIR: join(root, 'skills'),
       LILBOT_WORKSPACES_DIR: join(root, 'workspaces'),
       LILBOT_BOT_IDS: ids.join(','),
       LILBOT_SKIP_MEMORY_SETUP: '0',

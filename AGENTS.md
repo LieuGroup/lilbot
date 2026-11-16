@@ -158,7 +158,7 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
 - `server/database/`: LilBot's own SQLite database (`bun:sqlite`), by default `~/.local/share/lilbot/lilbot.db`
   (`LILBOT_DATA_DIR`). It owns bot identity (name, function, instructions, model), engine/native-id bindings,
   memory, sidebar preferences, sections, main-conversation pointers and the primary-bot choice.
-  Abilities and conversation transcripts stay with the engine. Identity is imported once, then LilBot wins
+  Tools, MCP connectors and conversation transcripts stay with the engine. Skills belong to LilBot. Identity is imported once, then LilBot wins
   on mismatch; edits are saved in the database before they are applied to the runtime.
   `database.ts` owns the schema as an
   ordered list of migration steps (add a step, never edit a shipped one); each store file owns the SQL of its tables.
@@ -206,7 +206,8 @@ What a bot is and who owns each part. Decided with Oscar on 2026-11-16 unless ma
 | Part | Owner | Where it lives |
 |---|---|---|
 | Identity (name, function), instructions, model, permission mode, engine binding | LilBot | `bots` table in LilBot's database |
-| Abilities | the engine | Hermes profile |
+| Skills and per-bot skill switches | LilBot | shared skills library and SQLite |
+| Tools and MCP connectors | the engine | Hermes profile |
 | Workspace: one folder per bot on the shared computer | the bot | `~/lilbot/workspaces/<bot id>`, the working directory of its chats |
 | Conversation: one main conversation per bot; a new session replaces it as the main one | the engine | Hermes sessions; LilBot's database names the main one |
 | Memory | LilBot | facts in LilBot's database; the engine reads and writes them through an adapter |
@@ -260,6 +261,35 @@ Hermes declares incoming `CanonicalAttachment` paths but no outgoing attachment 
 therefore unavailable until the contract exposes it; tool image previews are not deliveries.
 No Library UI is built yet. `bun live-checks/library-check.ts` tests an isolated server and temporary
 bot end to end, including the push, protocol list, separate workspace, and download.
+## Skills
+
+`server/skills/` owns a shared standard SKILL.md library at `~/lilbot/skills`
+(`LILBOT_SKILLS_DIR` overrides it), metadata/authorship and per-bot off switches in SQLite (migration 12, after routines 10 and Library 11).
+Chat, routine runs and memory reviews prepare the same catalogue and per-bot off switches. Deleting a bot removes its off switches, retaining library skills and their authorship.
+All skills default on. `skills.list`, `skills.read`, `skills.setEnabled` and `skills.changed`
+serve clients; Setup receives the same skill states through its existing abilities data.
+A separate Hermes skills plug-in leaves the memory adapter version alone. It overrides the
+three skill tools to read the authoritative catalog and route writes to the authenticated
+`/engine/skills/*` API. New and edited text rejects secrets and hidden characters; skill
+instructions themselves are allowed. The bot's bound capability supplies authorship.
+These switches control offered skills, not filesystem access for full-access bots.
+
+Only non-deleted bound bots are imported/prepared. Import copies user skill folders once per
+source path, never moves or deletes profile files. `.bundled_manifest` identifies shipped
+skills, which stay with Hermes. Identical copies coalesce; different contents get a stable
+hash-suffixed name, preserving both. Existing imported text is not retroactively safety-filtered;
+new writes are. Binary support assets are copied unchanged. Imported provenance stays in SQLite.
+Hermes searches profile-local skills before external/create directories, so LilBot suppresses
+the stale user entries in Hermes' manifest and supplies its own catalog through the plug-in.
+`skills.create_dir` and `skills.external_dirs` also point to the library. Native engine skills
+remain with Hermes; attempts to change one through the app skill tool require first creating
+an app-owned skill. Skill tool changes apply immediately; prompt catalogs refresh next session.
+No profile cleanup is part of this change. Future removal of duplicate profile skill folders
+must be a separate change after checking import results and backups.
+
+`bun run check:skills` runs a second server with temporary data, library and workspaces and an
+explicit temporary-profile allowlist. It proves skill use, per-bot exclusion, and authored writes,
+then deletes every temporary native profile and directory. Never run an unrestricted test server.
 
 ## Memory
 
