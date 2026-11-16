@@ -1,0 +1,115 @@
+/** What a chat looks like on screen, and how each live event changes it. Pure functions only. */
+import type { ChatEvent, ChatItem, ChatSnapshot } from '../../../shared/chat-schema'
+
+/** `streaming` marks the assistant message that is still being written. */
+export type ViewItem = ChatItem & { streaming?: boolean }
+
+export interface ChatView {
+  chatId: string
+  items: ViewItem[]
+  /** Messages sent while the bot was busy. The engine runs them next; each joins the transcript
+   *  when its turn starts, so it never lands in the middle of the reply being written. */
+  queued: string[]
+  /** A message was sent to an idle bot and its turn has not started yet. */
+  awaitingStart: boolean
+  running: boolean
+  activity: string
+  title: string
+}
+
+export const emptyChat: ChatView = { chatId: '', items: [], queued: [], awaitingStart: false, running: false, activity: '', title: '' }
+
+export function chatFromSnapshot(snapshot: ChatSnapshot): ChatView {
+  return {
+    chatId: snapshot.chatId,
+    items: snapshot.items,
+    queued: [],
+    awaitingStart: false,
+    running: snapshot.running,
+    activity: snapshot.running ? 'Working...' : '',
+    title: snapshot.title
+  }
+}
+
+export function withUserMessage(chat: ChatView, text: string): ChatView {
+  if (chat.running) return { ...chat, queued: [...chat.queued, text] }
+  return { ...chat, items: [...chat.items, { kind: 'user', text }], awaitingStart: true, running: true, activity: 'Sending...' }
+}
+
+export const withError = (chat: ChatView, text: string): ChatView => ({
+  ...chat,
+  items: [...chat.items, { kind: 'error', text }],
+  awaitingStart: false,
+  running: false,
+  activity: ''
+})
+
+const isWriting = (item: ViewItem | undefined) => item?.kind === 'assistant' && item.streaming === true
+
+const stopWriting = (items: ViewItem[]): ViewItem[] => items.map(item => (isWriting(item) ? { ...item, streaming: false } : item))
+
+export function applyChatEvent(chat: ChatView, event: ChatEvent): ChatView {
+  switch (event.type) {
+    case 'turn.started': {
+      // This turn belongs to the message already in the transcript, or to the oldest queued one.
+      if (chat.awaitingStart) return { ...chat, awaitingStart: false, running: true, activity: 'Thinking...' }
+      const [next, ...rest] = chat.queued
+      const items: ViewItem[] = next === undefined ? chat.items : [...stopWriting(chat.items), { kind: 'user', text: next }]
+      return { ...chat, items, queued: rest, running: true, activity: 'Thinking...' }
+    }
+
+    case 'activity':
+      return { ...chat, activity: event.text }
+
+    case 'text.delta': {
+      const last = chat.items[chat.items.length - 1]
+      const items: ViewItem[] =
+        last?.kind === 'assistant' && last.streaming
+          ? [...chat.items.slice(0, -1), { ...last, text: last.text + event.text }]
+          : [...chat.items, { kind: 'assistant', text: event.text, streaming: true }]
+      return { ...chat, items, running: true, activity: '' }
+    }
+
+    case 'tool.started':
+      return {
+        ...chat,
+        items: [...stopWriting(chat.items), { kind: 'tool', toolId: event.toolId, name: event.name, detail: event.detail, running: true }],
+        activity: `Using ${event.name}...`
+      }
+
+    case 'tool.finished':
+      return {
+        ...chat,
+        items: chat.items.map(item => (item.kind === 'tool' && item.toolId === event.toolId ? { ...item, running: false, failed: event.failed } : item)),
+        activity: 'Thinking...'
+      }
+
+    case 'turn.finished': {
+      const stopped = event.status === 'stopped'
+      const last = chat.items[chat.items.length - 1]
+      let items = chat.items
+      if (last?.kind === 'assistant' && last.streaming) {
+        // The engine repeats the final text. When this page joined mid-reply it only streamed the
+        // end of it, so the engine's text wins whenever it contains what was streamed.
+        const text = event.text.endsWith(last.text) ? event.text : last.text
+        items = [...items.slice(0, -1), { ...last, text, streaming: false, stopped }]
+      } else if (event.text) {
+        items = [...items, { kind: 'assistant', text: event.text, stopped }]
+      } else if (event.status === 'failed') {
+        items = [...items, { kind: 'error', text: 'The bot could not finish this reply.' }]
+      }
+      items = items.map(item => (item.kind === 'tool' && item.running ? { ...item, running: false } : item))
+      // Still running when another message is waiting: the engine starts it next.
+      return { ...chat, items, running: chat.queued.length > 0, activity: chat.queued.length > 0 ? 'Thinking...' : '' }
+    }
+
+    case 'title':
+      return { ...chat, title: event.title }
+
+    case 'error':
+      return withError(chat, event.message)
+
+    case 'closed':
+      return { ...chat, running: false, activity: '' }
+  }
+}
