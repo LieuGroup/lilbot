@@ -65,6 +65,8 @@ export interface BotEngine {
   prepareRuntime?(engineBotId: string, identity: RuntimeIdentity): Promise<void>
   userSkillPaths?(id: string): string[]
   configureSkills?(id: string, settings: { root: string; url: string; tokenFile: string; botId: string; disabled: string[]; names: string[] }): Promise<void>
+  /** Refuse an unavailable model before an identity edit is saved. Must not apply the old identity. */
+  validateModel(model: BotModel): Promise<void>
   listModels(): Promise<ModelProvider[]>
   /** Open a new chat (`chatId` null) or continue a stored one. A stored chat that no longer exists
    *  is replaced by a new one; the snapshot says which chat was opened. Events arrive until `close()`. */

@@ -174,6 +174,7 @@ export class BotRuntimes {
     const previous = await this.require(botId)
     const bot = { ...previous, ...patch }
     this.validateMode(bot)
+    if (patch.model) await this.engineFor(bot).validateModel(patch.model)
     this.store.save(bot)
     if (bot.permissionMode !== previous.permissionMode) await this.engineFor(bot).prepareRuntime?.(bot.engineBotId, bot)
     await this.state(bot)

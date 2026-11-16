@@ -1,6 +1,6 @@
 /** Hermes runs LilBot bots through profile bindings and native sessions. */
 import type { ActivityEvent } from '../../../shared/activity-schema'
-import type { BotIdentity, ModelProvider } from '../../../shared/bot-schema'
+import type { BotIdentity, BotModel, ModelProvider } from '../../../shared/bot-schema'
 import type { ChatEvent } from '../../../shared/chat-schema'
 import { LilBotError } from '../../../shared/protocol'
 import type {
@@ -220,6 +220,13 @@ export class HermesEngine implements BotEngine {
     }
     this.skillSettings.set(id, key)
   }
+  async validateModel(model: BotModel): Promise<void> {
+    const providers = await this.listModels()
+    if (!providers.some(provider => provider.provider === model.provider && provider.models.includes(model.model))) {
+      throw new LilBotError('invalid_model', `Model "${model.model}" is not available from provider "${model.provider}". Choose an available model.`)
+    }
+  }
+
   async listModels(): Promise<ModelProvider[]> {
     return providersFromModelOptions(await (await this.manage()).request('model.options'))
   }
