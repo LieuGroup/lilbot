@@ -12,8 +12,10 @@ import { join } from 'node:path'
 
 import type { LegacyNotes, MemoryConnection } from '../bot-engine'
 
+/** The name Hermes knows the provider by (plus a version). The data is not here: it is LilBot's. */
 const PLUGIN = 'lilbot-memory'
-const PLUGIN_SOURCE = join(import.meta.dir, '..', '..', '..', 'engines', 'hermes', PLUGIN)
+/** The adapter's source in this repo: the only memory code that is specific to Hermes. */
+const PLUGIN_SOURCE = join(import.meta.dir, '..', '..', '..', 'engines', 'hermes', 'memory-adapter')
 const SETTINGS_FILE = `${PLUGIN}.json`
 const HERMES_BIN = process.env.LILBOT_HERMES_BIN ?? 'hermes'
 const PROFILE_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/

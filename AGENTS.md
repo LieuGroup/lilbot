@@ -115,7 +115,7 @@ Oscar. Three layers:
    entries, within about 1,500 tokens; the rest is reachable by recall).
 3. The engine adapter. `server/engine-api.ts` is a local HTTP endpoint (`/engine/memory/*`) for adapters on this
    machine: loopback only, no browsers, token from `<data dir>/engine-token`. The Hermes adapter is a memory
-   provider plug-in in `engines/hermes/lilbot-memory/` (Python, standard library only). It holds no data. It puts
+   provider plug-in in `engines/hermes/memory-adapter/` (Python, standard library only). It holds no data. It puts
    the usage rules in the system prompt (static, so prompt caching holds), supplies the memory block once per turn,
    and gives the bot two tools: `recall_memory` and `update_memory` (write or forget one fact).
 

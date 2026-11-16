@@ -1,5 +1,5 @@
 /** The local HTTP endpoint engine adapters use to reach LilBot's memory (today: the Hermes memory
- *  provider in `engines/hermes/lilbot-memory/`). Only for programs on this machine: it answers on
+ *  provider in `engines/hermes/memory-adapter/`). Only for programs on this machine: it answers on
  *  the loopback address only, refuses browsers, and needs the token from LilBot's data folder. */
 import { timingSafeEqual } from 'node:crypto'
 import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
