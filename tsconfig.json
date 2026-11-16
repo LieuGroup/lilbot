@@ -8,7 +8,11 @@
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "types": ["bun"]
+    "types": ["bun"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./web/src/*"]
+    }
   },
   "include": ["server", "shared", "web/src", "tests", "live-checks", "vite.config.ts"]
 }

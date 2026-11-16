@@ -1,78 +1,69 @@
-import { memo, useEffect, useRef } from 'react'
-import Markdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import { SparklesIcon } from 'lucide-react'
+import { useRef } from 'react'
 
+import { Bubble, BubbleContent } from '@/ui/bubble'
+import { Message, MessageContent } from '@/ui/message'
+import { MessageScroller, MessageScrollerButton, MessageScrollerContent, MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport } from '@/ui/message-scroller'
+import { Trace, TraceIcon, TraceLine, TraceTitle } from '@/ui/trace'
+import { ChatItem } from './chat-item'
 import type { ViewItem } from './chat-state'
+import { isScrollAnchor, loadedTranscript, updateLoaded } from './scroll-anchors'
 
-/** Memoised: a streamed chunk changes only the last item, so earlier replies are not parsed again. */
-const Item = memo(function Item({ item }: { item: ViewItem }) {
-  switch (item.kind) {
-    case 'user':
-      return <div className="max-w-[85%] self-end whitespace-pre-wrap break-words rounded-2xl bg-accent px-3.5 py-2.5 text-white">{item.text}</div>
-    case 'assistant':
-      return (
-        <div className="rounded-2xl border border-border bg-surface px-3.5 py-2.5">
-          <div className="prose prose-neutral max-w-none break-words dark:prose-invert prose-pre:overflow-x-auto prose-table:block prose-table:overflow-x-auto">
-            <Markdown remarkPlugins={[remarkGfm]}>{item.text}</Markdown>
-          </div>
-          {item.stopped && <div className="mt-1.5 text-sm text-muted">Stopped</div>}
-        </div>
-      )
-    case 'tool': {
-      const dot = item.failed ? 'bg-danger' : item.running ? 'animate-pulse bg-accent' : 'bg-ok'
-      return (
-        <div className="flex min-w-0 items-center gap-2 text-sm text-muted">
-          <span aria-hidden="true" className={`size-2 flex-none rounded-full ${dot}`} />
-          <span className="flex-none font-semibold">{item.name}</span>
-          {item.detail && <code className="truncate font-mono text-[13px]">{item.detail}</code>}
-        </div>
-      )
-    }
-    case 'error':
-      return (
-        <div role="alert" className="rounded-xl border border-danger px-3 py-2 text-sm text-danger">
-          {item.text}
-        </div>
-      )
-  }
-})
+interface MessageListProps {
+  items: ViewItem[]
+  queued: string[]
+  activity: string
+  emptyHint: string
+}
 
-export function MessageList({ items, queued, activity, emptyHint }: { items: ViewItem[]; queued: string[]; activity: string; emptyHint: string }) {
-  const scroller = useRef<HTMLDivElement>(null)
-  const pinned = useRef(true)
-
-  // Follow new output only while the reader is at the bottom; never pull them down while they read back.
-  useEffect(() => {
-    const element = scroller.current
-    if (element && pinned.current) element.scrollTop = element.scrollHeight
-  }, [items, queued, activity])
+/** The Chat pattern. A conversation opens at its end. A message you send moves up and the reply
+ *  grows below it; the list follows the reply only while you stay at the end, never while you
+ *  read back. */
+export function MessageList({ items, queued, activity, emptyHint }: MessageListProps) {
+  const loaded = useRef(loadedTranscript(items))
+  loaded.current = updateLoaded(loaded.current, items)
 
   return (
-    <main
-      ref={scroller}
-      className="flex-1 overflow-y-auto overscroll-contain"
-      onScroll={event => {
-        const element = event.currentTarget
-        pinned.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80
-      }}
-    >
-      <div className="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-5">
-        {items.length === 0 && <p className="mt-[20vh] text-center text-muted">{emptyHint}</p>}
-        {items.map((item, index) => (
-          // The transcript only grows at the end, so the position is a stable key.
-          <Item key={index} item={item} />
-        ))}
-        {queued.map((text, index) => (
-          <div
-            key={index}
-            title="Waiting for the bot to finish"
-            className="max-w-[85%] self-end whitespace-pre-wrap break-words rounded-2xl border border-dashed border-accent px-3.5 py-2.5 text-muted"
-          >
-            {text}
-          </div>
-        ))}
-        {activity && <div className="animate-pulse text-sm text-muted motion-reduce:animate-none">{activity}</div>}
-      </div>
-    </main>
+    <MessageScrollerProvider autoScroll defaultScrollPosition="end">
+      <MessageScroller className="flex-1">
+        <MessageScrollerViewport aria-label="Conversation">
+          <MessageScrollerContent className="mx-auto max-w-3xl gap-4 px-4 py-5">
+            {items.length === 0 && <p className="mt-[20vh] text-center text-muted-foreground">{emptyHint}</p>}
+            {items.map((item, index) => (
+              // The transcript only grows at the end, so the position is a stable id.
+              <MessageScrollerItem key={index} messageId={String(index)} scrollAnchor={isScrollAnchor(loaded.current, index, item.kind)}>
+                <ChatItem item={item} />
+              </MessageScrollerItem>
+            ))}
+            {/* Sent while the bot was busy: waits here until its turn starts. */}
+            {queued.map((text, index) => (
+              <MessageScrollerItem key={`queued-${index}`} messageId={`queued-${index}`}>
+                <Message align="end" title="Waiting for the bot to finish">
+                  <MessageContent>
+                    <Bubble align="end" variant="outline" className="max-w-[85%]">
+                      <BubbleContent className="rounded-2xl border-dashed border-primary/60! px-3.5 py-2.5 text-base whitespace-pre-wrap text-muted-foreground">
+                        {text}
+                      </BubbleContent>
+                    </Bubble>
+                  </MessageContent>
+                </Message>
+              </MessageScrollerItem>
+            ))}
+            {/* The bot's one-line status ("Thinking...", "Using terminal..."), shimmering while it works. */}
+            {activity && (
+              <Trace role="status">
+                <TraceLine status="running">
+                  <TraceIcon>
+                    <SparklesIcon />
+                  </TraceIcon>
+                  <TraceTitle>{activity}</TraceTitle>
+                </TraceLine>
+              </Trace>
+            )}
+          </MessageScrollerContent>
+        </MessageScrollerViewport>
+        <MessageScrollerButton />
+      </MessageScroller>
+    </MessageScrollerProvider>
   )
 }

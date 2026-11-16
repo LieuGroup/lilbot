@@ -1,7 +1,6 @@
 import { useNavigate } from '@tanstack/react-router'
-
+import { PageHeader } from '@/ui/page-header'
 import { lilbot } from '../app/lilbot-socket'
-import { PageHeader } from '../ui/page-header'
 import { BotForm } from './bot-form'
 import { useBotStore } from './bot-store'
 

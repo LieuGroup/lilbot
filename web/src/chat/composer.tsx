@@ -1,6 +1,7 @@
-import { type KeyboardEvent, useRef, useState } from 'react'
+import { ArrowUpIcon, SquareIcon } from 'lucide-react'
+import { type FormEvent, type KeyboardEvent, useRef, useState } from 'react'
 
-import { Button } from '../ui/controls'
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from '@/ui/input-group'
 
 interface ComposerProps {
   disabled: boolean
@@ -10,16 +11,17 @@ interface ComposerProps {
   onStop: () => void
 }
 
+/** The Prompt Input pattern: plain props in, plain callbacks out. */
 export function Composer({ disabled, running, botName, onSend, onStop }: ComposerProps) {
   const [text, setText] = useState('')
-  const input = useRef<HTMLTextAreaElement>(null)
+  const form = useRef<HTMLFormElement>(null)
 
-  const submit = () => {
+  const submit = (event?: FormEvent) => {
+    event?.preventDefault()
     const value = text.trim()
     if (!value || disabled) return
     onSend(value)
     setText('')
-    if (input.current) input.current.style.height = 'auto'
   }
 
   // Enter sends on a keyboard; on a phone Enter adds a line and the button sends.
@@ -27,36 +29,34 @@ export function Composer({ disabled, running, botName, onSend, onStop }: Compose
     const touch = window.matchMedia('(pointer: coarse)').matches
     if (event.key === 'Enter' && !event.shiftKey && !touch && !event.nativeEvent.isComposing) {
       event.preventDefault()
-      submit()
+      form.current?.requestSubmit()
     }
   }
 
   return (
-    <footer className="border-t border-border bg-surface px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))]">
-      <div className="mx-auto flex max-w-3xl items-end gap-2">
-        <textarea
-          ref={input}
-          rows={1}
-          value={text}
-          aria-label="Message"
-          placeholder={disabled ? 'Connecting...' : `Message ${botName}`}
-          className="max-h-52 min-w-0 flex-1 resize-none rounded-xl border border-border bg-bg px-3 py-2.5 text-base placeholder:text-muted"
-          onChange={event => {
-            setText(event.target.value)
-            event.target.style.height = 'auto'
-            event.target.style.height = `${Math.min(event.target.scrollHeight, 208)}px`
-          }}
-          onKeyDown={onKeyDown}
-        />
-        {running && (
-          <Button variant="danger" onClick={onStop}>
-            Stop
-          </Button>
-        )}
-        <Button onClick={submit} disabled={disabled || !text.trim()}>
-          Send
-        </Button>
-      </div>
+    <footer className="px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))]">
+      <form ref={form} onSubmit={submit} className="mx-auto max-w-3xl">
+        <InputGroup>
+          <InputGroupTextarea
+            value={text}
+            aria-label="Message"
+            placeholder={disabled ? 'Connecting...' : `Message ${botName}`}
+            className="max-h-52 p-3 text-base"
+            onChange={event => setText(event.target.value)}
+            onKeyDown={onKeyDown}
+          />
+          <InputGroupAddon align="block-end" className="justify-end">
+            {running && (
+              <InputGroupButton size="icon-sm" variant="outline" className="rounded-full" aria-label="Stop" onClick={onStop}>
+                <SquareIcon />
+              </InputGroupButton>
+            )}
+            <InputGroupButton type="submit" size="icon-sm" variant="default" className="rounded-full" aria-label="Send" disabled={disabled || !text.trim()}>
+              <ArrowUpIcon />
+            </InputGroupButton>
+          </InputGroupAddon>
+        </InputGroup>
+      </form>
     </footer>
   )
 }

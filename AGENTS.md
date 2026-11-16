@@ -47,7 +47,8 @@ web/src/           The web app (what you see in the browser).
   bots/              bot list, create bot, Setup panel
   chat/              the conversation
   memory/            Memory panel
-  ui/                small shared parts (buttons, panel frame)
+  ui/                shadcn/ui parts (added by the shadcn CLI, ours to edit) and our own small shared
+                     parts built from them (panel frame, page header, notice, bot badge, form field)
 
 tests/             Automatic tests, in the same folders as the code they test.
 live-checks/       Checks that talk to the real Hermes with a temporary bot.
@@ -87,8 +88,22 @@ TypeScript on Bun. No Effect, no server web framework, no ORM. Oscar does not wr
 for behaviour he can check in the app. Keep an eye on speed and memory; measure before optimising.
 
 - Server: plain `Bun.serve`. Database, when first needed: `bun:sqlite` directly.
-- Web: React + Vite, TanStack Router, Tailwind 4, Zustand, Zod. Small shared parts live in `web/src/ui/`; add
-  shadcn components (on Base UI) when a part needs real behaviour, such as a dialog or menu.
+- Web: React + Vite, TanStack Router, Tailwind 4, Zustand, Zod. The UI is built on shadcn/ui (Base UI variant,
+  `components.json`) and its AI Elements patterns. How UI parts are added:
+  - Never hand-write a part shadcn has (button, input, menu, dialog, ...). Add it with
+    `bunx shadcn@latest add <name>`; it lands in `web/src/ui/` (alias `@/ui`). Then run `bun run format`. Delete
+    exports nothing uses so the file stays under about 200 lines. The code is ours: edit it when needed.
+  - A chat feature first looks for its AI Elements pattern: read
+    `https://ui.shadcn.com/docs/ai-elements/base/<name>.md` (Chat, Message, Prompt Input, Tool, Task, Queue, Model
+    Selector, ...), add the parts it lists, and compose them in the feature's folder. Patterns take plain props:
+    map our own data to them at the component edge (`chat/chat-item.tsx`), never reshape `chat-state.ts` or
+    `shared/` for a library, and never add the Vercel AI SDK. Next to adopt, when their feature exists: Context,
+    File Tree, Confirmation, Subagent, Plan, Sources.
+  - Colours: only shadcn's token names (`bg-background`, `bg-card`, `bg-muted`, `text-muted-foreground`,
+    `bg-primary`, `text-destructive`, `border`), plus `success` for green. They are defined once in
+    `app/styles.css` with LilBot's palette; dark mode follows the device (`prefers-color-scheme`).
+  - Feature code imports parts as `@/ui/<part>`. Pages with forms and menus are lazy routes in `app/router.tsx`, so
+    the chat's first load stays small (about 205 kB of JavaScript and 14 kB of styles, compressed).
 - Checks: Biome, `tsc`, `bun test`, Vite build, all through `bun run verify`. `bun run check:live` is the live
   check against the running Hermes.
 
@@ -128,6 +143,12 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
   state in `chat-state.ts`, per-bot store in `chat-store.ts`, lifecycle in `use-chat.ts`, the chat column),
   `memory/` (the Memory panel). `/bots/$botId` is a layout route: the chat column stays mounted and
   connected while panel routes under it (`setup`, `memory`) open and close. Panels use `ui/panel.tsx`. Add new panels as child routes. On a phone an open panel covers the chat.
+- The conversation uses AI Elements' Message Scroller: it opens at its latest message (also after a reload or
+  resume); a sent message moves up and the reply grows below it (Oscar's choice); the list follows the reply only
+  while the reader stays at the end. Only messages sent while the list is open are scroll anchors: the scroller jumps
+  to any anchor it did not see arrive (`chat/scroll-anchors.ts`). Earlier items are memoised (`chat/chat-item.tsx`), so a streamed chunk redraws
+  only the last one. Queued messages show as dashed bubbles, the activity line as a shimmering Trace line (not
+  Reasoning: we get a status, not thinking text), tool use as Trace lines.
 - Hermes' wire contract lives in `~/.hermes/hermes-agent/apps/shared/src/gateway-contract.openrpc.json` and
   `tui_gateway/contracts/`. Read it before using a new method, and read only fields the contract declares (Hermes
   sends some undeclared extras; do not rely on them). Every method, parameter and field LilBot uses is listed in
