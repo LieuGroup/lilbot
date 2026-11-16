@@ -1,25 +1,14 @@
 import { expect, test } from 'bun:test'
-import { defaultAvatar } from '../../shared/avatar'
-import type { Bot } from '../../shared/bot-schema'
-import { primaryBot, rosterBots } from '../../web/src/bots/primary-bot'
-
-const bot = (id: string, isPrimary = false): Bot => ({
-  id,
-  name: id,
-  function: '',
-  model: null,
-  permissionMode: 'full-access',
-  isDefault: false,
-  isPrimary,
-  runnable: true,
-  workspace: '',
-  prefs: { avatar: defaultAvatar(id), sectionId: null, pinned: false, hidden: false }
-})
+import { primaryBot } from '../../web/src/bots/primary-bot'
+import { rosterGroups } from '../../web/src/bots/roster-groups'
+import { testBot as bot } from './test-bot'
 
 test('startup selects the primary and the roster puts it first without mutating the list', () => {
-  const bots = [bot('a'), bot('b', true), bot('c')]
+  const bots = [bot('a'), bot('b', { isPrimary: true }), bot('c')]
   expect(primaryBot(bots)?.id).toBe('b')
-  expect(rosterBots(bots).map(bot => bot.id)).toEqual(['b', 'a', 'c'])
+  const groups = rosterGroups(bots, [])
+  expect(groups.top.map(bot => bot.id)).toEqual(['b'])
+  expect(groups.unassigned.map(bot => bot.id)).toEqual(['a', 'c'])
   expect(bots.map(bot => bot.id)).toEqual(['a', 'b', 'c'])
   expect(primaryBot([])).toBeUndefined()
 })

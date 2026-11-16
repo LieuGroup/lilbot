@@ -1,4 +1,4 @@
-import { CircleCheckIcon, CircleXIcon, LoaderCircleIcon } from 'lucide-react'
+import { CheckIcon, LoaderCircleIcon, XIcon } from 'lucide-react'
 import { memo } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -15,19 +15,19 @@ export const ChatItem = memo(function ChatItem({ item }: { item: ViewItem }) {
   switch (item.kind) {
     case 'user':
       return (
-        <Message align="end" className="text-base">
+        <Message align="end">
           <MessageContent>
-            <Bubble align="end" className="max-w-[85%]">
-              <BubbleContent className="rounded-2xl px-3.5 py-2.5 text-base whitespace-pre-wrap">{item.text}</BubbleContent>
+            <Bubble align="end" variant="outline" className="max-w-[min(480px,85%)]">
+              <BubbleContent className="rounded-[18px] border-transparent! px-3.5 py-2 text-[15px]/6 whitespace-pre-wrap">{item.text}</BubbleContent>
             </Bubble>
           </MessageContent>
         </Message>
       )
     case 'assistant':
       return (
-        <Message className="text-base">
+        <Message>
           <MessageContent>
-            <div className="prose prose-neutral max-w-none break-words dark:prose-invert prose-pre:overflow-x-auto prose-table:block prose-table:overflow-x-auto">
+            <div className="prose prose-chat max-w-none break-words prose-p:my-2.5 prose-pre:overflow-x-auto prose-table:block prose-table:overflow-x-auto">
               <Markdown remarkPlugins={[remarkGfm]}>{item.text}</Markdown>
             </div>
             {item.stopped && <MessageFooter className="px-0">Stopped</MessageFooter>}
@@ -37,10 +37,18 @@ export const ChatItem = memo(function ChatItem({ item }: { item: ViewItem }) {
     case 'tool':
       return (
         <Trace>
-          <TraceLine status={item.failed ? 'error' : item.running ? 'running' : undefined}>
-            <TraceIcon>{item.failed ? <CircleXIcon /> : item.running ? <LoaderCircleIcon className="animate-spin" /> : <CircleCheckIcon className="text-success" />}</TraceIcon>
+          <TraceLine status={item.failed ? 'error' : item.running ? 'running' : undefined} className="text-[13px]/5 data-[status=running]:text-foreground">
+            <TraceIcon className="size-[13px] [&_svg]:size-[13px]!">
+              {item.failed ? (
+                <XIcon strokeWidth={2.5} />
+              ) : item.running ? (
+                <LoaderCircleIcon className="animate-spin text-primary" strokeWidth={2.5} />
+              ) : (
+                <CheckIcon className="text-foreground/50" strokeWidth={2} />
+              )}
+            </TraceIcon>
             <TraceTitle>
-              <span className="font-medium">{item.name}</span> {item.detail && <code className="font-mono text-[13px]">{item.detail}</code>}
+              {item.name} {item.detail && <code className="font-mono text-xs">{item.detail}</code>}
             </TraceTitle>
           </TraceLine>
         </Trace>

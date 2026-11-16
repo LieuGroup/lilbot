@@ -1,12 +1,16 @@
-/** The bot list shared by the sidebar and the pages, plus the connection state. */
+/** The bot list and sections shared by the roster and the pages, plus the connection state. */
 import { create } from 'zustand'
 
-import { Bot } from '../../../shared/bot-schema'
+import { Bot, type Section } from '../../../shared/bot-schema'
+import { activitySince } from '../activity/activity-since'
 import { lilbot, messageOf } from '../app/lilbot-socket'
 
 interface BotStore {
   connected: boolean
   bots: Bot[]
+  sections: Section[]
+  /** When each bot's current live state began, if this browser saw it begin. */
+  since: Record<string, number>
   loaded: boolean
   error: string
   load: () => Promise<void>
@@ -17,11 +21,15 @@ interface BotStore {
 export const useBotStore = create<BotStore>((set, get) => ({
   connected: false,
   bots: [],
+  sections: [],
+  since: {},
   loaded: false,
   error: '',
   load: async () => {
     try {
-      set({ bots: await lilbot.call('bots.list', {}), loaded: true, error: '' })
+      const [bots, sections] = await Promise.all([lilbot.call('bots.list', {}), lilbot.call('sections.list', {})])
+      const { bots: previous, since } = get()
+      set({ bots, sections, since: activitySince(previous, since, bots, Date.now()), loaded: true, error: '' })
     } catch (error) {
       set({ error: messageOf(error) })
     }

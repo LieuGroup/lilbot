@@ -27,7 +27,7 @@ export function MessageList({ items, queued, activity, emptyHint }: MessageListP
     <MessageScrollerProvider autoScroll defaultScrollPosition="end">
       <MessageScroller className="flex-1">
         <MessageScrollerViewport aria-label="Conversation">
-          <MessageScrollerContent className="mx-auto max-w-3xl gap-4 px-4 py-5">
+          <MessageScrollerContent className="mx-auto w-full max-w-[744px] gap-[18px] px-4 py-5 md:px-8">
             {items.length === 0 && <p className="mt-[20vh] text-center text-muted-foreground">{emptyHint}</p>}
             {items.map((item, index) => (
               // The transcript only grows at the end, so the position is a stable id.
@@ -40,8 +40,8 @@ export function MessageList({ items, queued, activity, emptyHint }: MessageListP
               <MessageScrollerItem key={`queued-${index}`} messageId={`queued-${index}`}>
                 <Message align="end" title="Waiting for the bot to finish">
                   <MessageContent>
-                    <Bubble align="end" variant="outline" className="max-w-[85%]">
-                      <BubbleContent className="rounded-2xl border-dashed border-primary/60! px-3.5 py-2.5 text-base whitespace-pre-wrap text-muted-foreground">
+                    <Bubble align="end" variant="outline" className="max-w-[min(480px,85%)]">
+                      <BubbleContent className="rounded-[18px] border-dashed border-foreground/20! bg-card! px-3.5 py-2 text-[15px]/6 whitespace-pre-wrap text-muted-foreground">
                         {text}
                       </BubbleContent>
                     </Bubble>
@@ -52,9 +52,9 @@ export function MessageList({ items, queued, activity, emptyHint }: MessageListP
             {/* The bot's one-line status ("Thinking...", "Using terminal..."), shimmering while it works. */}
             {activity && (
               <Trace role="status">
-                <TraceLine status="running">
-                  <TraceIcon>
-                    <SparklesIcon />
+                <TraceLine status="running" className="text-[13px]/5">
+                  <TraceIcon className="size-[13px]">
+                    <SparklesIcon className="size-[13px]" strokeWidth={2} />
                   </TraceIcon>
                   <TraceTitle>{activity}</TraceTitle>
                 </TraceLine>
