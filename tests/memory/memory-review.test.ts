@@ -17,7 +17,7 @@ function setup(settings: Partial<ConstructorParameters<typeof MemoryReviewer>[2]
   const queue = new ReviewQueue(database)
   const memory = new MemoryService(new MemoryStore(database), clock)
   const reviewer = new MemoryReviewer(queue, fake.engine, { enabled: true, turns: 10, quietMs: 120_000, minTurns: 3, ...settings }, clock)
-  const handle = createEngineApi(memory, 'token', 3370, { reviewer })
+  const handle = createEngineApi(memory, 'token', 3370, { botExists: () => true, reviewer })
   const call = async (endpoint: string, body: unknown) => {
     const request = new Request(`http://127.0.0.1:3370/engine/memory/${endpoint}`, {
       method: 'POST',

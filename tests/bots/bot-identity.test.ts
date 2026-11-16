@@ -151,3 +151,25 @@ test('a failed import transaction leaves no partial records', () => {
   expect(store.list()).toEqual([])
   expect(store.imported('test')).toBe(false)
 })
+
+test('start-up memory connection visits only non-deleted database bindings', async () => {
+  const { service, store, engine, runtimeIds, root } = fakeService()
+  try {
+    store.bind('b1', 'owned-native')
+    runtimeIds.add('owned-native')
+    runtimeIds.add('unbound-native')
+    store.save({ ...store.get('b1'), id: 'gone', engineBotId: 'deleted-native' })
+    runtimeIds.add('deleted-native')
+    store.markDeleted(store.get('gone'), { files: 'archive', privateMemories: 'keep' })
+    store.save({ ...store.get('b1'), id: 'other', engineId: 'other', engineBotId: 'other-native' })
+    const connected: string[] = []
+    engine.connectMemory = async id => {
+      connected.push(id)
+      return { aboutUser: [], ownNotes: [] }
+    }
+    expect(await service.connectAllMemory()).toEqual(['b1'])
+    expect(connected).toEqual(['owned-native'])
+  } finally {
+    await import('node:fs/promises').then(fs => fs.rm(root, { recursive: true, force: true }))
+  }
+})

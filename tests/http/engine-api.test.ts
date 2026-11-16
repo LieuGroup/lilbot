@@ -1,16 +1,20 @@
 import { describe, expect, test } from 'bun:test'
 
+import { BotStore } from '../../server/bots/bot-store'
 import { openDatabase } from '../../server/database/database'
 import { createEngineApi } from '../../server/http/engine-api'
+import { MemoryReviewer } from '../../server/memory/memory-reviewer'
 import { MemoryService } from '../../server/memory/memory-service'
 import { MemoryStore } from '../../server/memory/memory-store'
+import { ReviewQueue } from '../../server/memory/review-queue'
+import { fakeEngine } from '../helpers/fake-engine'
 
 const TOKEN = 'test-token'
 
 function api() {
   const memory = new MemoryService(new MemoryStore(openDatabase(':memory:')), () => Date.UTC(2026, 10, 16))
   let changes = 0
-  const handle = createEngineApi(memory, TOKEN, 3370, { onMemoryChanged: () => changes++ })
+  const handle = createEngineApi(memory, TOKEN, 3370, { botExists: () => true, onMemoryChanged: () => changes++ })
   const call = async (endpoint: string, body: unknown, headers: Record<string, string> = {}) => {
     const request = new Request(`http://127.0.0.1:3370/engine/memory/${endpoint}`, {
       method: 'POST',
@@ -76,19 +80,28 @@ describe('what a bot can do through it', () => {
   })
 })
 
-test('a deleted bot cannot write memory or enqueue late turns', async () => {
-  const memory = new MemoryService(new MemoryStore(openDatabase(':memory:')))
-  const handle = createEngineApi(memory, TOKEN, 3370, { botExists: () => false })
-  for (const endpoint of ['write', 'turn']) {
-    const response = await handle(
-      new Request(`http://127.0.0.1:3370/engine/memory/${endpoint}`, {
-        method: 'POST',
-        headers: { host: '127.0.0.1:3370', authorization: `Bearer ${TOKEN}` },
-        body: JSON.stringify({ botId: 'gone', chatId: 'old', kind: 'journal', text: 'Late fact.', user: 'Hello', assistant: 'Hello' })
-      }),
-      `/engine/memory/${endpoint}`
-    )
-    expect(response.status).toBe(404)
-  }
+test('unknown and deleted bots cannot read, write, forget or enqueue turns', async () => {
+  const database = openDatabase(':memory:')
+  const store = new BotStore(database)
+  store.save({ id: 'gone', name: 'Gone', function: '', instructions: '', model: null, isDefault: false, engineId: 'test', engineBotId: 'gone' })
+  store.markDeleted(store.get('gone'), { files: 'archive', privateMemories: 'keep' })
+  const memory = new MemoryService(new MemoryStore(database))
+  const queue = new ReviewQueue(database)
+  const reviewer = new MemoryReviewer(queue, fakeEngine().engine)
+  const handle = createEngineApi(memory, TOKEN, 3370, { botExists: id => store.exists(id), reviewer })
+  for (const botId of ['unknown', 'gone'])
+    for (const endpoint of ['context', 'recall', 'write', 'forget', 'turn']) {
+      const response = await handle(
+        new Request(`http://127.0.0.1:3370/engine/memory/${endpoint}`, {
+          method: 'POST',
+          headers: { host: '127.0.0.1:3370', authorization: `Bearer ${TOKEN}` },
+          body: JSON.stringify({ botId, id: 'deadbeef', chatId: 'old', kind: 'journal', text: 'Late fact.', user: 'Hello', assistant: 'Hello' })
+        }),
+        `/engine/memory/${endpoint}`
+      )
+      expect(response.status).toBe(404)
+    }
   expect(memory.list('gone')).toEqual([])
+  expect(queue.pending()).toEqual([])
+  database.close()
 })

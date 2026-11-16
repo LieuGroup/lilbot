@@ -1,6 +1,7 @@
 import { expect, spyOn, test } from 'bun:test'
+import { BotStore } from '../../server/bots/bot-store'
 import { openDatabase } from '../../server/database/database'
-import { MemoryReviewer } from '../../server/memory/memory-reviewer'
+import { defaultReviewSettings, MemoryReviewer } from '../../server/memory/memory-reviewer'
 import { ReviewQueue } from '../../server/memory/review-queue'
 import { LilBotError } from '../../shared/protocol'
 import { fakeEngine } from '../helpers/fake-engine'
@@ -51,6 +52,25 @@ test('an error message alone never discards queued turns', async () => {
   } finally {
     review.mockRestore()
     log.mockRestore()
+    database.close()
+  }
+})
+
+test('ticks discard even single turns of unknown or deleted bots while preserving owned missing runtimes', () => {
+  const database = openDatabase(':memory:')
+  const queue = new ReviewQueue(database)
+  const { engine } = fakeEngine()
+  const store = new BotStore(database)
+  const bot = { id: 'owned', name: 'Owned', function: '', instructions: '', model: null, isDefault: false, engineId: 'fake', engineBotId: 'missing-runtime' }
+  store.save(bot)
+  store.save({ ...bot, id: 'deleted', engineBotId: 'deleted-native' })
+  store.markDeleted(store.get('deleted'), { files: 'archive', privateMemories: 'keep' })
+  const reviewer = new MemoryReviewer(queue, engine, { ...defaultReviewSettings, enabled: false }, Date.now, id => store.exists(id))
+  try {
+    for (const id of ['unknown', 'deleted', 'owned']) queue.add(id, 'chat', 'single turn', 'reply', 1)
+    expect(reviewer.tick()).toEqual([])
+    expect(queue.pending().map(item => item.botId)).toEqual(['owned'])
+  } finally {
     database.close()
   }
 })

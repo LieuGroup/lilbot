@@ -55,9 +55,9 @@ export interface BotEngine {
   /** Makes the bot read and write LilBot's memory instead of the engine's own, from its next
    *  session on. Returns the notes the engine had, so LilBot can keep them. */
   connectMemory(botId: string, connection: MemoryConnection): Promise<LegacyNotes>
-  /** Brings every connected bot's memory adapter up to this LilBot's version. Returns the bots it
-   *  updated. Called at start-up, so shipping a new adapter needs no manual step. */
-  refreshMemory(): Promise<string[]>
+  /** Upgrades connected adapters only for LilBot's non-deleted bindings (native ids). Returns
+   *  updated native ids. Start-up passes must never discover their own set of profiles. */
+  refreshMemory(botIds: string[]): Promise<string[]>
   /** Runs `prompt` as a hidden session of the bot with only its memory tools, and resolves when
    *  the bot has finished. Used by the after-chat memory review. */
   reviewMemory(botId: string, prompt: string, options: ReviewOptions): Promise<void>

@@ -32,7 +32,7 @@ const bots = new BotService(engine, new BotStore(database), new BotPrefsStore(da
   memoryConnection: { url: `http://127.0.0.1:${PORT}`, tokenFile: join(scratch, 'engine-token') }
 })
 const reviewer = new MemoryReviewer(queue, bots)
-const api = createEngineApi(memory, engineToken(scratch), PORT, { reviewer })
+const api = createEngineApi(memory, engineToken(scratch), PORT, { botExists: id => new BotStore(database).exists(id), reviewer })
 const server = Bun.serve({
   hostname: '127.0.0.1',
   port: PORT,

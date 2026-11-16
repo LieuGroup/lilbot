@@ -38,7 +38,7 @@ const queue = new ReviewQueue(database)
 const [reviewProvider, reviewModel] = (process.env.LILBOT_REVIEW_MODEL ?? 'cliproxyapi::anthropic/claude-sonnet-5-5').split('::')
 const bots = new BotService(engine, new BotStore(database), new BotPrefsStore(database), new Workspaces(join(scratch, 'workspaces')), memory)
 const reviewer = new MemoryReviewer(queue, bots, { enabled: true, turns: 10, quietMs: 120_000, minTurns: 3, model: { provider: reviewProvider, model: reviewModel } })
-const engineApi = createEngineApi(memory, engineToken(scratch), PORT, { adapterVersion: MEMORY_ADAPTER_VERSION, reviewer })
+const engineApi = createEngineApi(memory, engineToken(scratch), PORT, { botExists: id => new BotStore(database).exists(id), adapterVersion: MEMORY_ADAPTER_VERSION, reviewer })
 
 let memoryCalls = 0
 const adapterVersions = new Set<string>()

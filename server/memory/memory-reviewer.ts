@@ -45,7 +45,8 @@ export class MemoryReviewer {
     private queue: ReviewQueue,
     private engine: Pick<BotEngine, 'reviewMemory'>,
     private settings: ReviewSettings = defaultReviewSettings,
-    private now: () => number = Date.now
+    private now: () => number = Date.now,
+    private botExists: (botId: string) => boolean = () => true
   ) {}
 
   /** Whether this chat is a review session: its writes follow the stricter review rules. */
@@ -66,8 +67,14 @@ export class MemoryReviewer {
 
   /** Called on a timer: starts a review for every bot that is due. Returns the bots it started. */
   tick(): string[] {
+    const pending = this.queue.pending().filter(({ botId }) => {
+      if (this.botExists(botId)) return true
+      this.queue.forgetBot(botId)
+      this.retryAt.delete(botId)
+      return false
+    })
     if (!this.settings.enabled) return []
-    const due = this.queue.pending().filter(pending => this.due(pending))
+    const due = pending.filter(pending => this.due(pending))
     for (const { botId } of due) void this.review(botId).catch(() => {})
     return due.map(pending => pending.botId)
   }

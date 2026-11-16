@@ -238,7 +238,8 @@ Oscar. Three layers:
    by search, and `contextBlock`: what a bot is shown before each turn (lasting facts, then its last 10 journal
    entries, within about 1,500 tokens; the rest is reachable by recall).
 3. The engine adapter. `server/http/engine-api.ts` is a local HTTP endpoint (`/engine/memory/*`) for adapters on this
-   machine: loopback only, no browsers, token from `<data dir>/engine-token`. The Hermes adapter is a memory
+   machine: loopback only, no browsers, token from `<data dir>/engine-token`. Unknown and deleted LilBot ids
+   are refused, including the bot behind a creation capability. The Hermes adapter is a memory
    provider plug-in in `server/engines/hermes/memory-adapter/` (Python, standard library only). It holds no data. It puts
    the usage rules in the system prompt (static, so prompt caching holds), supplies the memory block once per turn,
    and gives the bot two tools: `recall_memory` and `update_memory` (write or forget one fact).
@@ -260,7 +261,9 @@ user input" on its own.
 Hermes keeps a plug-in's code loaded per folder until the gateway restarts. So each version is installed under its
 own folder and provider name (`lilbot-memory-v0-5-0`): a new version is a new folder, loaded fresh on the bot's next
 session. To ship a plug-in change: bump `version` in `plugin.yaml` and `VERSION` in `__init__.py`, and restart
-LilBot. At start-up `BotEngine.refreshMemory` reinstalls the adapter for every connected bot on an older version.
+LilBot. At start-up `BotEngine.refreshMemory` takes only the non-deleted database bindings for its engine, by native id,
+and reinstalls older adapters only for those profiles. All start-up passes that touch profiles must use these
+bindings, never all engine profiles. Memory connection also walks only non-deleted database bots.
 No Hermes restart is needed. LilBot logs a warning when a bot still calls with an older adapter.
 
 ### The after-chat review
@@ -273,6 +276,8 @@ runs with Hermes' built-in memory tool, which a connected bot no longer has, so 
 - `server/memory/memory-reviewer.ts` checks every 20 seconds and reviews a bot once 10 turns wait, or once at
   least 3 wait and the chat has been quiet for 2 minutes. `LILBOT_REVIEW=off`, `LILBOT_REVIEW_TURNS` and
   `LILBOT_REVIEW_QUIET_SECONDS` change that.
+- Each reviewer tick drops queued turns for unknown or deleted database bots, even below the review threshold
+  or with reviews disabled. Owned bots with missing runtimes keep their turns.
 - If the engine reports a missing bot, its queued turns are discarded once. Other review failures retry after 10 minutes.
 - LilBot runs no model. `BotEngine.reviewMemory` runs the review as a hidden session of the same bot with only its
   memory tools, on `LILBOT_REVIEW_MODEL` (`provider::model`; without it, the bot's own model, which costs more).

@@ -56,7 +56,7 @@ const json = (status: number, body: unknown) => Response.json(body, { status })
 
 export interface EngineApiOptions {
   bots?: BotService
-  botExists?: (botId: string) => boolean
+  botExists: (botId: string) => boolean
   onMemoryChanged?: () => void
   /** The adapter version this LilBot ships. A bot calling with another one runs stale adapter code. */
   adapterVersion?: string
@@ -64,7 +64,7 @@ export interface EngineApiOptions {
   reviewer?: MemoryReviewer
 }
 
-export function createEngineApi(memory: MemoryService, token: string, port: number, options: EngineApiOptions = {}) {
+export function createEngineApi(memory: MemoryService, token: string, port: number, options: EngineApiOptions) {
   const onMemoryChanged = options.onMemoryChanged ?? (() => {})
   const staleBots = new Set<string>()
   const expected = Buffer.from(`Bearer ${token}`)
@@ -84,7 +84,7 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
       try {
         const capability = request.headers.get('x-lilbot-bot-capability') ?? ''
         const caller = (await options.bots?.listBots())?.find(bot => matchesCapability(token, bot.id, capability))
-        if (!caller || !options.bots) return json(403, { error: 'Unknown bot credential.' })
+        if (!caller || !options.bots || !options.botExists(caller.id)) return json(403, { error: 'Unknown bot credential.' })
         const input = BotCreationInput.safeParse(await request.json())
         if (!input.success) return json(400, { error: 'Invalid bot creation request.' })
         return json(200, await options.bots.createFromBot(caller.id, input.data))
@@ -99,7 +99,7 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
       const parsed = routes[route].safeParse(await request.json().catch(() => null))
       if (!parsed.success) return json(400, { error: `Invalid request: ${parsed.error.issues[0]?.path.join('.')} ${parsed.error.issues[0]?.message}` })
       const body = parsed.data as any
-      if (options.botExists && !options.botExists(body.botId)) return json(404, { error: 'This bot was deleted.' })
+      if (!options.botExists(body.botId)) return json(404, { error: 'This bot does not exist.' })
       const version = request.headers.get('x-lilbot-adapter-version')
       if (options.adapterVersion && version !== options.adapterVersion && !staleBots.has(body.botId)) {
         staleBots.add(body.botId)
