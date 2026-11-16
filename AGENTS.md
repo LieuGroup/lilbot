@@ -348,6 +348,13 @@ How `needs-ui` works:
 - So `needs-ui` on an issue, open or closed, means "no prototype yet". No `needs-ui` means "no screen, or a linked
   `ui` issue exists".
 
+Cleaning up after a merge:
+
+- The agent that merges a PR also removes what it used: its t3 worktree, its local branch and its remote branch.
+  With squash merges git reports the branch as unmerged; delete it once the PR shows as merged.
+- Remove only your own worktree and branch. Another thread's unmerged work stays.
+- A branch whose PR was abandoned is removed the same way, after saying so in the issue.
+
 ## Commands
 
 - `bun run verify`: lint, typecheck, unit and contract tests, and build the web app into `dist/`. `bun run format`
