@@ -65,7 +65,9 @@ const migrations: string[] = [
      UNIQUE(engine_id, engine_bot_id)
    );
    CREATE TABLE bot_imports (engine_id TEXT PRIMARY KEY);`,
-  `CREATE TABLE bot_creations (bot_id TEXT PRIMARY KEY);`
+  `CREATE TABLE bot_creations (bot_id TEXT PRIMARY KEY);`,
+  `ALTER TABLE bots ADD COLUMN deletion TEXT;
+   CREATE TABLE bot_delete_defaults (id INTEGER PRIMARY KEY CHECK (id = 1), files TEXT NOT NULL, private_memories TEXT NOT NULL);`
 ]
 
 /** `path` may be ':memory:' for tests. Applies any migration steps the file has not seen. */

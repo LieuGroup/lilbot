@@ -28,6 +28,9 @@ export class BrowserSession {
   ) {}
 
   private handlers: Handlers = {
+    'bots.delete': input => this.bots.deleteBot(input),
+    'bots.deleteDefaults.get': async () => this.bots.deleteDefaults(),
+    'bots.deleteDefaults.set': async input => this.bots.setDeleteDefaults(input),
     'bots.list': async () => (await this.bots.listBots()).map(bot => (this.activity ? { ...bot, activity: this.activity.state(bot.id) } : bot)),
     'activity.setUnread': async ({ botId, unread }) => {
       await this.bots.getBot(botId)

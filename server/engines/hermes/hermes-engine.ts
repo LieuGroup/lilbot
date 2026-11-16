@@ -19,6 +19,7 @@ import type {
 import { watchHermesActivity } from './hermes-activity'
 import { botDetailFromProfile, botFromProfile, DEFAULT_PROFILE, providersFromModelOptions } from './hermes-bot-mapping'
 import { chatEventFrom, itemsFromRows, sessionLostEvents } from './hermes-chat-mapping'
+import { deleteRuntime } from './hermes-delete'
 import { installMemory, legacyNotes, memoryConnection, memoryCurrent, memoryInstalled } from './hermes-memory-setup'
 import { applyIdentity, createRuntime } from './hermes-runtime'
 import { HermesSocket } from './hermes-socket'
@@ -101,6 +102,12 @@ export class HermesEngine implements BotEngine {
     const detail = await this.getBot(id)
     await applyIdentity(await this.manage(), id, identity, detail)
     return { abilities: detail.abilities, memoryConnected: detail.memoryConnected }
+  }
+
+  async deleteRuntime(id: string) {
+    if (!PROFILE_ID.test(id) || id === DEFAULT_PROFILE) throw new LilBotError('protected_bot', 'The default bot cannot be deleted.')
+    if (this.botIds && !this.botIds.includes(id)) throw new LilBotError('bot_not_found', 'That bot does not exist.')
+    await deleteRuntime(id)
   }
 
   async refreshMemory(): Promise<string[]> {

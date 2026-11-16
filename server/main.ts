@@ -47,6 +47,10 @@ const memory = new MemoryService(new MemoryStore(database))
 const memoryChanged = () => server.publish(EVERYONE, JSON.stringify({ event: 'memory.changed' }))
 const token = engineToken(DATA_DIR)
 const bots = new BotService(engine, new BotStore(database), new BotPrefsStore(database), new Workspaces(WORKSPACES_DIR), memory, {
+  cleanupBot: botId => {
+    activity.forgetBot(botId)
+    new ReviewQueue(database).forgetBot(botId)
+  },
   changed: botsChanged,
   memoryChanged,
   memoryConnection: { url: `http://127.0.0.1:${PORT}`, tokenFile: join(DATA_DIR, 'engine-token') }
@@ -78,7 +82,13 @@ async function prepareMemory() {
 }
 prepareMemory().catch(error => console.error('[memory] could not prepare memory for the bots:', error instanceof Error ? error.message : error))
 
-const engineApi = createEngineApi(memory, token, PORT, { bots, onMemoryChanged: memoryChanged, adapterVersion: MEMORY_ADAPTER_VERSION, reviewer })
+const engineApi = createEngineApi(memory, token, PORT, {
+  bots,
+  botExists: id => !new BotStore(database).deleted(id),
+  onMemoryChanged: memoryChanged,
+  adapterVersion: MEMORY_ADAPTER_VERSION,
+  reviewer
+})
 engine.onBotsChanged(botsChanged)
 bots.watchActivity(event => activity.observe(event), activity.cursor)
 const DIST = join(import.meta.dir, '..', 'dist')

@@ -20,13 +20,41 @@ export class BotStore {
   constructor(private db: Database) {}
 
   list(): BotRecord[] {
-    return (this.db.query('SELECT * FROM bots ORDER BY is_default DESC, name, id').all() as Row[]).map(fromRow)
+    return (this.db.query('SELECT * FROM bots WHERE deletion IS NULL ORDER BY is_default DESC, name, id').all() as Row[]).map(fromRow)
   }
 
   get(id: string): BotRecord {
-    const row = this.db.query('SELECT * FROM bots WHERE id = ?').get(id) as Row | null
+    const row = this.db.query('SELECT * FROM bots WHERE id = ? AND deletion IS NULL').get(id) as Row | null
     if (!row) throw new LilBotError('bot_not_found', 'That bot does not exist.')
     return fromRow(row)
+  }
+
+  /** Tombstones retain names and the exact choices for retries and attribution. */
+  deleted(id: string): { bot: BotRecord; choices: import('../../shared/bot-delete-schema').BotDeleteDefaults; complete: boolean } | null {
+    const row = this.db.query('SELECT * FROM bots WHERE id = ? AND deletion IS NOT NULL').get(id) as (Row & { deletion: string }) | null
+    return row ? { bot: fromRow(row), ...JSON.parse(row.deletion) } : null
+  }
+
+  markDeleted(bot: BotRecord, choices: import('../../shared/bot-delete-schema').BotDeleteDefaults, complete = false) {
+    this.db.transaction(() => {
+      this.db.query('UPDATE bots SET deletion = ? WHERE id = ?').run(JSON.stringify({ choices, complete }), bot.id)
+      this.db.query('DELETE FROM bot_creations WHERE bot_id = ?').run(bot.id)
+    })()
+  }
+
+  deleteDefaults(): import('../../shared/bot-delete-schema').BotDeleteDefaults {
+    return (
+      (this.db.query('SELECT files, private_memories AS privateMemories FROM bot_delete_defaults WHERE id = 1').get() as
+        | import('../../shared/bot-delete-schema').BotDeleteDefaults
+        | null) ?? { files: 'archive', privateMemories: 'forget' }
+    )
+  }
+
+  setDeleteDefaults(choices: import('../../shared/bot-delete-schema').BotDeleteDefaults) {
+    this.db
+      .query('INSERT INTO bot_delete_defaults VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET files=excluded.files, private_memories=excluded.private_memories')
+      .run(choices.files, choices.privateMemories)
+    return choices
   }
 
   save(bot: BotRecord) {
@@ -42,7 +70,7 @@ export class BotStore {
   }
 
   finishCreation(id: string) {
-    this.db.query('INSERT OR IGNORE INTO bot_creations (bot_id) VALUES (?)').run(id)
+    this.db.query('INSERT OR IGNORE INTO bot_creations (bot_id) SELECT id FROM bots WHERE id = ? AND deletion IS NULL').run(id)
   }
 
   bind(id: string, engineBotId: string) {

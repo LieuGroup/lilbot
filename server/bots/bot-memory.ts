@@ -13,9 +13,11 @@ export class BotMemory {
   ) {}
 
   async list(botId: string) {
+    const deleted = this.runtimes.store.deleted(botId)
+    if (deleted) return { connected: false, botName: deleted.bot.name, ...this.memory.panel(botId) }
     const bot = await this.runtimes.require(botId)
     const state = await this.runtimes.optionalState(bot)
-    return { connected: state?.memoryConnected ?? false, ...this.memory.panel(botId) }
+    return { connected: state?.memoryConnected ?? false, botName: bot.name, ...this.memory.panel(botId) }
   }
 
   async connectNew(botId: string) {
