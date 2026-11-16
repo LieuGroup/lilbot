@@ -68,7 +68,22 @@ const migrations: string[] = [
   `CREATE TABLE bot_creations (bot_id TEXT PRIMARY KEY);`,
   `ALTER TABLE bots ADD COLUMN deletion TEXT;
    CREATE TABLE bot_delete_defaults (id INTEGER PRIMARY KEY CHECK (id = 1), files TEXT NOT NULL, private_memories TEXT NOT NULL);`,
-  `ALTER TABLE bots ADD COLUMN permission_mode TEXT NOT NULL DEFAULT 'full-access';`
+  `ALTER TABLE bots ADD COLUMN permission_mode TEXT NOT NULL DEFAULT 'full-access';`,
+  // Routines and their durable execution identities belong to LilBot, not the engine.
+  `CREATE TABLE routines (
+     id TEXT PRIMARY KEY, bot_id TEXT NOT NULL REFERENCES bots(id), request_id TEXT NOT NULL,
+     description TEXT NOT NULL, schedule TEXT NOT NULL, created_by TEXT NOT NULL,
+     paused INTEGER NOT NULL DEFAULT 0, last_run_at INTEGER, next_run_at INTEGER NOT NULL,
+     deleted INTEGER NOT NULL DEFAULT 0, UNIQUE(bot_id, request_id)
+   );
+   CREATE TABLE routine_runs (
+     id TEXT PRIMARY KEY, routine_id TEXT NOT NULL REFERENCES routines(id) ON DELETE CASCADE,
+     bot_id TEXT NOT NULL, due_at INTEGER NOT NULL, started_at INTEGER, finished_at INTEGER,
+     chat_id TEXT, status TEXT NOT NULL DEFAULT 'pending', result TEXT NOT NULL DEFAULT '',
+     UNIQUE(routine_id, due_at)
+   );
+   CREATE INDEX routine_runs_pending ON routine_runs(status);
+   CREATE TABLE routine_chats (chat_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES routine_runs(id) ON DELETE CASCADE);`
 ]
 
 /** `path` may be ':memory:' for tests. Applies any migration steps the file has not seen. */
