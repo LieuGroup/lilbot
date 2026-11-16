@@ -131,7 +131,7 @@ test('identity migration preserves populated primary, prefs, main chat, facts, q
     old.exec("INSERT INTO bot_activity VALUES ('b1', 1); INSERT INTO activity_cursors VALUES ('b1', 'chat-legacy', 'epoch:12')")
     const tables = ['bot_prefs', 'primary_bot', 'memory_facts', 'review_turns', 'sections', 'bot_activity', 'activity_cursors']
     const before = tables.map(table => old.query(`SELECT * FROM ${table}`).all())
-    old.exec('DROP TABLE bots; DROP TABLE bot_imports; PRAGMA user_version = 5')
+    old.exec('DROP TABLE bot_creations; DROP TABLE bots; DROP TABLE bot_imports; PRAGMA user_version = 5')
     old.close()
     const db = openDatabase(path)
     const store = new BotStore(db)

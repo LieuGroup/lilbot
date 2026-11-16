@@ -65,7 +65,7 @@ export interface BotEngine {
 
 export interface OpenChat {
   snapshot: ChatSnapshot
-  send(text: string): Promise<void>
+  send(text: string, options?: { hidden?: boolean; inputId?: string }): Promise<void>
   stop(): Promise<void>
   close(): void
 }

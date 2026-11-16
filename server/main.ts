@@ -78,7 +78,7 @@ async function prepareMemory() {
 }
 prepareMemory().catch(error => console.error('[memory] could not prepare memory for the bots:', error instanceof Error ? error.message : error))
 
-const engineApi = createEngineApi(memory, token, PORT, { onMemoryChanged: memoryChanged, adapterVersion: MEMORY_ADAPTER_VERSION, reviewer })
+const engineApi = createEngineApi(memory, token, PORT, { bots, onMemoryChanged: memoryChanged, adapterVersion: MEMORY_ADAPTER_VERSION, reviewer })
 engine.onBotsChanged(botsChanged)
 bots.watchActivity(event => activity.observe(event), activity.cursor)
 const DIST = join(import.meta.dir, '..', 'dist')

@@ -64,7 +64,8 @@ const migrations: string[] = [
      engine_id TEXT NOT NULL, engine_bot_id TEXT NOT NULL,
      UNIQUE(engine_id, engine_bot_id)
    );
-   CREATE TABLE bot_imports (engine_id TEXT PRIMARY KEY);`
+   CREATE TABLE bot_imports (engine_id TEXT PRIMARY KEY);`,
+  `CREATE TABLE bot_creations (bot_id TEXT PRIMARY KEY);`
 ]
 
 /** `path` may be ':memory:' for tests. Applies any migration steps the file has not seen. */

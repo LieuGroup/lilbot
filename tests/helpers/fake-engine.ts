@@ -59,7 +59,10 @@ export function fakeEngine(options: { earlyEvents?: ChatEvent[] } = {}) {
       for (const early of options.earlyEvents ?? []) onEvent(early)
       return {
         snapshot: { chatId: id, botId, title: '', running: false, workspace: chatOptions.workspace, items: [] },
-        send: async text => void log.push(`send:${id}:${text}`),
+        send: async (text, options) => {
+          log.push(`send:${id}:${text}`)
+          if (options?.hidden) log.push(`hidden:${options.inputId}`)
+        },
         stop: async () => void log.push(`stop:${id}`),
         close: () => void log.push(`close:${id}`)
       }
