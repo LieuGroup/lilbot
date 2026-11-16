@@ -8,7 +8,9 @@
 
 /* shadcn/ui's colour tokens, with LilBot's palette: warm grey page, white cards, blue primary.
  * Use only these names in class lists (bg-background, text-muted-foreground, bg-primary, ...),
- * plus `success` for the "connected" and "saved" green. */
+ * plus `success` for the "finished" and "saved" green and `hairline` for the faint line between
+ * columns and around cards (foreground at 8%, so dark mode follows on its own). Other tints are
+ * the foreground at an opacity: `bg-foreground/4` for hover, `/6` for a pressed toggle or tab. */
 :root {
   color-scheme: light dark;
   --background: #f6f6f4;
@@ -31,6 +33,7 @@
   --input: #d6d6d0;
   --ring: #2f5fe0;
   --radius: 0.75rem;
+  --hairline: color-mix(in srgb, var(--foreground) 8%, transparent);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -77,6 +80,7 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-success: var(--success);
+  --color-hairline: var(--hairline);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -87,6 +91,29 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* A bot's reply: 15/24 at 90% foreground, no bubble. Built from the tokens, so dark mode follows. */
+@utility prose-chat {
+  font-size: 15px;
+  line-height: 24px;
+  --tw-prose-body: color-mix(in srgb, var(--foreground) 90%, transparent);
+  --tw-prose-headings: var(--foreground);
+  --tw-prose-lead: var(--foreground);
+  --tw-prose-bold: var(--foreground);
+  --tw-prose-links: var(--foreground);
+  --tw-prose-code: var(--foreground);
+  --tw-prose-quotes: var(--foreground);
+  --tw-prose-kbd: var(--foreground);
+  --tw-prose-bullets: var(--muted-foreground);
+  --tw-prose-counters: var(--muted-foreground);
+  --tw-prose-captions: var(--muted-foreground);
+  --tw-prose-hr: var(--hairline);
+  --tw-prose-quote-borders: var(--border);
+  --tw-prose-th-borders: var(--border);
+  --tw-prose-td-borders: var(--hairline);
+  --tw-prose-pre-bg: var(--background);
+  --tw-prose-pre-code: var(--foreground);
 }
 
 @layer base {

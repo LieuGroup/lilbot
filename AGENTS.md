@@ -47,12 +47,14 @@ server/            The LilBot server (runs on the leader).
 
 web/src/           The web app (what you see in the browser).
   app/               start-up, the routes, the connection to the server, styles
-  bots/              bot list, create bot, Setup panel
+  bots/              roster, create bot, details panel and its Setup tab
   chat/              the conversation
-  memory/            Memory panel
+  activity/          the details panel's Activity tab
+  library/           the Library tab (placeholder until #14)
+  memory/            the Memory tab
   routines/          data client for the future Routines panel
   ui/                shadcn/ui parts (added by the shadcn CLI, ours to edit) and our own small shared
-                     parts built from them (panel frame, page header, notice, bot badge, form field)
+                     parts built from them (tab body, page header, icon button, notice, bot badge, form field)
 
 tests/             Automatic tests, in the same folders as the code they test.
 live-checks/       Checks that talk to the real Hermes with a temporary bot.
@@ -88,8 +90,9 @@ model. Request ids prevent duplicate creation, including concurrent retries and 
 The bot appears immediately; a hidden first prompt starts its main conversation with its own greeting
 and task suggestions. Normal activity observation marks that reply unread. The primary returns a link.
 The app's create form stays available.
-Next: the Grok Bot style roster and details panel (sections, pin, hide, avatars, unread, Activity and Library
-tabs), the nightly memory tidy-up, delete-bot UI, edit abilities and the Routines panel.
+The app shell is three columns (#36): roster, conversation, details panel with Activity, Library, Memory and Setup
+tabs. Next: the bot menu and Settings (#37), avatars (#38), the Routines and Library screens, the nightly memory
+tidy-up and edit abilities.
 Desktop (Tauri) and iOS (Expo) come after the web app. Each bot defaults to full access; LilBot verifies
 and repairs its Hermes profile's approvals-off setting on startup and before use. There are no approval cards.
 
@@ -111,10 +114,16 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
     `shared/` for a library, and never add the Vercel AI SDK. Next to adopt, when their feature exists: Context,
     File Tree, Confirmation, Subagent, Plan, Sources.
   - Colours: only shadcn's token names (`bg-background`, `bg-card`, `bg-muted`, `text-muted-foreground`,
-    `bg-primary`, `text-destructive`, `border`), plus `success` for green. They are defined once in
-    `app/styles.css` with LilBot's palette; dark mode follows the device (`prefers-color-scheme`).
+    `bg-primary`, `text-destructive`, `border`), plus `success` for green and `hairline` (foreground at 8%) for the
+    line between columns and around cards. Other tints are the foreground at an opacity (`bg-foreground/4` hover,
+    `/6` pressed). Accent blue (`primary`) is only for the unread dot and the working spinner; switches and primary
+    buttons are ink (`bg-foreground`). They are defined once in `app/styles.css` with LilBot's palette; dark mode
+    follows the device (`prefers-color-scheme`). Bot replies use the `prose-chat` utility defined there.
+  - Type scale, closed: 12 meta and section labels, 13 previews and menus, 14 names, 15 chat text, 16 panel and
+    dialog titles. Weights 400, 500, 600. Icons 16px at stroke 1.75 in 28px buttons (`ui/icon-button.ts`).
   - Feature code imports parts as `@/ui/<part>`. Pages with forms and menus are lazy routes in `app/router.tsx`, so
-    the chat's first load stays small (about 205 kB of JavaScript and 14 kB of styles, compressed).
+    the chat's first load stays small (about 210 kB of JavaScript and 15 kB of styles, compressed, counting every
+    chunk the first page imports; Vite's per-file sizes alone understate it).
 - Checks: Biome, `tsc`, `bun test`, Vite build, all through `bun run verify`. `bun run check:live` is the live
   check against the running Hermes.
 
@@ -181,10 +190,30 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
   memory changes to existing profiles.
 - `server/http/socket-guard.ts`: who may open the socket (allowed Host names plus same-origin). The tailnet name is set
   in the service's `LILBOT_ALLOWED_HOSTS`, not in code.
-- `web/`: `app/` (start-up, routes, the connection `lilbot-socket.ts`, styles), `bots/` (store, sidebar, form, create page, Setup panel), `chat/` (pure
-  state in `chat-state.ts`, per-bot store in `chat-store.ts`, lifecycle in `use-chat.ts`, the chat column),
-  `memory/` (the Memory panel). `/bots/$botId` is a layout route: the chat column stays mounted and
-  connected while panel routes under it (`setup`, `memory`) open and close. Panels use `ui/panel.tsx`. Add new panels as child routes. On a phone an open panel covers the chat.
+- `web/`: `app/` (start-up, routes, the connection `lilbot-socket.ts`, styles), `bots/` (store, roster, form, create
+  page, details panel, Setup tab), `chat/` (pure state in `chat-state.ts`, per-bot store in `chat-store.ts`,
+  lifecycle in `use-chat.ts`, the chat column), `activity/`, `library/` and `memory/` (their tabs).
+- Layout (`app/router.tsx`): on a wide screen three columns. The roster (272px) and details panel (332px) sit on the
+  page tint (`bg-background`), the conversation on `bg-card`; a `hairline` divides them. The roster
+  (`bots/bot-sidebar.tsx`) has the app icon, search (filters names and functions, hidden bots included) and new bot;
+  then the primary bot with a star, the user's sections as 12px labels, and the collapsed "Unassigned" and "Hidden"
+  groups with counts (with no sections, bots are listed plainly; the group holding the open bot stays open; open
+  groups are remembered per browser). Grouping is `bots/roster-groups.ts`; pinned bots go first in their group.
+  A row (52px) shows one line from `bots/row-state.ts`: working (blue spinner and the activity text), "Waiting for
+  you", finished (green check), failed (red cross), or, idle, the bot's function (there is no message preview in
+  the data yet). Unread rows have a 600 name and a blue dot; on hover the "more" button replaces the dot (its menu
+  is #37). The footer shows the user and, while the socket is down, "Offline · reconnecting" with a red dot
+  (the composer then says "Reconnecting..."). The chat header is one 52px line: name, function, new session and the
+  details toggle. Conversation column max 680px: bot text without a bubble (15/24), the user's message in a tinted
+  bubble, tool lines 13px, a round composer with an ink send/stop button (stop while the bot works and the box is
+  empty) and a disabled attach button kept for later.
+- Details panel (`bots/bot-details-panel.tsx`): avatar, name and pill tabs; each tab is the route
+  `/bots/$botId/$tab` (`activity`, `library`, `memory`, `setup`), its content a lazy chunk wrapped in `ui/panel.tsx`.
+  `/bots/$botId` is a layout route: the chat column stays mounted and connected while tabs open, change and close.
+  At 1280px and wider the panel opens on Activity by itself unless the user closed it (remembered per browser);
+  opening another bot keeps the open tab. On a phone the panel opens only from the toggle and covers the chat.
+  Activity shows the live state (with how long, only when this browser saw it start: `activity/activity-since.ts`),
+  a Routines placeholder and the workspace folder (click copies the path; a browser cannot open a server folder).
 - The conversation uses AI Elements' Message Scroller: it opens at its latest message (also after a reload or
   resume); a sent message moves up and the reply grows below it (Oscar's choice); the list follows the reply only
   while the reader stays at the end. Only messages sent while the list is open are scroll anchors: the scroller jumps

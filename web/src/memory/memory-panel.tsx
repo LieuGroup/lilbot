@@ -1,4 +1,3 @@
-import { useParams } from '@tanstack/react-router'
 import { useCallback, useEffect, useState } from 'react'
 import { Button } from '@/ui/button'
 import { Notice } from '@/ui/notice'
@@ -31,8 +30,7 @@ function groupFacts(facts: MemoryFact[], botId: string): Group[] {
 }
 
 /** The Memory panel beside the chat: everything this bot remembers, and the means to correct it. */
-export function MemoryPanel() {
-  const { botId } = useParams({ from: '/bots/$botId/memory' })
+export function MemoryPanel({ botId }: { botId: string }) {
   const connected = useBotStore(state => state.connected)
   const bots = useBotStore(state => state.bots)
   const [facts, setFacts] = useState<MemoryFact[] | null>(null)
@@ -86,7 +84,7 @@ export function MemoryPanel() {
   }
 
   return (
-    <Panel title="Memory" botId={botId}>
+    <Panel>
       {error && <Notice tone="error">{error}</Notice>}
       {facts === null && !error && <p className="text-muted-foreground">Loading...</p>}
 

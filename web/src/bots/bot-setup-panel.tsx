@@ -1,4 +1,3 @@
-import { useParams } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { Button } from '@/ui/button'
 import { Notice } from '@/ui/notice'
@@ -44,8 +43,7 @@ function AbilitySummary({ abilities }: { abilities: Ability[] }) {
 }
 
 /** The Setup panel beside the chat: what the bot is, how it behaves, and what it can use. */
-export function BotSetupPanel() {
-  const { botId } = useParams({ from: '/bots/$botId/setup' })
+export function BotSetupPanel({ botId }: { botId: string }) {
   const connected = useBotStore(state => state.connected)
   const upsert = useBotStore(state => state.upsert)
   const [bot, setBot] = useState<BotDetail | null>(null)
@@ -67,7 +65,7 @@ export function BotSetupPanel() {
   }, [botId, connected])
 
   return (
-    <Panel title="Setup" botId={botId}>
+    <Panel>
       {error && <Notice tone="error">{error}</Notice>}
       {!bot && !error && <p className="text-muted-foreground">Loading...</p>}
       {bot && (

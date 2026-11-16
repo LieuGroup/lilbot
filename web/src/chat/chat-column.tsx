@@ -1,47 +1,62 @@
 import { Link } from '@tanstack/react-router'
-import { BrainIcon, SettingsIcon, SquarePenIcon } from 'lucide-react'
-import { Button, buttonVariants } from '@/ui/button'
+import { PanelRightIcon, SquarePenIcon } from 'lucide-react'
+import { Button } from '@/ui/button'
+import { iconButton } from '@/ui/icon-button'
 import { PageHeader } from '@/ui/page-header'
 import { useBotStore } from '../bots/bot-store'
+import { rememberDetailsOpen, useDetailsTab } from '../bots/details-tabs'
 import { Composer } from './composer'
 import { MessageList } from './message-list'
 import { useChat } from './use-chat'
-
-const headerButton = buttonVariants({ variant: 'outline', size: 'lg', className: 'px-2.5 max-sm:size-9 max-sm:px-0' })
 
 /** The conversation with one bot. It stays open while the details panel beside it changes. */
 export function ChatColumn({ botId }: { botId: string }) {
   const bot = useBotStore(state => state.bots.find(candidate => candidate.id === botId))
   const connected = useBotStore(state => state.connected)
+  const tab = useDetailsTab()
   const { chat, ready, error, send, stop, newChat } = useChat(botId)
   const name = bot?.name ?? botId
-  const hint = error || (!connected ? 'Connecting...' : !ready ? 'Opening chat...' : `Send a message to start with ${name}.`)
+  const hint = error || (!connected ? 'Reconnecting...' : !ready ? 'Opening chat...' : `Send a message to start with ${name}.`)
 
   return (
-    <div className="flex h-full min-w-0 flex-col">
+    <div className="flex h-full min-w-0 flex-col bg-card">
       <PageHeader
         title={name}
-        subtitle={chat.title || bot?.function}
+        subtitle={bot?.function}
         actions={
           <>
-            <Link to="/bots/$botId/memory" params={{ botId }} aria-label="Memory" className={headerButton}>
-              <BrainIcon />
-              <span className="max-sm:sr-only">Memory</span>
-            </Link>
-            <Link to="/bots/$botId/setup" params={{ botId }} aria-label="Setup" className={headerButton}>
-              <SettingsIcon />
-              <span className="max-sm:sr-only">Setup</span>
-            </Link>
-            <Button variant="outline" className={headerButton} onClick={newChat} disabled={!ready} aria-label="New session" title="Start a new session with this bot">
+            <Button variant="ghost" size="icon-sm" className={iconButton()} onClick={newChat} disabled={!ready} aria-label="New session" title="Start a new session with this bot">
               <SquarePenIcon />
-              <span className="max-sm:sr-only">New session</span>
             </Button>
+            {tab ? (
+              <Link
+                to="/bots/$botId"
+                params={{ botId }}
+                onClick={() => rememberDetailsOpen(false)}
+                aria-label="Hide details"
+                title="Hide details"
+                className={iconButton({ on: true })}
+              >
+                <PanelRightIcon />
+              </Link>
+            ) : (
+              <Link
+                to="/bots/$botId/$tab"
+                params={{ botId, tab: 'activity' }}
+                onClick={() => rememberDetailsOpen(true)}
+                aria-label="Show details"
+                title="Show details"
+                className={iconButton()}
+              >
+                <PanelRightIcon />
+              </Link>
+            )}
           </>
         }
       />
       {/* A new scroller per conversation, so each one opens at its latest message. */}
       <MessageList key={chat.chatId || botId} items={chat.items} queued={chat.queued} activity={chat.running ? chat.activity : ''} emptyHint={hint} />
-      <Composer disabled={!ready} running={chat.running} botName={name} onSend={send} onStop={stop} />
+      <Composer disabled={!ready} disabledHint={connected ? 'Opening chat...' : 'Reconnecting...'} running={chat.running} botName={name} onSend={send} onStop={stop} />
     </div>
   )
 }
