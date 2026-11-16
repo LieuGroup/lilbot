@@ -1,11 +1,11 @@
 /** One browser connection: checks each request, runs it on the bot service, and forwards chat events. */
 import type { z } from 'zod'
-
 import type { ChatEvent } from '../../shared/chat-schema'
 import { type EventFrame, LilBotError, type Method, methods, RequestFrame, type ResponseFrame, type Results } from '../../shared/protocol'
 import type { ActivityService } from '../activity/activity-service'
 import type { BotService } from '../bots/bot-service'
 import type { OpenChat } from '../engines/bot-engine'
+import type { LibraryService } from '../library/library-service'
 import type { RoutineService } from '../routines/routine-service'
 
 const MAX_OPEN_CHATS = 8
@@ -26,12 +26,17 @@ export class BrowserSession {
     private bots: BotService,
     private sendFrame: (frame: ResponseFrame | EventFrame) => void,
     private activity?: ActivityService,
-    private routines?: RoutineService
+    private routines?: RoutineService,
+    private library?: LibraryService
   ) {}
 
   private routineService() {
     if (!this.routines) throw new LilBotError('unavailable', 'Routines are unavailable.')
     return this.routines
+  }
+  private libraryService() {
+    if (!this.library) throw new LilBotError('unavailable', 'Library is unavailable.')
+    return this.library
   }
   private handlers: Handlers = {
     'routines.list': ({ botId }) => this.routineService().list(botId),
@@ -39,6 +44,11 @@ export class BrowserSession {
     'routines.resume': ({ botId, id }) => this.routineService().pause(botId, id, false),
     'routines.delete': ({ botId, id }) => this.routineService().delete(botId, id),
     'routines.openRun': ({ botId, runId }, afterResponse) => this.track(afterResponse, onEvent => this.routineService().openRun(botId, runId, onEvent)),
+    'library.list': input => this.libraryService().list(input),
+    'library.workspace': ({ botId, path }) => this.libraryService().workspace(botId, path),
+    'library.content': async ({ botId, itemId }) => {
+      return this.libraryService().contentUrl(botId, itemId)
+    },
     'bots.delete': input => this.bots.deleteBot(input),
     'bots.deleteDefaults.get': async () => this.bots.deleteDefaults(),
     'bots.deleteDefaults.set': async input => this.bots.setDeleteDefaults(input),
