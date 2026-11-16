@@ -90,7 +90,7 @@ test('shipped deletion schema upgrades without changing tombstones or deletion d
     store.markDeleted(store.get('deleted'), choices)
     store.setDeleteDefaults(choices)
     db.exec(
-      'DROP TABLE library_items; DROP TABLE routine_chats; DROP TABLE routine_runs; DROP TABLE routines; ALTER TABLE bots DROP COLUMN permission_mode; PRAGMA user_version = 8'
+      'DROP TABLE library_items; DROP TABLE skills; DROP TABLE skill_off; DROP TABLE skill_imports; DROP TABLE routine_chats; DROP TABLE routine_runs; DROP TABLE routines; ALTER TABLE bots DROP COLUMN permission_mode; PRAGMA user_version = 8'
     )
     db.close()
     const upgraded = openDatabase(path)
@@ -98,7 +98,7 @@ test('shipped deletion schema upgrades without changing tombstones or deletion d
     expect(restored.list()).toEqual([])
     expect(restored.deleted('deleted')).toMatchObject({ bot: { name: 'Remembered', permissionMode: 'full-access' }, choices })
     expect(restored.deleteDefaults()).toEqual(choices)
-    expect(upgraded.query('PRAGMA user_version').get()).toEqual({ user_version: 11 })
+    expect(upgraded.query('PRAGMA user_version').get()).toEqual({ user_version: 12 })
     upgraded.close()
   } finally {
     rmSync(root, { recursive: true, force: true })

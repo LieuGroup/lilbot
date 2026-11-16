@@ -16,6 +16,7 @@ class LilBotSocket {
   private chatListeners = new Map<string, Set<ChatListener>>()
   private connectionListeners = new Set<(connected: boolean) => void>()
   private botsChangedListeners = new Set<() => void>()
+  private skillsChangedListeners = new Set<() => void>()
   private routinesChangedListeners = new Set<() => void>()
   private memoryChangedListeners = new Set<() => void>()
   connected = false
@@ -78,6 +79,11 @@ class LilBotSocket {
     return () => void this.memoryChangedListeners.delete(listener)
   }
 
+  onSkillsChanged(listener: () => void) {
+    this.skillsChangedListeners.add(listener)
+    return () => void this.skillsChangedListeners.delete(listener)
+  }
+
   onRoutinesChanged(listener: () => void) {
     this.routinesChangedListeners.add(listener)
     return () => void this.routinesChangedListeners.delete(listener)
@@ -107,6 +113,10 @@ class LilBotSocket {
     }
     if (frame.event === 'memory.changed') {
       for (const listener of this.memoryChangedListeners) listener()
+      return
+    }
+    if (frame.event === 'skills.changed') {
+      for (const listener of this.skillsChangedListeners) listener()
       return
     }
     if (frame.event === 'routines.changed') {

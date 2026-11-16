@@ -85,7 +85,10 @@ const migrations: string[] = [
    CREATE INDEX routine_runs_pending ON routine_runs(status);
    CREATE TABLE routine_chats (chat_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES routine_runs(id) ON DELETE CASCADE);`,
   `CREATE TABLE library_items (id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, title TEXT NOT NULL, path TEXT NOT NULL, kind TEXT NOT NULL CHECK(kind IN ('media', 'file', 'page')), size INTEGER NOT NULL, created_at INTEGER NOT NULL, chat_id TEXT, routine_run_id TEXT);
-   CREATE INDEX library_bot_time ON library_items(bot_id, created_at DESC);`
+   CREATE INDEX library_bot_time ON library_items(bot_id, created_at DESC);`,
+  `CREATE TABLE skills (name TEXT PRIMARY KEY, description TEXT NOT NULL, author TEXT NOT NULL, updated_at INTEGER NOT NULL);
+   CREATE TABLE skill_off (bot_id TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY(bot_id,name));
+   CREATE TABLE skill_imports (source TEXT PRIMARY KEY, name TEXT NOT NULL);`
 ]
 
 /** `path` may be ':memory:' for tests. Applies any migration steps the file has not seen. */

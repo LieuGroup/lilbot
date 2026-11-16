@@ -20,11 +20,13 @@ export interface BotServiceOptions {
   /** Called whenever a fact was saved or forgotten through the app. */
   memoryChanged?: () => void
   /** Where engine adapters reach LilBot's memory. Without it, bots are not connected to memory. */
+  skills?: import('../skills/skills-service').SkillsService
   cleanupBot?: (botId: string) => void
   memoryConnection?: MemoryConnection
 }
 
 export class BotService {
+  private skills?: import('../skills/skills-service').SkillsService
   private deletion: BotDeletion
   private runtimes: BotRuntimes
   private changed: () => void
@@ -40,11 +42,15 @@ export class BotService {
     private memory: MemoryService,
     options: BotServiceOptions = {}
   ) {
-    this.runtimes = new BotRuntimes(store, engine)
+    this.skills = options.skills
+    this.runtimes = new BotRuntimes(store, engine, options.skills, options.memoryConnection)
     this.creation = new BotCreation(this, store)
     this.changed = options.changed ?? (() => {})
     this.memoryChanged = options.memoryChanged ?? (() => {})
-    this.deletion = new BotDeletion(this.runtimes, prefs, workspaces, memory, options.cleanupBot ?? (() => {}), () => {
+    this.deletion = new BotDeletion(this.runtimes, prefs, workspaces, memory, botId => {
+      this.skills?.forgetBot(botId)
+      options.cleanupBot?.(botId)
+    }, () => {
       this.changed()
       this.memoryChanged()
     })
@@ -111,6 +117,10 @@ export class BotService {
       ...this.identity(bot),
       instructions: bot.instructions,
       ...(state ?? { abilities: [], memoryConnected: false }),
+      abilities: [
+        ...(state?.abilities ?? []).filter(a => a.kind !== 'skill' || !this.skills?.list(botId).some(s => s.name === a.id)),
+        ...(this.skills?.list(botId).map(s => ({ kind: 'skill' as const, id: s.name, label: s.name, enabled: s.enabled })) ?? [])
+      ],
       runnable,
       runtimePending: this.runtimes.pending(bot),
       ...this.own(bot)
@@ -278,6 +288,21 @@ export class BotService {
     return { ok: true }
   }
 
+  async listSkills(botId: string) {
+    await this.requireBot(botId)
+    return this.skills?.list(botId) ?? []
+  }
+  async readSkill(botId: string, name: string) {
+    await this.requireBot(botId)
+    return this.skills!.read(name)
+  }
+  async setSkill(botId: string, name: string, enabled: boolean) {
+    const bot = await this.requireBot(botId)
+    this.skills!.setEnabled(botId, name, enabled)
+    await this.runtimes.state(bot)
+    this.changed()
+    return { ok: true as const }
+  }
   requireBot(botId: string): Promise<BotRecord> {
     return this.runtimes.require(botId)
   }

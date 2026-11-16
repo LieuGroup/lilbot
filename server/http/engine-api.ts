@@ -9,6 +9,7 @@ import { z } from 'zod'
 import { LibraryGiveInput } from '../../shared/library-schema'
 import { type MemoryFact, MemoryKind, MemoryScope } from '../../shared/memory-schema'
 import { LilBotError } from '../../shared/protocol'
+import { SkillWrite } from '../../shared/skills-schema'
 import { matchesCapability } from '../bots/bot-capability'
 import { BotCreationInput } from '../bots/bot-creation'
 import type { BotService } from '../bots/bot-service'
@@ -59,6 +60,7 @@ const forBot = (fact: MemoryFact, reader: string) => ({
 const json = (status: number, body: unknown) => Response.json(body, { status })
 
 export interface EngineApiOptions {
+  skills?: import('../skills/skills-service').SkillsService
   bots?: BotService
   routines?: RoutineService
   library?: LibraryService
@@ -101,11 +103,27 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
         return json(422, { error: 'Cannot give this file. Use a regular file inside your workspace, at most 50 MiB.' })
       }
     }
-    if (pathname === '/engine/bots/create' || pathname.startsWith('/engine/routines/')) {
+    if (pathname === '/engine/bots/create' || pathname.startsWith('/engine/routines/') || pathname.startsWith('/engine/skills/')) {
       try {
         const capability = request.headers.get('x-lilbot-bot-capability') ?? ''
         const caller = (await options.bots?.listBots())?.find(bot => matchesCapability(token, bot.id, capability))
         if (!caller || !options.bots || !options.botExists(caller.id)) return json(403, { error: 'Unknown bot credential.' })
+        if (pathname.startsWith('/engine/skills/')) {
+          if (!options.skills) return json(404, { error: 'Skills unavailable.' })
+          const body = (await request.json()) as Record<string, unknown>
+          if (pathname.endsWith('/list'))
+            return json(
+              200,
+              options.skills.list(caller.id).filter(s => s.enabled)
+            )
+          if (pathname.endsWith('/read')) {
+            const name = String(body.name)
+            if (!options.skills.list(caller.id).some(s => s.name === name && s.enabled)) return json(403, { error: 'Skill disabled or missing.' })
+            return json(200, { content: options.skills.read(name)[String(body.file_path ?? 'SKILL.md')] })
+          }
+          if (pathname.endsWith('/write')) return json(200, options.skills.write(SkillWrite.parse(body), caller.id))
+          return json(404, { error: 'Unknown skill operation.' })
+        }
         if (pathname.startsWith('/engine/routines/')) {
           if (!options.routines) return json(404, { error: 'Routines are unavailable.' })
           return json(200, await routineApi(options.routines, caller.id, pathname.slice('/engine/routines/'.length), await request.json()))

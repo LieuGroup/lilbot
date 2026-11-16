@@ -63,6 +63,8 @@ export interface BotEngine {
   deleteRuntime(engineBotId: string): Promise<void>
   /** Prepare persistent policy at startup and when the saved mode changes. */
   prepareRuntime?(engineBotId: string, identity: RuntimeIdentity): Promise<void>
+  userSkillPaths?(id: string): string[]
+  configureSkills?(id: string, settings: { root: string; url: string; tokenFile: string; botId: string; disabled: string[]; names: string[] }): Promise<void>
   listModels(): Promise<ModelProvider[]>
   /** Open a new chat (`chatId` null) or continue a stored one. A stored chat that no longer exists
    *  is replaced by a new one; the snapshot says which chat was opened. Events arrive until `close()`. */

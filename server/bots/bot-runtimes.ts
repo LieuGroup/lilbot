@@ -2,16 +2,20 @@
 import type { BotCreateInput, BotUpdateInput } from '../../shared/bot-schema'
 import { LilBotError } from '../../shared/protocol'
 import type { BotEngine, RuntimeState } from '../engines/bot-engine'
+import { files } from '../skills/skill-files'
 import type { BotRecord, BotStore } from './bot-store'
 
 export class BotRuntimes {
   private importing?: Promise<void>
   private initialized = false
+  private skillsImported = new Set<string>()
   private prepared = new Set<string>()
   private states = new Map<string, RuntimeState | null>()
   constructor(
     readonly store: BotStore,
-    private engine: BotEngine
+    private engine: BotEngine,
+    private skills?: import('../skills/skills-service').SkillsService,
+    private connection?: import('../engines/bot-engine').MemoryConnection
   ) {}
 
   private loading?: Promise<void>
@@ -82,6 +86,20 @@ export class BotRuntimes {
   async state(bot: BotRecord): Promise<RuntimeState> {
     this.validateMode(bot)
     try {
+      if (this.skills && this.connection) {
+        if (!this.skillsImported.has(bot.id) && !this.skills.importedBot(bot.id)) {
+          for (const path of this.engine.userSkillPaths?.(bot.engineBotId) ?? []) this.skills.import(path, files(path))
+          this.skills.markBotImported(bot.id)
+          this.skillsImported.add(bot.id)
+        }
+        await this.engine.configureSkills?.(bot.engineBotId, {
+          root: this.skills.root,
+          ...this.connection,
+          botId: bot.id,
+          disabled: this.skills.disabled(bot.id),
+          names: this.skills.list(bot.id).map(s => s.name)
+        })
+      }
       const state = await this.engineFor(bot).applyIdentity(bot.engineBotId, bot)
       this.states.set(bot.id, state)
       return state
@@ -145,6 +163,8 @@ export class BotRuntimes {
     this.store.save(bot)
     const nativeId = await this.engine.createRuntime(bot)
     if (nativeId !== bot.engineBotId) this.store.bind(bot.id, nativeId)
+    this.skillsImported.add(bot.id)
+    this.skills?.markBotImported(bot.id)
     const saved = this.store.get(bot.id)
     await this.state(saved)
     return saved

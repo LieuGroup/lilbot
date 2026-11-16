@@ -27,6 +27,7 @@ try {
       ...process.env,
       LILBOT_PORT: String(port),
       LILBOT_DATA_DIR: scratch,
+      LILBOT_SKILLS_DIR: join(scratch, 'skills'),
       LILBOT_WORKSPACES_DIR: join(scratch, 'workspaces'),
       LILBOT_BOT_IDS: nativeId,
       LILBOT_SKIP_MEMORY_SETUP: '1',

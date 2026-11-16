@@ -24,6 +24,7 @@ import { ReviewQueue } from './memory/review-queue'
 import { RoutineScheduler } from './routines/routine-scheduler'
 import { defaultRoutineSettings, RoutineService } from './routines/routine-service'
 import { RoutineStore } from './routines/routine-store'
+import { SkillsService } from './skills/skills-service'
 
 interface SocketData {
   session?: BrowserSession
@@ -60,7 +61,12 @@ const library = new LibraryService(
   id => store.exists(id),
   botId => server.publish(EVERYONE, JSON.stringify({ event: 'library.changed', botId }))
 )
+const skills = new SkillsService(process.env.LILBOT_SKILLS_DIR ?? join(homedir(), 'lilbot', 'skills'), database, () => {
+  server.publish(EVERYONE, JSON.stringify({ event: 'skills.changed' }))
+  botsChanged()
+})
 const bots = new BotService(engine, store, new BotPrefsStore(database), new Workspaces(WORKSPACES_DIR), memory, {
+  skills,
   cleanupBot: botId => {
     routineStore.forgetBot(botId)
     activity.forgetBot(botId)
@@ -122,6 +128,7 @@ prepareMemory().catch(error => console.error('[memory] could not prepare memory 
 
 const engineApi = createEngineApi(memory, token, PORT, {
   bots,
+  skills,
   routines,
   library,
   botExists: id => store.exists(id),
