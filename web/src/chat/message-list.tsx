@@ -7,6 +7,7 @@ import { MessageScroller, MessageScrollerButton, MessageScrollerContent, Message
 import { Trace, TraceIcon, TraceLine, TraceTitle } from '@/ui/trace'
 import { ChatItem } from './chat-item'
 import type { ViewItem } from './chat-state'
+import { isScrollAnchor, loadedTranscript, updateLoaded } from './scroll-anchors'
 
 interface MessageListProps {
   items: ViewItem[]
@@ -19,12 +20,8 @@ interface MessageListProps {
  *  grows below it; the list follows the reply only while you stay at the end, never while you
  *  read back. */
 export function MessageList({ items, queued, activity, emptyHint }: MessageListProps) {
-  // Only messages sent while this list is open pin to the top. The scroller jumps to any pin it
-  // has not seen arrive, so turns loaded with the conversation (or reloaded after a reconnect,
-  // which brings new item objects) must not be pins.
-  const loaded = useRef({ first: items[0], count: items.length })
-  if (loaded.current.first && items[0] !== loaded.current.first) loaded.current = { first: items[0], count: items.length }
-  const sentHere = (index: number) => index >= loaded.current.count
+  const loaded = useRef(loadedTranscript(items))
+  loaded.current = updateLoaded(loaded.current, items)
 
   return (
     <MessageScrollerProvider autoScroll defaultScrollPosition="end">
@@ -34,7 +31,7 @@ export function MessageList({ items, queued, activity, emptyHint }: MessageListP
             {items.length === 0 && <p className="mt-[20vh] text-center text-muted-foreground">{emptyHint}</p>}
             {items.map((item, index) => (
               // The transcript only grows at the end, so the position is a stable id.
-              <MessageScrollerItem key={index} messageId={String(index)} scrollAnchor={item.kind === 'user' && sentHere(index)}>
+              <MessageScrollerItem key={index} messageId={String(index)} scrollAnchor={isScrollAnchor(loaded.current, index, item.kind)}>
                 <ChatItem item={item} />
               </MessageScrollerItem>
             ))}

@@ -146,7 +146,7 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
 - The conversation uses AI Elements' Message Scroller: it opens at its latest message (also after a reload or
   resume); a sent message moves up and the reply grows below it (Oscar's choice); the list follows the reply only
   while the reader stays at the end. Only messages sent while the list is open are scroll anchors: the scroller jumps
-  to any anchor it did not see arrive (`chat/message-list.tsx`). Earlier items are memoised (`chat/chat-item.tsx`), so a streamed chunk redraws
+  to any anchor it did not see arrive (`chat/scroll-anchors.ts`). Earlier items are memoised (`chat/chat-item.tsx`), so a streamed chunk redraws
   only the last one. Queued messages show as dashed bubbles, the activity line as a shimmering Trace line (not
   Reasoning: we get a status, not thinking text), tool use as Trace lines.
 - Hermes' wire contract lives in `~/.hermes/hermes-agent/apps/shared/src/gateway-contract.openrpc.json` and
