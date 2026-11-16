@@ -62,7 +62,7 @@ live-checks/       Checks that talk to the real Hermes with a temporary bot.
 
 Rules that keep it this way:
 
-- A request flows downward only: `http/` -> `bots/`, `memory/`, `routines/` `library/` or `reports/` -> `engines/` and `database/`. Nothing lower may
+- A request flows downward only: `http/` -> `bots/`, `memory/`, `routines/`, `library/` or `reports/` -> `engines/` and `database/`. Nothing lower may
   import from something higher.
 - Nothing outside `server/engines/hermes/` knows about Hermes, except `main.ts`, which picks the engine. A second
   engine is a second folder under `server/engines/`.
@@ -241,7 +241,7 @@ What a bot is and who owns each part. Decided with Oscar on 2026-11-16 unless ma
 
 `server/library/` owns delivered items in the `library_items` table; `shared/library-schema.ts`
 defines the data. The engine-neutral service takes workspace and active-bot lookups. `give_file`
-in the memory adapter (v0.7.0) calls `/engine/library/give` with its bot-bound capability; the
+in the memory adapter (v0.8.0) calls `/engine/library/give` with its bot-bound capability; the
 server ignores body bot ids and refuses unknown/deleted callers. A title and chat or routine run
 are required. The endpoint resolves routine session aliases to the persisted run id for that bot,
 ignoring caller-supplied run ids; ordinary deliveries retain chat provenance.

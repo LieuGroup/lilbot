@@ -13,16 +13,22 @@ spec = importlib.util.spec_from_file_location('adapter', sys.argv[1])
 module = importlib.util.module_from_spec(spec)
 sys.modules['adapter'] = module
 spec.loader.exec_module(module)
-assert module.VERSION == "0.7.0"
-assert "version: 0.7.0" in pathlib.Path(sys.argv[1]).with_name("plugin.yaml").read_text()
+assert module.VERSION == "0.8.0"
+assert "version: 0.8.0" in pathlib.Path(sys.argv[1]).with_name("plugin.yaml").read_text()
 tools = {tool["name"] for tool in module.LilBotMemoryProvider().get_tool_schemas()}
-assert {"create_routine", "list_routines", "pause_routine", "resume_routine", "delete_routine", "give_file", "create_bot", "recall_memory", "update_memory"} <= tools
+assert {"create_routine", "list_routines", "pause_routine", "resume_routine", "delete_routine", "give_file", "send_report", "answer_report", "create_bot", "recall_memory", "update_memory"} <= tools
+assert "# Reports" in module.LilBotMemoryProvider().system_prompt_block()
 calls = []
 adapter = module.LilBotMemoryProvider()
 adapter._call = lambda endpoint, body: calls.append((endpoint, body)) or {}
 adapter.handle_tool_call("give_file", {"path": "result.txt", "title": "Result"})
 adapter.handle_tool_call("list_routines", {})
 assert calls == [("library/give", {"path": "result.txt", "title": "Result"}), ("routines/list", {})]
+adapter.on_turn_start(1, "LilBot reports — not from Oscar.")
+adapter.handle_tool_call("send_report", {"requestId": "loop", "kind": "question", "text": "Why?"})
+assert calls[-1][1]["reportTurn"] is True
+adapter.on_turn_start(2, "A normal message")
+assert adapter._report_turn is False
 with tempfile.TemporaryDirectory() as directory:
     home = pathlib.Path(directory) / 'profiles' / 'native-id'
     home.mkdir(parents=True)
