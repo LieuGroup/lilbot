@@ -113,6 +113,10 @@ describe.skipIf(!installed)('Hermes wire contract', () => {
     }
   })
 
+  test('model inventory declares the provider fields used for validation', () => {
+    expect(['slug', 'name', 'authenticated', 'models'].filter(key => !fields(contract.components.schemas.ModelOptionProvider).has(key))).toEqual([])
+  })
+
   test('usage still reports the context size', () => {
     expect(Object.keys(contract.components.schemas.Usage?.properties ?? {})).toContain('context_used')
   })

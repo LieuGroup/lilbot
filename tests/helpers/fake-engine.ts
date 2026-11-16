@@ -50,6 +50,7 @@ export function fakeEngine(options: { earlyEvents?: ChatEvent[] } = {}) {
       if (!runtimeIds.has(id)) throw new LilBotError('bot_not_found', 'That bot does not exist.')
       return { abilities: [], memoryConnected: false }
     },
+    validateModel: async () => {},
     listModels: async () => [],
     onBotsChanged: () => () => {},
     refreshMemory: async () => [],

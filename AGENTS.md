@@ -169,7 +169,9 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
   (`LILBOT_DATA_DIR`). It owns bot identity (name, function, instructions, model), engine/native-id bindings,
   memory, sidebar preferences, sections, main-conversation pointers and the primary-bot choice.
   Tools, MCP connectors and conversation transcripts stay with the engine. Skills belong to LilBot. Identity is imported once, then LilBot wins
-  on mismatch; edits are saved in the database before they are applied to the runtime.
+  on mismatch; model edits are checked against the engine’s available models before anything is saved,
+  including when repairing a bot with an invalid saved model. Unsupported permission modes also fail before saving.
+  Accepted edits (including name, function and instructions) are saved in the database before they are applied to the runtime.
   `database.ts` owns the schema as an
   ordered list of migration steps (add a step, never edit a shipped one); each store file owns the SQL of its tables.
 - Workspaces: one folder per bot under `~/lilbot/workspaces/<bot id>` (`LILBOT_WORKSPACES_DIR`), created on first use
