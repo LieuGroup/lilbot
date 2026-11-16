@@ -39,7 +39,17 @@ export class BotRuntimes {
     return this.engine
   }
 
+  private validateMode(bot: Pick<BotRecord, 'permissionMode'>) {
+    if (!this.engine.supportedPermissionModes.includes(bot.permissionMode)) {
+      throw new LilBotError(
+        'unsupported_permission_mode',
+        `Engine ${this.engine.id} does not support permission mode "${bot.permissionMode}". Supported modes: ${this.engine.supportedPermissionModes.join(', ') || 'none'}.`
+      )
+    }
+  }
+
   async state(bot: BotRecord): Promise<RuntimeState> {
+    this.validateMode(bot)
     return this.engineFor(bot).applyIdentity(bot.engineBotId, bot)
   }
 
@@ -68,9 +78,11 @@ export class BotRuntimes {
       instructions: input.instructions,
       model: input.model ?? this.store.list().find(bot => bot.isDefault)?.model ?? null,
       isDefault: false,
+      permissionMode: input.permissionMode ?? 'full-access',
       engineId: this.engine.id,
       engineBotId: ''
     }
+    this.validateMode(bot)
     // Persist before asking the runtime. A failed creation leaves a recoverable, visible bot.
     bot.engineBotId = bot.id
     this.store.save(bot)
@@ -81,6 +93,7 @@ export class BotRuntimes {
 
   async update({ botId, ...patch }: BotUpdateInput): Promise<BotRecord> {
     const bot = { ...(await this.require(botId)), ...patch }
+    this.validateMode(bot)
     this.store.save(bot)
     await this.state(bot)
     return bot

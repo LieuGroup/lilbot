@@ -21,6 +21,7 @@ import { botDetailFromProfile, botFromProfile, DEFAULT_PROFILE, providersFromMod
 import { chatEventFrom, itemsFromRows, sessionLostEvents } from './hermes-chat-mapping'
 import { deleteRuntime } from './hermes-delete'
 import { installMemory, legacyNotes, memoryConnection, memoryCurrent, memoryInstalled } from './hermes-memory-setup'
+import { ensureFullAccess } from './hermes-permissions'
 import { applyIdentity, createRuntime } from './hermes-runtime'
 import { HermesSocket } from './hermes-socket'
 
@@ -32,6 +33,7 @@ const REVIEW_TIMEOUT_MS = 180_000
 
 export class HermesEngine implements BotEngine {
   readonly id = 'hermes'
+  readonly supportedPermissionModes = ['full-access'] as const
   constructor(private botIds?: string[]) {}
 
   watchActivity(bots: () => Promise<RuntimeBinding[]>, listener: (event: ActivityEvent) => void, cursor: ActivityCursor) {
@@ -95,11 +97,13 @@ export class HermesEngine implements BotEngine {
   async createRuntime(identity: RuntimeIdentity): Promise<string> {
     const id = await createRuntime(await this.manage(), identity)
     this.botIds?.push(id)
+    await this.preparePermissions(id)
     return id
   }
 
   async applyIdentity(id: string, identity: RuntimeIdentity): Promise<RuntimeState> {
     const detail = await this.getBot(id)
+    await this.preparePermissions(id)
     await applyIdentity(await this.manage(), id, identity, detail)
     return { abilities: detail.abilities, memoryConnected: detail.memoryConnected }
   }
@@ -108,6 +112,19 @@ export class HermesEngine implements BotEngine {
     if (!PROFILE_ID.test(id) || id === DEFAULT_PROFILE) throw new LilBotError('protected_bot', 'The default bot cannot be deleted.')
     if (this.botIds && !this.botIds.includes(id)) throw new LilBotError('bot_not_found', 'That bot does not exist.')
     await deleteRuntime(id)
+  }
+
+  private async preparePermissions(id: string) {
+    const socket = await HermesSocket.connect(
+      id === DEFAULT_PROFILE ? '' : id,
+      () => {},
+      () => {}
+    )
+    try {
+      await ensureFullAccess(socket)
+    } finally {
+      socket.close()
+    }
   }
 
   async refreshMemory(botIds: string[]): Promise<string[]> {
@@ -138,6 +155,7 @@ export class HermesEngine implements BotEngine {
     )
     const timer = setTimeout(() => finish('timeout'), REVIEW_TIMEOUT_MS)
     try {
+      await ensureFullAccess(socket)
       // Hidden, and with the memory toolset only: about a sixth of a normal session's prompt.
       const session = await socket.request('session.create', {
         source: 'tool',
@@ -191,6 +209,7 @@ export class HermesEngine implements BotEngine {
     )
 
     try {
+      await ensureFullAccess(socket)
       let session: any = null
       if (chatId) {
         // Only a chat that no longer exists is replaced by a fresh one. Any other refusal (Hermes

@@ -17,6 +17,7 @@ export function botFromProfile(profile: Record<string, any>): BotIdentity {
     name: displayName(profile),
     function: text(profile.description),
     model: profile.model ? { provider: text(profile.provider), model: text(profile.model) } : null,
+    permissionMode: 'full-access',
     isDefault: profile.is_default === true
   }
 }

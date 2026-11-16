@@ -60,6 +60,9 @@ const methods: Record<string, Uses> = {
   'profiles.describe': { table: 'methods', sends: ['name'], reads: ['name', 'description', 'soul', 'model', 'skills', 'toolsets', 'mcp_servers'] },
   'profiles.create': { table: 'methods', sends: ['name', 'description', 'soul', 'no_alias', 'clone_from', 'model', 'provider'], reads: [] },
   'profiles.configure': { table: 'methods', sends: ['name', 'description', 'soul', 'model', 'provider'], reads: ['ok', 'confirm_required', 'confirm_message'] },
+  'approval.pending': { table: 'methods', sends: ['session_id'], reads: ['approvals'] },
+  'config.get': { table: 'methods', sends: ['key'], reads: ['value'] },
+  'config.set': { table: 'methods', sends: ['key', 'value'], reads: ['value'] },
   'model.options': { table: 'methods', sends: [], reads: ['providers'] }
 }
 

@@ -211,8 +211,8 @@ export class BotService {
   }
 
   private identity(bot: BotRecord) {
-    const { id, name, function: fn, model, isDefault } = bot
-    return { id, name, function: fn, model, isDefault }
+    const { id, name, function: fn, model, isDefault, permissionMode } = bot
+    return { id, name, function: fn, model, isDefault, permissionMode }
   }
 
   private own(identity: BotRecord): Pick<Bot, 'isPrimary' | 'prefs' | 'workspace'> {

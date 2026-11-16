@@ -8,6 +8,7 @@ const bot = (id: string, isPrimary = false): Bot => ({
   name: id,
   function: '',
   model: null,
+  permissionMode: 'full-access',
   isDefault: false,
   isPrimary,
   runnable: true,
