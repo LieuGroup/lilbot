@@ -299,3 +299,25 @@ artwork, names or text.
 - `bun run start`: run the server. `LILBOT_PORT` and `LILBOT_HOST` override the defaults.
 - `bun run dev`: Vite with hot reload, proxying `/ws` to a server on 3370.
 - After a change: `bun run verify && systemctl --user restart lilbot.service`.
+
+## ACP spike (issue #3, draft only)
+
+This branch contains a disposable second engine in `server/engines/acp/`. It is not a production
+engine switch. Start it only with `LILBOT_ENGINE=acp LILBOT_PORT=3371 LILBOT_REVIEW=off`, explicit
+throwaway `LILBOT_DATA_DIR` and `LILBOT_WORKSPACES_DIR` beneath `~/agent-tmp`. Never restart the live
+service for this spike. `bun run check:acp` talks to that server; `ACP_BOT_ID` resumes a temporary
+bot, `ACP_PROMPT` chooses the prompt, and `ACP_CANCEL=1` stops after the first streamed text.
+`LILBOT_DATA_DIR` lets the check read token counters from its disposable Codex session files.
+
+The pinned ACP adapter uses the installed `codex` executable, existing ChatGPT login and an isolated
+Codex home. API-key environment variables and user configuration are not inherited. Only bound memory
+tools and the exact `pwd` command receive permission; all other permission requests are denied.
+Temporary bot identities and session bindings live in an adapter-local JSON file to satisfy the
+existing contract. This is evidence that identity must become LilBot-owned before real per-bot
+engine selection, not a proposed production store. `BotEngine` itself is unchanged in this spike.
+
+Confirmed: streamed chat, memory context and MCP recall, workspace, cancellation, persisted replay,
+model discovery and existing web panels. Known gaps: no memory-only review; replay shows injected
+memory and can omit an interrupted assistant tail; unprompted new sessions may not load after close; concurrent opens can hit Codex's session
+lock; no shared connection for multiple browsers; no per-bot engine router or migration. Details and
+measurements are in the report comment on issue #3. Return these decisions to the design discussion.

@@ -3,7 +3,7 @@
  *  Costs a few model calls. Never touches existing bots. */
 
 import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { BotPrefsStore } from '../server/bots/bot-prefs-store'
 import { BotService } from '../server/bots/bot-service'
@@ -18,7 +18,7 @@ const BOT_NAME = 'LilBot Live Check'
 const TURN_TIMEOUT_MS = 90_000
 
 // The real engine, with a throwaway database and workspaces folder so nothing of the user's is touched.
-const scratch = mkdtempSync(join(tmpdir(), 'lilbot-live-'))
+const scratch = mkdtempSync(join(homedir(), 'agent-tmp', 'lilbot-live-'))
 const engine = new HermesEngine()
 const database = openDatabase(join(scratch, 'lilbot.db'))
 const bots = new BotService(engine, new BotPrefsStore(database), new Workspaces(join(scratch, 'workspaces')), new MemoryService(new MemoryStore(database)))
@@ -72,7 +72,8 @@ try {
   const bot = await bots.createBot({
     name: BOT_NAME,
     function: 'Temporary bot for the LilBot live check.',
-    instructions: 'Follow the user exactly. Never use tools. Answer in plain text.'
+    instructions: 'Follow the user exactly. Never use tools. Answer in plain text.',
+    ...(process.env.LILBOT_LIVE_MODEL ? { model: { provider: process.env.LILBOT_LIVE_MODEL.split('::')[0], model: process.env.LILBOT_LIVE_MODEL.split('::')[1] } } : {})
   })
   botId = bot.id
   check('create bot', bot.name === BOT_NAME && !bot.isDefault, bot.id)

@@ -6,6 +6,7 @@ import { BotPrefsStore } from './bots/bot-prefs-store'
 import { BotService } from './bots/bot-service'
 import { Workspaces } from './bots/workspaces'
 import { openDatabase } from './database/database'
+import { AcpEngine } from './engines/acp/acp-engine'
 import { HermesEngine } from './engines/hermes/hermes-engine'
 import { MEMORY_ADAPTER_VERSION } from './engines/hermes/hermes-memory-setup'
 import { BrowserSession } from './http/browser-session'
@@ -37,7 +38,12 @@ function botsChanged() {
   changeTimer = setTimeout(() => server.publish(EVERYONE, JSON.stringify({ event: 'bots.changed' })), CHANGE_DELAY_MS)
 }
 
-const engine = new HermesEngine()
+const engineName = process.env.LILBOT_ENGINE ?? 'hermes'
+if (!['hermes', 'acp'].includes(engineName)) throw new Error('Unknown LILBOT_ENGINE')
+if (engineName === 'acp' && (PORT !== 3371 || !process.env.LILBOT_DATA_DIR || !process.env.LILBOT_WORKSPACES_DIR || process.env.LILBOT_REVIEW !== 'off')) {
+  throw new Error('ACP spike requires port 3371, explicit temporary data/workspaces, and LILBOT_REVIEW=off')
+}
+const engine = engineName === 'acp' ? new AcpEngine(join(DATA_DIR, 'acp')) : new HermesEngine()
 const database = openDatabase(join(DATA_DIR, 'lilbot.db'))
 const memory = new MemoryService(new MemoryStore(database))
 const memoryChanged = () => server.publish(EVERYONE, JSON.stringify({ event: 'memory.changed' }))
@@ -71,7 +77,7 @@ async function prepareMemory() {
 }
 prepareMemory().catch(error => console.error('[memory] could not prepare memory for the bots:', error instanceof Error ? error.message : error))
 
-const engineApi = createEngineApi(memory, token, PORT, { onMemoryChanged: memoryChanged, adapterVersion: MEMORY_ADAPTER_VERSION, reviewer })
+const engineApi = createEngineApi(memory, token, PORT, { onMemoryChanged: memoryChanged, adapterVersion: engineName === 'hermes' ? MEMORY_ADAPTER_VERSION : undefined, reviewer })
 engine.onBotsChanged(botsChanged)
 const DIST = join(import.meta.dir, '..', 'dist')
 
@@ -103,7 +109,7 @@ const server = Bun.serve<SocketData>({
     }
 
     if (url.pathname.startsWith('/engine/')) return engineApi(request, url.pathname)
-    if (url.pathname === '/api/health') return Response.json({ ok: true, engine: 'hermes' })
+    if (url.pathname === '/api/health') return Response.json({ ok: true, engine: engineName })
     if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 })
 
     try {
@@ -130,4 +136,4 @@ const server = Bun.serve<SocketData>({
   }
 })
 
-console.log(`LilBot listening on http://${server.hostname}:${server.port} (engine: Hermes)`)
+console.log(`LilBot listening on http://${server.hostname}:${server.port} (engine: ${engineName})`)
