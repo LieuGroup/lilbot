@@ -109,7 +109,7 @@ test('failed runtime creation keeps a visible bot; unknown engines do not hide i
   expect((await service.getBot('other-engine')).runnable).toBe(false)
 })
 
-test('identity migration preserves populated primary, prefs, main chat, facts and queue', async () => {
+test('identity migration preserves populated primary, prefs, main chat, facts, queue, unread and cursors', async () => {
   const { mkdtempSync, rmSync } = await import('node:fs')
   const { tmpdir } = await import('node:os')
   const { join } = await import('node:path')
@@ -122,14 +122,16 @@ test('identity migration preserves populated primary, prefs, main chat, facts an
     const path = join(dir, 'lilbot.db')
     const old = openDatabase(path)
     const prefs = new BotPrefsStore(old)
-    prefs.setPrefs('b1', { pinned: true, hidden: true })
+    const section = prefs.createSection('Work')
+    prefs.setPrefs('b1', { pinned: true, hidden: true, sectionId: section.id })
     prefs.setMainChat('b1', 'chat-legacy')
     prefs.setPrimaryBot('b1')
     new MemoryService(new MemoryStore(old)).write({ botId: 'b1', text: 'Prefers tea.', kind: 'profile', author: 'user' })
     new ReviewQueue(old).add('b1', 'chat-legacy', 'hello', 'hi', 1)
-    const tables = ['bot_prefs', 'primary_bot', 'memory_facts', 'review_turns']
+    old.exec("INSERT INTO bot_activity VALUES ('b1', 1); INSERT INTO activity_cursors VALUES ('b1', 'chat-legacy', 'epoch:12')")
+    const tables = ['bot_prefs', 'primary_bot', 'memory_facts', 'review_turns', 'sections', 'bot_activity', 'activity_cursors']
     const before = tables.map(table => old.query(`SELECT * FROM ${table}`).all())
-    old.exec('DROP TABLE bots; DROP TABLE bot_imports; PRAGMA user_version = 4')
+    old.exec('DROP TABLE bots; DROP TABLE bot_imports; PRAGMA user_version = 5')
     old.close()
     const db = openDatabase(path)
     const store = new BotStore(db)

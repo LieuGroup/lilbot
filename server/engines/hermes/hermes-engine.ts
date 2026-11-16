@@ -1,8 +1,22 @@
 /** Hermes runs LilBot bots through profile bindings and native sessions. */
+import type { ActivityEvent } from '../../../shared/activity-schema'
 import type { BotIdentity, ModelProvider } from '../../../shared/bot-schema'
 import type { ChatEvent } from '../../../shared/chat-schema'
 import { LilBotError } from '../../../shared/protocol'
-import type { BotEngine, ChatOptions, EngineBotDetail, LegacyNotes, MemoryConnection, OpenChat, ReviewOptions, RuntimeIdentity, RuntimeState } from '../bot-engine'
+import type {
+  ActivityCursor,
+  BotEngine,
+  ChatOptions,
+  EngineBotDetail,
+  LegacyNotes,
+  MemoryConnection,
+  OpenChat,
+  ReviewOptions,
+  RuntimeBinding,
+  RuntimeIdentity,
+  RuntimeState
+} from '../bot-engine'
+import { watchHermesActivity } from './hermes-activity'
 import { botDetailFromProfile, botFromProfile, DEFAULT_PROFILE, providersFromModelOptions } from './hermes-bot-mapping'
 import { chatEventFrom, itemsFromRows, sessionLostEvents } from './hermes-chat-mapping'
 import { installMemory, legacyNotes, memoryConnection, memoryCurrent, memoryInstalled } from './hermes-memory-setup'
@@ -17,6 +31,19 @@ const REVIEW_TIMEOUT_MS = 180_000
 
 export class HermesEngine implements BotEngine {
   readonly id = 'hermes'
+  constructor(private botIds?: string[]) {}
+
+  watchActivity(bots: () => Promise<RuntimeBinding[]>, listener: (event: ActivityEvent) => void, cursor: ActivityCursor) {
+    return watchHermesActivity(
+      async () => {
+        const bound = await bots()
+        const profiles = new Set((await this.profiles(false)).map(bot => bot.id))
+        return bound.filter(bot => profiles.has(bot.engineBotId))
+      },
+      listener,
+      cursor
+    )
+  }
   /** Bot management goes through one shared connection on the default profile. */
   private management: Promise<HermesSocket> | null = null
   private botsChangedListeners = new Set<() => void>()
@@ -65,7 +92,9 @@ export class HermesEngine implements BotEngine {
   }
 
   async createRuntime(identity: RuntimeIdentity): Promise<string> {
-    return createRuntime(await this.manage(), identity)
+    const id = await createRuntime(await this.manage(), identity)
+    this.botIds?.push(id)
+    return id
   }
 
   async applyIdentity(id: string, identity: RuntimeIdentity): Promise<RuntimeState> {
@@ -201,7 +230,10 @@ export class HermesEngine implements BotEngine {
   private async profiles(withChats: boolean): Promise<BotIdentity[]> {
     const result = await (await this.manage()).request('profiles.list', withChats ? {} : { include_sessions: false })
     const profiles: any[] = Array.isArray(result.profiles) ? result.profiles : []
-    return profiles.map(botFromProfile).sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name))
+    return profiles
+      .map(botFromProfile)
+      .filter(bot => !this.botIds || this.botIds.includes(bot.id))
+      .sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name))
   }
 
   /** Every bot id from the browser passes here before it reaches Hermes or a subprocess. */

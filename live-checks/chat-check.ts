@@ -152,7 +152,7 @@ try {
 } finally {
   if (botId) {
     try {
-      await deleteBot(botId)
+      await deleteBot(new BotStore(database).get(botId).engineBotId)
       check('temporary bot deleted', true)
     } catch (error) {
       check('temporary bot deleted', false, `delete it by hand: hermes profile delete ${botId} -y. ${error instanceof Error ? error.message : ''}`)

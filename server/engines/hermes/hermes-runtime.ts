@@ -7,16 +7,17 @@ import type { HermesSocket } from './hermes-socket'
 type Socket = Pick<HermesSocket, 'request'>
 
 export async function createRuntime(socket: Socket, identity: RuntimeIdentity): Promise<string> {
-  // The UUID comes from LilBot. The engine neither chooses it nor derives it from the name.
+  // A runtime has its own id; the app persists the returned binding.
+  const id = crypto.randomUUID()
   await socket.request('profiles.create', {
-    name: identity.id,
+    name: id,
     description: identity.function,
     soul: identity.instructions,
     no_alias: true,
     clone_from: DEFAULT_PROFILE,
     ...(identity.model ? { model: identity.model.model, provider: identity.model.provider } : {})
   })
-  return identity.id
+  return id
 }
 
 export async function applyIdentity(socket: Socket, id: string, identity: RuntimeIdentity, current: EngineBotDetail) {

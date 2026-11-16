@@ -13,15 +13,16 @@ function socket(result = { ok: true }) {
   }
 }
 
-test('creation uses the supplied id, instructions and model without writing ui_meta', async () => {
+test('creation returns an independent native id with supplied instructions and model without writing ui_meta', async () => {
   const client = socket()
   const identity = { ...detail, id: crypto.randomUUID(), model: { provider: 'p', model: 'm' } }
-  expect(await createRuntime(client, identity)).toBe(identity.id)
+  const nativeId = await createRuntime(client, identity)
+  expect(nativeId).not.toBe(identity.id)
   expect(client.calls).toEqual([
     {
       method: 'profiles.create',
       params: {
-        name: identity.id,
+        name: nativeId,
         description: '',
         soul: '',
         no_alias: true,

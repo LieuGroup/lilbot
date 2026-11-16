@@ -120,13 +120,13 @@ try {
   botId = bot.id
 
   // A cloned profile can inherit the live adapter. Disconnect it before the baseline's first turn.
-  await removeMemory(botId)
+  await removeMemory(new BotStore(database).get(botId).engineBotId)
 
   // Before: the bot with Hermes' own memory, as a baseline for token use.
   const before = await turnInNewSession('Reply with exactly: OK')
   check('baseline turn without LilBot memory', before.finished?.status === 'completed', `${before.finished?.contextTokens ?? '?'} tokens sent`)
 
-  await installMemory(botId, { url: `http://127.0.0.1:${PORT}`, tokenFile: join(scratch, 'engine-token') })
+  await installMemory(new BotStore(database).get(botId).engineBotId, { botId, url: `http://127.0.0.1:${PORT}`, tokenFile: join(scratch, 'engine-token') })
   check('memory connected to the bot', true)
 
   const empty = await turnInNewSession('Reply with exactly: OK')
@@ -160,7 +160,7 @@ try {
   // The saving rules reach the bot. Read from the session's real system prompt: asking a bot to
   // describe its own instructions is unreliable (it answered "my instructions don't cover that"
   // while the rules were present).
-  const prompt = await systemPromptOf(botId)
+  const prompt = await systemPromptOf(new BotStore(database).get(botId).engineBotId)
   check('the memory rules are in the bot’s instructions', prompt.includes('# Memory') && prompt.includes('over its budget'), `${prompt.length} characters`)
   check('Hermes’ own memory files are no longer in the prompt', !prompt.includes('USER PROFILE') && !/MEMORY \(your personal notes\)/.test(prompt))
   check('facts ride with the message, not in the cached instructions', !/ultramarine/i.test(prompt))
@@ -230,7 +230,7 @@ try {
 } finally {
   if (botId) {
     try {
-      await deleteBot(botId)
+      await deleteBot(new BotStore(database).get(botId).engineBotId)
       check('temporary bot deleted', true)
     } catch (error) {
       check('temporary bot deleted', false, `delete it by hand: hermes profile delete ${botId} -y. ${error instanceof Error ? error.message : ''}`)

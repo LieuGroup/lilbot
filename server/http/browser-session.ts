@@ -3,6 +3,7 @@ import type { z } from 'zod'
 
 import type { ChatEvent } from '../../shared/chat-schema'
 import { type EventFrame, LilBotError, type Method, methods, RequestFrame, type ResponseFrame, type Results } from '../../shared/protocol'
+import type { ActivityService } from '../activity/activity-service'
 import type { BotService } from '../bots/bot-service'
 import type { OpenChat } from '../engines/bot-engine'
 
@@ -18,14 +19,21 @@ type Handlers = { [M in Method]: (params: z.output<(typeof methods)[M]>, afterRe
 export class BrowserSession {
   private chats = new Map<string, OpenChat>()
   private closed = false
+  private views = new Map<string, () => void>()
 
   constructor(
     private bots: BotService,
-    private sendFrame: (frame: ResponseFrame | EventFrame) => void
+    private sendFrame: (frame: ResponseFrame | EventFrame) => void,
+    private activity?: ActivityService
   ) {}
 
   private handlers: Handlers = {
-    'bots.list': () => this.bots.listBots(),
+    'bots.list': async () => (await this.bots.listBots()).map(bot => (this.activity ? { ...bot, activity: this.activity.state(bot.id) } : bot)),
+    'activity.setUnread': async ({ botId, unread }) => {
+      await this.bots.getBot(botId)
+      this.activity?.setUnread(botId, unread)
+      return { ok: true }
+    },
     'bots.get': ({ botId }) => this.bots.getBot(botId),
     'bots.create': input => this.bots.createBot(input),
     'bots.update': input => this.bots.updateBot(input),
@@ -66,6 +74,8 @@ export class BrowserSession {
     },
     'chat.close': async ({ chatId }) => {
       this.chats.get(chatId)?.close()
+      this.views.get(chatId)?.()
+      this.views.delete(chatId)
       this.chats.delete(chatId)
       return { ok: true }
     }
@@ -92,6 +102,8 @@ export class BrowserSession {
     this.closed = true
     for (const chat of this.chats.values()) chat.close()
     this.chats.clear()
+    for (const unview of this.views.values()) unview()
+    this.views.clear()
   }
 
   private run(name: string, params: unknown, afterResponse: AfterResponse): Promise<unknown> {
@@ -113,7 +125,11 @@ export class BrowserSession {
     let responded = false
     const early: ChatEvent[] = []
     const forward = (data: ChatEvent) => {
-      if (data.type === 'closed') this.chats.delete(chatId)
+      if (data.type === 'closed') {
+        this.chats.delete(chatId)
+        this.views.get(chatId)?.()
+        this.views.delete(chatId)
+      }
       this.sendFrame({ event: 'chat', chatId, data })
     }
 
@@ -125,6 +141,8 @@ export class BrowserSession {
     chatId = chat.snapshot.chatId
     this.chats.get(chatId)?.close()
     this.chats.set(chatId, chat)
+    this.views.get(chatId)?.()
+    if (this.activity) this.views.set(chatId, this.activity.view(chat.snapshot.botId))
     afterResponse(() => {
       responded = true
       for (const data of early) forward(data)

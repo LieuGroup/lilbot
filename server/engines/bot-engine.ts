@@ -1,4 +1,5 @@
 /** Engines run identities supplied by LilBot. Native runtime ids never become public bot ids. */
+import type { ActivityEvent } from '../../shared/activity-schema'
 import type { BotIdentity, BotModel, BotSetup, ModelProvider } from '../../shared/bot-schema'
 import type { ChatEvent, ChatSnapshot } from '../../shared/chat-schema'
 
@@ -32,7 +33,12 @@ export interface ChatOptions {
   workspace: string
 }
 
+export type RuntimeBinding = { id: string; engineBotId: string }
+export type ActivityCursor = (botId: string, chatId: string) => string | undefined
+
 export interface BotEngine {
+  /** Observe existing bound runtimes; emit and persist cursors using the LilBot id. */
+  watchActivity?(bots: () => Promise<RuntimeBinding[]>, listener: (event: ActivityEvent) => void, cursor: ActivityCursor): () => void
   readonly id: string
   /** Only used for the one-time migration of identities that predate LilBot ownership. */
   importBots(): Promise<EngineBotDetail[]>

@@ -3,6 +3,7 @@
  *  preferences (LilBot's database); the bot holds its workspace folder. */
 import { z } from 'zod'
 
+import { BotActivity } from './activity-schema'
 import { Avatar } from './avatar'
 
 export const BotModel = z.object({ provider: z.string(), model: z.string() })
@@ -36,6 +37,7 @@ export const Bot = BotIdentity.extend({
   isPrimary: z.boolean(),
   /** False when the saved bot has no available engine runtime. */
   runnable: z.boolean().default(true),
+  activity: BotActivity.optional(),
   prefs: BotPrefs,
   /** The bot's own folder on the shared computer; its chats work there. */
   workspace: z.string()

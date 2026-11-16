@@ -1,8 +1,9 @@
+import type { ActivityEvent } from '../../shared/activity-schema'
 import type { Bot, BotCreateInput, BotDetail, BotPrefsInput, BotUpdateInput, ModelProvider, Section } from '../../shared/bot-schema'
 import type { ChatEvent } from '../../shared/chat-schema'
 import type { MemoryFact, MemoryWriteInput } from '../../shared/memory-schema'
 import { LilBotError } from '../../shared/protocol'
-import type { BotEngine, MemoryConnection, OpenChat } from '../engines/bot-engine'
+import type { ActivityCursor, BotEngine, MemoryConnection, OpenChat } from '../engines/bot-engine'
 import type { MemoryService } from '../memory/memory-service'
 import { BotMemory } from './bot-memory'
 import type { BotPrefsStore } from './bot-prefs-store'
@@ -37,6 +38,19 @@ export class BotService {
     this.changed = options.changed ?? (() => {})
     this.memoryChanged = options.memoryChanged ?? (() => {})
     this.botMemory = new BotMemory(this.runtimes, memory, options.memoryConnection, this.memoryChanged)
+  }
+
+  watchActivity(listener: (event: ActivityEvent) => void, cursor: ActivityCursor): () => void {
+    return (
+      this.engine.watchActivity?.(
+        async () => {
+          await this.runtimes.initialize()
+          return this.runtimes.store.list().filter(bot => bot.engineId === this.engine.id)
+        },
+        listener,
+        cursor
+      ) ?? (() => {})
+    )
   }
 
   async listBots(): Promise<Bot[]> {
