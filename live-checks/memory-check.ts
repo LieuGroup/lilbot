@@ -4,7 +4,7 @@
  *  session is known in the next. It also prints how many tokens memory adds to a turn.
  *  Costs a few model calls. Never touches existing bots or the real database. */
 import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { BotPrefsStore } from '../server/bots/bot-prefs-store'
 import { BotService } from '../server/bots/bot-service'
@@ -12,7 +12,7 @@ import { Workspaces } from '../server/bots/workspaces'
 import { openDatabase } from '../server/database/database'
 import type { OpenChat } from '../server/engines/bot-engine'
 import { HermesEngine } from '../server/engines/hermes/hermes-engine'
-import { installMemory, MEMORY_ADAPTER_VERSION } from '../server/engines/hermes/hermes-memory-setup'
+import { installMemory, MEMORY_ADAPTER_VERSION, removeMemory } from '../server/engines/hermes/hermes-memory-setup'
 import { HermesSocket } from '../server/engines/hermes/hermes-socket'
 import { createEngineApi, engineToken } from '../server/http/engine-api'
 import { MemoryReviewer } from '../server/memory/memory-reviewer'
@@ -28,7 +28,7 @@ const BOT_NAME = `${BOT_PREFIX} ${Date.now().toString(36)}`
 const PORT = 3379
 const TURN_TIMEOUT_MS = 120_000
 
-const scratch = mkdtempSync(join(tmpdir(), 'lilbot-memory-'))
+const scratch = mkdtempSync(join(homedir(), 'agent-tmp', 'lilbot-memory-'))
 const database = openDatabase(join(scratch, 'lilbot.db'))
 const memory = new MemoryService(new MemoryStore(database))
 const engine = new HermesEngine()
@@ -109,9 +109,11 @@ async function deleteBot(id: string) {
 }
 
 try {
-  for (const leftover of (await bots.listBots()).filter(bot => bot.name.startsWith(BOT_PREFIX))) await deleteBot(leftover.id)
   const bot = await bots.createBot({ name: BOT_NAME, function: 'Temporary bot for the LilBot memory check.', instructions: 'Be brief. Answer in plain text.' })
   botId = bot.id
+
+  // A cloned profile can inherit the live adapter. Disconnect it before the baseline's first turn.
+  await removeMemory(botId)
 
   // Before: the bot with Hermes' own memory, as a baseline for token use.
   const before = await turnInNewSession('Reply with exactly: OK')
@@ -228,6 +230,7 @@ try {
     }
   }
   server.stop(true)
+  database.close()
   rmSync(scratch, { recursive: true, force: true })
 }
 

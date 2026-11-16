@@ -3,6 +3,7 @@
  *  session, on a cheaper model with only its memory tools, whether anything in those turns belongs
  *  in memory. LilBot runs no model itself: the review is a session of the bot's own engine. */
 import type { BotModel } from '../../shared/bot-schema'
+import { LilBotError } from '../../shared/protocol'
 import type { BotEngine } from '../engines/bot-engine'
 import type { PendingSummary, PendingTurn, ReviewQueue } from './review-queue'
 
@@ -89,6 +90,12 @@ export class MemoryReviewer {
       this.retryAt.delete(botId)
       return turns.length
     } catch (error) {
+      if (error instanceof LilBotError && error.code === 'bot_not_found') {
+        this.queue.forgetBot(botId)
+        this.retryAt.delete(botId)
+        console.info(`[memory-review] discarded queued turns for missing bot ${botId}.`)
+        return 0
+      }
       // The turns stay queued; a persistent failure must not turn into a review every few seconds.
       this.retryAt.set(botId, this.now() + RETRY_AFTER_MS)
       console.error(`[memory-review] review of ${botId} failed, retrying later:`, error instanceof Error ? error.message : error)

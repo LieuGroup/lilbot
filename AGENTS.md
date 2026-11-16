@@ -212,6 +212,7 @@ runs with Hermes' built-in memory tool, which a connected bot no longer has, so 
 - `server/memory/memory-reviewer.ts` checks every 20 seconds and reviews a bot once 10 turns wait, or once at
   least 3 wait and the chat has been quiet for 2 minutes. `LILBOT_REVIEW=off`, `LILBOT_REVIEW_TURNS` and
   `LILBOT_REVIEW_QUIET_SECONDS` change that.
+- If the engine reports a missing bot, its queued turns are discarded once. Other review failures retry after 10 minutes.
 - LilBot runs no model. `BotEngine.reviewMemory` runs the review as a hidden session of the same bot with only its
   memory tools, on `LILBOT_REVIEW_MODEL` (`provider::model`; without it, the bot's own model, which costs more).
   Limiting the session to memory tools cuts its prompt from about 26,000 tokens to about 4,500.
@@ -302,9 +303,10 @@ artwork, names or text.
 
 - `bun run verify`: lint, typecheck, unit and contract tests, and build the web app into `dist/`. `bun run format`
   applies formatting.
-- `bun run check:live`: creates a temporary bot in Hermes, chats, stops, resumes, then deletes it. A few model calls.
+- `bun run check:live`: creates a uniquely named temporary bot in Hermes, connects it to a throwaway memory endpoint,
+  chats, stops, resumes, then deletes it. A few model calls.
 - `bun run check:memory`: connects a temporary bot to a throwaway memory, tells it facts, checks a new session knows
-  them, prints tokens per turn, then deletes it. A few model calls.
+  them, prints tokens per turn, then deletes it. Inherited memory is disconnected before the baseline turn. A few model calls.
 - `bun run start`: run the server. `LILBOT_PORT` and `LILBOT_HOST` override the defaults.
 - `bun run dev`: Vite with hot reload, proxying `/ws` to a server on 3370.
 - After a change: `bun run verify && systemctl --user restart lilbot.service`.

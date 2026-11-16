@@ -3,25 +3,40 @@
  *  Costs a few model calls. Never touches existing bots. */
 
 import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { BotPrefsStore } from '../server/bots/bot-prefs-store'
 import { BotService } from '../server/bots/bot-service'
 import { Workspaces } from '../server/bots/workspaces'
 import { openDatabase } from '../server/database/database'
 import { HermesEngine } from '../server/engines/hermes/hermes-engine'
+import { createEngineApi, engineToken } from '../server/http/engine-api'
+import { MemoryReviewer } from '../server/memory/memory-reviewer'
 import { MemoryService } from '../server/memory/memory-service'
 import { MemoryStore } from '../server/memory/memory-store'
+import { ReviewQueue } from '../server/memory/review-queue'
 import type { ChatEvent } from '../shared/chat-schema'
 
-const BOT_NAME = 'LilBot Live Check'
+const BOT_NAME = `LilBot Live Check ${Date.now().toString(36)}`
+const PORT = 3378
 const TURN_TIMEOUT_MS = 90_000
 
 // The real engine, with a throwaway database and workspaces folder so nothing of the user's is touched.
-const scratch = mkdtempSync(join(tmpdir(), 'lilbot-live-'))
+const scratch = mkdtempSync(join(homedir(), 'agent-tmp', 'lilbot-live-'))
 const engine = new HermesEngine()
 const database = openDatabase(join(scratch, 'lilbot.db'))
-const bots = new BotService(engine, new BotPrefsStore(database), new Workspaces(join(scratch, 'workspaces')), new MemoryService(new MemoryStore(database)))
+const memory = new MemoryService(new MemoryStore(database))
+const queue = new ReviewQueue(database)
+const reviewer = new MemoryReviewer(queue, engine)
+const api = createEngineApi(memory, engineToken(scratch), PORT, { reviewer })
+const server = Bun.serve({
+  hostname: '127.0.0.1',
+  port: PORT,
+  fetch: request => api(request, new URL(request.url).pathname)
+})
+const bots = new BotService(engine, new BotPrefsStore(database), new Workspaces(join(scratch, 'workspaces')), memory, {
+  memoryConnection: { url: `http://127.0.0.1:${PORT}`, tokenFile: join(scratch, 'engine-token') }
+})
 let botId = ''
 let failures = 0
 
@@ -67,7 +82,6 @@ async function deleteBot(id: string) {
 try {
   const before = await bots.listBots()
   check('list bots', before.length > 0 && before.some(bot => bot.isDefault), `${before.length} bots`)
-  for (const leftover of before.filter(bot => bot.name === BOT_NAME)) await deleteBot(leftover.id)
 
   const bot = await bots.createBot({
     name: BOT_NAME,
@@ -123,6 +137,13 @@ try {
   const missing = await bots.openChat(botId, 'local-does-not-exist', () => {})
   check('a chat that does not exist becomes a new one', missing.snapshot.chatId !== 'local-does-not-exist' && missing.snapshot.items.length === 0)
   missing.close()
+
+  // sync_turn is asynchronous: prove that this bot's turns reached only our throwaway queue.
+  for (let tries = 0; tries < 40 && queue.pending().length === 0; tries++) await Bun.sleep(100)
+  check(
+    'finished turns reached the isolated review queue',
+    queue.pending().some(pending => pending.botId === botId)
+  )
 } catch (error) {
   check('no unexpected error', false, error instanceof Error ? error.message : String(error))
 } finally {
@@ -136,6 +157,8 @@ try {
   }
 }
 
+server.stop(true)
+database.close()
 rmSync(scratch, { recursive: true, force: true })
 console.log(failures === 0 ? '\nLive check passed.' : `\nLive check FAILED: ${failures} problem(s).`)
 process.exit(failures === 0 ? 0 : 1)
