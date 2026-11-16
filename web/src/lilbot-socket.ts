@@ -1,6 +1,6 @@
-/** The browser's connection to the LeBot server: typed requests, chat events, automatic reconnect. */
+/** The browser's connection to the LilBot server: typed requests, chat events, automatic reconnect. */
 import type { ChatEvent } from '../../shared/chat-schema'
-import { LeBotError, type Method, type Params, type Results } from '../../shared/protocol'
+import { LilBotError, type Method, type Params, type Results } from '../../shared/protocol'
 
 type Pending = { resolve: (value: any) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
 type ChatListener = (event: ChatEvent) => void
@@ -8,7 +8,7 @@ type ChatListener = (event: ChatEvent) => void
 const REQUEST_TIMEOUT_MS = 90_000
 const RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10_000]
 
-class LeBotSocket {
+class LilBotSocket {
   private socket: WebSocket | null = null
   private nextId = 1
   private attempt = 0
@@ -31,7 +31,7 @@ class LeBotSocket {
     socket.onclose = () => {
       for (const waiting of this.pending.values()) {
         clearTimeout(waiting.timer)
-        waiting.reject(new LeBotError('disconnected', 'The connection to LeBot was lost.'))
+        waiting.reject(new LilBotError('disconnected', 'The connection to LilBot was lost.'))
       }
       this.pending.clear()
       this.setConnected(false)
@@ -41,12 +41,12 @@ class LeBotSocket {
 
   call<M extends Method>(method: M, params: Params<M>): Promise<Results[M]> {
     const socket = this.socket
-    if (!socket || socket.readyState !== WebSocket.OPEN) return Promise.reject(new LeBotError('disconnected', 'Not connected to LeBot.'))
+    if (!socket || socket.readyState !== WebSocket.OPEN) return Promise.reject(new LilBotError('disconnected', 'Not connected to LilBot.'))
     const id = this.nextId++
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id)
-        reject(new LeBotError('timeout', 'LeBot did not answer in time.'))
+        reject(new LilBotError('timeout', 'LilBot did not answer in time.'))
       }, REQUEST_TIMEOUT_MS)
       this.pending.set(id, { resolve, reject, timer })
       socket.send(JSON.stringify({ id, method, params }))
@@ -92,7 +92,7 @@ class LeBotSocket {
     try {
       frame = JSON.parse(raw)
     } catch {
-      console.warn('LeBot: dropped a frame that was not JSON')
+      console.warn('LilBot: dropped a frame that was not JSON')
       return
     }
     if (frame.event === 'bots.changed') {
@@ -112,10 +112,10 @@ class LeBotSocket {
     clearTimeout(waiting.timer)
     this.pending.delete(frame.id)
     if (frame.ok) waiting.resolve(frame.result)
-    else waiting.reject(new LeBotError(frame.error?.code ?? 'failed', frame.error?.message ?? 'The request failed.'))
+    else waiting.reject(new LilBotError(frame.error?.code ?? 'failed', frame.error?.message ?? 'The request failed.'))
   }
 }
 
-export const lebot = new LeBotSocket()
+export const lilbot = new LilBotSocket()
 
 export const messageOf = (error: unknown) => (error instanceof Error ? error.message : 'Something went wrong.')

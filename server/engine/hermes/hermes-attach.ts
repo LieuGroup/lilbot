@@ -1,4 +1,4 @@
-import { LeBotError } from '../../../shared/protocol'
+import { LilBotError } from '../../../shared/protocol'
 
 /** Asks Hermes for one attach grant: the gateway WebSocket URL plus a single-use ticket (30 s life).
  *  This is the path Hermes documents for local clients: `hermes gateway attach --json`. */
@@ -8,7 +8,7 @@ export interface HermesGrant {
   protocols: string[]
 }
 
-const HERMES_BIN = process.env.LEBOT_HERMES_BIN ?? 'hermes'
+const HERMES_BIN = process.env.LILBOT_HERMES_BIN ?? 'hermes'
 
 /** `profile` empty means the default Hermes profile. Never log the result: the ticket is a credential. */
 export async function attachToHermes(profile: string): Promise<HermesGrant> {
@@ -18,18 +18,18 @@ export async function attachToHermes(profile: string): Promise<HermesGrant> {
 
   if (exitCode !== 0) {
     console.error(`[hermes] gateway attach exited ${exitCode}: ${stderr.trim().slice(0, 300)}`)
-    throw new LeBotError('engine_unavailable', 'Hermes is not reachable. Check that the Hermes gateway is running.')
+    throw new LilBotError('engine_unavailable', 'Hermes is not reachable. Check that the Hermes gateway is running.')
   }
 
   let grant: { state?: string; url?: string; protocols?: string[]; reason_code?: string | null }
   try {
     grant = JSON.parse(stdout)
   } catch {
-    throw new LeBotError('engine_unavailable', 'Hermes gave an unexpected answer when connecting.')
+    throw new LilBotError('engine_unavailable', 'Hermes gave an unexpected answer when connecting.')
   }
 
   if (grant.state !== 'ready' || !grant.url || !Array.isArray(grant.protocols)) {
-    throw new LeBotError('engine_unavailable', `Hermes is not ready yet (${grant.state ?? 'unknown'}). Try again in a moment.`)
+    throw new LilBotError('engine_unavailable', `Hermes is not ready yet (${grant.state ?? 'unknown'}). Try again in a moment.`)
   }
 
   return { url: grant.url, protocols: grant.protocols }

@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useBotStore } from '../bots/bot-store'
-import { lebot, messageOf } from '../lebot-socket'
+import { lilbot, messageOf } from '../lilbot-socket'
 import { applyChatEvent, chatFromSnapshot, emptyChat, withError, withUserMessage } from './chat-state'
 import { emptySlot, updateChat, useChatStore } from './chat-store'
 
@@ -31,17 +31,17 @@ export function useChat(botId: string) {
       retry = setTimeout(() => setOpenCount(count => count + 1), REOPEN_DELAY_MS)
     }
 
-    const opening = startNew.current ? lebot.call('chat.new', { botId }) : lebot.call('chat.open', { botId })
+    const opening = startNew.current ? lilbot.call('chat.new', { botId }) : lilbot.call('chat.open', { botId })
     startNew.current = false
     opening
       .then(snapshot => {
         if (cancelled) {
-          void lebot.call('chat.close', { chatId: snapshot.chatId }).catch(() => {})
+          void lilbot.call('chat.close', { chatId: snapshot.chatId }).catch(() => {})
           return
         }
         chatId.current = snapshot.chatId
         updateChat(botId, () => ({ view: chatFromSnapshot(snapshot), ready: true, error: '' }))
-        stopListening = lebot.onChat(snapshot.chatId, event => {
+        stopListening = lilbot.onChat(snapshot.chatId, event => {
           updateChat(botId, current => ({ ...current, view: applyChatEvent(current.view, event), ready: event.type === 'closed' ? false : current.ready }))
           if (event.type === 'closed') reopenSoon()
         })
@@ -58,7 +58,7 @@ export function useChat(botId: string) {
       clearTimeout(retry)
       stopListening()
       updateChat(botId, current => ({ ...current, ready: false }))
-      if (chatId.current && lebot.connected) void lebot.call('chat.close', { chatId: chatId.current }).catch(() => {})
+      if (chatId.current && lilbot.connected) void lilbot.call('chat.close', { chatId: chatId.current }).catch(() => {})
       chatId.current = ''
     }
   }, [botId, connected, openCount])
@@ -68,7 +68,7 @@ export function useChat(botId: string) {
       if (!chatId.current) return
       updateChat(botId, current => ({ ...current, view: withUserMessage(current.view, text) }))
       try {
-        await lebot.call('chat.send', { chatId: chatId.current, text })
+        await lilbot.call('chat.send', { chatId: chatId.current, text })
       } catch (failure) {
         updateChat(botId, current => ({ ...current, view: withError(current.view, `The message was not sent. ${messageOf(failure)}`) }))
       }
@@ -78,7 +78,7 @@ export function useChat(botId: string) {
 
   const stop = useCallback(async () => {
     try {
-      await lebot.call('chat.stop', { chatId: chatId.current })
+      await lilbot.call('chat.stop', { chatId: chatId.current })
     } catch (failure) {
       updateChat(botId, current => ({ ...current, view: withError(current.view, `Could not stop the bot. ${messageOf(failure)}`) }))
     }

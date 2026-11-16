@@ -1,4 +1,4 @@
-/** Bot avatars: a shape and a colour from fixed lists. LeBot draws its own shapes. */
+/** Bot avatars: a shape and a colour from fixed lists. LilBot draws its own shapes. */
 import { z } from 'zod'
 
 export const AVATAR_SHAPES = ['circle', 'squircle', 'square', 'hexagon', 'diamond', 'shield', 'pill', 'triangle', 'star', 'drop'] as const

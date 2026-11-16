@@ -14,13 +14,13 @@ import { MemoryStore } from '../server/memory/memory-store'
 import { Workspaces } from '../server/workspaces'
 import type { ChatEvent } from '../shared/chat-schema'
 
-const BOT_NAME = 'LeBot Live Check'
+const BOT_NAME = 'LilBot Live Check'
 const TURN_TIMEOUT_MS = 90_000
 
 // The real engine, with a throwaway database and workspaces folder so nothing of the user's is touched.
-const scratch = mkdtempSync(join(tmpdir(), 'lebot-live-'))
+const scratch = mkdtempSync(join(tmpdir(), 'lilbot-live-'))
 const engine = new HermesEngine()
-const database = openDatabase(join(scratch, 'lebot.db'))
+const database = openDatabase(join(scratch, 'lilbot.db'))
 const bots = new BotService(engine, new PrefsStore(database), new Workspaces(join(scratch, 'workspaces')), new MemoryService(new MemoryStore(database)))
 let botId = ''
 let failures = 0
@@ -59,7 +59,7 @@ function recorder() {
 }
 
 async function deleteBot(id: string) {
-  const child = Bun.spawn([process.env.LEBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', id, '-y'], { stdout: 'ignore', stderr: 'pipe' })
+  const child = Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', id, '-y'], { stdout: 'ignore', stderr: 'pipe' })
   const [stderr, code] = await Promise.all([new Response(child.stderr).text(), child.exited])
   if (code !== 0) throw new Error(`hermes profile delete ${id} exited ${code}: ${stderr.trim().slice(0, 200)}`)
 }
@@ -71,7 +71,7 @@ try {
 
   const bot = await bots.createBot({
     name: BOT_NAME,
-    function: 'Temporary bot for the LeBot live check.',
+    function: 'Temporary bot for the LilBot live check.',
     instructions: 'Follow the user exactly. Never use tools. Answer in plain text.'
   })
   botId = bot.id

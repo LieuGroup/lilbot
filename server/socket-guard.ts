@@ -1,4 +1,4 @@
-/** Decides who may open the LeBot socket. The socket can run tools as the user, so this matters. */
+/** Decides who may open the LilBot socket. The socket can run tools as the user, so this matters. */
 
 /** `extraHosts` is a comma-separated list of `host:port` names the server is reached under, such
  *  as its tailnet name. Local addresses on `port` are always allowed. */

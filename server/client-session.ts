@@ -2,7 +2,7 @@
 import type { z } from 'zod'
 
 import type { ChatEvent } from '../shared/chat-schema'
-import { type EventFrame, LeBotError, type Method, methods, RequestFrame, type ResponseFrame, type Results } from '../shared/protocol'
+import { type EventFrame, LilBotError, type Method, methods, RequestFrame, type ResponseFrame, type Results } from '../shared/protocol'
 import type { BotService } from './bot-service'
 import type { OpenChat } from './engine/bot-engine'
 
@@ -80,9 +80,9 @@ export class ClientSession {
       this.sendFrame({ id, ok: true, result })
     } catch (error) {
       if (id < 0) return console.error('[session] dropped a malformed frame')
-      const known = error instanceof LeBotError
+      const known = error instanceof LilBotError
       if (!known) console.error('[session] request failed:', error instanceof Error ? error.message : error)
-      this.sendFrame({ id, ok: false, error: { code: known ? error.code : 'internal', message: known ? error.message : 'Something went wrong on the LeBot server.' } })
+      this.sendFrame({ id, ok: false, error: { code: known ? error.code : 'internal', message: known ? error.message : 'Something went wrong on the LilBot server.' } })
     }
     for (const task of after) task()
   }
@@ -94,10 +94,10 @@ export class ClientSession {
   }
 
   private run(name: string, params: unknown, afterResponse: AfterResponse): Promise<unknown> {
-    if (!Object.hasOwn(methods, name)) throw new LeBotError('unknown_method', `Unknown method: ${name}`)
+    if (!Object.hasOwn(methods, name)) throw new LilBotError('unknown_method', `Unknown method: ${name}`)
     const method = name as Method
     const parsed = methods[method].safeParse(params ?? {})
-    if (!parsed.success) throw new LeBotError('invalid_params', parsed.error.issues[0]?.message ?? 'Invalid request.')
+    if (!parsed.success) throw new LilBotError('invalid_params', parsed.error.issues[0]?.message ?? 'Invalid request.')
     // The one place the method name and its params are re-joined after the check above.
     const handler = this.handlers[method] as (params: unknown, afterResponse: AfterResponse) => Promise<unknown>
     return handler(parsed.data, afterResponse)
@@ -105,7 +105,7 @@ export class ClientSession {
 
   /** Opens a chat through `open`, keeps its handle for this connection and forwards its events. */
   private async track(afterResponse: AfterResponse, open: (onEvent: (event: ChatEvent) => void) => Promise<OpenChat>) {
-    if (this.chats.size >= MAX_OPEN_CHATS) throw new LeBotError('too_many_chats', 'Too many chats are open in this window.')
+    if (this.chats.size >= MAX_OPEN_CHATS) throw new LilBotError('too_many_chats', 'Too many chats are open in this window.')
     // The browser only listens for a chat once it has the response naming it, so events that
     // arrive earlier wait here and go out right after that response.
     let chatId = ''
@@ -119,7 +119,7 @@ export class ClientSession {
     const chat = await open(data => (responded ? forward(data) : early.push(data)))
     if (this.closed) {
       chat.close()
-      throw new LeBotError('closed', 'The connection was closed.')
+      throw new LilBotError('closed', 'The connection was closed.')
     }
     chatId = chat.snapshot.chatId
     this.chats.get(chatId)?.close()
@@ -133,7 +133,7 @@ export class ClientSession {
 
   private chat(chatId: string): OpenChat {
     const chat = this.chats.get(chatId)
-    if (!chat) throw new LeBotError('chat_not_open', 'This chat is not open. Reload the page to continue.')
+    if (!chat) throw new LilBotError('chat_not_open', 'This chat is not open. Reload the page to continue.')
     return chat
   }
 }

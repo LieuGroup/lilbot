@@ -1,4 +1,4 @@
-/** LeBot's own database: one SQLite file holding only what belongs to LeBot and the user.
+/** LilBot's own database: one SQLite file holding only what belongs to LilBot and the user.
  *  Nothing the engine already stores (bots, chats, memory) is copied here. */
 import { Database } from 'bun:sqlite'
 import { mkdirSync } from 'node:fs'
@@ -63,7 +63,7 @@ export function openDatabase(path: string): Database {
   db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON;')
 
   const applied = (db.query('PRAGMA user_version').get() as { user_version: number }).user_version
-  if (applied > migrations.length) throw new Error(`The database is from a newer LeBot (schema ${applied}, this build knows ${migrations.length}).`)
+  if (applied > migrations.length) throw new Error(`The database is from a newer LilBot (schema ${applied}, this build knows ${migrations.length}).`)
   for (let step = applied; step < migrations.length; step++) {
     db.transaction(() => {
       db.exec(migrations[step])

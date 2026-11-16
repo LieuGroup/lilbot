@@ -1,10 +1,10 @@
-/** What LeBot does with bots, whichever screen or client asks. It joins the three owners of a bot:
+/** What LilBot does with bots, whichever screen or client asks. It joins the three owners of a bot:
  *  the engine (identity, setup, chats), the user's preferences (database) and the bot's workspace
  *  folder. Transport (`client-session.ts`) sits above it; the engine and the stores sit below. */
 import type { Bot, BotCreateInput, BotDetail, BotIdentity, BotPrefsInput, BotUpdateInput, ModelProvider, Section } from '../shared/bot-schema'
 import type { ChatEvent } from '../shared/chat-schema'
 import type { MemoryFact, MemoryWriteInput } from '../shared/memory-schema'
-import { LeBotError } from '../shared/protocol'
+import { LilBotError } from '../shared/protocol'
 import type { PrefsStore } from './db/prefs-store'
 import type { BotEngine, MemoryConnection, OpenChat } from './engine/bot-engine'
 import type { MemoryService } from './memory/memory-service'
@@ -15,11 +15,11 @@ export interface BotServiceOptions {
   changed?: () => void
   /** Called whenever a fact was saved or forgotten through the app. */
   memoryChanged?: () => void
-  /** Where engine adapters reach LeBot's memory. Without it, bots are not connected to memory. */
+  /** Where engine adapters reach LilBot's memory. Without it, bots are not connected to memory. */
   memoryConnection?: MemoryConnection
 }
 
-/** An engine's own notes can be longer than a LeBot fact; the start is kept. */
+/** An engine's own notes can be longer than a LilBot fact; the start is kept. */
 const NOTE_LIMIT = 500
 
 export class BotService {
@@ -54,7 +54,7 @@ export class BotService {
     const identity = await this.engine.createBot(input)
     if (input.avatar) this.prefs.setPrefs(identity.id, { avatar: input.avatar })
     await this.workspaces.ensure(identity.id)
-    // A new bot uses LeBot's memory from its first session. The engine may have started it as a
+    // A new bot uses LilBot's memory from its first session. The engine may have started it as a
     // copy of another bot, so only what is known about the user is kept: another bot's working
     // notes are not this bot's.
     if (this.memoryConnection) await this.connectMemory(identity.id, { keepOwnNotes: false })
@@ -103,10 +103,10 @@ export class BotService {
     this.memoryChanged()
   }
 
-  /** Connects a bot to LeBot's memory and keeps the notes its engine had: what it knew about the
+  /** Connects a bot to LilBot's memory and keeps the notes its engine had: what it knew about the
    *  user becomes shared facts, its own notes stay private to it. Safe to call again. */
   async connectMemory(botId: string, options: { keepOwnNotes: boolean } = { keepOwnNotes: true }): Promise<{ imported: number }> {
-    if (!this.memoryConnection) throw new LeBotError('memory_unavailable', 'Memory is not set up on this LeBot server.')
+    if (!this.memoryConnection) throw new LilBotError('memory_unavailable', 'Memory is not set up on this LilBot server.')
     const notes = await this.engine.connectMemory(botId, this.memoryConnection)
     const before = this.memory.list(botId).length
     for (const text of notes.aboutUser) this.importNote(botId, 'shared', text)
@@ -115,13 +115,27 @@ export class BotService {
     return { imported: this.memory.list(botId).length - before }
   }
 
+  /** Every bot uses LilBot's memory. Connects any that does not yet (for example a bot the
+   *  engine came with) and returns the bots it connected. Called at start-up. */
+  async connectAllMemory(): Promise<string[]> {
+    if (!this.memoryConnection) return []
+    const connected: string[] = []
+    for (const bot of await this.engine.listBots()) {
+      if ((await this.engine.getBot(bot.id)).memoryConnected) continue
+      await this.connectMemory(bot.id)
+      connected.push(bot.id)
+    }
+    if (connected.length) this.changed()
+    return connected
+  }
+
   /** One of the engine's old notes becomes a fact. A note the safety scan refuses is skipped:
    *  one bad note must not stop a bot from being connected. */
   private importNote(botId: string, scope: 'bot' | 'shared', text: string) {
     try {
       this.memory.write({ botId, kind: 'profile', scope, text: text.slice(0, NOTE_LIMIT), author: 'bot', via: 'import' })
     } catch (error) {
-      if (!(error instanceof LeBotError)) throw error
+      if (!(error instanceof LilBotError)) throw error
       console.error(`[memory] skipped a note while connecting ${botId}: ${error.code}`)
     }
   }
@@ -170,14 +184,14 @@ export class BotService {
     return chat
   }
 
-  /** The parts of a bot that LeBot, not the engine, holds. */
+  /** The parts of a bot that LilBot, not the engine, holds. */
   private own(identity: BotIdentity): Pick<Bot, 'prefs' | 'workspace'> {
     return { prefs: this.prefs.prefs(identity.id), workspace: this.workspaces.pathFor(identity.id) }
   }
 
   private async requireBot(botId: string): Promise<BotIdentity> {
     const identity = (await this.engine.listBots()).find(bot => bot.id === botId)
-    if (!identity) throw new LeBotError('bot_not_found', 'That bot does not exist.')
+    if (!identity) throw new LilBotError('bot_not_found', 'That bot does not exist.')
     return identity
   }
 }

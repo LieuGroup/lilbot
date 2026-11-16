@@ -2,7 +2,7 @@ import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
-// `bun run dev` serves the UI with hot reload and forwards the socket to the LeBot server.
+// `bun run dev` serves the UI with hot reload and forwards the socket to the LilBot server.
 export default defineConfig({
   root: 'web',
   plugins: [react(), tailwindcss()],

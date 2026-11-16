@@ -3,7 +3,7 @@ import { type FormEvent, useCallback, useEffect, useState } from 'react'
 
 import { defaultScope, type MemoryFact, type MemoryKind } from '../../../shared/memory-schema'
 import { useBotStore } from '../bots/bot-store'
-import { lebot, messageOf } from '../lebot-socket'
+import { lilbot, messageOf } from '../lilbot-socket'
 import { Button, Notice, Select, TextArea } from '../ui/controls'
 import { Panel } from '../ui/panel'
 
@@ -100,7 +100,7 @@ export function MemoryPanel() {
 
   const load = useCallback(async () => {
     try {
-      const result = await lebot.call('memory.list', { botId })
+      const result = await lilbot.call('memory.list', { botId })
       setFacts(result.facts)
       setForgotten(result.forgotten)
       setMemoryOn(result.connected)
@@ -115,7 +115,7 @@ export function MemoryPanel() {
     setFacts(null)
     void load()
     // A bot saving a fact mid-chat, or a review finding one, shows up here without a reload.
-    return lebot.onMemoryChanged(() => void load())
+    return lilbot.onMemoryChanged(() => void load())
   }, [connected, load])
 
   const run = async (action: () => Promise<unknown>) => {
@@ -132,15 +132,15 @@ export function MemoryPanel() {
   }
 
   const actions: RowProps['actions'] = {
-    forget: fact => void run(() => lebot.call('memory.forget', { factId: fact.id })),
-    pause: fact => void run(() => lebot.call('memory.pause', { factId: fact.id, paused: !fact.paused })),
-    restore: fact => void run(() => lebot.call('memory.restore', { factId: fact.id }))
+    forget: fact => void run(() => lilbot.call('memory.forget', { factId: fact.id })),
+    pause: fact => void run(() => lilbot.call('memory.pause', { factId: fact.id, paused: !fact.paused })),
+    restore: fact => void run(() => lilbot.call('memory.restore', { factId: fact.id }))
   }
 
   const add = (event: FormEvent) => {
     event.preventDefault()
     void run(async () => {
-      await lebot.call('memory.write', { botId, kind, scope: shared ? 'shared' : 'bot', text })
+      await lilbot.call('memory.write', { botId, kind, scope: shared ? 'shared' : 'bot', text })
       setText('')
     })
   }
@@ -156,8 +156,8 @@ export function MemoryPanel() {
             This bot still uses its engine’s own notes, so it does not read or write the memory below. Connecting brings its notes over and takes effect from its next session.
           </p>
           <div>
-            <Button disabled={busy} onClick={() => void run(() => lebot.call('memory.connect', { botId }))}>
-              {busy ? 'Connecting...' : 'Connect to LeBot memory'}
+            <Button disabled={busy} onClick={() => void run(() => lilbot.call('memory.connect', { botId }))}>
+              {busy ? 'Connecting...' : 'Connect to LilBot memory'}
             </Button>
           </div>
         </section>

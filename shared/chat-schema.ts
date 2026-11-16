@@ -1,4 +1,4 @@
-/** Chat transcript and live events in LeBot's own terms. Engines translate into these. */
+/** Chat transcript and live events in LilBot's own terms. Engines translate into these. */
 import { z } from 'zod'
 
 export const ChatItem = z.discriminatedUnion('kind', [

@@ -1,14 +1,14 @@
-/** Hermes as LeBot's bot engine: a bot is a Hermes profile, a chat is a Hermes session. */
+/** Hermes as LilBot's bot engine: a bot is a Hermes profile, a chat is a Hermes session. */
 import type { BotCreateInput, BotIdentity, BotUpdateInput, ModelProvider } from '../../../shared/bot-schema'
 import type { ChatEvent } from '../../../shared/chat-schema'
-import { LeBotError } from '../../../shared/protocol'
+import { LilBotError } from '../../../shared/protocol'
 import type { BotEngine, ChatOptions, EngineBotDetail, LegacyNotes, MemoryConnection, OpenChat, ReviewOptions } from '../bot-engine'
 import { botDetailFromProfile, botFromProfile, DEFAULT_PROFILE, profileIdFor, providersFromModelOptions, UI_NAMESPACE } from './hermes-bot-mapping'
 import { chatEventFrom, itemsFromRows, sessionLostEvents } from './hermes-chat-mapping'
 import { installMemory, legacyNotes, memoryConnection, memoryCurrent, memoryInstalled } from './hermes-memory-setup'
 import { HermesSocket } from './hermes-socket'
 
-const CLIENT = { name: 'lebot', version: '0.2.0' }
+const CLIENT = { name: 'lilbot', version: '0.2.0' }
 const PROFILE_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/
 /** Hermes events on the management connection that mean the roster may look different now. */
 const ROSTER_EVENTS = new Set(['sessions.changed', 'skills.changed'])
@@ -135,7 +135,7 @@ export class HermesEngine implements BotEngine {
       for (const id of new Set([session.session_id, session.stored_session_id])) if (typeof id === 'string') options.onChat(id)
       await socket.request('prompt.submit', { session_id: session.session_id, text: prompt, input_id: crypto.randomUUID() })
       const status = await finished
-      if (status !== 'complete') throw new LeBotError('review_failed', `The memory review did not finish (${String(status)}).`)
+      if (status !== 'complete') throw new LilBotError('review_failed', `The memory review did not finish (${String(status)}).`)
     } finally {
       clearTimeout(timer)
       socket.close()
@@ -182,7 +182,7 @@ export class HermesEngine implements BotEngine {
         // restarting, a contract change) is an error, so a long conversation is never swapped
         // for an empty one by accident.
         session = await socket.request('session.resume', { session_id: chatId, source: 'gui', display_projection: true }).catch(error => {
-          if (error instanceof LeBotError && error.code === 'hermes_not_found') return null
+          if (error instanceof LilBotError && error.code === 'hermes_not_found') return null
           throw error
         })
       }
@@ -204,7 +204,7 @@ export class HermesEngine implements BotEngine {
           await socket.request('prompt.submit', { session_id: sessionId, text, input_id: crypto.randomUUID() })
         },
         stop: async () => {
-          if (generation === null) throw new LeBotError('not_running', 'The bot is not running.')
+          if (generation === null) throw new LilBotError('not_running', 'The bot is not running.')
           await socket.request('session.interrupt', { session_id: sessionId, execution_generation: generation })
         },
         close: () => {
@@ -229,13 +229,13 @@ export class HermesEngine implements BotEngine {
   /** Every bot id from the browser passes here before it reaches Hermes or a subprocess. */
   private async requireBot(botId: string): Promise<BotIdentity> {
     const bot = PROFILE_ID.test(botId) ? (await this.profiles(false)).find(candidate => candidate.id === botId) : undefined
-    if (!bot) throw new LeBotError('bot_not_found', 'That bot does not exist.')
+    if (!bot) throw new LilBotError('bot_not_found', 'That bot does not exist.')
     return bot
   }
 
   private async configure(socket: HermesSocket, changes: Record<string, unknown>) {
     const result = await socket.request('profiles.configure', changes)
-    if (result.confirm_required) throw new LeBotError('confirm_required', String(result.confirm_message ?? 'Hermes needs a confirmation for this change.'))
-    if (result.ok !== true) throw new LeBotError('update_failed', 'Hermes did not apply the change.')
+    if (result.confirm_required) throw new LilBotError('confirm_required', String(result.confirm_message ?? 'Hermes needs a confirmation for this change.'))
+    if (result.ok !== true) throw new LilBotError('update_failed', 'Hermes did not apply the change.')
   }
 }

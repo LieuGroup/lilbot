@@ -1,11 +1,11 @@
-# LeBot
+# LilBot
 
 Read `~/code/home/AGENTS.md` first (machine roles, shared rules). This file holds only what is specific to this repo.
 
 ## What this is
 
 Oscar's own bot app, in the style of Grok Bot: one place to chat with and manage his bots. Single user. Runs on the
-leader. Hermes is the engine: LeBot never runs a model or an agent loop, it is a client of the Hermes gateway.
+leader. Hermes is the engine: LilBot never runs a model or an agent loop, it is a client of the Hermes gateway.
 
 North stars: Anthropic's "Building always-on agents" (inbox, timers, memory, permissions, outbox) and DeepSeek
 Harness's "Super-agent" post (router and workers, event-driven, watchdog). Use what Hermes already provides for these
@@ -13,11 +13,11 @@ before writing our own.
 
 ## Status
 
-Foundation done (slice 3): LeBot's own SQLite database for the user's data, a workspace folder per bot, one main
+Foundation done (slice 3): LilBot's own SQLite database for the user's data, a workspace folder per bot, one main
 conversation per bot that is the same on every device, and the layout groundwork (chat stays open beside a details
 panel, the server pushes roster changes). On top of slice 2: bot list, create bot, the Setup panel (name, function,
 instructions, model, workspace, abilities read-only), chat with live tool rows, stop, and starting a new session.
-Memory (slice 4): LeBot's own memory system with a Memory panel; new bots use it from their first session, an
+Memory (slice 4): LilBot's own memory system with a Memory panel; new bots use it from their first session, an
 existing bot is connected from its Memory panel. Hermes' default bot (Chief of Staff) is a test bot Oscar does not
 use: nothing about it needs protecting.
 It includes an after-chat review that saves what a chat missed.
@@ -39,44 +39,44 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
 
 ## How it works
 
-- `shared/`: LeBot's own definitions, used by server and web. `bot-schema.ts` (Bot), `chat-schema.ts` (chat items
+- `shared/`: LilBot's own definitions, used by server and web. `bot-schema.ts` (Bot), `chat-schema.ts` (chat items
   and events), `protocol.ts` (the browser-server methods, checked with Zod on the server).
 - `server/engine/bot-engine.ts`: the interface an engine must satisfy. Nothing outside `server/engine/hermes/` may
   know about Hermes, so another engine (for example one speaking ACP) can be added without touching the web app.
   The one exception is `server/main.ts`, which picks the engine.
-- `server/engine/hermes/`: Hermes as the engine. A bot is a Hermes profile (the bot id is the profile id; LeBot's
-  display name is stored in the profile's `ui_meta.lebot`). A chat is a Hermes session. Bot management uses one
+- `server/engine/hermes/`: Hermes as the engine. A bot is a Hermes profile (the bot id is the profile id; LilBot's
+  display name is stored in the profile's `ui_meta.lilbot`). A chat is a Hermes session. Bot management uses one
   shared gateway connection on the default profile; each open chat has its own connection for its bot's profile,
   because Hermes binds sessions to the profile the connection was attached with (checked live: another profile's
   session is refused with `profile_mismatch`). Sessions use Hermes' canonical methods (`x-canonical-methods` in
   the contract); profiles and models use the general `methods` table. Each connection starts with a
   single-use ticket from `hermes gateway attach --json` (about one second, the slowest step in opening a chat).
-- `server/bot-service.ts`: what LeBot does with bots, whichever client asks. It joins the three owners of a bot:
+- `server/bot-service.ts`: what LilBot does with bots, whichever client asks. It joins the three owners of a bot:
   the engine (identity, setup, chats), the user's preferences (`server/db/`) and the bot's workspace folder
   (`server/workspaces.ts`). It decides which chat is a bot's main conversation. Layers, top to bottom:
   `client-session.ts` (transport) -> `bot-service.ts` -> engine and stores. Keep it that way.
 - `server/client-session.ts`: one per browser connection. Validates requests, runs them on the service, forwards
   chat events. A typed handler map: a protocol method without a handler does not compile.
-- `server/db/`: LeBot's own SQLite database (`bun:sqlite`), by default `~/.local/share/lebot/lebot.db`
-  (`LEBOT_DATA_DIR`). It holds only what belongs to LeBot and the user: sidebar preferences, sections, and each
+- `server/db/`: LilBot's own SQLite database (`bun:sqlite`), by default `~/.local/share/lilbot/lilbot.db`
+  (`LILBOT_DATA_DIR`). It holds only what belongs to LilBot and the user: sidebar preferences, sections, and each
   bot's main-conversation pointer. Never copy into it what the engine stores. `database.ts` owns the schema as an
   ordered list of migration steps (add a step, never edit a shipped one); each store file owns the SQL of its tables.
-- Workspaces: one folder per bot under `~/lebot/workspaces/<bot id>` (`LEBOT_WORKSPACES_DIR`), created on first use
+- Workspaces: one folder per bot under `~/lilbot/workspaces/<bot id>` (`LILBOT_WORKSPACES_DIR`), created on first use
   and passed to the engine as the working directory of new chats. A resumed chat keeps the folder it was made with.
 - The server pushes `bots.changed` to every connected browser when a bot, a preference or a section changes, or
   when Hermes reports that sessions or skills changed. Browsers answer by fetching the bot list again.
 - `server/socket-guard.ts`: who may open the socket (allowed Host names plus same-origin). The tailnet name is set
-  in the service's `LEBOT_ALLOWED_HOSTS`, not in code.
-- `web/`: `lebot-socket.ts` (connection), `bots/` (store, sidebar, form, create page, Setup panel), `chat/` (pure
+  in the service's `LILBOT_ALLOWED_HOSTS`, not in code.
+- `web/`: `lilbot-socket.ts` (connection), `bots/` (store, sidebar, form, create page, Setup panel), `chat/` (pure
   state in `chat-state.ts`, per-bot store in `chat-store.ts`, lifecycle in `use-chat.ts`, the chat column),
   `memory/` (the Memory panel), `router.tsx`. `/bots/$botId` is a layout route: the chat column stays mounted and
   connected while panel routes under it (`setup`, `memory`) open and close. Panels use `ui/panel.tsx`. Add new panels as child routes. On a phone an open panel covers the chat.
 - Hermes' wire contract lives in `~/.hermes/hermes-agent/apps/shared/src/gateway-contract.openrpc.json` and
   `tui_gateway/contracts/`. Read it before using a new method, and read only fields the contract declares (Hermes
-  sends some undeclared extras; do not rely on them). Every method, parameter and field LeBot uses is listed in
+  sends some undeclared extras; do not rely on them). Every method, parameter and field LilBot uses is listed in
   `tests/hermes-contract.test.ts`: add to it when you use a new one. It is Hermes' internal API: after every Hermes
   update run `bun run verify` and `bun run check:live`.
-- Runs as the systemd user unit `lebot.service` on `127.0.0.1:3370`. Other devices reach it over the tailnet only
+- Runs as the systemd user unit `lilbot.service` on `127.0.0.1:3370`. Other devices reach it over the tailnet only
   (port 8443).
 
 ## Foundation model
@@ -86,24 +86,24 @@ What a bot is and who owns each part. Decided with Oscar on 2026-11-16 unless ma
 | Part | Owner | Where it lives |
 |---|---|---|
 | Identity (name, function), instructions, model, abilities | the engine | Hermes profile |
-| Workspace: one folder per bot on the shared computer | the bot | `~/lebot/workspaces/<bot id>`, the working directory of its chats |
-| Conversation: one main conversation per bot; a new session replaces it as the main one | the engine | Hermes sessions; LeBot's database names the main one |
-| Memory | LeBot | facts in LeBot's database; the engine reads and writes them through an adapter |
-| Avatar, section, pinned, hidden (unread later) | the user | LeBot's own SQLite database |
+| Workspace: one folder per bot on the shared computer | the bot | `~/lilbot/workspaces/<bot id>`, the working directory of its chats |
+| Conversation: one main conversation per bot; a new session replaces it as the main one | the engine | Hermes sessions; LilBot's database names the main one |
+| Memory | LilBot | facts in LilBot's database; the engine reads and writes them through an adapter |
+| Avatar, section, pinned, hidden (unread later) | the user | LilBot's own SQLite database |
 
 - "Workspace" means exactly this: each bot has its own folder on the shared computer. It is not a level above bots.
   All bots share one machine (the leader); other machines come later as execution environments.
 - Long conversations are the engine's job, and Hermes already does it: it compresses the conversation
   automatically at 50% of the model's context (silently, with a separate model), loads the two memory files into
   every run (about 800 and 500 tokens), reminds the bot to save memories every 10 user turns, and runs a background
-  review that writes memories and skills. LeBot builds none of this; it shows it and lets Oscar edit it.
+  review that writes memories and skills. LilBot builds none of this; it shows it and lets Oscar edit it.
 - Sidebar state belongs to the user, not the bot: pin, section, read/unread and hide are independent settings.
 - A bot's live state (running, writing, waiting, current activity) is separate from unread and from the health of
   its computer.
 
 ## Memory
 
-LeBot owns memory so it survives an engine change, can be shared between bots, and can be seen and corrected by
+LilBot owns memory so it survives an engine change, can be shared between bots, and can be seen and corrected by
 Oscar. Three layers:
 
 1. `server/memory/memory-store.ts`: the `memory_facts` table and its full-text index. A fact has a kind (`profile`
@@ -115,7 +115,7 @@ Oscar. Three layers:
    entries, within about 1,500 tokens; the rest is reachable by recall).
 3. The engine adapter. `server/engine-api.ts` is a local HTTP endpoint (`/engine/memory/*`) for adapters on this
    machine: loopback only, no browsers, token from `<data dir>/engine-token`. The Hermes adapter is a memory
-   provider plug-in in `engines/hermes/lebot-memory/` (Python, standard library only). It holds no data. It puts
+   provider plug-in in `engines/hermes/lilbot-memory/` (Python, standard library only). It holds no data. It puts
    the usage rules in the system prompt (static, so prompt caching holds), supplies the memory block once per turn,
    and gives the bot two tools: `recall_memory` and `update_memory` (write or forget one fact).
 
@@ -134,23 +134,23 @@ lasting facts than it is shown, so it tidies. Hermes fences what a provider supp
 user input" on its own.
 
 Hermes keeps a plug-in's code loaded per folder until the gateway restarts. So each version is installed under its
-own folder and provider name (`lebot-memory-v0-3-0`): a new version is a new folder, loaded fresh on the bot's next
+own folder and provider name (`lilbot-memory-v0-3-0`): a new version is a new folder, loaded fresh on the bot's next
 session. To ship a plug-in change: bump `version` in `plugin.yaml` and `VERSION` in `__init__.py`, and restart
-LeBot. At start-up `BotEngine.refreshMemory` reinstalls the adapter for every connected bot on an older version.
-No Hermes restart is needed. LeBot logs a warning when a bot still calls with an older adapter.
+LilBot. At start-up `BotEngine.refreshMemory` reinstalls the adapter for every connected bot on an older version.
+No Hermes restart is needed. LilBot logs a warning when a bot still calls with an older adapter.
 
 ### The after-chat review
 
 A bot saves what it notices during a chat; the review catches what it missed. Hermes' own background review only
-runs with Hermes' built-in memory tool, which a connected bot no longer has, so LeBot has its own.
+runs with Hermes' built-in memory tool, which a connected bot no longer has, so LilBot has its own.
 
 - The plug-in hands every finished turn of a real conversation to `/engine/memory/turn` (`sync_turn`, on a thread;
   not for scheduled runs or sub-agents). `server/memory/review-queue.ts` keeps them only until reviewed.
 - `server/memory/memory-reviewer.ts` checks every 20 seconds and reviews a bot once 10 turns wait, or once at
-  least 3 wait and the chat has been quiet for 2 minutes. `LEBOT_REVIEW=off`, `LEBOT_REVIEW_TURNS` and
-  `LEBOT_REVIEW_QUIET_SECONDS` change that.
-- LeBot runs no model. `BotEngine.reviewMemory` runs the review as a hidden session of the same bot with only its
-  memory tools, on `LEBOT_REVIEW_MODEL` (`provider::model`; without it, the bot's own model, which costs more).
+  least 3 wait and the chat has been quiet for 2 minutes. `LILBOT_REVIEW=off`, `LILBOT_REVIEW_TURNS` and
+  `LILBOT_REVIEW_QUIET_SECONDS` change that.
+- LilBot runs no model. `BotEngine.reviewMemory` runs the review as a hidden session of the same bot with only its
+  memory tools, on `LILBOT_REVIEW_MODEL` (`provider::model`; without it, the bot's own model, which costs more).
   Limiting the session to memory tools cuts its prompt from about 26,000 tokens to about 4,500.
 - A review follows stricter rules than a chat: it may not bring back a fact the user removed, and may not forget a
   fact the user wrote. Its own session is never queued for review. What it saves is marked `via: review`.
@@ -160,7 +160,7 @@ runs with Hermes' built-in memory tool, which a connected bot no longer has, so 
 Measured on 2026-11-16 (`bun run check:memory`, 21 checks): a fact told in one session was known in the next from
 the block alone; a correction replaced the old fact; a one-off request was not saved; a review on Sonnet 5.5 took
 about 8 seconds, saved the lasting fact a chat had missed and skipped a one-off request and a temporary failure. A
-turn sent about 29,700 tokens with LeBot memory against 31,600 with Hermes' own; one review sends about 12,000 in
+turn sent about 29,700 tokens with LilBot memory against 31,600 with Hermes' own; one review sends about 12,000 in
 total. The check reads the bot's real system prompt for the rules: asking a bot to describe its own instructions
 proved unreliable.
 
@@ -198,7 +198,7 @@ artwork, names or text.
   `~/agent-tmp/grokbot-live-research/FINDINGS.md`):
   - Workspace: every bot works in the same shared folder (`/workspace`) on one 128 GB machine, and one bot can list
     another's folder. Each bot also has a small private folder (profile, settings, attachments, assets, a store).
-    Skills live in one shared folder. So Grok Bot shares files between bots by default; LeBot's folder per bot is a
+    Skills live in one shared folder. So Grok Bot shares files between bots by default; LilBot's folder per bot is a
     deliberate difference.
   - Memory: four kinds, `profile` (lasting facts about the user and how to work with them), `journal` (dated
     history, latest entries shown), and a shared version of each that every bot of the user sees, tagged with the
@@ -217,7 +217,7 @@ artwork, names or text.
   an open chat reports it. Add a `last_read` column and an activity event when the roster is built.
 - Opening a chat loads its whole history. A long-lived conversation needs paging and stable item ids
   (Hermes: `omit_messages` on resume plus `session.transcript`).
-- A bot's display name is still stored on the Hermes profile (`ui_meta.lebot.name`), written as one whole value.
+- A bot's display name is still stored on the Hermes profile (`ui_meta.lilbot.name`), written as one whole value.
   Nothing else may be added there; the user's data goes in the database.
 - Deleting a bot is not in the app. When it is added: refuse the default bot, delete through the engine, call
   `PrefsStore.forgetBot`, and decide with Oscar whether the workspace folder is kept.
@@ -227,7 +227,7 @@ artwork, names or text.
 
 - Do not fork or patch Hermes. Configure it, or build on its API.
 - The attach ticket and anything under `~/.hermes` that holds credentials are never printed, logged or committed.
-- Test on a second server (`LEBOT_PORT=3371 LEBOT_DATA_DIR=<tmp> LEBOT_WORKSPACES_DIR=<tmp> bun server/main.ts`)
+- Test on a second server (`LILBOT_PORT=3371 LILBOT_DATA_DIR=<tmp> LILBOT_WORKSPACES_DIR=<tmp> bun server/main.ts`)
   with temporary bots, never Oscar's real bots, and
   delete them afterwards with `hermes profile delete <id> -y`.
 - Each slice ends with a real check against the running service: `bun run verify`, `bun run check:live`, then drive
@@ -242,6 +242,6 @@ artwork, names or text.
 - `bun run check:live`: creates a temporary bot in Hermes, chats, stops, resumes, then deletes it. A few model calls.
 - `bun run check:memory`: connects a temporary bot to a throwaway memory, tells it facts, checks a new session knows
   them, prints tokens per turn, then deletes it. A few model calls.
-- `bun run start`: run the server. `LEBOT_PORT` and `LEBOT_HOST` override the defaults.
+- `bun run start`: run the server. `LILBOT_PORT` and `LILBOT_HOST` override the defaults.
 - `bun run dev`: Vite with hot reload, proxying `/ws` to a server on 3370.
-- After a change: `bun run verify && systemctl --user restart lebot.service`.
+- After a change: `bun run verify && systemctl --user restart lilbot.service`.

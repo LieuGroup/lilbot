@@ -1,4 +1,4 @@
-/** Memory in LeBot's own terms. A fact is one short statement a bot (or the user) saved. */
+/** Memory in LilBot's own terms. A fact is one short statement a bot (or the user) saved. */
 import { z } from 'zod'
 
 /** `profile`: lasting facts, about the user or about how to do the work. `journal`: dated history. */

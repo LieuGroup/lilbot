@@ -2,7 +2,7 @@
 import { type FormEvent, useEffect, useState } from 'react'
 
 import type { BotModel, ModelProvider } from '../../../shared/bot-schema'
-import { lebot } from '../lebot-socket'
+import { lilbot } from '../lilbot-socket'
 import { Button, Field, Notice, Select, TextArea, TextInput } from '../ui/controls'
 
 export interface BotFormValues {
@@ -31,7 +31,7 @@ export function BotForm({ initial, submitLabel, noModelLabel, onSubmit }: BotFor
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
-    lebot
+    lilbot
       .call('models.list', {})
       .then(setProviders)
       .catch(() => setProviders([]))

@@ -70,9 +70,9 @@ describe('sections', () => {
 })
 
 test('the database file survives being reopened and is not migrated twice', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'lebot-db-'))
+  const dir = mkdtempSync(join(tmpdir(), 'lilbot-db-'))
   try {
-    const path = join(dir, 'nested', 'lebot.db')
+    const path = join(dir, 'nested', 'lilbot.db')
     const first = openDatabase(path)
     new PrefsStore(first).setMainChat('b1', 'chat-1')
     first.close()

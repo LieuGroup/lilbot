@@ -1,5 +1,5 @@
 /** One JSON-RPC connection to the Hermes gateway for one profile. */
-import { LeBotError } from '../../../shared/protocol'
+import { LilBotError } from '../../../shared/protocol'
 import { attachToHermes } from './hermes-attach'
 
 export interface HermesEvent {
@@ -34,7 +34,7 @@ export class HermesSocket {
       const connection = new HermesSocket(socket, onEvent, onClose)
       const timer = setTimeout(() => {
         socket.close()
-        reject(new LeBotError('engine_unavailable', 'Hermes did not answer in time.'))
+        reject(new LilBotError('engine_unavailable', 'Hermes did not answer in time.'))
       }, READY_TIMEOUT_MS)
 
       socket.onmessage = message => {
@@ -50,7 +50,7 @@ export class HermesSocket {
       socket.onclose = () => {
         clearTimeout(timer)
         connection.closed()
-        reject(new LeBotError('engine_unavailable', 'Hermes closed the connection.'))
+        reject(new LilBotError('engine_unavailable', 'Hermes closed the connection.'))
       }
     })
   }
@@ -60,12 +60,12 @@ export class HermesSocket {
   }
 
   request<T = any>(method: string, params: Record<string, unknown> = {}): Promise<T> {
-    if (!this.open) return Promise.reject(new LeBotError('engine_unavailable', 'The connection to Hermes is closed.'))
+    if (!this.open) return Promise.reject(new LilBotError('engine_unavailable', 'The connection to Hermes is closed.'))
     const id = this.nextId++
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id)
-        reject(new LeBotError('engine_timeout', `Hermes did not answer ${method} in time.`))
+        reject(new LilBotError('engine_timeout', `Hermes did not answer ${method} in time.`))
       }, REQUEST_TIMEOUT_MS)
       this.pending.set(id, { resolve, reject, timer })
       this.socket.send(JSON.stringify({ jsonrpc: '2.0', id, method, params }))
@@ -93,7 +93,7 @@ export class HermesSocket {
         // Only short machine codes become part of our error code; free text never does.
         const raw = frame.error.data?.reason ?? frame.error.message
         const reason = typeof raw === 'string' && /^[a-z0-9_]{1,80}$/.test(raw) ? raw : 'request_failed'
-        waiting.reject(new LeBotError(`hermes_${reason}`, `Hermes refused the request (${reason.replaceAll('_', ' ')}).`))
+        waiting.reject(new LilBotError(`hermes_${reason}`, `Hermes refused the request (${reason.replaceAll('_', ' ')}).`))
       } else {
         waiting.resolve(frame.result)
       }
@@ -117,7 +117,7 @@ export class HermesSocket {
     this.open = false
     for (const waiting of this.pending.values()) {
       clearTimeout(waiting.timer)
-      waiting.reject(new LeBotError('engine_unavailable', 'The connection to Hermes was lost.'))
+      waiting.reject(new LilBotError('engine_unavailable', 'The connection to Hermes was lost.'))
     }
     this.pending.clear()
     this.onClose()

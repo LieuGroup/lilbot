@@ -1,6 +1,6 @@
-/** The Bot: LeBot's own definition, independent of the engine that runs it. Three owners:
+/** The Bot: LilBot's own definition, independent of the engine that runs it. Three owners:
  *  the engine holds identity, instructions, model and abilities; the user holds sidebar
- *  preferences (LeBot's database); the bot holds its workspace folder. */
+ *  preferences (LilBot's database); the bot holds its workspace folder. */
 import { z } from 'zod'
 
 import { Avatar } from './avatar'
@@ -47,7 +47,7 @@ export const BotSetup = z.object({
   /** Personality and standing instructions the bot follows in every chat. */
   instructions: z.string(),
   abilities: z.array(Ability),
-  /** The bot reads and writes LeBot's memory (not the engine's own). */
+  /** The bot reads and writes LilBot's memory (not the engine's own). */
   memoryConnected: z.boolean()
 })
 export type BotSetup = z.infer<typeof BotSetup>

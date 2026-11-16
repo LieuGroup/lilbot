@@ -1,13 +1,13 @@
-/** The local HTTP endpoint engine adapters use to reach LeBot's memory (today: the Hermes memory
- *  provider in `engines/hermes/lebot-memory/`). Only for programs on this machine: it answers on
- *  the loopback address only, refuses browsers, and needs the token from LeBot's data folder. */
+/** The local HTTP endpoint engine adapters use to reach LilBot's memory (today: the Hermes memory
+ *  provider in `engines/hermes/lilbot-memory/`). Only for programs on this machine: it answers on
+ *  the loopback address only, refuses browsers, and needs the token from LilBot's data folder. */
 import { timingSafeEqual } from 'node:crypto'
 import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
 
 import { type MemoryFact, MemoryKind, MemoryScope } from '../shared/memory-schema'
-import { LeBotError } from '../shared/protocol'
+import { LilBotError } from '../shared/protocol'
 import type { MemoryReviewer } from './memory/memory-reviewer'
 import { type MemoryService, shortId } from './memory/memory-service'
 
@@ -53,7 +53,7 @@ const json = (status: number, body: unknown) => Response.json(body, { status })
 
 export interface EngineApiOptions {
   onMemoryChanged?: () => void
-  /** The adapter version this LeBot ships. A bot calling with another one runs stale adapter code. */
+  /** The adapter version this LilBot ships. A bot calling with another one runs stale adapter code. */
   adapterVersion?: string
   /** Receives finished turns and knows which chats are reviews. Without it there is no review. */
   reviewer?: MemoryReviewer
@@ -82,10 +82,10 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
       const parsed = routes[route].safeParse(await request.json().catch(() => null))
       if (!parsed.success) return json(400, { error: `Invalid request: ${parsed.error.issues[0]?.path.join('.')} ${parsed.error.issues[0]?.message}` })
       const body = parsed.data as any
-      const version = request.headers.get('x-lebot-adapter-version')
+      const version = request.headers.get('x-lilbot-adapter-version')
       if (options.adapterVersion && version !== options.adapterVersion && !staleBots.has(body.botId)) {
         staleBots.add(body.botId)
-        console.error(`[engine-api] bot ${body.botId} runs memory adapter ${version ?? 'unknown'}, LeBot ships ${options.adapterVersion}. Reconnect it and restart the engine.`)
+        console.error(`[engine-api] bot ${body.botId} runs memory adapter ${version ?? 'unknown'}, LilBot ships ${options.adapterVersion}. Reconnect it and restart the engine.`)
       }
 
       switch (route) {
@@ -121,9 +121,9 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
       }
     } catch (error) {
       // A refusal the bot can act on (unknown id, fact too long) is returned as its tool result.
-      if (error instanceof LeBotError) return json(422, { error: error.message })
+      if (error instanceof LilBotError) return json(422, { error: error.message })
       console.error('[engine-api] request failed:', error instanceof Error ? error.message : error)
-      return json(500, { error: 'LeBot could not handle the memory request.' })
+      return json(500, { error: 'LilBot could not handle the memory request.' })
     }
   }
 }

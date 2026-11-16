@@ -2,7 +2,7 @@ import { useParams } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 
 import type { Ability, BotDetail } from '../../../shared/bot-schema'
-import { lebot, messageOf } from '../lebot-socket'
+import { lilbot, messageOf } from '../lilbot-socket'
 import { Notice } from '../ui/controls'
 import { Panel } from '../ui/panel'
 import { BotForm } from './bot-form'
@@ -53,7 +53,7 @@ export function BotSetupPanel() {
     let cancelled = false
     setBot(null)
     setError('')
-    lebot
+    lilbot
       .call('bots.get', { botId })
       .then(detail => !cancelled && setBot(detail))
       .catch(failure => !cancelled && setError(messageOf(failure)))
@@ -73,7 +73,7 @@ export function BotSetupPanel() {
             initial={{ name: bot.name, function: bot.function, instructions: bot.instructions, model: bot.model }}
             submitLabel="Save changes"
             onSubmit={async values => {
-              const updated = await lebot.call('bots.update', {
+              const updated = await lilbot.call('bots.update', {
                 botId,
                 name: values.name,
                 function: values.function,

@@ -1,7 +1,7 @@
-/** LeBot's memory, engine-neutral: what may be saved, who sees what, and what a bot is shown at
+/** LilBot's memory, engine-neutral: what may be saved, who sees what, and what a bot is shown at
  *  the start of a turn. An engine adapter (the Hermes memory provider) only calls these. */
 import { defaultScope, factText, type MemoryFact, type MemoryKind, type MemoryScope } from '../../shared/memory-schema'
-import { LeBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/protocol'
 import { memoryRefusal } from './memory-safety'
 import type { MemoryStore } from './memory-store'
 
@@ -47,14 +47,14 @@ export class MemoryService {
    *  The after-chat review (`via: 'review'`) may not bring back what the user removed. */
   write(request: WriteRequest): MemoryFact {
     const text = factText.safeParse(request.text)
-    if (!text.success) throw new LeBotError('invalid_fact', text.error.issues[0]?.message ?? 'That fact cannot be saved.')
+    if (!text.success) throw new LilBotError('invalid_fact', text.error.issues[0]?.message ?? 'That fact cannot be saved.')
     const refusal = memoryRefusal(text.data)
-    if (refusal) throw new LeBotError('fact_refused', refusal)
+    if (refusal) throw new LilBotError('fact_refused', refusal)
     const via = request.via ?? (request.author === 'user' ? 'app' : 'chat')
     if (via === 'review' && this.store.userForgot(request.botId, text.data)) {
-      throw new LeBotError('fact_removed_by_user', 'The user removed this fact from memory. Do not save it again.')
+      throw new LilBotError('fact_removed_by_user', 'The user removed this fact from memory. Do not save it again.')
     }
-    if (request.expiresAt !== undefined && request.expiresAt <= this.now()) throw new LeBotError('invalid_fact', 'The expiry date is in the past.')
+    if (request.expiresAt !== undefined && request.expiresAt <= this.now()) throw new LilBotError('invalid_fact', 'The expiry date is in the past.')
 
     const same = this.store.findSame(request.botId, request.kind, text.data)
     if (same) return same
@@ -91,26 +91,26 @@ export class MemoryService {
    *  after-chat review may not forget what the user wrote: only a live instruction can. */
   forgetAsBot(botId: string, idOrPrefix: string, options: { review?: boolean } = {}): MemoryFact {
     const matches = this.store.byIdPrefix(botId, this.now(), idOrPrefix.trim())
-    if (matches.length === 0) throw new LeBotError('fact_not_found', 'No remembered fact has that id.')
-    if (matches.length > 1) throw new LeBotError('fact_ambiguous', 'More than one fact starts with that id. Use the full id.')
-    if (options.review && matches[0].author === 'user') throw new LeBotError('fact_protected', 'The user wrote this fact. A review may not remove it.')
+    if (matches.length === 0) throw new LilBotError('fact_not_found', 'No remembered fact has that id.')
+    if (matches.length > 1) throw new LilBotError('fact_ambiguous', 'More than one fact starts with that id. Use the full id.')
+    if (options.review && matches[0].author === 'user') throw new LilBotError('fact_protected', 'The user wrote this fact. A review may not remove it.')
     this.store.markForgotten(matches[0].id, this.now(), 'bot')
     return matches[0]
   }
 
   /** The user forgets any fact, from the app. */
   forgetAsUser(factId: string) {
-    if (!this.store.markForgotten(factId, this.now(), 'user')) throw new LeBotError('fact_not_found', 'That fact is not in memory.')
+    if (!this.store.markForgotten(factId, this.now(), 'user')) throw new LilBotError('fact_not_found', 'That fact is not in memory.')
   }
 
   /** The user brings a forgotten fact back. */
   restore(factId: string) {
-    if (!this.store.restore(factId)) throw new LeBotError('fact_not_found', 'That fact is not among the forgotten ones.')
+    if (!this.store.restore(factId)) throw new LilBotError('fact_not_found', 'That fact is not among the forgotten ones.')
   }
 
   /** The user switches a fact off (kept, not shown to bots) or back on. */
   setPaused(factId: string, paused: boolean) {
-    if (!this.store.setPaused(factId, paused)) throw new LeBotError('fact_not_found', 'That fact is not in memory.')
+    if (!this.store.setPaused(factId, paused)) throw new LilBotError('fact_not_found', 'That fact is not in memory.')
   }
 
   /** For the app's Memory panel: everything kept (paused and expired included), newest first, and

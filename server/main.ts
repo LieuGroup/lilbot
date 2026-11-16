@@ -1,4 +1,4 @@
-/** LeBot server: serves the built web app and answers the browser's `/ws` requests through the bot engine.
+/** LilBot server: serves the built web app and answers the browser's `/ws` requests through the bot engine.
  *  Binds to loopback only; reach it from other devices through the tailnet (`tailscale serve`). */
 import { homedir } from 'node:os'
 import { join, normalize } from 'node:path'
@@ -21,12 +21,12 @@ interface SocketData {
   session?: ClientSession
 }
 
-const PORT = Number(process.env.LEBOT_PORT ?? 3370)
-const HOST = process.env.LEBOT_HOST ?? '127.0.0.1'
-/** LeBot's own database file lives here. */
-const DATA_DIR = process.env.LEBOT_DATA_DIR ?? join(homedir(), '.local', 'share', 'lebot')
+const PORT = Number(process.env.LILBOT_PORT ?? 3370)
+const HOST = process.env.LILBOT_HOST ?? '127.0.0.1'
+/** LilBot's own database file lives here. */
+const DATA_DIR = process.env.LILBOT_DATA_DIR ?? join(homedir(), '.local', 'share', 'lilbot')
 /** Each bot's workspace folder is created under here. */
-const WORKSPACES_DIR = process.env.LEBOT_WORKSPACES_DIR ?? join(homedir(), 'lebot', 'workspaces')
+const WORKSPACES_DIR = process.env.LILBOT_WORKSPACES_DIR ?? join(homedir(), 'lilbot', 'workspaces')
 /** Every connected browser is subscribed to this topic. */
 const EVERYONE = 'everyone'
 const CHANGE_DELAY_MS = 300
@@ -39,7 +39,7 @@ function botsChanged() {
 }
 
 const engine = new HermesEngine()
-const database = openDatabase(join(DATA_DIR, 'lebot.db'))
+const database = openDatabase(join(DATA_DIR, 'lilbot.db'))
 const memory = new MemoryService(new MemoryStore(database))
 const memoryChanged = () => server.publish(EVERYONE, JSON.stringify({ event: 'memory.changed' }))
 const token = engineToken(DATA_DIR)
@@ -50,29 +50,33 @@ const bots = new BotService(engine, new PrefsStore(database), new Workspaces(WOR
 })
 /** Engine adapters on this machine reach memory here; see `engine-api.ts`. */
 
-// The after-chat memory review. LEBOT_REVIEW=off disables it; LEBOT_REVIEW_MODEL is
+// The after-chat memory review. LILBOT_REVIEW=off disables it; LILBOT_REVIEW_MODEL is
 // "provider::model" (without it a review runs on the bot's own model, which costs more).
-const [reviewProvider, reviewModel] = (process.env.LEBOT_REVIEW_MODEL ?? '').split('::')
+const [reviewProvider, reviewModel] = (process.env.LILBOT_REVIEW_MODEL ?? '').split('::')
 const reviewer = new MemoryReviewer(new ReviewQueue(database), engine, {
   ...defaultReviewSettings,
-  enabled: process.env.LEBOT_REVIEW !== 'off',
-  turns: Number(process.env.LEBOT_REVIEW_TURNS ?? defaultReviewSettings.turns),
-  quietMs: Number(process.env.LEBOT_REVIEW_QUIET_SECONDS ?? defaultReviewSettings.quietMs / 1000) * 1000,
+  enabled: process.env.LILBOT_REVIEW !== 'off',
+  turns: Number(process.env.LILBOT_REVIEW_TURNS ?? defaultReviewSettings.turns),
+  quietMs: Number(process.env.LILBOT_REVIEW_QUIET_SECONDS ?? defaultReviewSettings.quietMs / 1000) * 1000,
   model: reviewProvider && reviewModel ? { provider: reviewProvider, model: reviewModel } : undefined
 })
 setInterval(() => reviewer.tick(), 20_000)
 
-// Connected bots get this LeBot's memory adapter; they use it from their next session.
-engine
-  .refreshMemory()
-  .then(updated => updated.length && console.log(`Memory adapter updated to ${MEMORY_ADAPTER_VERSION} for: ${updated.join(', ')}`))
-  .catch(error => console.error('[memory] could not update memory adapters:', error instanceof Error ? error.message : error))
+// Every bot uses LilBot's memory: bots on an older adapter are updated, and a bot that is not
+// connected yet is connected. Both take effect from the bot's next session.
+async function prepareMemory() {
+  const updated = await engine.refreshMemory()
+  if (updated.length) console.log(`Memory adapter updated to ${MEMORY_ADAPTER_VERSION} for: ${updated.join(', ')}`)
+  const connected = await bots.connectAllMemory()
+  if (connected.length) console.log(`Connected to LilBot memory: ${connected.join(', ')}`)
+}
+prepareMemory().catch(error => console.error('[memory] could not prepare memory for the bots:', error instanceof Error ? error.message : error))
 
 const engineApi = createEngineApi(memory, token, PORT, { onMemoryChanged: memoryChanged, adapterVersion: MEMORY_ADAPTER_VERSION, reviewer })
 engine.onBotsChanged(botsChanged)
 const DIST = join(import.meta.dir, '..', 'dist')
 
-const ALLOWED_HOSTS = allowedHosts(PORT, process.env.LEBOT_ALLOWED_HOSTS)
+const ALLOWED_HOSTS = allowedHosts(PORT, process.env.LILBOT_ALLOWED_HOSTS)
 
 async function serveStatic(pathname: string): Promise<Response> {
   const relative = normalize(decodeURIComponent(pathname)).replace(/^(\.\.[/\\])+/, '')
@@ -81,7 +85,7 @@ async function serveStatic(pathname: string): Promise<Response> {
 
   const index = Bun.file(join(DIST, 'index.html'))
   if (await index.exists()) return new Response(index)
-  return new Response('LeBot web app is not built. Run: bun run build', { status: 503 })
+  return new Response('LilBot web app is not built. Run: bun run build', { status: 503 })
 }
 
 const server = Bun.serve<SocketData>({
@@ -127,4 +131,4 @@ const server = Bun.serve<SocketData>({
   }
 })
 
-console.log(`LeBot listening on http://${server.hostname}:${server.port} (engine: Hermes)`)
+console.log(`LilBot listening on http://${server.hostname}:${server.port} (engine: Hermes)`)

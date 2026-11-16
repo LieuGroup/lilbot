@@ -23,7 +23,7 @@ describe('a bot is the engine identity plus the user’s preferences plus its wo
     ])
   })
 
-  test('preferences change only LeBot’s data and tell clients to refresh', async () => {
+  test('preferences change only LilBot’s data and tell clients to refresh', async () => {
     const { service, log, changes } = fakeService()
     const section = service.createSection('Product')
     const updated = await service.setPrefs({ botId: 'b1', pinned: true, sectionId: section.id })
@@ -90,7 +90,7 @@ describe('the main conversation', () => {
 })
 
 describe('memory', () => {
-  test('a new bot is connected to LeBot memory and keeps only what is known about the user', async () => {
+  test('a new bot is connected to LilBot memory and keeps only what is known about the user', async () => {
     const { service, log, memory } = fakeService()
     const made = await service.createBot({ name: 'Maker', function: '', instructions: '' })
     expect(log).toContain('connect-memory:made')
@@ -120,4 +120,12 @@ describe('memory', () => {
     expect(memoryChanges()).toBe(2)
     expect(service.writeMemory({ botId: 'ghost', kind: 'profile', text: 'x' })).rejects.toThrow('That bot does not exist.')
   })
+})
+
+test('at start-up every bot that is not on LilBot memory is connected, once', async () => {
+  const { service, engine, log } = fakeService()
+  expect(await service.connectAllMemory()).toEqual(['b1'])
+  engine.getBot = async () => ({ id: 'b1', name: 'Bot One', function: '', model: null, isDefault: false, instructions: '', abilities: [], memoryConnected: true })
+  expect(await service.connectAllMemory()).toEqual([])
+  expect(log.filter(entry => entry.startsWith('connect-memory'))).toEqual(['connect-memory:b1'])
 })

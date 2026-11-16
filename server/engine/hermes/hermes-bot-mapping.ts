@@ -1,10 +1,10 @@
-/** Hermes profile <-> LeBot Bot. A bot is one Hermes profile; LeBot's display name lives in the
- *  profile's `ui_meta.lebot`, a namespace Hermes keeps for clients. */
+/** Hermes profile <-> LilBot Bot. A bot is one Hermes profile; LilBot's display name lives in the
+ *  profile's `ui_meta.lilbot`, a namespace Hermes keeps for clients. */
 import type { Ability, BotIdentity, ModelProvider } from '../../../shared/bot-schema'
 import type { EngineBotDetail } from '../bot-engine'
 
 export const DEFAULT_PROFILE = 'default'
-export const UI_NAMESPACE = 'lebot'
+export const UI_NAMESPACE = 'lilbot'
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '')
 

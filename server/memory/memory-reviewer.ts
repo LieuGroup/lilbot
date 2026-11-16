@@ -1,7 +1,7 @@
 /** The after-chat memory review. A bot saves what it notices during a chat; this catches what it
  *  missed. When enough turns have piled up, or a chat has gone quiet, the bot is asked in a hidden
  *  session, on a cheaper model with only its memory tools, whether anything in those turns belongs
- *  in memory. LeBot runs no model itself: the review is a session of the bot's own engine. */
+ *  in memory. LilBot runs no model itself: the review is a session of the bot's own engine. */
 import type { BotModel } from '../../shared/bot-schema'
 import type { BotEngine } from '../engine/bot-engine'
 import type { PendingSummary, PendingTurn, ReviewQueue } from './review-queue'

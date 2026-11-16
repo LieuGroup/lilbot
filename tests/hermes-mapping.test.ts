@@ -59,9 +59,9 @@ test('stored rows become transcript items, skipping empty assistant rows', () =>
 })
 
 describe('bots', () => {
-  test('the display name prefers LeBot’s own, then Hermes’ names, then the id', () => {
+  test('the display name prefers LilBot’s own, then Hermes’ names, then the id', () => {
     const base = { name: 'researcher', description: 'Finds sources', is_default: false, skill_count: 3 }
-    expect(botFromProfile({ ...base, display_name: 'Hermes Name', ui_meta: { lebot: { name: 'My Researcher' } } }).name).toBe('My Researcher')
+    expect(botFromProfile({ ...base, display_name: 'Hermes Name', ui_meta: { lilbot: { name: 'My Researcher' } } }).name).toBe('My Researcher')
     expect(botFromProfile({ ...base, display_name: 'Hermes Name' }).name).toBe('Hermes Name')
     expect(botFromProfile(base)).toEqual({ id: 'researcher', name: 'researcher', function: 'Finds sources', model: null, isDefault: false })
   })

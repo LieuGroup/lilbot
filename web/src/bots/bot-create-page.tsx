@@ -1,6 +1,6 @@
 import { useNavigate } from '@tanstack/react-router'
 
-import { lebot } from '../lebot-socket'
+import { lilbot } from '../lilbot-socket'
 import { PageHeader } from '../ui/page-header'
 import { BotForm } from './bot-form'
 import { useBotStore } from './bot-store'
@@ -19,7 +19,7 @@ export function BotCreatePage() {
             submitLabel="Create bot"
             noModelLabel="Same as the main bot"
             onSubmit={async values => {
-              const bot = await lebot.call('bots.create', {
+              const bot = await lilbot.call('bots.create', {
                 name: values.name,
                 function: values.function,
                 instructions: values.instructions,

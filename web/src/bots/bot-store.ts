@@ -2,7 +2,7 @@
 import { create } from 'zustand'
 
 import { Bot } from '../../../shared/bot-schema'
-import { lebot, messageOf } from '../lebot-socket'
+import { lilbot, messageOf } from '../lilbot-socket'
 
 interface BotStore {
   connected: boolean
@@ -21,7 +21,7 @@ export const useBotStore = create<BotStore>((set, get) => ({
   error: '',
   load: async () => {
     try {
-      set({ bots: await lebot.call('bots.list', {}), loaded: true, error: '' })
+      set({ bots: await lilbot.call('bots.list', {}), loaded: true, error: '' })
     } catch (error) {
       set({ error: messageOf(error) })
     }
@@ -36,10 +36,10 @@ export const useBotStore = create<BotStore>((set, get) => ({
 
 /** Start the socket once and reload the bots after every (re)connect. */
 export function startConnection() {
-  lebot.onBotsChanged(() => void useBotStore.getState().load())
-  lebot.onConnection(connected => {
+  lilbot.onBotsChanged(() => void useBotStore.getState().load())
+  lilbot.onConnection(connected => {
     useBotStore.setState({ connected })
     if (connected) void useBotStore.getState().load()
   })
-  lebot.connect()
+  lilbot.connect()
 }

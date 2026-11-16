@@ -4,7 +4,7 @@ import type { Database } from 'bun:sqlite'
 
 import { Avatar, defaultAvatar } from '../../shared/avatar'
 import type { BotPrefs, Section } from '../../shared/bot-schema'
-import { LeBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/protocol'
 
 interface PrefsRow {
   bot_id: string
@@ -48,7 +48,7 @@ export class PrefsStore {
 
   setPrefs(botId: string, patch: PrefsPatch): BotPrefs {
     if (patch.sectionId && !this.db.query('SELECT 1 FROM sections WHERE id = ?').get(patch.sectionId)) {
-      throw new LeBotError('section_not_found', 'That section does not exist.')
+      throw new LilBotError('section_not_found', 'That section does not exist.')
     }
     const next = { ...this.prefs(botId), ...patch }
     this.db
@@ -86,7 +86,7 @@ export class PrefsStore {
 
   renameSection(sectionId: string, name: string): Section {
     const { changes } = this.db.query('UPDATE sections SET name = ? WHERE id = ?').run(name, sectionId)
-    if (changes === 0) throw new LeBotError('section_not_found', 'That section does not exist.')
+    if (changes === 0) throw new LilBotError('section_not_found', 'That section does not exist.')
     return { id: sectionId, name }
   }
 

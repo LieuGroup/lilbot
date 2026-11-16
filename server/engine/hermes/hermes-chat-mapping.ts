@@ -1,4 +1,4 @@
-/** Hermes session rows and events -> LeBot chat items and events. Only fields that Hermes' wire
+/** Hermes session rows and events -> LilBot chat items and events. Only fields that Hermes' wire
  *  contract declares are read here; `tests/hermes-contract.test.ts` checks that they still exist. */
 import type { ChatEvent, ChatItem } from '../../../shared/chat-schema'
 import type { HermesEvent } from './hermes-socket'
@@ -36,7 +36,7 @@ export function toolFailed(result: unknown): boolean {
   return success === false || ok === false || (typeof error === 'string' && error.length > 0) || (typeof exit_code === 'number' && exit_code !== 0)
 }
 
-/** One Hermes event as zero or one LeBot event. Events LeBot does not show return null. */
+/** One Hermes event as zero or one LilBot event. Events LilBot does not show return null. */
 export function chatEventFrom(event: HermesEvent): ChatEvent | null {
   const { type, payload } = event
   switch (type) {

@@ -11,7 +11,7 @@ export function BotSidebar() {
       <div className="flex items-center justify-between gap-2 border-b border-border px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
         <div className="flex items-center gap-2">
           <span title={connected ? 'Connected' : 'Disconnected'} className={`size-2.5 rounded-full ${connected ? 'bg-ok' : 'bg-danger'}`} />
-          <span className="text-lg font-semibold">LeBot</span>
+          <span className="text-lg font-semibold">LilBot</span>
         </div>
         <Link to="/bots/new" className="rounded-xl border border-border px-3 py-1.5 text-sm font-medium">
           New bot

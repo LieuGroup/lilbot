@@ -1,8 +1,8 @@
 /** Checks that the installed Hermes still offers every method, parameter, result field and event
- *  field LeBot relies on, by reading Hermes' own wire contract. A Hermes update that removes or
+ *  field LilBot relies on, by reading Hermes' own wire contract. A Hermes update that removes or
  *  renames one of them fails here instead of in front of the user.
  *
- *  Session methods are checked against Hermes' canonical table (the form LeBot sends); profile and
+ *  Session methods are checked against Hermes' canonical table (the form LilBot sends); profile and
  *  model methods exist only in the general table. Skipped when Hermes is not installed. */
 import { describe, expect, test } from 'bun:test'
 import { existsSync, readFileSync } from 'node:fs'
@@ -71,7 +71,7 @@ const events: Record<string, string[]> = {
 
 describe.skipIf(!installed)('Hermes wire contract', () => {
   for (const [name, uses] of Object.entries(methods)) {
-    test(`${name}: exists with the params LeBot sends and the result fields it reads`, () => {
+    test(`${name}: exists with the params LilBot sends and the result fields it reads`, () => {
       const method = entry(uses.table, name)
       expect(method, `${name} is missing from ${uses.table}`).toBeDefined()
       const params = fields(method.params?.[0]?.schema)
@@ -82,7 +82,7 @@ describe.skipIf(!installed)('Hermes wire contract', () => {
   }
 
   for (const [name, reads] of Object.entries(events)) {
-    test(`event ${name}: exists with the fields LeBot reads`, () => {
+    test(`event ${name}: exists with the fields LilBot reads`, () => {
       const event = entry('x-notifications', name)
       expect(event, `event ${name} is missing`).toBeDefined()
       const payload = fields(event.params?.[0]?.schema)
@@ -94,7 +94,7 @@ describe.skipIf(!installed)('Hermes wire contract', () => {
     expect(Object.keys(contract.components.schemas.Usage?.properties ?? {})).toContain('context_used')
   })
 
-  test('message.complete status still has the values LeBot maps', () => {
+  test('message.complete status still has the values LilBot maps', () => {
     const statuses: string[] = contract.components.schemas.TurnStatus?.enum ?? []
     for (const status of ['complete', 'error', 'interrupted']) expect(statuses).toContain(status)
   })

@@ -12,7 +12,7 @@ import { MemoryStore } from '../../server/memory/memory-store'
 import { Workspaces } from '../../server/workspaces'
 import type { BotIdentity } from '../../shared/bot-schema'
 import type { ChatEvent } from '../../shared/chat-schema'
-import { LeBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/protocol'
 
 export const bot: BotIdentity = { id: 'b1', name: 'Bot One', function: '', model: null, isDefault: false }
 export const detail: EngineBotDetail = { ...bot, instructions: '', abilities: [], memoryConnected: false }
@@ -28,7 +28,7 @@ export function fakeEngine(options: { earlyEvents?: ChatEvent[] } = {}) {
   const engine: BotEngine = {
     listBots: async () => [bot],
     getBot: async botId => {
-      if (botId !== bot.id) throw new LeBotError('bot_not_found', 'That bot does not exist.')
+      if (botId !== bot.id) throw new LilBotError('bot_not_found', 'That bot does not exist.')
       return detail
     },
     createBot: async input => ({ ...bot, id: 'made', name: input.name }),
@@ -68,7 +68,7 @@ export function fakeService(options?: Parameters<typeof fakeEngine>[0]) {
   const database = openDatabase(':memory:')
   const prefs = new PrefsStore(database)
   const memory = new MemoryService(new MemoryStore(database))
-  const root = mkdtempSync(join(tmpdir(), 'lebot-ws-'))
+  const root = mkdtempSync(join(tmpdir(), 'lilbot-ws-'))
   let changes = 0
   let memoryChanges = 0
   const service = new BotService(fake.engine, prefs, new Workspaces(root), memory, {

@@ -1,4 +1,4 @@
-/** The browser <-> LeBot server protocol: JSON frames over one WebSocket. */
+/** The browser <-> LilBot server protocol: JSON frames over one WebSocket. */
 import { z } from 'zod'
 
 import { type Bot, BotCreateInput, type BotDetail, BotPrefsInput, BotUpdateInput, type ModelProvider, type Section, sectionName } from './bot-schema'
@@ -29,7 +29,7 @@ export const methods = {
   'memory.restore': z.object({ factId: z.string().min(1) }),
   /** Switches a fact off (kept, not shown to bots) or back on. */
   'memory.pause': z.object({ factId: z.string().min(1), paused: z.boolean() }),
-  /** Connects a bot to LeBot's memory and brings over the notes its engine kept. */
+  /** Connects a bot to LilBot's memory and brings over the notes its engine kept. */
   'memory.connect': z.object({ botId }),
   /** Without `chatId`: the bot's main conversation, the same one on every device. */
   'chat.open': z.object({ botId, chatId: chatId.optional() }),
@@ -77,7 +77,7 @@ export type ResponseFrame = { id: number; ok: true; result: unknown } | { id: nu
 export type EventFrame = { event: 'chat'; chatId: string; data: ChatEvent } | { event: 'bots.changed' } | { event: 'memory.changed' }
 
 /** An error whose message is safe and useful to show to the user. */
-export class LeBotError extends Error {
+export class LilBotError extends Error {
   constructor(
     public code: string,
     message: string

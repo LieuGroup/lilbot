@@ -1,9 +1,9 @@
-/** Connects a Hermes profile to LeBot's memory: installs the provider plug-in into the profile,
- *  tells it where LeBot is, selects it, and switches Hermes' own two-file memory off so the bot
+/** Connects a Hermes profile to LilBot's memory: installs the provider plug-in into the profile,
+ *  tells it where LilBot is, selects it, and switches Hermes' own two-file memory off so the bot
  *  has one memory. `removeMemory` undoes all of it.
  *
  *  The Hermes gateway keeps a plug-in's code loaded per folder until it restarts. So each version
- *  of the plug-in is installed under its own folder name (`lebot-memory-v0-3-0`): a new version is
+ *  of the plug-in is installed under its own folder name (`lilbot-memory-v0-3-0`): a new version is
  *  a new folder, which Hermes loads fresh on the bot's next session, with no gateway restart. */
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { cp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -12,10 +12,10 @@ import { join } from 'node:path'
 
 import type { LegacyNotes, MemoryConnection } from '../bot-engine'
 
-const PLUGIN = 'lebot-memory'
+const PLUGIN = 'lilbot-memory'
 const PLUGIN_SOURCE = join(import.meta.dir, '..', '..', '..', 'engines', 'hermes', PLUGIN)
 const SETTINGS_FILE = `${PLUGIN}.json`
-const HERMES_BIN = process.env.LEBOT_HERMES_BIN ?? 'hermes'
+const HERMES_BIN = process.env.LILBOT_HERMES_BIN ?? 'hermes'
 const PROFILE_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/
 
 /** The version of the plug-in in this repo, read from its `plugin.yaml`. */
@@ -59,7 +59,7 @@ export const memoryInstalled = (botId: string) => existsSync(join(profileHome(bo
 /** Whether a connected bot has this repo's version of the plug-in. */
 export const memoryCurrent = (botId: string) => installedFolders(profileHome(botId)).includes(providerName(MEMORY_ADAPTER_VERSION))
 
-/** Where a connected bot was told LeBot is, so an upgrade keeps the same connection. */
+/** Where a connected bot was told LilBot is, so an upgrade keeps the same connection. */
 export async function memoryConnection(botId: string): Promise<MemoryConnection | null> {
   try {
     const settings = JSON.parse(await readFile(join(profileHome(botId), SETTINGS_FILE), 'utf8'))

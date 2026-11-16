@@ -1,10 +1,10 @@
-"""LeBot memory provider for Hermes.
+"""LilBot memory provider for Hermes.
 
-Holds no data. Every call goes to the LeBot server on this machine, which owns the memory
-(`server/memory/` and `server/engine-api.ts` in the LeBot repo). The bot id is the Hermes profile id.
+Holds no data. Every call goes to the LilBot server on this machine, which owns the memory
+(`server/memory/` and `server/engine-api.ts` in the LilBot repo). The bot id is the Hermes profile id.
 
-Installed per profile by LeBot (`scripts/hermes-memory.ts`): this folder is copied to
-`$HERMES_HOME/plugins/lebot-memory-v<version>/` and `$HERMES_HOME/lebot-memory.json` says where LeBot is.
+Installed per profile by LilBot (`scripts/hermes-memory.ts`): this folder is copied to
+`$HERMES_HOME/plugins/lilbot-memory-v<version>/` and `$HERMES_HOME/lilbot-memory.json` says where LilBot is.
 """
 
 from __future__ import annotations
@@ -28,15 +28,15 @@ except ImportError:  # older Hermes
 
 logger = logging.getLogger(__name__)
 
-# LeBot installs each version under its own folder name (lebot-memory-v0-3-0) and selects the provider
+# LilBot installs each version under its own folder name (lilbot-memory-v0-3-0) and selects the provider
 # by that name: the Hermes gateway keeps a plug-in's code loaded per folder, so a new version must be a
 # new folder to take effect without restarting the gateway.
 NAME = Path(__file__).resolve().parent.name
-SETTINGS_FILE = "lebot-memory.json"
-# Keep equal to plugin.yaml. LeBot warns when a bot still calls with an older one.
+SETTINGS_FILE = "lilbot-memory.json"
+# Keep equal to plugin.yaml. LilBot warns when a bot still calls with an older one.
 VERSION = "0.3.0"
 DEFAULT_URL = "http://127.0.0.1:3370"
-DEFAULT_TOKEN_FILE = "~/.local/share/lebot/engine-token"
+DEFAULT_TOKEN_FILE = "~/.local/share/lilbot/engine-token"
 TIMEOUT_SECONDS = 5
 
 RULES = """# Memory
@@ -102,11 +102,11 @@ TOOLS = [
 
 
 def _bot_id(hermes_home: Path) -> str:
-    """The profile id LeBot knows this bot by: the default profile lives in the Hermes home itself."""
+    """The profile id LilBot knows this bot by: the default profile lives in the Hermes home itself."""
     return hermes_home.name if hermes_home.parent.name == "profiles" else "default"
 
 
-class LeBotMemoryProvider(MemoryProvider):
+class LilBotMemoryProvider(MemoryProvider):
     def __init__(self) -> None:
         self._url = DEFAULT_URL
         self._token = ""
@@ -128,7 +128,7 @@ class LeBotMemoryProvider(MemoryProvider):
         try:
             settings = json.loads((home / SETTINGS_FILE).read_text())
         except (OSError, ValueError):
-            logger.info("lebot-memory: no settings file in %s, using defaults", home)
+            logger.info("lilbot-memory: no settings file in %s, using defaults", home)
         self._url = str(settings.get("url") or DEFAULT_URL).rstrip("/")
         self._bot = _bot_id(home)
         self._chat = str(session_id or "")
@@ -138,16 +138,16 @@ class LeBotMemoryProvider(MemoryProvider):
             self._token = Path(str(settings.get("token_file") or DEFAULT_TOKEN_FILE)).expanduser().read_text().strip()
         except OSError as error:
             self._token = ""
-            logger.warning("lebot-memory: cannot read the LeBot token (%s); memory is off for this session", error)
+            logger.warning("lilbot-memory: cannot read the LilBot token (%s); memory is off for this session", error)
 
     def _call(self, endpoint: str, body: dict[str, Any]) -> dict[str, Any]:
-        """One request to LeBot. Returns its JSON; a refusal comes back as {"error": "..."}."""
+        """One request to LilBot. Returns its JSON; a refusal comes back as {"error": "..."}."""
         if not self._token:
-            return {"error": "Memory is not connected to LeBot."}
+            return {"error": "Memory is not connected to LilBot."}
         request = urllib.request.Request(
             f"{self._url}/engine/memory/{endpoint}",
             data=json.dumps({"botId": self._bot, **({"chatId": self._chat} if self._chat else {}), **body}).encode(),
-            headers={"Content-Type": "application/json", "Authorization": f"Bearer {self._token}", "X-LeBot-Adapter-Version": VERSION},
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {self._token}", "X-LilBot-Adapter-Version": VERSION},
             method="POST",
         )
         try:
@@ -157,9 +157,9 @@ class LeBotMemoryProvider(MemoryProvider):
             try:
                 return json.loads(error.read())
             except ValueError:
-                return {"error": f"LeBot answered {error.code}."}
+                return {"error": f"LilBot answered {error.code}."}
         except (OSError, ValueError) as error:
-            logger.warning("lebot-memory: LeBot is not reachable: %s", error)
+            logger.warning("lilbot-memory: LilBot is not reachable: %s", error)
             return {"error": "Memory is not reachable right now."}
 
     def system_prompt_block(self) -> str:
@@ -176,7 +176,7 @@ class LeBotMemoryProvider(MemoryProvider):
         return self._block
 
     def sync_turn(self, user_content: str, assistant_content: str, *, session_id: str = "", messages=None) -> None:
-        """Hand the finished turn to LeBot for its after-chat memory review. Never blocks the turn."""
+        """Hand the finished turn to LilBot for its after-chat memory review. Never blocks the turn."""
         if not self._primary or not self._token or not isinstance(user_content, str) or not user_content.strip():
             return
         chat = str(session_id or self._chat)
@@ -186,9 +186,9 @@ class LeBotMemoryProvider(MemoryProvider):
             self._call("turn", body)
 
         try:
-            spawn_context_thread(send, name="lebot-memory-turn").start()
+            spawn_context_thread(send, name="lilbot-memory-turn").start()
         except Exception as error:  # the review is a safety net; a failed hand-off must not surface
-            logger.debug("lebot-memory: could not hand the turn to LeBot: %s", error)
+            logger.debug("lilbot-memory: could not hand the turn to LilBot: %s", error)
 
     def on_session_switch(self, new_session_id: str, **kwargs) -> None:
         self._chat = str(new_session_id or self._chat)
@@ -226,4 +226,4 @@ class LeBotMemoryProvider(MemoryProvider):
 
 
 def register(ctx) -> None:
-    ctx.register_memory_provider(LeBotMemoryProvider())
+    ctx.register_memory_provider(LilBotMemoryProvider())
