@@ -69,8 +69,17 @@ export class BotPrefsStore {
     this.db.query('INSERT INTO bot_prefs (bot_id, main_chat_id) VALUES (?, ?) ON CONFLICT (bot_id) DO UPDATE SET main_chat_id = excluded.main_chat_id').run(botId, chatId)
   }
 
+  primaryBot(): string | null {
+    return this.db.query<{ bot_id: string }, []>('SELECT bot_id FROM primary_bot WHERE id = 1').get()?.bot_id ?? null
+  }
+
+  setPrimaryBot(botId: string) {
+    this.db.query('INSERT INTO primary_bot (id, bot_id) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET bot_id = excluded.bot_id').run(botId)
+  }
+
   /** Drop everything kept about a bot that no longer exists. */
   forgetBot(botId: string) {
+    this.db.query('DELETE FROM primary_bot WHERE bot_id = ?').run(botId)
     this.db.query('DELETE FROM bot_prefs WHERE bot_id = ?').run(botId)
   }
 

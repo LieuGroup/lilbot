@@ -59,6 +59,16 @@ describe('requests', () => {
   })
 })
 
+test('primary requests validate params, reject missing bots and notify clients', async () => {
+  const { call, changes, prefs } = connect()
+  expect((await call('bots.setPrimary', { botId: '' })).error.code).toBe('invalid_params')
+  expect((await call('bots.setPrimary', { botId: 'missing' })).error.code).toBe('bot_not_found')
+  expect((await call('bots.setPrimary', { botId: 'b1' })).result).toEqual({ ok: true })
+  expect(prefs.primaryBot()).toBe('b1')
+  expect(changes()).toBe(1)
+  expect((await call('bots.list')).result[0].isPrimary).toBe(true)
+})
+
 describe('chats', () => {
   test('send and stop reach the open chat; a chat that is not open is refused', async () => {
     const { call, log } = connect()

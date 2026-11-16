@@ -8,6 +8,8 @@ import { Panel } from '../ui/panel'
 import { BotForm } from './bot-form'
 import { useBotStore } from './bot-store'
 
+import { PrimaryBotAction } from './primary-bot-action'
+
 const kindLabels: Record<Ability['kind'], string> = { toolset: 'Toolsets', skill: 'Skills', connector: 'Connectors' }
 
 /** One line per kind of ability: how many are on, and the names of the first few. */
@@ -68,6 +70,7 @@ export function BotSetupPanel() {
       {!bot && !error && <p className="text-muted">Loading...</p>}
       {bot && (
         <>
+          <PrimaryBotAction botId={botId} />
           <BotForm
             key={bot.id}
             initial={{ name: bot.name, function: bot.function, instructions: bot.instructions, model: bot.model }}

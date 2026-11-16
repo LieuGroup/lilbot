@@ -42,12 +42,18 @@ export class BotService {
   async listBots(): Promise<Bot[]> {
     const identities = await this.engine.listBots()
     const prefs = this.prefs.prefsFor(identities.map(bot => bot.id))
-    return identities.map(identity => ({ ...identity, prefs: prefs.get(identity.id) ?? this.prefs.prefs(identity.id), workspace: this.workspaces.pathFor(identity.id) }))
+    const primaryId = this.primaryId(identities)
+    return identities.map(identity => ({
+      ...identity,
+      isPrimary: identity.id === primaryId,
+      prefs: prefs.get(identity.id) ?? this.prefs.prefs(identity.id),
+      workspace: this.workspaces.pathFor(identity.id)
+    }))
   }
 
   async getBot(botId: string): Promise<BotDetail> {
     const detail = await this.engine.getBot(botId)
-    return { ...detail, ...this.own(detail) }
+    return { ...detail, ...(await this.own(detail)) }
   }
 
   async createBot(input: BotCreateInput): Promise<Bot> {
@@ -59,20 +65,20 @@ export class BotService {
     // notes are not this bot's.
     if (this.memoryConnection) await this.connectMemory(identity.id, { keepOwnNotes: false })
     this.changed()
-    return { ...identity, ...this.own(identity) }
+    return { ...identity, ...(await this.own(identity)) }
   }
 
   async updateBot(input: BotUpdateInput): Promise<BotDetail> {
     const detail = await this.engine.updateBot(input)
     this.changed()
-    return { ...detail, ...this.own(detail) }
+    return { ...detail, ...(await this.own(detail)) }
   }
 
   async setPrefs({ botId, ...patch }: BotPrefsInput): Promise<Bot> {
     const identity = await this.requireBot(botId)
     this.prefs.setPrefs(botId, patch)
     this.changed()
-    return { ...identity, ...this.own(identity) }
+    return { ...identity, ...(await this.own(identity)) }
   }
 
   async listMemory(botId: string): Promise<{ connected: boolean; facts: MemoryFact[]; forgotten: MemoryFact[] }> {
@@ -185,8 +191,20 @@ export class BotService {
   }
 
   /** The parts of a bot that LilBot, not the engine, holds. */
-  private own(identity: BotIdentity): Pick<Bot, 'prefs' | 'workspace'> {
-    return { prefs: this.prefs.prefs(identity.id), workspace: this.workspaces.pathFor(identity.id) }
+  private async own(identity: BotIdentity): Promise<Pick<Bot, 'isPrimary' | 'prefs' | 'workspace'>> {
+    return { isPrimary: identity.id === this.primaryId(await this.engine.listBots()), prefs: this.prefs.prefs(identity.id), workspace: this.workspaces.pathFor(identity.id) }
+  }
+
+  private primaryId(bots: BotIdentity[]): string | undefined {
+    const chosen = this.prefs.primaryBot()
+    return bots.find(bot => bot.id === chosen)?.id ?? bots.find(bot => bot.isDefault)?.id
+  }
+
+  async setPrimary(botId: string): Promise<{ ok: true }> {
+    await this.requireBot(botId)
+    this.prefs.setPrimaryBot(botId)
+    this.changed()
+    return { ok: true }
   }
 
   private async requireBot(botId: string): Promise<BotIdentity> {

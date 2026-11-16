@@ -30,6 +30,7 @@ export class BrowserSession {
     'bots.create': input => this.bots.createBot(input),
     'bots.update': input => this.bots.updateBot(input),
     'bots.setPrefs': input => this.bots.setPrefs(input),
+    'bots.setPrimary': ({ botId }) => this.bots.setPrimary(botId),
     'sections.list': async () => this.bots.listSections(),
     'sections.create': async ({ name }) => this.bots.createSection(name),
     'sections.rename': async ({ sectionId, name }) => this.bots.renameSection(sectionId, name),

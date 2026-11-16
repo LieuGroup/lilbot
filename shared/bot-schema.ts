@@ -32,6 +32,8 @@ export type BotPrefs = z.infer<typeof BotPrefs>
 
 /** What lists and headers need. */
 export const Bot = BotIdentity.extend({
+  /** The user's primary bot, resolved by LilBot rather than the engine. */
+  isPrimary: z.boolean(),
   prefs: BotPrefs,
   /** The bot's own folder on the shared computer; its chats work there. */
   workspace: z.string()

@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
 export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: ReactNode; actions?: ReactNode }) {
   return (
     <header className="flex items-center gap-3 border-b border-border bg-surface px-4 pt-[max(0.625rem,env(safe-area-inset-top))] pb-2.5">
-      <Link to="/" aria-label="Back to bots" className="-ml-1 flex size-9 flex-none items-center justify-center rounded-lg text-xl md:hidden">
+      <Link to="/bots" aria-label="Back to bots" className="-ml-1 flex size-9 flex-none items-center justify-center rounded-lg text-xl md:hidden">
         ‹
       </Link>
       <div className="min-w-0 flex-1">

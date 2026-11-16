@@ -75,10 +75,36 @@ test('the database file survives being reopened and is not migrated twice', () =
     const path = join(dir, 'nested', 'lilbot.db')
     const first = openDatabase(path)
     new BotPrefsStore(first).setMainChat('b1', 'chat-1')
+    const prefs = new BotPrefsStore(first)
+    expect(prefs.primaryBot()).toBeNull()
+    prefs.setPrimaryBot('b1')
+    prefs.setPrimaryBot('b2')
     first.close()
     const second = openDatabase(path)
     expect(new BotPrefsStore(second).mainChat('b1')).toBe('chat-1')
+    expect(new BotPrefsStore(second).primaryBot()).toBe('b2')
     second.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('the primary migration upgrades an existing database without losing preferences', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'lilbot-migration-'))
+  const path = join(dir, 'lilbot.db')
+  try {
+    const db = openDatabase(path)
+    new BotPrefsStore(db).setPrefs('b1', { pinned: true })
+    db.exec('DROP TABLE primary_bot; PRAGMA user_version = 3')
+    db.close()
+    const upgraded = openDatabase(path)
+    const prefs = new BotPrefsStore(upgraded)
+    expect(prefs.primaryBot()).toBeNull()
+    expect(prefs.prefs('b1').pinned).toBe(true)
+    prefs.setPrimaryBot('b1')
+    expect(prefs.primaryBot()).toBe('b1')
+    expect((upgraded.query('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(4)
+    upgraded.close()
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

@@ -17,6 +17,7 @@ describe('a bot is the engine identity plus the user’s preferences plus its wo
         function: '',
         model: null,
         isDefault: false,
+        isPrimary: false,
         prefs: { avatar: defaultAvatar('b1'), sectionId: null, pinned: false, hidden: false },
         workspace: join(root, 'b1')
       }
