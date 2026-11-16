@@ -10,6 +10,7 @@ const bot = (id: string, isPrimary = false): Bot => ({
   model: null,
   isDefault: false,
   isPrimary,
+  runnable: true,
   workspace: '',
   prefs: { avatar: defaultAvatar(id), sectionId: null, pinned: false, hidden: false }
 })

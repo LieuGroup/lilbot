@@ -7,7 +7,7 @@ import { fakeService } from '../helpers/fake-engine'
 
 const ignore = () => {}
 
-describe('a bot is the engine identity plus the user’s preferences plus its workspace', () => {
+describe('a bot is the app identity plus the user’s preferences plus its workspace', () => {
   test('listing merges all three', async () => {
     const { service, root } = fakeService()
     expect(await service.listBots()).toEqual([
@@ -18,6 +18,7 @@ describe('a bot is the engine identity plus the user’s preferences plus its wo
         model: null,
         isDefault: false,
         isPrimary: false,
+        runnable: true,
         prefs: { avatar: defaultAvatar('b1'), sectionId: null, pinned: false, hidden: false },
         workspace: join(root, 'b1')
       }
@@ -43,7 +44,7 @@ describe('a bot is the engine identity plus the user’s preferences plus its wo
     const { service, root } = fakeService()
     const made = await service.createBot({ name: 'Maker', function: '', instructions: '', avatar: { shape: 'star', color: 'teal' } })
     expect(made.prefs.avatar).toEqual({ shape: 'star', color: 'teal' })
-    expect(made.workspace).toBe(join(root, 'made'))
+    expect(made.workspace).toBe(join(root, made.id))
     expect(existsSync(made.workspace)).toBe(true)
   })
 })
@@ -94,12 +95,12 @@ describe('memory', () => {
   test('a new bot is connected to LilBot memory and keeps only what is known about the user', async () => {
     const { service, log, memory } = fakeService()
     const made = await service.createBot({ name: 'Maker', function: '', instructions: '' })
-    expect(log).toContain('connect-memory:made')
-    const facts = memory.list('made')
+    expect(log).toContain(`connect-memory:${made.id}`)
+    const facts = memory.list(made.id)
     expect(facts.find(fact => fact.text === 'Oscar lives in Adelaide.')).toMatchObject({ kind: 'profile', scope: 'shared' })
     expect(facts.map(fact => fact.text)).toEqual(['Oscar lives in Adelaide.'])
     expect(memory.list('other').map(fact => fact.text)).toEqual(['Oscar lives in Adelaide.'])
-    expect(made.id).toBe('made')
+    expect(made.id).toMatch(/^[0-9a-f-]{36}$/)
   })
 
   test('connecting an existing bot keeps its own notes too, and connecting again does not duplicate them', async () => {
@@ -126,7 +127,7 @@ describe('memory', () => {
 test('at start-up every bot that is not on LilBot memory is connected, once', async () => {
   const { service, engine, log } = fakeService()
   expect(await service.connectAllMemory()).toEqual(['b1'])
-  engine.getBot = async () => ({ id: 'b1', name: 'Bot One', function: '', model: null, isDefault: false, instructions: '', abilities: [], memoryConnected: true })
+  engine.applyIdentity = async () => ({ abilities: [], memoryConnected: true })
   expect(await service.connectAllMemory()).toEqual([])
   expect(log.filter(entry => entry.startsWith('connect-memory'))).toEqual(['connect-memory:b1'])
 })

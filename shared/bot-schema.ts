@@ -1,5 +1,5 @@
 /** The Bot: LilBot's own definition, independent of the engine that runs it. Three owners:
- *  the engine holds identity, instructions, model and abilities; the user holds sidebar
+ *  LilBot holds identity, instructions and model; the engine holds abilities; the user holds sidebar
  *  preferences (LilBot's database); the bot holds its workspace folder. */
 import { z } from 'zod'
 
@@ -9,7 +9,7 @@ import { Avatar } from './avatar'
 export const BotModel = z.object({ provider: z.string(), model: z.string() })
 export type BotModel = z.infer<typeof BotModel>
 
-/** What the engine knows about a bot. */
+/** A bot’s durable identity. */
 export const BotIdentity = z.object({
   id: z.string(),
   name: z.string(),
@@ -35,6 +35,8 @@ export type BotPrefs = z.infer<typeof BotPrefs>
 export const Bot = BotIdentity.extend({
   /** The user's primary bot, resolved by LilBot rather than the engine. */
   isPrimary: z.boolean(),
+  /** False when the saved bot has no available engine runtime. */
+  runnable: z.boolean().default(true),
   activity: BotActivity.optional(),
   prefs: BotPrefs,
   /** The bot's own folder on the shared computer; its chats work there. */
@@ -46,7 +48,7 @@ export type Bot = z.infer<typeof Bot>
 export const Ability = z.object({ kind: z.enum(['skill', 'toolset', 'connector']), id: z.string(), label: z.string(), enabled: z.boolean() })
 export type Ability = z.infer<typeof Ability>
 
-/** What the engine adds for the bot's own page. */
+/** Settings and runtime abilities for the bot's own page. */
 export const BotSetup = z.object({
   /** Personality and standing instructions the bot follows in every chat. */
   instructions: z.string(),

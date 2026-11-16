@@ -2,22 +2,34 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { BotStore } from '../server/bots/bot-store'
+import { openDatabase } from '../server/database/database'
 import { HermesEngine } from '../server/engines/hermes/hermes-engine'
 
 const root = mkdtempSync(join(homedir(), 'agent-tmp', 'activity-check-'))
 const engine = new HermesEngine()
 const ids: string[] = []
+const nativeIds: string[] = []
+const port = Number(process.env.LILBOT_CHECK_PORT ?? 3371)
 let server: ReturnType<typeof Bun.spawn> | undefined
 const clients: WebSocket[] = []
 const start = async () => {
   server = Bun.spawn(['bun', 'server/main.ts'], {
-    env: { ...process.env, LILBOT_PORT: '3371', LILBOT_DATA_DIR: root, LILBOT_WORKSPACES_DIR: join(root, 'workspaces'), LILBOT_BOT_IDS: ids.join(','), LILBOT_REVIEW: 'off' },
+    env: {
+      ...process.env,
+      LILBOT_PORT: String(port),
+      LILBOT_DATA_DIR: root,
+      LILBOT_WORKSPACES_DIR: join(root, 'workspaces'),
+      LILBOT_BOT_IDS: nativeIds.join(','),
+      LILBOT_SKIP_MEMORY_SETUP: '1',
+      LILBOT_REVIEW: 'off'
+    },
     stdout: 'ignore',
     stderr: 'inherit'
   })
   for (let i = 0; i < 100; i++) {
     if (
-      await fetch('http://127.0.0.1:3371/api/health')
+      await fetch(`http://127.0.0.1:${port}/api/health`)
         .then(r => r.ok)
         .catch(() => false)
     )
@@ -27,7 +39,7 @@ const start = async () => {
   throw new Error('server did not start')
 }
 const client = async () => {
-  const socket = new WebSocket('ws://127.0.0.1:3371/ws')
+  const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`)
   clients.push(socket)
   await new Promise<void>((resolve, reject) => {
     socket.onopen = () => resolve()
@@ -68,10 +80,22 @@ const assert = (ok: boolean, label: string) => {
   console.log(`ok ${label}`)
 }
 try {
-  for (let i = 0; i < 2; i++) ids.push((await engine.createBot({ name: `Activity check ${Date.now()} ${i}`, function: '', instructions: 'Follow the request exactly.' })).id)
   await start()
   const a = await client(),
     b = await client()
+  for (let i = 0; i < 2; i++) {
+    const bot = await a.call('bots.create', {
+      name: `Activity check ${Date.now()} ${i}`,
+      function: '',
+      instructions: 'Follow the request exactly.',
+      ...(process.env.LILBOT_LIVE_MODEL ? { model: { provider: process.env.LILBOT_LIVE_MODEL.split('::')[0], model: process.env.LILBOT_LIVE_MODEL.split('::')[1] } } : {})
+    })
+    ids.push(bot.id)
+    const db = openDatabase(join(root, 'lilbot.db'))
+    nativeIds.push(new BotStore(db).get(bot.id).engineBotId)
+    db.close()
+    assert(bot.id !== nativeIds[i], 'new bot has independent LilBot and native ids')
+  }
   const chat = await a.call('chat.open', { botId: ids[0] })
   await b.call('chat.open', { botId: ids[1] })
   const state = async () => (await b.call('bots.list')).find((bot: any) => bot.id === ids[0]).activity
@@ -117,14 +141,14 @@ try {
   await c.call('activity.setUnread', { botId: ids[0], unread: true })
   assert((await after()).unread, 'manual unread works')
   const before = JSON.stringify(await after())
-  await engine.reviewMemory(ids[0], 'This is a test. Save nothing. Reply OK.', { onChat: () => {} })
+  await engine.reviewMemory(nativeIds[0], 'This is a test. Save nothing. Reply OK.', { onChat: () => {} })
   await Bun.sleep(4000)
   assert(JSON.stringify(await after()) === before, 'hidden memory review changes neither activity nor unread')
 } finally {
   for (const ws of clients) ws.close()
   server?.kill(9)
   if (server) await server.exited
-  for (const id of ids) await Bun.spawn(['hermes', 'profile', 'delete', id, '-y'], { stdout: 'ignore', stderr: 'inherit' }).exited
+  for (const id of nativeIds) await Bun.spawn(['hermes', 'profile', 'delete', id, '-y'], { stdout: 'ignore', stderr: 'inherit' }).exited
   rmSync(root, { recursive: true, force: true })
 }
 // Hermes management sockets stay reusable; the standalone check has no more work.

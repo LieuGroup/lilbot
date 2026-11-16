@@ -1,5 +1,4 @@
-/** Hermes profile <-> LilBot Bot. A bot is one Hermes profile; LilBot's display name lives in the
- *  profile's `ui_meta.lilbot`, a namespace Hermes keeps for clients. */
+/** Legacy identity import and runtime capabilities from Hermes profiles. */
 import type { Ability, BotIdentity, ModelProvider } from '../../../shared/bot-schema'
 import type { EngineBotDetail } from '../bot-engine'
 
@@ -38,20 +37,6 @@ export function botDetailFromProfile(summary: BotIdentity, described: Record<str
     instructions: text(described.soul),
     abilities: [...abilitiesOf('toolset', described.toolsets), ...abilitiesOf('skill', described.skills), ...abilitiesOf('connector', described.mcp_servers)]
   }
-}
-
-/** Hermes profile ids are lowercase letters, digits and dashes. Made from the bot's name, kept unique. */
-export function profileIdFor(name: string, taken: Set<string>): string {
-  const base =
-    name
-      .toLowerCase()
-      .normalize('NFKD')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 40) || 'bot'
-  let id = base
-  for (let n = 2; taken.has(id); n++) id = `${base}-${n}`
-  return id
 }
 
 /** Only providers the user is signed in to: the ones a bot can actually run on. */

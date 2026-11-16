@@ -1,22 +1,23 @@
 /** Persistent, read-only profile sockets. No chat is resumed by the observer. */
 import type { ActivityEvent } from '../../../shared/activity-schema'
 import { type ActivityReplayState, type ActivityUpdate, applyActivityReplay, replayNeedsReset, replayPosition } from '../activity-replay'
+import type { RuntimeBinding } from '../bot-engine'
 import { HermesSocket } from './hermes-socket'
 
 type Cursor = (botId: string, chatId: string) => string | undefined
 type Observer = { socket?: HermesSocket; retryAt: number; failures: number; sessions: Map<string, ActivityReplayState> }
 
-export function watchHermesActivity(bots: () => Promise<{ id: string }[]>, emit: (event: ActivityEvent) => void, cursor: Cursor): () => void {
+export function watchHermesActivity(bots: () => Promise<RuntimeBinding[]>, emit: (event: ActivityEvent) => void, cursor: Cursor): () => void {
   const startedAt = Date.now() / 1000
   const observers = new Map<string, Observer>()
   let stopped = false
   let timer: ReturnType<typeof setTimeout>
-  const read = async (botId: string, observer: Observer) => {
+  const read = async ({ id: botId, engineBotId }: RuntimeBinding, observer: Observer) => {
     if (Date.now() < observer.retryAt) return
     try {
       if (!observer.socket?.isOpen) {
         const socket = await HermesSocket.connect(
-          botId === 'default' ? '' : botId,
+          engineBotId === 'default' ? '' : engineBotId,
           () => {},
           () => {}
         )
@@ -93,7 +94,7 @@ export function watchHermesActivity(bots: () => Promise<{ id: string }[]>, emit:
             observer = { retryAt: 0, failures: 0, sessions: new Map() }
             observers.set(bot.id, observer)
           }
-          return read(bot.id, observer)
+          return read(bot, observer)
         })
       )
     } catch (error) {

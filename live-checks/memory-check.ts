@@ -8,6 +8,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { BotPrefsStore } from '../server/bots/bot-prefs-store'
 import { BotService } from '../server/bots/bot-service'
+import { BotStore } from '../server/bots/bot-store'
 import { Workspaces } from '../server/bots/workspaces'
 import { openDatabase } from '../server/database/database'
 import type { OpenChat } from '../server/engines/bot-engine'
@@ -25,7 +26,7 @@ const BOT_PREFIX = 'LilBot Memory Check'
 // A new name, so a new profile folder, on every run: the Hermes gateway keeps a plug-in's code
 // loaded per folder, and a reused folder would test the code of an earlier run.
 const BOT_NAME = `${BOT_PREFIX} ${Date.now().toString(36)}`
-const PORT = 3379
+const PORT = Number(process.env.LILBOT_CHECK_PORT ?? 3379)
 const TURN_TIMEOUT_MS = 120_000
 
 const scratch = mkdtempSync(join(homedir(), 'agent-tmp', 'lilbot-memory-'))
@@ -35,9 +36,10 @@ const engine = new HermesEngine()
 const queue = new ReviewQueue(database)
 // The review model: the same setting the server reads, with the measured default.
 const [reviewProvider, reviewModel] = (process.env.LILBOT_REVIEW_MODEL ?? 'cliproxyapi::anthropic/claude-sonnet-5-5').split('::')
-const reviewer = new MemoryReviewer(queue, engine, { enabled: true, turns: 10, quietMs: 120_000, minTurns: 3, model: { provider: reviewProvider, model: reviewModel } })
+const bots = new BotService(engine, new BotStore(database), new BotPrefsStore(database), new Workspaces(join(scratch, 'workspaces')), memory)
+const reviewer = new MemoryReviewer(queue, bots, { enabled: true, turns: 10, quietMs: 120_000, minTurns: 3, model: { provider: reviewProvider, model: reviewModel } })
 const engineApi = createEngineApi(memory, engineToken(scratch), PORT, { adapterVersion: MEMORY_ADAPTER_VERSION, reviewer })
-const bots = new BotService(engine, new BotPrefsStore(database), new Workspaces(join(scratch, 'workspaces')), memory)
+
 let memoryCalls = 0
 const adapterVersions = new Set<string>()
 const server = Bun.serve({
@@ -109,17 +111,22 @@ async function deleteBot(id: string) {
 }
 
 try {
-  const bot = await bots.createBot({ name: BOT_NAME, function: 'Temporary bot for the LilBot memory check.', instructions: 'Be brief. Answer in plain text.' })
+  const bot = await bots.createBot({
+    name: BOT_NAME,
+    function: 'Temporary bot for the LilBot memory check.',
+    instructions: 'Be brief. Answer in plain text.',
+    ...(process.env.LILBOT_LIVE_MODEL ? { model: { provider: process.env.LILBOT_LIVE_MODEL.split('::')[0], model: process.env.LILBOT_LIVE_MODEL.split('::')[1] } } : {})
+  })
   botId = bot.id
 
   // A cloned profile can inherit the live adapter. Disconnect it before the baseline's first turn.
-  await removeMemory(botId)
+  await removeMemory(new BotStore(database).get(botId).engineBotId)
 
   // Before: the bot with Hermes' own memory, as a baseline for token use.
   const before = await turnInNewSession('Reply with exactly: OK')
   check('baseline turn without LilBot memory', before.finished?.status === 'completed', `${before.finished?.contextTokens ?? '?'} tokens sent`)
 
-  await installMemory(botId, { url: `http://127.0.0.1:${PORT}`, tokenFile: join(scratch, 'engine-token') })
+  await installMemory(new BotStore(database).get(botId).engineBotId, { botId, url: `http://127.0.0.1:${PORT}`, tokenFile: join(scratch, 'engine-token') })
   check('memory connected to the bot', true)
 
   const empty = await turnInNewSession('Reply with exactly: OK')
@@ -153,7 +160,7 @@ try {
   // The saving rules reach the bot. Read from the session's real system prompt: asking a bot to
   // describe its own instructions is unreliable (it answered "my instructions don't cover that"
   // while the rules were present).
-  const prompt = await systemPromptOf(botId)
+  const prompt = await systemPromptOf(new BotStore(database).get(botId).engineBotId)
   check('the memory rules are in the bot’s instructions', prompt.includes('# Memory') && prompt.includes('over its budget'), `${prompt.length} characters`)
   check('Hermes’ own memory files are no longer in the prompt', !prompt.includes('USER PROFILE') && !/MEMORY \(your personal notes\)/.test(prompt))
   check('facts ride with the message, not in the cached instructions', !/ultramarine/i.test(prompt))
@@ -223,7 +230,7 @@ try {
 } finally {
   if (botId) {
     try {
-      await deleteBot(botId)
+      await deleteBot(new BotStore(database).get(botId).engineBotId)
       check('temporary bot deleted', true)
     } catch (error) {
       check('temporary bot deleted', false, `delete it by hand: hermes profile delete ${botId} -y. ${error instanceof Error ? error.message : ''}`)

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { botDetailFromProfile, botFromProfile, profileIdFor, providersFromModelOptions } from '../../../server/engines/hermes/hermes-bot-mapping'
+import { botDetailFromProfile, botFromProfile, providersFromModelOptions } from '../../../server/engines/hermes/hermes-bot-mapping'
 import { chatEventFrom, itemsFromRows, toolFailed } from '../../../server/engines/hermes/hermes-chat-mapping'
 
 const event = (type: string, payload: Record<string, unknown> = {}) => ({ type, payload })
@@ -79,14 +79,6 @@ describe('bots', () => {
       { kind: 'skill', id: 'pdf', label: 'pdf', enabled: false },
       { kind: 'connector', id: 'notion', label: 'notion', enabled: true }
     ])
-  })
-
-  test('profile ids are lowercase, dash-separated and unique', () => {
-    expect(profileIdFor('UI Check Bot!', new Set())).toBe('ui-check-bot')
-    expect(profileIdFor('Researcher', new Set(['researcher', 'researcher-2']))).toBe('researcher-3')
-    expect(profileIdFor('!!!', new Set())).toBe('bot')
-    expect(profileIdFor('Đức', new Set())).toMatch(/^[a-z0-9][a-z0-9-]*$/)
-    expect(profileIdFor('x'.repeat(200), new Set()).length).toBeLessThanOrEqual(40)
   })
 
   test('only signed-in providers with models are offered', () => {

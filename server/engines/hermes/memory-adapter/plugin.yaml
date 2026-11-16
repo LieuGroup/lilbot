@@ -1,5 +1,5 @@
 name: lilbot-memory
-version: 0.3.0
+version: 0.4.0
 description: "LilBot memory: facts kept in LilBot's own database, private to a bot or shared between the user's bots."
 hooks:
   - on_turn_start

@@ -3,7 +3,10 @@ import { watchHermesActivity } from '../../../server/engines/hermes/hermes-activ
 import { HermesSocket } from '../../../server/engines/hermes/hermes-socket'
 
 test('observer reuses profile sockets, consumes incremental events and drops removed bots', async () => {
-  let bots = [{ id: 'a' }, { id: 'b' }]
+  let bots = [
+    { id: 'a', engineBotId: 'a' },
+    { id: 'b', engineBotId: 'b' }
+  ]
   const sockets: any[] = []
   const positions: number[] = []
   const connect = spyOn(HermesSocket, 'connect').mockImplementation(async () => {
@@ -33,7 +36,7 @@ test('observer reuses profile sockets, consumes incremental events and drops rem
     expect(connect).toHaveBeenCalledTimes(2)
     expect(positions).toEqual([0, 0, 1, 1])
     expect(events.every(e => e.tool === 'terminal')).toBe(true)
-    bots = [{ id: 'a' }]
+    bots = [{ id: 'a', engineBotId: 'a' }]
     await Bun.sleep(1000)
     expect(sockets[1].isOpen).toBe(false)
     expect(sockets[0].isOpen).toBe(true)
@@ -52,7 +55,10 @@ test('a failed profile backs off without reconnecting healthy profiles', async (
     return { isOpen: true, close() {}, request: async () => ({ sessions: [] }) } as unknown as HermesSocket
   })
   const stop = watchHermesActivity(
-    async () => [{ id: 'bad' }, { id: 'good' }],
+    async () => [
+      { id: 'bad', engineBotId: 'bad' },
+      { id: 'good', engineBotId: 'good' }
+    ],
     () => {},
     () => undefined
   )
@@ -80,7 +86,7 @@ test('an epoch change and a truncated delta each trigger only one full read', as
     }
   } as unknown as HermesSocket)
   const stop = watchHermesActivity(
-    async () => [{ id: 'a' }],
+    async () => [{ id: 'a', engineBotId: 'a' }],
     () => {},
     () => undefined
   )

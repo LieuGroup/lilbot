@@ -6,6 +6,7 @@ import { ActivityService } from './activity/activity-service'
 import { ActivityStore } from './activity/activity-store'
 import { BotPrefsStore } from './bots/bot-prefs-store'
 import { BotService } from './bots/bot-service'
+import { BotStore } from './bots/bot-store'
 import { Workspaces } from './bots/workspaces'
 import { openDatabase } from './database/database'
 import { HermesEngine } from './engines/hermes/hermes-engine'
@@ -45,7 +46,7 @@ const activity = new ActivityService(new ActivityStore(database), botsChanged)
 const memory = new MemoryService(new MemoryStore(database))
 const memoryChanged = () => server.publish(EVERYONE, JSON.stringify({ event: 'memory.changed' }))
 const token = engineToken(DATA_DIR)
-const bots = new BotService(engine, new BotPrefsStore(database), new Workspaces(WORKSPACES_DIR), memory, {
+const bots = new BotService(engine, new BotStore(database), new BotPrefsStore(database), new Workspaces(WORKSPACES_DIR), memory, {
   changed: botsChanged,
   memoryChanged,
   memoryConnection: { url: `http://127.0.0.1:${PORT}`, tokenFile: join(DATA_DIR, 'engine-token') }
@@ -55,7 +56,7 @@ const bots = new BotService(engine, new BotPrefsStore(database), new Workspaces(
 // The after-chat memory review. LILBOT_REVIEW=off disables it; LILBOT_REVIEW_MODEL is
 // "provider::model" (without it a review runs on the bot's own model, which costs more).
 const [reviewProvider, reviewModel] = (process.env.LILBOT_REVIEW_MODEL ?? '').split('::')
-const reviewer = new MemoryReviewer(new ReviewQueue(database), engine, {
+const reviewer = new MemoryReviewer(new ReviewQueue(database), bots, {
   ...defaultReviewSettings,
   enabled: process.env.LILBOT_REVIEW !== 'off',
   turns: Number(process.env.LILBOT_REVIEW_TURNS ?? defaultReviewSettings.turns),
@@ -67,6 +68,9 @@ setInterval(() => reviewer.tick(), 20_000)
 // Every bot uses LilBot's memory: bots on an older adapter are updated, and a bot that is not
 // connected yet is connected. Both take effect from the bot's next session.
 async function prepareMemory() {
+  // Temporary test servers must opt in: never rewrite real profiles' memory endpoints.
+  await bots.listBots()
+  if (process.env.LILBOT_SKIP_MEMORY_SETUP === '1') return
   const updated = await engine.refreshMemory()
   if (updated.length) console.log(`Memory adapter updated to ${MEMORY_ADAPTER_VERSION} for: ${updated.join(', ')}`)
   const connected = await bots.connectAllMemory()
@@ -76,7 +80,7 @@ prepareMemory().catch(error => console.error('[memory] could not prepare memory 
 
 const engineApi = createEngineApi(memory, token, PORT, { onMemoryChanged: memoryChanged, adapterVersion: MEMORY_ADAPTER_VERSION, reviewer })
 engine.onBotsChanged(botsChanged)
-engine.watchActivity(event => activity.observe(event), activity.cursor)
+bots.watchActivity(event => activity.observe(event), activity.cursor)
 const DIST = join(import.meta.dir, '..', 'dist')
 
 const ALLOWED_HOSTS = allowedHosts(PORT, process.env.LILBOT_ALLOWED_HOSTS)

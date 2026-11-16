@@ -1,9 +1,9 @@
 """LilBot memory provider for Hermes.
 
 Holds no data. Every call goes to the LilBot server on this machine, which owns the memory
-(`server/memory/` and `server/engine-api.ts` in the LilBot repo). The bot id is the Hermes profile id.
+(`server/memory/` and `server/http/engine-api.ts` in the LilBot repo). The stable bot id is supplied in the connection settings.
 
-Installed per profile by LilBot (`scripts/hermes-memory.ts`): this folder is copied to
+Installed per profile by LilBot (`server/engines/hermes/hermes-memory-setup.ts`): this folder is copied to
 `$HERMES_HOME/plugins/lilbot-memory-v<version>/` and `$HERMES_HOME/lilbot-memory.json` says where LilBot is.
 """
 
@@ -28,13 +28,13 @@ except ImportError:  # older Hermes
 
 logger = logging.getLogger(__name__)
 
-# LilBot installs each version under its own folder name (lilbot-memory-v0-3-0) and selects the provider
+# LilBot installs each version under its own folder name (lilbot-memory-v0-4-0) and selects the provider
 # by that name: the Hermes gateway keeps a plug-in's code loaded per folder, so a new version must be a
 # new folder to take effect without restarting the gateway.
 NAME = Path(__file__).resolve().parent.name
 SETTINGS_FILE = "lilbot-memory.json"
 # Keep equal to plugin.yaml. LilBot warns when a bot still calls with an older one.
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 DEFAULT_URL = "http://127.0.0.1:3370"
 DEFAULT_TOKEN_FILE = "~/.local/share/lilbot/engine-token"
 TIMEOUT_SECONDS = 5
@@ -130,7 +130,7 @@ class LilBotMemoryProvider(MemoryProvider):
         except (OSError, ValueError):
             logger.info("lilbot-memory: no settings file in %s, using defaults", home)
         self._url = str(settings.get("url") or DEFAULT_URL).rstrip("/")
-        self._bot = _bot_id(home)
+        self._bot = str(settings.get("bot_id") or _bot_id(home))
         self._chat = str(session_id or "")
         # Scheduled runs and sub-agents are not conversations with the user: nothing to review.
         self._primary = kwargs.get("agent_context", "primary") == "primary"

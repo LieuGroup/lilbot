@@ -65,7 +65,7 @@ export const memoryCurrent = (botId: string) => installedFolders(profileHome(bot
 export async function memoryConnection(botId: string): Promise<MemoryConnection | null> {
   try {
     const settings = JSON.parse(await readFile(join(profileHome(botId), SETTINGS_FILE), 'utf8'))
-    return typeof settings.url === 'string' && typeof settings.token_file === 'string' ? { url: settings.url, tokenFile: settings.token_file } : null
+    return typeof settings.url === 'string' && typeof settings.token_file === 'string' ? { url: settings.url, tokenFile: settings.token_file, botId: settings.bot_id } : null
   } catch {
     return null
   }
@@ -87,7 +87,9 @@ export async function installMemory(botId: string, connection: MemoryConnection)
   // Hermes selects a provider by name; the installed copy carries its versioned one.
   const manifest = await readFile(join(PLUGIN_SOURCE, 'plugin.yaml'), 'utf8')
   await writeFile(join(target, 'plugin.yaml'), manifest.replace(/^name:.*$/m, `name: ${name}`))
-  await writeFile(join(home, SETTINGS_FILE), `${JSON.stringify({ url: connection.url, token_file: connection.tokenFile }, null, 2)}\n`, { mode: 0o600 })
+  await writeFile(join(home, SETTINGS_FILE), `${JSON.stringify({ url: connection.url, token_file: connection.tokenFile, bot_id: connection.botId ?? botId }, null, 2)}\n`, {
+    mode: 0o600
+  })
   await configSet(botId, 'memory.provider', name)
   await configSet(botId, 'memory.memory_enabled', 'false')
   await configSet(botId, 'memory.user_profile_enabled', 'false')

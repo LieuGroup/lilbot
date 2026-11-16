@@ -1,17 +1,18 @@
-/** What LilBot needs from whatever runs the bots. Hermes is the first implementation; another engine
- *  (for example one speaking ACP) only has to satisfy this interface. An engine knows a bot's
- *  identity, setup and chats. It knows nothing about the user's preferences or LilBot's database. */
-
+/** Engines run identities supplied by LilBot. Native runtime ids never become public bot ids. */
 import type { ActivityEvent } from '../../shared/activity-schema'
-import type { BotCreateInput, BotIdentity, BotModel, BotSetup, BotUpdateInput, ModelProvider } from '../../shared/bot-schema'
+import type { BotIdentity, BotModel, BotSetup, ModelProvider } from '../../shared/bot-schema'
 import type { ChatEvent, ChatSnapshot } from '../../shared/chat-schema'
 
 export type EngineBotDetail = BotIdentity & BotSetup
+export type RuntimeIdentity = BotIdentity & { instructions: string }
+export type RuntimeState = Pick<BotSetup, 'abilities' | 'memoryConnected'>
 
 /** Where an engine adapter on this machine reaches LilBot's memory. */
 export interface MemoryConnection {
   url: string
   tokenFile: string
+  /** Stable LilBot id, independent of the engine profile id. */
+  botId?: string
 }
 
 /** Notes an engine kept in its own memory before the bot was connected to LilBot's. */
@@ -32,12 +33,19 @@ export interface ChatOptions {
   workspace: string
 }
 
+export type RuntimeBinding = { id: string; engineBotId: string }
+export type ActivityCursor = (botId: string, chatId: string) => string | undefined
+
 export interface BotEngine {
-  watchActivity?(listener: (event: ActivityEvent) => void, cursor: (botId: string, chatId: string) => string | undefined): () => void
-  listBots(): Promise<BotIdentity[]>
-  getBot(botId: string): Promise<EngineBotDetail>
-  createBot(input: BotCreateInput): Promise<BotIdentity>
-  updateBot(input: BotUpdateInput): Promise<EngineBotDetail>
+  /** Observe existing bound runtimes; emit and persist cursors using the LilBot id. */
+  watchActivity?(bots: () => Promise<RuntimeBinding[]>, listener: (event: ActivityEvent) => void, cursor: ActivityCursor): () => void
+  readonly id: string
+  /** Only used for the one-time migration of identities that predate LilBot ownership. */
+  importBots(): Promise<EngineBotDetail[]>
+  /** Prepare a new runtime for this LilBot identity; returns its engine-native id. */
+  createRuntime(identity: RuntimeIdentity): Promise<string>
+  /** Apply LilBot's authoritative settings if they drifted. Missing runtimes throw bot_not_found. */
+  applyIdentity(engineBotId: string, identity: RuntimeIdentity): Promise<RuntimeState>
   listModels(): Promise<ModelProvider[]>
   /** Open a new chat (`chatId` null) or continue a stored one. A stored chat that no longer exists
    *  is replaced by a new one; the snapshot says which chat was opened. Events arrive until `close()`. */
