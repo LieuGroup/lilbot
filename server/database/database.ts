@@ -88,7 +88,8 @@ const migrations: string[] = [
    CREATE INDEX library_bot_time ON library_items(bot_id, created_at DESC);`,
   `CREATE TABLE skills (name TEXT PRIMARY KEY, description TEXT NOT NULL, author TEXT NOT NULL, updated_at INTEGER NOT NULL);
    CREATE TABLE skill_off (bot_id TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY(bot_id,name));
-   CREATE TABLE skill_imports (source TEXT PRIMARY KEY, name TEXT NOT NULL);`
+   CREATE TABLE skill_imports (source TEXT PRIMARY KEY, name TEXT NOT NULL);`,
+  `ALTER TABLE bot_prefs ADD COLUMN avatar_face_color TEXT;`
 ]
 
 /** `path` may be ':memory:' for tests. Applies any migration steps the file has not seen. */

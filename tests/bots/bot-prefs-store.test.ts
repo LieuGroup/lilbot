@@ -18,8 +18,8 @@ describe('bot preferences', () => {
   test('a change keeps the fields it does not mention', () => {
     const prefs = store()
     prefs.setPrefs('b1', { pinned: true })
-    prefs.setPrefs('b1', { avatar: { shape: 'star', color: 'blue' } })
-    expect(prefs.prefs('b1')).toMatchObject({ pinned: true, hidden: false, avatar: { shape: 'star', color: 'blue' } })
+    prefs.setPrefs('b1', { avatar: { shape: 'star', color: 'blue', faceColor: 'ink' } })
+    expect(prefs.prefs('b1')).toMatchObject({ pinned: true, hidden: false, avatar: { shape: 'star', color: 'blue', faceColor: 'ink' } })
   })
 
   test('prefsFor answers for every requested bot, stored or not', () => {
@@ -96,7 +96,7 @@ test('the primary migration upgrades an existing database without losing prefere
     const db = openDatabase(path)
     new BotPrefsStore(db).setPrefs('b1', { pinned: true })
     db.exec(
-      'DROP TABLE library_items; DROP TABLE skills; DROP TABLE skill_off; DROP TABLE skill_imports; DROP TABLE routine_chats; DROP TABLE routine_runs; DROP TABLE routines; DROP TABLE bot_creations; DROP TABLE bot_delete_defaults; DROP TABLE bots; DROP TABLE bot_imports; DROP TABLE primary_bot; DROP TABLE bot_activity; DROP TABLE activity_cursors; PRAGMA user_version = 3'
+      'ALTER TABLE bot_prefs DROP COLUMN avatar_face_color; DROP TABLE library_items; DROP TABLE skills; DROP TABLE skill_off; DROP TABLE skill_imports; DROP TABLE routine_chats; DROP TABLE routine_runs; DROP TABLE routines; DROP TABLE bot_creations; DROP TABLE bot_delete_defaults; DROP TABLE bots; DROP TABLE bot_imports; DROP TABLE primary_bot; DROP TABLE bot_activity; DROP TABLE activity_cursors; PRAGMA user_version = 3'
     )
     db.close()
     const upgraded = openDatabase(path)
@@ -105,7 +105,7 @@ test('the primary migration upgrades an existing database without losing prefere
     expect(prefs.prefs('b1').pinned).toBe(true)
     prefs.setPrimaryBot('b1')
     expect(prefs.primaryBot()).toBe('b1')
-    expect((upgraded.query('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(12)
+    expect((upgraded.query('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(13)
     upgraded.close()
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -118,15 +118,27 @@ test('upgrading the shipped creation schema preserves markers before adding dele
   try {
     const db = openDatabase(path)
     db.exec(
-      "INSERT INTO bot_creations VALUES ('created-before-upgrade'); DROP TABLE library_items; DROP TABLE skills; DROP TABLE skill_off; DROP TABLE skill_imports; DROP TABLE routine_chats; DROP TABLE routine_runs; DROP TABLE routines; ALTER TABLE bots DROP COLUMN permission_mode; DROP TABLE bot_delete_defaults; ALTER TABLE bots DROP COLUMN deletion; PRAGMA user_version = 7"
+      "INSERT INTO bot_creations VALUES ('created-before-upgrade'); ALTER TABLE bot_prefs DROP COLUMN avatar_face_color; DROP TABLE library_items; DROP TABLE skills; DROP TABLE skill_off; DROP TABLE skill_imports; DROP TABLE routine_chats; DROP TABLE routine_runs; DROP TABLE routines; ALTER TABLE bots DROP COLUMN permission_mode; DROP TABLE bot_delete_defaults; ALTER TABLE bots DROP COLUMN deletion; PRAGMA user_version = 7"
     )
     db.close()
     const upgraded = openDatabase(path)
     expect(upgraded.query('SELECT bot_id FROM bot_creations').all()).toEqual([{ bot_id: 'created-before-upgrade' }])
-    expect((upgraded.query('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(12)
+    expect((upgraded.query('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(13)
     expect(new BotPrefsStore(upgraded).primaryBot()).toBeNull()
     upgraded.close()
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
+})
+
+test('old avatars read with an ink face without rewriting the stored row', () => {
+  const db = openDatabase(':memory:')
+  db.query('INSERT INTO bot_prefs (bot_id, avatar_shape, avatar_color) VALUES (?, ?, ?)').run('legacy', 'triangle', 'yellow')
+  const prefs = new BotPrefsStore(db)
+  expect(prefs.prefs('legacy').avatar).toEqual({ shape: 'triangle', color: 'yellow', faceColor: 'ink' })
+  expect(prefs.prefsFor(['legacy']).get('legacy')?.avatar.faceColor).toBe('ink')
+  expect(db.query('SELECT avatar_face_color FROM bot_prefs').get()).toEqual({ avatar_face_color: null })
+  prefs.setPrefs('legacy', { avatar: { shape: 'drop', color: 'bone', faceColor: 'pink' } })
+  expect(prefs.prefs('legacy').avatar).toEqual({ shape: 'drop', color: 'bone', faceColor: 'pink' })
+  db.close()
 })

@@ -82,11 +82,11 @@ test('skills migration upgrades shipped Library schema without losing deliveries
     db.exec("INSERT INTO routines (id,bot_id,description,schedule,created_by,request_id,next_run_at) VALUES ('r','b1','Task','{}','oscar','request',2)")
     db.exec("INSERT INTO routine_runs (id,routine_id,bot_id,due_at) VALUES ('run','r','b1',1)")
     db.exec("INSERT INTO routine_chats VALUES ('chat','run')")
-    db.exec('DROP TABLE skills; DROP TABLE skill_off; DROP TABLE skill_imports; PRAGMA user_version = 11')
+    db.exec('ALTER TABLE bot_prefs DROP COLUMN avatar_face_color; DROP TABLE skills; DROP TABLE skill_off; DROP TABLE skill_imports; PRAGMA user_version = 11')
     const before = ['library_items', 'routines', 'routine_runs', 'routine_chats'].map(table => db.query(`SELECT * FROM ${table}`).all())
     db.close()
     db = openDatabase(path)
-    expect(db.query('PRAGMA user_version').get()).toEqual({ user_version: 12 })
+    expect(db.query('PRAGMA user_version').get()).toEqual({ user_version: 13 })
     expect(['library_items', 'routines', 'routine_runs', 'routine_chats'].map(table => db.query(`SELECT * FROM ${table}`).all())).toEqual(before)
     expect(db.query('SELECT * FROM skill_off').all()).toEqual([])
   } finally {

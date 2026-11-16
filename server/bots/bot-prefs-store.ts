@@ -10,6 +10,7 @@ interface PrefsRow {
   bot_id: string
   avatar_shape: string | null
   avatar_color: string | null
+  avatar_face_color: string | null
   section_id: string | null
   pinned: number
   hidden: number
@@ -20,7 +21,7 @@ export type PrefsPatch = Partial<BotPrefs>
 
 function prefsFrom(botId: string, row: PrefsRow | null): BotPrefs {
   // A stored avatar that is no longer in the lists (they changed) falls back like a missing one.
-  const stored = Avatar.safeParse({ shape: row?.avatar_shape, color: row?.avatar_color })
+  const stored = Avatar.safeParse({ shape: row?.avatar_shape, color: row?.avatar_color, faceColor: row?.avatar_face_color ?? undefined })
   return { avatar: stored.success ? stored.data : defaultAvatar(botId), sectionId: row?.section_id ?? null, pinned: row?.pinned === 1, hidden: row?.hidden === 1 }
 }
 
@@ -53,11 +54,11 @@ export class BotPrefsStore {
     const next = { ...this.prefs(botId), ...patch }
     this.db
       .query(
-        `INSERT INTO bot_prefs (bot_id, avatar_shape, avatar_color, section_id, pinned, hidden) VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT (bot_id) DO UPDATE SET avatar_shape = excluded.avatar_shape, avatar_color = excluded.avatar_color,
+        `INSERT INTO bot_prefs (bot_id, avatar_shape, avatar_color, avatar_face_color, section_id, pinned, hidden) VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (bot_id) DO UPDATE SET avatar_shape = excluded.avatar_shape, avatar_color = excluded.avatar_color, avatar_face_color = excluded.avatar_face_color,
            section_id = excluded.section_id, pinned = excluded.pinned, hidden = excluded.hidden`
       )
-      .run(botId, next.avatar.shape, next.avatar.color, next.sectionId, next.pinned ? 1 : 0, next.hidden ? 1 : 0)
+      .run(botId, next.avatar.shape, next.avatar.color, next.avatar.faceColor, next.sectionId, next.pinned ? 1 : 0, next.hidden ? 1 : 0)
     return next
   }
 

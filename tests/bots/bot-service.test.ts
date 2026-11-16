@@ -44,8 +44,8 @@ describe('a bot is the app identity plus the user’s preferences plus its works
 
   test('creating a bot makes its workspace folder and keeps the chosen avatar', async () => {
     const { service, root } = fakeService()
-    const made = await service.createBot({ name: 'Maker', function: '', instructions: '', avatar: { shape: 'star', color: 'teal' } })
-    expect(made.prefs.avatar).toEqual({ shape: 'star', color: 'teal' })
+    const made = await service.createBot({ name: 'Maker', function: '', instructions: '', avatar: { shape: 'star', color: 'teal', faceColor: 'ink' } })
+    expect(made.prefs.avatar).toEqual({ shape: 'star', color: 'teal', faceColor: 'ink' })
     expect(made.workspace).toBe(join(root, made.id))
     expect(existsSync(made.workspace)).toBe(true)
   })
