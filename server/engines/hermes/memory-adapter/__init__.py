@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from agent.memory_provider import MemoryProvider
+from .routines import TOOLS as ROUTINE_TOOLS, ACTIONS as ROUTINE_ACTIONS
 
 try:
     from agent.memory_provider import spawn_context_thread
@@ -34,7 +35,7 @@ logger = logging.getLogger(__name__)
 NAME = Path(__file__).resolve().parent.name
 SETTINGS_FILE = "lilbot-memory.json"
 # Keep equal to plugin.yaml. LilBot warns when a bot still calls with an older one.
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 DEFAULT_URL = "http://127.0.0.1:3370"
 DEFAULT_TOKEN_FILE = "~/.local/share/lilbot/engine-token"
 TIMEOUT_SECONDS = 5
@@ -147,13 +148,13 @@ class LilBotMemoryProvider(MemoryProvider):
         if not self._token:
             return {"error": "Memory is not connected to LilBot."}
         request = urllib.request.Request(
-            f"{self._url}/engine/{endpoint}" if endpoint.startswith("bots/") else f"{self._url}/engine/memory/{endpoint}",
+            f"{self._url}/engine/{endpoint}" if endpoint.startswith(("bots/", "routines/")) else f"{self._url}/engine/memory/{endpoint}",
             data=json.dumps({"botId": self._bot, **({"chatId": self._chat} if self._chat else {}), **body}).encode(),
             headers={"Content-Type": "application/json", "Authorization": f"Bearer {self._token}", "X-LilBot-Adapter-Version": VERSION, "X-LilBot-Bot-Capability": self._creation_capability},
             method="POST",
         )
         try:
-            with urllib.request.urlopen(request, timeout=180 if endpoint.startswith("bots/") else TIMEOUT_SECONDS) as response:
+            with urllib.request.urlopen(request, timeout=180 if endpoint.startswith(("bots/", "routines/")) else TIMEOUT_SECONDS) as response:
                 return json.loads(response.read())
         except urllib.error.HTTPError as error:
             try:
@@ -165,7 +166,7 @@ class LilBotMemoryProvider(MemoryProvider):
             return {"error": "Memory is not reachable right now."}
 
     def system_prompt_block(self) -> str:
-        return RULES
+        return RULES + "\nUse LilBot routine tools for scheduled work, never Hermes cron. Runs have full access and need no approvals.\n"
 
     def on_turn_start(self, turn_number: int, message: str, **kwargs) -> None:
         # One snapshot per turn, so every model call in the turn sees the same text.
@@ -196,13 +197,15 @@ class LilBotMemoryProvider(MemoryProvider):
         self._chat = str(new_session_id or self._chat)
 
     def get_tool_schemas(self) -> list[dict[str, Any]]:
-        return list(TOOLS) + [{
+        return list(TOOLS) + ROUTINE_TOOLS + [{
             "name": "create_bot",
             "description": "Create a bot when Oscar asks. Only the primary bot is allowed. Write its instructions and short function from his description; it inherits your model and greets him. No confirmation needed. Reply with the returned Markdown link. Reuse requestId on retries, use a new unique requestId for each new request.",
             "parameters": {"type": "object", "properties": {key: {"type": "string"} for key in ["requestId", "name", "function", "instructions"]}, "required": ["requestId", "name", "function", "instructions"]}
         }]
 
     def handle_tool_call(self, tool_name: str, args: dict[str, Any], **kwargs) -> str:
+        if tool_name in ROUTINE_ACTIONS:
+            return json.dumps(self._call("routines/" + ROUTINE_ACTIONS[tool_name], args))
         if tool_name == "create_bot":
             return json.dumps(self._call("bots/create", {key: args.get(key, "") for key in ["requestId", "name", "function", "instructions"]}))
         if tool_name == "recall_memory":

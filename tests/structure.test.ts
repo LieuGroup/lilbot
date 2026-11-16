@@ -49,7 +49,12 @@ test('only main.ts knows which engine is used: nothing else in the server import
 })
 
 test('an engine does not depend on what sits above it', () => {
-  expect([...crossings('server/engines', 'server/http'), ...crossings('server/engines', 'server/bots'), ...crossings('server/engines', 'server/memory')]).toEqual([])
+  expect([
+    ...crossings('server/engines', 'server/http'),
+    ...crossings('server/engines', 'server/bots'),
+    ...crossings('server/engines', 'server/memory'),
+    ...crossings('server/engines', 'server/routines')
+  ]).toEqual([])
 })
 
 test('requests flow downward: memory and bots do not import the http layer, memory does not import bots', () => {
@@ -59,4 +64,8 @@ test('requests flow downward: memory and bots do not import the http layer, memo
 test('the database folder is the bottom: it imports nothing else from the server', () => {
   const upward = sourceFiles('server/database').flatMap(file => importsOf(file).filter(target => target.startsWith('server/') && !target.startsWith('server/database')))
   expect(upward).toEqual([])
+})
+
+test('routines do not depend on HTTP or a concrete engine', () => {
+  expect([...crossings('server/routines', 'server/http'), ...crossings('server/routines', 'server/engines/hermes')]).toEqual([])
 })

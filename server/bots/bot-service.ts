@@ -205,13 +205,13 @@ export class BotService {
 
   /** Without `chatId`: the bot's main conversation, created on first use and the same for every
    *  device from then on. With `chatId`: that chat, leaving the main conversation as it is. */
-  async openChat(botId: string, chatId: string | undefined, onEvent: (event: ChatEvent) => void): Promise<OpenChat> {
+  async openChat(botId: string, chatId: string | undefined, onEvent: (event: ChatEvent) => void, requireExisting = false): Promise<OpenChat> {
     const bot = await this.requireBot(botId)
     await this.runtimes.initialize()
     await this.runtimes.state(bot)
     const workspace = await this.workspaces.ensure(botId)
     const main = this.prefs.mainChat(botId)
-    const chat = await this.runtimes.engineFor(bot).openChat(bot.engineBotId, chatId ?? main, { workspace }, onEvent)
+    const chat = await this.runtimes.engineFor(bot).openChat(bot.engineBotId, chatId ?? main, { workspace, requireExisting }, onEvent)
     chat.snapshot.botId = botId
     // First use, or the engine replaced a main conversation that no longer exists.
     if (!chatId && chat.snapshot.chatId !== main) this.prefs.setMainChat(botId, chat.snapshot.chatId)
@@ -228,6 +228,15 @@ export class BotService {
     chat.snapshot.botId = botId
     this.prefs.setMainChat(botId, chat.snapshot.chatId)
     return chat
+  }
+
+  async runRoutine(botId: string, prompt: string, options: import('../engines/bot-engine').RoutineOptions) {
+    const bot = await this.requireBot(botId)
+    await this.runtimes.state(bot)
+    const result = await this.runtimes.engineFor(bot).runRoutine(bot.engineBotId, prompt, { ...options, workspace: await this.workspaces.ensure(botId) })
+    // Deletion may have completed while the engine was running; do not restore its activity.
+    await this.requireBot(botId)
+    return result
   }
 
   private identity(bot: BotRecord) {
@@ -269,7 +278,7 @@ export class BotService {
     return { ok: true }
   }
 
-  private requireBot(botId: string): Promise<BotRecord> {
+  requireBot(botId: string): Promise<BotRecord> {
     return this.runtimes.require(botId)
   }
 }

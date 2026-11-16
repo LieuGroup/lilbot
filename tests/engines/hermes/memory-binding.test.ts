@@ -11,6 +11,7 @@ sys.modules['agent'] = agent
 sys.modules['agent.memory_provider'] = provider
 spec = importlib.util.spec_from_file_location('adapter', sys.argv[1])
 module = importlib.util.module_from_spec(spec)
+sys.modules['adapter'] = module
 spec.loader.exec_module(module)
 with tempfile.TemporaryDirectory() as directory:
     home = pathlib.Path(directory) / 'profiles' / 'native-id'

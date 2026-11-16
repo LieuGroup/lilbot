@@ -6,6 +6,7 @@ import { type EventFrame, LilBotError, type Method, methods, RequestFrame, type 
 import type { ActivityService } from '../activity/activity-service'
 import type { BotService } from '../bots/bot-service'
 import type { OpenChat } from '../engines/bot-engine'
+import type { RoutineService } from '../routines/routine-service'
 
 const MAX_OPEN_CHATS = 8
 
@@ -24,10 +25,20 @@ export class BrowserSession {
   constructor(
     private bots: BotService,
     private sendFrame: (frame: ResponseFrame | EventFrame) => void,
-    private activity?: ActivityService
+    private activity?: ActivityService,
+    private routines?: RoutineService
   ) {}
 
+  private routineService() {
+    if (!this.routines) throw new LilBotError('unavailable', 'Routines are unavailable.')
+    return this.routines
+  }
   private handlers: Handlers = {
+    'routines.list': ({ botId }) => this.routineService().list(botId),
+    'routines.pause': ({ botId, id }) => this.routineService().pause(botId, id, true),
+    'routines.resume': ({ botId, id }) => this.routineService().pause(botId, id, false),
+    'routines.delete': ({ botId, id }) => this.routineService().delete(botId, id),
+    'routines.openRun': ({ botId, runId }, afterResponse) => this.track(afterResponse, onEvent => this.routineService().openRun(botId, runId, onEvent)),
     'bots.delete': input => this.bots.deleteBot(input),
     'bots.deleteDefaults.get': async () => this.bots.deleteDefaults(),
     'bots.deleteDefaults.set': async input => this.bots.setDeleteDefaults(input),

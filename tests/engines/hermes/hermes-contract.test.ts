@@ -45,7 +45,7 @@ const methods: Record<string, Uses> = {
   },
   'session.create': {
     table: 'x-canonical-methods',
-    sends: ['source', 'request_id', 'client', 'cwd', 'cwd_explicit'],
+    sends: ['source', 'request_id', 'client', 'cwd', 'cwd_explicit', 'hidden', 'yolo', 'toolsets', 'model', 'provider'],
     reads: ['session_id', 'stored_session_id', 'running', 'execution_generation', 'info']
   },
   'session.info': { table: 'x-canonical-methods', sends: ['session_id'], reads: ['system_prompt'] },
@@ -54,7 +54,8 @@ const methods: Record<string, Uses> = {
     sends: ['session_id', 'source', 'display_projection'],
     reads: ['session_id', 'stored_session_id', 'display_messages', 'running', 'execution_generation', 'info']
   },
-  'prompt.submit': { table: 'x-canonical-methods', sends: ['session_id', 'text', 'input_id', 'display_kind'], reads: [] },
+  'prompt.submit': { table: 'x-canonical-methods', sends: ['session_id', 'text', 'input_id', 'display_kind'], reads: ['admission_id'] },
+  'prompt.receipt': { table: 'x-canonical-methods', sends: ['session_id', 'admission_id'], reads: ['status', 'outcome'] },
   'session.interrupt': { table: 'x-canonical-methods', sends: ['session_id', 'execution_generation'], reads: [] },
   'profiles.list': { table: 'methods', sends: ['include_sessions'], reads: ['profiles'] },
   'profiles.describe': { table: 'methods', sends: ['name'], reads: ['name', 'description', 'soul', 'model', 'skills', 'toolsets', 'mcp_servers'] },

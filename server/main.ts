@@ -18,6 +18,9 @@ import { defaultReviewSettings, MemoryReviewer } from './memory/memory-reviewer'
 import { MemoryService } from './memory/memory-service'
 import { MemoryStore } from './memory/memory-store'
 import { ReviewQueue } from './memory/review-queue'
+import { RoutineScheduler } from './routines/routine-scheduler'
+import { defaultRoutineSettings, RoutineService } from './routines/routine-service'
+import { RoutineStore } from './routines/routine-store'
 
 interface SocketData {
   session?: BrowserSession
@@ -47,8 +50,10 @@ const memory = new MemoryService(new MemoryStore(database))
 const memoryChanged = () => server.publish(EVERYONE, JSON.stringify({ event: 'memory.changed' }))
 const token = engineToken(DATA_DIR)
 const store = new BotStore(database)
+const routineStore = new RoutineStore(database)
 const bots = new BotService(engine, store, new BotPrefsStore(database), new Workspaces(WORKSPACES_DIR), memory, {
   cleanupBot: botId => {
+    routineStore.forgetBot(botId)
     activity.forgetBot(botId)
     new ReviewQueue(database).forgetBot(botId)
   },
@@ -56,6 +61,18 @@ const bots = new BotService(engine, store, new BotPrefsStore(database), new Work
   memoryChanged,
   memoryConnection: { url: `http://127.0.0.1:${PORT}`, tokenFile: join(DATA_DIR, 'engine-token') }
 })
+const routines = new RoutineService(routineStore, bots, () => server.publish(EVERYONE, JSON.stringify({ event: 'routines.changed' })), {
+  ...defaultRoutineSettings,
+  // Only isolated servers with their own data folder and explicit profile allowlist may shorten it.
+  minIntervalSeconds:
+    process.env.LILBOT_DATA_DIR && process.env.LILBOT_BOT_IDS && process.env.LILBOT_ROUTINE_TEST_INTERVAL_SECONDS
+      ? Math.max(1, Number(process.env.LILBOT_ROUTINE_TEST_INTERVAL_SECONDS))
+      : defaultRoutineSettings.minIntervalSeconds
+})
+const scheduler = new RoutineScheduler(routines, event => {
+  if (store.exists(event.botId)) activity.observe(event)
+})
+setInterval(() => scheduler.tick(), 1000)
 /** Engine adapters on this machine reach memory here; see `engine-api.ts`. */
 
 // The after-chat memory review. LILBOT_REVIEW=off disables it; LILBOT_REVIEW_MODEL is
@@ -96,6 +113,7 @@ prepareMemory().catch(error => console.error('[memory] could not prepare memory 
 
 const engineApi = createEngineApi(memory, token, PORT, {
   bots,
+  routines,
   botExists: id => store.exists(id),
   onMemoryChanged: memoryChanged,
   adapterVersion: MEMORY_ADAPTER_VERSION,
@@ -152,7 +170,8 @@ const server = Bun.serve<SocketData>({
           // A send after the browser left is expected and harmless.
           if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(frame))
         },
-        activity
+        activity,
+        routines
       )
     },
     message(socket, message) {

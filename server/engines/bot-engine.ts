@@ -28,9 +28,16 @@ export interface ReviewOptions {
   onChat: (chatId: string) => void
 }
 
+export interface RoutineOptions {
+  runId: string
+  onChat: (chatId: string) => void
+}
+
 export interface ChatOptions {
   /** The bot's folder; the chat works there. */
   workspace: string
+  /** Explicit history must not silently become a new conversation. */
+  requireExisting?: boolean
 }
 
 export type RuntimeBinding = { id: string; engineBotId: string }
@@ -69,6 +76,8 @@ export interface BotEngine {
   /** Runs `prompt` as a hidden session of the bot with only its memory tools, and resolves when
    *  the bot has finished. Used by the after-chat memory review. */
   reviewMemory(botId: string, prompt: string, options: ReviewOptions): Promise<void>
+  /** Run or recover one scheduled task, using runId as a durable execution identity. */
+  runRoutine(botId: string, prompt: string, options: RoutineOptions & ChatOptions): Promise<{ status: 'completed' | 'failed' | 'stopped'; text: string }>
   /** Told when bots or their chats changed outside this server. Returns the function that stops it. */
   onBotsChanged(listener: () => void): () => void
 }

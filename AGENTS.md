@@ -37,6 +37,7 @@ server/            The LilBot server (runs on the leader).
     memory-service.ts    the rules        memory-store.ts    the facts table
     memory-safety.ts     what may not be saved
     memory-reviewer.ts   the after-chat review        review-queue.ts   turns waiting for it
+  routines/          app-owned schedules, run history and scheduler
   database/          LilBot's own SQLite file and its schema steps.
   engines/           Whatever actually runs the bots.
     bot-engine.ts        the contract every engine must fulfil
@@ -48,6 +49,7 @@ web/src/           The web app (what you see in the browser).
   bots/              bot list, create bot, Setup panel
   chat/              the conversation
   memory/            Memory panel
+  routines/          data client for the future Routines panel
   ui/                shadcn/ui parts (added by the shadcn CLI, ours to edit) and our own small shared
                      parts built from them (panel frame, page header, notice, bot badge, form field)
 
@@ -57,7 +59,7 @@ live-checks/       Checks that talk to the real Hermes with a temporary bot.
 
 Rules that keep it this way:
 
-- A request flows downward only: `http/` -> `bots/` or `memory/` -> `engines/` and `database/`. Nothing lower may
+- A request flows downward only: `http/` -> `bots/`, `memory/` or `routines/` -> `engines/` and `database/`. Nothing lower may
   import from something higher.
 - Nothing outside `server/engines/hermes/` knows about Hermes, except `main.ts`, which picks the engine. A second
   engine is a second folder under `server/engines/`.
@@ -86,7 +88,7 @@ The bot appears immediately; a hidden first prompt starts its main conversation 
 and task suggestions. Normal activity observation marks that reply unread. The primary returns a link.
 The app's create form stays available.
 Next: the Grok Bot style roster and details panel (sections, pin, hide, avatars, unread, Activity and Library
-tabs), the nightly memory tidy-up, delete-bot UI, edit abilities, routines.
+tabs), the nightly memory tidy-up, delete-bot UI, edit abilities and the Routines panel.
 Desktop (Tauri) and iOS (Expo) come after the web app. Each bot defaults to full access; LilBot verifies
 and repairs its Hermes profile's approvals-off setting on startup and before use. There are no approval cards.
 
@@ -149,7 +151,7 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
   Archived workspace entries move to `<workspaces>/.archive/<bot id>` without following links.
   Hermes has no delete RPC: its profile-delete CLI stops the runtime and deletes its transcripts; a retry after
   folder removal uses `profile purge-identity` to finish gateway identity settlement. Late activity and memory
-  calls from deleted bots are ignored/refused. Routines, webhooks, library items and reports are not built yet.
+  calls from deleted bots are ignored/refused. Routines and their run history are removed too. Webhooks, library items and reports are not built yet.
 - `server/http/browser-session.ts`: one per browser connection. Validates requests, runs them on the service, forwards
   chat events. A typed handler map: a protocol method without a handler does not compile.
 - `server/database/`: LilBot's own SQLite database (`bun:sqlite`), by default `~/.local/share/lilbot/lilbot.db`
@@ -266,7 +268,7 @@ lasting facts than it is shown, so it tidies. Hermes fences what a provider supp
 user input" on its own.
 
 Hermes keeps a plug-in's code loaded per folder until the gateway restarts. So each version is installed under its
-own folder and provider name (`lilbot-memory-v0-5-0`): a new version is a new folder, loaded fresh on the bot's next
+own folder and provider name (`lilbot-memory-v0-6-0`): a new version is a new folder, loaded fresh on the bot's next
 session. To ship a plug-in change: bump `version` in `plugin.yaml` and `VERSION` in `__init__.py`, and restart
 LilBot. At start-up `BotEngine.refreshMemory` takes only the non-deleted database bindings for its engine, by native id,
 and reinstalls older adapters only for those profiles. All start-up passes that touch profiles must use these
@@ -316,6 +318,46 @@ operations on a cheaper model, protecting what the user wrote), CopilotKit OpenB
 Not built yet: the nightly tidy-up (merge duplicates, drop outdated facts), attaching facts relevant to the
 user's message automatically, holding a turn's writes until the turn succeeds, and saving before Hermes compresses
 a conversation (`on_pre_compress`).
+
+## Routines
+
+`server/routines/` owns routine records, schedules and durable run history in LilBot's SQLite file,
+keyed by LilBot bot id. Hermes' `cron.manage` was considered: mirroring schedules would add a second
+source of truth and tie recovery to an engine. Instead LilBot dispatches through `BotEngine.runRoutine`;
+it never creates, changes or removes Hermes cron jobs. Existing external jobs stay independent.
+
+- A schedule is an interval in seconds, daily at HH:MM, or weekly on a local weekday at HH:MM.
+  Calendar schedules default to `Australia/Adelaide` and store an IANA time zone. DST gaps skip that
+  day's nonexistent time; repeated times run at their first occurrence only. The API includes a plain
+  description such as "every day at 08:00 (Australia/Adelaide)".
+- `create_routine`, `list_routines`, `pause_routine`, `resume_routine` and `delete_routine` come from
+  adapter **0.6.0**. They use the existing bot-bound capability; a body cannot select another bot.
+  `createdBy: oscar` means the bot is acting on an explicit request, `bot` means its own initiative.
+  Attribution relies on the bot following that instruction, not a security boundary. The self-created
+  limit is five, including paused routines; the minimum interval is five minutes for all routines.
+  Repeating a create request id returns the original; deleting leaves a tombstone against resurrection.
+- The one-second scheduler atomically creates a run and advances next-run time before engine calls.
+  After downtime it runs **once for the oldest missed time**, skipping other missed slots and returning
+  to the future schedule. A routine never overlaps itself. Pause prevents new occurrences; an already
+  admitted run may finish. Resume starts with the next future time, without replaying paused time.
+- Each run gets its own hidden, full-access (`yolo`) Hermes session in the bot's folder. It never changes
+  the main conversation. Persisted run ids supply both session-creation and prompt-submission request
+  ids: retries recover the same session and admission. Transport failure retries after 30 seconds;
+  durable receipts recover completed results even when event replay has expired. If Hermes says a
+  run's outcome is unknown, show a failed run rather than risk repeating side effects. This guarantees
+  one admission per occurrence, not exactly-once external effects if the engine itself crashes mid-task.
+- Runs emit activity and can mark the bot unread. Both session aliases are persisted before submission
+  and excluded from the after-chat review, including after restart. Results remain in Routines until
+  reports (#11); no message is posted into the main chat. Deleting a bot removes schedules and history,
+  and tombstoned bots cannot dispatch even if runtime deletion is still retrying.
+- Browser methods: `routines.list`, `routines.pause`, `routines.resume`, `routines.delete`, and
+  `routines.openRun` (returns a tracked chat snapshot, preserving main chat). Lists include the newest
+  50 runs; all run records remain in the database. `routines.changed` invalidates lists. The typed web
+  client is in `web/src/routines/`; the panel design remains `needs-ui` and is not part of this backend.
+- `bun run check:routines` uses a second server and temporary bot. A short-interval override requires
+  all of `LILBOT_DATA_DIR`, `LILBOT_BOT_IDS`, and `LILBOT_ROUTINE_TEST_INTERVAL_SECONDS`; never use it
+  on the live server. It exercises creation from chat, a real file-writing run, opening history, pause,
+  restart, resume and delete, then removes the native profile and temporary directories.
 
 ## What Grok Bot does (reference, not a spec)
 
@@ -418,6 +460,7 @@ Cleaning up after a merge:
   chats, stops, resumes, then deletes it. A few model calls.
 - `bun live-checks/permissions-check.ts`: isolated second server; repairs a temporary profile from manual to off,
   runs a harmless recursive delete and file write, and checks no approvals remain. Deletes its profile and folders.
+- `bun run check:routines`: isolated routine create/run/open/pause/restart/resume/delete check.
 - `bun run check:memory`: connects a temporary bot to a throwaway memory, tells it facts, checks a new session knows
   them, prints tokens per turn, then deletes it. Inherited memory is disconnected before the baseline turn. A few model calls.
 - `bun run start`: run the server. `LILBOT_PORT` and `LILBOT_HOST` override the defaults.

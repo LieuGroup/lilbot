@@ -22,6 +22,7 @@ import { chatEventFrom, itemsFromRows, sessionLostEvents } from './hermes-chat-m
 import { deleteRuntime } from './hermes-delete'
 import { installMemory, legacyNotes, memoryConnection, memoryCurrent, memoryInstalled } from './hermes-memory-setup'
 import { ensureFullAccess } from './hermes-permissions'
+import { runRoutine } from './hermes-routines'
 import { applyIdentity, createRuntime } from './hermes-runtime'
 import { HermesSocket } from './hermes-socket'
 
@@ -187,6 +188,11 @@ export class HermesEngine implements BotEngine {
     }
   }
 
+  async runRoutine(botId: string, prompt: string, options: import('../bot-engine').RoutineOptions & ChatOptions) {
+    await this.requireBot(botId)
+    return runRoutine(botId, prompt, options)
+  }
+
   async listModels(): Promise<ModelProvider[]> {
     return providersFromModelOptions(await (await this.manage()).request('model.options'))
   }
@@ -228,7 +234,7 @@ export class HermesEngine implements BotEngine {
         // restarting, a contract change) is an error, so a long conversation is never swapped
         // for an empty one by accident.
         session = await socket.request('session.resume', { session_id: chatId, source: 'gui', display_projection: true }).catch(error => {
-          if (error instanceof LilBotError && error.code === 'hermes_not_found') return null
+          if (!options.requireExisting && error instanceof LilBotError && error.code === 'hermes_not_found') return null
           throw error
         })
       }

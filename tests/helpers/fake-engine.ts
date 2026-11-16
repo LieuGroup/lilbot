@@ -32,6 +32,10 @@ export function fakeEngine(options: { earlyEvents?: ChatEvent[] } = {}) {
   const runtimeIds = new Set(['b1'])
   const engine: BotEngine = {
     id: 'test',
+    runRoutine: async (_botId, _prompt, options) => {
+      options.onChat(`routine-${options.runId}`)
+      return { status: 'completed', text: 'Done' }
+    },
     deleteRuntime: async id => {
       runtimeIds.delete(id)
       log.push(`delete:${id}`)
