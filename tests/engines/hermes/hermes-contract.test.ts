@@ -41,7 +41,7 @@ const methods: Record<string, Uses> = {
   'session.events.since': {
     table: 'x-canonical-methods',
     sends: ['session_id', 'last_sequence', 'replay_epoch'],
-    reads: ['events', 'replay_epoch', 'last_sequence', 'open_requests']
+    reads: ['events', 'replay_epoch', 'last_sequence', 'open_requests', 'truncated']
   },
   'session.create': {
     table: 'x-canonical-methods',
@@ -101,7 +101,7 @@ describe.skipIf(!installed)('Hermes wire contract', () => {
     for (const [name, used] of Object.entries({
       CanonicalSessionListRow: ['session_id', 'running', 'started_at'],
       CanonicalReplayEvent: ['type', 'payload', 'seq'],
-      CanonicalEventsResult: ['replay_epoch', 'last_sequence', 'open_requests']
+      CanonicalEventsResult: ['replay_epoch', 'last_sequence', 'open_requests', 'truncated']
     })) {
       expect(used.filter(key => !fields(contract.components.schemas[name]).has(key))).toEqual([])
     }

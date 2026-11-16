@@ -140,9 +140,11 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
 - `server/activity/` owns live per-session status and durable per-bot unread. `bots.list` includes `activity`
   (status, text, machine, unread); `bots.changed` pushes changes. `activity.setUnread` sets unread manually.
   Opening a chat marks its bot read, and any connected viewer keeps it read until the chat closes.
-  Finished/failed statuses settle after eight seconds. The Hermes adapter rotates one observer socket
-  across profiles, reading visible live sessions and replay events without resuming them. Hidden memory
-  reviews are excluded. Replay cursors prevent old replies becoming unread again after restart.
+  Finished/failed statuses settle after eight seconds. The Hermes adapter keeps one persistent observer
+  socket per bot, polling in parallel once per second and reconnecting on failure with capped exponential backoff. It reads visible live sessions
+  and incremental replay events without resuming them; an epoch change or truncated replay gets one
+  full baseline read. Derived session state survives sweeps, and removed profiles release their sockets.
+  Hidden memory reviews are excluded. Replay cursors prevent old replies becoming unread again after restart.
   `LILBOT_BOT_IDS` restricts the engine to a comma-separated allowlist for isolated test servers.
 - `server/http/socket-guard.ts`: who may open the socket (allowed Host names plus same-origin). The tailnet name is set
   in the service's `LILBOT_ALLOWED_HOSTS`, not in code.
@@ -305,7 +307,7 @@ artwork, names or text.
 
 ## Known gaps
 
-- Activity observation uses a rotating profile-bound Hermes socket (about one second per attach plus a one-second sweep delay); very short activity may only be seen at completion. Hermes live listings expose at most 200 sessions per profile. A future host-scoped subscription could reduce latency.
+- Activity observation polls persistent profile-bound sockets every second; very short activity may only be seen at completion. Hermes live listings expose at most 200 sessions per profile. A future host-scoped subscription could reduce latency.
 - Opening a chat loads its whole history. A long-lived conversation needs paging and stable item ids
   (Hermes: `omit_messages` on resume plus `session.transcript`).
 - A bot's display name is still stored on the Hermes profile (`ui_meta.lilbot.name`), written as one whole value.

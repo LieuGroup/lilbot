@@ -1,5 +1,5 @@
 /** Two browser-protocol clients on an isolated server and temporary profiles. */
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { HermesEngine } from '../server/engines/hermes/hermes-engine'
@@ -35,10 +35,14 @@ const client = async () => {
   })
   let id = 0
   let pushes = 0
+  let onPush: (() => void) | undefined
   const pending = new Map<number, { resolve: (value: any) => void; reject: (e: Error) => void }>()
   socket.onmessage = message => {
     const frame = JSON.parse(String(message.data))
-    if (frame.event === 'bots.changed') pushes++
+    if (frame.event === 'bots.changed') {
+      pushes++
+      onPush?.()
+    }
     const waiter = pending.get(frame.id)
     if (waiter) {
       pending.delete(frame.id)
@@ -49,6 +53,9 @@ const client = async () => {
   return {
     socket,
     pushes: () => pushes,
+    onPush: (listener: () => void) => {
+      onPush = listener
+    },
     call: (method: string, params = {}): Promise<any> =>
       new Promise((resolve, reject) => {
         pending.set(++id, { resolve, reject })
@@ -68,18 +75,33 @@ try {
   const chat = await a.call('chat.open', { botId: ids[0] })
   await b.call('chat.open', { botId: ids[1] })
   const state = async () => (await b.call('bots.list')).find((bot: any) => bot.id === ids[0]).activity
-  await a.call('chat.send', { chatId: chat.chatId, text: 'Use the terminal tool to run sleep 12, then reply with exactly ACTIVITY DONE.' })
+  let pushedToolAt: number | undefined
+  b.onPush(() => {
+    void state().then(s => {
+      if (s.text === 'Running commands') pushedToolAt ??= Date.now()
+    })
+  })
+  await a.call('chat.send', {
+    chatId: chat.chatId,
+    text: `Use the terminal tool to run this exact command: date +%s%3N > ${join(root, 'tool-start')}; sleep 12. Then reply with exactly ACTIVITY DONE.`
+  })
   await a.call('chat.close', { chatId: chat.chatId })
   const observed = new Set<string>()
-  for (let i = 0; i < 100; i++) {
+  let toolSeenAt: number | undefined
+  for (let i = 0; i < 2000; i++) {
     const s = await state()
     observed.add(s.status)
-    if (s.text === 'Running commands') observed.add('tool')
+    if (s.text === 'Running commands') {
+      observed.add('tool')
+      toolSeenAt ??= Date.now()
+    }
     if (observed.has('finished') && s.status === 'idle') break
-    await Bun.sleep(1000)
+    await Bun.sleep(50)
   }
   assert(observed.has('working'), 'second browser sees working with no browser viewing the chat')
   assert(observed.has('tool'), 'tool activity says Running commands')
+  assert(existsSync(join(root, 'tool-start')), 'tool wrote its execution timestamp')
+  console.log(`Tool execution to second browser state: ${(pushedToolAt ?? toolSeenAt!) - Number(readFileSync(join(root, 'tool-start'), 'utf8').trim())} ms`)
   assert(observed.has('finished') && observed.has('idle'), 'finished settles to idle')
   assert((await state()).unread, 'unviewed reply is unread')
   assert(b.pushes() > 0, 'second browser receives pushes')
