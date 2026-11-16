@@ -1,7 +1,7 @@
 import { Dialog as DialogPrimitive } from '@base-ui/react/dialog'
 import { cn } from 'cn'
 import { XIcon } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Dialog, DialogContent, DialogTitle } from '@/ui/dialog'
 import { iconButton } from '@/ui/icon-button'
 import { Notice } from '@/ui/notice'
@@ -46,11 +46,14 @@ export function SettingsDialog() {
   const { open, page } = useSettings()
   const title = SETTINGS_PAGES.find(entry => entry.id === page)?.label
   const choose = (next: SettingsPage) => useSettings.setState({ page: next })
+  // Focus starts on the page that is open, not on the first entry of the list.
+  const current = useRef<HTMLButtonElement>(null)
   return (
     <Dialog open={open} onOpenChange={next => useSettings.setState({ open: next })}>
       <DialogContent
         showCloseButton={false}
         aria-describedby={undefined}
+        initialFocus={current}
         className="flex h-[min(480px,calc(100dvh-2rem))] w-[calc(100%-2rem)] max-w-[720px] flex-col gap-0 overflow-hidden rounded-2xl bg-card p-0 sm:max-w-[720px] sm:flex-row"
       >
         <nav
@@ -61,6 +64,7 @@ export function SettingsDialog() {
           {SETTINGS_PAGES.map(entry => (
             <button
               key={entry.id}
+              ref={entry.id === page ? current : undefined}
               type="button"
               aria-current={entry.id === page ? 'page' : undefined}
               onClick={() => choose(entry.id)}
