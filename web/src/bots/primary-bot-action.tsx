@@ -1,6 +1,9 @@
+import { StarIcon } from 'lucide-react'
 import { useState } from 'react'
+import { Badge } from '@/ui/badge'
+import { Button } from '@/ui/button'
+import { Notice } from '@/ui/notice'
 import { lilbot, messageOf } from '../app/lilbot-socket'
-import { Notice } from '../ui/controls'
 import { useBotStore } from './bot-store'
 
 export function PrimaryBotAction({ botId }: { botId: string }) {
@@ -23,14 +26,18 @@ export function PrimaryBotAction({ botId }: { botId: string }) {
   }
 
   return (
-    <section className="flex flex-col gap-2 border-b border-border pb-6">
+    <section className="flex flex-col gap-2">
       {error && <Notice tone="error">{error}</Notice>}
       {primary ? (
-        <p className="text-sm text-muted">Your primary bot</p>
+        <Badge variant="secondary" className="h-7 px-2.5 text-sm">
+          <StarIcon className="fill-current" />
+          Your primary bot
+        </Badge>
       ) : (
-        <button type="button" disabled={busy || !connected} onClick={makePrimary} className="self-start rounded-xl border border-border px-3 py-2 text-sm disabled:opacity-50">
+        <Button variant="outline" size="lg" className="self-start" disabled={busy || !connected} onClick={makePrimary}>
+          <StarIcon />
           {busy ? 'Saving...' : 'Make primary'}
-        </button>
+        </Button>
       )}
     </section>
   )

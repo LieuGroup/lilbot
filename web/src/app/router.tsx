@@ -1,24 +1,28 @@
 import { createRootRoute, createRoute, createRouter, Outlet, useNavigate, useParams, useRouterState } from '@tanstack/react-router'
 
-import { useEffect } from 'react'
-import { BotCreatePage } from '../bots/bot-create-page'
-import { BotSetupPanel } from '../bots/bot-setup-panel'
+import { lazy, Suspense, useEffect } from 'react'
 import { BotSidebar } from '../bots/bot-sidebar'
 import { useBotStore } from '../bots/bot-store'
 import { primaryBot } from '../bots/primary-bot'
 import { ChatColumn } from '../chat/chat-column'
-import { MemoryPanel } from '../memory/memory-panel'
+
+// Pages with forms and menus load on first use, so opening the app and its chat stays light.
+const BotCreatePage = lazy(() => import('../bots/bot-create-page').then(module => ({ default: module.BotCreatePage })))
+const BotSetupPanel = lazy(() => import('../bots/bot-setup-panel').then(module => ({ default: module.BotSetupPanel })))
+const MemoryPanel = lazy(() => import('../memory/memory-panel').then(module => ({ default: module.MemoryPanel })))
 
 /** Desktop: bot list beside the page. Phone: the bot list is the home screen, a page fills the screen. */
 function AppShell() {
   const atHome = useRouterState({ select: state => state.location.pathname === '/' || state.location.pathname === '/bots' })
   return (
     <div className="flex h-dvh">
-      <aside className={`${atHome ? 'flex w-full' : 'hidden'} flex-none flex-col border-r border-border md:flex md:w-72`}>
+      <aside className={`${atHome ? 'flex w-full' : 'hidden'} flex-none flex-col border-r md:flex md:w-72`}>
         <BotSidebar />
       </aside>
       <section className={`${atHome ? 'hidden' : 'flex'} min-w-0 flex-1 flex-col md:flex`}>
-        <Outlet />
+        <Suspense>
+          <Outlet />
+        </Suspense>
       </section>
     </div>
   )
@@ -37,8 +41,10 @@ function BotLayout() {
         <ChatColumn botId={botId} />
       </div>
       {panelOpen && (
-        <aside className="flex w-full flex-none flex-col border-border md:w-[26rem] md:border-l">
-          <Outlet />
+        <aside className="flex w-full flex-none flex-col bg-card md:w-[26rem] md:border-l">
+          <Suspense>
+            <Outlet />
+          </Suspense>
         </aside>
       )}
     </div>
@@ -52,7 +58,7 @@ function Home() {
   useEffect(() => {
     if (primary) void navigate({ to: '/bots/$botId', params: { botId: primary.id }, replace: true })
   }, [primary?.id, navigate])
-  return <p className="m-auto px-6 text-center text-muted">Choose a bot to chat with.</p>
+  return <p className="m-auto px-6 text-center text-muted-foreground">Choose a bot to chat with.</p>
 }
 
 const rootRoute = createRootRoute({ component: AppShell })

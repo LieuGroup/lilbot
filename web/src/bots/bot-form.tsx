@@ -1,9 +1,13 @@
 /** The bot's editable fields, shared by "New bot" and the bot's settings page. */
-import { type FormEvent, useEffect, useState } from 'react'
-
+import { type FormEvent, useEffect, useId, useState } from 'react'
+import { Button } from '@/ui/button'
+import { FormField } from '@/ui/form-field'
+import { Input } from '@/ui/input'
+import { Notice } from '@/ui/notice'
+import { Textarea } from '@/ui/textarea'
 import type { BotModel, ModelProvider } from '../../../shared/bot-schema'
 import { lilbot } from '../app/lilbot-socket'
-import { Button, Field, Notice, Select, TextArea, TextInput } from '../ui/controls'
+import { ModelSelector } from './model-selector'
 
 export interface BotFormValues {
   name: string
@@ -20,15 +24,13 @@ interface BotFormProps {
   onSubmit: (values: BotFormValues) => Promise<void>
 }
 
-const SEPARATOR = '::'
-const modelValue = (model: BotModel | null) => (model ? `${model.provider}${SEPARATOR}${model.model}` : '')
-
 export function BotForm({ initial, submitLabel, noModelLabel, onSubmit }: BotFormProps) {
   const [values, setValues] = useState(initial)
   const [providers, setProviders] = useState<ModelProvider[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
+  const id = useId()
 
   useEffect(() => {
     lilbot
@@ -56,52 +58,36 @@ export function BotForm({ initial, submitLabel, noModelLabel, onSubmit }: BotFor
     }
   }
 
-  const current = modelValue(values.model)
-  const known = providers.some(provider => provider.models.some(model => `${provider.provider}${SEPARATOR}${model}` === current))
-
   return (
     <form onSubmit={submit} className="flex flex-col gap-5">
-      <Field label="Name">
-        <TextInput value={values.name} maxLength={60} required placeholder="Researcher" onChange={event => set({ name: event.target.value })} />
-      </Field>
-      <Field label="Function" hint="What this bot is for, in a sentence or two.">
-        <TextArea
-          rows={2}
+      <FormField label="Name" htmlFor={`${id}-name`}>
+        <Input id={`${id}-name`} value={values.name} maxLength={60} required placeholder="Researcher" className="h-10" onChange={event => set({ name: event.target.value })} />
+      </FormField>
+      <FormField label="Function" hint="What this bot is for, in a sentence or two." htmlFor={`${id}-function`}>
+        <Textarea
+          id={`${id}-function`}
           value={values.function}
           maxLength={500}
           placeholder="Finds and compares sources, then reports with links."
           onChange={event => set({ function: event.target.value })}
         />
-      </Field>
-      <Field label="Instructions" hint="Personality and standing rules the bot follows in every chat.">
-        <TextArea rows={10} value={values.instructions} className="font-mono text-sm" onChange={event => set({ instructions: event.target.value })} />
-      </Field>
-      <Field label="Model">
-        <Select
-          value={current}
-          onChange={event => {
-            const [provider, ...rest] = event.target.value.split(SEPARATOR)
-            set({ model: event.target.value ? { provider, model: rest.join(SEPARATOR) } : null })
-          }}
-        >
-          {noModelLabel && <option value="">{noModelLabel}</option>}
-          {current && !known && <option value={current}>{values.model?.model}</option>}
-          {providers.map(provider => (
-            <optgroup key={provider.provider} label={provider.name}>
-              {provider.models.map(model => (
-                <option key={model} value={`${provider.provider}${SEPARATOR}${model}`}>
-                  {model}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </Select>
-      </Field>
+      </FormField>
+      <FormField label="Instructions" hint="Personality and standing rules the bot follows in every chat." htmlFor={`${id}-instructions`}>
+        <Textarea
+          id={`${id}-instructions`}
+          value={values.instructions}
+          className="max-h-[28rem] min-h-48 font-mono"
+          onChange={event => set({ instructions: event.target.value })}
+        />
+      </FormField>
+      <FormField label="Model" htmlFor={`${id}-model`}>
+        <ModelSelector id={`${id}-model`} providers={providers} value={values.model} noModelLabel={noModelLabel} onChange={model => set({ model })} />
+      </FormField>
 
       {error && <Notice tone="error">{error}</Notice>}
       {saved && <Notice tone="ok">Saved.</Notice>}
       <div>
-        <Button type="submit" disabled={saving || !values.name.trim()}>
+        <Button type="submit" size="lg" disabled={saving || !values.name.trim()}>
           {saving ? 'Saving...' : submitLabel}
         </Button>
       </div>

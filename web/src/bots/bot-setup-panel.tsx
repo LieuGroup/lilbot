@@ -1,13 +1,12 @@
 import { useParams } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-
+import { Notice } from '@/ui/notice'
+import { Panel } from '@/ui/panel'
+import { Separator } from '@/ui/separator'
 import type { Ability, BotDetail } from '../../../shared/bot-schema'
 import { lilbot, messageOf } from '../app/lilbot-socket'
-import { Notice } from '../ui/controls'
-import { Panel } from '../ui/panel'
 import { BotForm } from './bot-form'
 import { useBotStore } from './bot-store'
-
 import { PrimaryBotAction } from './primary-bot-action'
 
 const kindLabels: Record<Ability['kind'], string> = { toolset: 'Toolsets', skill: 'Skills', connector: 'Connectors' }
@@ -24,11 +23,11 @@ function AbilitySummary({ abilities }: { abilities: Ability[] }) {
           <div key={kind}>
             <dt className="font-medium">
               {kindLabels[kind]}{' '}
-              <span className="font-normal text-muted">
+              <span className="font-normal text-muted-foreground">
                 {enabled.length} of {ofKind.length} on
               </span>
             </dt>
-            <dd className="mt-1 text-muted">
+            <dd className="mt-1 text-muted-foreground">
               {enabled
                 .slice(0, 8)
                 .map(ability => ability.label)
@@ -67,7 +66,7 @@ export function BotSetupPanel() {
   return (
     <Panel title="Setup" botId={botId}>
       {error && <Notice tone="error">{error}</Notice>}
-      {!bot && !error && <p className="text-muted">Loading...</p>}
+      {!bot && !error && <p className="text-muted-foreground">Loading...</p>}
       {bot && (
         <>
           <PrimaryBotAction botId={botId} />
@@ -87,14 +86,16 @@ export function BotSetupPanel() {
               upsert(updated)
             }}
           />
-          <section aria-labelledby="workspace" className="flex flex-col gap-1.5 border-t border-border pt-6">
+          <Separator />
+          <section aria-labelledby="workspace" className="flex flex-col gap-1.5">
             <h3 id="workspace" className="font-semibold">
               Workspace
             </h3>
-            <p className="text-sm text-muted">This bot's own folder. New sessions work here.</p>
-            <code className="break-all rounded-lg bg-bg px-2.5 py-1.5 font-mono text-[13px]">{bot.workspace}</code>
+            <p className="text-sm text-muted-foreground">This bot's own folder. New sessions work here.</p>
+            <code className="break-all rounded-lg bg-muted px-2.5 py-1.5 font-mono text-[13px]">{bot.workspace}</code>
           </section>
-          <section aria-labelledby="abilities" className="flex flex-col gap-3 border-t border-border pt-6">
+          <Separator />
+          <section aria-labelledby="abilities" className="flex flex-col gap-3">
             <h3 id="abilities" className="font-semibold">
               Abilities
             </h3>
