@@ -60,6 +60,7 @@ test('bound activity uses native sockets and LilBot ids for unread and durable c
     present = false
     await Bun.sleep(1100)
     expect(closed).toEqual(['native'])
+    expect((await service.listBots()).find(bot => bot.id === 'lilbot')?.runnable).toBe(false)
     expect(connect.mock.calls.map(call => call[0])).toEqual(['', 'native'])
   } finally {
     stop()

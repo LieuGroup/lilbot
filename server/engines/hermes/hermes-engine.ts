@@ -49,7 +49,7 @@ export class HermesEngine implements BotEngine {
         const profiles = new Set((await this.profiles(false)).map(bot => bot.id))
         for (const bot of bound) {
           const present = profiles.has(bot.engineBotId)
-          if (known.has(bot.engineBotId) && known.get(bot.engineBotId) !== present) {
+          if ((!present || known.has(bot.engineBotId)) && known.get(bot.engineBotId) !== present) {
             availability?.(bot.engineBotId, present)
           }
           known.set(bot.engineBotId, present)
