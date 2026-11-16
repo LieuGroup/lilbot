@@ -91,7 +91,7 @@ The bot appears immediately; a hidden first prompt starts its main conversation 
 and task suggestions. Normal activity observation marks that reply unread. The primary returns a link.
 The app's create form stays available.
 The app shell is three columns (#36): roster, conversation, details panel with Activity, Library, Memory and Setup
-tabs. Next: the bot menu and Settings (#37), avatars (#38), the Routines and Library screens, the nightly memory
+tabs. Next: the bot menu and Settings (#37), the Routines and Library screens, the nightly memory
 tidy-up and edit abilities.
 Desktop (Tauri) and iOS (Expo) come after the web app. Each bot defaults to full access; LilBot verifies
 and repairs its Hermes profile's approvals-off setting on startup and before use. There are no approval cards.
@@ -123,7 +123,7 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
     dialog titles. Weights 400, 500, 600. Icons 16px at stroke 1.75 in 28px buttons (`ui/icon-button.ts`).
   - Feature code imports parts as `@/ui/<part>`. Pages with forms are lazy routes in `app/router.tsx` and the
     details tabs are lazy chunks in `bots/bot-details-panel.tsx`, so
-    the chat's first load stays small (about 210 kB of JavaScript and 15 kB of styles, compressed, counting every
+    the chat's first load stays small (about 211 kB of JavaScript and 15 kB of styles, compressed, counting every
     chunk the first page imports; Vite's per-file sizes alone understate it).
 - Checks: Biome, `tsc`, `bun test`, Vite build, all through `bun run verify`. `bun run check:live` is the live
   check against the running Hermes.
