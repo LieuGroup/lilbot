@@ -146,8 +146,8 @@ export class MemoryStore {
     return this.db.query('UPDATE memory_facts SET paused = ? WHERE id = ? AND forgotten_at IS NULL').run(paused ? 1 : 0, factId).changes > 0
   }
 
-  /** A bot was deleted: its private facts go with it; what it shared stays for the other bots. */
-  dropPrivate(botId: string) {
-    this.db.query("DELETE FROM memory_facts WHERE bot_id = ? AND scope = 'bot'").run(botId)
+  /** Deletion is user-directed forgetting, never erasure; shared facts remain unchanged. */
+  forgetPrivate(botId: string, at: number) {
+    this.db.query("UPDATE memory_facts SET forgotten_at = ?, forgotten_by = 'user' WHERE bot_id = ? AND scope = 'bot' AND forgotten_at IS NULL").run(at, botId)
   }
 }

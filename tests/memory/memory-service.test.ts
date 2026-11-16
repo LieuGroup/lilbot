@@ -146,11 +146,11 @@ describe('the block a bot sees before each turn', () => {
   })
 })
 
-test('deleting a bot drops its private facts and keeps what it shared', () => {
+test('deleting a bot forgets its private facts and keeps what it shared', () => {
   const { service } = memory()
   service.write({ botId: 'gone', kind: 'journal', text: 'Private history.', author: 'bot' })
   service.write({ botId: 'gone', kind: 'profile', text: 'Oscar prefers tables.', author: 'bot' })
-  service.forgetBot('gone')
+  service.forgetPrivate('gone')
   expect(texts(service.list('other'))).toEqual(['Oscar prefers tables.'])
   expect(texts(service.list('gone'))).toEqual(['Oscar prefers tables.'])
 })

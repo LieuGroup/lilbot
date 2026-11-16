@@ -56,6 +56,7 @@ const json = (status: number, body: unknown) => Response.json(body, { status })
 
 export interface EngineApiOptions {
   bots?: BotService
+  botExists?: (botId: string) => boolean
   onMemoryChanged?: () => void
   /** The adapter version this LilBot ships. A bot calling with another one runs stale adapter code. */
   adapterVersion?: string
@@ -98,6 +99,7 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
       const parsed = routes[route].safeParse(await request.json().catch(() => null))
       if (!parsed.success) return json(400, { error: `Invalid request: ${parsed.error.issues[0]?.path.join('.')} ${parsed.error.issues[0]?.message}` })
       const body = parsed.data as any
+      if (options.botExists && !options.botExists(body.botId)) return json(404, { error: 'This bot was deleted.' })
       const version = request.headers.get('x-lilbot-adapter-version')
       if (options.adapterVersion && version !== options.adapterVersion && !staleBots.has(body.botId)) {
         staleBots.add(body.botId)

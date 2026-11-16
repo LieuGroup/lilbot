@@ -65,6 +65,17 @@ export class ActivityService {
       else this.viewers.delete(botId)
     }
   }
+  forgetBot(botId: string) {
+    for (const [key, timer] of this.timers) {
+      if (JSON.parse(key)[0] === botId) {
+        clearTimeout(timer)
+        this.timers.delete(key)
+      }
+    }
+    this.sessions.delete(botId)
+    this.viewers.delete(botId)
+    this.store.forgetBot(botId)
+  }
   close() {
     for (const timer of this.timers.values()) clearTimeout(timer)
     this.timers.clear()

@@ -2,6 +2,10 @@ import type { Database } from 'bun:sqlite'
 
 export class ActivityStore {
   constructor(private db: Database) {}
+  forgetBot(botId: string) {
+    this.db.query('DELETE FROM bot_activity WHERE bot_id = ?').run(botId)
+    this.db.query('DELETE FROM activity_cursors WHERE bot_id = ?').run(botId)
+  }
   unread(botId: string): boolean {
     return !!(this.db.query('SELECT unread FROM bot_activity WHERE bot_id = ?').get(botId) as { unread: number } | null)?.unread
   }

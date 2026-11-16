@@ -1,5 +1,7 @@
 /** The browser <-> LilBot server protocol: JSON frames over one WebSocket. */
+
 import { z } from 'zod'
+import { BotDeleteDefaults, BotDeleteInput } from './bot-delete-schema'
 
 import { type Bot, BotCreateInput, type BotDetail, BotPrefsInput, BotUpdateInput, type ModelProvider, type Section, sectionName } from './bot-schema'
 import type { ChatEvent, ChatSnapshot } from './chat-schema'
@@ -11,6 +13,9 @@ const chatId = z.string().min(1)
 /** Each method's params schema (checked on the server) and result type (trusted by the browser). */
 export const methods = {
   'bots.list': z.object({}),
+  'bots.delete': BotDeleteInput,
+  'bots.deleteDefaults.get': z.object({}),
+  'bots.deleteDefaults.set': BotDeleteDefaults,
   'activity.setUnread': z.object({ botId, unread: z.boolean() }),
   'bots.get': z.object({ botId }),
   'bots.create': BotCreateInput,
@@ -47,6 +52,9 @@ export type Params<M extends Method> = z.input<(typeof methods)[M]>
 
 export interface Results {
   'bots.list': Bot[]
+  'bots.delete': { ok: true }
+  'bots.deleteDefaults.get': import('./bot-delete-schema').BotDeleteDefaults
+  'bots.deleteDefaults.set': import('./bot-delete-schema').BotDeleteDefaults
   'activity.setUnread': { ok: true }
   'bots.get': BotDetail
   'bots.create': Bot
@@ -58,7 +66,7 @@ export interface Results {
   'sections.rename': Section
   'sections.delete': { ok: true }
   'models.list': ModelProvider[]
-  'memory.list': { connected: boolean; facts: MemoryFact[]; forgotten: MemoryFact[] }
+  'memory.list': { connected: boolean; botName?: string; facts: MemoryFact[]; forgotten: MemoryFact[] }
   'memory.write': MemoryFact
   'memory.forget': { ok: true }
   'memory.restore': { ok: true }

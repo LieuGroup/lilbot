@@ -46,6 +46,8 @@ export interface BotEngine {
   createRuntime(identity: RuntimeIdentity): Promise<string>
   /** Apply LilBot's authoritative settings if they drifted. Missing runtimes throw bot_not_found. */
   applyIdentity(engineBotId: string, identity: RuntimeIdentity): Promise<RuntimeState>
+  /** Stop this runtime and delete its conversations. Safe to repeat when already missing. */
+  deleteRuntime(engineBotId: string): Promise<void>
   listModels(): Promise<ModelProvider[]>
   /** Open a new chat (`chatId` null) or continue a stored one. A stored chat that no longer exists
    *  is replaced by a new one; the snapshot says which chat was opened. Events arrive until `close()`. */

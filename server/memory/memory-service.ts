@@ -43,6 +43,10 @@ export class MemoryService {
     private now: () => number = Date.now
   ) {}
 
+  forgetPrivate(botId: string) {
+    this.store.forgetPrivate(botId, this.now())
+  }
+
   /** Saves one fact. Saving a fact the bot already has returns the existing one.
    *  The after-chat review (`via: 'review'`) may not bring back what the user removed. */
   write(request: WriteRequest): MemoryFact {
@@ -169,9 +173,5 @@ export class MemoryService {
     const { shown, total } = this.contextBlock(botId)
     if (shown >= total) return null
     return `Memory is over its budget: ${total - shown} facts are no longer shown to you each turn. Forget facts that are stale or duplicated, or merge several into one, so the important ones stay visible.`
-  }
-
-  forgetBot(botId: string) {
-    this.store.dropPrivate(botId)
   }
 }

@@ -3,6 +3,8 @@
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { ActivityService } from '../../server/activity/activity-service'
+import { ActivityStore } from '../../server/activity/activity-store'
 import { BotPrefsStore } from '../../server/bots/bot-prefs-store'
 import { BotService } from '../../server/bots/bot-service'
 import { BotStore } from '../../server/bots/bot-store'
@@ -11,6 +13,7 @@ import { openDatabase } from '../../server/database/database'
 import type { BotEngine, EngineBotDetail, OpenChat } from '../../server/engines/bot-engine'
 import { MemoryService } from '../../server/memory/memory-service'
 import { MemoryStore } from '../../server/memory/memory-store'
+import { ReviewQueue } from '../../server/memory/review-queue'
 import type { BotIdentity } from '../../shared/bot-schema'
 import type { ChatEvent } from '../../shared/chat-schema'
 import { LilBotError } from '../../shared/protocol'
@@ -29,6 +32,10 @@ export function fakeEngine(options: { earlyEvents?: ChatEvent[] } = {}) {
   const runtimeIds = new Set(['b1'])
   const engine: BotEngine = {
     id: 'test',
+    deleteRuntime: async id => {
+      runtimeIds.delete(id)
+      log.push(`delete:${id}`)
+    },
     importBots: async () => [detail],
     createRuntime: async identity => {
       runtimeIds.add(identity.id)
@@ -81,10 +88,16 @@ export function fakeService(options?: Parameters<typeof fakeEngine>[0]) {
   const root = mkdtempSync(join(tmpdir(), 'lilbot-ws-'))
   let changes = 0
   let memoryChanges = 0
+  const activity = new ActivityService(new ActivityStore(database), () => {})
+  const queue = new ReviewQueue(database)
   const service = new BotService(fake.engine, store, prefs, new Workspaces(root), memory, {
+    cleanupBot: id => {
+      activity.forgetBot(id)
+      queue.forgetBot(id)
+    },
     changed: () => changes++,
     memoryChanged: () => memoryChanges++,
     memoryConnection: { url: 'http://127.0.0.1:3370', tokenFile: '/nowhere/engine-token' }
   })
-  return { ...fake, service, store, prefs, memory, root, changes: () => changes, memoryChanges: () => memoryChanges }
+  return { ...fake, activity, queue, database, service, store, prefs, memory, root, changes: () => changes, memoryChanges: () => memoryChanges }
 }

@@ -86,7 +86,7 @@ The bot appears immediately; a hidden first prompt starts its main conversation 
 and task suggestions. Normal activity observation marks that reply unread. The primary returns a link.
 The app's create form stays available.
 Next: the Grok Bot style roster and details panel (sections, pin, hide, avatars, unread, Activity and Library
-tabs), the nightly memory tidy-up, delete a bot, edit abilities, routines.
+tabs), the nightly memory tidy-up, delete-bot UI, edit abilities, routines.
 Desktop (Tauri) and iOS (Expo) come after the web app. Approvals are off in Hermes by Oscar's choice, so there are
 no approval cards.
 
@@ -138,6 +138,16 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
   as unavailable; its identity and memory stay in LilBot. The service decides which chat is a bot's main
   conversation and resolves the user's primary bot. Layers, top to bottom:
   `http/browser-session.ts` (transport) -> `bots/bot-service.ts` -> engine and stores. Keep it that way.
+- Deletion: `bots.delete` accepts optional `files: archive | delete` and `privateMemories: forget | keep`.
+  `bots.deleteDefaults.get/set` persists defaults (archive and forget) in SQLite. Both the primary and engine
+  default bot are protected. `bot-deletion.ts` saves a tombstone with the name and choices before teardown,
+  removes the runtime using its native binding, then handles workspace, memory, prefs, activity and queued reviews.
+  Retrying the same id finishes incomplete cleanup with its original choices. Tombstones stay out of the roster;
+  `memory.list` still exposes their active/forgotten facts for attribution and restoration. Shared facts stay.
+  Archived workspace entries move to `<workspaces>/.archive/<bot id>` without following links.
+  Hermes has no delete RPC: its profile-delete CLI stops the runtime and deletes its transcripts; a retry after
+  folder removal uses `profile purge-identity` to finish gateway identity settlement. Late activity and memory
+  calls from deleted bots are ignored/refused. Routines, webhooks, library items and reports are not built yet.
 - `server/http/browser-session.ts`: one per browser connection. Validates requests, runs them on the service, forwards
   chat events. A typed handler map: a protocol method without a handler does not compile.
 - `server/database/`: LilBot's own SQLite database (`bun:sqlite`), by default `~/.local/share/lilbot/lilbot.db`
@@ -329,8 +339,7 @@ artwork, names or text.
 - Activity observation polls persistent profile-bound sockets every second; very short activity may only be seen at completion. Hermes live listings expose at most 200 sessions per profile. A future host-scoped subscription could reduce latency.
 - Opening a chat loads its whole history. A long-lived conversation needs paging and stable item ids
   (Hermes: `omit_messages` on resume plus `session.transcript`).
-- Deleting a bot is not in the app. When it is added: refuse the default bot, delete through the engine, call
-  `BotPrefsStore.forgetBot`, and decide with Oscar whether the workspace folder is kept.
+- Deleting a bot has a backend and protocol; its confirmation and defaults screens are still to be designed.
 - Chats made before slice 3 are not a bot's main conversation; they are still in Hermes.
 
 ## Rules

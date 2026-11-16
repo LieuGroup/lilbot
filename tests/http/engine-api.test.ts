@@ -75,3 +75,20 @@ describe('what a bot can do through it', () => {
     expect((await call('recall', 'not an object')).status).toBe(400)
   })
 })
+
+test('a deleted bot cannot write memory or enqueue late turns', async () => {
+  const memory = new MemoryService(new MemoryStore(openDatabase(':memory:')))
+  const handle = createEngineApi(memory, TOKEN, 3370, { botExists: () => false })
+  for (const endpoint of ['write', 'turn']) {
+    const response = await handle(
+      new Request(`http://127.0.0.1:3370/engine/memory/${endpoint}`, {
+        method: 'POST',
+        headers: { host: '127.0.0.1:3370', authorization: `Bearer ${TOKEN}` },
+        body: JSON.stringify({ botId: 'gone', chatId: 'old', kind: 'journal', text: 'Late fact.', user: 'Hello', assistant: 'Hello' })
+      }),
+      `/engine/memory/${endpoint}`
+    )
+    expect(response.status).toBe(404)
+  }
+  expect(memory.list('gone')).toEqual([])
+})

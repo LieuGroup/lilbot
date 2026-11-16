@@ -1,4 +1,5 @@
 import type { ActivityEvent } from '../../shared/activity-schema'
+import type { BotDeleteDefaults, BotDeleteInput } from '../../shared/bot-delete-schema'
 import type { Bot, BotCreateInput, BotDetail, BotPrefsInput, BotUpdateInput, ModelProvider, Section } from '../../shared/bot-schema'
 import type { ChatEvent } from '../../shared/chat-schema'
 import type { MemoryFact, MemoryWriteInput } from '../../shared/memory-schema'
@@ -6,6 +7,7 @@ import { LilBotError } from '../../shared/protocol'
 import type { ActivityCursor, BotEngine, MemoryConnection, OpenChat } from '../engines/bot-engine'
 import type { MemoryService } from '../memory/memory-service'
 import { BotCreation } from './bot-creation'
+import { BotDeletion } from './bot-deletion'
 import { BotMemory } from './bot-memory'
 import type { BotPrefsStore } from './bot-prefs-store'
 import { BotRuntimes } from './bot-runtimes'
@@ -18,10 +20,12 @@ export interface BotServiceOptions {
   /** Called whenever a fact was saved or forgotten through the app. */
   memoryChanged?: () => void
   /** Where engine adapters reach LilBot's memory. Without it, bots are not connected to memory. */
+  cleanupBot?: (botId: string) => void
   memoryConnection?: MemoryConnection
 }
 
 export class BotService {
+  private deletion: BotDeletion
   private runtimes: BotRuntimes
   private changed: () => void
   private memoryChanged: () => void
@@ -40,7 +44,21 @@ export class BotService {
     this.creation = new BotCreation(this, store)
     this.changed = options.changed ?? (() => {})
     this.memoryChanged = options.memoryChanged ?? (() => {})
+    this.deletion = new BotDeletion(this.runtimes, prefs, workspaces, memory, options.cleanupBot ?? (() => {}), () => {
+      this.changed()
+      this.memoryChanged()
+    })
     this.botMemory = new BotMemory(this.runtimes, memory, options.memoryConnection, this.memoryChanged)
+  }
+
+  deleteBot(input: BotDeleteInput) {
+    return this.deletion.delete(input)
+  }
+  deleteDefaults() {
+    return this.runtimes.store.deleteDefaults()
+  }
+  setDeleteDefaults(input: BotDeleteDefaults) {
+    return this.runtimes.store.setDeleteDefaults(input)
   }
 
   watchActivity(listener: (event: ActivityEvent) => void, cursor: ActivityCursor): () => void {
@@ -50,7 +68,9 @@ export class BotService {
           await this.runtimes.initialize()
           return this.runtimes.store.list().filter(bot => bot.engineId === this.engine.id)
         },
-        listener,
+        event => {
+          if (!this.runtimes.store.deleted(event.botId)) listener(event)
+        },
         cursor
       ) ?? (() => {})
     )

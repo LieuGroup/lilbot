@@ -58,6 +58,7 @@ export class BotRuntimes {
 
   async create(input: BotCreateInput, id: string = crypto.randomUUID()): Promise<BotRecord> {
     await this.initialize()
+    if (this.store.deleted(id)) throw new LilBotError('bot_not_found', 'That bot has been deleted.')
     const existing = this.store.list().find(bot => bot.id === id)
     if (existing) return existing
     const bot: BotRecord = {
