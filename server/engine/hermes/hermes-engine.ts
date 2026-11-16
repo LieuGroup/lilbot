@@ -2,16 +2,17 @@
 import type { BotCreateInput, BotIdentity, BotUpdateInput, ModelProvider } from '../../../shared/bot-schema'
 import type { ChatEvent } from '../../../shared/chat-schema'
 import { LeBotError } from '../../../shared/protocol'
-import type { BotEngine, ChatOptions, EngineBotDetail, LegacyNotes, MemoryConnection, OpenChat } from '../bot-engine'
+import type { BotEngine, ChatOptions, EngineBotDetail, LegacyNotes, MemoryConnection, OpenChat, ReviewOptions } from '../bot-engine'
 import { botDetailFromProfile, botFromProfile, DEFAULT_PROFILE, profileIdFor, providersFromModelOptions, UI_NAMESPACE } from './hermes-bot-mapping'
 import { chatEventFrom, itemsFromRows, sessionLostEvents } from './hermes-chat-mapping'
-import { installMemory, legacyNotes, memoryInstalled } from './hermes-memory-setup'
+import { installMemory, legacyNotes, memoryConnection, memoryCurrent, memoryInstalled } from './hermes-memory-setup'
 import { HermesSocket } from './hermes-socket'
 
 const CLIENT = { name: 'lebot', version: '0.2.0' }
 const PROFILE_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/
 /** Hermes events on the management connection that mean the roster may look different now. */
 const ROSTER_EVENTS = new Set(['sessions.changed', 'skills.changed'])
+const REVIEW_TIMEOUT_MS = 180_000
 
 export class HermesEngine implements BotEngine {
   /** Bot management goes through one shared connection on the default profile. */
@@ -93,6 +94,52 @@ export class HermesEngine implements BotEngine {
     if (input.name !== undefined) changes.ui_meta = { [UI_NAMESPACE]: { name: input.name } }
     await this.configure(await this.manage(), changes)
     return this.getBot(input.botId)
+  }
+
+  async refreshMemory(): Promise<string[]> {
+    const updated: string[] = []
+    for (const bot of await this.profiles(false)) {
+      if (!memoryInstalled(bot.id) || memoryCurrent(bot.id)) continue
+      const connection = await memoryConnection(bot.id)
+      if (!connection) continue
+      await installMemory(bot.id, connection)
+      updated.push(bot.id)
+    }
+    return updated
+  }
+
+  async reviewMemory(botId: string, prompt: string, options: ReviewOptions): Promise<void> {
+    await this.requireBot(botId)
+    let finish: (status: unknown) => void = () => {}
+    const finished = new Promise<unknown>(resolve => {
+      finish = resolve
+    })
+    const socket = await HermesSocket.connect(
+      botId === DEFAULT_PROFILE ? '' : botId,
+      event => {
+        if (event.type === 'message.complete') finish(event.payload.status)
+      },
+      () => finish('closed')
+    )
+    const timer = setTimeout(() => finish('timeout'), REVIEW_TIMEOUT_MS)
+    try {
+      // Hidden, and with the memory toolset only: about a sixth of a normal session's prompt.
+      const session = await socket.request('session.create', {
+        source: 'tool',
+        hidden: true,
+        toolsets: ['memory'],
+        request_id: crypto.randomUUID(),
+        client: CLIENT,
+        ...(options.model ? { model: options.model.model, provider: options.model.provider } : {})
+      })
+      for (const id of new Set([session.session_id, session.stored_session_id])) if (typeof id === 'string') options.onChat(id)
+      await socket.request('prompt.submit', { session_id: session.session_id, text: prompt, input_id: crypto.randomUUID() })
+      const status = await finished
+      if (status !== 'complete') throw new LeBotError('review_failed', `The memory review did not finish (${String(status)}).`)
+    } finally {
+      clearTimeout(timer)
+      socket.close()
+    }
   }
 
   async listModels(): Promise<ModelProvider[]> {

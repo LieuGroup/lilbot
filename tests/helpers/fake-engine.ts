@@ -23,6 +23,8 @@ export function fakeEngine(options: { earlyEvents?: ChatEvent[] } = {}) {
   /** Chats the engine "has stored"; resuming any other id yields a new chat, like the real engine. */
   const stored = new Set<string>()
   let chats = 0
+  const reviews: string[] = []
+  const failReviews = { value: false }
   const engine: BotEngine = {
     listBots: async () => [bot],
     getBot: async botId => {
@@ -33,6 +35,13 @@ export function fakeEngine(options: { earlyEvents?: ChatEvent[] } = {}) {
     updateBot: async () => detail,
     listModels: async () => [],
     onBotsChanged: () => () => {},
+    refreshMemory: async () => [],
+    reviewMemory: async (botId, prompt, reviewOptions) => {
+      reviewOptions.onChat(`review-of-${botId}`)
+      log.push(`review:${botId}:${reviewOptions.model?.model ?? 'bot model'}`)
+      reviews.push(prompt)
+      if (failReviews.value) throw new Error('engine down')
+    },
     connectMemory: async botId => {
       log.push(`connect-memory:${botId}`)
       return { aboutUser: ['Oscar lives in Adelaide.'], ownNotes: ['The build takes 30 minutes.', 'x'.repeat(900)] }
@@ -51,7 +60,7 @@ export function fakeEngine(options: { earlyEvents?: ChatEvent[] } = {}) {
       }
     }
   }
-  return { engine, log, stored, emit: (chatId: string, event: ChatEvent) => emitters.get(chatId)?.(event) }
+  return { engine, log, stored, reviews, failReviews, emit: (chatId: string, event: ChatEvent) => emitters.get(chatId)?.(event) }
 }
 
 export function fakeService(options?: Parameters<typeof fakeEngine>[0]) {

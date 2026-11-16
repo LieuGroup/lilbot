@@ -25,6 +25,10 @@ export const methods = {
   /** The user adds a fact from the app. */
   'memory.write': MemoryWriteInput,
   'memory.forget': z.object({ factId: z.string().min(1) }),
+  /** Brings a forgotten fact back. */
+  'memory.restore': z.object({ factId: z.string().min(1) }),
+  /** Switches a fact off (kept, not shown to bots) or back on. */
+  'memory.pause': z.object({ factId: z.string().min(1), paused: z.boolean() }),
   /** Connects a bot to LeBot's memory and brings over the notes its engine kept. */
   'memory.connect': z.object({ botId }),
   /** Without `chatId`: the bot's main conversation, the same one on every device. */
@@ -50,9 +54,11 @@ export interface Results {
   'sections.rename': Section
   'sections.delete': { ok: true }
   'models.list': ModelProvider[]
-  'memory.list': { connected: boolean; facts: MemoryFact[] }
+  'memory.list': { connected: boolean; facts: MemoryFact[]; forgotten: MemoryFact[] }
   'memory.write': MemoryFact
   'memory.forget': { ok: true }
+  'memory.restore': { ok: true }
+  'memory.pause': { ok: true }
   'memory.connect': { imported: number }
   'chat.open': ChatSnapshot
   'chat.new': ChatSnapshot

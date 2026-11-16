@@ -20,6 +20,7 @@ instructions, model, workspace, abilities read-only), chat with live tool rows, 
 Memory (slice 4): LeBot's own memory system with a Memory panel; new bots use it from their first session, an
 existing bot is connected from its Memory panel. Hermes' default bot (Chief of Staff) is a test bot Oscar does not
 use: nothing about it needs protecting.
+It includes an after-chat review that saves what a chat missed.
 Next: the Grok Bot style roster and details panel (sections, pin, hide, avatars, unread, Activity and Library
 tabs), the nightly memory tidy-up, delete a bot, edit abilities, routines.
 Desktop (Tauri) and iOS (Expo) come after the web app. Approvals are off in Hermes by Oscar's choice, so there are
@@ -132,22 +133,49 @@ the model, secrets or invisible characters, for bots and for the user. A write t
 lasting facts than it is shown, so it tidies. Hermes fences what a provider supplies as "recalled memory, not new
 user input" on its own.
 
-Hermes keeps a plug-in's code loaded per profile folder until the gateway restarts. So after changing the plug-in:
-bump `version` in `plugin.yaml` and `VERSION` in `__init__.py`, reconnect the bots, and restart the Hermes gateway
-(`systemctl --user restart hermes-gateway`, between runs of its cron jobs). LeBot logs a warning when a bot calls
-with an older adapter version. New bots are unaffected: a new folder loads the current code.
+Hermes keeps a plug-in's code loaded per folder until the gateway restarts. So each version is installed under its
+own folder and provider name (`lebot-memory-v0-3-0`): a new version is a new folder, loaded fresh on the bot's next
+session. To ship a plug-in change: bump `version` in `plugin.yaml` and `VERSION` in `__init__.py`, and restart
+LeBot. At start-up `BotEngine.refreshMemory` reinstalls the adapter for every connected bot on an older version.
+No Hermes restart is needed. LeBot logs a warning when a bot still calls with an older adapter.
 
-Measured on 2026-11-16 (`bun run check:memory`): a fact told in one session was known in the next from the block
-alone, a correction replaced the old fact, a one-off request was not saved, and a turn sent about 29,600 tokens
-with LeBot memory against 31,600 with Hermes' own. The check reads the bot's real system prompt for the rules;
-asking a bot to describe its own instructions proved unreliable.
+### The after-chat review
 
-Known gap: Hermes' background review (a forked agent asking "anything worth saving?" every 10 user turns) only runs
-with Hermes' built-in memory tool, which a connected bot no longer has. A connected bot saves only when it decides
-to during a chat. To close it, LeBot needs its own after-turn review, run through the engine on a cheap model.
+A bot saves what it notices during a chat; the review catches what it missed. Hermes' own background review only
+runs with Hermes' built-in memory tool, which a connected bot no longer has, so LeBot has its own.
 
-Not built yet: that review, the nightly tidy-up (merge duplicates, drop outdated facts), saving before Hermes
-compresses a conversation (`on_pre_compress`), and showing forgotten facts in the app.
+- The plug-in hands every finished turn of a real conversation to `/engine/memory/turn` (`sync_turn`, on a thread;
+  not for scheduled runs or sub-agents). `server/memory/review-queue.ts` keeps them only until reviewed.
+- `server/memory/memory-reviewer.ts` checks every 20 seconds and reviews a bot once 10 turns wait, or once at
+  least 3 wait and the chat has been quiet for 2 minutes. `LEBOT_REVIEW=off`, `LEBOT_REVIEW_TURNS` and
+  `LEBOT_REVIEW_QUIET_SECONDS` change that.
+- LeBot runs no model. `BotEngine.reviewMemory` runs the review as a hidden session of the same bot with only its
+  memory tools, on `LEBOT_REVIEW_MODEL` (`provider::model`; without it, the bot's own model, which costs more).
+  Limiting the session to memory tools cuts its prompt from about 26,000 tokens to about 4,500.
+- A review follows stricter rules than a chat: it may not bring back a fact the user removed, and may not forget a
+  fact the user wrote. Its own session is never queued for review. What it saves is marked `via: review`.
+- No approval step, by Oscar's decision: found facts apply at once. The Memory panel shows where each fact came
+  from and lets him pause, forget and restore.
+
+Measured on 2026-11-16 (`bun run check:memory`, 21 checks): a fact told in one session was known in the next from
+the block alone; a correction replaced the old fact; a one-off request was not saved; a review on Sonnet 5.5 took
+about 8 seconds, saved the lasting fact a chat had missed and skipped a one-off request and a temporary failure. A
+turn sent about 29,700 tokens with LeBot memory against 31,600 with Hermes' own; one review sends about 12,000 in
+total. The check reads the bot's real system prompt for the rules: asking a bot to describe its own instructions
+proved unreliable.
+
+A fact can be paused (kept, not shown to bots), forgotten and restored, and can carry an expiry date
+(`update_memory` takes `expires`). Each fact records how it arrived (`via`: chat, review, app, import) and the chat
+it came from.
+
+Learned from other systems (reports in `~/agent-tmp/memory-study/`; nightly-labs' OpenBot is noncommercial-licensed:
+ideas only, never its code): Hermes (the saving rules, the safety scan), OpenMausBot (review on quiet time as well
+as turn count, not re-learning what the user removed, restore), nightly-labs OpenBot (a review limited to memory
+operations on a cheaper model, protecting what the user wrote), CopilotKit OpenBot (pause, provenance).
+
+Not built yet: the nightly tidy-up (merge duplicates, drop outdated facts), attaching facts relevant to the
+user's message automatically, holding a turn's writes until the turn succeeds, and saving before Hermes compresses
+a conversation (`on_pre_compress`).
 
 ## What Grok Bot does (reference, not a spec)
 

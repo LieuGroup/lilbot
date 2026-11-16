@@ -10,8 +10,10 @@ import { PrefsStore } from './db/prefs-store'
 import { HermesEngine } from './engine/hermes/hermes-engine'
 import { MEMORY_ADAPTER_VERSION } from './engine/hermes/hermes-memory-setup'
 import { createEngineApi, engineToken } from './engine-api'
+import { defaultReviewSettings, MemoryReviewer } from './memory/memory-reviewer'
 import { MemoryService } from './memory/memory-service'
 import { MemoryStore } from './memory/memory-store'
+import { ReviewQueue } from './memory/review-queue'
 import { allowedHosts, socketAllowed } from './socket-guard'
 import { Workspaces } from './workspaces'
 
@@ -47,7 +49,26 @@ const bots = new BotService(engine, new PrefsStore(database), new Workspaces(WOR
   memoryConnection: { url: `http://127.0.0.1:${PORT}`, tokenFile: join(DATA_DIR, 'engine-token') }
 })
 /** Engine adapters on this machine reach memory here; see `engine-api.ts`. */
-const engineApi = createEngineApi(memory, token, PORT, { onMemoryChanged: memoryChanged, adapterVersion: MEMORY_ADAPTER_VERSION })
+
+// The after-chat memory review. LEBOT_REVIEW=off disables it; LEBOT_REVIEW_MODEL is
+// "provider::model" (without it a review runs on the bot's own model, which costs more).
+const [reviewProvider, reviewModel] = (process.env.LEBOT_REVIEW_MODEL ?? '').split('::')
+const reviewer = new MemoryReviewer(new ReviewQueue(database), engine, {
+  ...defaultReviewSettings,
+  enabled: process.env.LEBOT_REVIEW !== 'off',
+  turns: Number(process.env.LEBOT_REVIEW_TURNS ?? defaultReviewSettings.turns),
+  quietMs: Number(process.env.LEBOT_REVIEW_QUIET_SECONDS ?? defaultReviewSettings.quietMs / 1000) * 1000,
+  model: reviewProvider && reviewModel ? { provider: reviewProvider, model: reviewModel } : undefined
+})
+setInterval(() => reviewer.tick(), 20_000)
+
+// Connected bots get this LeBot's memory adapter; they use it from their next session.
+engine
+  .refreshMemory()
+  .then(updated => updated.length && console.log(`Memory adapter updated to ${MEMORY_ADAPTER_VERSION} for: ${updated.join(', ')}`))
+  .catch(error => console.error('[memory] could not update memory adapters:', error instanceof Error ? error.message : error))
+
+const engineApi = createEngineApi(memory, token, PORT, { onMemoryChanged: memoryChanged, adapterVersion: MEMORY_ADAPTER_VERSION, reviewer })
 engine.onBotsChanged(botsChanged)
 const DIST = join(import.meta.dir, '..', 'dist')
 

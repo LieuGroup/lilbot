@@ -75,9 +75,9 @@ export class BotService {
     return { ...identity, ...this.own(identity) }
   }
 
-  async listMemory(botId: string): Promise<{ connected: boolean; facts: MemoryFact[] }> {
+  async listMemory(botId: string): Promise<{ connected: boolean; facts: MemoryFact[]; forgotten: MemoryFact[] }> {
     const detail = await this.engine.getBot(botId)
-    return { connected: detail.memoryConnected, facts: this.memory.list(botId) }
+    return { connected: detail.memoryConnected, ...this.memory.panel(botId) }
   }
 
   /** The user adds a fact from the app. */
@@ -93,16 +93,37 @@ export class BotService {
     this.memoryChanged()
   }
 
+  restoreMemory(factId: string) {
+    this.memory.restore(factId)
+    this.memoryChanged()
+  }
+
+  pauseMemory(factId: string, paused: boolean) {
+    this.memory.setPaused(factId, paused)
+    this.memoryChanged()
+  }
+
   /** Connects a bot to LeBot's memory and keeps the notes its engine had: what it knew about the
    *  user becomes shared facts, its own notes stay private to it. Safe to call again. */
   async connectMemory(botId: string, options: { keepOwnNotes: boolean } = { keepOwnNotes: true }): Promise<{ imported: number }> {
     if (!this.memoryConnection) throw new LeBotError('memory_unavailable', 'Memory is not set up on this LeBot server.')
     const notes = await this.engine.connectMemory(botId, this.memoryConnection)
     const before = this.memory.list(botId).length
-    for (const text of notes.aboutUser) this.memory.write({ botId, kind: 'profile', scope: 'shared', text: text.slice(0, NOTE_LIMIT), author: 'bot' })
-    for (const text of options.keepOwnNotes ? notes.ownNotes : []) this.memory.write({ botId, kind: 'profile', scope: 'bot', text: text.slice(0, NOTE_LIMIT), author: 'bot' })
+    for (const text of notes.aboutUser) this.importNote(botId, 'shared', text)
+    for (const text of options.keepOwnNotes ? notes.ownNotes : []) this.importNote(botId, 'bot', text)
     this.memoryChanged()
     return { imported: this.memory.list(botId).length - before }
+  }
+
+  /** One of the engine's old notes becomes a fact. A note the safety scan refuses is skipped:
+   *  one bad note must not stop a bot from being connected. */
+  private importNote(botId: string, scope: 'bot' | 'shared', text: string) {
+    try {
+      this.memory.write({ botId, kind: 'profile', scope, text: text.slice(0, NOTE_LIMIT), author: 'bot', via: 'import' })
+    } catch (error) {
+      if (!(error instanceof LeBotError)) throw error
+      console.error(`[memory] skipped a note while connecting ${botId}: ${error.code}`)
+    }
   }
 
   listModels(): Promise<ModelProvider[]> {

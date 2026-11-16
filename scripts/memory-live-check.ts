@@ -14,8 +14,10 @@ import { HermesEngine } from '../server/engine/hermes/hermes-engine'
 import { installMemory, MEMORY_ADAPTER_VERSION } from '../server/engine/hermes/hermes-memory-setup'
 import { HermesSocket } from '../server/engine/hermes/hermes-socket'
 import { createEngineApi, engineToken } from '../server/engine-api'
+import { MemoryReviewer } from '../server/memory/memory-reviewer'
 import { MemoryService } from '../server/memory/memory-service'
 import { MemoryStore } from '../server/memory/memory-store'
+import { ReviewQueue } from '../server/memory/review-queue'
 import { Workspaces } from '../server/workspaces'
 import type { ChatEvent } from '../shared/chat-schema'
 
@@ -29,14 +31,21 @@ const TURN_TIMEOUT_MS = 120_000
 const scratch = mkdtempSync(join(tmpdir(), 'lebot-memory-'))
 const database = openDatabase(join(scratch, 'lebot.db'))
 const memory = new MemoryService(new MemoryStore(database))
-const bots = new BotService(new HermesEngine(), new PrefsStore(database), new Workspaces(join(scratch, 'workspaces')), memory)
-const engineApi = createEngineApi(memory, engineToken(scratch), PORT, { adapterVersion: MEMORY_ADAPTER_VERSION })
+const engine = new HermesEngine()
+const queue = new ReviewQueue(database)
+// The review model: the same setting the server reads, with the measured default.
+const [reviewProvider, reviewModel] = (process.env.LEBOT_REVIEW_MODEL ?? 'cliproxyapi::anthropic/claude-sonnet-5-5').split('::')
+const reviewer = new MemoryReviewer(queue, engine, { enabled: true, turns: 10, quietMs: 120_000, minTurns: 3, model: { provider: reviewProvider, model: reviewModel } })
+const engineApi = createEngineApi(memory, engineToken(scratch), PORT, { adapterVersion: MEMORY_ADAPTER_VERSION, reviewer })
+const bots = new BotService(engine, new PrefsStore(database), new Workspaces(join(scratch, 'workspaces')), memory)
 let memoryCalls = 0
+const adapterVersions = new Set<string>()
 const server = Bun.serve({
   port: PORT,
   hostname: '127.0.0.1',
   fetch(request) {
     memoryCalls++
+    adapterVersions.add(request.headers.get('x-lebot-adapter-version') ?? 'none')
     return engineApi(request, new URL(request.url).pathname)
   }
 })
@@ -114,6 +123,7 @@ try {
   const empty = await turnInNewSession('Reply with exactly: OK')
   check('a turn with LeBot memory and no facts', empty.finished?.status === 'completed', `${empty.finished?.contextTokens ?? '?'} tokens sent`)
   check('Hermes asked LeBot for the memory block', memoryCalls > 0, `${memoryCalls} calls`)
+  check('the bot runs this version of the memory adapter', adapterVersions.size === 1 && adapterVersions.has(MEMORY_ADAPTER_VERSION), [...adapterVersions].join(', '))
 
   const told = await turnInNewSession(
     'My favourite test colour is ultramarine, and I always want release notes as a table. Remember both for later. Then reply with exactly: SAVED'
@@ -168,6 +178,38 @@ try {
       now.map(fact => fact.text).join(' | ')
     )
   }
+
+  // The after-chat review. Hermes hands LeBot each finished turn; a review then runs as a hidden
+  // session of the bot and saves what the chat itself did not.
+  const waitFor = async (condition: () => boolean, ms: number) => {
+    for (const end = Date.now() + ms; Date.now() < end && !condition(); ) await new Promise(resolve => setTimeout(resolve, 250))
+    return condition()
+  }
+  const turnsOf = () => queue.pending().find(pending => pending.botId === botId)?.turns ?? 0
+  check('Hermes handed the finished turns to LeBot', await waitFor(() => turnsOf() >= 3, 8000), `${turnsOf()} turns waiting`)
+
+  // A stretch the bot never saw as a chat, so anything saved from it can only come from the review.
+  reviewer.record(
+    botId,
+    'earlier-chat',
+    'By the way the analytics export lives in the shared drive folder "Footy/Analytics", not in Notion.',
+    'Noted, I will read exports from Footy/Analytics.'
+  )
+  reviewer.record(botId, 'earlier-chat', 'For this message only, give me the numbers as a plain list, no table.', '- Views: 412 - Likes: 9')
+  reviewer.record(botId, 'earlier-chat', 'The Postiz API timed out twice when I tried earlier.', 'It timed out once for me too, then worked on retry.')
+  const started = performance.now()
+  const covered = await reviewer.review(botId)
+  check('the review ran through Hermes on the review model', covered >= 3, `${covered} turns in ${((performance.now() - started) / 1000).toFixed(1)} s on ${reviewModel}`)
+  const found = memory.list(botId).filter(fact => fact.via === 'review')
+  for (const fact of found) console.log(`       [review ${fact.kind}/${fact.scope}] ${fact.text}`)
+  check(
+    'the review saved the lasting fact the chat missed',
+    found.some(fact => /Footy\/Analytics/i.test(fact.text))
+  )
+  check('the review skipped the one-off request and the temporary failure', !found.some(fact => /plain list|no table|timed out|timeout/i.test(fact.text)))
+  check('the review did not repeat facts already in memory', memory.list(botId).filter(fact => /vermilion/i.test(fact.text)).length === 1)
+  await new Promise(resolve => setTimeout(resolve, 3000))
+  check('the reviewed turns are cleared and the review itself is not queued', turnsOf() === 0, `${turnsOf()} turns waiting`)
 
   if (before.finished?.contextTokens && empty.finished?.contextTokens && asked.finished?.contextTokens) {
     console.log(

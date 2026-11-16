@@ -18,7 +18,14 @@ export const MemoryFact = z.object({
   text: z.string(),
   /** Who wrote it down. */
   author: z.enum(['bot', 'user']),
+  /** How it got here: said in a chat, found by the after-chat review, typed in the app, or
+   *  brought over from the engine's own notes. */
+  via: z.enum(['chat', 'review', 'app', 'import']),
   learnedAt: z.number(),
+  /** Switched off: kept, but not shown to bots. */
+  paused: z.boolean(),
+  /** After this moment the fact is no longer shown to bots. */
+  expiresAt: z.number().nullable(),
   forgottenAt: z.number().nullable()
 })
 export type MemoryFact = z.infer<typeof MemoryFact>

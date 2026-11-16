@@ -8,15 +8,26 @@ import { z } from 'zod'
 
 import { type MemoryFact, MemoryKind, MemoryScope } from '../shared/memory-schema'
 import { LeBotError } from '../shared/protocol'
+import type { MemoryReviewer } from './memory/memory-reviewer'
 import { type MemoryService, shortId } from './memory/memory-service'
 
 const botId = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/)
 
+/** The chat the call comes from, as the engine names it. */
+const chatId = z.string().min(1).max(200).optional()
+/** A date like 2026-12-31: the fact is shown until the end of that day (UTC). */
+const expires = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a date like 2026-12-31.')
+  .optional()
+
 const routes = {
-  '/engine/memory/context': z.object({ botId }),
-  '/engine/memory/recall': z.object({ botId, query: z.string().max(500).default(''), kind: MemoryKind.optional(), limit: z.number().int().optional() }),
-  '/engine/memory/write': z.object({ botId, kind: MemoryKind, scope: MemoryScope.optional(), text: z.string() }),
-  '/engine/memory/forget': z.object({ botId, id: z.string().min(4).max(64) })
+  '/engine/memory/context': z.object({ botId, chatId }),
+  '/engine/memory/recall': z.object({ botId, chatId, query: z.string().max(500).default(''), kind: MemoryKind.optional(), limit: z.number().int().optional() }),
+  '/engine/memory/write': z.object({ botId, chatId, kind: MemoryKind, scope: MemoryScope.optional(), text: z.string(), expires }),
+  '/engine/memory/forget': z.object({ botId, chatId, id: z.string().min(4).max(64) }),
+  /** A finished turn, for the after-chat review. */
+  '/engine/memory/turn': z.object({ botId, chatId: z.string().min(1).max(200), user: z.string().max(200_000), assistant: z.string().max(200_000) })
 } as const
 
 /** Reads the token, creating it (readable by the user only) on first start. */
@@ -34,6 +45,7 @@ const forBot = (fact: MemoryFact, reader: string) => ({
   scope: fact.scope,
   text: fact.text,
   date: new Date(fact.learnedAt).toISOString().slice(0, 10),
+  ...(fact.expiresAt ? { until: new Date(fact.expiresAt).toISOString().slice(0, 10) } : {}),
   ...(fact.botId !== reader ? { from: fact.botId } : {})
 })
 
@@ -43,6 +55,8 @@ export interface EngineApiOptions {
   onMemoryChanged?: () => void
   /** The adapter version this LeBot ships. A bot calling with another one runs stale adapter code. */
   adapterVersion?: string
+  /** Receives finished turns and knows which chats are reviews. Without it there is no review. */
+  reviewer?: MemoryReviewer
 }
 
 export function createEngineApi(memory: MemoryService, token: string, port: number, options: EngineApiOptions = {}) {
@@ -80,16 +94,30 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
         case '/engine/memory/recall':
           return json(200, { facts: memory.recall(body.botId, body.query, { kind: body.kind, limit: body.limit }).map(fact => forBot(fact, body.botId)) })
         case '/engine/memory/write': {
-          const fact = memory.write({ botId: body.botId, kind: body.kind, scope: body.scope, text: body.text, author: 'bot' })
+          const review = options.reviewer?.isReview(body.chatId) ?? false
+          const fact = memory.write({
+            botId: body.botId,
+            kind: body.kind,
+            scope: body.scope,
+            text: body.text,
+            author: 'bot',
+            via: review ? 'review' : 'chat',
+            sourceChatId: body.chatId,
+            // Shown through the whole named day.
+            expiresAt: body.expires ? Date.parse(`${body.expires}T23:59:59Z`) : undefined
+          })
           onMemoryChanged()
           const notice = memory.overflowNotice(body.botId)
           return json(200, { saved: forBot(fact, body.botId), ...(notice ? { notice } : {}) })
         }
         case '/engine/memory/forget': {
-          const fact = memory.forgetAsBot(body.botId, body.id)
+          const fact = memory.forgetAsBot(body.botId, body.id, { review: options.reviewer?.isReview(body.chatId) ?? false })
           onMemoryChanged()
           return json(200, { forgotten: forBot(fact, body.botId) })
         }
+        case '/engine/memory/turn':
+          options.reviewer?.record(body.botId, body.chatId, body.user, body.assistant)
+          return json(200, { ok: true })
       }
     } catch (error) {
       // A refusal the bot can act on (unknown id, fact too long) is returned as its tool result.

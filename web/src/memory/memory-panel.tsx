@@ -29,23 +29,54 @@ function groupFacts(facts: MemoryFact[], botId: string): Group[] {
   ]
 }
 
-function FactRow({ fact, botId, botName, onForget }: { fact: MemoryFact; botId: string; botName: (id: string) => string; onForget: (fact: MemoryFact) => void }) {
-  const origin = fact.author === 'user' ? 'added by you' : fact.botId === botId ? 'learned by this bot' : `learned by ${botName(fact.botId)}`
+const smallButton = 'flex-none rounded-lg border border-border px-2.5 py-1 text-sm text-muted hover:text-text'
+
+interface RowProps {
+  fact: MemoryFact
+  botId: string
+  botName: (id: string) => string
+  actions: { forget: (fact: MemoryFact) => void; pause: (fact: MemoryFact) => void; restore: (fact: MemoryFact) => void }
+}
+
+/** How a fact got into memory, in the user's words. */
+function originOf(fact: MemoryFact, botId: string, botName: (id: string) => string): string {
+  if (fact.author === 'user') return 'added by you'
+  const who = fact.botId === botId ? 'this bot' : botName(fact.botId)
+  if (fact.via === 'review') return `found by ${who} when reviewing a chat`
+  if (fact.via === 'import') return `brought over from ${who}’s earlier notes`
+  return `learned by ${who}`
+}
+
+function FactRow({ fact, botId, botName, actions }: RowProps) {
+  const forgotten = fact.forgottenAt !== null
+  const expired = fact.expiresAt !== null && fact.expiresAt <= Date.now()
+  const off = forgotten || fact.paused || expired
   return (
     <li className="flex items-start gap-3 rounded-xl border border-border px-3 py-2.5">
-      <div className="min-w-0 flex-1">
+      <div className={`min-w-0 flex-1 ${off ? 'opacity-60' : ''}`}>
         <p className="break-words">{fact.text}</p>
         <p className="mt-1 text-sm text-muted">
-          {day(fact.learnedAt)}, {origin}
+          {day(fact.learnedAt)}, {originOf(fact, botId, botName)}
+          {fact.expiresAt !== null && (expired ? `. Expired ${day(fact.expiresAt)}` : `. Until ${day(fact.expiresAt)}`)}
+          {fact.paused && !forgotten && '. Paused: not shown to bots'}
         </p>
       </div>
-      <button
-        type="button"
-        onClick={() => onForget(fact)}
-        className="flex-none rounded-lg border border-border px-2.5 py-1 text-sm text-muted hover:border-danger hover:text-danger"
-      >
-        Forget
-      </button>
+      <div className="flex flex-none flex-col gap-1.5">
+        {forgotten ? (
+          <button type="button" className={smallButton} onClick={() => actions.restore(fact)}>
+            Restore
+          </button>
+        ) : (
+          <>
+            <button type="button" className={smallButton} onClick={() => actions.pause(fact)}>
+              {fact.paused ? 'Resume' : 'Pause'}
+            </button>
+            <button type="button" className={`${smallButton} hover:border-danger hover:!text-danger`} onClick={() => actions.forget(fact)}>
+              Forget
+            </button>
+          </>
+        )}
+      </div>
     </li>
   )
 }
@@ -56,6 +87,8 @@ export function MemoryPanel() {
   const connected = useBotStore(state => state.connected)
   const bots = useBotStore(state => state.bots)
   const [facts, setFacts] = useState<MemoryFact[] | null>(null)
+  const [forgotten, setForgotten] = useState<MemoryFact[]>([])
+  const [showForgotten, setShowForgotten] = useState(false)
   const [memoryOn, setMemoryOn] = useState(true)
   const [error, setError] = useState('')
   const [text, setText] = useState('')
@@ -69,6 +102,7 @@ export function MemoryPanel() {
     try {
       const result = await lebot.call('memory.list', { botId })
       setFacts(result.facts)
+      setForgotten(result.forgotten)
       setMemoryOn(result.connected)
       setError('')
     } catch (failure) {
@@ -80,7 +114,7 @@ export function MemoryPanel() {
     if (!connected) return
     setFacts(null)
     void load()
-    // A bot saving a fact mid-chat shows up here without a reload.
+    // A bot saving a fact mid-chat, or a review finding one, shows up here without a reload.
     return lebot.onMemoryChanged(() => void load())
   }, [connected, load])
 
@@ -95,6 +129,12 @@ export function MemoryPanel() {
     } finally {
       setBusy(false)
     }
+  }
+
+  const actions: RowProps['actions'] = {
+    forget: fact => void run(() => lebot.call('memory.forget', { factId: fact.id })),
+    pause: fact => void run(() => lebot.call('memory.pause', { factId: fact.id, paused: !fact.paused })),
+    restore: fact => void run(() => lebot.call('memory.restore', { factId: fact.id }))
   }
 
   const add = (event: FormEvent) => {
@@ -134,7 +174,7 @@ export function MemoryPanel() {
             ) : (
               <ul className="flex flex-col gap-2">
                 {group.facts.map(fact => (
-                  <FactRow key={fact.id} fact={fact} botId={botId} botName={botName} onForget={target => void run(() => lebot.call('memory.forget', { factId: target.id }))} />
+                  <FactRow key={fact.id} fact={fact} botId={botId} botName={botName} actions={actions} />
                 ))}
               </ul>
             )}
@@ -175,6 +215,21 @@ export function MemoryPanel() {
             </Button>
           </div>
         </form>
+      )}
+
+      {forgotten.length > 0 && (
+        <section className="flex flex-col gap-2 border-t border-border pt-6">
+          <button type="button" className="self-start text-sm font-medium text-muted underline" aria-expanded={showForgotten} onClick={() => setShowForgotten(shown => !shown)}>
+            {showForgotten ? 'Hide' : 'Show'} forgotten facts ({forgotten.length})
+          </button>
+          {showForgotten && (
+            <ul className="flex flex-col gap-2">
+              {forgotten.map(fact => (
+                <FactRow key={fact.id} fact={fact} botId={botId} botName={botName} actions={actions} />
+              ))}
+            </ul>
+          )}
+        </section>
       )}
     </Panel>
   )

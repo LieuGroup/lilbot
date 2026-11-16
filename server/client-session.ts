@@ -44,6 +44,14 @@ export class ClientSession {
       this.bots.forgetMemory(factId)
       return { ok: true }
     },
+    'memory.restore': async ({ factId }) => {
+      this.bots.restoreMemory(factId)
+      return { ok: true }
+    },
+    'memory.pause': async ({ factId, paused }) => {
+      this.bots.pauseMemory(factId, paused)
+      return { ok: true }
+    },
     'memory.connect': ({ botId }) => this.bots.connectMemory(botId),
     'chat.open': ({ botId, chatId }, afterResponse) => this.track(afterResponse, onEvent => this.bots.openChat(botId, chatId, onEvent)),
     'chat.new': ({ botId }, afterResponse) => this.track(afterResponse, onEvent => this.bots.newChat(botId, onEvent)),

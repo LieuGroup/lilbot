@@ -4,7 +4,7 @@ Holds no data. Every call goes to the LeBot server on this machine, which owns t
 (`server/memory/` and `server/engine-api.ts` in the LeBot repo). The bot id is the Hermes profile id.
 
 Installed per profile by LeBot (`scripts/hermes-memory.ts`): this folder is copied to
-`$HERMES_HOME/plugins/lebot-memory/` and `$HERMES_HOME/lebot-memory.json` says where LeBot is.
+`$HERMES_HOME/plugins/lebot-memory-v<version>/` and `$HERMES_HOME/lebot-memory.json` says where LeBot is.
 """
 
 from __future__ import annotations
@@ -18,12 +18,23 @@ from typing import Any
 
 from agent.memory_provider import MemoryProvider
 
+try:
+    from agent.memory_provider import spawn_context_thread
+except ImportError:  # older Hermes
+    import threading
+
+    def spawn_context_thread(target, name=None):
+        return threading.Thread(target=target, name=name, daemon=True)
+
 logger = logging.getLogger(__name__)
 
-NAME = "lebot-memory"
-# Keep equal to plugin.yaml. LeBot warns when a bot still runs an older copy (the Hermes gateway keeps
-# plug-in code loaded until it restarts).
-VERSION = "0.2.0"
+# LeBot installs each version under its own folder name (lebot-memory-v0-3-0) and selects the provider
+# by that name: the Hermes gateway keeps a plug-in's code loaded per folder, so a new version must be a
+# new folder to take effect without restarting the gateway.
+NAME = Path(__file__).resolve().parent.name
+SETTINGS_FILE = "lebot-memory.json"
+# Keep equal to plugin.yaml. LeBot warns when a bot still calls with an older one.
+VERSION = "0.3.0"
 DEFAULT_URL = "http://127.0.0.1:3370"
 DEFAULT_TOKEN_FILE = "~/.local/share/lebot/engine-token"
 TIMEOUT_SECONDS = 5
@@ -52,7 +63,9 @@ there is one, never the failure); how to do a kind of task (that belongs in a sk
 
 Keep each fact to one or two sentences that stand on their own. One fact goes in once: check what you
 are shown before adding. To correct a fact, forget the old one by its id, then write the new one. When
-the user's newer statement conflicts with an older fact, the newer one wins. If a save comes back with
+the user's newer statement conflicts with an older fact, the newer one wins, and what the user asks
+for right now always beats what memory says. Give a fact an expiry date when it stops being true on a
+known day. If a save comes back with
 a notice that memory is over its budget, tidy before adding more."""
 
 TOOLS = [
@@ -79,6 +92,7 @@ TOOLS = [
                 "kind": {"type": "string", "enum": ["profile", "journal"], "description": "For write: profile = lasting fact, journal = dated history."},
                 "fact": {"type": "string", "description": "For write: the fact, one or two sentences."},
                 "scope": {"type": "string", "enum": ["bot", "shared"], "description": "For write, optional: bot = only you, shared = all the user's bots."},
+                "expires": {"type": "string", "description": "For write, optional: a date like 2026-12-31 after which the fact no longer applies."},
                 "id": {"type": "string", "description": "For forget: the id shown in brackets before the fact."},
             },
             "required": ["action"],
@@ -98,6 +112,8 @@ class LeBotMemoryProvider(MemoryProvider):
         self._token = ""
         self._bot = ""
         self._block: str | None = None
+        self._chat = ""
+        self._primary = True
 
     @property
     def name(self) -> str:
@@ -110,11 +126,14 @@ class LeBotMemoryProvider(MemoryProvider):
         home = Path(str(kwargs.get("hermes_home") or "")).expanduser()
         settings: dict[str, Any] = {}
         try:
-            settings = json.loads((home / f"{NAME}.json").read_text())
+            settings = json.loads((home / SETTINGS_FILE).read_text())
         except (OSError, ValueError):
             logger.info("lebot-memory: no settings file in %s, using defaults", home)
         self._url = str(settings.get("url") or DEFAULT_URL).rstrip("/")
         self._bot = _bot_id(home)
+        self._chat = str(session_id or "")
+        # Scheduled runs and sub-agents are not conversations with the user: nothing to review.
+        self._primary = kwargs.get("agent_context", "primary") == "primary"
         try:
             self._token = Path(str(settings.get("token_file") or DEFAULT_TOKEN_FILE)).expanduser().read_text().strip()
         except OSError as error:
@@ -127,7 +146,7 @@ class LeBotMemoryProvider(MemoryProvider):
             return {"error": "Memory is not connected to LeBot."}
         request = urllib.request.Request(
             f"{self._url}/engine/memory/{endpoint}",
-            data=json.dumps({"botId": self._bot, **body}).encode(),
+            data=json.dumps({"botId": self._bot, **({"chatId": self._chat} if self._chat else {}), **body}).encode(),
             headers={"Content-Type": "application/json", "Authorization": f"Bearer {self._token}", "X-LeBot-Adapter-Version": VERSION},
             method="POST",
         )
@@ -156,6 +175,24 @@ class LeBotMemoryProvider(MemoryProvider):
             self._block = f"What you remember (your saved memory, not a new message from the user):\n{text}" if text else ""
         return self._block
 
+    def sync_turn(self, user_content: str, assistant_content: str, *, session_id: str = "", messages=None) -> None:
+        """Hand the finished turn to LeBot for its after-chat memory review. Never blocks the turn."""
+        if not self._primary or not self._token or not isinstance(user_content, str) or not user_content.strip():
+            return
+        chat = str(session_id or self._chat)
+        body = {"chatId": chat, "user": user_content[:20000], "assistant": str(assistant_content or "")[:20000]}
+
+        def send() -> None:
+            self._call("turn", body)
+
+        try:
+            spawn_context_thread(send, name="lebot-memory-turn").start()
+        except Exception as error:  # the review is a safety net; a failed hand-off must not surface
+            logger.debug("lebot-memory: could not hand the turn to LeBot: %s", error)
+
+    def on_session_switch(self, new_session_id: str, **kwargs) -> None:
+        self._chat = str(new_session_id or self._chat)
+
     def get_tool_schemas(self) -> list[dict[str, Any]]:
         return list(TOOLS)
 
@@ -173,6 +210,8 @@ class LeBotMemoryProvider(MemoryProvider):
                 body = {"kind": args.get("kind") or "profile", "text": str(args.get("fact") or "")}
                 if args.get("scope"):
                     body["scope"] = args["scope"]
+                if args.get("expires"):
+                    body["expires"] = str(args["expires"])
                 return json.dumps(self._call("write", body))
             if action == "forget":
                 return json.dumps(self._call("forget", {"id": str(args.get("id") or "")}))

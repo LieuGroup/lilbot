@@ -38,7 +38,22 @@ const migrations: string[] = [
    END;
    CREATE TRIGGER memory_facts_removed AFTER DELETE ON memory_facts BEGIN
      INSERT INTO memory_search (memory_search, rowid, text) VALUES ('delete', old.rowid, old.text);
-   END;`
+   END;`,
+  // Memory review: where a fact came from, pausing, expiry, and the turns waiting to be reviewed.
+  `ALTER TABLE memory_facts ADD COLUMN via TEXT NOT NULL DEFAULT 'chat' CHECK (via IN ('chat', 'review', 'app', 'import'));
+   ALTER TABLE memory_facts ADD COLUMN source_chat_id TEXT;
+   ALTER TABLE memory_facts ADD COLUMN paused INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE memory_facts ADD COLUMN expires_at INTEGER;
+   ALTER TABLE memory_facts ADD COLUMN forgotten_by TEXT;
+   CREATE TABLE review_turns (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     bot_id TEXT NOT NULL,
+     chat_id TEXT NOT NULL,
+     user_text TEXT NOT NULL,
+     assistant_text TEXT NOT NULL,
+     created_at INTEGER NOT NULL
+   );
+   CREATE INDEX review_turns_bot ON review_turns (bot_id, id);`
 ]
 
 /** `path` may be ':memory:' for tests. Applies any migration steps the file has not seen. */

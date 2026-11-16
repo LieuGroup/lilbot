@@ -1,7 +1,7 @@
 /** What LeBot needs from whatever runs the bots. Hermes is the first implementation; another engine
  *  (for example one speaking ACP) only has to satisfy this interface. An engine knows a bot's
  *  identity, setup and chats. It knows nothing about the user's preferences or LeBot's database. */
-import type { BotCreateInput, BotIdentity, BotSetup, BotUpdateInput, ModelProvider } from '../../shared/bot-schema'
+import type { BotCreateInput, BotIdentity, BotModel, BotSetup, BotUpdateInput, ModelProvider } from '../../shared/bot-schema'
 import type { ChatEvent, ChatSnapshot } from '../../shared/chat-schema'
 
 export type EngineBotDetail = BotIdentity & BotSetup
@@ -16,6 +16,13 @@ export interface MemoryConnection {
 export interface LegacyNotes {
   aboutUser: string[]
   ownNotes: string[]
+}
+
+export interface ReviewOptions {
+  /** The model to run the review on; without it, the bot's own. */
+  model?: BotModel
+  /** Called with every id the engine knows the review session by, before the review starts. */
+  onChat: (chatId: string) => void
 }
 
 export interface ChatOptions {
@@ -35,6 +42,12 @@ export interface BotEngine {
   /** Makes the bot read and write LeBot's memory instead of the engine's own, from its next
    *  session on. Returns the notes the engine had, so LeBot can keep them. */
   connectMemory(botId: string, connection: MemoryConnection): Promise<LegacyNotes>
+  /** Brings every connected bot's memory adapter up to this LeBot's version. Returns the bots it
+   *  updated. Called at start-up, so shipping a new adapter needs no manual step. */
+  refreshMemory(): Promise<string[]>
+  /** Runs `prompt` as a hidden session of the bot with only its memory tools, and resolves when
+   *  the bot has finished. Used by the after-chat memory review. */
+  reviewMemory(botId: string, prompt: string, options: ReviewOptions): Promise<void>
   /** Told when bots or their chats changed outside this server. Returns the function that stops it. */
   onBotsChanged(listener: () => void): () => void
 }
