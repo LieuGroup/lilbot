@@ -2,7 +2,7 @@
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import { LilBotError } from '../shared/protocol'
+import { LilBotError } from '../../shared/protocol'
 
 const SAFE_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/
 

@@ -2,11 +2,11 @@ import { describe, expect, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { openDatabase } from '../server/db/database'
-import { PrefsStore } from '../server/db/prefs-store'
-import { defaultAvatar } from '../shared/avatar'
+import { BotPrefsStore } from '../../server/bots/bot-prefs-store'
+import { openDatabase } from '../../server/database/database'
+import { defaultAvatar } from '../../shared/avatar'
 
-const store = () => new PrefsStore(openDatabase(':memory:'))
+const store = () => new BotPrefsStore(openDatabase(':memory:'))
 
 describe('bot preferences', () => {
   test('a bot nobody touched has stable defaults derived from its id', () => {
@@ -74,10 +74,10 @@ test('the database file survives being reopened and is not migrated twice', () =
   try {
     const path = join(dir, 'nested', 'lilbot.db')
     const first = openDatabase(path)
-    new PrefsStore(first).setMainChat('b1', 'chat-1')
+    new BotPrefsStore(first).setMainChat('b1', 'chat-1')
     first.close()
     const second = openDatabase(path)
-    expect(new PrefsStore(second).mainChat('b1')).toBe('chat-1')
+    expect(new BotPrefsStore(second).mainChat('b1')).toBe('chat-1')
     second.close()
   } finally {
     rmSync(dir, { recursive: true, force: true })

@@ -2,9 +2,8 @@
  *  conversation, so every device sees the same one. This hook opens it, follows its events, and
  *  reopens it after a reconnect so the transcript always comes from the server. */
 import { useCallback, useEffect, useRef, useState } from 'react'
-
+import { lilbot, messageOf } from '../app/lilbot-socket'
 import { useBotStore } from '../bots/bot-store'
-import { lilbot, messageOf } from '../lilbot-socket'
 import { applyChatEvent, chatFromSnapshot, emptyChat, withError, withUserMessage } from './chat-state'
 import { emptySlot, updateChat, useChatStore } from './chat-store'
 

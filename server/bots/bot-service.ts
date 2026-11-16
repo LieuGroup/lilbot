@@ -1,13 +1,13 @@
 /** What LilBot does with bots, whichever screen or client asks. It joins the three owners of a bot:
  *  the engine (identity, setup, chats), the user's preferences (database) and the bot's workspace
  *  folder. Transport (`client-session.ts`) sits above it; the engine and the stores sit below. */
-import type { Bot, BotCreateInput, BotDetail, BotIdentity, BotPrefsInput, BotUpdateInput, ModelProvider, Section } from '../shared/bot-schema'
-import type { ChatEvent } from '../shared/chat-schema'
-import type { MemoryFact, MemoryWriteInput } from '../shared/memory-schema'
-import { LilBotError } from '../shared/protocol'
-import type { PrefsStore } from './db/prefs-store'
-import type { BotEngine, MemoryConnection, OpenChat } from './engine/bot-engine'
-import type { MemoryService } from './memory/memory-service'
+import type { Bot, BotCreateInput, BotDetail, BotIdentity, BotPrefsInput, BotUpdateInput, ModelProvider, Section } from '../../shared/bot-schema'
+import type { ChatEvent } from '../../shared/chat-schema'
+import type { MemoryFact, MemoryWriteInput } from '../../shared/memory-schema'
+import { LilBotError } from '../../shared/protocol'
+import type { BotEngine, MemoryConnection, OpenChat } from '../engines/bot-engine'
+import type { MemoryService } from '../memory/memory-service'
+import type { BotPrefsStore } from './bot-prefs-store'
 import type { Workspaces } from './workspaces'
 
 export interface BotServiceOptions {
@@ -29,7 +29,7 @@ export class BotService {
 
   constructor(
     private engine: BotEngine,
-    private prefs: PrefsStore,
+    private prefs: BotPrefsStore,
     private workspaces: Workspaces,
     private memory: MemoryService,
     options: BotServiceOptions = {}

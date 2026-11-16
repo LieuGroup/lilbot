@@ -1,10 +1,10 @@
 /** One browser connection: checks each request, runs it on the bot service, and forwards chat events. */
 import type { z } from 'zod'
 
-import type { ChatEvent } from '../shared/chat-schema'
-import { type EventFrame, LilBotError, type Method, methods, RequestFrame, type ResponseFrame, type Results } from '../shared/protocol'
-import type { BotService } from './bot-service'
-import type { OpenChat } from './engine/bot-engine'
+import type { ChatEvent } from '../../shared/chat-schema'
+import { type EventFrame, LilBotError, type Method, methods, RequestFrame, type ResponseFrame, type Results } from '../../shared/protocol'
+import type { BotService } from '../bots/bot-service'
+import type { OpenChat } from '../engines/bot-engine'
 
 const MAX_OPEN_CHATS = 8
 
@@ -15,7 +15,7 @@ type AfterResponse = (task: () => void) => void
  *  method added to the protocol without a handler here does not compile. */
 type Handlers = { [M in Method]: (params: z.output<(typeof methods)[M]>, afterResponse: AfterResponse) => Promise<Results[M]> }
 
-export class ClientSession {
+export class BrowserSession {
   private chats = new Map<string, OpenChat>()
   private closed = false
 

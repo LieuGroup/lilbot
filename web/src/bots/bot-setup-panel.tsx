@@ -2,7 +2,7 @@ import { useParams } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 
 import type { Ability, BotDetail } from '../../../shared/bot-schema'
-import { lilbot, messageOf } from '../lilbot-socket'
+import { lilbot, messageOf } from '../app/lilbot-socket'
 import { Notice } from '../ui/controls'
 import { Panel } from '../ui/panel'
 import { BotForm } from './bot-form'

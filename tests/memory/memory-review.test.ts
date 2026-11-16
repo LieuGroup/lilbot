@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 
-import { openDatabase } from '../server/db/database'
-import { createEngineApi } from '../server/engine-api'
-import { MemoryReviewer, reviewPrompt } from '../server/memory/memory-reviewer'
-import { MemoryService } from '../server/memory/memory-service'
-import { MemoryStore } from '../server/memory/memory-store'
-import { ReviewQueue } from '../server/memory/review-queue'
-import { fakeEngine } from './helpers/fake-engine'
+import { openDatabase } from '../../server/database/database'
+import { createEngineApi } from '../../server/http/engine-api'
+import { MemoryReviewer, reviewPrompt } from '../../server/memory/memory-reviewer'
+import { MemoryService } from '../../server/memory/memory-service'
+import { MemoryStore } from '../../server/memory/memory-store'
+import { ReviewQueue } from '../../server/memory/review-queue'
+import { fakeEngine } from '../helpers/fake-engine'
 
 /** A reviewer, memory and engine endpoint on one in-memory database, with a clock the test moves. */
 function setup(settings: Partial<ConstructorParameters<typeof MemoryReviewer>[2]> = {}) {

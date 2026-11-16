@@ -6,10 +6,10 @@ import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
 
-import { type MemoryFact, MemoryKind, MemoryScope } from '../shared/memory-schema'
-import { LilBotError } from '../shared/protocol'
-import type { MemoryReviewer } from './memory/memory-reviewer'
-import { type MemoryService, shortId } from './memory/memory-service'
+import { type MemoryFact, MemoryKind, MemoryScope } from '../../shared/memory-schema'
+import { LilBotError } from '../../shared/protocol'
+import type { MemoryReviewer } from '../memory/memory-reviewer'
+import { type MemoryService, shortId } from '../memory/memory-service'
 
 const botId = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/)
 

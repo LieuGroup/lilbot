@@ -2,7 +2,7 @@
 import { create } from 'zustand'
 
 import { Bot } from '../../../shared/bot-schema'
-import { lilbot, messageOf } from '../lilbot-socket'
+import { lilbot, messageOf } from '../app/lilbot-socket'
 
 interface BotStore {
   connected: boolean

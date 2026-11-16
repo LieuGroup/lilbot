@@ -2,8 +2,8 @@ import { describe, expect, test } from 'bun:test'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { defaultAvatar } from '../shared/avatar'
-import { fakeService } from './helpers/fake-engine'
+import { defaultAvatar } from '../../shared/avatar'
+import { fakeService } from '../helpers/fake-engine'
 
 const ignore = () => {}
 

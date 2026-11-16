@@ -2,7 +2,7 @@
 import { type FormEvent, useEffect, useState } from 'react'
 
 import type { BotModel, ModelProvider } from '../../../shared/bot-schema'
-import { lilbot } from '../lilbot-socket'
+import { lilbot } from '../app/lilbot-socket'
 import { Button, Field, Notice, Select, TextArea, TextInput } from '../ui/controls'
 
 export interface BotFormValues {

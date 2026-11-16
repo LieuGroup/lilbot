@@ -10,5 +10,5 @@
     "skipLibCheck": true,
     "types": ["bun"]
   },
-  "include": ["server", "shared", "web/src", "tests", "scripts", "vite.config.ts"]
+  "include": ["server", "shared", "web/src", "tests", "live-checks", "vite.config.ts"]
 }

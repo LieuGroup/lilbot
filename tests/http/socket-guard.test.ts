@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 
-import { allowedHosts, socketAllowed } from '../server/socket-guard'
+import { allowedHosts, socketAllowed } from '../../server/http/socket-guard'
 
 const hosts = allowedHosts(3370, 'My-Machine.example.ts.net:8443, ')
 const request = (headers: Record<string, string>) => new Request('http://placeholder/ws', { headers })

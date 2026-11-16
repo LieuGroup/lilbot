@@ -1,10 +1,10 @@
 import { createRootRoute, createRoute, createRouter, Outlet, useParams, useRouterState } from '@tanstack/react-router'
 
-import { BotCreatePage } from './bots/bot-create-page'
-import { BotSetupPanel } from './bots/bot-setup-panel'
-import { BotSidebar } from './bots/bot-sidebar'
-import { ChatColumn } from './chat/chat-column'
-import { MemoryPanel } from './memory/memory-panel'
+import { BotCreatePage } from '../bots/bot-create-page'
+import { BotSetupPanel } from '../bots/bot-setup-panel'
+import { BotSidebar } from '../bots/bot-sidebar'
+import { ChatColumn } from '../chat/chat-column'
+import { MemoryPanel } from '../memory/memory-panel'
 
 /** Desktop: bot list beside the page. Phone: the bot list is the home screen, a page fills the screen. */
 function AppShell() {

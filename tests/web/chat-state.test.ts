@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { ChatEvent } from '../shared/chat-schema'
-import { applyChatEvent, type ChatView, chatFromSnapshot, emptyChat, withUserMessage } from '../web/src/chat/chat-state'
+import type { ChatEvent } from '../../shared/chat-schema'
+import { applyChatEvent, type ChatView, chatFromSnapshot, emptyChat, withUserMessage } from '../../web/src/chat/chat-state'
 
 const play = (chat: ChatView, ...events: ChatEvent[]) => events.reduce(applyChatEvent, chat)
 const texts = (chat: ChatView) => chat.items.map(item => (item.kind === 'tool' ? `tool:${item.name}` : `${item.kind}:${item.text}`))

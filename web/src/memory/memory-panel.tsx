@@ -2,8 +2,8 @@ import { useParams } from '@tanstack/react-router'
 import { type FormEvent, useCallback, useEffect, useState } from 'react'
 
 import { defaultScope, type MemoryFact, type MemoryKind } from '../../../shared/memory-schema'
+import { lilbot, messageOf } from '../app/lilbot-socket'
 import { useBotStore } from '../bots/bot-store'
-import { lilbot, messageOf } from '../lilbot-socket'
 import { Button, Notice, Select, TextArea } from '../ui/controls'
 import { Panel } from '../ui/panel'
 

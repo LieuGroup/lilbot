@@ -1,6 +1,6 @@
 import { useNavigate } from '@tanstack/react-router'
 
-import { lilbot } from '../lilbot-socket'
+import { lilbot } from '../app/lilbot-socket'
 import { PageHeader } from '../ui/page-header'
 import { BotForm } from './bot-form'
 import { useBotStore } from './bot-store'

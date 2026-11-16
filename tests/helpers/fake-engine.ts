@@ -3,13 +3,13 @@
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { BotService } from '../../server/bot-service'
-import { openDatabase } from '../../server/db/database'
-import { PrefsStore } from '../../server/db/prefs-store'
-import type { BotEngine, EngineBotDetail, OpenChat } from '../../server/engine/bot-engine'
+import { BotPrefsStore } from '../../server/bots/bot-prefs-store'
+import { BotService } from '../../server/bots/bot-service'
+import { Workspaces } from '../../server/bots/workspaces'
+import { openDatabase } from '../../server/database/database'
+import type { BotEngine, EngineBotDetail, OpenChat } from '../../server/engines/bot-engine'
 import { MemoryService } from '../../server/memory/memory-service'
 import { MemoryStore } from '../../server/memory/memory-store'
-import { Workspaces } from '../../server/workspaces'
 import type { BotIdentity } from '../../shared/bot-schema'
 import type { ChatEvent } from '../../shared/chat-schema'
 import { LilBotError } from '../../shared/protocol'
@@ -66,7 +66,7 @@ export function fakeEngine(options: { earlyEvents?: ChatEvent[] } = {}) {
 export function fakeService(options?: Parameters<typeof fakeEngine>[0]) {
   const fake = fakeEngine(options)
   const database = openDatabase(':memory:')
-  const prefs = new PrefsStore(database)
+  const prefs = new BotPrefsStore(database)
   const memory = new MemoryService(new MemoryStore(database))
   const root = mkdtempSync(join(tmpdir(), 'lilbot-ws-'))
   let changes = 0

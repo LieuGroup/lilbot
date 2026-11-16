@@ -6,19 +6,19 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { BotService } from '../server/bot-service'
-import { openDatabase } from '../server/db/database'
-import { PrefsStore } from '../server/db/prefs-store'
-import type { OpenChat } from '../server/engine/bot-engine'
-import { HermesEngine } from '../server/engine/hermes/hermes-engine'
-import { installMemory, MEMORY_ADAPTER_VERSION } from '../server/engine/hermes/hermes-memory-setup'
-import { HermesSocket } from '../server/engine/hermes/hermes-socket'
-import { createEngineApi, engineToken } from '../server/engine-api'
+import { BotPrefsStore } from '../server/bots/bot-prefs-store'
+import { BotService } from '../server/bots/bot-service'
+import { Workspaces } from '../server/bots/workspaces'
+import { openDatabase } from '../server/database/database'
+import type { OpenChat } from '../server/engines/bot-engine'
+import { HermesEngine } from '../server/engines/hermes/hermes-engine'
+import { installMemory, MEMORY_ADAPTER_VERSION } from '../server/engines/hermes/hermes-memory-setup'
+import { HermesSocket } from '../server/engines/hermes/hermes-socket'
+import { createEngineApi, engineToken } from '../server/http/engine-api'
 import { MemoryReviewer } from '../server/memory/memory-reviewer'
 import { MemoryService } from '../server/memory/memory-service'
 import { MemoryStore } from '../server/memory/memory-store'
 import { ReviewQueue } from '../server/memory/review-queue'
-import { Workspaces } from '../server/workspaces'
 import type { ChatEvent } from '../shared/chat-schema'
 
 const BOT_PREFIX = 'LilBot Memory Check'
@@ -37,7 +37,7 @@ const queue = new ReviewQueue(database)
 const [reviewProvider, reviewModel] = (process.env.LILBOT_REVIEW_MODEL ?? 'cliproxyapi::anthropic/claude-sonnet-5-5').split('::')
 const reviewer = new MemoryReviewer(queue, engine, { enabled: true, turns: 10, quietMs: 120_000, minTurns: 3, model: { provider: reviewProvider, model: reviewModel } })
 const engineApi = createEngineApi(memory, engineToken(scratch), PORT, { adapterVersion: MEMORY_ADAPTER_VERSION, reviewer })
-const bots = new BotService(engine, new PrefsStore(database), new Workspaces(join(scratch, 'workspaces')), memory)
+const bots = new BotService(engine, new BotPrefsStore(database), new Workspaces(join(scratch, 'workspaces')), memory)
 let memoryCalls = 0
 const adapterVersions = new Set<string>()
 const server = Bun.serve({

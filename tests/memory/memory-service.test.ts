@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 
-import { openDatabase } from '../server/db/database'
-import { MemoryService, shortId } from '../server/memory/memory-service'
-import { MemoryStore } from '../server/memory/memory-store'
+import { openDatabase } from '../../server/database/database'
+import { MemoryService, shortId } from '../../server/memory/memory-service'
+import { MemoryStore } from '../../server/memory/memory-store'
 
 /** A service on an empty database with a clock the test moves forward one day per write. */
 function memory() {

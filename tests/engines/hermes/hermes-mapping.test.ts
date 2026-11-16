@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
-import { botDetailFromProfile, botFromProfile, profileIdFor, providersFromModelOptions } from '../server/engine/hermes/hermes-bot-mapping'
-import { chatEventFrom, itemsFromRows, toolFailed } from '../server/engine/hermes/hermes-chat-mapping'
+import { botDetailFromProfile, botFromProfile, profileIdFor, providersFromModelOptions } from '../../../server/engines/hermes/hermes-bot-mapping'
+import { chatEventFrom, itemsFromRows, toolFailed } from '../../../server/engines/hermes/hermes-chat-mapping'
 
 const event = (type: string, payload: Record<string, unknown> = {}) => ({ type, payload })
 

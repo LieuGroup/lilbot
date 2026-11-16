@@ -24,7 +24,7 @@ function prefsFrom(botId: string, row: PrefsRow | null): BotPrefs {
   return { avatar: stored.success ? stored.data : defaultAvatar(botId), sectionId: row?.section_id ?? null, pinned: row?.pinned === 1, hidden: row?.hidden === 1 }
 }
 
-export class PrefsStore {
+export class BotPrefsStore {
   constructor(private db: Database) {}
 
   private row(botId: string): PrefsRow | null {

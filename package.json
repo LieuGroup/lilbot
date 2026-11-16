@@ -11,8 +11,8 @@
     "lint": "biome check .",
     "format": "biome check --write .",
     "test": "bun test tests",
-    "check:live": "bun scripts/live-check.ts",
-    "check:memory": "bun scripts/memory-live-check.ts"
+    "check:live": "bun live-checks/chat-check.ts",
+    "check:memory": "bun live-checks/memory-check.ts"
   },
   "dependencies": {
     "@tanstack/react-router": "^1.170.46",

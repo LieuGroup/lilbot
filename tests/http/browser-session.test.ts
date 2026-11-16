@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'bun:test'
-import { ClientSession } from '../server/client-session'
-import type { ChatEvent } from '../shared/chat-schema'
-import { fakeService } from './helpers/fake-engine'
+import { BrowserSession } from '../../server/http/browser-session'
+import type { ChatEvent } from '../../shared/chat-schema'
+import { fakeService } from '../helpers/fake-engine'
 
 function connect(options?: Parameters<typeof fakeService>[0]) {
   const fake = fakeService(options)
   const frames: any[] = []
-  const session = new ClientSession(fake.service, frame => frames.push(frame))
+  const session = new BrowserSession(fake.service, frame => frames.push(frame))
   let nextId = 1
   const call = async (method: string, params: unknown = {}) => {
     const id = nextId++

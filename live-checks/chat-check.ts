@@ -5,13 +5,13 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { BotService } from '../server/bot-service'
-import { openDatabase } from '../server/db/database'
-import { PrefsStore } from '../server/db/prefs-store'
-import { HermesEngine } from '../server/engine/hermes/hermes-engine'
+import { BotPrefsStore } from '../server/bots/bot-prefs-store'
+import { BotService } from '../server/bots/bot-service'
+import { Workspaces } from '../server/bots/workspaces'
+import { openDatabase } from '../server/database/database'
+import { HermesEngine } from '../server/engines/hermes/hermes-engine'
 import { MemoryService } from '../server/memory/memory-service'
 import { MemoryStore } from '../server/memory/memory-store'
-import { Workspaces } from '../server/workspaces'
 import type { ChatEvent } from '../shared/chat-schema'
 
 const BOT_NAME = 'LilBot Live Check'
@@ -21,7 +21,7 @@ const TURN_TIMEOUT_MS = 90_000
 const scratch = mkdtempSync(join(tmpdir(), 'lilbot-live-'))
 const engine = new HermesEngine()
 const database = openDatabase(join(scratch, 'lilbot.db'))
-const bots = new BotService(engine, new PrefsStore(database), new Workspaces(join(scratch, 'workspaces')), new MemoryService(new MemoryStore(database)))
+const bots = new BotService(engine, new BotPrefsStore(database), new Workspaces(join(scratch, 'workspaces')), new MemoryService(new MemoryStore(database)))
 let botId = ''
 let failures = 0
 

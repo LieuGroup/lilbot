@@ -2,23 +2,22 @@
  *  Binds to loopback only; reach it from other devices through the tailnet (`tailscale serve`). */
 import { homedir } from 'node:os'
 import { join, normalize } from 'node:path'
-
-import { BotService } from './bot-service'
-import { ClientSession } from './client-session'
-import { openDatabase } from './db/database'
-import { PrefsStore } from './db/prefs-store'
-import { HermesEngine } from './engine/hermes/hermes-engine'
-import { MEMORY_ADAPTER_VERSION } from './engine/hermes/hermes-memory-setup'
-import { createEngineApi, engineToken } from './engine-api'
+import { BotPrefsStore } from './bots/bot-prefs-store'
+import { BotService } from './bots/bot-service'
+import { Workspaces } from './bots/workspaces'
+import { openDatabase } from './database/database'
+import { HermesEngine } from './engines/hermes/hermes-engine'
+import { MEMORY_ADAPTER_VERSION } from './engines/hermes/hermes-memory-setup'
+import { BrowserSession } from './http/browser-session'
+import { createEngineApi, engineToken } from './http/engine-api'
+import { allowedHosts, socketAllowed } from './http/socket-guard'
 import { defaultReviewSettings, MemoryReviewer } from './memory/memory-reviewer'
 import { MemoryService } from './memory/memory-service'
 import { MemoryStore } from './memory/memory-store'
 import { ReviewQueue } from './memory/review-queue'
-import { allowedHosts, socketAllowed } from './socket-guard'
-import { Workspaces } from './workspaces'
 
 interface SocketData {
-  session?: ClientSession
+  session?: BrowserSession
 }
 
 const PORT = Number(process.env.LILBOT_PORT ?? 3370)
@@ -43,7 +42,7 @@ const database = openDatabase(join(DATA_DIR, 'lilbot.db'))
 const memory = new MemoryService(new MemoryStore(database))
 const memoryChanged = () => server.publish(EVERYONE, JSON.stringify({ event: 'memory.changed' }))
 const token = engineToken(DATA_DIR)
-const bots = new BotService(engine, new PrefsStore(database), new Workspaces(WORKSPACES_DIR), memory, {
+const bots = new BotService(engine, new BotPrefsStore(database), new Workspaces(WORKSPACES_DIR), memory, {
   changed: botsChanged,
   memoryChanged,
   memoryConnection: { url: `http://127.0.0.1:${PORT}`, tokenFile: join(DATA_DIR, 'engine-token') }
@@ -117,7 +116,7 @@ const server = Bun.serve<SocketData>({
   websocket: {
     open(socket) {
       socket.subscribe(EVERYONE)
-      socket.data.session = new ClientSession(bots, frame => {
+      socket.data.session = new BrowserSession(bots, frame => {
         // A send after the browser left is expected and harmless.
         if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(frame))
       })

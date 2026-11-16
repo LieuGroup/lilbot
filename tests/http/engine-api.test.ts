@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 
-import { openDatabase } from '../server/db/database'
-import { createEngineApi } from '../server/engine-api'
-import { MemoryService } from '../server/memory/memory-service'
-import { MemoryStore } from '../server/memory/memory-store'
+import { openDatabase } from '../../server/database/database'
+import { createEngineApi } from '../../server/http/engine-api'
+import { MemoryService } from '../../server/memory/memory-service'
+import { MemoryStore } from '../../server/memory/memory-store'
 
 const TOKEN = 'test-token'
 
