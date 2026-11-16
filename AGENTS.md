@@ -74,7 +74,8 @@ instructions, model, workspace, abilities read-only), chat with live tool rows, 
 Memory (slice 4): LilBot's own memory system with a Memory panel; new bots use it from their first session, an
 existing bot is connected from its Memory panel. Hermes' default bot (Chief of Staff) is a test bot Oscar does not
 use: nothing about it needs protecting.
-It includes an after-chat review that saves what a chat missed.
+It includes an after-chat review that saves what a chat missed. The user can choose a primary bot in Setup; it
+appears first in the roster and its conversation opens on app entry.
 Next: the Grok Bot style roster and details panel (sections, pin, hide, avatars, unread, Activity and Library
 tabs), the nightly memory tidy-up, delete a bot, edit abilities, routines.
 Desktop (Tauri) and iOS (Expo) come after the web app. Approvals are off in Hermes by Oscar's choice, so there are
@@ -107,13 +108,15 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
   single-use ticket from `hermes gateway attach --json` (about one second, the slowest step in opening a chat).
 - `server/bots/bot-service.ts`: what LilBot does with bots, whichever client asks. It joins the three owners of a bot:
   the engine (identity, setup, chats), the user's preferences (`server/bots/bot-prefs-store.ts`) and the bot's workspace folder
-  (`server/bots/workspaces.ts`). It decides which chat is a bot's main conversation. Layers, top to bottom:
+  (`server/bots/workspaces.ts`). It decides which chat is a bot's main conversation and resolves the user's primary
+  bot. Layers, top to bottom:
   `http/browser-session.ts` (transport) -> `bots/bot-service.ts` -> engine and stores. Keep it that way.
 - `server/http/browser-session.ts`: one per browser connection. Validates requests, runs them on the service, forwards
   chat events. A typed handler map: a protocol method without a handler does not compile.
 - `server/database/`: LilBot's own SQLite database (`bun:sqlite`), by default `~/.local/share/lilbot/lilbot.db`
   (`LILBOT_DATA_DIR`). It holds only what belongs to LilBot and the user: sidebar preferences, sections, and each
-  bot's main-conversation pointer. Never copy into it what the engine stores. `database.ts` owns the schema as an
+  bot's main-conversation pointer, plus the single primary-bot choice. Never copy into it what the engine stores.
+  `database.ts` owns the schema as an
   ordered list of migration steps (add a step, never edit a shipped one); each store file owns the SQL of its tables.
 - Workspaces: one folder per bot under `~/lilbot/workspaces/<bot id>` (`LILBOT_WORKSPACES_DIR`), created on first use
   and passed to the engine as the working directory of new chats. A resumed chat keeps the folder it was made with.
@@ -143,8 +146,14 @@ What a bot is and who owns each part. Decided with Oscar on 2026-11-16 unless ma
 | Workspace: one folder per bot on the shared computer | the bot | `~/lilbot/workspaces/<bot id>`, the working directory of its chats |
 | Conversation: one main conversation per bot; a new session replaces it as the main one | the engine | Hermes sessions; LilBot's database names the main one |
 | Memory | LilBot | facts in LilBot's database; the engine reads and writes them through an adapter |
-| Avatar, section, pinned, hidden (unread later) | the user | LilBot's own SQLite database |
+| Primary bot, avatar, section, pinned, hidden (unread later) | the user | LilBot's own SQLite database |
 
+- A bot has no type, role or template. Its `function` is a short roster description, not a category.
+- Instructions define what makes bots different; every bot has the same skills and tools by default.
+- The user chooses one primary bot and can still talk to any bot directly. The choice lives in LilBot's
+  database, defaults to the engine's default bot, and falls back to that bot if the chosen one disappears.
+  Changing it only moves the mark. The roster puts it first; app entry opens its conversation. Handoff
+  between bots and extra knowledge for the primary bot are not decided.
 - "Workspace" means exactly this: each bot has its own folder on the shared computer. It is not a level above bots.
   All bots share one machine (the leader); other machines come later as execution environments.
 - Long conversations are the engine's job, and Hermes already does it: it compresses the conversation

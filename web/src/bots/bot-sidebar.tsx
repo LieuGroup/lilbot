@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router'
 
 import { BotBadge } from '../ui/controls'
 import { useBotStore } from './bot-store'
+import { rosterBots } from './primary-bot'
 
 export function BotSidebar() {
   const { bots, loaded, connected, error } = useBotStore()
@@ -20,8 +21,8 @@ export function BotSidebar() {
 
       <ul className="flex-1 overflow-y-auto p-2">
         {!loaded && <li className="px-2 py-3 text-sm text-muted">{error || (connected ? 'Loading bots...' : 'Connecting...')}</li>}
-        {bots.map(bot => (
-          <li key={bot.id}>
+        {rosterBots(bots).map(bot => (
+          <li key={bot.id} className={bot.isPrimary ? 'mb-2 border-b border-border pb-2' : undefined}>
             <Link
               to="/bots/$botId"
               params={{ botId: bot.id }}
@@ -32,6 +33,7 @@ export function BotSidebar() {
               <BotBadge name={bot.name} avatar={bot.prefs.avatar} />
               <span className="min-w-0">
                 <span className="block truncate font-medium">{bot.name}</span>
+                {bot.isPrimary && <span className="block text-xs text-muted">Primary</span>}
                 <span className="block truncate text-sm text-muted">{bot.function || 'No function set'}</span>
               </span>
             </Link>

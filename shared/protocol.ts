@@ -15,6 +15,7 @@ export const methods = {
   'bots.create': BotCreateInput,
   'bots.update': BotUpdateInput,
   'bots.setPrefs': BotPrefsInput,
+  'bots.setPrimary': z.object({ botId }),
   'sections.list': z.object({}),
   'sections.create': z.object({ name: sectionName }),
   'sections.rename': z.object({ sectionId: z.string().min(1), name: sectionName }),
@@ -48,6 +49,7 @@ export interface Results {
   'bots.get': BotDetail
   'bots.create': Bot
   'bots.update': BotDetail
+  'bots.setPrimary': { ok: true }
   'bots.setPrefs': Bot
   'sections.list': Section[]
   'sections.create': Section
