@@ -12,11 +12,14 @@ import { Workspaces } from './bots/workspaces'
 import { createT3Bridge } from './connections/t3-bridge'
 import { T3_BRIDGE_PATH, T3_DEFAULT_MCP_URL, t3Connection } from './connections/t3-connection'
 import { T3Grants } from './connections/t3-grant'
+import { ComputerService } from './computers/computer-service'
+import { ComputerStore } from './computers/computer-store'
 import { openDatabase } from './database/database'
 import { HermesEngine } from './engines/hermes/hermes-engine'
 import { MEMORY_ADAPTER_VERSION } from './engines/hermes/hermes-memory-setup'
 import { BrowserSession } from './http/browser-session'
 import { createEngineApi, engineToken } from './http/engine-api'
+import { startPublicDoor } from './http/public-door'
 import { allowedHosts, socketAllowed } from './http/socket-guard'
 import { threadEvents } from './http/thread-events'
 import { LibraryService } from './library/library-service'
@@ -62,6 +65,13 @@ const memoryChanged = () => server.publish(EVERYONE, JSON.stringify({ event: 'me
 const token = engineToken(DATA_DIR)
 const store = new BotStore(database)
 const threadStore = new ThreadStore(database)
+const computers = new ComputerService(
+  new ComputerStore(database),
+  id => store.exists(id),
+  id => new Workspaces(WORKSPACES_DIR).pathFor(id),
+  () => server.publish(EVERYONE, JSON.stringify({ event: 'computers.changed' }))
+)
+setInterval(() => computers.tick(), 1000)
 const routineStore = new RoutineStore(database)
 const library = new LibraryService(
   new LibraryStore(database),
@@ -81,6 +91,7 @@ const bots = new BotService(engine, store, prefs, new Workspaces(WORKSPACES_DIR)
   skills,
   cleanupBot: botId => {
     routineStore.forgetBot(botId)
+    computers.forgetBot(botId)
     activity.forgetBot(botId)
     new ReviewQueue(database).forgetBot(botId)
   },
@@ -166,6 +177,7 @@ async function prepareMemory() {
 prepareMemory().catch(error => console.error('[memory] could not prepare memory for the bots:', error instanceof Error ? error.message : error))
 
 const engineApi = createEngineApi(memory, token, PORT, {
+  computers,
   bots,
   skills,
   routines,
@@ -258,7 +270,8 @@ const server = Bun.serve<SocketData>({
         routines,
         library,
         threads,
-        () => ({ t3: t3Grants.status() })
+        () => ({ t3: t3Grants.status() }),
+        computers
       )
     },
     message(socket, message) {
@@ -277,3 +290,6 @@ try {
 }
 
 console.log(`LilBot listening on http://${server.hostname}:${server.port} (engine: Hermes)`)
+
+// Off until the dedicated tunnel is provisioned. Never target the private app port.
+if (process.env.LILBOT_PUBLIC_ENABLED === '1') startPublicDoor(computers, Number(process.env.LILBOT_PUBLIC_PORT ?? 3372))

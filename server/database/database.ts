@@ -96,7 +96,14 @@ const migrations: string[] = [
      sourceChat TEXT NOT NULL, text TEXT NOT NULL, kind TEXT NOT NULL, chatId TEXT, base INTEGER,
      status TEXT NOT NULL DEFAULT 'pending'
    );
-   CREATE TABLE thread_chats (chat_id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, thread_id TEXT NOT NULL);`
+   CREATE TABLE thread_chats (chat_id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, thread_id TEXT NOT NULL);`,
+  // Native computers: revocable public keys, one-use bootstrap and durable request identities.
+  `CREATE TABLE computers (id TEXT PRIMARY KEY, hello TEXT NOT NULL, public_key TEXT, last_seen INTEGER, revoked INTEGER NOT NULL DEFAULT 0);
+   CREATE TABLE computer_codes (hash TEXT PRIMARY KEY, expires_at INTEGER NOT NULL);
+   CREATE TABLE computer_nonces (computer_id TEXT NOT NULL, nonce TEXT NOT NULL, expires_at INTEGER NOT NULL, PRIMARY KEY(computer_id,nonce));
+   CREATE TABLE computer_requests (id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, computer_id TEXT NOT NULL REFERENCES computers(id), request_id TEXT NOT NULL,
+     operation TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', result TEXT, created_at INTEGER NOT NULL, UNIQUE(bot_id,computer_id,request_id));
+   CREATE INDEX computer_pending ON computer_requests(computer_id,status);`
 ]
 
 /** `path` may be ':memory:' for tests. Applies any migration steps the file has not seen. */

@@ -14,5 +14,5 @@
       "@/*": ["./web/src/*"]
     }
   },
-  "include": ["server", "shared", "web/src", "tests", "live-checks", "vite.config.ts"]
+  "include": ["server", "helper", "shared", "web/src", "tests", "live-checks", "vite.config.ts"]
 }

@@ -88,6 +88,7 @@ export class BotRuntimes {
   async state(bot: BotRecord): Promise<RuntimeState> {
     this.validateMode(bot)
     try {
+      if (this.connection) await this.engine.configureComputers?.(bot.engineBotId, { ...this.connection, botId: bot.id })
       if (this.skills && this.connection) {
         if (!this.skillsImported.has(bot.id) && !this.skills.importedBot(bot.id)) {
           for (const path of this.engine.userSkillPaths?.(bot.engineBotId) ?? []) this.skills.import(path, files(path))

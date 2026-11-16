@@ -15,6 +15,9 @@ const chatId = z.string().min(1)
 export const methods = {
   'threads.list': z.object({ botId }),
   'threads.open': z.object({ botId, threadId: z.string().min(1) }),
+  'computers.list': z.object({}),
+  'computers.installCode': z.object({}),
+  'computers.remove': z.object({ computer: z.string().min(1) }),
   'skills.list': z.object({ botId }),
   'skills.read': z.object({ botId, name: z.string() }),
   'skills.setEnabled': z.object({ botId, name: z.string(), enabled: z.boolean() }),
@@ -69,6 +72,9 @@ export type Params<M extends Method> = z.input<(typeof methods)[M]>
 export interface Results {
   'threads.list': import('./thread-schema').BotThread[]
   'threads.open': import('./thread-schema').BotThread
+  'computers.list': import('./computer-schema').Computer[]
+  'computers.installCode': { code: string; expiresAt: number }
+  'computers.remove': { ok: true }
   'skills.list': import('./skills-schema').Skill[]
   'skills.read': Record<string, string>
   'skills.setEnabled': { ok: true }
@@ -126,6 +132,7 @@ export type EventFrame =
   | { event: 'threads.changed' }
   /** A connection's state changed (for example T3 Code refused LilBot's sign-in). */
   | { event: 'connections.changed' }
+  | { event: 'computers.changed' }
 
 /** An error whose message is safe and useful to show to the user. */
 export class LilBotError extends Error {

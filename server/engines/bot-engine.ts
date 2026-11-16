@@ -82,6 +82,7 @@ export interface BotEngine {
   /** Make LilBot's MCP connections available to this runtime from its next session. Safe to repeat. */
   prepareConnections?(engineBotId: string, connections: McpConnection[]): Promise<void>
   userSkillPaths?(id: string): string[]
+  configureComputers?(id: string, settings: { url: string; tokenFile: string; botId: string }): Promise<void>
   configureSkills?(id: string, settings: { root: string; url: string; tokenFile: string; botId: string; disabled: string[]; names: string[] }): Promise<void>
   /** Refuse an unavailable model before an identity edit is saved. Must not apply the old identity. */
   validateModel(model: BotModel): Promise<void>

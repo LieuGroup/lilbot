@@ -17,6 +17,7 @@ import type { LibraryService } from '../library/library-service'
 import type { MemoryReviewer } from '../memory/memory-reviewer'
 import { type MemoryService, shortId } from '../memory/memory-service'
 import type { RoutineService } from '../routines/routine-service'
+import { computerApi } from './computer-api'
 import { routineApi } from './routine-api'
 
 const botId = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/)
@@ -61,6 +62,7 @@ const json = (status: number, body: unknown) => Response.json(body, { status })
 
 export interface EngineApiOptions {
   threads?: import('../threads/thread-service').ThreadService
+  computers?: import('../computers/computer-service').ComputerService
   skills?: import('../skills/skills-service').SkillsService
   bots?: BotService
   routines?: RoutineService
@@ -104,7 +106,13 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
         return json(422, { error: 'Cannot give this file. Use a regular file inside your workspace, at most 50 MiB.' })
       }
     }
-    if (pathname === '/engine/bots/create' || pathname.startsWith('/engine/routines/') || pathname.startsWith('/engine/skills/') || pathname.startsWith('/engine/threads/')) {
+    if (
+      pathname === '/engine/bots/create' ||
+      pathname.startsWith('/engine/routines/') ||
+      pathname.startsWith('/engine/skills/') ||
+      pathname.startsWith('/engine/threads/') ||
+      pathname.startsWith('/engine/computers/')
+    ) {
       try {
         const capability = request.headers.get('x-lilbot-bot-capability') ?? ''
         const caller = (await options.bots?.listBots())?.find(bot => matchesCapability(token, bot.id, capability))
@@ -121,6 +129,10 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
           if (pathname.endsWith('/list')) return json(200, await options.threads.list(caller.id))
           if (pathname.endsWith('/open')) return json(200, await options.threads.open(caller.id, String(body.threadId)))
           return json(404, { error: 'Unknown thread operation.' })
+        }
+        if (pathname.startsWith('/engine/computers/')) {
+          if (!options.computers) return json(404, { error: 'Computers unavailable.' })
+          return json(200, await computerApi(options.computers, caller.id, pathname.slice('/engine/computers/'.length), await request.json()))
         }
         if (pathname.startsWith('/engine/skills/')) {
           if (!options.skills) return json(404, { error: 'Skills unavailable.' })
@@ -146,7 +158,7 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
         if (!input.success) return json(400, { error: 'Invalid bot creation request.' })
         return json(200, await options.bots.createFromBot(caller.id, input.data))
       } catch (error) {
-        return json(error instanceof z.ZodError ? 400 : error instanceof LilBotError ? 422 : 500, { error: error instanceof Error ? error.message : 'Creation failed.' })
+        return json(error instanceof z.ZodError ? 400 : error instanceof LilBotError ? 422 : 500, { error: error instanceof Error ? error.message : 'Request failed.' })
       }
     }
     if (!Object.hasOwn(routes, pathname)) return json(404, { error: 'Unknown endpoint.' })
