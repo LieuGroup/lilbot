@@ -37,6 +37,12 @@ interface Uses {
 }
 
 const methods: Record<string, Uses> = {
+  'session.list': { table: 'x-canonical-methods', sends: ['scope', 'limit', 'include_hidden'], reads: ['sessions'] },
+  'session.events.since': {
+    table: 'x-canonical-methods',
+    sends: ['session_id', 'last_sequence', 'replay_epoch'],
+    reads: ['events', 'replay_epoch', 'last_sequence', 'open_requests', 'truncated']
+  },
   'session.create': {
     table: 'x-canonical-methods',
     sends: ['source', 'request_id', 'client', 'cwd', 'cwd_explicit'],
@@ -59,6 +65,7 @@ const methods: Record<string, Uses> = {
 const events: Record<string, string[]> = {
   'gateway.ready': [],
   'message.start': [],
+  'message.interim': ['text'],
   'thinking.delta': ['text'],
   'message.delta': ['text'],
   'tool.start': ['tool_id', 'name', 'context'],
@@ -89,6 +96,16 @@ describe.skipIf(!installed)('Hermes wire contract', () => {
       expect(reads.filter(field => !payload.has(field))).toEqual([])
     })
   }
+
+  test('activity replay and list fields are declared', () => {
+    for (const [name, used] of Object.entries({
+      CanonicalSessionListRow: ['session_id', 'running', 'started_at'],
+      CanonicalReplayEvent: ['type', 'payload', 'seq'],
+      CanonicalEventsResult: ['replay_epoch', 'last_sequence', 'open_requests', 'truncated']
+    })) {
+      expect(used.filter(key => !fields(contract.components.schemas[name]).has(key))).toEqual([])
+    }
+  })
 
   test('usage still reports the context size', () => {
     expect(Object.keys(contract.components.schemas.Usage?.properties ?? {})).toContain('context_used')

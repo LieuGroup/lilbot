@@ -137,6 +137,15 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
   and passed to the engine as the working directory of new chats. A resumed chat keeps the folder it was made with.
 - The server pushes `bots.changed` to every connected browser when a bot, a preference or a section changes, or
   when Hermes reports that sessions or skills changed. Browsers answer by fetching the bot list again.
+- `server/activity/` owns live per-session status and durable per-bot unread. `bots.list` includes `activity`
+  (status, text, machine, unread); `bots.changed` pushes changes. `activity.setUnread` sets unread manually.
+  Opening a chat marks its bot read, and any connected viewer keeps it read until the chat closes.
+  Finished/failed statuses settle after eight seconds. The Hermes adapter keeps one persistent observer
+  socket per bot, polling in parallel once per second and reconnecting on failure with capped exponential backoff. It reads visible live sessions
+  and incremental replay events without resuming them; an epoch change or truncated replay gets one
+  full baseline read. Derived session state survives sweeps, and removed profiles release their sockets.
+  Hidden memory reviews are excluded. Replay cursors prevent old replies becoming unread again after restart.
+  `LILBOT_BOT_IDS` restricts the engine to a comma-separated allowlist for isolated test servers.
 - `server/http/socket-guard.ts`: who may open the socket (allowed Host names plus same-origin). The tailnet name is set
   in the service's `LILBOT_ALLOWED_HOSTS`, not in code.
 - `web/`: `app/` (start-up, routes, the connection `lilbot-socket.ts`, styles), `bots/` (store, sidebar, form, create page, Setup panel), `chat/` (pure
@@ -167,7 +176,7 @@ What a bot is and who owns each part. Decided with Oscar on 2026-11-16 unless ma
 | Workspace: one folder per bot on the shared computer | the bot | `~/lilbot/workspaces/<bot id>`, the working directory of its chats |
 | Conversation: one main conversation per bot; a new session replaces it as the main one | the engine | Hermes sessions; LilBot's database names the main one |
 | Memory | LilBot | facts in LilBot's database; the engine reads and writes them through an adapter |
-| Primary bot, avatar, section, pinned, hidden (unread later) | the user | LilBot's own SQLite database |
+| Primary bot, avatar, section, pinned, hidden, unread | the user | LilBot's own SQLite database |
 
 - A bot has no type, role or template. Its `function` is a short roster description, not a category.
 - Instructions define what makes bots different; every bot has the same skills and tools by default.
@@ -298,8 +307,7 @@ artwork, names or text.
 
 ## Known gaps
 
-- Unread and "working" markers in the roster need the engine's per-chat activity pushed to the server; today only
-  an open chat reports it. Add a `last_read` column and an activity event when the roster is built.
+- Activity observation polls persistent profile-bound sockets every second; very short activity may only be seen at completion. Hermes live listings expose at most 200 sessions per profile. A future host-scoped subscription could reduce latency.
 - Opening a chat loads its whole history. A long-lived conversation needs paging and stable item ids
   (Hermes: `omit_messages` on resume plus `session.transcript`).
 - A bot's display name is still stored on the Hermes profile (`ui_meta.lilbot.name`), written as one whole value.

@@ -1,6 +1,8 @@
 /** What LilBot needs from whatever runs the bots. Hermes is the first implementation; another engine
  *  (for example one speaking ACP) only has to satisfy this interface. An engine knows a bot's
  *  identity, setup and chats. It knows nothing about the user's preferences or LilBot's database. */
+
+import type { ActivityEvent } from '../../shared/activity-schema'
 import type { BotCreateInput, BotIdentity, BotModel, BotSetup, BotUpdateInput, ModelProvider } from '../../shared/bot-schema'
 import type { ChatEvent, ChatSnapshot } from '../../shared/chat-schema'
 
@@ -31,6 +33,7 @@ export interface ChatOptions {
 }
 
 export interface BotEngine {
+  watchActivity?(listener: (event: ActivityEvent) => void, cursor: (botId: string, chatId: string) => string | undefined): () => void
   listBots(): Promise<BotIdentity[]>
   getBot(botId: string): Promise<EngineBotDetail>
   createBot(input: BotCreateInput): Promise<BotIdentity>
