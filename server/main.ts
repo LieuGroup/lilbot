@@ -1,5 +1,6 @@
 /** LilBot server: serves the built web app and answers the browser's `/ws` requests through the bot engine.
  *  Binds to loopback only; reach it from other devices through the tailnet (`tailscale serve`). */
+
 import { homedir } from 'node:os'
 import { join, normalize } from 'node:path'
 import { ActivityService } from './activity/activity-service'
@@ -14,6 +15,8 @@ import { MEMORY_ADAPTER_VERSION } from './engines/hermes/hermes-memory-setup'
 import { BrowserSession } from './http/browser-session'
 import { createEngineApi, engineToken } from './http/engine-api'
 import { allowedHosts, socketAllowed } from './http/socket-guard'
+import { LibraryService } from './library/library-service'
+import { LibraryStore } from './library/library-store'
 import { defaultReviewSettings, MemoryReviewer } from './memory/memory-reviewer'
 import { MemoryService } from './memory/memory-service'
 import { MemoryStore } from './memory/memory-store'
@@ -51,6 +54,12 @@ const memoryChanged = () => server.publish(EVERYONE, JSON.stringify({ event: 'me
 const token = engineToken(DATA_DIR)
 const store = new BotStore(database)
 const routineStore = new RoutineStore(database)
+const library = new LibraryService(
+  new LibraryStore(database),
+  id => new Workspaces(WORKSPACES_DIR).pathFor(id),
+  id => store.exists(id),
+  botId => server.publish(EVERYONE, JSON.stringify({ event: 'library.changed', botId }))
+)
 const bots = new BotService(engine, store, new BotPrefsStore(database), new Workspaces(WORKSPACES_DIR), memory, {
   cleanupBot: botId => {
     routineStore.forgetBot(botId)
@@ -114,6 +123,7 @@ prepareMemory().catch(error => console.error('[memory] could not prepare memory 
 const engineApi = createEngineApi(memory, token, PORT, {
   bots,
   routines,
+  library,
   botExists: id => store.exists(id),
   onMemoryChanged: memoryChanged,
   adapterVersion: MEMORY_ADAPTER_VERSION,
@@ -151,6 +161,26 @@ const server = Bun.serve<SocketData>({
     }
 
     if (url.pathname.startsWith('/engine/')) return engineApi(request, url.pathname)
+    if (url.pathname.startsWith('/api/library/')) {
+      if (!socketAllowed(request, ALLOWED_HOSTS) || request.headers.get('sec-fetch-site') === 'cross-site') return new Response('Forbidden', { status: 403 })
+      if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 })
+      const parts = url.pathname.split('/')
+      if (parts.length !== 5) return new Response('Not found', { status: 404 })
+      try {
+        const file = await library.content(decodeURIComponent(parts[3]), decodeURIComponent(parts[4]))
+        return new Response(file.data, {
+          headers: {
+            'Content-Type': file.mime,
+            'Content-Disposition': 'attachment',
+            'X-Content-Type-Options': 'nosniff',
+            'Content-Security-Policy': "sandbox; default-src 'none'",
+            'Cache-Control': 'no-store'
+          }
+        })
+      } catch {
+        return new Response('File missing or unavailable', { status: 404 })
+      }
+    }
     if (url.pathname === '/api/health') return Response.json({ ok: true, engine: 'hermes' })
     if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 })
 
@@ -171,7 +201,8 @@ const server = Bun.serve<SocketData>({
           if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(frame))
         },
         activity,
-        routines
+        routines,
+        library
       )
     },
     message(socket, message) {
