@@ -38,6 +38,13 @@ export class ClientSession {
       return { ok: true }
     },
     'models.list': () => this.bots.listModels(),
+    'memory.list': ({ botId }) => this.bots.listMemory(botId),
+    'memory.write': input => this.bots.writeMemory(input),
+    'memory.forget': async ({ factId }) => {
+      this.bots.forgetMemory(factId)
+      return { ok: true }
+    },
+    'memory.connect': ({ botId }) => this.bots.connectMemory(botId),
     'chat.open': ({ botId, chatId }, afterResponse) => this.track(afterResponse, onEvent => this.bots.openChat(botId, chatId, onEvent)),
     'chat.new': ({ botId }, afterResponse) => this.track(afterResponse, onEvent => this.bots.newChat(botId, onEvent)),
     'chat.send': async ({ chatId, text }) => {

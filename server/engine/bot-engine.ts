@@ -6,6 +6,18 @@ import type { ChatEvent, ChatSnapshot } from '../../shared/chat-schema'
 
 export type EngineBotDetail = BotIdentity & BotSetup
 
+/** Where an engine adapter on this machine reaches LeBot's memory. */
+export interface MemoryConnection {
+  url: string
+  tokenFile: string
+}
+
+/** Notes an engine kept in its own memory before the bot was connected to LeBot's. */
+export interface LegacyNotes {
+  aboutUser: string[]
+  ownNotes: string[]
+}
+
 export interface ChatOptions {
   /** The bot's folder; the chat works there. */
   workspace: string
@@ -20,6 +32,9 @@ export interface BotEngine {
   /** Open a new chat (`chatId` null) or continue a stored one. A stored chat that no longer exists
    *  is replaced by a new one; the snapshot says which chat was opened. Events arrive until `close()`. */
   openChat(botId: string, chatId: string | null, options: ChatOptions, onEvent: (event: ChatEvent) => void): Promise<OpenChat>
+  /** Makes the bot read and write LeBot's memory instead of the engine's own, from its next
+   *  session on. Returns the notes the engine had, so LeBot can keep them. */
+  connectMemory(botId: string, connection: MemoryConnection): Promise<LegacyNotes>
   /** Told when bots or their chats changed outside this server. Returns the function that stops it. */
   onBotsChanged(listener: () => void): () => void
 }

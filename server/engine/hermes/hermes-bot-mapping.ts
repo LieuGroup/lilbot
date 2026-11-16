@@ -29,7 +29,7 @@ const abilitiesOf = (kind: Ability['kind'], rows: unknown): Ability[] =>
 
 /** `summary` is the bot's row from `profiles.list`; `described` is `profiles.describe`. Hermes'
  *  skills, toolsets and MCP servers become one neutral list of abilities. */
-export function botDetailFromProfile(summary: BotIdentity, described: Record<string, any>): EngineBotDetail {
+export function botDetailFromProfile(summary: BotIdentity, described: Record<string, any>): Omit<EngineBotDetail, 'memoryConnected'> {
   const model = described.model?.default ? { provider: text(described.model.provider), model: text(described.model.default) } : summary.model
   return {
     ...summary,

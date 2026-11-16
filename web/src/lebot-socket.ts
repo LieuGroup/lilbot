@@ -16,6 +16,7 @@ class LeBotSocket {
   private chatListeners = new Map<string, Set<ChatListener>>()
   private connectionListeners = new Set<(connected: boolean) => void>()
   private botsChangedListeners = new Set<() => void>()
+  private memoryChangedListeners = new Set<() => void>()
   connected = false
 
   connect() {
@@ -70,6 +71,12 @@ class LeBotSocket {
     return () => void this.botsChangedListeners.delete(listener)
   }
 
+  /** Told when a fact was saved or forgotten, by a bot or in the app. */
+  onMemoryChanged(listener: () => void) {
+    this.memoryChangedListeners.add(listener)
+    return () => void this.memoryChangedListeners.delete(listener)
+  }
+
   onConnection(listener: (connected: boolean) => void) {
     this.connectionListeners.add(listener)
     return () => void this.connectionListeners.delete(listener)
@@ -90,6 +97,10 @@ class LeBotSocket {
     }
     if (frame.event === 'bots.changed') {
       for (const listener of this.botsChangedListeners) listener()
+      return
+    }
+    if (frame.event === 'memory.changed') {
+      for (const listener of this.memoryChangedListeners) listener()
       return
     }
     if (frame.event === 'chat') {

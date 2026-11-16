@@ -1,0 +1,5 @@
+name: lebot-memory
+version: 0.1.0
+description: "LeBot memory: facts kept in LeBot's own database, private to a bot or shared between the user's bots."
+hooks:
+  - on_turn_start

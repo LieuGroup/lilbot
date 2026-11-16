@@ -16,7 +16,13 @@ export const ChatEvent = z.discriminatedUnion('type', [
   z.object({ type: z.literal('text.delta'), text: z.string() }),
   z.object({ type: z.literal('tool.started'), toolId: z.string(), name: z.string(), detail: z.string() }),
   z.object({ type: z.literal('tool.finished'), toolId: z.string(), failed: z.boolean() }),
-  z.object({ type: z.literal('turn.finished'), status: z.enum(['completed', 'stopped', 'failed']), text: z.string() }),
+  z.object({
+    type: z.literal('turn.finished'),
+    status: z.enum(['completed', 'stopped', 'failed']),
+    text: z.string(),
+    /** How many tokens the model was sent on the turn's last call, when the engine reports it. */
+    contextTokens: z.number().optional()
+  }),
   z.object({ type: z.literal('title'), title: z.string() }),
   z.object({ type: z.literal('error'), message: z.string() }),
   /** The engine lost this chat's connection; open the chat again to continue. */

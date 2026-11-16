@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 import { type Bot, BotCreateInput, type BotDetail, BotPrefsInput, BotUpdateInput, type ModelProvider, type Section, sectionName } from './bot-schema'
 import type { ChatEvent, ChatSnapshot } from './chat-schema'
+import { type MemoryFact, MemoryWriteInput } from './memory-schema'
 
 const botId = z.string().min(1)
 const chatId = z.string().min(1)
@@ -19,6 +20,13 @@ export const methods = {
   'sections.rename': z.object({ sectionId: z.string().min(1), name: sectionName }),
   'sections.delete': z.object({ sectionId: z.string().min(1) }),
   'models.list': z.object({}),
+  /** Everything the bot can see in memory, and whether the bot is connected to it. */
+  'memory.list': z.object({ botId }),
+  /** The user adds a fact from the app. */
+  'memory.write': MemoryWriteInput,
+  'memory.forget': z.object({ factId: z.string().min(1) }),
+  /** Connects a bot to LeBot's memory and brings over the notes its engine kept. */
+  'memory.connect': z.object({ botId }),
   /** Without `chatId`: the bot's main conversation, the same one on every device. */
   'chat.open': z.object({ botId, chatId: chatId.optional() }),
   /** Starts a new session and makes it the bot's main conversation. */
@@ -42,6 +50,10 @@ export interface Results {
   'sections.rename': Section
   'sections.delete': { ok: true }
   'models.list': ModelProvider[]
+  'memory.list': { connected: boolean; facts: MemoryFact[] }
+  'memory.write': MemoryFact
+  'memory.forget': { ok: true }
+  'memory.connect': { imported: number }
   'chat.open': ChatSnapshot
   'chat.new': ChatSnapshot
   'chat.send': { ok: true }
@@ -54,8 +66,9 @@ export const RequestFrame = z.object({ id: z.number(), method: z.string(), param
 export type ResponseFrame = { id: number; ok: true; result: unknown } | { id: number; ok: false; error: { code: string; message: string } }
 
 /** What the server sends without being asked. `bots.changed` means: fetch the bot list again
- *  (a bot, its preferences or the sections changed, here or on another device). */
-export type EventFrame = { event: 'chat'; chatId: string; data: ChatEvent } | { event: 'bots.changed' }
+ *  (a bot, its preferences or the sections changed, here or on another device). `memory.changed`
+ *  means a fact was saved or forgotten, by a bot or in the app. */
+export type EventFrame = { event: 'chat'; chatId: string; data: ChatEvent } | { event: 'bots.changed' } | { event: 'memory.changed' }
 
 /** An error whose message is safe and useful to show to the user. */
 export class LeBotError extends Error {

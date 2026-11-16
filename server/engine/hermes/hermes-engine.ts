@@ -2,9 +2,10 @@
 import type { BotCreateInput, BotIdentity, BotUpdateInput, ModelProvider } from '../../../shared/bot-schema'
 import type { ChatEvent } from '../../../shared/chat-schema'
 import { LeBotError } from '../../../shared/protocol'
-import type { BotEngine, ChatOptions, EngineBotDetail, OpenChat } from '../bot-engine'
+import type { BotEngine, ChatOptions, EngineBotDetail, LegacyNotes, MemoryConnection, OpenChat } from '../bot-engine'
 import { botDetailFromProfile, botFromProfile, DEFAULT_PROFILE, profileIdFor, providersFromModelOptions, UI_NAMESPACE } from './hermes-bot-mapping'
 import { chatEventFrom, itemsFromRows, sessionLostEvents } from './hermes-chat-mapping'
+import { installMemory, legacyNotes, memoryInstalled } from './hermes-memory-setup'
 import { HermesSocket } from './hermes-socket'
 
 const CLIENT = { name: 'lebot', version: '0.2.0' }
@@ -49,7 +50,14 @@ export class HermesEngine implements BotEngine {
   async getBot(botId: string): Promise<EngineBotDetail> {
     const summary = await this.requireBot(botId)
     const described = await (await this.manage()).request('profiles.describe', { name: botId })
-    return botDetailFromProfile(summary, described)
+    return { ...botDetailFromProfile(summary, described), memoryConnected: memoryInstalled(botId) }
+  }
+
+  async connectMemory(botId: string, connection: MemoryConnection): Promise<LegacyNotes> {
+    await this.requireBot(botId)
+    const notes = await legacyNotes(botId)
+    await installMemory(botId, connection)
+    return notes
   }
 
   async createBot(input: BotCreateInput): Promise<BotIdentity> {

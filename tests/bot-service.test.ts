@@ -88,3 +88,36 @@ describe('the main conversation', () => {
     expect(service.openChat('../escape', undefined, ignore)).rejects.toThrow('That bot does not exist.')
   })
 })
+
+describe('memory', () => {
+  test('a new bot is connected to LeBot memory and keeps only what is known about the user', async () => {
+    const { service, log, memory } = fakeService()
+    const made = await service.createBot({ name: 'Maker', function: '', instructions: '' })
+    expect(log).toContain('connect-memory:made')
+    const facts = memory.list('made')
+    expect(facts.find(fact => fact.text === 'Oscar lives in Adelaide.')).toMatchObject({ kind: 'profile', scope: 'shared' })
+    expect(facts.map(fact => fact.text)).toEqual(['Oscar lives in Adelaide.'])
+    expect(memory.list('other').map(fact => fact.text)).toEqual(['Oscar lives in Adelaide.'])
+    expect(made.id).toBe('made')
+  })
+
+  test('connecting an existing bot keeps its own notes too, and connecting again does not duplicate them', async () => {
+    const { service, memory } = fakeService()
+    expect(await service.connectMemory('b1')).toEqual({ imported: 3 })
+    expect(await service.connectMemory('b1')).toEqual({ imported: 0 })
+    expect(memory.list('b1')).toHaveLength(3)
+    expect(memory.list('b1').find(fact => fact.text === 'The build takes 30 minutes.')).toMatchObject({ kind: 'profile', scope: 'bot' })
+    expect(memory.list('b1').every(fact => fact.text.length <= 500)).toBe(true)
+  })
+
+  test('the user can add and forget facts, and open panels are told', async () => {
+    const { service, memoryChanges } = fakeService()
+    const fact = await service.writeMemory({ botId: 'b1', kind: 'profile', text: 'Prefers tables.' })
+    expect(fact).toMatchObject({ author: 'user', scope: 'shared' })
+    expect((await service.listMemory('b1')).facts.map(item => item.text)).toEqual(['Prefers tables.'])
+    service.forgetMemory(fact.id)
+    expect((await service.listMemory('b1')).facts).toEqual([])
+    expect(memoryChanges()).toBe(2)
+    expect(service.writeMemory({ botId: 'ghost', kind: 'profile', text: 'x' })).rejects.toThrow('That bot does not exist.')
+  })
+})

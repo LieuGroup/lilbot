@@ -9,6 +9,8 @@ import { BotService } from '../server/bot-service'
 import { openDatabase } from '../server/db/database'
 import { PrefsStore } from '../server/db/prefs-store'
 import { HermesEngine } from '../server/engine/hermes/hermes-engine'
+import { MemoryService } from '../server/memory/memory-service'
+import { MemoryStore } from '../server/memory/memory-store'
 import { Workspaces } from '../server/workspaces'
 import type { ChatEvent } from '../shared/chat-schema'
 
@@ -18,7 +20,8 @@ const TURN_TIMEOUT_MS = 90_000
 // The real engine, with a throwaway database and workspaces folder so nothing of the user's is touched.
 const scratch = mkdtempSync(join(tmpdir(), 'lebot-live-'))
 const engine = new HermesEngine()
-const bots = new BotService(engine, new PrefsStore(openDatabase(join(scratch, 'lebot.db'))), new Workspaces(join(scratch, 'workspaces')))
+const database = openDatabase(join(scratch, 'lebot.db'))
+const bots = new BotService(engine, new PrefsStore(database), new Workspaces(join(scratch, 'workspaces')), new MemoryService(new MemoryStore(database)))
 let botId = ''
 let failures = 0
 

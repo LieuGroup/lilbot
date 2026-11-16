@@ -53,7 +53,8 @@ export function chatEventFrom(event: HermesEvent): ChatEvent | null {
     case 'message.complete': {
       // Hermes' status is complete | error | interrupted.
       const status = payload.status === 'interrupted' ? 'stopped' : payload.status === 'error' ? 'failed' : 'completed'
-      return { type: 'turn.finished', status, text: text(payload.text) }
+      const contextTokens = payload.usage?.context_used
+      return { type: 'turn.finished', status, text: text(payload.text), ...(typeof contextTokens === 'number' ? { contextTokens } : {}) }
     }
     case 'session.title':
       return payload.title ? { type: 'title', title: text(payload.title) } : null

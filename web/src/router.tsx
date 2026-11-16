@@ -4,6 +4,7 @@ import { BotCreatePage } from './bots/bot-create-page'
 import { BotSetupPanel } from './bots/bot-setup-panel'
 import { BotSidebar } from './bots/bot-sidebar'
 import { ChatColumn } from './chat/chat-column'
+import { MemoryPanel } from './memory/memory-panel'
 
 /** Desktop: bot list beside the page. Phone: the bot list is the home screen, a page fills the screen. */
 function AppShell() {
@@ -25,7 +26,8 @@ function AppShell() {
  *  covers the conversation. */
 function BotLayout() {
   const { botId } = useParams({ from: '/bots/$botId' })
-  const panelOpen = useRouterState({ select: state => state.matches.some(match => match.routeId === '/bots/$botId/setup') })
+  // Any child route other than the plain chat is a panel.
+  const panelOpen = useRouterState({ select: state => state.matches.some(match => match.routeId.startsWith('/bots/$botId/') && match.routeId !== '/bots/$botId/') })
   return (
     <div className="flex h-full min-w-0">
       <div className={`${panelOpen ? 'hidden md:flex' : 'flex'} min-w-0 flex-1 flex-col`}>
@@ -51,8 +53,9 @@ const newBotRoute = createRoute({ getParentRoute: () => rootRoute, path: '/bots/
 const botRoute = createRoute({ getParentRoute: () => rootRoute, path: '/bots/$botId', component: BotLayout })
 const botChatRoute = createRoute({ getParentRoute: () => botRoute, path: '/', component: () => null })
 const botSetupRoute = createRoute({ getParentRoute: () => botRoute, path: 'setup', component: BotSetupPanel })
+const botMemoryRoute = createRoute({ getParentRoute: () => botRoute, path: 'memory', component: MemoryPanel })
 
-export const router = createRouter({ routeTree: rootRoute.addChildren([homeRoute, newBotRoute, botRoute.addChildren([botChatRoute, botSetupRoute])]) })
+export const router = createRouter({ routeTree: rootRoute.addChildren([homeRoute, newBotRoute, botRoute.addChildren([botChatRoute, botSetupRoute, botMemoryRoute])]) })
 
 declare module '@tanstack/react-router' {
   interface Register {

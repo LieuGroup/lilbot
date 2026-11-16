@@ -30,7 +30,7 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
 
 export const TextInput = (props: InputHTMLAttributes<HTMLInputElement>) => <input className={inputClass} {...props} />
 export const TextArea = (props: TextareaHTMLAttributes<HTMLTextAreaElement>) => <textarea className={`${inputClass} resize-y`} {...props} />
-export const Select = (props: SelectHTMLAttributes<HTMLSelectElement>) => <select className={inputClass} {...props} />
+export const Select = ({ className = '', ...props }: SelectHTMLAttributes<HTMLSelectElement>) => <select className={`${inputClass} ${className}`} {...props} />
 
 export function Notice({ tone, children }: { tone: 'error' | 'ok'; children: ReactNode }) {
   const color = tone === 'error' ? 'border-danger text-danger' : 'border-ok text-ok'

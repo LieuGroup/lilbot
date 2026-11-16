@@ -63,7 +63,7 @@ const events: Record<string, string[]> = {
   'message.delta': ['text'],
   'tool.start': ['tool_id', 'name', 'context'],
   'tool.complete': ['tool_id', 'result'],
-  'message.complete': ['status', 'text'],
+  'message.complete': ['status', 'text', 'usage'],
   'session.title': ['title'],
   error: ['message'],
   'session.reclaimed': []
@@ -89,6 +89,10 @@ describe.skipIf(!installed)('Hermes wire contract', () => {
       expect(reads.filter(field => !payload.has(field))).toEqual([])
     })
   }
+
+  test('usage still reports the context size', () => {
+    expect(Object.keys(contract.components.schemas.Usage?.properties ?? {})).toContain('context_used')
+  })
 
   test('message.complete status still has the values LeBot maps', () => {
     const statuses: string[] = contract.components.schemas.TurnStatus?.enum ?? []

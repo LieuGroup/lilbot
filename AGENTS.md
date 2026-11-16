@@ -17,8 +17,10 @@ Foundation done (slice 3): LeBot's own SQLite database for the user's data, a wo
 conversation per bot that is the same on every device, and the layout groundwork (chat stays open beside a details
 panel, the server pushes roster changes). On top of slice 2: bot list, create bot, the Setup panel (name, function,
 instructions, model, workspace, abilities read-only), chat with live tool rows, stop, and starting a new session.
-Next: the memory system (see Oscar's brief in the thread), then the Grok Bot style roster and details panel
-(sections, pin, hide, avatars, unread, Activity and Library tabs), delete a bot, edit abilities, routines.
+Memory (slice 4): LeBot's own memory system with a Memory panel; new bots use it from their first session, an
+existing bot is connected from its Memory panel (Chief of Staff is not connected yet: Oscar decides).
+Next: the Grok Bot style roster and details panel (sections, pin, hide, avatars, unread, Activity and Library
+tabs), the nightly memory tidy-up, delete a bot, edit abilities, routines.
 Desktop (Tauri) and iOS (Expo) come after the web app. Approvals are off in Hermes by Oscar's choice, so there are
 no approval cards.
 
@@ -65,8 +67,8 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
   in the service's `LEBOT_ALLOWED_HOSTS`, not in code.
 - `web/`: `lebot-socket.ts` (connection), `bots/` (store, sidebar, form, create page, Setup panel), `chat/` (pure
   state in `chat-state.ts`, per-bot store in `chat-store.ts`, lifecycle in `use-chat.ts`, the chat column),
-  `router.tsx`. `/bots/$botId` is a layout route: the chat column stays mounted and connected while panel routes
-  under it (`setup` today) open and close. Add new panels as child routes. On a phone an open panel covers the chat.
+  `memory/` (the Memory panel), `router.tsx`. `/bots/$botId` is a layout route: the chat column stays mounted and
+  connected while panel routes under it (`setup`, `memory`) open and close. Panels use `ui/panel.tsx`. Add new panels as child routes. On a phone an open panel covers the chat.
 - Hermes' wire contract lives in `~/.hermes/hermes-agent/apps/shared/src/gateway-contract.openrpc.json` and
   `tui_gateway/contracts/`. Read it before using a new method, and read only fields the contract declares (Hermes
   sends some undeclared extras; do not rely on them). Every method, parameter and field LeBot uses is listed in
@@ -84,7 +86,7 @@ What a bot is and who owns each part. Decided with Oscar on 2026-11-16 unless ma
 | Identity (name, function), instructions, model, abilities | the engine | Hermes profile |
 | Workspace: one folder per bot on the shared computer | the bot | `~/lebot/workspaces/<bot id>`, the working directory of its chats |
 | Conversation: one main conversation per bot; a new session replaces it as the main one | the engine | Hermes sessions; LeBot's database names the main one |
-| Memory | the bot | Hermes: `memories/MEMORY.md` and `USER.md` per profile |
+| Memory | LeBot | facts in LeBot's database; the engine reads and writes them through an adapter |
 | Avatar, section, pinned, hidden (unread later) | the user | LeBot's own SQLite database |
 
 - "Workspace" means exactly this: each bot has its own folder on the shared computer. It is not a level above bots.
@@ -96,6 +98,37 @@ What a bot is and who owns each part. Decided with Oscar on 2026-11-16 unless ma
 - Sidebar state belongs to the user, not the bot: pin, section, read/unread and hide are independent settings.
 - A bot's live state (running, writing, waiting, current activity) is separate from unread and from the health of
   its computer.
+
+## Memory
+
+LeBot owns memory so it survives an engine change, can be shared between bots, and can be seen and corrected by
+Oscar. Three layers:
+
+1. `server/memory/memory-store.ts`: the `memory_facts` table and its full-text index. A fact has a kind (`profile`
+   = lasting, `journal` = dated history), a scope (`bot` = only the bot that learned it, `shared` = all bots), an
+   author (bot or user) and dates. "Forget" marks a fact; it is never erased, so history stays reviewable.
+2. `server/memory/memory-service.ts`: the rules, engine-neutral and fully unit-tested. Default scope (profile facts
+   are shared, journal entries stay with the bot; either can be overridden), who sees what, de-duplication, recall
+   by search, and `contextBlock`: what a bot is shown before each turn (lasting facts, then its last 10 journal
+   entries, within about 1,500 tokens; the rest is reachable by recall).
+3. The engine adapter. `server/engine-api.ts` is a local HTTP endpoint (`/engine/memory/*`) for adapters on this
+   machine: loopback only, no browsers, token from `<data dir>/engine-token`. The Hermes adapter is a memory
+   provider plug-in in `engines/hermes/lebot-memory/` (Python, standard library only). It holds no data. It puts
+   the usage rules in the system prompt (static, so prompt caching holds), supplies the memory block once per turn,
+   and gives the bot two tools: `recall_memory` and `update_memory` (write or forget one fact).
+
+Connecting a bot (`BotEngine.connectMemory`, Hermes: `hermes-memory-setup.ts`) copies the plug-in into the profile,
+selects it, and switches Hermes' own `MEMORY.md`/`USER.md` memory off so the bot has one memory. The notes Hermes
+held are kept: what it knew about the user becomes shared facts; a bot's own notes become its private facts (only
+for an existing bot, not for a new one, which starts as a copy of the main bot). It takes effect from the bot's
+next session. `removeMemory` undoes it.
+
+Measured on 2026-11-16 (`bun run check:memory`): a fact told in one session was known in the next from the block
+alone, a correction replaced the old fact, and a turn sent 29,300 tokens with LeBot memory against 31,600 with
+Hermes' own, so memory costs nothing extra. After changing the plug-in, reconnect bots so they get the new copy.
+
+Not built yet: the nightly tidy-up (merge duplicates, drop outdated facts), saving before Hermes compresses a
+conversation (`on_pre_compress`), and showing forgotten facts in the app.
 
 ## What Grok Bot does (reference, not a spec)
 
@@ -160,6 +193,8 @@ artwork, names or text.
 - `bun run verify`: lint, typecheck, unit and contract tests, and build the web app into `dist/`. `bun run format`
   applies formatting.
 - `bun run check:live`: creates a temporary bot in Hermes, chats, stops, resumes, then deletes it. A few model calls.
+- `bun run check:memory`: connects a temporary bot to a throwaway memory, tells it facts, checks a new session knows
+  them, prints tokens per turn, then deletes it. A few model calls.
 - `bun run start`: run the server. `LEBOT_PORT` and `LEBOT_HOST` override the defaults.
 - `bun run dev`: Vite with hot reload, proxying `/ws` to a server on 3370.
 - After a change: `bun run verify && systemctl --user restart lebot.service`.

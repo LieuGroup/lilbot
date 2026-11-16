@@ -46,7 +46,9 @@ export type Ability = z.infer<typeof Ability>
 export const BotSetup = z.object({
   /** Personality and standing instructions the bot follows in every chat. */
   instructions: z.string(),
-  abilities: z.array(Ability)
+  abilities: z.array(Ability),
+  /** The bot reads and writes LeBot's memory (not the engine's own). */
+  memoryConnected: z.boolean()
 })
 export type BotSetup = z.infer<typeof BotSetup>
 

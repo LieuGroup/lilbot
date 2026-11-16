@@ -22,6 +22,9 @@ export function ChatColumn({ botId }: { botId: string }) {
         subtitle={chat.title || bot?.function}
         actions={
           <>
+            <Link to="/bots/$botId/memory" params={{ botId }} className="rounded-xl border border-border px-3 py-1.5 text-sm font-medium">
+              Memory
+            </Link>
             <Link to="/bots/$botId/setup" params={{ botId }} className="rounded-xl border border-border px-3 py-1.5 text-sm font-medium">
               Setup
             </Link>

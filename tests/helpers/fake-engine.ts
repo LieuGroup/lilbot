@@ -7,13 +7,15 @@ import { BotService } from '../../server/bot-service'
 import { openDatabase } from '../../server/db/database'
 import { PrefsStore } from '../../server/db/prefs-store'
 import type { BotEngine, EngineBotDetail, OpenChat } from '../../server/engine/bot-engine'
+import { MemoryService } from '../../server/memory/memory-service'
+import { MemoryStore } from '../../server/memory/memory-store'
 import { Workspaces } from '../../server/workspaces'
 import type { BotIdentity } from '../../shared/bot-schema'
 import type { ChatEvent } from '../../shared/chat-schema'
 import { LeBotError } from '../../shared/protocol'
 
 export const bot: BotIdentity = { id: 'b1', name: 'Bot One', function: '', model: null, isDefault: false }
-export const detail: EngineBotDetail = { ...bot, instructions: '', abilities: [] }
+export const detail: EngineBotDetail = { ...bot, instructions: '', abilities: [], memoryConnected: false }
 
 export function fakeEngine(options: { earlyEvents?: ChatEvent[] } = {}) {
   const log: string[] = []
@@ -31,6 +33,10 @@ export function fakeEngine(options: { earlyEvents?: ChatEvent[] } = {}) {
     updateBot: async () => detail,
     listModels: async () => [],
     onBotsChanged: () => () => {},
+    connectMemory: async botId => {
+      log.push(`connect-memory:${botId}`)
+      return { aboutUser: ['Oscar lives in Adelaide.'], ownNotes: ['The build takes 30 minutes.', 'x'.repeat(900)] }
+    },
     openChat: async (botId, chatId, chatOptions, onEvent): Promise<OpenChat> => {
       const id = chatId && stored.has(chatId) ? chatId : `chat-${++chats}`
       stored.add(id)
@@ -50,9 +56,16 @@ export function fakeEngine(options: { earlyEvents?: ChatEvent[] } = {}) {
 
 export function fakeService(options?: Parameters<typeof fakeEngine>[0]) {
   const fake = fakeEngine(options)
-  const prefs = new PrefsStore(openDatabase(':memory:'))
+  const database = openDatabase(':memory:')
+  const prefs = new PrefsStore(database)
+  const memory = new MemoryService(new MemoryStore(database))
   const root = mkdtempSync(join(tmpdir(), 'lebot-ws-'))
   let changes = 0
-  const service = new BotService(fake.engine, prefs, new Workspaces(root), () => changes++)
-  return { ...fake, service, prefs, root, changes: () => changes }
+  let memoryChanges = 0
+  const service = new BotService(fake.engine, prefs, new Workspaces(root), memory, {
+    changed: () => changes++,
+    memoryChanged: () => memoryChanges++,
+    memoryConnection: { url: 'http://127.0.0.1:3370', tokenFile: '/nowhere/engine-token' }
+  })
+  return { ...fake, service, prefs, memory, root, changes: () => changes, memoryChanges: () => memoryChanges }
 }

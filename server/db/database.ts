@@ -19,7 +19,26 @@ const migrations: string[] = [
      pinned INTEGER NOT NULL DEFAULT 0,
      hidden INTEGER NOT NULL DEFAULT 0,
      main_chat_id TEXT
-   );`
+   );`,
+  // Memory: facts are never erased by "forget", only marked, so the history stays reviewable.
+  `CREATE TABLE memory_facts (
+     id TEXT PRIMARY KEY,
+     bot_id TEXT NOT NULL,
+     kind TEXT NOT NULL CHECK (kind IN ('profile', 'journal')),
+     scope TEXT NOT NULL CHECK (scope IN ('bot', 'shared')),
+     text TEXT NOT NULL,
+     author TEXT NOT NULL CHECK (author IN ('bot', 'user')),
+     learned_at INTEGER NOT NULL,
+     forgotten_at INTEGER
+   );
+   CREATE INDEX memory_facts_visible ON memory_facts (scope, bot_id, kind, learned_at) WHERE forgotten_at IS NULL;
+   CREATE VIRTUAL TABLE memory_search USING fts5 (text, content = 'memory_facts', content_rowid = 'rowid');
+   CREATE TRIGGER memory_facts_added AFTER INSERT ON memory_facts BEGIN
+     INSERT INTO memory_search (rowid, text) VALUES (new.rowid, new.text);
+   END;
+   CREATE TRIGGER memory_facts_removed AFTER DELETE ON memory_facts BEGIN
+     INSERT INTO memory_search (memory_search, rowid, text) VALUES ('delete', old.rowid, old.text);
+   END;`
 ]
 
 /** `path` may be ':memory:' for tests. Applies any migration steps the file has not seen. */

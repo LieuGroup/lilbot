@@ -8,6 +8,9 @@ import { ClientSession } from './client-session'
 import { openDatabase } from './db/database'
 import { PrefsStore } from './db/prefs-store'
 import { HermesEngine } from './engine/hermes/hermes-engine'
+import { createEngineApi, engineToken } from './engine-api'
+import { MemoryService } from './memory/memory-service'
+import { MemoryStore } from './memory/memory-store'
 import { allowedHosts, socketAllowed } from './socket-guard'
 import { Workspaces } from './workspaces'
 
@@ -33,7 +36,17 @@ function botsChanged() {
 }
 
 const engine = new HermesEngine()
-const bots = new BotService(engine, new PrefsStore(openDatabase(join(DATA_DIR, 'lebot.db'))), new Workspaces(WORKSPACES_DIR), botsChanged)
+const database = openDatabase(join(DATA_DIR, 'lebot.db'))
+const memory = new MemoryService(new MemoryStore(database))
+const memoryChanged = () => server.publish(EVERYONE, JSON.stringify({ event: 'memory.changed' }))
+const token = engineToken(DATA_DIR)
+const bots = new BotService(engine, new PrefsStore(database), new Workspaces(WORKSPACES_DIR), memory, {
+  changed: botsChanged,
+  memoryChanged,
+  memoryConnection: { url: `http://127.0.0.1:${PORT}`, tokenFile: join(DATA_DIR, 'engine-token') }
+})
+/** Engine adapters on this machine reach memory here; see `engine-api.ts`. */
+const engineApi = createEngineApi(memory, token, PORT, memoryChanged)
 engine.onBotsChanged(botsChanged)
 const DIST = join(import.meta.dir, '..', 'dist')
 
@@ -64,6 +77,7 @@ const server = Bun.serve<SocketData>({
       return new Response('Expected a WebSocket upgrade', { status: 400 })
     }
 
+    if (url.pathname.startsWith('/engine/')) return engineApi(request, url.pathname)
     if (url.pathname === '/api/health') return Response.json({ ok: true, engine: 'hermes' })
     if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 })
 
