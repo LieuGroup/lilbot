@@ -23,7 +23,7 @@ export function RosterHeader({ query, onQuery }: { query: string | null; onQuery
           value={query}
           onChange={event => onQuery(event.target.value)}
           onKeyDown={event => event.key === 'Escape' && onQuery(null)}
-          className="h-7 flex-1 rounded-[6px] border-hairline bg-card px-2 text-[13px] md:text-[13px] dark:bg-card"
+          className="h-7 flex-1 rounded-[6px] border-hairline bg-card px-2 text-base md:text-[13px] dark:bg-card"
         />
       )}
       <div className="flex flex-none items-center">

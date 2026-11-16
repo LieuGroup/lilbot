@@ -54,7 +54,7 @@ export function MessageList({ items, queued, activity, emptyHint }: MessageListP
               <Trace role="status">
                 <TraceLine status="running" className="text-[13px]/5">
                   <TraceIcon className="size-[13px]">
-                    <SparklesIcon className="size-[13px] text-primary" strokeWidth={2} />
+                    <SparklesIcon className="size-[13px]" strokeWidth={2} />
                   </TraceIcon>
                   <TraceTitle>{activity}</TraceTitle>
                 </TraceLine>

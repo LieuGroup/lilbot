@@ -121,7 +121,8 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
     follows the device (`prefers-color-scheme`). Bot replies use the `prose-chat` utility defined there.
   - Type scale, closed: 12 meta and section labels, 13 previews and menus, 14 names, 15 chat text, 16 panel and
     dialog titles. Weights 400, 500, 600. Icons 16px at stroke 1.75 in 28px buttons (`ui/icon-button.ts`).
-  - Feature code imports parts as `@/ui/<part>`. Pages with forms and menus are lazy routes in `app/router.tsx`, so
+  - Feature code imports parts as `@/ui/<part>`. Pages with forms are lazy routes in `app/router.tsx` and the
+    details tabs are lazy chunks in `bots/bot-details-panel.tsx`, so
     the chat's first load stays small (about 210 kB of JavaScript and 15 kB of styles, compressed, counting every
     chunk the first page imports; Vite's per-file sizes alone understate it).
 - Checks: Biome, `tsc`, `bun test`, Vite build, all through `bun run verify`. `bun run check:live` is the live
@@ -214,6 +215,8 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
   opening another bot keeps the open tab. On a phone the panel opens only from the toggle and covers the chat.
   Activity shows the live state (with how long, only when this browser saw it start: `activity/activity-since.ts`),
   a Routines placeholder and the workspace folder (click copies the path; a browser cannot open a server folder).
+  To add a tab (Routines #10, Skills #24): an entry in `DETAILS_TABS` (`bots/details-tabs.ts`) and a lazy entry in
+  `tabContent`, whose component takes `{ botId }` and wraps its body in `ui/panel.tsx`.
 - The conversation uses AI Elements' Message Scroller: it opens at its latest message (also after a reload or
   resume); a sent message moves up and the reply grows below it (Oscar's choice); the list follows the reply only
   while the reader stays at the end. Only messages sent while the list is open are scroll anchors: the scroller jumps

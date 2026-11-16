@@ -57,7 +57,7 @@ export function Composer({ disabled, disabledHint, running, botName, onSend, onS
             value={text}
             aria-label="Message"
             placeholder={disabled ? disabledHint : `Message ${botName}`}
-            className="max-h-52 min-h-7 px-0 py-0.5 text-[15px]/6 placeholder:text-foreground/50 md:text-[15px]/6"
+            className="max-h-52 min-h-7 px-0 py-0.5 text-base placeholder:text-foreground/50 md:text-[15px]/6"
             onChange={event => setText(event.target.value)}
             onKeyDown={onKeyDown}
           />
