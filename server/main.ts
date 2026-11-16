@@ -1,10 +1,15 @@
 /** LeBot server: serves the built web app and answers the browser's `/ws` requests through the bot engine.
  *  Binds to loopback only; reach it from other devices through the tailnet (`tailscale serve`). */
+import { homedir } from 'node:os'
 import { join, normalize } from 'node:path'
 
+import { BotService } from './bot-service'
 import { ClientSession } from './client-session'
+import { openDatabase } from './db/database'
+import { PrefsStore } from './db/prefs-store'
 import { HermesEngine } from './engine/hermes/hermes-engine'
 import { allowedHosts, socketAllowed } from './socket-guard'
+import { Workspaces } from './workspaces'
 
 interface SocketData {
   session?: ClientSession
@@ -12,7 +17,24 @@ interface SocketData {
 
 const PORT = Number(process.env.LEBOT_PORT ?? 3370)
 const HOST = process.env.LEBOT_HOST ?? '127.0.0.1'
+/** LeBot's own database file lives here. */
+const DATA_DIR = process.env.LEBOT_DATA_DIR ?? join(homedir(), '.local', 'share', 'lebot')
+/** Each bot's workspace folder is created under here. */
+const WORKSPACES_DIR = process.env.LEBOT_WORKSPACES_DIR ?? join(homedir(), 'lebot', 'workspaces')
+/** Every connected browser is subscribed to this topic. */
+const EVERYONE = 'everyone'
+const CHANGE_DELAY_MS = 300
+
+// Several changes in a row (or a burst of engine events) become one "fetch the bot list again".
+let changeTimer: ReturnType<typeof setTimeout> | undefined
+function botsChanged() {
+  clearTimeout(changeTimer)
+  changeTimer = setTimeout(() => server.publish(EVERYONE, JSON.stringify({ event: 'bots.changed' })), CHANGE_DELAY_MS)
+}
+
 const engine = new HermesEngine()
+const bots = new BotService(engine, new PrefsStore(openDatabase(join(DATA_DIR, 'lebot.db'))), new Workspaces(WORKSPACES_DIR), botsChanged)
+engine.onBotsChanged(botsChanged)
 const DIST = join(import.meta.dir, '..', 'dist')
 
 const ALLOWED_HOSTS = allowedHosts(PORT, process.env.LEBOT_ALLOWED_HOSTS)
@@ -54,7 +76,8 @@ const server = Bun.serve<SocketData>({
   },
   websocket: {
     open(socket) {
-      socket.data.session = new ClientSession(engine, frame => {
+      socket.subscribe(EVERYONE)
+      socket.data.session = new ClientSession(bots, frame => {
         // A send after the browser left is expected and harmless.
         if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(frame))
       })

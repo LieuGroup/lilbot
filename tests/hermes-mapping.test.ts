@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { botFromProfile, profileIdFor, providersFromModelOptions } from '../server/engine/hermes/hermes-bot-mapping'
+import { botDetailFromProfile, botFromProfile, profileIdFor, providersFromModelOptions } from '../server/engine/hermes/hermes-bot-mapping'
 import { chatEventFrom, itemsFromRows, toolFailed } from '../server/engine/hermes/hermes-chat-mapping'
 
 const event = (type: string, payload: Record<string, unknown> = {}) => ({ type, payload })
@@ -63,7 +63,22 @@ describe('bots', () => {
     const base = { name: 'researcher', description: 'Finds sources', is_default: false, skill_count: 3 }
     expect(botFromProfile({ ...base, display_name: 'Hermes Name', ui_meta: { lebot: { name: 'My Researcher' } } }).name).toBe('My Researcher')
     expect(botFromProfile({ ...base, display_name: 'Hermes Name' }).name).toBe('Hermes Name')
-    expect(botFromProfile(base)).toEqual({ id: 'researcher', name: 'researcher', function: 'Finds sources', model: null, isDefault: false, skillCount: 3 })
+    expect(botFromProfile(base)).toEqual({ id: 'researcher', name: 'researcher', function: 'Finds sources', model: null, isDefault: false })
+  })
+
+  test('skills, toolsets and MCP servers become one neutral list of abilities', () => {
+    const detail = botDetailFromProfile(botFromProfile({ name: 'r', description: 'd' }), {
+      soul: 'Be brief.',
+      toolsets: [{ name: 'web', label: 'Web search', enabled: true }],
+      skills: [{ name: 'pdf', enabled: false }, 'garbage'],
+      mcp_servers: [{ name: 'notion' }]
+    })
+    expect(detail.instructions).toBe('Be brief.')
+    expect(detail.abilities).toEqual([
+      { kind: 'toolset', id: 'web', label: 'Web search', enabled: true },
+      { kind: 'skill', id: 'pdf', label: 'pdf', enabled: false },
+      { kind: 'connector', id: 'notion', label: 'notion', enabled: true }
+    ])
   })
 
   test('profile ids are lowercase, dash-separated and unique', () => {

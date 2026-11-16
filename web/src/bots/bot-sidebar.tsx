@@ -29,7 +29,7 @@ export function BotSidebar() {
               activeProps={{ className: 'bg-bg' }}
               activeOptions={{ exact: false }}
             >
-              <BotBadge name={bot.name} />
+              <BotBadge name={bot.name} avatar={bot.prefs.avatar} />
               <span className="min-w-0">
                 <span className="block truncate font-medium">{bot.name}</span>
                 <span className="block truncate text-sm text-muted">{bot.function || 'No function set'}</span>

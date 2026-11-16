@@ -15,6 +15,7 @@ class LeBotSocket {
   private pending = new Map<number, Pending>()
   private chatListeners = new Map<string, Set<ChatListener>>()
   private connectionListeners = new Set<(connected: boolean) => void>()
+  private botsChangedListeners = new Set<() => void>()
   connected = false
 
   connect() {
@@ -63,6 +64,12 @@ class LeBotSocket {
     }
   }
 
+  /** Told when bots, preferences or sections changed, here or on another device. */
+  onBotsChanged(listener: () => void) {
+    this.botsChangedListeners.add(listener)
+    return () => void this.botsChangedListeners.delete(listener)
+  }
+
   onConnection(listener: (connected: boolean) => void) {
     this.connectionListeners.add(listener)
     return () => void this.connectionListeners.delete(listener)
@@ -79,6 +86,10 @@ class LeBotSocket {
       frame = JSON.parse(raw)
     } catch {
       console.warn('LeBot: dropped a frame that was not JSON')
+      return
+    }
+    if (frame.event === 'bots.changed') {
+      for (const listener of this.botsChangedListeners) listener()
       return
     }
     if (frame.event === 'chat') {

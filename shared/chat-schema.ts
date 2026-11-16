@@ -24,5 +24,13 @@ export const ChatEvent = z.discriminatedUnion('type', [
 ])
 export type ChatEvent = z.infer<typeof ChatEvent>
 
-export const ChatSnapshot = z.object({ chatId: z.string(), botId: z.string(), title: z.string(), running: z.boolean(), items: z.array(ChatItem) })
+export const ChatSnapshot = z.object({
+  chatId: z.string(),
+  botId: z.string(),
+  title: z.string(),
+  running: z.boolean(),
+  /** The folder this chat works in, as the engine reports it. */
+  workspace: z.string(),
+  items: z.array(ChatItem)
+})
 export type ChatSnapshot = z.infer<typeof ChatSnapshot>

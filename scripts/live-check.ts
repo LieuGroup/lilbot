@@ -2,13 +2,23 @@
  *  deleted afterwards. Run after every Hermes update and before finishing a slice: `bun run check:live`.
  *  Costs a few model calls. Never touches existing bots. */
 
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { BotService } from '../server/bot-service'
+import { openDatabase } from '../server/db/database'
+import { PrefsStore } from '../server/db/prefs-store'
 import { HermesEngine } from '../server/engine/hermes/hermes-engine'
+import { Workspaces } from '../server/workspaces'
 import type { ChatEvent } from '../shared/chat-schema'
 
 const BOT_NAME = 'LeBot Live Check'
 const TURN_TIMEOUT_MS = 90_000
 
+// The real engine, with a throwaway database and workspaces folder so nothing of the user's is touched.
+const scratch = mkdtempSync(join(tmpdir(), 'lebot-live-'))
 const engine = new HermesEngine()
+const bots = new BotService(engine, new PrefsStore(openDatabase(join(scratch, 'lebot.db'))), new Workspaces(join(scratch, 'workspaces')))
 let botId = ''
 let failures = 0
 
@@ -52,11 +62,11 @@ async function deleteBot(id: string) {
 }
 
 try {
-  const before = await engine.listBots()
+  const before = await bots.listBots()
   check('list bots', before.length > 0 && before.some(bot => bot.isDefault), `${before.length} bots`)
   for (const leftover of before.filter(bot => bot.name === BOT_NAME)) await deleteBot(leftover.id)
 
-  const bot = await engine.createBot({
+  const bot = await bots.createBot({
     name: BOT_NAME,
     function: 'Temporary bot for the LeBot live check.',
     instructions: 'Follow the user exactly. Never use tools. Answer in plain text.'
@@ -64,14 +74,15 @@ try {
   botId = bot.id
   check('create bot', bot.name === BOT_NAME && !bot.isDefault, bot.id)
 
-  const updated = await engine.updateBot({ botId, function: 'Edited by the live check.' })
+  const updated = await bots.updateBot({ botId, function: 'Edited by the live check.' })
   check('update and read bot', updated.function === 'Edited by the live check.' && updated.instructions.includes('Never use tools') && updated.name === BOT_NAME)
-  check('models are listed', (await engine.listModels()).length > 0)
+  check('models are listed', (await bots.listModels()).length > 0)
 
   // A normal turn.
   const first = recorder()
-  const chat = await engine.openChat(botId, null, first.onEvent)
-  check('open a new chat', chat.snapshot.items.length === 0 && chat.snapshot.botId === botId)
+  const chat = await bots.openChat(botId, undefined, first.onEvent)
+  check('open the main conversation', chat.snapshot.items.length === 0 && chat.snapshot.botId === botId)
+  check('the chat works in the bot’s workspace folder', chat.snapshot.workspace === join(scratch, 'workspaces', botId), chat.snapshot.workspace)
   let finished = first.next('turn.finished')
   await chat.send('Reply with exactly: LIVE_OK')
   const done = await finished
@@ -92,12 +103,23 @@ try {
   chat.close()
 
   // Resume shows the stored transcript; a chat that does not exist becomes a new one.
-  const resumed = await engine.openChat(botId, chat.snapshot.chatId, () => {})
-  check('resume restores the chat', resumed.snapshot.chatId === chat.snapshot.chatId && resumed.snapshot.items.length >= 3, `${resumed.snapshot.items.length} items`)
+  const resumed = await bots.openChat(botId, undefined, () => {})
+  check(
+    'opening again gives the same main conversation with its history',
+    resumed.snapshot.chatId === chat.snapshot.chatId && resumed.snapshot.items.length >= 3,
+    `${resumed.snapshot.items.length} items`
+  )
+  check('a resumed chat keeps its workspace folder', resumed.snapshot.workspace === chat.snapshot.workspace, resumed.snapshot.workspace)
   resumed.close()
-  const fresh = await engine.openChat(botId, 'local-does-not-exist', () => {})
-  check('a missing chat becomes a new one', fresh.snapshot.chatId !== 'local-does-not-exist' && fresh.snapshot.items.length === 0)
+  const fresh = await bots.newChat(botId, () => {})
+  check('a new session becomes the main conversation', fresh.snapshot.chatId !== chat.snapshot.chatId && fresh.snapshot.items.length === 0)
   fresh.close()
+  const main = await bots.openChat(botId, undefined, () => {})
+  check('the main conversation is now the new session', main.snapshot.chatId === fresh.snapshot.chatId)
+  main.close()
+  const missing = await bots.openChat(botId, 'local-does-not-exist', () => {})
+  check('a chat that does not exist becomes a new one', missing.snapshot.chatId !== 'local-does-not-exist' && missing.snapshot.items.length === 0)
+  missing.close()
 } catch (error) {
   check('no unexpected error', false, error instanceof Error ? error.message : String(error))
 } finally {
@@ -111,5 +133,6 @@ try {
   }
 }
 
+rmSync(scratch, { recursive: true, force: true })
 console.log(failures === 0 ? '\nLive check passed.' : `\nLive check FAILED: ${failures} problem(s).`)
 process.exit(failures === 0 ? 0 : 1)

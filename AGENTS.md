@@ -13,11 +13,14 @@ before writing our own.
 
 ## Status
 
-Slice 2 done: the bot is the core object. Bot list, create bot, bot settings (name, function, instructions, model),
-and a chat per bot with live tool rows, stop, and resume after reload or reconnect. Abilities (skills, toolsets, MCP
-servers) are shown read-only. Next: the bot foundation (see Known gaps), then the Grok Bot style layout, delete a bot,
-edit abilities, routines and skills screens, then teams and the router/worker pattern. Desktop (Tauri) and iOS (Expo) come after the web app.
-Approvals are off in Hermes by Oscar's choice, so there are no approval cards.
+Foundation done (slice 3): LeBot's own SQLite database for the user's data, a workspace folder per bot, one main
+conversation per bot that is the same on every device, and the layout groundwork (chat stays open beside a details
+panel, the server pushes roster changes). On top of slice 2: bot list, create bot, the Setup panel (name, function,
+instructions, model, workspace, abilities read-only), chat with live tool rows, stop, and starting a new session.
+Next: the memory system (see Oscar's brief in the thread), then the Grok Bot style roster and details panel
+(sections, pin, hide, avatars, unread, Activity and Library tabs), delete a bot, edit abilities, routines.
+Desktop (Tauri) and iOS (Expo) come after the web app. Approvals are off in Hermes by Oscar's choice, so there are
+no approval cards.
 
 ## Stack
 
@@ -44,13 +47,26 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
   session is refused with `profile_mismatch`). Sessions use Hermes' canonical methods (`x-canonical-methods` in
   the contract); profiles and models use the general `methods` table. Each connection starts with a
   single-use ticket from `hermes gateway attach --json` (about one second, the slowest step in opening a chat).
-- `server/client-session.ts`: one per browser connection. Validates requests, runs them on the engine, forwards
-  chat events. The server stores nothing; bot and chat data lives in the engine. The one thing kept outside it is
-  each browser's pointer to a bot's current chat (`localStorage`).
+- `server/bot-service.ts`: what LeBot does with bots, whichever client asks. It joins the three owners of a bot:
+  the engine (identity, setup, chats), the user's preferences (`server/db/`) and the bot's workspace folder
+  (`server/workspaces.ts`). It decides which chat is a bot's main conversation. Layers, top to bottom:
+  `client-session.ts` (transport) -> `bot-service.ts` -> engine and stores. Keep it that way.
+- `server/client-session.ts`: one per browser connection. Validates requests, runs them on the service, forwards
+  chat events. A typed handler map: a protocol method without a handler does not compile.
+- `server/db/`: LeBot's own SQLite database (`bun:sqlite`), by default `~/.local/share/lebot/lebot.db`
+  (`LEBOT_DATA_DIR`). It holds only what belongs to LeBot and the user: sidebar preferences, sections, and each
+  bot's main-conversation pointer. Never copy into it what the engine stores. `database.ts` owns the schema as an
+  ordered list of migration steps (add a step, never edit a shipped one); each store file owns the SQL of its tables.
+- Workspaces: one folder per bot under `~/lebot/workspaces/<bot id>` (`LEBOT_WORKSPACES_DIR`), created on first use
+  and passed to the engine as the working directory of new chats. A resumed chat keeps the folder it was made with.
+- The server pushes `bots.changed` to every connected browser when a bot, a preference or a section changes, or
+  when Hermes reports that sessions or skills changed. Browsers answer by fetching the bot list again.
 - `server/socket-guard.ts`: who may open the socket (allowed Host names plus same-origin). The tailnet name is set
   in the service's `LEBOT_ALLOWED_HOSTS`, not in code.
-- `web/`: `lebot-socket.ts` (connection), `bots/` (store, sidebar, form, create and settings pages), `chat/`
-  (state, hook, page), `router.tsx` (routes and the phone/desktop shell).
+- `web/`: `lebot-socket.ts` (connection), `bots/` (store, sidebar, form, create page, Setup panel), `chat/` (pure
+  state in `chat-state.ts`, per-bot store in `chat-store.ts`, lifecycle in `use-chat.ts`, the chat column),
+  `router.tsx`. `/bots/$botId` is a layout route: the chat column stays mounted and connected while panel routes
+  under it (`setup` today) open and close. Add new panels as child routes. On a phone an open panel covers the chat.
 - Hermes' wire contract lives in `~/.hermes/hermes-agent/apps/shared/src/gateway-contract.openrpc.json` and
   `tui_gateway/contracts/`. Read it before using a new method, and read only fields the contract declares (Hermes
   sends some undeclared extras; do not rely on them). Every method, parameter and field LeBot uses is listed in
@@ -66,10 +82,10 @@ What a bot is and who owns each part. Decided with Oscar on 2026-11-16 unless ma
 | Part | Owner | Where it lives |
 |---|---|---|
 | Identity (name, function), instructions, model, abilities | the engine | Hermes profile |
-| Workspace: one folder per bot on the shared computer | the bot | proposed: the profile's `workspace/` folder, passed as the chat's working directory |
-| Conversation: one main conversation per bot is the target; starting a new session is allowed for now | the engine | Hermes sessions; LeBot names which one is the bot's main conversation |
+| Workspace: one folder per bot on the shared computer | the bot | `~/lebot/workspaces/<bot id>`, the working directory of its chats |
+| Conversation: one main conversation per bot; a new session replaces it as the main one | the engine | Hermes sessions; LeBot's database names the main one |
 | Memory | the bot | Hermes: `memories/MEMORY.md` and `USER.md` per profile |
-| Avatar, section, pinned, hidden, unread | the user | proposed: LeBot's own `bun:sqlite` database (awaiting Oscar's yes) |
+| Avatar, section, pinned, hidden (unread later) | the user | LeBot's own SQLite database |
 
 - "Workspace" means exactly this: each bot has its own folder on the shared computer. It is not a level above bots.
   All bots share one machine (the leader); other machines come later as execution environments.
@@ -115,25 +131,24 @@ artwork, names or text.
     result. The status text is produced by a status tool the bots themselves say they do not have.
 - Still unknown: compaction thresholds, background memory tidy-up, where memory is stored.
 
-## Known gaps (from the 2026-11-16 review, to settle before the UI round)
+## Known gaps
 
-- The current chat of a bot is a pointer in each browser, so two devices see different conversations. Target: the
-  engine names the bot's main conversation, and "new chat" is an explicit action.
-- Chat and settings are sibling routes, so opening settings closes the chat. A details panel beside the chat needs
-  `/bots/$botId` to become a layout route, and chat state to move from the chat component into a store.
-- The server can only push per-chat events. Roster previews, unread and working markers need a bots event.
-- `ui_meta.lebot` on the Hermes profile is written as one whole value and holds only the name. The user's own data
-  (avatar, section, pin, hidden, unread) should not go there; see Foundation model.
-- Chats do not run in the bot's workspace folder yet: no working directory is passed when a chat is created.
-- `shared/bot-schema.ts` describes abilities in Hermes terms (toolsets, skills, MCP servers). Make it one neutral
-  list before building the abilities editor.
-- Opening a chat loads its whole history. A long-lived conversation needs paging and stable item ids.
+- Unread and "working" markers in the roster need the engine's per-chat activity pushed to the server; today only
+  an open chat reports it. Add a `last_read` column and an activity event when the roster is built.
+- Opening a chat loads its whole history. A long-lived conversation needs paging and stable item ids
+  (Hermes: `omit_messages` on resume plus `session.transcript`).
+- A bot's display name is still stored on the Hermes profile (`ui_meta.lebot.name`), written as one whole value.
+  Nothing else may be added there; the user's data goes in the database.
+- Deleting a bot is not in the app. When it is added: refuse the default bot, delete through the engine, call
+  `PrefsStore.forgetBot`, and decide with Oscar whether the workspace folder is kept.
+- Chats made before slice 3 are not a bot's main conversation; they are still in Hermes.
 
 ## Rules
 
 - Do not fork or patch Hermes. Configure it, or build on its API.
 - The attach ticket and anything under `~/.hermes` that holds credentials are never printed, logged or committed.
-- Test on a second server (`LEBOT_PORT=3371 bun server/main.ts`) with temporary bots, never Oscar's real bots, and
+- Test on a second server (`LEBOT_PORT=3371 LEBOT_DATA_DIR=<tmp> LEBOT_WORKSPACES_DIR=<tmp> bun server/main.ts`)
+  with temporary bots, never Oscar's real bots, and
   delete them afterwards with `hermes profile delete <id> -y`.
 - Each slice ends with a real check against the running service: `bun run verify`, `bun run check:live`, then drive
   the page in a browser.

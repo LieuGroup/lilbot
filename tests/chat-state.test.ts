@@ -89,7 +89,7 @@ describe('messages sent while the bot is busy', () => {
 
 describe('joining a chat that is already running', () => {
   test('uses the full final text when only the end of the reply was streamed here', () => {
-    const snapshot = chatFromSnapshot({ chatId: 'c1', botId: 'b', title: '', running: true, items: [{ kind: 'user', text: 'write' }] })
+    const snapshot = chatFromSnapshot({ chatId: 'c1', botId: 'b', title: '', running: true, workspace: '', items: [{ kind: 'user', text: 'write' }] })
     const chat = play(snapshot, { type: 'text.delta', text: 'the end.' }, { type: 'turn.finished', status: 'completed', text: 'The start and the end.' })
     expect(chat.items.at(-1)).toMatchObject({ kind: 'assistant', text: 'The start and the end.' })
   })

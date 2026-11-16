@@ -2,7 +2,7 @@ import { Link } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 
 /** Top bar of a page. The back arrow only shows on phones, where the bot list is its own screen. */
-export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) {
+export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: ReactNode; actions?: ReactNode }) {
   return (
     <header className="flex items-center gap-3 border-b border-border bg-surface px-4 pt-[max(0.625rem,env(safe-area-inset-top))] pb-2.5">
       <Link to="/" aria-label="Back to bots" className="-ml-1 flex size-9 flex-none items-center justify-center rounded-lg text-xl md:hidden">

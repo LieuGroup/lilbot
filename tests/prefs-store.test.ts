@@ -1,0 +1,85 @@
+import { describe, expect, test } from 'bun:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { openDatabase } from '../server/db/database'
+import { PrefsStore } from '../server/db/prefs-store'
+import { defaultAvatar } from '../shared/avatar'
+
+const store = () => new PrefsStore(openDatabase(':memory:'))
+
+describe('bot preferences', () => {
+  test('a bot nobody touched has stable defaults derived from its id', () => {
+    const prefs = store().prefs('researcher')
+    expect(prefs).toEqual({ avatar: defaultAvatar('researcher'), sectionId: null, pinned: false, hidden: false })
+    expect(defaultAvatar('researcher')).toEqual(defaultAvatar('researcher'))
+  })
+
+  test('a change keeps the fields it does not mention', () => {
+    const prefs = store()
+    prefs.setPrefs('b1', { pinned: true })
+    prefs.setPrefs('b1', { avatar: { shape: 'star', color: 'blue' } })
+    expect(prefs.prefs('b1')).toMatchObject({ pinned: true, hidden: false, avatar: { shape: 'star', color: 'blue' } })
+  })
+
+  test('prefsFor answers for every requested bot, stored or not', () => {
+    const prefs = store()
+    prefs.setPrefs('b1', { hidden: true })
+    const all = prefs.prefsFor(['b1', 'b2'])
+    expect(all.get('b1')?.hidden).toBe(true)
+    expect(all.get('b2')).toEqual(prefs.prefs('b2'))
+  })
+
+  test('the main chat is kept apart from preferences, and forgetBot removes both', () => {
+    const prefs = store()
+    expect(prefs.mainChat('b1')).toBeNull()
+    prefs.setMainChat('b1', 'chat-1')
+    prefs.setPrefs('b1', { pinned: true })
+    expect(prefs.mainChat('b1')).toBe('chat-1')
+    prefs.setMainChat('b1', 'chat-2')
+    expect(prefs.prefs('b1').pinned).toBe(true)
+    prefs.forgetBot('b1')
+    expect(prefs.mainChat('b1')).toBeNull()
+    expect(prefs.prefs('b1').pinned).toBe(false)
+  })
+})
+
+describe('sections', () => {
+  test('are listed in the order they were made, and can be renamed', () => {
+    const prefs = store()
+    const product = prefs.createSection('Product')
+    prefs.createSection('Engineer')
+    prefs.renameSection(product.id, 'Products')
+    expect(prefs.sections().map(section => section.name)).toEqual(['Products', 'Engineer'])
+    expect(() => prefs.renameSection('nope', 'x')).toThrow('That section does not exist.')
+  })
+
+  test('a bot can only be put in a section that exists', () => {
+    const prefs = store()
+    expect(() => prefs.setPrefs('b1', { sectionId: 'nope' })).toThrow('That section does not exist.')
+  })
+
+  test('deleting a section leaves its bots without one', () => {
+    const prefs = store()
+    const section = prefs.createSection('Product')
+    prefs.setPrefs('b1', { sectionId: section.id, pinned: true })
+    prefs.deleteSection(section.id)
+    expect(prefs.prefs('b1')).toMatchObject({ sectionId: null, pinned: true })
+    expect(prefs.sections()).toEqual([])
+  })
+})
+
+test('the database file survives being reopened and is not migrated twice', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'lebot-db-'))
+  try {
+    const path = join(dir, 'nested', 'lebot.db')
+    const first = openDatabase(path)
+    new PrefsStore(first).setMainChat('b1', 'chat-1')
+    first.close()
+    const second = openDatabase(path)
+    expect(new PrefsStore(second).mainChat('b1')).toBe('chat-1')
+    second.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})

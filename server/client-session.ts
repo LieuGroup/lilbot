@@ -1,9 +1,10 @@
-/** One browser connection: checks each request, runs it on the engine, and forwards chat events. */
+/** One browser connection: checks each request, runs it on the bot service, and forwards chat events. */
 import type { z } from 'zod'
 
 import type { ChatEvent } from '../shared/chat-schema'
 import { type EventFrame, LeBotError, type Method, methods, RequestFrame, type ResponseFrame, type Results } from '../shared/protocol'
-import type { BotEngine, OpenChat } from './engine/bot-engine'
+import type { BotService } from './bot-service'
+import type { OpenChat } from './engine/bot-engine'
 
 const MAX_OPEN_CHATS = 8
 
@@ -19,17 +20,26 @@ export class ClientSession {
   private closed = false
 
   constructor(
-    private engine: BotEngine,
+    private bots: BotService,
     private sendFrame: (frame: ResponseFrame | EventFrame) => void
   ) {}
 
   private handlers: Handlers = {
-    'bots.list': () => this.engine.listBots(),
-    'bots.get': ({ botId }) => this.engine.getBot(botId),
-    'bots.create': input => this.engine.createBot(input),
-    'bots.update': input => this.engine.updateBot(input),
-    'models.list': () => this.engine.listModels(),
-    'chat.open': ({ botId, chatId }, afterResponse) => this.openChat(botId, chatId, afterResponse),
+    'bots.list': () => this.bots.listBots(),
+    'bots.get': ({ botId }) => this.bots.getBot(botId),
+    'bots.create': input => this.bots.createBot(input),
+    'bots.update': input => this.bots.updateBot(input),
+    'bots.setPrefs': input => this.bots.setPrefs(input),
+    'sections.list': async () => this.bots.listSections(),
+    'sections.create': async ({ name }) => this.bots.createSection(name),
+    'sections.rename': async ({ sectionId, name }) => this.bots.renameSection(sectionId, name),
+    'sections.delete': async ({ sectionId }) => {
+      this.bots.deleteSection(sectionId)
+      return { ok: true }
+    },
+    'models.list': () => this.bots.listModels(),
+    'chat.open': ({ botId, chatId }, afterResponse) => this.track(afterResponse, onEvent => this.bots.openChat(botId, chatId, onEvent)),
+    'chat.new': ({ botId }, afterResponse) => this.track(afterResponse, onEvent => this.bots.newChat(botId, onEvent)),
     'chat.send': async ({ chatId, text }) => {
       await this.chat(chatId).send(text)
       return { ok: true }
@@ -78,7 +88,8 @@ export class ClientSession {
     return handler(parsed.data, afterResponse)
   }
 
-  private async openChat(botId: string, requestedChatId: string | null, afterResponse: AfterResponse) {
+  /** Opens a chat through `open`, keeps its handle for this connection and forwards its events. */
+  private async track(afterResponse: AfterResponse, open: (onEvent: (event: ChatEvent) => void) => Promise<OpenChat>) {
     if (this.chats.size >= MAX_OPEN_CHATS) throw new LeBotError('too_many_chats', 'Too many chats are open in this window.')
     // The browser only listens for a chat once it has the response naming it, so events that
     // arrive earlier wait here and go out right after that response.
@@ -90,7 +101,7 @@ export class ClientSession {
       this.sendFrame({ event: 'chat', chatId, data })
     }
 
-    const chat = await this.engine.openChat(botId, requestedChatId, data => (responded ? forward(data) : early.push(data)))
+    const chat = await open(data => (responded ? forward(data) : early.push(data)))
     if (this.closed) {
       chat.close()
       throw new LeBotError('closed', 'The connection was closed.')

@@ -36,6 +36,7 @@ export const useBotStore = create<BotStore>((set, get) => ({
 
 /** Start the socket once and reload the bots after every (re)connect. */
 export function startConnection() {
+  lebot.onBotsChanged(() => void useBotStore.getState().load())
   lebot.onConnection(connected => {
     useBotStore.setState({ connected })
     if (connected) void useBotStore.getState().load()

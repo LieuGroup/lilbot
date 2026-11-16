@@ -1,9 +1,9 @@
-import { createRootRoute, createRoute, createRouter, Outlet, useRouterState } from '@tanstack/react-router'
+import { createRootRoute, createRoute, createRouter, Outlet, useParams, useRouterState } from '@tanstack/react-router'
 
 import { BotCreatePage } from './bots/bot-create-page'
-import { BotSettingsPage } from './bots/bot-settings-page'
+import { BotSetupPanel } from './bots/bot-setup-panel'
 import { BotSidebar } from './bots/bot-sidebar'
-import { ChatPage } from './chat/chat-page'
+import { ChatColumn } from './chat/chat-column'
 
 /** Desktop: bot list beside the page. Phone: the bot list is the home screen, a page fills the screen. */
 function AppShell() {
@@ -20,6 +20,26 @@ function AppShell() {
   )
 }
 
+/** A bot's screen: the conversation, with an optional details panel beside it. The conversation
+ *  stays mounted (and connected) while panels open, change and close. On a phone an open panel
+ *  covers the conversation. */
+function BotLayout() {
+  const { botId } = useParams({ from: '/bots/$botId' })
+  const panelOpen = useRouterState({ select: state => state.matches.some(match => match.routeId === '/bots/$botId/setup') })
+  return (
+    <div className="flex h-full min-w-0">
+      <div className={`${panelOpen ? 'hidden md:flex' : 'flex'} min-w-0 flex-1 flex-col`}>
+        <ChatColumn botId={botId} />
+      </div>
+      {panelOpen && (
+        <aside className="flex w-full flex-none flex-col border-border md:w-[26rem] md:border-l">
+          <Outlet />
+        </aside>
+      )}
+    </div>
+  )
+}
+
 const rootRoute = createRootRoute({ component: AppShell })
 
 const homeRoute = createRoute({
@@ -28,10 +48,11 @@ const homeRoute = createRoute({
   component: () => <p className="m-auto px-6 text-center text-muted">Pick a bot to chat with, or create a new one.</p>
 })
 const newBotRoute = createRoute({ getParentRoute: () => rootRoute, path: '/bots/new', component: BotCreatePage })
-const chatRoute = createRoute({ getParentRoute: () => rootRoute, path: '/bots/$botId', component: ChatPage })
-const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: '/bots/$botId/settings', component: BotSettingsPage })
+const botRoute = createRoute({ getParentRoute: () => rootRoute, path: '/bots/$botId', component: BotLayout })
+const botChatRoute = createRoute({ getParentRoute: () => botRoute, path: '/', component: () => null })
+const botSetupRoute = createRoute({ getParentRoute: () => botRoute, path: 'setup', component: BotSetupPanel })
 
-export const router = createRouter({ routeTree: rootRoute.addChildren([homeRoute, newBotRoute, chatRoute, settingsRoute]) })
+export const router = createRouter({ routeTree: rootRoute.addChildren([homeRoute, newBotRoute, botRoute.addChildren([botChatRoute, botSetupRoute])]) })
 
 declare module '@tanstack/react-router' {
   interface Register {

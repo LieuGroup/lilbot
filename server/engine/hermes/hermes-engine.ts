@@ -1,18 +1,26 @@
 /** Hermes as LeBot's bot engine: a bot is a Hermes profile, a chat is a Hermes session. */
-import type { Bot, BotCreateInput, BotDetail, BotUpdateInput, ModelProvider } from '../../../shared/bot-schema'
+import type { BotCreateInput, BotIdentity, BotUpdateInput, ModelProvider } from '../../../shared/bot-schema'
 import type { ChatEvent } from '../../../shared/chat-schema'
 import { LeBotError } from '../../../shared/protocol'
-import type { BotEngine, OpenChat } from '../bot-engine'
+import type { BotEngine, ChatOptions, EngineBotDetail, OpenChat } from '../bot-engine'
 import { botDetailFromProfile, botFromProfile, DEFAULT_PROFILE, profileIdFor, providersFromModelOptions, UI_NAMESPACE } from './hermes-bot-mapping'
 import { chatEventFrom, itemsFromRows, sessionLostEvents } from './hermes-chat-mapping'
 import { HermesSocket } from './hermes-socket'
 
 const CLIENT = { name: 'lebot', version: '0.2.0' }
 const PROFILE_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/
+/** Hermes events on the management connection that mean the roster may look different now. */
+const ROSTER_EVENTS = new Set(['sessions.changed', 'skills.changed'])
 
 export class HermesEngine implements BotEngine {
   /** Bot management goes through one shared connection on the default profile. */
   private management: Promise<HermesSocket> | null = null
+  private botsChangedListeners = new Set<() => void>()
+
+  onBotsChanged(listener: () => void) {
+    this.botsChangedListeners.add(listener)
+    return () => void this.botsChangedListeners.delete(listener)
+  }
 
   private manage(): Promise<HermesSocket> {
     if (this.management) return this.management
@@ -20,7 +28,9 @@ export class HermesEngine implements BotEngine {
     // closes or fails, only this attempt clears the slot: a newer connection is never dropped.
     const attempt: Promise<HermesSocket> = HermesSocket.connect(
       '',
-      () => {},
+      event => {
+        if (ROSTER_EVENTS.has(event.type)) for (const listener of this.botsChangedListeners) listener()
+      },
       () => {
         if (this.management === attempt) this.management = null
       }
@@ -32,17 +42,17 @@ export class HermesEngine implements BotEngine {
     return attempt
   }
 
-  async listBots(): Promise<Bot[]> {
+  async listBots(): Promise<BotIdentity[]> {
     return this.profiles(true)
   }
 
-  async getBot(botId: string): Promise<BotDetail> {
+  async getBot(botId: string): Promise<EngineBotDetail> {
     const summary = await this.requireBot(botId)
     const described = await (await this.manage()).request('profiles.describe', { name: botId })
     return botDetailFromProfile(summary, described)
   }
 
-  async createBot(input: BotCreateInput): Promise<Bot> {
+  async createBot(input: BotCreateInput): Promise<BotIdentity> {
     const socket = await this.manage()
     const taken = new Set((await this.profiles(false)).map(bot => bot.id))
     const id = profileIdFor(input.name, taken)
@@ -66,7 +76,7 @@ export class HermesEngine implements BotEngine {
     return this.requireBot(id)
   }
 
-  async updateBot(input: BotUpdateInput): Promise<BotDetail> {
+  async updateBot(input: BotUpdateInput): Promise<EngineBotDetail> {
     await this.requireBot(input.botId)
     const changes: Record<string, unknown> = { name: input.botId }
     if (input.function !== undefined) changes.description = input.function
@@ -81,7 +91,7 @@ export class HermesEngine implements BotEngine {
     return providersFromModelOptions(await (await this.manage()).request('model.options'))
   }
 
-  async openChat(botId: string, chatId: string | null, onEvent: (event: ChatEvent) => void): Promise<OpenChat> {
+  async openChat(botId: string, chatId: string | null, options: ChatOptions, onEvent: (event: ChatEvent) => void): Promise<OpenChat> {
     await this.requireBot(botId)
     let sessionId = ''
     let generation: number | null = null
@@ -121,7 +131,8 @@ export class HermesEngine implements BotEngine {
           throw error
         })
       }
-      session ??= await socket.request('session.create', { source: 'gui', request_id: crypto.randomUUID(), client: CLIENT })
+      // A new chat starts in the bot's own folder. A resumed chat keeps the folder it was made with.
+      session ??= await socket.request('session.create', { source: 'gui', request_id: crypto.randomUUID(), client: CLIENT, cwd: options.workspace, cwd_explicit: true })
       sessionId = session.session_id
       if (typeof session.execution_generation === 'number') generation = session.execution_generation
 
@@ -131,6 +142,7 @@ export class HermesEngine implements BotEngine {
           botId,
           title: typeof session.info?.title === 'string' ? session.info.title : '',
           running: session.running === true,
+          workspace: typeof session.info?.cwd === 'string' ? session.info.cwd : '',
           items: itemsFromRows(session.display_messages)
         },
         send: async text => {
@@ -153,14 +165,14 @@ export class HermesEngine implements BotEngine {
   }
 
   /** `withChats` false skips each bot's chat preview: enough to check ids, and cheaper. */
-  private async profiles(withChats: boolean): Promise<Bot[]> {
+  private async profiles(withChats: boolean): Promise<BotIdentity[]> {
     const result = await (await this.manage()).request('profiles.list', withChats ? {} : { include_sessions: false })
     const profiles: any[] = Array.isArray(result.profiles) ? result.profiles : []
     return profiles.map(botFromProfile).sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name))
   }
 
   /** Every bot id from the browser passes here before it reaches Hermes or a subprocess. */
-  private async requireBot(botId: string): Promise<Bot> {
+  private async requireBot(botId: string): Promise<BotIdentity> {
     const bot = PROFILE_ID.test(botId) ? (await this.profiles(false)).find(candidate => candidate.id === botId) : undefined
     if (!bot) throw new LeBotError('bot_not_found', 'That bot does not exist.')
     return bot

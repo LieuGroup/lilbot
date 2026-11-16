@@ -39,7 +39,7 @@ interface Uses {
 const methods: Record<string, Uses> = {
   'session.create': {
     table: 'x-canonical-methods',
-    sends: ['source', 'request_id', 'client'],
+    sends: ['source', 'request_id', 'client', 'cwd', 'cwd_explicit'],
     reads: ['session_id', 'stored_session_id', 'running', 'execution_generation', 'info']
   },
   'session.resume': {

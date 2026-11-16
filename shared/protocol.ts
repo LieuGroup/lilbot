@@ -1,20 +1,31 @@
 /** The browser <-> LeBot server protocol: JSON frames over one WebSocket. */
 import { z } from 'zod'
 
-import { type Bot, BotCreateInput, type BotDetail, BotUpdateInput, type ModelProvider } from './bot-schema'
+import { type Bot, BotCreateInput, type BotDetail, BotPrefsInput, BotUpdateInput, type ModelProvider, type Section, sectionName } from './bot-schema'
 import type { ChatEvent, ChatSnapshot } from './chat-schema'
+
+const botId = z.string().min(1)
+const chatId = z.string().min(1)
 
 /** Each method's params schema (checked on the server) and result type (trusted by the browser). */
 export const methods = {
   'bots.list': z.object({}),
-  'bots.get': z.object({ botId: z.string().min(1) }),
+  'bots.get': z.object({ botId }),
   'bots.create': BotCreateInput,
   'bots.update': BotUpdateInput,
+  'bots.setPrefs': BotPrefsInput,
+  'sections.list': z.object({}),
+  'sections.create': z.object({ name: sectionName }),
+  'sections.rename': z.object({ sectionId: z.string().min(1), name: sectionName }),
+  'sections.delete': z.object({ sectionId: z.string().min(1) }),
   'models.list': z.object({}),
-  'chat.open': z.object({ botId: z.string().min(1), chatId: z.string().min(1).nullable() }),
-  'chat.send': z.object({ chatId: z.string().min(1), text: z.string().trim().min(1).max(200_000) }),
-  'chat.stop': z.object({ chatId: z.string().min(1) }),
-  'chat.close': z.object({ chatId: z.string().min(1) })
+  /** Without `chatId`: the bot's main conversation, the same one on every device. */
+  'chat.open': z.object({ botId, chatId: chatId.optional() }),
+  /** Starts a new session and makes it the bot's main conversation. */
+  'chat.new': z.object({ botId }),
+  'chat.send': z.object({ chatId, text: z.string().trim().min(1).max(200_000) }),
+  'chat.stop': z.object({ chatId }),
+  'chat.close': z.object({ chatId })
 } as const
 
 export type Method = keyof typeof methods
@@ -25,8 +36,14 @@ export interface Results {
   'bots.get': BotDetail
   'bots.create': Bot
   'bots.update': BotDetail
+  'bots.setPrefs': Bot
+  'sections.list': Section[]
+  'sections.create': Section
+  'sections.rename': Section
+  'sections.delete': { ok: true }
   'models.list': ModelProvider[]
   'chat.open': ChatSnapshot
+  'chat.new': ChatSnapshot
   'chat.send': { ok: true }
   'chat.stop': { ok: true }
   'chat.close': { ok: true }
@@ -36,7 +53,9 @@ export const RequestFrame = z.object({ id: z.number(), method: z.string(), param
 
 export type ResponseFrame = { id: number; ok: true; result: unknown } | { id: number; ok: false; error: { code: string; message: string } }
 
-export type EventFrame = { event: 'chat'; chatId: string; data: ChatEvent }
+/** What the server sends without being asked. `bots.changed` means: fetch the bot list again
+ *  (a bot, its preferences or the sections changed, here or on another device). */
+export type EventFrame = { event: 'chat'; chatId: string; data: ChatEvent } | { event: 'bots.changed' }
 
 /** An error whose message is safe and useful to show to the user. */
 export class LeBotError extends Error {

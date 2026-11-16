@@ -1,6 +1,7 @@
 /** Hermes profile <-> LeBot Bot. A bot is one Hermes profile; LeBot's display name lives in the
  *  profile's `ui_meta.lebot`, a namespace Hermes keeps for clients. */
-import type { Bot, BotDetail, ModelProvider } from '../../../shared/bot-schema'
+import type { Ability, BotIdentity, ModelProvider } from '../../../shared/bot-schema'
+import type { EngineBotDetail } from '../bot-engine'
 
 export const DEFAULT_PROFILE = 'default'
 export const UI_NAMESPACE = 'lebot'
@@ -11,31 +12,31 @@ function displayName(profile: Record<string, any>): string {
   return text(profile.ui_meta?.[UI_NAMESPACE]?.name) || text(profile.display_name) || text(profile.ui_meta?.['hermes-bots']?.title) || text(profile.name)
 }
 
-export function botFromProfile(profile: Record<string, any>): Bot {
+export function botFromProfile(profile: Record<string, any>): BotIdentity {
   return {
     id: text(profile.name),
     name: displayName(profile),
     function: text(profile.description),
     model: profile.model ? { provider: text(profile.provider), model: text(profile.model) } : null,
-    isDefault: profile.is_default === true,
-    skillCount: typeof profile.skill_count === 'number' ? profile.skill_count : 0
+    isDefault: profile.is_default === true
   }
 }
 
-/** `summary` is the bot's row from `profiles.list`; `described` is `profiles.describe`. */
-export function botDetailFromProfile(summary: Bot, described: Record<string, any>): BotDetail {
-  const skills: any[] = Array.isArray(described.skills) ? described.skills : []
-  const toolsets: any[] = Array.isArray(described.toolsets) ? described.toolsets : []
+const abilitiesOf = (kind: Ability['kind'], rows: unknown): Ability[] =>
+  (Array.isArray(rows) ? rows : [])
+    .filter(row => row && typeof row === 'object' && text(row.name))
+    .map(row => ({ kind, id: text(row.name), label: text(row.label) || text(row.name), enabled: row.enabled !== false }))
+
+/** `summary` is the bot's row from `profiles.list`; `described` is `profiles.describe`. Hermes'
+ *  skills, toolsets and MCP servers become one neutral list of abilities. */
+export function botDetailFromProfile(summary: BotIdentity, described: Record<string, any>): EngineBotDetail {
   const model = described.model?.default ? { provider: text(described.model.provider), model: text(described.model.default) } : summary.model
   return {
     ...summary,
     function: text(described.description) || summary.function,
     model,
     instructions: text(described.soul),
-    toolsets: toolsets.map(toolset => ({ name: text(toolset.name), label: text(toolset.label) || text(toolset.name), enabled: toolset.enabled === true })),
-    skillCount: skills.length,
-    enabledSkillCount: skills.filter(skill => skill.enabled === true).length,
-    mcpServerCount: Array.isArray(described.mcp_servers) ? described.mcp_servers.length : 0
+    abilities: [...abilitiesOf('toolset', described.toolsets), ...abilitiesOf('skill', described.skills), ...abilitiesOf('connector', described.mcp_servers)]
   }
 }
 
