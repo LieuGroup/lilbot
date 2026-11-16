@@ -1,5 +1,6 @@
 import { useParams } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
+import { Button } from '@/ui/button'
 import { Notice } from '@/ui/notice'
 import { Panel } from '@/ui/panel'
 import { Separator } from '@/ui/separator'
@@ -7,6 +8,7 @@ import type { Ability, BotDetail } from '../../../shared/bot-schema'
 import { lilbot, messageOf } from '../app/lilbot-socket'
 import { BotForm } from './bot-form'
 import { useBotStore } from './bot-store'
+import { EditAvatarDialog } from './edit-avatar-dialog'
 import { PrimaryBotAction } from './primary-bot-action'
 
 const kindLabels: Record<Ability['kind'], string> = { toolset: 'Toolsets', skill: 'Skills', connector: 'Connectors' }
@@ -47,6 +49,7 @@ export function BotSetupPanel() {
   const connected = useBotStore(state => state.connected)
   const upsert = useBotStore(state => state.upsert)
   const [bot, setBot] = useState<BotDetail | null>(null)
+  const [editingAvatar, setEditingAvatar] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -69,6 +72,22 @@ export function BotSetupPanel() {
       {!bot && !error && <p className="text-muted-foreground">Loading...</p>}
       {bot && (
         <>
+          <Button variant="outline" onClick={() => setEditingAvatar(true)}>
+            Edit avatar
+          </Button>
+          <EditAvatarDialog
+            open={editingAvatar}
+            onOpenChange={setEditingAvatar}
+            name={bot.name}
+            avatar={bot.prefs.avatar}
+            onSave={async ({ name, avatar }) => {
+              if (name !== bot.name) await lilbot.call('bots.update', { botId, name })
+              await lilbot.call('bots.setPrefs', { botId, avatar })
+              const updated = await lilbot.call('bots.get', { botId })
+              setBot(updated)
+              upsert(updated)
+            }}
+          />
           <PrimaryBotAction botId={botId} />
           <BotForm
             key={bot.id}

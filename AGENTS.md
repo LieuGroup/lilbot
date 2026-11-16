@@ -427,9 +427,9 @@ artwork, names or text.
   Library: pages, media and files, newest first, tabs only when there is more than one kind).
 - Bot menu: pin, move to section, mark unread, rename, copy conversation id, hide, delete. The main bot instead has
   unpin and "replace with a different bot", which only changes which bot is the main one.
-- Create bot: name, avatar shape and colour, nothing else. A one-time id makes a retry safe. A typed first message
+- Create bot: name, avatar cover shape, cover colour and face colour, nothing else. A one-time id makes a retry safe. A typed first message
   replaces the bot's automatic introduction.
-- Avatars: a fixed set of shapes and colours; a missing choice falls back to one derived from the bot's id.
+- Avatars: ten vector cover shapes and twelve colours for both cover and face. The tilted cover, highlight, screen, eyes and smile scale to any size. Shape and cover default from the bot's id; a missing face colour reads as ink without rewriting the row. Preferences store all three choices (schema 13). The reusable Edit avatar dialog previews at 96px; Setup has its temporary entry until #37 wires Name and avatar in the bot menu. Create uses the same three picker rows.
 - Status line: mostly built by the app from the tool in use ("Searching the web", "Running commands"), plus a
   status text the bot can set itself. A finished or failed turn shows for 8 seconds, then idle.
 - Memory shape: a profile text, dated journal entries, and facts with a learned-at time.

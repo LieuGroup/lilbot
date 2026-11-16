@@ -1,5 +1,5 @@
 /** The bot's editable fields, shared by "New bot" and the bot's settings page. */
-import { type FormEvent, useEffect, useId, useState } from 'react'
+import { type FormEvent, type ReactNode, useEffect, useId, useState } from 'react'
 import { Button } from '@/ui/button'
 import { FormField } from '@/ui/form-field'
 import { Input } from '@/ui/input'
@@ -17,6 +17,7 @@ export interface BotFormValues {
 }
 
 interface BotFormProps {
+  children?: ReactNode
   initial: BotFormValues
   submitLabel: string
   /** Shown as the first model choice when no model is picked, e.g. "Same as the main bot". */
@@ -24,7 +25,7 @@ interface BotFormProps {
   onSubmit: (values: BotFormValues) => Promise<void>
 }
 
-export function BotForm({ initial, submitLabel, noModelLabel, onSubmit }: BotFormProps) {
+export function BotForm({ initial, submitLabel, noModelLabel, onSubmit, children }: BotFormProps) {
   const [values, setValues] = useState(initial)
   const [providers, setProviders] = useState<ModelProvider[]>([])
   const [saving, setSaving] = useState(false)
@@ -63,6 +64,7 @@ export function BotForm({ initial, submitLabel, noModelLabel, onSubmit }: BotFor
       <FormField label="Name" htmlFor={`${id}-name`}>
         <Input id={`${id}-name`} value={values.name} maxLength={60} required placeholder="Researcher" className="h-10" onChange={event => set({ name: event.target.value })} />
       </FormField>
+      {children}
       <FormField label="Function" hint="What this bot is for, in a sentence or two." htmlFor={`${id}-function`}>
         <Textarea
           id={`${id}-function`}
