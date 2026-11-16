@@ -37,6 +37,14 @@ export class BotStore {
       .run(bot.id, bot.name, bot.function, bot.instructions, bot.model ? JSON.stringify(bot.model) : null, Number(bot.isDefault), bot.engineId, bot.engineBotId)
   }
 
+  creationDone(id: string): boolean {
+    return Boolean(this.db.query('SELECT 1 FROM bot_creations WHERE bot_id = ?').get(id))
+  }
+
+  finishCreation(id: string) {
+    this.db.query('INSERT OR IGNORE INTO bot_creations (bot_id) VALUES (?)').run(id)
+  }
+
   bind(id: string, engineBotId: string) {
     this.db.query('UPDATE bots SET engine_bot_id = ? WHERE id = ?').run(engineBotId, id)
   }

@@ -78,6 +78,13 @@ existing bot is connected from its Memory panel. Hermes' default bot (Chief of S
 use: nothing about it needs protecting.
 It includes an after-chat review that saves what a chat missed. The user can choose a primary bot in Setup; it
 appears first in the roster and its conversation opens on app entry.
+The primary bot can create bots when asked, using `create_bot`. LilBot authenticates the caller with a
+bot-bound capability in its adapter settings, checks the current primary, and ignores caller ids and
+models in tool arguments. The primary writes the instructions and function; the new bot inherits its
+model. Request ids prevent duplicate creation, including concurrent retries and server restarts.
+The bot appears immediately; a hidden first prompt starts its main conversation with its own greeting
+and task suggestions. Normal activity observation marks that reply unread. The primary returns a link.
+The app's create form stays available.
 Next: the Grok Bot style roster and details panel (sections, pin, hide, avatars, unread, Activity and Library
 tabs), the nightly memory tidy-up, delete a bot, edit abilities, routines.
 Desktop (Tauri) and iOS (Expo) come after the web app. Approvals are off in Hermes by Oscar's choice, so there are
@@ -239,7 +246,7 @@ lasting facts than it is shown, so it tidies. Hermes fences what a provider supp
 user input" on its own.
 
 Hermes keeps a plug-in's code loaded per folder until the gateway restarts. So each version is installed under its
-own folder and provider name (`lilbot-memory-v0-4-0`): a new version is a new folder, loaded fresh on the bot's next
+own folder and provider name (`lilbot-memory-v0-5-0`): a new version is a new folder, loaded fresh on the bot's next
 session. To ship a plug-in change: bump `version` in `plugin.yaml` and `VERSION` in `__init__.py`, and restart
 LilBot. At start-up `BotEngine.refreshMemory` reinstalls the adapter for every connected bot on an older version.
 No Hermes restart is needed. LilBot logs a warning when a bot still calls with an older adapter.

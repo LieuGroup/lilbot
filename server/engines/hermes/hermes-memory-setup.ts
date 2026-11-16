@@ -5,11 +5,12 @@
  *  The Hermes gateway keeps a plug-in's code loaded per folder until it restarts. So each version
  *  of the plug-in is installed under its own folder name (`lilbot-memory-v0-3-0`): a new version is
  *  a new folder, which Hermes loads fresh on the bot's next session, with no gateway restart. */
+
+import { createHmac } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { cp, readFile, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-
 import type { LegacyNotes, MemoryConnection } from '../bot-engine'
 
 /** The name Hermes knows the provider by (plus a version). The data is not here: it is LilBot's. */
@@ -87,9 +88,24 @@ export async function installMemory(botId: string, connection: MemoryConnection)
   // Hermes selects a provider by name; the installed copy carries its versioned one.
   const manifest = await readFile(join(PLUGIN_SOURCE, 'plugin.yaml'), 'utf8')
   await writeFile(join(target, 'plugin.yaml'), manifest.replace(/^name:.*$/m, `name: ${name}`))
-  await writeFile(join(home, SETTINGS_FILE), `${JSON.stringify({ url: connection.url, token_file: connection.tokenFile, bot_id: connection.botId ?? botId }, null, 2)}\n`, {
-    mode: 0o600
-  })
+  await writeFile(
+    join(home, SETTINGS_FILE),
+    `${JSON.stringify(
+      {
+        url: connection.url,
+        token_file: connection.tokenFile,
+        bot_id: connection.botId ?? botId,
+        creation_capability: createHmac('sha256', (await readFile(connection.tokenFile, 'utf8')).trim())
+          .update(`create-bot:${connection.botId ?? botId}`)
+          .digest('hex')
+      },
+      null,
+      2
+    )}\n`,
+    {
+      mode: 0o600
+    }
+  )
   await configSet(botId, 'memory.provider', name)
   await configSet(botId, 'memory.memory_enabled', 'false')
   await configSet(botId, 'memory.user_profile_enabled', 'false')

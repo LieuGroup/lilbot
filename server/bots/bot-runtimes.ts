@@ -56,10 +56,12 @@ export class BotRuntimes {
     return (await this.optionalState(bot)) !== null
   }
 
-  async create(input: BotCreateInput): Promise<BotRecord> {
+  async create(input: BotCreateInput, id: string = crypto.randomUUID()): Promise<BotRecord> {
     await this.initialize()
+    const existing = this.store.list().find(bot => bot.id === id)
+    if (existing) return existing
     const bot: BotRecord = {
-      id: crypto.randomUUID(),
+      id,
       name: input.name,
       function: input.function,
       instructions: input.instructions,

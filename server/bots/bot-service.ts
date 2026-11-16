@@ -5,6 +5,7 @@ import type { MemoryFact, MemoryWriteInput } from '../../shared/memory-schema'
 import { LilBotError } from '../../shared/protocol'
 import type { ActivityCursor, BotEngine, MemoryConnection, OpenChat } from '../engines/bot-engine'
 import type { MemoryService } from '../memory/memory-service'
+import { BotCreation } from './bot-creation'
 import { BotMemory } from './bot-memory'
 import type { BotPrefsStore } from './bot-prefs-store'
 import { BotRuntimes } from './bot-runtimes'
@@ -24,6 +25,7 @@ export class BotService {
   private runtimes: BotRuntimes
   private changed: () => void
   private memoryChanged: () => void
+  private creation: BotCreation
   private botMemory: BotMemory
 
   constructor(
@@ -35,6 +37,7 @@ export class BotService {
     options: BotServiceOptions = {}
   ) {
     this.runtimes = new BotRuntimes(store, engine)
+    this.creation = new BotCreation(this, store)
     this.changed = options.changed ?? (() => {})
     this.memoryChanged = options.memoryChanged ?? (() => {})
     this.botMemory = new BotMemory(this.runtimes, memory, options.memoryConnection, this.memoryChanged)
@@ -76,9 +79,9 @@ export class BotService {
     return { ...this.identity(bot), instructions: bot.instructions, ...(state ?? { abilities: [], memoryConnected: false }), runnable, ...this.own(bot) }
   }
 
-  async createBot(input: BotCreateInput): Promise<Bot> {
+  async createBot(input: BotCreateInput, id?: string): Promise<Bot> {
     try {
-      const identity = await this.runtimes.create(input)
+      const identity = await this.runtimes.create(input, id)
       if (input.avatar) this.prefs.setPrefs(identity.id, { avatar: input.avatar })
       await this.workspaces.ensure(identity.id)
       await this.botMemory.connectNew(identity.id)
@@ -194,6 +197,12 @@ export class BotService {
 
   private own(identity: BotRecord): Pick<Bot, 'isPrimary' | 'prefs' | 'workspace'> {
     return { isPrimary: identity.id === this.primaryId(this.runtimes.store.list()), prefs: this.prefs.prefs(identity.id), workspace: this.workspaces.pathFor(identity.id) }
+  }
+
+  async createFromBot(callerId: string, input: import('./bot-creation').BotCreationInput) {
+    const caller = await this.requireBot(callerId)
+    if (callerId !== this.primaryId(this.runtimes.store.list())) throw new LilBotError('forbidden', 'Only the primary bot can create bots.')
+    return this.creation.create(caller, input)
   }
 
   private primaryId(bots: BotRecord[]): string | undefined {

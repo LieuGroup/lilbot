@@ -54,7 +54,7 @@ const methods: Record<string, Uses> = {
     sends: ['session_id', 'source', 'display_projection'],
     reads: ['session_id', 'stored_session_id', 'display_messages', 'running', 'execution_generation', 'info']
   },
-  'prompt.submit': { table: 'x-canonical-methods', sends: ['session_id', 'text', 'input_id'], reads: [] },
+  'prompt.submit': { table: 'x-canonical-methods', sends: ['session_id', 'text', 'input_id', 'display_kind'], reads: [] },
   'session.interrupt': { table: 'x-canonical-methods', sends: ['session_id', 'execution_generation'], reads: [] },
   'profiles.list': { table: 'methods', sends: ['include_sessions'], reads: ['profiles'] },
   'profiles.describe': { table: 'methods', sends: ['name'], reads: ['name', 'description', 'soul', 'model', 'skills', 'toolsets', 'mcp_servers'] },

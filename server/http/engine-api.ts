@@ -1,13 +1,16 @@
 /** The local HTTP endpoint engine adapters use to reach LilBot's memory (today: the Hermes memory
  *  provider in `engines/hermes/memory-adapter/`). Only for programs on this machine: it answers on
  *  the loopback address only, refuses browsers, and needs the token from LilBot's data folder. */
+
 import { timingSafeEqual } from 'node:crypto'
 import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
-
 import { type MemoryFact, MemoryKind, MemoryScope } from '../../shared/memory-schema'
 import { LilBotError } from '../../shared/protocol'
+import { matchesCapability } from '../bots/bot-capability'
+import { BotCreationInput } from '../bots/bot-creation'
+import type { BotService } from '../bots/bot-service'
 import type { MemoryReviewer } from '../memory/memory-reviewer'
 import { type MemoryService, shortId } from '../memory/memory-service'
 
@@ -52,6 +55,7 @@ const forBot = (fact: MemoryFact, reader: string) => ({
 const json = (status: number, body: unknown) => Response.json(body, { status })
 
 export interface EngineApiOptions {
+  bots?: BotService
   onMemoryChanged?: () => void
   /** The adapter version this LilBot ships. A bot calling with another one runs stale adapter code. */
   adapterVersion?: string
@@ -75,6 +79,18 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
   return async (request: Request, pathname: string): Promise<Response> => {
     if (request.method !== 'POST') return json(405, { error: 'Use POST.' })
     if (!authorised(request)) return json(403, { error: 'Not allowed.' })
+    if (pathname === '/engine/bots/create') {
+      try {
+        const capability = request.headers.get('x-lilbot-bot-capability') ?? ''
+        const caller = (await options.bots?.listBots())?.find(bot => matchesCapability(token, bot.id, capability))
+        if (!caller || !options.bots) return json(403, { error: 'Unknown bot credential.' })
+        const input = BotCreationInput.safeParse(await request.json())
+        if (!input.success) return json(400, { error: 'Invalid bot creation request.' })
+        return json(200, await options.bots.createFromBot(caller.id, input.data))
+      } catch (error) {
+        return json(error instanceof LilBotError ? 422 : 500, { error: error instanceof Error ? error.message : 'Creation failed.' })
+      }
+    }
     if (!Object.hasOwn(routes, pathname)) return json(404, { error: 'Unknown endpoint.' })
 
     try {

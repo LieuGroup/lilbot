@@ -207,8 +207,13 @@ export class HermesEngine implements BotEngine {
           workspace: typeof session.info?.cwd === 'string' ? session.info.cwd : '',
           items: itemsFromRows(session.display_messages)
         },
-        send: async text => {
-          await socket.request('prompt.submit', { session_id: sessionId, text, input_id: crypto.randomUUID() })
+        send: async (text, options) => {
+          await socket.request('prompt.submit', {
+            session_id: sessionId,
+            text,
+            input_id: options?.inputId ?? crypto.randomUUID(),
+            ...(options?.hidden ? { display_kind: 'hidden' } : {})
+          })
         },
         stop: async () => {
           if (generation === null) throw new LilBotError('not_running', 'The bot is not running.')
