@@ -150,7 +150,7 @@ class LilBotMemoryProvider(MemoryProvider):
         if not self._token:
             return {"error": "Memory is not connected to LilBot."}
         request = urllib.request.Request(
-            f"{self._url}/engine/{endpoint}" if endpoint.startswith(("bots/", "routines/", "reports/")) else f"{self._url}/engine/memory/{endpoint}",
+            f"{self._url}/engine/{endpoint}" if endpoint.startswith(("bots/", "routines/", "reports/", "library/")) else f"{self._url}/engine/memory/{endpoint}",
             data=json.dumps({"botId": self._bot, **({"chatId": self._chat} if self._chat else {}), **body}).encode(),
             headers={"Content-Type": "application/json", "Authorization": f"Bearer {self._token}", "X-LilBot-Adapter-Version": VERSION, "X-LilBot-Bot-Capability": self._creation_capability},
             method="POST",
@@ -201,6 +201,10 @@ class LilBotMemoryProvider(MemoryProvider):
 
     def get_tool_schemas(self) -> list[dict[str, Any]]:
         return list(TOOLS) + ROUTINE_TOOLS + REPORT_TOOLS + [{
+            "name": "give_file",
+            "description": "Give Oscar a finished file from your workspace. It appears in your Library. Use a short title. Working files are not given automatically. The file must be inside your workspace and at most 50 MiB.",
+            "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "title": {"type": "string"}}, "required": ["path", "title"]}
+        }, {
             "name": "create_bot",
             "description": "Create a bot when Oscar asks. Only the primary bot is allowed. Write its instructions and short function from his description; it inherits your model and greets him. No confirmation needed. Reply with the returned Markdown link. Reuse requestId on retries, use a new unique requestId for each new request.",
             "parameters": {"type": "object", "properties": {key: {"type": "string"} for key in ["requestId", "name", "function", "instructions"]}, "required": ["requestId", "name", "function", "instructions"]}
@@ -211,6 +215,8 @@ class LilBotMemoryProvider(MemoryProvider):
             return json.dumps(self._call("reports/" + REPORT_ACTIONS[tool_name], {**args, "chatId": self._chat, "reportTurn": self._report_turn}))
         if tool_name in ROUTINE_ACTIONS:
             return json.dumps(self._call("routines/" + ROUTINE_ACTIONS[tool_name], args))
+        if tool_name == "give_file":
+            return json.dumps(self._call("library/give", {"path": args.get("path", ""), "title": args.get("title", "")}))
         if tool_name == "create_bot":
             return json.dumps(self._call("bots/create", {key: args.get(key, "") for key in ["requestId", "name", "function", "instructions"]}))
         if tool_name == "recall_memory":

@@ -129,11 +129,11 @@ export class RoutineStore {
       this.db.query('INSERT OR IGNORE INTO routine_chats VALUES (?, ?)').run(chatId, id)
     })()
   }
-  sourceRun(botId: string, chatId: string): string | null {
-    const row = this.db.query('SELECT c.run_id FROM routine_chats c JOIN routine_runs r ON r.id = c.run_id WHERE c.chat_id = ? AND r.bot_id = ?').get(chatId, botId) as {
-      run_id: string
+  runForChat(botId: string, chatId: string): string | undefined {
+    const row = this.db.query(`SELECT r.id FROM routine_chats c JOIN routine_runs r ON r.id = c.run_id WHERE c.chat_id = ? AND r.bot_id = ?`).get(chatId, botId) as {
+      id: string
     } | null
-    return row?.run_id ?? null
+    return row?.id
   }
   isRoutineChat(chatId: string) {
     return !!this.db.query('SELECT 1 FROM routine_chats WHERE chat_id = ?').get(chatId)

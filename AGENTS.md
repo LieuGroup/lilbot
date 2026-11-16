@@ -39,6 +39,7 @@ server/            The LilBot server (runs on the leader).
     memory-reviewer.ts   the after-chat review        review-queue.ts   turns waiting for it
   routines/          app-owned schedules, run history and scheduler
   reports/           durable reports, batching, primary routing and delivery audit
+  library/           Delivered workspace files, metadata, safe reads and folder listings.
   database/          LilBot's own SQLite file and its schema steps.
   engines/           Whatever actually runs the bots.
     bot-engine.ts        the contract every engine must fulfil
@@ -61,7 +62,7 @@ live-checks/       Checks that talk to the real Hermes with a temporary bot.
 
 Rules that keep it this way:
 
-- A request flows downward only: `http/` -> `bots/`, `memory/`, `routines/` or `reports/` -> `engines/` and `database/`. Nothing lower may
+- A request flows downward only: `http/` -> `bots/`, `memory/`, `routines/` `library/` or `reports/` -> `engines/` and `database/`. Nothing lower may
   import from something higher.
 - Nothing outside `server/engines/hermes/` knows about Hermes, except `main.ts`, which picks the engine. A second
   engine is a second folder under `server/engines/`.
@@ -153,7 +154,7 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
   Archived workspace entries move to `<workspaces>/.archive/<bot id>` without following links.
   Hermes has no delete RPC: its profile-delete CLI stops the runtime and deletes its transcripts; a retry after
   folder removal uses `profile purge-identity` to finish gateway identity settlement. Late activity and memory
-  calls from deleted bots are ignored/refused. Routines and their run history are removed too. Report history retains attribution after deletion; pending deliveries from/to the deleted bot are cancelled. Webhooks and library items are not built yet.
+  calls from deleted bots are ignored/refused. Routines and their run history are removed too. Report history retains attribution after deletion; pending deliveries from/to the deleted bot are cancelled. Library metadata is retained for attribution; deleted bots cannot list or fetch it. Webhooks are not built yet.
 - `server/http/browser-session.ts`: one per browser connection. Validates requests, runs them on the service, forwards
   chat events. A typed handler map: a protocol method without a handler does not compile.
 - `server/database/`: LilBot's own SQLite database (`bun:sqlite`), by default `~/.local/share/lilbot/lilbot.db`
@@ -236,6 +237,32 @@ What a bot is and who owns each part. Decided with Oscar on 2026-11-16 unless ma
 - A bot's live state (running, writing, waiting, current activity) is separate from unread and from the health of
   its computer.
 
+## Library
+
+`server/library/` owns delivered items in the `library_items` table; `shared/library-schema.ts`
+defines the data. The engine-neutral service takes workspace and active-bot lookups. `give_file`
+in the memory adapter (v0.7.0) calls `/engine/library/give` with its bot-bound capability; the
+server ignores body bot ids and refuses unknown/deleted callers. A title and chat or routine run
+are required. The endpoint resolves routine session aliases to the persisted run id for that bot,
+ignoring caller-supplied run ids; ordinary deliveries retain chat provenance.
+
+Items point to workspace files, never copies. Only explicitly given files appear. Kinds are
+media (image/audio/video MIME), page (.md/.html/.htm), or file. Files are limited to 50 MiB.
+`library.list` is paged newest first, optionally filtered by kind, with UTC Today / This week
+(Monday start) / Older groups, total, next offset and missing status. `library.changed` carries
+the bot id. `library.content` returns a download URL; its GET route applies the socket Host/Origin
+checks, rejects cross-site fetches, and serves bounded bytes with MIME, attachment disposition,
+no-sniff, sandbox and no-store headers. `library.workspace` lists a requested folder separately.
+Linux descriptor-relative opens with no-follow flags prevent path/symlink swaps from escaping;
+workspace-root symlinks and nonregular files are refused. The existing deletion choice archives
+or deletes workspace files; tombstoned bots immediately lose library access and metadata stays.
+
+Hermes declares incoming `CanonicalAttachment` paths but no outgoing attachment manifest on
+`MessageCompletePayload` or `TranscriptMessage`. Automatic assistant attachment ingestion is
+therefore unavailable until the contract exposes it; tool image previews are not deliveries.
+No Library UI is built yet. `bun live-checks/library-check.ts` tests an isolated server and temporary
+bot end to end, including the push, protocol list, separate workspace, and download.
+
 ## Memory
 
 LilBot owns memory so it survives an engine change, can be shared between bots, and can be seen and corrected by
@@ -270,7 +297,7 @@ lasting facts than it is shown, so it tidies. Hermes fences what a provider supp
 user input" on its own.
 
 Hermes keeps a plug-in's code loaded per folder until the gateway restarts. So each version is installed under its
-own folder and provider name (`lilbot-memory-v0-6-0`): a new version is a new folder, loaded fresh on the bot's next
+own folder and provider name (`lilbot-memory-v0-7-0`): a new version is a new folder, loaded fresh on the bot's next
 session. To ship a plug-in change: bump `version` in `plugin.yaml` and `VERSION` in `__init__.py`, and restart
 LilBot. At start-up `BotEngine.refreshMemory` takes only the non-deleted database bindings for its engine, by native id,
 and reinstalls older adapters only for those profiles. All start-up passes that touch profiles must use these
@@ -333,7 +360,7 @@ it never creates, changes or removes Hermes cron jobs. Existing external jobs st
   day's nonexistent time; repeated times run at their first occurrence only. The API includes a plain
   description such as "every day at 08:00 (Australia/Adelaide)".
 - `create_routine`, `list_routines`, `pause_routine`, `resume_routine` and `delete_routine` come from
-  adapter **0.6.0**. They use the existing bot-bound capability; a body cannot select another bot.
+  adapter **0.6.0** and remain in **0.7.0** alongside `give_file`. They use the existing bot-bound capability; a body cannot select another bot.
   `createdBy: oscar` means the bot is acting on an explicit request, `bot` means its own initiative.
   Attribution relies on the bot following that instruction, not a security boundary. The self-created
   limit is five, including paused routines; the minimum interval is five minutes for all routines.

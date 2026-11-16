@@ -84,6 +84,8 @@ const migrations: string[] = [
    );
    CREATE INDEX routine_runs_pending ON routine_runs(status);
    CREATE TABLE routine_chats (chat_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES routine_runs(id) ON DELETE CASCADE);`,
+  `CREATE TABLE library_items (id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, title TEXT NOT NULL, path TEXT NOT NULL, kind TEXT NOT NULL CHECK(kind IN ('media', 'file', 'page')), size INTEGER NOT NULL, created_at INTEGER NOT NULL, chat_id TEXT, routine_run_id TEXT);
+   CREATE INDEX library_bot_time ON library_items(bot_id, created_at DESC);`,
   // Reports and delivery receipts survive retries and restarts independently of an engine.
   `CREATE TABLE reports (
     id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, bot_name TEXT NOT NULL, request_id TEXT NOT NULL,

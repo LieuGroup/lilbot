@@ -13,6 +13,16 @@ spec = importlib.util.spec_from_file_location('adapter', sys.argv[1])
 module = importlib.util.module_from_spec(spec)
 sys.modules['adapter'] = module
 spec.loader.exec_module(module)
+assert module.VERSION == "0.7.0"
+assert "version: 0.7.0" in pathlib.Path(sys.argv[1]).with_name("plugin.yaml").read_text()
+tools = {tool["name"] for tool in module.LilBotMemoryProvider().get_tool_schemas()}
+assert {"create_routine", "list_routines", "pause_routine", "resume_routine", "delete_routine", "give_file", "create_bot", "recall_memory", "update_memory"} <= tools
+calls = []
+adapter = module.LilBotMemoryProvider()
+adapter._call = lambda endpoint, body: calls.append((endpoint, body)) or {}
+adapter.handle_tool_call("give_file", {"path": "result.txt", "title": "Result"})
+adapter.handle_tool_call("list_routines", {})
+assert calls == [("library/give", {"path": "result.txt", "title": "Result"}), ("routines/list", {})]
 with tempfile.TemporaryDirectory() as directory:
     home = pathlib.Path(directory) / 'profiles' / 'native-id'
     home.mkdir(parents=True)

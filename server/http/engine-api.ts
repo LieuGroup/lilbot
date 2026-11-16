@@ -6,11 +6,13 @@ import { timingSafeEqual } from 'node:crypto'
 import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
+import { LibraryGiveInput } from '../../shared/library-schema'
 import { type MemoryFact, MemoryKind, MemoryScope } from '../../shared/memory-schema'
 import { LilBotError } from '../../shared/protocol'
 import { matchesCapability } from '../bots/bot-capability'
 import { BotCreationInput } from '../bots/bot-creation'
 import type { BotService } from '../bots/bot-service'
+import type { LibraryService } from '../library/library-service'
 import type { MemoryReviewer } from '../memory/memory-reviewer'
 import { type MemoryService, shortId } from '../memory/memory-service'
 import type { ReportService } from '../reports/report-service'
@@ -62,6 +64,7 @@ export interface EngineApiOptions {
   bots?: BotService
   routines?: RoutineService
   reports?: ReportService
+  library?: LibraryService
   botExists: (botId: string) => boolean
   onMemoryChanged?: () => void
   /** The adapter version this LilBot ships. A bot calling with another one runs stale adapter code. */
@@ -86,6 +89,21 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
   return async (request: Request, pathname: string): Promise<Response> => {
     if (request.method !== 'POST') return json(405, { error: 'Use POST.' })
     if (!authorised(request)) return json(403, { error: 'Not allowed.' })
+    if (pathname === '/engine/library/give') {
+      try {
+        const capability = request.headers.get('x-lilbot-bot-capability') ?? ''
+        const caller = (await options.bots?.listBots())?.find(bot => matchesCapability(token, bot.id, capability))
+        if (!caller || !options.botExists(caller.id)) return json(403, { error: 'Unknown bot credential.' })
+        const input = LibraryGiveInput.safeParse(await request.json())
+        if (!input.success) return json(400, { error: 'Invalid file delivery.' })
+        if (!options.library) return json(503, { error: 'Library unavailable.' })
+        const routineRunId = input.data.chatId ? options.routines?.store.runForChat(caller.id, input.data.chatId) : undefined
+        const item = await options.library.give(caller.id, { ...input.data, routineRunId })
+        return json(200, { item, url: `/api/library/${caller.id}/${item.id}` })
+      } catch {
+        return json(422, { error: 'Cannot give this file. Use a regular file inside your workspace, at most 50 MiB.' })
+      }
+    }
     if (pathname === '/engine/bots/create' || pathname.startsWith('/engine/routines/') || pathname.startsWith('/engine/reports/')) {
       try {
         const capability = request.headers.get('x-lilbot-bot-capability') ?? ''

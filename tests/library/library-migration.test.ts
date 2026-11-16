@@ -1,0 +1,30 @@
+import { expect, test } from 'bun:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+import { BotStore } from '../../server/bots/bot-store'
+import { openDatabase } from '../../server/database/database'
+import { RoutineStore } from '../../server/routines/routine-store'
+import { detail } from '../helpers/fake-engine'
+
+test('library migration preserves shipped routines and their run aliases', () => {
+  const root = mkdtempSync(join(homedir(), 'agent-tmp', 'library-migration-'))
+  const path = join(root, 'db')
+  let db = openDatabase(path)
+  try {
+    new BotStore(db).import('test', [{ ...detail, engineId: 'test', engineBotId: 'b1' }])
+    const store = new RoutineStore(db)
+    store.create('b1', { requestId: 'one', description: 'Check', schedule: { kind: 'interval', seconds: 300 }, createdBy: 'oscar' }, 0, 5)
+    const [run] = store.claimDue(300_000)
+    store.attach(run.id, 'stored', 300_000)
+    db.exec('DROP TABLE report_deliveries; DROP TABLE reports; DROP TABLE library_items; PRAGMA user_version = 10')
+    db.close()
+    db = openDatabase(path)
+    expect(db.query('PRAGMA user_version').get()).toEqual({ user_version: 12 })
+    expect(new RoutineStore(db).runForChat('b1', 'stored')).toBe(run.id)
+    expect(db.query('SELECT * FROM library_items').all()).toEqual([])
+  } finally {
+    db.close()
+    rmSync(root, { recursive: true, force: true })
+  }
+})

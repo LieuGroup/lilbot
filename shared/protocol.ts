@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { BotDeleteDefaults, BotDeleteInput } from './bot-delete-schema'
 import { type Bot, BotCreateInput, type BotDetail, BotPrefsInput, BotUpdateInput, type ModelProvider, type Section, sectionName } from './bot-schema'
 import type { ChatEvent, ChatSnapshot } from './chat-schema'
+import { LibraryListInput, type LibraryPage, type WorkspaceEntry } from './library-schema'
 import { type MemoryFact, MemoryWriteInput } from './memory-schema'
 import type { Report } from './report-schema'
 import type { Routine } from './routine-schema'
@@ -19,6 +20,9 @@ export const methods = {
   'routines.resume': z.object({ botId, id: z.string().min(1) }),
   'routines.delete': z.object({ botId, id: z.string().min(1) }),
   'routines.openRun': z.object({ botId, runId: z.string().min(1) }),
+  'library.list': LibraryListInput,
+  'library.content': z.object({ botId, itemId: z.string().min(1) }),
+  'library.workspace': z.object({ botId, path: z.string().max(4096).default('') }),
   'bots.list': z.object({}),
   'bots.delete': BotDeleteInput,
   'bots.deleteDefaults.get': z.object({}),
@@ -64,6 +68,9 @@ export interface Results {
   'routines.resume': { ok: true }
   'routines.delete': { ok: true }
   'routines.openRun': ChatSnapshot
+  'library.list': LibraryPage
+  'library.content': { url: string }
+  'library.workspace': WorkspaceEntry[]
   'bots.list': Bot[]
   'bots.delete': { ok: true }
   'bots.deleteDefaults.get': import('./bot-delete-schema').BotDeleteDefaults
@@ -105,6 +112,7 @@ export type EventFrame =
   | { event: 'memory.changed' }
   | { event: 'routines.changed' }
   | { event: 'reports.changed' }
+  | { event: 'library.changed'; botId: string }
 
 /** An error whose message is safe and useful to show to the user. */
 export class LilBotError extends Error {
