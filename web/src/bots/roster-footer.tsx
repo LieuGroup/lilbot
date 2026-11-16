@@ -1,5 +1,10 @@
-/** The roster's foot: who is using the app, or that the app has lost its server. LilBot has one
- *  user and no account data yet, so the name is fixed. Settings join it later (#37). */
+import { SlidersHorizontalIcon } from 'lucide-react'
+
+import { iconButton } from '@/ui/icon-button'
+import { loadSettings, openSettings } from '../settings/settings-store'
+
+/** The roster's foot: who is using the app, or that the app has lost its server, and the
+ *  Settings button. LilBot has one user and no account data yet, so the name is fixed. */
 export function RosterFooter({ connected }: { connected: boolean }) {
   return (
     <div className="flex flex-none items-center justify-between pt-2.5 pr-2.5 pb-[max(12px,env(safe-area-inset-bottom))] pl-4">
@@ -20,6 +25,9 @@ export function RosterFooter({ connected }: { connected: boolean }) {
           </span>
         </div>
       )}
+      <button type="button" aria-label="Settings" className={iconButton()} onPointerEnter={() => void loadSettings()} onClick={() => openSettings()}>
+        <SlidersHorizontalIcon />
+      </button>
     </div>
   )
 }

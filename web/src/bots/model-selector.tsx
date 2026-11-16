@@ -32,11 +32,11 @@ export function ModelSelector({ id, providers, value, noModelLabel, onChange }: 
         <span className="truncate">{modelLabel(groups, value)}</span>
         <ChevronDownIcon className="text-muted-foreground" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="max-h-[min(24rem,var(--available-height))]">
+      <DropdownMenuContent align="start" className="max-h-[min(24rem,var(--available-height))] w-(--anchor-width)">
         <DropdownMenuRadioGroup value={modelKey(value)} onValueChange={key => onChange(modelFromKey(key))}>
           {groups.map((group, index) => (
             <Fragment key={group.label ?? 'top'}>
-              {index > 0 && <DropdownMenuSeparator />}
+              {index > 0 && <DropdownMenuSeparator className="my-1" />}
               <DropdownMenuGroup>
                 {group.label && <DropdownMenuLabel>{group.label}</DropdownMenuLabel>}
                 {group.options.map(option => (
