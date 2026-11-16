@@ -6,25 +6,42 @@ import type { BotRecord, BotStore } from './bot-store'
 
 export class BotRuntimes {
   private importing?: Promise<void>
+  private initialized = false
+  private prepared = new Set<string>()
+  private states = new Map<string, RuntimeState | null>()
   constructor(
     readonly store: BotStore,
     private engine: BotEngine
   ) {}
 
   initialize(): Promise<void> {
-    if (this.store.imported(this.engine.id)) return Promise.resolve()
+    if (this.initialized) return Promise.resolve()
     if (!this.importing) {
-      this.importing = this.engine
-        .importBots()
-        .then(bots => {
+      this.importing = (async () => {
+        if (!this.store.imported(this.engine.id)) {
+          const bots = await this.engine.importBots()
           this.store.import(
             this.engine.id,
             bots.map(bot => ({ ...bot, engineId: this.engine.id, engineBotId: bot.id }))
           )
-        })
-        .finally(() => {
-          this.importing = undefined
-        })
+        }
+        for (const bot of this.store.list()) {
+          try {
+            await this.state(bot)
+            if (!this.prepared.has(bot.id)) {
+              this.validateMode(bot)
+              await this.engineFor(bot).prepareRuntime?.(bot.engineBotId, bot)
+              this.prepared.add(bot.id)
+            }
+          } catch (error) {
+            this.states.set(bot.id, null)
+            if (!(error instanceof LilBotError) || !['bot_not_found', 'runtime_unavailable', 'engine_unavailable', 'engine_timeout'].includes(error.code)) throw error
+          }
+        }
+        this.initialized = true
+      })().finally(() => {
+        this.importing = undefined
+      })
     }
     return this.importing
   }
@@ -50,16 +67,31 @@ export class BotRuntimes {
 
   async state(bot: BotRecord): Promise<RuntimeState> {
     this.validateMode(bot)
-    return this.engineFor(bot).applyIdentity(bot.engineBotId, bot)
+    try {
+      const state = await this.engineFor(bot).applyIdentity(bot.engineBotId, bot)
+      this.states.set(bot.id, state)
+      return state
+    } catch (error) {
+      this.states.set(bot.id, null)
+      throw error
+    }
   }
 
   async optionalState(bot: BotRecord): Promise<RuntimeState | null> {
-    try {
-      return await this.state(bot)
-    } catch (error) {
-      if (error instanceof LilBotError && ['bot_not_found', 'runtime_unavailable', 'engine_unavailable', 'engine_timeout'].includes(error.code)) return null
-      throw error
-    }
+    await this.initialize()
+    return this.states.get(bot.id) ?? null
+  }
+
+  memoryConnected(id: string) {
+    const state = this.states.get(id)
+    if (state) this.states.set(id, { ...state, memoryConnected: true })
+  }
+
+  async runtimeAvailability(nativeId: string, available: boolean) {
+    const bot = this.store.list().find(bot => bot.engineId === this.engine.id && bot.engineBotId === nativeId)
+    if (!bot) return
+    if (!available) this.states.set(bot.id, null)
+    else await this.state(bot)
   }
 
   async available(bot: BotRecord): Promise<boolean> {
@@ -88,13 +120,17 @@ export class BotRuntimes {
     this.store.save(bot)
     const nativeId = await this.engine.createRuntime(bot)
     if (nativeId !== bot.engineBotId) this.store.bind(bot.id, nativeId)
-    return this.store.get(bot.id)
+    const saved = this.store.get(bot.id)
+    await this.state(saved)
+    return saved
   }
 
   async update({ botId, ...patch }: BotUpdateInput): Promise<BotRecord> {
-    const bot = { ...(await this.require(botId)), ...patch }
+    const previous = await this.require(botId)
+    const bot = { ...previous, ...patch }
     this.validateMode(bot)
     this.store.save(bot)
+    if (bot.permissionMode !== previous.permissionMode) await this.engineFor(bot).prepareRuntime?.(bot.engineBotId, bot)
     await this.state(bot)
     return bot
   }

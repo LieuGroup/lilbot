@@ -36,11 +36,24 @@ export class HermesEngine implements BotEngine {
   readonly supportedPermissionModes = ['full-access'] as const
   constructor(private botIds?: string[]) {}
 
-  watchActivity(bots: () => Promise<RuntimeBinding[]>, listener: (event: ActivityEvent) => void, cursor: ActivityCursor) {
+  watchActivity(
+    bots: () => Promise<RuntimeBinding[]>,
+    listener: (event: ActivityEvent) => void,
+    cursor: ActivityCursor,
+    availability?: (nativeId: string, available: boolean) => void
+  ) {
+    const known = new Map<string, boolean>()
     return watchHermesActivity(
       async () => {
         const bound = await bots()
         const profiles = new Set((await this.profiles(false)).map(bot => bot.id))
+        for (const bot of bound) {
+          const present = profiles.has(bot.engineBotId)
+          if (known.has(bot.engineBotId) && known.get(bot.engineBotId) !== present) {
+            availability?.(bot.engineBotId, present)
+          }
+          known.set(bot.engineBotId, present)
+        }
         return bound.filter(bot => profiles.has(bot.engineBotId))
       },
       listener,
@@ -97,13 +110,12 @@ export class HermesEngine implements BotEngine {
   async createRuntime(identity: RuntimeIdentity): Promise<string> {
     const id = await createRuntime(await this.manage(), identity)
     this.botIds?.push(id)
-    await this.preparePermissions(id)
+    await this.prepareRuntime(id)
     return id
   }
 
   async applyIdentity(id: string, identity: RuntimeIdentity): Promise<RuntimeState> {
     const detail = await this.getBot(id)
-    await this.preparePermissions(id)
     await applyIdentity(await this.manage(), id, identity, detail)
     return { abilities: detail.abilities, memoryConnected: detail.memoryConnected }
   }
@@ -114,7 +126,7 @@ export class HermesEngine implements BotEngine {
     await deleteRuntime(id)
   }
 
-  private async preparePermissions(id: string) {
+  async prepareRuntime(id: string) {
     const socket = await HermesSocket.connect(
       id === DEFAULT_PROFILE ? '' : id,
       () => {},

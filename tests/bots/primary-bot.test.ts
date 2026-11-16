@@ -33,5 +33,6 @@ test('losing a runtime leaves the chosen primary identity in place', async () =>
   const { service, runtimeIds } = fakeService()
   await service.setPrimary('b1')
   runtimeIds.delete('b1')
+  await expect(service.newChat('b1', () => {})).rejects.toThrow()
   expect(await service.listBots()).toMatchObject([{ id: 'b1', isPrimary: true, runnable: false }])
 })

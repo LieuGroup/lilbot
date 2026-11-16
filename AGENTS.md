@@ -132,7 +132,7 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
 - `server/bots/bot-service.ts`: what LilBot does with bots, whichever client asks. It joins the three owners of a bot:
   LilBot's identity (`server/bots/bot-store.ts`), the engine (abilities and chats), and the user's preferences
   (`server/bots/bot-prefs-store.ts`), with the bot's workspace folder (`server/bots/workspaces.ts`).
-  `bot-runtimes.ts` resolves the engine binding and applies saved identity; `bot-memory.ts` connects memory.
+  `bot-runtimes.ts` resolves the engine binding and applies saved identity; runtime availability and abilities are cached at startup and refreshed on creation, updates, memory connection and observed profile disappearance/return. Roster and detail reads use this snapshot without engine calls; `bot-memory.ts` connects memory.
   The first import is atomic and idempotent: existing bots keep their profile ids, so memory, preferences,
   main chats and workspaces need no rewrite. New bots get UUIDs independent of their native runtime ids. A missing runtime stays in the roster
   as unavailable; its identity and memory stay in LilBot. The service decides which chat is a bot's main
@@ -213,7 +213,7 @@ What a bot is and who owns each part. Decided with Oscar on 2026-11-16 unless ma
 - Each bot has one permission mode, stored with its identity: `full-access` by default. The protocol names
   `approval-required`, `auto-accept-edits`, `auto` and `full-access`; only full access is supported now.
   Engines declare supported modes, and unsupported choices fail before saving. LilBot applies the mode on
-  creation, startup, updates, chats and reviews. Future routine and webhook runs must use the bot's mode.
+  creation, once per bot at startup, mode changes, chats and reviews. Chat and review checks reuse their profile-bound sockets; list/get reads never prepare permissions. Future routine and webhook runs must use the bot's mode.
   Hermes uses persistent per-profile `approvals.mode: off`, so background runs inherit it too.
   LilBot bots do not follow the home rule requiring approval for App Store Connect or submissions to Apple.
   They may still ask task questions, and engine hard stops remain.
@@ -365,7 +365,7 @@ artwork, names or text.
   delete them afterwards with `hermes profile delete <id> -y`. Set `LILBOT_SKIP_MEMORY_SETUP=1` on a test
   server that imports real profiles so start-up does not change their memory plug-ins or endpoints.
   Always set `LILBOT_BOT_IDS` to a temporary profile allowlist (or an unmatched sentinel before creating one):
-  startup and roster reads now apply permission settings as well as identity. Never use an unrestricted test roster.
+  startup applies permission settings as well as identity. Never use an unrestricted test roster.
   Do not chat with or edit real bots on the test server.
 - Each slice ends with a real check against the running service: `bun run verify`, `bun run check:live`, then drive
   the page in a browser.

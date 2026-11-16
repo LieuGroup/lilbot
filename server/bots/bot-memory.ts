@@ -28,6 +28,7 @@ export class BotMemory {
     if (!this.connection) throw new LilBotError('memory_unavailable', 'Memory is not set up on this LilBot server.')
     const bot = await this.runtimes.require(botId)
     const notes = await this.runtimes.engineFor(bot).connectMemory(bot.engineBotId, { ...this.connection, botId })
+    this.runtimes.memoryConnected(botId)
     const before = this.memory.list(botId).length
     for (const text of notes.aboutUser) this.importNote(botId, 'shared', text)
     for (const text of options.keepOwnNotes ? notes.ownNotes : []) this.importNote(botId, 'bot', text)

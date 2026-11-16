@@ -71,7 +71,13 @@ export class BotService {
         event => {
           if (!this.runtimes.store.deleted(event.botId)) listener(event)
         },
-        cursor
+        cursor,
+        (nativeId, available) => {
+          void this.runtimes
+            .runtimeAvailability(nativeId, available)
+            .then(this.changed)
+            .catch(() => this.changed())
+        }
       ) ?? (() => {})
     )
   }
