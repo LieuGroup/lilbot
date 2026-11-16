@@ -1,4 +1,5 @@
 import { SparklesIcon } from 'lucide-react'
+import { useRef } from 'react'
 
 import { Bubble, BubbleContent } from '@/ui/bubble'
 import { Message, MessageContent } from '@/ui/message'
@@ -18,6 +19,13 @@ interface MessageListProps {
  *  grows below it; the list follows the reply only while you stay at the end, never while you
  *  read back. */
 export function MessageList({ items, queued, activity, emptyHint }: MessageListProps) {
+  // Only messages sent while this list is open pin to the top. The scroller jumps to any pin it
+  // has not seen arrive, so turns loaded with the conversation (or reloaded after a reconnect,
+  // which brings new item objects) must not be pins.
+  const loaded = useRef({ first: items[0], count: items.length })
+  if (loaded.current.first && items[0] !== loaded.current.first) loaded.current = { first: items[0], count: items.length }
+  const sentHere = (index: number) => index >= loaded.current.count
+
   return (
     <MessageScrollerProvider autoScroll defaultScrollPosition="end">
       <MessageScroller className="flex-1">
@@ -26,7 +34,7 @@ export function MessageList({ items, queued, activity, emptyHint }: MessageListP
             {items.length === 0 && <p className="mt-[20vh] text-center text-muted-foreground">{emptyHint}</p>}
             {items.map((item, index) => (
               // The transcript only grows at the end, so the position is a stable id.
-              <MessageScrollerItem key={index} messageId={String(index)} scrollAnchor={item.kind === 'user'}>
+              <MessageScrollerItem key={index} messageId={String(index)} scrollAnchor={item.kind === 'user' && sentHere(index)}>
                 <ChatItem item={item} />
               </MessageScrollerItem>
             ))}
@@ -36,7 +44,9 @@ export function MessageList({ items, queued, activity, emptyHint }: MessageListP
                 <Message align="end" title="Waiting for the bot to finish">
                   <MessageContent>
                     <Bubble align="end" variant="outline" className="max-w-[85%]">
-                      <BubbleContent className="rounded-2xl border-dashed border-primary px-3.5 py-2.5 text-base whitespace-pre-wrap text-muted-foreground">{text}</BubbleContent>
+                      <BubbleContent className="rounded-2xl border-dashed border-primary/60! px-3.5 py-2.5 text-base whitespace-pre-wrap text-muted-foreground">
+                        {text}
+                      </BubbleContent>
                     </Bubble>
                   </MessageContent>
                 </Message>
