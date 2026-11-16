@@ -78,7 +78,7 @@ export function BotMenuHost() {
 
   return (
     <>
-      <DropdownMenu open={menuOpen && !!bot} onOpenChange={open => !open && useBotMenu.setState({ menuOpen: false, closedAt: Date.now() })}>
+      <DropdownMenu open={menuOpen && !!bot} onOpenChange={open => !open && useBotMenu.getState().menuOpen && useBotMenu.setState({ menuOpen: false, closedAt: Date.now() })}>
         {bot && anchor && (
           <DropdownMenuContent anchor={anchor} align="start" {...placement(anchor)} finalFocus={anchor instanceof HTMLElement ? { current: anchor } : undefined}>
             <BotMenuItems bot={bot} onDialog={setDialog} />

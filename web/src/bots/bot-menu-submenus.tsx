@@ -53,7 +53,7 @@ export function SectionSubmenu({ bot, onNewSection }: { bot: Bot; onNewSection: 
 /** The primary bot's "Change primary bot": pick the bot that takes the mark. Only the mark
  *  moves; both bots stay as they are. */
 export function PrimarySubmenu() {
-  const candidates = useBotStore(state => primaryCandidates(state.bots))
+  const candidates = primaryCandidates(useBotStore(state => state.bots))
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger disabled={candidates.length === 0}>

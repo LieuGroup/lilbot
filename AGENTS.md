@@ -47,12 +47,13 @@ server/            The LilBot server (runs on the leader).
 
 web/src/           The web app (what you see in the browser).
   app/               start-up, the routes, the connection to the server, styles
-  bots/              roster, create bot, details panel and its Setup tab
+  bots/              roster, bot menu and its dialogs, create bot, details panel and its Setup tab
   chat/              the conversation
   activity/          the details panel's Activity tab
   library/           the Library tab (placeholder until #14)
   memory/            the Memory tab
   routines/          data client for the future Routines panel
+  settings/          the Settings dialog (delete defaults)
   ui/                shadcn/ui parts (added by the shadcn CLI, ours to edit) and our own small shared
                      parts built from them (tab body, page header, icon button, notice, bot badge, form field)
 
@@ -91,7 +92,7 @@ The bot appears immediately; a hidden first prompt starts its main conversation 
 and task suggestions. Normal activity observation marks that reply unread. The primary returns a link.
 The app's create form stays available.
 The app shell is three columns (#36): roster, conversation, details panel with Activity, Library, Memory and Setup
-tabs. Next: the bot menu and Settings (#37), the Routines and Library screens, the nightly memory
+tabs. The bot menu, delete confirmation and Settings are built (#37). Next: the Routines and Library screens, the nightly memory
 tidy-up and edit abilities.
 Desktop (Tauri) and iOS (Expo) come after the web app. Each bot defaults to full access; LilBot verifies
 and repairs its Hermes profile's approvals-off setting on startup and before use. There are no approval cards.
@@ -123,8 +124,9 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
     dialog titles. Weights 400, 500, 600. Icons 16px at stroke 1.75 in 28px buttons (`ui/icon-button.ts`).
   - Feature code imports parts as `@/ui/<part>`. Pages with forms are lazy routes in `app/router.tsx` and the
     details tabs are lazy chunks in `bots/bot-details-panel.tsx`, so
-    the chat's first load stays small (about 211 kB of JavaScript and 15 kB of styles, compressed, counting every
-    chunk the first page imports; Vite's per-file sizes alone understate it).
+    the chat's first load stays small (about 212 kB of JavaScript and 16 kB of styles, gzip -9, counting every
+    file `dist/index.html` references; Vite's per-file sizes alone understate it). The bot menu, its dialogs and
+    Settings are lazy too: the roster only writes to small stores and loads them on hover or first use.
 - Checks: Biome, `tsc`, `bun test`, Vite build, all through `bun run verify`. `bun run check:live` is the live
   check against the running Hermes.
 
@@ -204,12 +206,28 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
   groups are remembered per browser). Grouping is `bots/roster-groups.ts`; pinned bots go first in their group.
   A row (52px) shows one line from `bots/row-state.ts`: working (blue spinner and the activity text), "Waiting for
   you", finished (green check), failed (red cross), or, idle, the bot's function (there is no message preview in
-  the data yet). Unread rows have a 600 name and a blue dot; on hover the "more" button replaces the dot (its menu
-  is #37). The footer shows the user and, while the socket is down, "Offline · reconnecting" with a red dot
+  the data yet). Unread rows have a 600 name and a blue dot; on hover the "more" button replaces the dot. The footer shows the user, a Settings
+  button and, while the socket is down, "Offline · reconnecting" with a red dot
   (the composer then says "Reconnecting..."). The chat header is one 52px line: name, function, new session and the
   details toggle. Conversation column max 680px: bot text without a bubble (15/24), the user's message in a tinted
   bubble, tool lines 13px, a round composer with an ink send/stop button (stop while the bot works and the box is
   empty) and a disabled attach button kept for later.
+- Bot menu (`bots/bot-menu.tsx`, Paper "02 Bot menu"): the row's "more" button or a right-click opens one shared
+  menu (208px, 30px rows), anchored at the button or the cursor (`bots/bot-menu-target.ts` holds which bot and which
+  dialog). Items: Pin/Unpin, Move to section (the sections with the current one checked, "No section", then "New
+  section…", which names a section and moves the bot into it), Mark as read/unread, Name and avatar, Make primary,
+  Hide/Show, then Delete…. The primary bot's menu has only Mark as read/unread, Name and avatar and "Change primary
+  bot" (a submenu of the other bots; only the mark moves): it always sits on top, so pin, section and hide would
+  change nothing, and it cannot be deleted. The engine's default bot has no Delete. Which items show is
+  `bots/bot-menu-rules.ts`. A failed action shows a short red note above the roster footer.
+- Delete confirmation (`bots/delete-bot-dialog.tsx`, Paper "03 Delete bot"): "Delete <name>?", what goes (the
+  conversation and its routines, counted from `routines.list`) and what stays, then Files (Archive / Delete) and
+  Private memories (Forget / Keep, with the bot's private fact count) starting from `bots.deleteDefaults.get`, read
+  on every open. "Change defaults" closes it and opens Settings on Bots. Deleting the open bot returns to the app's
+  start. Server errors show in the dialog. Sentences are `bots/delete-copy.ts`.
+- Settings (`settings/settings-dialog.tsx`, Paper "04 Settings"): the roster footer's button opens a 720×480 dialog
+  with General, Bots and Memory on the left. Only Bots has settings: "When a bot is deleted", the same two choices,
+  saved at once with `bots.deleteDefaults.set`.
 - Details panel (`bots/bot-details-panel.tsx`): avatar, name and pill tabs; each tab is the route
   `/bots/$botId/$tab` (`activity`, `library`, `memory`, `setup`), its content a lazy chunk wrapped in `ui/panel.tsx`.
   `/bots/$botId` is a layout route: the chat column stays mounted and connected while tabs open, change and close.
@@ -463,7 +481,7 @@ artwork, names or text.
   unpin and "replace with a different bot", which only changes which bot is the main one.
 - Create bot: name, avatar cover shape, cover colour and face colour, nothing else. A one-time id makes a retry safe. A typed first message
   replaces the bot's automatic introduction.
-- Avatars: ten vector cover shapes and twelve colours for both cover and face. The tilted cover, highlight, screen, eyes and smile scale to any size. Shape and cover default from the bot's id; a missing face colour reads as ink without rewriting the row. Preferences store all three choices (schema 13). The reusable Edit avatar dialog previews at 96px; Setup has its temporary entry until #37 wires Name and avatar in the bot menu. Create uses the same three picker rows.
+- Avatars: ten vector cover shapes and twelve colours for both cover and face. The tilted cover, highlight, screen, eyes and smile scale to any size. Shape and cover default from the bot's id; a missing face colour reads as ink without rewriting the row. Preferences store all three choices (schema 13). The reusable avatar dialog (`bots/edit-avatar-dialog.tsx`) previews at 96px and opens from the bot menu's "Name and avatar". Create uses the same three picker rows.
 - Status line: mostly built by the app from the tool in use ("Searching the web", "Running commands"), plus a
   status text the bot can set itself. A finished or failed turn shows for 8 seconds, then idle.
 - Memory shape: a profile text, dated journal entries, and facts with a learned-at time.
@@ -489,7 +507,6 @@ artwork, names or text.
 - Activity observation polls persistent profile-bound sockets every second; very short activity may only be seen at completion. Hermes live listings expose at most 200 sessions per profile. A future host-scoped subscription could reduce latency.
 - Opening a chat loads its whole history. A long-lived conversation needs paging and stable item ids
   (Hermes: `omit_messages` on resume plus `session.transcript`).
-- Deleting a bot has a backend and protocol; its confirmation and defaults screens are still to be designed.
 - Chats made before slice 3 are not a bot's main conversation; they are still in Hermes.
 
 ## Rules
