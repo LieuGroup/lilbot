@@ -2,6 +2,8 @@
  *  Binds to loopback only; reach it from other devices through the tailnet (`tailscale serve`). */
 import { homedir } from 'node:os'
 import { join, normalize } from 'node:path'
+import { ActivityService } from './activity/activity-service'
+import { ActivityStore } from './activity/activity-store'
 import { BotPrefsStore } from './bots/bot-prefs-store'
 import { BotService } from './bots/bot-service'
 import { Workspaces } from './bots/workspaces'
@@ -37,8 +39,9 @@ function botsChanged() {
   changeTimer = setTimeout(() => server.publish(EVERYONE, JSON.stringify({ event: 'bots.changed' })), CHANGE_DELAY_MS)
 }
 
-const engine = new HermesEngine()
+const engine = new HermesEngine(process.env.LILBOT_BOT_IDS?.split(',').filter(Boolean))
 const database = openDatabase(join(DATA_DIR, 'lilbot.db'))
+const activity = new ActivityService(new ActivityStore(database), botsChanged)
 const memory = new MemoryService(new MemoryStore(database))
 const memoryChanged = () => server.publish(EVERYONE, JSON.stringify({ event: 'memory.changed' }))
 const token = engineToken(DATA_DIR)
@@ -73,6 +76,7 @@ prepareMemory().catch(error => console.error('[memory] could not prepare memory 
 
 const engineApi = createEngineApi(memory, token, PORT, { onMemoryChanged: memoryChanged, adapterVersion: MEMORY_ADAPTER_VERSION, reviewer })
 engine.onBotsChanged(botsChanged)
+engine.watchActivity(event => activity.observe(event), activity.cursor)
 const DIST = join(import.meta.dir, '..', 'dist')
 
 const ALLOWED_HOSTS = allowedHosts(PORT, process.env.LILBOT_ALLOWED_HOSTS)
@@ -116,10 +120,14 @@ const server = Bun.serve<SocketData>({
   websocket: {
     open(socket) {
       socket.subscribe(EVERYONE)
-      socket.data.session = new BrowserSession(bots, frame => {
-        // A send after the browser left is expected and harmless.
-        if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(frame))
-      })
+      socket.data.session = new BrowserSession(
+        bots,
+        frame => {
+          // A send after the browser left is expected and harmless.
+          if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(frame))
+        },
+        activity
+      )
     },
     message(socket, message) {
       void socket.data.session?.handle(typeof message === 'string' ? message : message.toString())

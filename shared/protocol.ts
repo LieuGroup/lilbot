@@ -11,6 +11,7 @@ const chatId = z.string().min(1)
 /** Each method's params schema (checked on the server) and result type (trusted by the browser). */
 export const methods = {
   'bots.list': z.object({}),
+  'activity.setUnread': z.object({ botId, unread: z.boolean() }),
   'bots.get': z.object({ botId }),
   'bots.create': BotCreateInput,
   'bots.update': BotUpdateInput,
@@ -46,6 +47,7 @@ export type Params<M extends Method> = z.input<(typeof methods)[M]>
 
 export interface Results {
   'bots.list': Bot[]
+  'activity.setUnread': { ok: true }
   'bots.get': BotDetail
   'bots.create': Bot
   'bots.update': BotDetail

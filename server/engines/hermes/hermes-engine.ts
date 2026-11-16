@@ -1,8 +1,11 @@
 /** Hermes as LilBot's bot engine: a bot is a Hermes profile, a chat is a Hermes session. */
+
+import type { ActivityEvent } from '../../../shared/activity-schema'
 import type { BotCreateInput, BotIdentity, BotUpdateInput, ModelProvider } from '../../../shared/bot-schema'
 import type { ChatEvent } from '../../../shared/chat-schema'
 import { LilBotError } from '../../../shared/protocol'
 import type { BotEngine, ChatOptions, EngineBotDetail, LegacyNotes, MemoryConnection, OpenChat, ReviewOptions } from '../bot-engine'
+import { watchHermesActivity } from './hermes-activity'
 import { botDetailFromProfile, botFromProfile, DEFAULT_PROFILE, profileIdFor, providersFromModelOptions, UI_NAMESPACE } from './hermes-bot-mapping'
 import { chatEventFrom, itemsFromRows, sessionLostEvents } from './hermes-chat-mapping'
 import { installMemory, legacyNotes, memoryConnection, memoryCurrent, memoryInstalled } from './hermes-memory-setup'
@@ -15,6 +18,12 @@ const ROSTER_EVENTS = new Set(['sessions.changed', 'skills.changed'])
 const REVIEW_TIMEOUT_MS = 180_000
 
 export class HermesEngine implements BotEngine {
+  constructor(private botIds?: string[]) {}
+
+  watchActivity(listener: (event: ActivityEvent) => void, cursor: (botId: string, chatId: string) => string | undefined) {
+    return watchHermesActivity(() => this.profiles(false), listener, cursor)
+  }
+
   /** Bot management goes through one shared connection on the default profile. */
   private management: Promise<HermesSocket> | null = null
   private botsChangedListeners = new Set<() => void>()
@@ -223,7 +232,10 @@ export class HermesEngine implements BotEngine {
   private async profiles(withChats: boolean): Promise<BotIdentity[]> {
     const result = await (await this.manage()).request('profiles.list', withChats ? {} : { include_sessions: false })
     const profiles: any[] = Array.isArray(result.profiles) ? result.profiles : []
-    return profiles.map(botFromProfile).sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name))
+    return profiles
+      .map(botFromProfile)
+      .filter(bot => !this.botIds || this.botIds.includes(bot.id))
+      .sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name))
   }
 
   /** Every bot id from the browser passes here before it reaches Hermes or a subprocess. */
