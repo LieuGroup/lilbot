@@ -2,6 +2,7 @@
  *  the start of a turn. An engine adapter (the Hermes memory provider) only calls these. */
 import { defaultScope, factText, type MemoryFact, type MemoryKind, type MemoryScope } from '../../shared/memory-schema'
 import { LeBotError } from '../../shared/protocol'
+import { memoryRefusal } from './memory-safety'
 import type { MemoryStore } from './memory-store'
 
 /** Roughly 1,500 tokens for the whole block (about 4 characters per token). */
@@ -39,6 +40,8 @@ export class MemoryService {
   write(request: WriteRequest): MemoryFact {
     const text = factText.safeParse(request.text)
     if (!text.success) throw new LeBotError('invalid_fact', text.error.issues[0]?.message ?? 'That fact cannot be saved.')
+    const refusal = memoryRefusal(text.data)
+    if (refusal) throw new LeBotError('fact_refused', refusal)
     const same = this.store.findSame(request.botId, request.kind, text.data)
     if (same) return same
     const fact = {
@@ -111,6 +114,13 @@ export class MemoryService {
     const total = profile.length + journal.length
     if (shown < total) lines.push(`(${total - shown} older facts are not shown. Use recall to search them.)`)
     return { text: lines.join('\n'), shown, total }
+  }
+
+  /** Set when a bot holds more lasting facts than it is shown each turn: time to tidy. */
+  overflowNotice(botId: string): string | null {
+    const { shown, total } = this.contextBlock(botId)
+    if (shown >= total) return null
+    return `Memory is over its budget: ${total - shown} facts are no longer shown to you each turn. Forget facts that are stale or duplicated, or merge several into one, so the important ones stay visible.`
   }
 
   forgetBot(botId: string) {

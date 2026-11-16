@@ -11,14 +11,18 @@ import { openDatabase } from '../server/db/database'
 import { PrefsStore } from '../server/db/prefs-store'
 import type { OpenChat } from '../server/engine/bot-engine'
 import { HermesEngine } from '../server/engine/hermes/hermes-engine'
-import { installMemory } from '../server/engine/hermes/hermes-memory-setup'
+import { installMemory, MEMORY_ADAPTER_VERSION } from '../server/engine/hermes/hermes-memory-setup'
+import { HermesSocket } from '../server/engine/hermes/hermes-socket'
 import { createEngineApi, engineToken } from '../server/engine-api'
 import { MemoryService } from '../server/memory/memory-service'
 import { MemoryStore } from '../server/memory/memory-store'
 import { Workspaces } from '../server/workspaces'
 import type { ChatEvent } from '../shared/chat-schema'
 
-const BOT_NAME = 'LeBot Memory Check'
+const BOT_PREFIX = 'LeBot Memory Check'
+// A new name, so a new profile folder, on every run: the Hermes gateway keeps a plug-in's code
+// loaded per folder, and a reused folder would test the code of an earlier run.
+const BOT_NAME = `${BOT_PREFIX} ${Date.now().toString(36)}`
 const PORT = 3379
 const TURN_TIMEOUT_MS = 120_000
 
@@ -26,7 +30,7 @@ const scratch = mkdtempSync(join(tmpdir(), 'lebot-memory-'))
 const database = openDatabase(join(scratch, 'lebot.db'))
 const memory = new MemoryService(new MemoryStore(database))
 const bots = new BotService(new HermesEngine(), new PrefsStore(database), new Workspaces(join(scratch, 'workspaces')), memory)
-const engineApi = createEngineApi(memory, engineToken(scratch), PORT)
+const engineApi = createEngineApi(memory, engineToken(scratch), PORT, { adapterVersion: MEMORY_ADAPTER_VERSION })
 let memoryCalls = 0
 const server = Bun.serve({
   port: PORT,
@@ -64,6 +68,31 @@ async function turnInNewSession(text: string): Promise<{ finished: Finished | nu
   return { finished, tools }
 }
 
+/** The system prompt Hermes built for a fresh session of this bot, after one turn. */
+async function systemPromptOf(profile: string): Promise<string> {
+  let finished: () => void = () => {}
+  const done = new Promise<void>(resolve => {
+    finished = resolve
+    setTimeout(resolve, TURN_TIMEOUT_MS)
+  })
+  const socket = await HermesSocket.connect(
+    profile,
+    event => {
+      if (event.type === 'message.complete') finished()
+    },
+    () => {}
+  )
+  try {
+    const session = await socket.request('session.create', { source: 'gui', request_id: crypto.randomUUID(), client: { name: 'lebot', version: '0.0.0' } })
+    await socket.request('prompt.submit', { session_id: session.session_id, text: 'Reply with exactly: OK', input_id: crypto.randomUUID() })
+    await done
+    const info = await socket.request('session.info', { session_id: session.session_id })
+    return typeof info.system_prompt === 'string' ? info.system_prompt : ''
+  } finally {
+    socket.close()
+  }
+}
+
 async function deleteBot(id: string) {
   const child = Bun.spawn([process.env.LEBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', id, '-y'], { stdout: 'ignore', stderr: 'pipe' })
   const [stderr, code] = await Promise.all([new Response(child.stderr).text(), child.exited])
@@ -71,7 +100,7 @@ async function deleteBot(id: string) {
 }
 
 try {
-  for (const leftover of (await bots.listBots()).filter(bot => bot.name === BOT_NAME)) await deleteBot(leftover.id)
+  for (const leftover of (await bots.listBots()).filter(bot => bot.name.startsWith(BOT_PREFIX))) await deleteBot(leftover.id)
   const bot = await bots.createBot({ name: BOT_NAME, function: 'Temporary bot for the LeBot memory check.', instructions: 'Be brief. Answer in plain text.' })
   botId = bot.id
 
@@ -108,6 +137,24 @@ try {
     `replied "${asked.finished?.text.slice(0, 40)}", ${asked.finished?.contextTokens ?? '?'} tokens sent`
   )
   check('it knew from the memory block, without searching', !asked.tools.includes('recall_memory'), asked.tools.join(', ') || 'no tools used')
+
+  // The saving rules reach the bot. Read from the session's real system prompt: asking a bot to
+  // describe its own instructions is unreliable (it answered "my instructions don't cover that"
+  // while the rules were present).
+  const prompt = await systemPromptOf(botId)
+  check('the memory rules are in the bot’s instructions', prompt.includes('# Memory') && prompt.includes('over its budget'), `${prompt.length} characters`)
+  check('Hermes’ own memory files are no longer in the prompt', !prompt.includes('USER PROFILE') && !/MEMORY \(your personal notes\)/.test(prompt))
+  check('facts ride with the message, not in the cached instructions', !/ultramarine/i.test(prompt))
+
+  // A one-off request must not become a standing preference.
+  const countBefore = memory.list(botId).length
+  const oneOff = await turnInNewSession('For this one reply only, answer in capital letters: what is two plus two?')
+  const added = memory.list(botId).slice(0, memory.list(botId).length - countBefore)
+  check(
+    'a one-off request is not saved as a preference',
+    added.length === 0,
+    added.length ? added.map(fact => fact.text).join(' | ') : `replied "${oneOff.finished?.text.slice(0, 30)}"`
+  )
 
   const first = saved.find(fact => /ultramarine/i.test(fact.text))
   if (first) {

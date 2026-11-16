@@ -1,7 +1,7 @@
 /** Connects a Hermes profile to LeBot's memory: installs the provider plug-in into the profile,
  *  tells it where LeBot is, selects it, and switches Hermes' own two-file memory off so the bot
  *  has one memory. `removeMemory` undoes all of it. */
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { cp, readFile, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -12,6 +12,9 @@ const PROVIDER = 'lebot-memory'
 const PLUGIN_SOURCE = join(import.meta.dir, '..', '..', '..', 'engines', 'hermes', PROVIDER)
 const HERMES_BIN = process.env.LEBOT_HERMES_BIN ?? 'hermes'
 const PROFILE_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/
+
+/** The version of the plug-in in this repo, read from its `plugin.yaml`. */
+export const MEMORY_ADAPTER_VERSION = /^version:\s*(\S+)/m.exec(readFileSync(join(PLUGIN_SOURCE, 'plugin.yaml'), 'utf8'))?.[1] ?? 'unknown'
 
 function profileHome(botId: string): string {
   if (!PROFILE_ID.test(botId)) throw new Error(`Not a profile id: ${botId}`)

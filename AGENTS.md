@@ -18,7 +18,8 @@ conversation per bot that is the same on every device, and the layout groundwork
 panel, the server pushes roster changes). On top of slice 2: bot list, create bot, the Setup panel (name, function,
 instructions, model, workspace, abilities read-only), chat with live tool rows, stop, and starting a new session.
 Memory (slice 4): LeBot's own memory system with a Memory panel; new bots use it from their first session, an
-existing bot is connected from its Memory panel (Chief of Staff is not connected yet: Oscar decides).
+existing bot is connected from its Memory panel. Hermes' default bot (Chief of Staff) is a test bot Oscar does not
+use: nothing about it needs protecting.
 Next: the Grok Bot style roster and details panel (sections, pin, hide, avatars, unread, Activity and Library
 tabs), the nightly memory tidy-up, delete a bot, edit abilities, routines.
 Desktop (Tauri) and iOS (Expo) come after the web app. Approvals are off in Hermes by Oscar's choice, so there are
@@ -123,12 +124,30 @@ held are kept: what it knew about the user becomes shared facts; a bot's own not
 for an existing bot, not for a new one, which starts as a copy of the main bot). It takes effect from the bot's
 next session. `removeMemory` undoes it.
 
-Measured on 2026-11-16 (`bun run check:memory`): a fact told in one session was known in the next from the block
-alone, a correction replaced the old fact, and a turn sent 29,300 tokens with LeBot memory against 31,600 with
-Hermes' own, so memory costs nothing extra. After changing the plug-in, reconnect bots so they get the new copy.
+The plug-in's instructions carry the saving rules, taken from Hermes' own memory code where they were written
+after real failures: save only what is grounded in the conversation, never infer traits, a one-off request is not a
+standing preference, one fact goes in once, and a list of what not to save (secrets, anything that can be looked
+up, task progress, "tool X is broken"). `server/memory/memory-safety.ts` refuses facts that carry instructions for
+the model, secrets or invisible characters, for bots and for the user. A write tells the bot when it holds more
+lasting facts than it is shown, so it tidies. Hermes fences what a provider supplies as "recalled memory, not new
+user input" on its own.
 
-Not built yet: the nightly tidy-up (merge duplicates, drop outdated facts), saving before Hermes compresses a
-conversation (`on_pre_compress`), and showing forgotten facts in the app.
+Hermes keeps a plug-in's code loaded per profile folder until the gateway restarts. So after changing the plug-in:
+bump `version` in `plugin.yaml` and `VERSION` in `__init__.py`, reconnect the bots, and restart the Hermes gateway
+(`systemctl --user restart hermes-gateway`, between runs of its cron jobs). LeBot logs a warning when a bot calls
+with an older adapter version. New bots are unaffected: a new folder loads the current code.
+
+Measured on 2026-11-16 (`bun run check:memory`): a fact told in one session was known in the next from the block
+alone, a correction replaced the old fact, a one-off request was not saved, and a turn sent about 29,600 tokens
+with LeBot memory against 31,600 with Hermes' own. The check reads the bot's real system prompt for the rules;
+asking a bot to describe its own instructions proved unreliable.
+
+Known gap: Hermes' background review (a forked agent asking "anything worth saving?" every 10 user turns) only runs
+with Hermes' built-in memory tool, which a connected bot no longer has. A connected bot saves only when it decides
+to during a chat. To close it, LeBot needs its own after-turn review, run through the engine on a cheap model.
+
+Not built yet: that review, the nightly tidy-up (merge duplicates, drop outdated facts), saving before Hermes
+compresses a conversation (`on_pre_compress`), and showing forgotten facts in the app.
 
 ## What Grok Bot does (reference, not a spec)
 

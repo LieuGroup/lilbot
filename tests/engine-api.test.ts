@@ -10,7 +10,7 @@ const TOKEN = 'test-token'
 function api() {
   const memory = new MemoryService(new MemoryStore(openDatabase(':memory:')), () => Date.UTC(2026, 10, 16))
   let changes = 0
-  const handle = createEngineApi(memory, TOKEN, 3370, () => changes++)
+  const handle = createEngineApi(memory, TOKEN, 3370, { onMemoryChanged: () => changes++ })
   const call = async (endpoint: string, body: unknown, headers: Record<string, string> = {}) => {
     const request = new Request(`http://127.0.0.1:3370/engine/memory/${endpoint}`, {
       method: 'POST',

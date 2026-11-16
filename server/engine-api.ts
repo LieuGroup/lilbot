@@ -39,7 +39,15 @@ const forBot = (fact: MemoryFact, reader: string) => ({
 
 const json = (status: number, body: unknown) => Response.json(body, { status })
 
-export function createEngineApi(memory: MemoryService, token: string, port: number, onMemoryChanged: () => void = () => {}) {
+export interface EngineApiOptions {
+  onMemoryChanged?: () => void
+  /** The adapter version this LeBot ships. A bot calling with another one runs stale adapter code. */
+  adapterVersion?: string
+}
+
+export function createEngineApi(memory: MemoryService, token: string, port: number, options: EngineApiOptions = {}) {
+  const onMemoryChanged = options.onMemoryChanged ?? (() => {})
+  const staleBots = new Set<string>()
   const expected = Buffer.from(`Bearer ${token}`)
   const loopback = new Set([`127.0.0.1:${port}`, `localhost:${port}`])
 
@@ -60,6 +68,11 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
       const parsed = routes[route].safeParse(await request.json().catch(() => null))
       if (!parsed.success) return json(400, { error: `Invalid request: ${parsed.error.issues[0]?.path.join('.')} ${parsed.error.issues[0]?.message}` })
       const body = parsed.data as any
+      const version = request.headers.get('x-lebot-adapter-version')
+      if (options.adapterVersion && version !== options.adapterVersion && !staleBots.has(body.botId)) {
+        staleBots.add(body.botId)
+        console.error(`[engine-api] bot ${body.botId} runs memory adapter ${version ?? 'unknown'}, LeBot ships ${options.adapterVersion}. Reconnect it and restart the engine.`)
+      }
 
       switch (route) {
         case '/engine/memory/context':
@@ -69,7 +82,8 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
         case '/engine/memory/write': {
           const fact = memory.write({ botId: body.botId, kind: body.kind, scope: body.scope, text: body.text, author: 'bot' })
           onMemoryChanged()
-          return json(200, { saved: forBot(fact, body.botId) })
+          const notice = memory.overflowNotice(body.botId)
+          return json(200, { saved: forBot(fact, body.botId), ...(notice ? { notice } : {}) })
         }
         case '/engine/memory/forget': {
           const fact = memory.forgetAsBot(body.botId, body.id)

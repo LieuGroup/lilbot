@@ -8,6 +8,7 @@ import { ClientSession } from './client-session'
 import { openDatabase } from './db/database'
 import { PrefsStore } from './db/prefs-store'
 import { HermesEngine } from './engine/hermes/hermes-engine'
+import { MEMORY_ADAPTER_VERSION } from './engine/hermes/hermes-memory-setup'
 import { createEngineApi, engineToken } from './engine-api'
 import { MemoryService } from './memory/memory-service'
 import { MemoryStore } from './memory/memory-store'
@@ -46,7 +47,7 @@ const bots = new BotService(engine, new PrefsStore(database), new Workspaces(WOR
   memoryConnection: { url: `http://127.0.0.1:${PORT}`, tokenFile: join(DATA_DIR, 'engine-token') }
 })
 /** Engine adapters on this machine reach memory here; see `engine-api.ts`. */
-const engineApi = createEngineApi(memory, token, PORT, memoryChanged)
+const engineApi = createEngineApi(memory, token, PORT, { onMemoryChanged: memoryChanged, adapterVersion: MEMORY_ADAPTER_VERSION })
 engine.onBotsChanged(botsChanged)
 const DIST = join(import.meta.dir, '..', 'dist')
 

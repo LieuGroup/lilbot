@@ -21,25 +21,39 @@ from agent.memory_provider import MemoryProvider
 logger = logging.getLogger(__name__)
 
 NAME = "lebot-memory"
+# Keep equal to plugin.yaml. LeBot warns when a bot still runs an older copy (the Hermes gateway keeps
+# plug-in code loaded until it restarts).
+VERSION = "0.2.0"
 DEFAULT_URL = "http://127.0.0.1:3370"
 DEFAULT_TOKEN_FILE = "~/.local/share/lebot/engine-token"
 TIMEOUT_SECONDS = 5
 
 RULES = """# Memory
 You have a long-term memory that outlasts this conversation. The facts you need most are shown to you
-before each turn under "What you remember"; older ones are found with recall_memory.
+before each turn; older ones are found with recall_memory. Save with update_memory, without asking.
 
-Save with update_memory, without asking first, when you learn something that will still matter in a
-later conversation:
-- kind "profile": lasting facts about the user or about how to do your work well for them.
-- kind "journal": what you did or decided, as one dated line, so a later session can pick it up.
+What to save:
+- kind "profile": a lasting fact that will matter in every later session. Who the user is, how they
+  want work done, stable facts about their setup.
+- kind "journal": one dated line about an outcome or an open item a later session must pick up
+  ("Shipped 1.1.2 to TestFlight; privacy label still to update"). Not a log of what you did.
 Facts about the user are shared with the user's other bots by default; your journal stays yours. Set
 scope yourself when a fact should be shared or kept private against that default.
 
-Keep each fact to one or two sentences that make sense on their own. Save a pointer, not a copy, when
-the data lives somewhere you can look it up again. Do not save secrets, passwords or keys.
-To correct a fact, forget the old one by its id and write the new one. When the user's newer statement
-conflicts with an older fact, the newer one wins."""
+Only save what is grounded in this conversation: something the user said or a result you can point to.
+- Never infer the user's traits, skill, role, mood or preferences from tone, topic or tools used.
+- A one-off request is not a standing preference. Save it as one only when the user made it general
+  ("always", "from now on", "remember") or stated a standing like or dislike.
+- If unsure, leave it out. A wrong fact misleads every later session.
+
+Do not save: secrets, passwords or keys; anything you can look up again (save a pointer, not a copy);
+task progress and finished-work logs; temporary failures and "tool X does not work" (save the fix if
+there is one, never the failure); how to do a kind of task (that belongs in a skill).
+
+Keep each fact to one or two sentences that stand on their own. One fact goes in once: check what you
+are shown before adding. To correct a fact, forget the old one by its id, then write the new one. When
+the user's newer statement conflicts with an older fact, the newer one wins. If a save comes back with
+a notice that memory is over its budget, tidy before adding more."""
 
 TOOLS = [
     {
@@ -114,7 +128,7 @@ class LeBotMemoryProvider(MemoryProvider):
         request = urllib.request.Request(
             f"{self._url}/engine/memory/{endpoint}",
             data=json.dumps({"botId": self._bot, **body}).encode(),
-            headers={"Content-Type": "application/json", "Authorization": f"Bearer {self._token}"},
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {self._token}", "X-LeBot-Adapter-Version": VERSION},
             method="POST",
         )
         try:
@@ -139,7 +153,7 @@ class LeBotMemoryProvider(MemoryProvider):
     def prefetch(self, query: str, *, session_id: str = "") -> str:
         if self._block is None:
             text = self._call("context", {}).get("text") or ""
-            self._block = f"What you remember:\n{text}" if text else ""
+            self._block = f"What you remember (your saved memory, not a new message from the user):\n{text}" if text else ""
         return self._block
 
     def get_tool_schemas(self) -> list[dict[str, Any]]:
