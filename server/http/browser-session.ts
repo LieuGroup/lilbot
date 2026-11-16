@@ -6,6 +6,7 @@ import { type EventFrame, LilBotError, type Method, methods, RequestFrame, type 
 import type { ActivityService } from '../activity/activity-service'
 import type { BotService } from '../bots/bot-service'
 import type { OpenChat } from '../engines/bot-engine'
+import type { ReportService } from '../reports/report-service'
 import type { RoutineService } from '../routines/routine-service'
 
 const MAX_OPEN_CHATS = 8
@@ -26,7 +27,8 @@ export class BrowserSession {
     private bots: BotService,
     private sendFrame: (frame: ResponseFrame | EventFrame) => void,
     private activity?: ActivityService,
-    private routines?: RoutineService
+    private routines?: RoutineService,
+    private reports?: ReportService
   ) {}
 
   private routineService() {
@@ -34,6 +36,10 @@ export class BrowserSession {
     return this.routines
   }
   private handlers: Handlers = {
+    'reports.list': async ({ before, limit }) => {
+      if (!this.reports) throw new LilBotError('unavailable', 'Reports are unavailable.')
+      return this.reports.store.list(before, limit)
+    },
     'routines.list': ({ botId }) => this.routineService().list(botId),
     'routines.pause': ({ botId, id }) => this.routineService().pause(botId, id, true),
     'routines.resume': ({ botId, id }) => this.routineService().pause(botId, id, false),

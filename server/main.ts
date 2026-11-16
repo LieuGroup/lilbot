@@ -18,6 +18,8 @@ import { defaultReviewSettings, MemoryReviewer } from './memory/memory-reviewer'
 import { MemoryService } from './memory/memory-service'
 import { MemoryStore } from './memory/memory-store'
 import { ReviewQueue } from './memory/review-queue'
+import { ReportService } from './reports/report-service'
+import { ReportStore } from './reports/report-store'
 import { RoutineScheduler } from './routines/routine-scheduler'
 import { defaultRoutineSettings, RoutineService } from './routines/routine-service'
 import { RoutineStore } from './routines/routine-store'
@@ -51,9 +53,11 @@ const memoryChanged = () => server.publish(EVERYONE, JSON.stringify({ event: 'me
 const token = engineToken(DATA_DIR)
 const store = new BotStore(database)
 const routineStore = new RoutineStore(database)
+const reportStore = new ReportStore(database)
 const bots = new BotService(engine, store, new BotPrefsStore(database), new Workspaces(WORKSPACES_DIR), memory, {
   cleanupBot: botId => {
     routineStore.forgetBot(botId)
+    reportStore.cancelBot(botId)
     activity.forgetBot(botId)
     new ReviewQueue(database).forgetBot(botId)
   },
@@ -69,6 +73,20 @@ const routines = new RoutineService(routineStore, bots, () => server.publish(EVE
       ? Math.max(1, Number(process.env.LILBOT_ROUTINE_TEST_INTERVAL_SECONDS))
       : defaultRoutineSettings.minIntervalSeconds
 })
+const reports = new ReportService(
+  reportStore,
+  bots,
+  async (botId, chatId) => {
+    const run = routineStore.sourceRun(botId, chatId)
+    if (run) return run
+    // Engine verifies ownership; never accept another bot's chat as provenance.
+    const chat = await bots.openChat(botId, chatId, () => {}, true)
+    chat.close()
+    return null
+  },
+  () => server.publish(EVERYONE, JSON.stringify({ event: 'reports.changed' }))
+)
+setInterval(() => void reports.tick(), 1000)
 const scheduler = new RoutineScheduler(routines, event => {
   if (store.exists(event.botId)) activity.observe(event)
 })
@@ -114,6 +132,7 @@ prepareMemory().catch(error => console.error('[memory] could not prepare memory 
 const engineApi = createEngineApi(memory, token, PORT, {
   bots,
   routines,
+  reports,
   botExists: id => store.exists(id),
   onMemoryChanged: memoryChanged,
   adapterVersion: MEMORY_ADAPTER_VERSION,
@@ -171,7 +190,8 @@ const server = Bun.serve<SocketData>({
           if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(frame))
         },
         activity,
-        routines
+        routines,
+        reports
       )
     },
     message(socket, message) {

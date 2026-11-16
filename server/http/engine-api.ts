@@ -13,7 +13,9 @@ import { BotCreationInput } from '../bots/bot-creation'
 import type { BotService } from '../bots/bot-service'
 import type { MemoryReviewer } from '../memory/memory-reviewer'
 import { type MemoryService, shortId } from '../memory/memory-service'
+import type { ReportService } from '../reports/report-service'
 import type { RoutineService } from '../routines/routine-service'
+import { reportApi } from './report-api'
 import { routineApi } from './routine-api'
 
 const botId = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/)
@@ -59,6 +61,7 @@ const json = (status: number, body: unknown) => Response.json(body, { status })
 export interface EngineApiOptions {
   bots?: BotService
   routines?: RoutineService
+  reports?: ReportService
   botExists: (botId: string) => boolean
   onMemoryChanged?: () => void
   /** The adapter version this LilBot ships. A bot calling with another one runs stale adapter code. */
@@ -83,11 +86,15 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
   return async (request: Request, pathname: string): Promise<Response> => {
     if (request.method !== 'POST') return json(405, { error: 'Use POST.' })
     if (!authorised(request)) return json(403, { error: 'Not allowed.' })
-    if (pathname === '/engine/bots/create' || pathname.startsWith('/engine/routines/')) {
+    if (pathname === '/engine/bots/create' || pathname.startsWith('/engine/routines/') || pathname.startsWith('/engine/reports/')) {
       try {
         const capability = request.headers.get('x-lilbot-bot-capability') ?? ''
         const caller = (await options.bots?.listBots())?.find(bot => matchesCapability(token, bot.id, capability))
         if (!caller || !options.bots || !options.botExists(caller.id)) return json(403, { error: 'Unknown bot credential.' })
+        if (pathname.startsWith('/engine/reports/')) {
+          if (!options.reports) return json(404, { error: 'Reports are unavailable.' })
+          return json(200, await reportApi(options.reports, caller.id, pathname.slice('/engine/reports/'.length), await request.json()))
+        }
         if (pathname.startsWith('/engine/routines/')) {
           if (!options.routines) return json(404, { error: 'Routines are unavailable.' })
           return json(200, await routineApi(options.routines, caller.id, pathname.slice('/engine/routines/'.length), await request.json()))
@@ -141,7 +148,8 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
           return json(200, { forgotten: forBot(fact, body.botId) })
         }
         case '/engine/memory/turn':
-          if (!options.routines?.store.isRoutineChat(body.chatId)) options.reviewer?.record(body.botId, body.chatId, body.user, body.assistant)
+          if (!options.routines?.store.isRoutineChat(body.chatId) && !/^(LilBot reports —|From primary bot )/.test(body.user))
+            options.reviewer?.record(body.botId, body.chatId, body.user, body.assistant)
           return json(200, { ok: true })
       }
     } catch (error) {

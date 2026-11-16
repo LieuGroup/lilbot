@@ -38,6 +38,7 @@ server/            The LilBot server (runs on the leader).
     memory-safety.ts     what may not be saved
     memory-reviewer.ts   the after-chat review        review-queue.ts   turns waiting for it
   routines/          app-owned schedules, run history and scheduler
+  reports/           durable reports, batching, primary routing and delivery audit
   database/          LilBot's own SQLite file and its schema steps.
   engines/           Whatever actually runs the bots.
     bot-engine.ts        the contract every engine must fulfil
@@ -50,6 +51,7 @@ web/src/           The web app (what you see in the browser).
   chat/              the conversation
   memory/            Memory panel
   routines/          data client for the future Routines panel
+  reports/           data client for the future Reports panel
   ui/                shadcn/ui parts (added by the shadcn CLI, ours to edit) and our own small shared
                      parts built from them (panel frame, page header, notice, bot badge, form field)
 
@@ -59,7 +61,7 @@ live-checks/       Checks that talk to the real Hermes with a temporary bot.
 
 Rules that keep it this way:
 
-- A request flows downward only: `http/` -> `bots/`, `memory/` or `routines/` -> `engines/` and `database/`. Nothing lower may
+- A request flows downward only: `http/` -> `bots/`, `memory/`, `routines/` or `reports/` -> `engines/` and `database/`. Nothing lower may
   import from something higher.
 - Nothing outside `server/engines/hermes/` knows about Hermes, except `main.ts`, which picks the engine. A second
   engine is a second folder under `server/engines/`.
@@ -151,7 +153,7 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
   Archived workspace entries move to `<workspaces>/.archive/<bot id>` without following links.
   Hermes has no delete RPC: its profile-delete CLI stops the runtime and deletes its transcripts; a retry after
   folder removal uses `profile purge-identity` to finish gateway identity settlement. Late activity and memory
-  calls from deleted bots are ignored/refused. Routines and their run history are removed too. Webhooks, library items and reports are not built yet.
+  calls from deleted bots are ignored/refused. Routines and their run history are removed too. Report history retains attribution after deletion; pending deliveries from/to the deleted bot are cancelled. Webhooks and library items are not built yet.
 - `server/http/browser-session.ts`: one per browser connection. Validates requests, runs them on the service, forwards
   chat events. A typed handler map: a protocol method without a handler does not compile.
 - `server/database/`: LilBot's own SQLite database (`bun:sqlite`), by default `~/.local/share/lilbot/lilbot.db`
@@ -347,8 +349,7 @@ it never creates, changes or removes Hermes cron jobs. Existing external jobs st
   run's outcome is unknown, show a failed run rather than risk repeating side effects. This guarantees
   one admission per occurrence, not exactly-once external effects if the engine itself crashes mid-task.
 - Runs emit activity and can mark the bot unread. Both session aliases are persisted before submission
-  and excluded from the after-chat review, including after restart. Results remain in Routines until
-  reports (#11); no message is posted into the main chat. Deleting a bot removes schedules and history,
+  and excluded from the after-chat review, including after restart. Results remain in Routines; a run uses `send_report` for findings, questions or blockers, not an uneventful check. Deleting a bot removes schedules and history,
   and tombstoned bots cannot dispatch even if runtime deletion is still retrying.
 - Browser methods: `routines.list`, `routines.pause`, `routines.resume`, `routines.delete`, and
   `routines.openRun` (returns a tracked chat snapshot, preserving main chat). Lists include the newest
@@ -358,6 +359,39 @@ it never creates, changes or removes Hermes cron jobs. Existing external jobs st
   all of `LILBOT_DATA_DIR`, `LILBOT_BOT_IDS`, and `LILBOT_ROUTINE_TEST_INTERVAL_SECONDS`; never use it
   on the live server. It exercises creation from chat, a real file-writing run, opening history, pause,
   restart, resume and delete, then removes the native profile and temporary directories.
+
+## Reports
+
+`server/reports/` owns report records and durable deliveries in SQLite, keyed by LilBot bot ids.
+Adapter **0.8.0** gives every bot `send_report` (result, question, blocked) and gives the current
+primary `answer_report`. Both endpoints use the bot-bound capability; caller ids in tool bodies
+cannot choose a sender or impersonate the primary. Source chats are checked through the engine;
+routine session aliases resolve to their persisted run id. Links open the source chat or run without
+replacing the main conversation. Report text and answers pass the memory safety scan.
+
+- A fixed three-second window batches up to 20 pending reports into one turn in the current primary's
+  main conversation. A new primary receives unclaimed/unadmitted deliveries; an already submitted
+  turn completes in its original conversation. Its former primary cannot answer after replacement.
+- Reports and answers are visibly labeled as coming from LilBot or the primary, never Oscar.
+  Hermes has no append-assistant API: delivery uses a user-role prompt with explicit attribution and
+  `turn_author` marked as a bot. The report JSON is fenced as untrusted data. The reply is the bot's
+  normal assistant message. Oscar's own instructions text is never modified.
+- The adapter supplies static report-handling rules: answer only known facts, never guess; pass
+  decisions, money, outside actions and unknown answers to Oscar; no task handoff. Self-reports go
+  directly to Oscar in the primary conversation. Answers go into the sender's main conversation,
+  explicitly naming the primary and original report, and request only an acknowledgement.
+- Delivery ids are stable `prompt.submit` input ids. The stored destination chat is reused after
+  restart, and the exact admission result comes from `prompt.receipt`, not the latest chat message.
+  Transport failures retry; terminal/unknown outcomes stay visibly pending without a new admission.
+- Report-triggered turns cannot send new reports (active destination guard plus adapter turn marker).
+  A report has at most one answer. Primary self-answers are refused. Report turns are excluded from
+  memory review; later ordinary conversation turns still qualify. Normal activity observation drives unread.
+- `reports.list` pages every report newest first (optional `before` id and `limit`, max 200), including
+  answered, told-to-Oscar and pending records, sender, source link, primary and response. `reports.changed`
+  invalidates the typed client in `web/src/reports/`. The Reports screen remains `needs-ui`.
+- `bun run check:reports` starts a second server with a temporary primary and worker. It checks a
+  question answered from primary-only memory, a blocked report escalated to Oscar, self-report and
+  loop limits, then deletes both profiles and its directories. Never restart the live service for this check.
 
 ## What Grok Bot does (reference, not a spec)
 

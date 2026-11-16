@@ -28,6 +28,12 @@ export interface ReviewOptions {
   onChat: (chatId: string) => void
 }
 
+export interface MessageOptions {
+  messageId: string
+  chatId?: string
+  onChat: (chatId: string) => void
+}
+
 export interface RoutineOptions {
   runId: string
   onChat: (chatId: string) => void
@@ -78,6 +84,8 @@ export interface BotEngine {
   reviewMemory(botId: string, prompt: string, options: ReviewOptions): Promise<void>
   /** Run or recover one scheduled task, using runId as a durable execution identity. */
   runRoutine(botId: string, prompt: string, options: RoutineOptions & ChatOptions): Promise<{ status: 'completed' | 'failed' | 'stopped'; text: string }>
+  /** A clearly attributed app message in an existing conversation, recovered by messageId. */
+  deliverMessage(botId: string, chatId: string, text: string, messageId: string): Promise<{ status: 'completed' | 'failed' | 'stopped'; text: string }>
   /** Told when bots or their chats changed outside this server. Returns the function that stops it. */
   onBotsChanged(listener: () => void): () => void
 }

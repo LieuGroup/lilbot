@@ -230,6 +230,15 @@ export class BotService {
     return chat
   }
 
+  async deliverMessage(botId: string, text: string, options: import('../engines/bot-engine').MessageOptions) {
+    const bot = await this.requireBot(botId)
+    const chat = await this.openChat(botId, options.chatId, () => {}, !!options.chatId)
+    const chatId = chat.snapshot.chatId
+    options.onChat(chatId)
+    chat.close()
+    return this.runtimes.engineFor(bot).deliverMessage(bot.engineBotId, chatId, text, options.messageId)
+  }
+
   async runRoutine(botId: string, prompt: string, options: import('../engines/bot-engine').RoutineOptions) {
     const bot = await this.requireBot(botId)
     await this.runtimes.state(bot)

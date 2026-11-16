@@ -53,7 +53,8 @@ test('an engine does not depend on what sits above it', () => {
     ...crossings('server/engines', 'server/http'),
     ...crossings('server/engines', 'server/bots'),
     ...crossings('server/engines', 'server/memory'),
-    ...crossings('server/engines', 'server/routines')
+    ...crossings('server/engines', 'server/routines'),
+    ...crossings('server/engines', 'server/reports')
   ]).toEqual([])
 })
 

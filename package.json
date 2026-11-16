@@ -13,6 +13,7 @@
     "format": "biome check --write .",
     "test": "bun test tests",
     "check:live": "bun live-checks/chat-check.ts",
+    "check:reports": "bun live-checks/reports-check.ts",
     "check:routines": "bun live-checks/routines-check.ts",
     "check:memory": "bun live-checks/memory-check.ts"
   },

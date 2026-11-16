@@ -5,6 +5,7 @@ import { BotDeleteDefaults, BotDeleteInput } from './bot-delete-schema'
 import { type Bot, BotCreateInput, type BotDetail, BotPrefsInput, BotUpdateInput, type ModelProvider, type Section, sectionName } from './bot-schema'
 import type { ChatEvent, ChatSnapshot } from './chat-schema'
 import { type MemoryFact, MemoryWriteInput } from './memory-schema'
+import type { Report } from './report-schema'
 import type { Routine } from './routine-schema'
 
 const botId = z.string().min(1)
@@ -12,6 +13,7 @@ const chatId = z.string().min(1)
 
 /** Each method's params schema (checked on the server) and result type (trusted by the browser). */
 export const methods = {
+  'reports.list': z.object({ before: z.string().optional(), limit: z.number().int().min(1).max(200).default(100) }),
   'routines.list': z.object({ botId }),
   'routines.pause': z.object({ botId, id: z.string().min(1) }),
   'routines.resume': z.object({ botId, id: z.string().min(1) }),
@@ -56,6 +58,7 @@ export type Method = keyof typeof methods
 export type Params<M extends Method> = z.input<(typeof methods)[M]>
 
 export interface Results {
+  'reports.list': Report[]
   'routines.list': Routine[]
   'routines.pause': { ok: true }
   'routines.resume': { ok: true }
@@ -96,7 +99,12 @@ export type ResponseFrame = { id: number; ok: true; result: unknown } | { id: nu
 /** What the server sends without being asked. `bots.changed` means: fetch the bot list again
  *  (a bot, its preferences or the sections changed, here or on another device). `memory.changed`
  *  means a fact was saved or forgotten, by a bot or in the app. */
-export type EventFrame = { event: 'chat'; chatId: string; data: ChatEvent } | { event: 'bots.changed' } | { event: 'memory.changed' } | { event: 'routines.changed' }
+export type EventFrame =
+  | { event: 'chat'; chatId: string; data: ChatEvent }
+  | { event: 'bots.changed' }
+  | { event: 'memory.changed' }
+  | { event: 'routines.changed' }
+  | { event: 'reports.changed' }
 
 /** An error whose message is safe and useful to show to the user. */
 export class LilBotError extends Error {

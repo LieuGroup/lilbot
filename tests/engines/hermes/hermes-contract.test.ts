@@ -54,8 +54,8 @@ const methods: Record<string, Uses> = {
     sends: ['session_id', 'source', 'display_projection'],
     reads: ['session_id', 'stored_session_id', 'display_messages', 'running', 'execution_generation', 'info']
   },
-  'prompt.submit': { table: 'x-canonical-methods', sends: ['session_id', 'text', 'input_id', 'display_kind'], reads: ['admission_id'] },
-  'prompt.receipt': { table: 'x-canonical-methods', sends: ['session_id', 'admission_id'], reads: ['status', 'outcome'] },
+  'prompt.submit': { table: 'x-canonical-methods', sends: ['session_id', 'text', 'input_id', 'display_kind', 'turn_author'], reads: ['admission_id'] },
+  'prompt.receipt': { table: 'x-canonical-methods', sends: ['session_id', 'admission_id', 'include_result'], reads: ['status', 'outcome', 'result'] },
   'session.interrupt': { table: 'x-canonical-methods', sends: ['session_id', 'execution_generation'], reads: [] },
   'profiles.list': { table: 'methods', sends: ['include_sessions'], reads: ['profiles'] },
   'profiles.describe': { table: 'methods', sends: ['name'], reads: ['name', 'description', 'soul', 'model', 'skills', 'toolsets', 'mcp_servers'] },
@@ -104,6 +104,7 @@ describe.skipIf(!installed)('Hermes wire contract', () => {
 
   test('activity replay and list fields are declared', () => {
     for (const [name, used] of Object.entries({
+      CanonicalTurnAuthor: ['id', 'name', 'is_bot', 'origin'],
       CanonicalSessionListRow: ['session_id', 'running', 'started_at'],
       CanonicalReplayEvent: ['type', 'payload', 'seq'],
       CanonicalEventsResult: ['replay_epoch', 'last_sequence', 'open_requests', 'truncated']

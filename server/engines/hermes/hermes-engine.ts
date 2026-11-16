@@ -21,6 +21,7 @@ import { botDetailFromProfile, botFromProfile, DEFAULT_PROFILE, providersFromMod
 import { chatEventFrom, itemsFromRows, sessionLostEvents } from './hermes-chat-mapping'
 import { deleteRuntime } from './hermes-delete'
 import { installMemory, legacyNotes, memoryConnection, memoryCurrent, memoryInstalled } from './hermes-memory-setup'
+import { deliverMessage } from './hermes-messages'
 import { ensureFullAccess } from './hermes-permissions'
 import { runRoutine } from './hermes-routines'
 import { applyIdentity, createRuntime } from './hermes-runtime'
@@ -186,6 +187,11 @@ export class HermesEngine implements BotEngine {
       clearTimeout(timer)
       socket.close()
     }
+  }
+
+  async deliverMessage(botId: string, chatId: string, text: string, messageId: string) {
+    await this.requireBot(botId)
+    return deliverMessage(botId, chatId, text, messageId)
   }
 
   async runRoutine(botId: string, prompt: string, options: import('../bot-engine').RoutineOptions & ChatOptions) {

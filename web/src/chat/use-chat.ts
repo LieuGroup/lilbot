@@ -1,6 +1,7 @@
 /** React hook: the conversation with one bot. The server decides which chat is the bot's main
  *  conversation, so every device sees the same one. This hook opens it, follows its events, and
  *  reopens it after a reconnect so the transcript always comes from the server. */
+import { useSearch } from '@tanstack/react-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { lilbot, messageOf } from '../app/lilbot-socket'
 import { useBotStore } from '../bots/bot-store'
@@ -10,6 +11,7 @@ import { emptySlot, updateChat, useChatStore } from './chat-store'
 const REOPEN_DELAY_MS = 3000
 
 export function useChat(botId: string) {
+  const { chatId: sourceChatId, runId } = useSearch({ from: '/bots/$botId' })
   const connected = useBotStore(state => state.connected)
   const slot = useChatStore(state => state.slots[botId] ?? emptySlot)
   /** Bumped to open the chat again: for a new session, or when the engine dropped it. */
@@ -30,7 +32,11 @@ export function useChat(botId: string) {
       retry = setTimeout(() => setOpenCount(count => count + 1), REOPEN_DELAY_MS)
     }
 
-    const opening = startNew.current ? lilbot.call('chat.new', { botId }) : lilbot.call('chat.open', { botId })
+    const opening = startNew.current
+      ? lilbot.call('chat.new', { botId })
+      : runId
+        ? lilbot.call('routines.openRun', { botId, runId })
+        : lilbot.call('chat.open', { botId, chatId: sourceChatId })
     startNew.current = false
     opening
       .then(snapshot => {
@@ -60,7 +66,7 @@ export function useChat(botId: string) {
       if (chatId.current && lilbot.connected) void lilbot.call('chat.close', { chatId: chatId.current }).catch(() => {})
       chatId.current = ''
     }
-  }, [botId, connected, openCount])
+  }, [botId, connected, openCount, sourceChatId, runId])
 
   const send = useCallback(
     async (text: string) => {

@@ -70,7 +70,15 @@ const homeRoute = createRoute({
 })
 const rosterRoute = createRoute({ getParentRoute: () => rootRoute, path: '/bots', component: () => null })
 const newBotRoute = createRoute({ getParentRoute: () => rootRoute, path: '/bots/new', component: BotCreatePage })
-const botRoute = createRoute({ getParentRoute: () => rootRoute, path: '/bots/$botId', component: BotLayout })
+const botRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/bots/$botId',
+  component: BotLayout,
+  validateSearch: (search: Record<string, unknown>): { chatId?: string; runId?: string } => ({
+    chatId: typeof search.chatId === 'string' ? search.chatId : undefined,
+    runId: typeof search.runId === 'string' ? search.runId : undefined
+  })
+})
 const botChatRoute = createRoute({ getParentRoute: () => botRoute, path: '/', component: () => null })
 const botSetupRoute = createRoute({ getParentRoute: () => botRoute, path: 'setup', component: BotSetupPanel })
 const botMemoryRoute = createRoute({ getParentRoute: () => botRoute, path: 'memory', component: MemoryPanel })

@@ -83,7 +83,18 @@ const migrations: string[] = [
      UNIQUE(routine_id, due_at)
    );
    CREATE INDEX routine_runs_pending ON routine_runs(status);
-   CREATE TABLE routine_chats (chat_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES routine_runs(id) ON DELETE CASCADE);`
+   CREATE TABLE routine_chats (chat_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES routine_runs(id) ON DELETE CASCADE);`,
+  // Reports and delivery receipts survive retries and restarts independently of an engine.
+  `CREATE TABLE reports (
+    id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, bot_name TEXT NOT NULL, request_id TEXT NOT NULL,
+    kind TEXT NOT NULL, text TEXT NOT NULL, chat_id TEXT NOT NULL, run_id TEXT, link TEXT NOT NULL,
+    created_at INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'pending', primary_id TEXT,
+    response TEXT, handled_at INTEGER, batch_id TEXT, UNIQUE(bot_id, request_id)
+  );
+  CREATE TABLE report_deliveries (
+    id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, kind TEXT NOT NULL, report_id TEXT,
+    chat_id TEXT, text TEXT NOT NULL, finished INTEGER NOT NULL DEFAULT 0
+  );`
 ]
 
 /** `path` may be ':memory:' for tests. Applies any migration steps the file has not seen. */

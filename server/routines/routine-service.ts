@@ -59,7 +59,7 @@ export class RoutineService {
     const routine = this.store.get(run.botId, run.routineId)
     const result = await this.host.runRoutine(
       run.botId,
-      `Scheduled routine (not a new message from Oscar). Carry out this task with full access, without asking for approval. Return a concise result for the Routines list; do not post it in the main chat.\n\n${routine.description}`,
+      `Scheduled routine (not a new message from Oscar). Carry out this task with full access, without asking for approval. Return a concise result for the Routines list. If you find something worth reporting, need an answer, or are blocked, use send_report (kind result, question, or blocked); LilBot delivers it to the primary bot. Do not report an uneventful check. Do not post directly in the main chat.\n\n${routine.description}`,
       {
         runId: run.id,
         onChat: id => {
