@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { botCapability } from '../server/bots/bot-capability'
 import type { ChatSnapshot } from '../shared/chat-schema'
 import { applyChatEvent, chatFromSnapshot } from '../web/src/chat/chat-state'
-import { RestartServer, waitFor } from './restart-server'
+import { RestartServer, reopenChat, waitFor } from './restart-server'
 
 const server = await RestartServer.create()
 const read = (path: string) => readFile(path, 'utf8').catch(() => '')
@@ -41,7 +41,7 @@ function assertTranscript(chat: ChatSnapshot, marker: string) {
 async function settled(botId: string, marker: string) {
   return waitFor(
     'final answer and settled chat',
-    () => server.call('chat.open', { botId }),
+    () => reopenChat(() => server.call('chat.open', { botId })),
     (c: ChatSnapshot) => !c.running && c.items.some(i => i.kind === 'assistant' && i.text.includes(marker))
   )
 }
@@ -80,7 +80,7 @@ try {
     await server.start()
     await server.connect()
     const eventStart = server.events.length
-    const reopened = await server.call('chat.open', { botId: bot.id })
+    const reopened = await reopenChat(() => server.call('chat.open', { botId: bot.id }))
     assert.equal(reopened.chatId, chat.chatId)
     if (!offline) {
       assert.equal(reopened.running, true)
@@ -132,12 +132,12 @@ try {
   assert.equal(recovered[0].runs.length, 1)
   assert.equal(recovered[0].runs[0].id, before.id)
   assert.equal(recovered[0].runs[0].chatId, before.chatId)
-  assertTranscript(await server.call('routines.openRun', { botId: bot.id, runId: before.id }), 'ROUTINE_DONE')
+  assertTranscript(await reopenChat(() => server.call('routines.openRun', { botId: bot.id, runId: before.id })), 'ROUTINE_DONE')
   assert.equal(await read(t.counter), '1')
   console.log('ok: in-flight routine recovers its receipt, transcript and final answer; counter=1')
 
   const threadTask = task(helper.workspace, 'thread')
-  const main = await server.call('chat.new', { botId: bot.id })
+  const main = await reopenChat(() => server.call('chat.open', { botId: bot.id }))
   const thread = await enginePost(bot.id, 'threads/ask', { to: helper.id, requestId: 'restart-thread', chatId: main.chatId, text: threadTask.prompt })
   await started(threadTask)
   await server.crash()

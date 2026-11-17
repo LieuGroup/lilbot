@@ -15,6 +15,21 @@ export async function waitFor<T>(label: string, read: () => Promise<T>, matches:
   throw new Error(`Restart check timed out: ${label}`)
 }
 
+/** Match useChat's bounded reopen attempts after transient engine/startup refusals.
+ * Only for opening existing conversations, never sending a prompt or creating work. */
+export async function reopenChat<T>(open: () => Promise<T>, timeout = 90_000): Promise<T> {
+  const end = Date.now() + timeout
+  for (;;) {
+    try {
+      return await open()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : ''
+      if (!/hermes_request_failed|engine_unavailable|engine_timeout|runtime_unavailable/.test(message) || Date.now() >= end) throw error
+      await Bun.sleep(3000)
+    }
+  }
+}
+
 export class RestartServer {
   private constructor(
     readonly root: string,
