@@ -1,3 +1,4 @@
+import { checkLifecycle } from './computers-lifecycle'
 import { checkPinning } from './computers-pinning'
 /** Isolated server + compiled helper. Never installs a service or changes real bots. */
 
@@ -34,6 +35,10 @@ try {
   if (await hardStop.exited) throw new Error('Hard-stop check failed')
   const build = Bun.spawn(['bun', 'build', '--compile', 'helper/main.ts', '--outfile', binary], { stdout: 'ignore', stderr: 'inherit' })
   if (await build.exited) throw new Error('Helper build failed')
+  const { mkdirSync } = await import('node:fs')
+  const lifecycleRoot = join(scratch, 'lifecycle')
+  mkdirSync(lifecycleRoot)
+  await checkLifecycle([binary], lifecycleRoot)
   server = Bun.spawn(['bun', 'server/main.ts'], {
     env: {
       ...process.env,
@@ -157,7 +162,6 @@ try {
   }
   await stopHelper()
   const pinRoot = join(scratch, 'pinning')
-  const { mkdirSync } = await import('node:fs')
   mkdirSync(pinRoot)
   await checkPinning(binary, pinRoot, helperConfig, identity, createPublicKey(identity.privateKey).export({ type: 'spki', format: 'pem' }).toString())
   await call('computers.remove', { computer: identity.id })

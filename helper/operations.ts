@@ -3,6 +3,7 @@ import { constants } from 'node:fs'
 import { open, readdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import type { ComputerOperation, ComputerResult } from '../shared/computer-schema'
+import { boundResult, TRUNCATED } from './result-bounds'
 
 const children = new Set<number>()
 process.on('exit', () => {
@@ -18,7 +19,11 @@ export async function operate(op: ComputerOperation, signal: AbortSignal, progre
   if (op.kind === 'exec') return execute(op, signal, progress)
   if (op.kind === 'list') {
     const entries = await readdir(op.path, { withFileTypes: true })
-    return { output: JSON.stringify(entries.slice(0, 10_000).map(e => ({ name: e.name, type: e.isDirectory() ? 'directory' : e.isFile() ? 'file' : 'other' }))) }
+    return boundResult({
+      output:
+        JSON.stringify(entries.slice(0, 10_000).map(e => ({ name: e.name, type: e.isDirectory() ? 'directory' : e.isFile() ? 'file' : 'other' }))) +
+        (entries.length > 10_000 ? '\n[Result truncated]' : '')
+    })
   }
   const flags = op.kind === 'read' ? constants.O_RDONLY : constants.O_WRONLY | constants.O_CREAT
   const file = await open(op.path, flags | constants.O_NOFOLLOW | constants.O_NONBLOCK, 0o600)
@@ -44,7 +49,7 @@ export async function operate(op: ComputerOperation, signal: AbortSignal, progre
 async function execute(op: Extract<ComputerOperation, { kind: 'exec' }>, signal: AbortSignal, progress: (result: ComputerResult) => void): Promise<ComputerResult> {
   // A separate shell watchdog survives an abrupt helper death (including SIGKILL).
   // It shares the command's process group and kills that group if its owner disappears.
-  const wrapper = `owner=$1; shift; group=$$; (while kill -0 "$owner" 2>/dev/null; do sleep 1; done; kill -9 -"$group") & guard=$!; "$@"; status=$?; kill "$guard" 2>/dev/null; wait "$guard" 2>/dev/null; exit "$status"`
+  const wrapper = `owner=$1; shift; group=$$; (while kill -0 "$owner" 2>/dev/null; do sleep 1; done; kill -9 -"$group") </dev/null >/dev/null 2>&1 & guard=$!; "$@"; status=$?; kill "$guard" 2>/dev/null; wait "$guard" 2>/dev/null; exit "$status"`
   const child = Bun.spawn(['/bin/sh', '-c', wrapper, 'lilbot-command', String(process.pid), process.env.SHELL || '/bin/sh', '-lc', op.command], {
     cwd: op.cwd || homedir(),
     stdout: 'pipe',
@@ -67,6 +72,7 @@ async function execute(op: Extract<ComputerOperation, { kind: 'exec' }>, signal:
   if (signal.aborted) stop()
   const timer = setTimeout(stop, op.timeoutMs)
   let output = ''
+  let truncated = false
   let lastProgress = 0
   const read = async (stream: ReadableStream<Uint8Array>) => {
     const decoder = new TextDecoder()
@@ -79,16 +85,18 @@ async function execute(op: Extract<ComputerOperation, { kind: 'exec' }>, signal:
     while (true) {
       const { done, value: chunk } = await reader.read()
       if (done) break
-      output = (output + decoder.decode(chunk, { stream: true })).slice(-200_000)
+      const next = output + decoder.decode(chunk, { stream: true })
+      truncated ||= next.length > 200_000
+      output = next.slice(-200_000)
       if (Date.now() - lastProgress > 500) {
-        progress({ output })
+        progress({ output: truncated ? TRUNCATED + output : output })
         lastProgress = Date.now()
       }
     }
   }
   try {
     await Promise.all([read(child.stdout), read(child.stderr), child.exited])
-    return { output, exitCode: child.exitCode, ...(stopped ? { error: signal.aborted ? 'Cancelled.' : 'Command timed out.' } : {}) }
+    return { output: truncated ? TRUNCATED + output : output, exitCode: child.exitCode, ...(stopped ? { error: signal.aborted ? 'Cancelled.' : 'Command timed out.' } : {}) }
   } finally {
     children.delete(child.pid)
     clearTimeout(timer)

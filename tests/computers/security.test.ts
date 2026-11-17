@@ -42,8 +42,9 @@ const operation = { kind: 'exec' as const, command: 'sleep 20', timeoutMs: 30_00
 test('cancel acknowledgement ends dispatch and survives restart; pending never parses payloads', async () => {
   const { store, service, db } = fixture()
   const request = await service.submit('bot', { computer: 'remote', requestId: 'cancel', operation, background: true })
+  store.running(request.id)
   service.cancel('bot', { computer: 'remote', requestId: 'cancel' })
-  db.query('UPDATE computer_requests SET operation=?').run('invalid-json')
+  db.query('UPDATE computer_payloads SET operation=?').run('invalid-json')
   expect(store.pending('remote')).toEqual([{ id: request.id, status: 'cancelled' }])
   const frames: any[] = []
   service.connect(
@@ -77,9 +78,9 @@ test('per-bot cap, leader cap, and pruning retain idempotent receipts without pa
   await Bun.sleep(100)
   const row = store.enqueue('prune', 'remote', 'old', operation)
   store.result('remote', row.id, { output: 'secret output' }, true)
-  db.query('UPDATE computer_requests SET created_at=? WHERE id=?').run(Date.now() - RETENTION_MS - 1, row.id)
+  db.query('UPDATE computer_requests SET expires_at=? WHERE id=?').run(Date.now() - RETENTION_MS - 1, row.id)
   store.prune()
-  expect(store.get('prune', 'remote', 'old')).toMatchObject({ operation: null, result: null })
+  expect(store.get('prune', 'remote', 'old')).toMatchObject({ result: null })
   expect(store.enqueue('prune', 'remote', 'old', operation).id).toBe(row.id)
   expect(() => store.enqueue('prune', 'remote', 'old', { ...operation, command: 'true' })).toThrow()
 })
@@ -162,24 +163,28 @@ test('hardlinks cannot read or overwrite workspace files', async () => {
   await expect(workspaceFile(root, 'linked', file => file.write('Y2hhbmdl'))).rejects.toThrow()
   expect(readFileSync(join(root, 'original'), 'utf8')).toBe('preserve')
 })
-test('replacement connections use a distinct code and stale peers lose authority', () => {
+test('live connection wins key conflicts, stale peers lose authority, removal sends revocation', () => {
   const { service } = fixture()
   const codes: (number | undefined)[] = []
+  const frames: unknown[] = []
   const first = service.connect(
     'remote',
-    () => {},
+    frame => frames.push(JSON.parse(frame)),
     code => codes.push(code)
   )
   const second = service.connect(
     'remote',
-    () => {},
+    () => {
+      throw new Error('Newcomer received work')
+    },
     code => codes.push(code)
   )
   expect(codes).toEqual([4001])
-  expect(service.isPeer('remote', first)).toBe(false)
-  expect(service.isPeer('remote', second)).toBe(true)
-  first()
-  expect(service.list().find(c => c.id === 'remote')?.online).toBe(true)
+  expect(service.isPeer('remote', first)).toBe(true)
+  expect(service.isPeer('remote', second)).toBe(false)
+  second()
+  expect(service.list().find(c => c.id === 'remote')).toMatchObject({ online: true, keyConflict: true })
   service.remove('remote')
-  expect(codes).toEqual([4001, undefined])
+  expect(frames).toContainEqual({ type: 'revoked' })
+  expect(codes).toEqual([4001, 4003])
 })

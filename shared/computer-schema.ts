@@ -2,8 +2,12 @@ import { z } from 'zod'
 
 export const ComputerHello = z.object({
   name: z.string().trim().min(1).max(100),
-  os: z.string().min(1).max(100),
-  home: z.string().min(1).max(4096),
+  os: z.enum(['linux', 'darwin', 'win32', 'freebsd', 'openbsd', 'sunos', 'aix', 'android', 'cygwin', 'netbsd', 'haiku']),
+  home: z
+    .string()
+    .min(1)
+    .max(512)
+    .regex(/^[^\p{Cc}\p{Cf}]*$/u),
   capabilities: z.array(z.enum(['exec', 'read', 'write', 'list', 'copy'])).max(5)
 })
 export type ComputerHello = z.infer<typeof ComputerHello>
@@ -11,6 +15,7 @@ export interface Computer extends ComputerHello {
   id: string
   online: boolean
   lastSeen: number | null
+  keyConflict: boolean
 }
 export const ComputerOperation = z.discriminatedUnion('kind', [
   z.object({
@@ -47,7 +52,9 @@ export interface ComputerRequest {
   computer: string
   requestId: string
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'cancel_acked'
-  operation: ComputerOperation | null
+  digest: string
+  size: number
+  cancelRequested: boolean
   result: ComputerResult | null
   createdAt: number
 }
@@ -59,5 +66,6 @@ export const HelperWork = z.discriminatedUnion('type', [
   z.object({ type: z.literal('work'), id: z.string(), operation: ComputerOperation }),
   z.object({ type: z.literal('cancel'), id: z.string() }),
   z.object({ type: z.literal('heartbeat') }),
-  z.object({ type: z.literal('ack'), id: z.string() })
+  z.object({ type: z.literal('ack'), id: z.string() }),
+  z.object({ type: z.literal('revoked') })
 ])

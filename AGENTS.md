@@ -402,7 +402,8 @@ computer; the authenticated bot id owns its requests, never an id from the body.
 
 - Private browser methods: `computers.list`, `computers.installCode({ name })` (10 minutes,
   single use), `computers.remove`; changes push `computers.changed`. The minted name wins over
-  the helper's advisory hostname. No UI is built yet (`needs-ui`).
+  the helper's advisory hostname. OS is an enum; home is at most 512 characters with control and
+  hidden formatting characters refused. `keyConflict` reports a competing key connection. No UI is built yet (`needs-ui`).
 - The public door is a separate loopback listener, off by default. Enable with
   `LILBOT_PUBLIC_ENABLED=1`, `LILBOT_PUBLIC_PORT=3372`. Its port must differ from the private app.
   It accepts only POST `/helper/register` and GET `/helper/connect` (WebSocket), with 8 KiB bodies.
@@ -410,7 +411,9 @@ computer; the authenticated bot id owns its requests, never an id from the body.
   `cf-connecting-ip`, `cf-ray` and Cloudflare `cdn-loop` headers before routing, even with a valid Host.
   Never add the public name to `LILBOT_ALLOWED_HOSTS`. No webhook, app, browser socket or engine
   endpoint is exposed by the door. A separate tunnel requires deployment approval.
-- The door limits attempts to 20/address/minute with at most 4096 tracked addresses. Behind
+- The door limits attempts to 20/address/minute (IPv6 grouped by /64), evicting the oldest of 4096 entries.
+  Valid signed connections bypass this attempt budget. Each socket has a 16.2 MB byte bucket,
+  replenished at 1 MB/s, checked before JSON parsing. Behind
   Cloudflare it keys on `cf-connecting-ip`. Deploy a matching Cloudflare rate-limit rule on both
   helper paths (20/minute/IP, block 60s), so rejected traffic does not reach the leader. Registration
   checks the hashed code with a read-only query before key parsing or signature work; consumption
@@ -421,43 +424,54 @@ computer; the authenticated bot id owns its requests, never an id from the body.
   nonce with that key; subsequent frames are signed with the connection nonce and ordered sequence.
   Unauthenticated, altered, replayed or different-key work is ignored. Key replacement requires
   explicit helper re-registration with a new install code. TLS remains required except on loopback.
-- Helpers sign method, path, computer id, timestamp and one-use nonce (60s window). Revocation closes
-  the socket with 1008 and aborts work. Replacements use 4001, log a generic concurrent-connection
-  warning, invalidate the older peer and back off without aborting its work. The helper identity is
+- Helpers sign method, path, computer id, timestamp and one-use nonce (60s window). Revocation aborts
+  work only through a signed `revoked` frame. Unsigned close codes never abort work; server
+  restarts preserve remote commands. A newcomer is refused with 4001 while the existing peer
+  heartbeats, records `keyConflict`, and logs the computer id. Stale peers lose authority.
+  Reconnect backoff resets only after verified server proof. The helper identity is
   still a 0600 PEM file in a 0700 directory. Keychain is deferred: the built-in security CLI's shared
   trust would also allow same-user bot commands; a useful per-helper boundary needs a signed native
   Security.framework integration. Full-access bots share the OS user's authority.
 - `lilbot-computers-v1` is an independent Hermes plugin; the memory adapter is unchanged. Its
   `computer_exec` invokes Hermes' own `detect_hardline_command` before submitting, with no Hermes
-  fork or patch. The engine-neutral service requires `full-access` for all computer operations.
+  fork or patch. Computer hard stops are a guard for full-access bots, not a security boundary:
+  direct engine submissions and write/copy operations do not enforce Hermes protected-path
+  refusals. The engine-neutral service requires `full-access` for all computer operations.
   Tools: `list_computers`, `computer_exec`, `computer_read_file`, `computer_write_file`,
   `computer_list_folder`, `computer_request`, `computer_cancel`, `computer_copy`. Machine output
   is untrusted data. Reads return base64; writes accept UTF-8 or base64.
 - Offline synchronous calls fail immediately; explicit background calls queue. Foreground waits
-  stop at 25s. Per bot, at most 32 pending/running/cancelling requests; at most 8 executions per
+  stop at 25s. Per bot and computer, at most 32 pending/running/cancelling requests; at most 8 executions per
   leader/helper. Pending dispatch reads only id/status, loading payloads only when sent. Cancellation
-  remains `cancelled` until the final helper result makes it terminal `cancel_acked`, including
-  across restarts; acknowledged cancellations are never resent. Removing a bot cancels its work.
-- Results and operations expire after seven days (operation becomes a SHA-256 digest, result null).
-  Compact request ids/digests remain to refuse re-execution and changed-argument retries. Expired
-  requests expose `operation: null`. Helper journals drop output as soon as the server acknowledges
-  receipt, otherwise after seven days; compact receipts remain. Old backups retain their original
-  contents and need their own retention policy. Heartbeats run every 10s; 35s without one is offline.
-- Commands have bounded output and a timeout (60s default, 1h maximum). Cancellation kills the process
+  of undispatched work settles locally; dispatched work remains `cancelled` until a final result
+  makes it terminal `cancel_acked`. The result and `cancelRequested` flag preserve late outcomes;
+  the helper resends its stored result if cancellation arrives after completion.
+- Payloads live separately from queue metadata. Completed operations become only their SHA-256
+  digest and byte size immediately. Tool responses never contain operation payloads. Results expire
+  after five minutes; an indexed prune removes at most 64 payloads every 30 seconds. Pending status
+  polls never load payloads. A global 256 MiB payload budget bounds retained content; excess results
+  return an explicit omission error. Compact receipts remain for idempotency. Helper journals drop
+  output on acknowledgement or after five minutes, with indexed batches. Old backups need their
+  own retention policy. Heartbeats run every 10s; 35s without one is offline.
+- Results are bounded to 6 MB serialized JSON, with an explicit truncation marker. Commands have bounded output
+  and a timeout (60s default, 1h maximum). Cancellation kills the process
   group and cancels pipe readers, so escaped descendants cannot keep requests busy. Child groups are
   tracked; an independent shell watchdog kills a group after abrupt helper death. Deliberate process
   detachment is not a sandbox boundary for full-access users. Files/copies are capped at 4 MiB;
   workspace transfers use descriptor-relative, no-follow opens and require single-link regular files.
 - Build native with `bun run build:helper`; cross-compile with
   `bun scripts/build-helper.ts bun-darwin-arm64 dist/lilbot-helper-macos-arm64` (x64 also supported).
-  Deliver both binary and `.sha256` from a trusted channel. Run `./lilbot-helper install <https-origin>`
+  Deliver both binary and `.sha256` from a trusted channel. The `.sha256` sidecar detects
+  corruption, not tampering; it is not a signature. Run `./lilbot-helper install <https-origin>`
   with the install code on stdin. Updating stops the service, checks SHA-256, writes/chmods a sibling
   temporary file, atomically renames it, then starts the service. macOS uses launchd and Linux systemd
-  user units. Config/journal: `~/.config/lilbot-helper` (`LILBOT_HELPER_CONFIG_DIR` overrides).
+  user units. `./lilbot-helper reset` stops/uninstalls the service and removes the local identity
+  for re-registration with a fresh code, retaining execution receipts. Config/journal: `~/.config/lilbot-helper` (`LILBOT_HELPER_CONFIG_DIR` overrides).
 - `bun run check:computers` uses free ports, temporary data/workspaces/skills, a sentinel profile
   allowlist and one temporary bot, always cleaning up in finally. It checks real plugin calls,
   Hermes hard-stop refusal before submission, queue/reconnect, cancellation termination, a second
-  door with a different key, copies, reused codes, wrong/revoked keys and private routes/headers.
+  door with a different key, signed revocation versus server restart, key-conflict refusal, fast
+  exec, copies, reused codes, wrong/revoked keys and private routes/headers.
   It prints binary size and idle RSS. Mac runtime/launchd is not tested on the Linux leader.
 
 ## Skills

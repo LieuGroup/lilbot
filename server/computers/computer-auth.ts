@@ -28,11 +28,12 @@ export class ComputerAuth {
       !verify(null, Buffer.from(JSON.stringify({ code: input.code, publicKey: input.publicKey, hello: input.hello })), key, Buffer.from(input.signature, 'base64'))
     )
       throw new Error('Invalid registration.')
+    const hello = ComputerHello.parse(input.hello)
     return this.store.db.transaction(() => {
       const used = this.store.db.query('DELETE FROM computer_codes WHERE hash=? AND expires_at>? RETURNING hash').get(hash(input.code), Date.now())
       if (!used) throw new Error('Invalid registration.')
       const id = crypto.randomUUID()
-      this.store.add(id, { ...input.hello, name: code.name }, input.publicKey)
+      this.store.add(id, { ...hello, name: code.name }, input.publicKey)
       return { id }
     })()
   }

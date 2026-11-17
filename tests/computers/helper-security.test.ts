@@ -80,3 +80,13 @@ test('abrupt helper death stops its tracked command group', async () => {
     }
   }
 })
+
+test('large directory and exec results carry truncation markers', async () => {
+  const { mkdirSync } = await import('node:fs')
+  const { root } = fixture()
+  for (let i = 0; i < 10_001; i++) mkdirSync(join(root, String(i)))
+  const listing = await operate({ kind: 'list', path: root }, new AbortController().signal)
+  expect(listing.output).toEndWith('[Result truncated]')
+  const exec = await operate({ kind: 'exec', command: 'head -c 300000 /dev/zero', timeoutMs: 1000 }, new AbortController().signal)
+  expect(exec.output).toStartWith('\n[Result truncated]')
+})

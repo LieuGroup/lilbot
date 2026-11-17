@@ -12,6 +12,7 @@ test('migration 15 preserves shipped threads and adds computer tables', () => {
     db.exec(`
       INSERT INTO threads VALUES ('thread', '{"messages":[]}');
       INSERT INTO thread_chats VALUES ('chat', 'bot', 'thread');
+      DROP TABLE computer_payloads;
       DROP TABLE computer_requests;
       DROP TABLE computer_nonces;
       DROP TABLE computer_codes;

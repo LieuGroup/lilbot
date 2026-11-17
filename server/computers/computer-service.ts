@@ -10,6 +10,7 @@ type Peer = { send: (frame: string) => unknown; close: (code?: number) => void; 
 export class ComputerService {
   readonly auth: ComputerAuth
   private peers = new Map<string, Peer>()
+  private nextPrune = 0
   private local = new Map<string, AbortController>()
   constructor(
     readonly store: ComputerStore,
@@ -26,10 +27,16 @@ export class ComputerService {
     return this.store.list().map(c => ({ ...c, lastSeen: c.id === 'leader' ? Date.now() : c.lastSeen, online: c.id === 'leader' || this.peers.has(c.id) }))
   }
   connect(id: string, send: Peer['send'], close: Peer['close']) {
-    if (this.peers.has(id)) {
-      console.warn('[computers] concurrent connection replaced')
-      this.peers.get(id)?.close(4001)
+    const existing = this.peers.get(id)
+    if (existing && Date.now() - existing.seen <= 35_000) {
+      console.warn(`[computers] key conflict for ${id}`)
+      this.store.conflict(id, true)
+      this.changed()
+      close(4001)
+      return () => {}
     }
+    existing?.close(4000)
+    this.store.conflict(id, false)
     const peer: Peer = { send, close, seen: Date.now(), sent: new Set<string>() }
     this.peers.set(id, peer)
     this.store.seen(id)
@@ -55,11 +62,14 @@ export class ComputerService {
     }
   }
   tick() {
-    this.store.prune()
+    if (Date.now() >= this.nextPrune) {
+      this.store.prune()
+      this.nextPrune = Date.now() + 30_000
+    }
     for (const [id, peer] of this.peers) {
       if (Date.now() - peer.seen > 35_000) {
         this.peers.delete(id)
-        peer.close()
+        peer.close(4000)
         this.changed()
       }
     }
@@ -67,9 +77,9 @@ export class ComputerService {
   }
   remove(id: string) {
     if (id === 'leader') throw new Error('The leader cannot be removed.')
-    for (const request of this.store.pending(id)) this.peers.get(id)?.send(JSON.stringify({ type: 'cancel', id: request.id }))
+    this.peers.get(id)?.send(JSON.stringify({ type: 'revoked' }))
     this.store.revoke(id)
-    this.peers.get(id)?.close()
+    this.peers.get(id)?.close(4003)
     this.peers.delete(id)
     this.changed()
     return { ok: true as const }
@@ -96,10 +106,9 @@ export class ComputerService {
     if (input.background) return request
     const until = Date.now() + 25_000
     while (Date.now() < until) {
-      const latest = this.store.get(bot, input.computer, input.requestId)!
-      if (!['pending', 'running'].includes(latest.status)) return latest
+      if (!['pending', 'running'].includes(this.store.status(request.id))) return this.store.get(bot, input.computer, input.requestId)!
       if (!this.list().find(c => c.id === input.computer)?.online) throw new Error(`Computer offline. Request ${input.requestId} retained; read or cancel it explicitly.`)
-      await Bun.sleep(100)
+      await Bun.sleep(10)
     }
     return this.store.get(bot, input.computer, input.requestId)!
   }
@@ -183,7 +192,7 @@ export class ComputerService {
     })
   }
   close() {
-    for (const peer of this.peers.values()) peer.close()
+    for (const peer of this.peers.values()) peer.close(1001)
     for (const controller of this.local.values()) controller.abort()
   }
 }

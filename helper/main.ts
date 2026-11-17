@@ -1,5 +1,5 @@
 /** Compiled entry point. Install codes are read from stdin, never argv or logs. */
-import { existsSync } from 'node:fs'
+import { existsSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { configDir, loadIdentity, register } from './identity'
 import { run } from './runner'
@@ -19,12 +19,16 @@ try {
   } else if (action === 'uninstall') {
     await service('uninstall')
     console.log('Service removed. Remove the computer in LilBot to revoke its key; local identity is retained.')
+  } else if (action === 'reset') {
+    await service('uninstall')
+    rmSync(join(configDir, 'identity.json'), { force: true })
+    console.log('Local identity removed. Register again with a fresh install code. Execution receipts retained.')
   } else if (action === 'run') {
     const controller = new AbortController()
     process.on('SIGTERM', () => controller.abort())
     process.on('SIGINT', () => controller.abort())
     await run(loadIdentity(), controller.signal)
-  } else throw new Error('Usage: lilbot-helper install|register|run|uninstall')
+  } else throw new Error('Usage: lilbot-helper install|register|run|uninstall|reset')
 } catch {
   // No request, credential, shell output, or exception payload is logged.
   console.error('LilBot helper failed. Check the server address, install code, configuration and service manager.')

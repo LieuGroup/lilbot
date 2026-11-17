@@ -40,7 +40,7 @@ function fixture() {
   const body = {
     code: service.auth.code('Test').code,
     publicKey,
-    hello: { name: 'Attacker choice', os: 'linux', home: root, capabilities: ['exec', 'read', 'write', 'list', 'copy'] as ('exec' | 'read' | 'write' | 'list' | 'copy')[] }
+    hello: { name: 'Attacker choice', os: 'linux' as const, home: root, capabilities: ['exec', 'read', 'write', 'list', 'copy'] as ('exec' | 'read' | 'write' | 'list' | 'copy')[] }
   }
   const registration = { ...body, signature: sign(null, Buffer.from(JSON.stringify(body)), pair.privateKey).toString('base64') }
   const { id } = service.auth.register(registration)
@@ -186,7 +186,7 @@ test('queued requests survive database reopen and deletion cancels all bot work'
   expect(store.enqueue('bot', 'remote', 'restart', operation).id).toBe(first.id)
   expect(store.pending('remote')).toHaveLength(1)
   store.forgetBot('bot')
-  expect(store.get('bot', 'remote', 'restart')?.status).toBe('cancelled')
+  expect(store.get('bot', 'remote', 'restart')?.status).toBe('cancel_acked')
   db.close()
 })
 
@@ -199,4 +199,28 @@ test('background command output is readable and cancellation terminates it', asy
   service.cancel('bot', input)
   await Bun.sleep(200)
   expect(service.read('bot', input).status).toBe('cancel_acked')
+})
+
+test('verified connections bypass a saturated address budget, frames exhaust a byte budget before parsing', async () => {
+  const { service, request } = fixture()
+  const door = startPublicDoor(service, 0)
+  cleanups.push(() => door.stop(true))
+  const url = `http://127.0.0.1:${door.port}`
+  for (let i = 0; i < 20; i++) await fetch(`${url}/helper/connect`)
+  expect((await fetch(`${url}/helper/connect`)).status).toBe(429)
+  const socket = new WebSocket(`${url.replace('http', 'ws')}/helper/connect`, { headers: request().headers } as any)
+  const messages: unknown[] = []
+  socket.onmessage = event => messages.push(JSON.parse(String(event.data)))
+  await new Promise<void>((resolve, reject) => {
+    socket.onopen = () => resolve()
+    socket.onerror = reject
+  })
+  const closed = new Promise<number>(resolve => {
+    socket.onclose = event => resolve(event.code)
+  })
+  // Valid large result frames for nonexistent requests: no persistence, still charged by bytes.
+  const frame = JSON.stringify({ type: 'result', id: 'unknown', result: { output: 'a'.repeat(5_500_000) }, final: false })
+  for (let i = 0; i < 4; i++) socket.send(frame)
+  expect(await closed).toBe(1009)
+  expect(messages.length).toBeGreaterThan(0)
 })

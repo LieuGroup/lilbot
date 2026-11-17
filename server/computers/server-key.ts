@@ -1,4 +1,4 @@
-import { createPublicKey, generateKeyPairSync, sign } from 'node:crypto'
+import { createPrivateKey, createPublicKey, generateKeyPairSync, sign } from 'node:crypto'
 import { chmodSync, closeSync, constants, openSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { challenge, fingerprint, frameMessage } from '../../helper/server-trust'
@@ -6,15 +6,17 @@ import { challenge, fingerprint, frameMessage } from '../../helper/server-trust'
 export class ServerKey {
   readonly publicKey: string
   readonly fingerprint: string
-  constructor(private privateKey: string) {
-    this.publicKey = createPublicKey(privateKey).export({ type: 'spki', format: 'pem' }).toString()
+  private readonly key
+  constructor(privateKey: string) {
+    this.key = createPrivateKey(privateKey)
+    this.publicKey = createPublicKey(this.key).export({ type: 'spki', format: 'pem' }).toString()
     this.fingerprint = fingerprint(this.publicKey)
   }
   frame(id: string, nonce: string, sequence: number, payload: string) {
-    return JSON.stringify({ sequence, payload, signature: sign(null, frameMessage(id, nonce, sequence, payload), this.privateKey).toString('base64') })
+    return JSON.stringify({ sequence, payload, signature: sign(null, frameMessage(id, nonce, sequence, payload), this.key).toString('base64') })
   }
   proof(id: string, nonce: string) {
-    return { type: 'server', publicKey: this.publicKey, signature: sign(null, challenge(id, nonce), this.privateKey).toString('base64') }
+    return { type: 'server', publicKey: this.publicKey, signature: sign(null, challenge(id, nonce), this.key).toString('base64') }
   }
 }
 export function loadServerKey(directory: string) {
