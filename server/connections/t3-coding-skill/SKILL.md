@@ -45,6 +45,10 @@ own rules (its `AGENTS.md`). Say whether a pull request is wanted.
   Markdown link. Never build a link from an id, and never give a localhost link.
 - Follow with `t3_thread_wait` (`threadId`, `timeoutMs` at most 600000). A timeout is normal:
   wait again or read with `t3_thread_read`. Use the explicit `threadId` in every call.
+- If a wait or read loses its connection while LilBot restarts, the T3 task keeps running.
+  Retry `t3_thread_wait` or `t3_thread_read` with the same `threadId` once the bridge is back.
+  Do not report the task as failed just because the bridge disconnected. If a launch response
+  was lost, retry that launch with its original `clientRequestId` to recover the thread.
 - If the thread waits for an answer, read it and answer with `t3_thread_send`, or ask Oscar.
   `t3_pending_request` shows a pending question or approval.
 - To change course, `t3_thread_send`. To stop, `t3_thread_interrupt` with `stop: true`.

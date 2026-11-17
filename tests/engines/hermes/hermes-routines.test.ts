@@ -78,3 +78,42 @@ test('a reply resumes the initiating context and queues one hidden admission wit
   expect(calls.find(([m]) => m === 'prompt.submit')?.[1]).toMatchObject({ session_id: 'live', queued: true, display_kind: 'hidden', input_id: 'routine-delivery' })
   expect(result.items).toEqual([{ kind: 'assistant', text: 'answer' }])
 })
+
+test('restart during a running delivery recovers its terminal receipt and transcript without another side effect', async () => {
+  const admissions = new Set<string>()
+  let effects = 0
+  let connections = 0
+  const connect = async () => {
+    const first = ++connections === 1
+    return {
+      request: async (method: string, params: any) => {
+        if (method === 'config.get') return { value: 'off' }
+        if (method === 'session.create') return { session_id: 'live', stored_session_id: 'stored' }
+        if (method === 'prompt.submit') {
+          if (!admissions.has(params.input_id)) {
+            admissions.add(params.input_id)
+            effects++
+          }
+          return { admission_id: 'receipt' }
+        }
+        if (method === 'prompt.receipt') {
+          if (first) throw new Error('process stopped while waiting')
+          return { status: 'terminal', outcome: 'completed' }
+        }
+        return {
+          display_messages: [
+            { role: 'tool', name: 'terminal', tool_call_id: 'write' },
+            { role: 'assistant', text: 'Done once' }
+          ]
+        }
+      },
+      close: () => {}
+    } as unknown as HermesSocket
+  }
+  const options = { workspace: '/test', runId: 'persisted-delivery', onChat: () => {} }
+  await expect(runRoutine('native-id', 'increment', options, connect)).rejects.toThrow('process stopped')
+  const recovered = await runRoutine('native-id', 'increment', options, connect)
+  expect(effects).toBe(1)
+  expect(connections).toBe(2)
+  expect(recovered).toMatchObject({ status: 'completed', text: 'Done once', items: [{ kind: 'tool' }, { kind: 'assistant', text: 'Done once' }] })
+})

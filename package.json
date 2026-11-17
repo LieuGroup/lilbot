@@ -12,6 +12,7 @@
     "lint": "biome check .",
     "format": "biome check --write .",
     "test": "bun test tests",
+    "check:restart": "bun live-checks/restart-check.ts",
     "check:threads": "bun live-checks/threads-check.ts",
     "build:helper": "bun scripts/build-helper.ts",
     "check:computers": "bun live-checks/computers-check.ts",
