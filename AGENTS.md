@@ -413,7 +413,7 @@ computer; the authenticated bot id owns its requests, never an id from the body.
   Both listeners disable development errors and return plain 500s. The private listener refuses
   `cf-connecting-ip`, `cf-ray` and Cloudflare `cdn-loop` headers before routing, even with a valid Host.
   Never add the public name to `LILBOT_ALLOWED_HOSTS`. No webhook, app, browser socket or engine
-  endpoint is exposed by the door. A separate tunnel requires deployment approval.
+  endpoint is exposed by the door. Live deployment: see "Public door deployment" below.
 - Unknown connect ids are refused before allocating rate-limit entries. Failed authentication and
   registration attempts are limited to 20/address/minute, and failed connects to six/(computer,address
   group)/minute. Valid signatures have a separate six/computer/minute budget that remains available
@@ -423,9 +423,9 @@ computer; the authenticated bot id owns its requests, never an id from the body.
   parsing; progress is limited to once per second per request and 8 KiB, with 8 active requests.
   Heartbeat/progress spacing uses arrival time before queueing; early frames are dropped without
   disconnecting. Heartbeats are at most once per five seconds. Behind Cloudflare, the address is `cf-connecting-ip`.
-  Deployment needs Cloudflare **Pro or higher** for the combined hostname + exact helper paths rule,
-  20 requests/60 seconds/IP and a 60-second Block. Free only permits a 10-second period/block and
-  lacks Host matching; it cannot implement that rule. See Cloudflare's rate-limiting availability docs.
+  An edge rate-limit rule (hostname + exact helper paths, 20 requests/60 seconds/IP, 60-second block)
+  needs Cloudflare Pro or higher. Oscar chose the Free plan on 2026-11-17: the zone has no such rule and
+  LilBot's own limits above are the protection.
   Registration sends a code identifier and HMAC over the public key and hello, plus key proof;
   the raw install code never crosses the network. Code consumption remains atomic.
 - LilBot creates `computer-server-key.pem` under its data directory, mode 0600. Back it up securely
@@ -509,12 +509,28 @@ computer; the authenticated bot id owns its requests, never an id from the body.
   not a claim that every request completes within 50 ms. `helper-load.test.ts` runs a real helper
   three times with a chatty background command and eight parallel 4 MiB copies in each direction,
   asserting zero disconnects and byte-identical delivery. It prints binary size and idle RSS.
-  An independent review is still required before enabling a tunnel.
+  The fourth independent review (PR #50) cleared the tunnel against unauthenticated lockout.
 - Real-Mac smoke checklist (not runnable on the Linux leader): obtain the trusted arm64/x64 binary,
   confirm Gatekeeper handling, install with a fresh code and verify the launchd user service survives
   logout/reboot; register and check name/OS/home, execute/read/write/copy, sleep and wake during work
   and confirm reconnect without duplicate execution, then revoke online and offline and verify the
-  signed revoke stops work and removes launchd. Do not open a tunnel until independent review clears it.
+  signed revoke stops work and removes launchd.
+- Public door deployment (live since 2026-11-17, #51):
+  - Hostname `lilbot-connect.lilgroup.studio` (zone `lilgroup.studio`, Cloudflare Free), tunnel
+    `lilbot-connect`, its own connector and credentials, separate from T3 Code's tunnel and the hosting server.
+  - `~/.cloudflared/lilbot/config.yml` routes only `^/helper/(register|connect)$` on that hostname to
+    `http://127.0.0.1:3372`; everything else gets 404 at the edge. The tunnel credentials JSON sits beside
+    it (0600). The broad account certificate (`cert.pem`) was deleted after creating the tunnel and DNS
+    record; changing DNS or deleting the tunnel needs a fresh `cloudflared tunnel login`.
+  - `cloudflared` 2026.10.4 in `~/.local/bin`, run by the user unit `lilbot-tunnel.service`
+    (`--no-autoupdate`). The door is enabled by the drop-in
+    `~/.config/systemd/user/lilbot.service.d/public-door.conf` (`LILBOT_PUBLIC_ENABLED=1`,
+    `LILBOT_PUBLIC_PORT=3372`).
+  - Check from outside: every path except the two helper paths returns 404; `/helper/connect` without a
+    valid key returns 403.
+  - Roll back: `systemctl --user disable --now lilbot-tunnel.service` (hostname unreachable at once);
+    to also close the door, delete the drop-in, `systemctl --user daemon-reload` and restart
+    `lilbot.service`. The private app is unaffected either way.
 
 ## Skills
 
