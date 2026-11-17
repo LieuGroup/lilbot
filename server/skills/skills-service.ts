@@ -106,6 +106,11 @@ export class SkillsService {
     }
     this.db.query('INSERT INTO skill_imports VALUES (?,?)').run(source, name)
   }
+  /** Installs a skill LilBot itself ships, restoring it when the library copy differs. */
+  provide(name: string, data: Record<string, string>) {
+    if (existsSync(this.path(name)) && digest(this.read(name)) === digest(data)) return
+    this.save(name, data, 'lilbot')
+  }
   importedBot(id: string) {
     return Boolean(this.db.query('SELECT 1 FROM skill_imports WHERE source=?').get(`bot:${id}`))
   }

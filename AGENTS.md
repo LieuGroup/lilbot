@@ -40,6 +40,7 @@ server/            The LilBot server (runs on the leader).
   threads/           shared bot exchanges, transcripts and durable deliveries
   routines/          app-owned schedules, run history and scheduler
   library/           Delivered workspace files, metadata, safe reads and folder listings.
+  connections/       LilBot-owned connections given to every bot: T3 Code for coding (bridge, sign-in, skill).
   database/          LilBot's own SQLite file and its schema steps.
   engines/           Whatever actually runs the bots.
     bot-engine.ts        the contract every engine must fulfil
@@ -171,7 +172,7 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
 - `server/database/`: LilBot's own SQLite database (`bun:sqlite`), by default `~/.local/share/lilbot/lilbot.db`
   (`LILBOT_DATA_DIR`). It owns bot identity (name, function, instructions, model), engine/native-id bindings,
   memory, sidebar preferences, sections, main-conversation pointers and the primary-bot choice.
-  Tools, MCP connectors and conversation transcripts stay with the engine. Skills belong to LilBot. Identity is imported once, then LilBot wins
+  Tools, MCP connectors and conversation transcripts stay with the engine, except the T3 Code connection LilBot supplies (see Coding). Skills belong to LilBot. Identity is imported once, then LilBot wins
   on mismatch; model edits are checked against the engine’s available models before anything is saved,
   including when repairing a bot with an invalid saved model. Unsupported permission modes also fail before saving.
   Accepted edits (including name, function and instructions) are saved in the database before they are applied to the runtime.
@@ -260,7 +261,7 @@ What a bot is and who owns each part. Decided with Oscar on 2026-11-16 unless ma
 |---|---|---|
 | Identity (name, function), instructions, model, permission mode, engine binding | LilBot | `bots` table in LilBot's database |
 | Skills and per-bot skill switches | LilBot | shared skills library and SQLite |
-| Tools and MCP connectors | the engine | Hermes profile |
+| Tools and MCP connectors | the engine, except LilBot's T3 Code connection | Hermes profile; the T3 connection is defined in `server/connections/` |
 | Workspace: one folder per bot on the shared computer | the bot | `~/lilbot/workspaces/<bot id>`, the working directory of its chats |
 | Conversation: one main conversation per bot; a new session replaces it as the main one | the engine | Hermes sessions; LilBot's database names the main one |
 | Memory | LilBot | facts in LilBot's database; the engine reads and writes them through an adapter |
@@ -350,6 +351,47 @@ Hermes declares incoming `CanonicalAttachment` paths but no outgoing attachment 
 therefore unavailable until the contract exposes it; tool image previews are not deliveries.
 No Library UI is built yet. `bun live-checks/library-check.ts` tests an isolated server and temporary
 bot end to end, including the push, protocol list, separate workspace, and download.
+## Coding (T3 Code)
+
+Coding goes to T3 Code, Oscar's coding backend, through its MCP tools. LilBot builds no coding engine,
+worktree or pull-request handling. Running commands, reading files and using apps stay ordinary bot work.
+
+- One LilBot-owned connection (`server/connections/t3-connection.ts`) is given to every bot by every
+  engine (`BotEngine.prepareConnections`, called from `BotRuntimes.state` on creation, startup and before
+  use). It is the one exception to "tools and MCP connectors stay with the engine". Hermes gets it as the
+  profile MCP server `lilbot_t3` through `mcp.servers.list/remove/add` and `reload.mcp` when it changed
+  (`hermes-connections.ts`); other servers in the profile are untouched. Hermes keeps a server's tool list
+  until its settings change, so the URL carries the sign-in state (`?signin=<issued-at|signed-out>`): when a
+  sign-in appears, expires or is revoked, the server notices within five seconds and re-prepares every bot
+  (remove, `reload.mcp`, add, `reload.mcp`), which reconnects it and loads the new tool list.
+- The bridge (`t3-bridge.ts`, `/engine/t3/mcp` on LilBot's loopback port) forwards Streamable HTTP MCP to
+  T3 Code (`http://127.0.0.1:3773/mcp`, `LILBOT_T3_MCP_URL`). Callers present a per-bot key
+  (`HMAC(engine token, "t3-bridge:<bot id>")`), which Hermes keeps in the profile's `.env`; deleted bots are
+  refused. The bridge narrows the tool list to `T3_TOOLS` (projects, threads, capabilities, linked
+  environments, pull-request links; no project deletion, themes, schedules or machine linking) and
+  prefixes each `clientRequestId` with the bot id, because T3 scopes retry keys to the one shared sign-in.
+- One shared sign-in (decided with Oscar 2026-11-17): a single T3 MCP grant with Full access, stored in
+  `<data dir>/t3-grant.json` (0600), never printed, logged, committed, or put in a bot's instructions or
+  memory. `bun run t3:sign-in` redeems a one-time pairing code Oscar creates in T3 Code (on the leader's
+  environment: Settings → Sharing & access → Create link → Copy code; the link works too). It runs T3's
+  OAuth PKCE flow headlessly (`/oauth/mcp/decision` returns the redirect as JSON). Codes last about five
+  minutes. T3 has no refresh grant: the sign-in lasts 30 days, then Oscar approves again the same way.
+- Missing, expired or revoked: the bridge answers MCP itself with one tool, `t3_connection_status`, whose
+  answer tells the bot what to tell Oscar. A T3 401 on an unexpired grant marks it revoked. It never passes
+  T3's 401 on, so an engine never starts its own OAuth. `connections.status` returns the state and expiry
+  (never the token); `connections.changed` is pushed when the server notices a change.
+- Instructions are the LilBot skill `t3-coding` (`server/connections/t3-coding-skill/SKILL.md`), installed
+  into the skills library at startup and restored if it differs. It points bots at `~/code/home/AGENTS.md`
+  for machines, models and repo locations, asks for one launch with a stable `clientRequestId`, following
+  with `t3_thread_wait`/`t3_thread_read`, and the T3-returned `link` in the chat right away and with the result.
+- No Settings screen for the sign-in yet (`needs-ui`). No durable follow-up after a LilBot restart: the T3
+  thread keeps running and the bot can find it again with `t3_thread_list`.
+- `bun run check:coding -- --code-file <file>` (or the code on stdin) signs in first, then on an isolated
+  server with a temporary bot checks the signed-out, expired and refused messages, a repeated launch, and a
+  real task in a throwaway repo registered as a temporary T3 project (run in the project root, so no
+  worktree or branch is made: T3's MCP has no worktree removal). Cleanup stops, settles and archives the
+  threads, removes the project, deletes the profile, revokes the check's own sign-in and removes the files.
+
 ## Skills
 
 `server/skills/` owns a shared standard SKILL.md library at `~/lilbot/skills`
@@ -605,6 +647,9 @@ Cleaning up after a merge:
 - `bun live-checks/permissions-check.ts`: isolated second server; repairs a temporary profile from manual to off,
   runs a harmless recursive delete and file write, and checks no approvals remain. Deletes its profile and folders.
 - `bun run check:routines`: isolated routine create/run/open/pause/restart/resume/delete check.
+- `bun run t3:sign-in`: signs LilBot in to T3 Code with a pairing code from stdin or `--code-file`.
+  Uses `LILBOT_DATA_DIR`; the running server picks the new sign-in up without a restart.
+- `bun run check:coding`: isolated coding check through T3 Code (needs a fresh pairing code; see Coding).
 - `bun run check:memory`: connects a temporary bot to a throwaway memory, tells it facts, checks a new session knows
   them, prints tokens per turn, then deletes it. Inherited memory is disconnected before the baseline turn. A few model calls.
 - `bun run start`: run the server. `LILBOT_PORT` and `LILBOT_HOST` override the defaults.

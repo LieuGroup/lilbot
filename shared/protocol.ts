@@ -58,7 +58,9 @@ export const methods = {
   'chat.new': z.object({ botId }),
   'chat.send': z.object({ chatId, text: z.string().trim().min(1).max(200_000) }),
   'chat.stop': z.object({ chatId }),
-  'chat.close': z.object({ chatId })
+  'chat.close': z.object({ chatId }),
+  /** LilBot's own connections, such as its T3 Code sign-in for coding. Never returns credentials. */
+  'connections.status': z.object({})
 } as const
 
 export type Method = keyof typeof methods
@@ -104,6 +106,7 @@ export interface Results {
   'chat.send': { ok: true }
   'chat.stop': { ok: true }
   'chat.close': { ok: true }
+  'connections.status': import('./connections-schema').ConnectionsStatus
 }
 
 export const RequestFrame = z.object({ id: z.number(), method: z.string(), params: z.unknown() })
@@ -121,6 +124,8 @@ export type EventFrame =
   | { event: 'library.changed'; botId: string }
   | { event: 'skills.changed' }
   | { event: 'threads.changed' }
+  /** A connection's state changed (for example T3 Code refused LilBot's sign-in). */
+  | { event: 'connections.changed' }
 
 /** An error whose message is safe and useful to show to the user. */
 export class LilBotError extends Error {

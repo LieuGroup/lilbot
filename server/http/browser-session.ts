@@ -1,6 +1,7 @@
 /** One browser connection: checks each request, runs it on the bot service, and forwards chat events. */
 import type { z } from 'zod'
 import type { ChatEvent } from '../../shared/chat-schema'
+import type { ConnectionsStatus } from '../../shared/connections-schema'
 import { type EventFrame, LilBotError, type Method, methods, RequestFrame, type ResponseFrame, type Results } from '../../shared/protocol'
 import type { ActivityService } from '../activity/activity-service'
 import type { BotService } from '../bots/bot-service'
@@ -29,7 +30,8 @@ export class BrowserSession {
     private activity?: ActivityService,
     private routines?: RoutineService,
     private library?: LibraryService,
-    private threads?: import('../threads/thread-service').ThreadService
+    private threads?: import('../threads/thread-service').ThreadService,
+    private connections?: () => ConnectionsStatus
   ) {}
 
   private routineService() {
@@ -55,6 +57,10 @@ export class BrowserSession {
     'library.workspace': ({ botId, path }) => this.libraryService().workspace(botId, path),
     'library.content': async ({ botId, itemId }) => {
       return this.libraryService().contentUrl(botId, itemId)
+    },
+    'connections.status': async () => {
+      if (!this.connections) throw new LilBotError('unavailable', 'Connections are unavailable.')
+      return this.connections()
     },
     'bots.delete': input => this.bots.deleteBot(input),
     'bots.deleteDefaults.get': async () => this.bots.deleteDefaults(),

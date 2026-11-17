@@ -44,6 +44,18 @@ export interface ChatOptions {
   requireExisting?: boolean
 }
 
+/** An MCP server LilBot supplies to every bot, the same for every engine (today: T3 Code through
+ *  LilBot's bridge, `server/connections/`). The bearer token is a LilBot credential for this bot only. */
+export interface McpConnection {
+  name: string
+  url: string
+  bearerToken: string
+  /** Seconds one tool call may take. */
+  timeoutSeconds: number
+  /** The tools the engine should offer; the bridge enforces the same list. */
+  tools: readonly string[]
+}
+
 export type RuntimeBinding = { id: string; engineBotId: string }
 export type ActivityCursor = (botId: string, chatId: string) => string | undefined
 
@@ -67,6 +79,8 @@ export interface BotEngine {
   deleteRuntime(engineBotId: string): Promise<void>
   /** Prepare persistent policy at startup and when the saved mode changes. */
   prepareRuntime?(engineBotId: string, identity: RuntimeIdentity): Promise<void>
+  /** Make LilBot's MCP connections available to this runtime from its next session. Safe to repeat. */
+  prepareConnections?(engineBotId: string, connections: McpConnection[]): Promise<void>
   userSkillPaths?(id: string): string[]
   configureSkills?(id: string, settings: { root: string; url: string; tokenFile: string; botId: string; disabled: string[]; names: string[] }): Promise<void>
   /** Refuse an unavailable model before an identity edit is saved. Must not apply the old identity. */

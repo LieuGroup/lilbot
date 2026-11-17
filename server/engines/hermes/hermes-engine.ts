@@ -9,6 +9,7 @@ import type {
   ChatOptions,
   EngineBotDetail,
   LegacyNotes,
+  McpConnection,
   MemoryConnection,
   OpenChat,
   ReviewOptions,
@@ -19,6 +20,7 @@ import type {
 import { watchHermesActivity } from './hermes-activity'
 import { botDetailFromProfile, botFromProfile, DEFAULT_PROFILE, providersFromModelOptions } from './hermes-bot-mapping'
 import { chatEventFrom, itemsFromRows, sessionLostEvents } from './hermes-chat-mapping'
+import { connectionPreparer } from './hermes-connections'
 import { deleteRuntime } from './hermes-delete'
 import { installMemory, legacyNotes, memoryConnection, memoryCurrent, memoryInstalled } from './hermes-memory-setup'
 import { ensureFullAccess } from './hermes-permissions'
@@ -192,6 +194,18 @@ export class HermesEngine implements BotEngine {
   async runRoutine(botId: string, prompt: string, options: import('../bot-engine').RoutineOptions & ChatOptions) {
     await this.requireBot(botId)
     return runRoutine(botId, prompt, options)
+  }
+
+  private connections = connectionPreparer(id =>
+    HermesSocket.connect(
+      id === DEFAULT_PROFILE ? '' : id,
+      () => {},
+      () => {}
+    )
+  )
+  async prepareConnections(id: string, connections: McpConnection[]) {
+    await this.requireBot(id)
+    await this.connections(id, connections)
   }
 
   private skillSettings = new Map<string, string>()

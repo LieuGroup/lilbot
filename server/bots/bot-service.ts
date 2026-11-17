@@ -4,7 +4,7 @@ import type { Bot, BotCreateInput, BotDetail, BotPrefsInput, BotUpdateInput, Mod
 import type { ChatEvent } from '../../shared/chat-schema'
 import type { MemoryFact, MemoryWriteInput } from '../../shared/memory-schema'
 import { LilBotError } from '../../shared/protocol'
-import type { ActivityCursor, BotEngine, MemoryConnection, OpenChat } from '../engines/bot-engine'
+import type { ActivityCursor, BotEngine, McpConnection, MemoryConnection, OpenChat } from '../engines/bot-engine'
 import type { MemoryService } from '../memory/memory-service'
 import { BotCreation } from './bot-creation'
 import { BotDeletion } from './bot-deletion'
@@ -23,6 +23,8 @@ export interface BotServiceOptions {
   skills?: import('../skills/skills-service').SkillsService
   cleanupBot?: (botId: string) => void
   memoryConnection?: MemoryConnection
+  /** LilBot-owned MCP connections given to every bot, by LilBot id. */
+  connections?: (botId: string) => McpConnection[]
 }
 
 export class BotService {
@@ -43,7 +45,7 @@ export class BotService {
     options: BotServiceOptions = {}
   ) {
     this.skills = options.skills
-    this.runtimes = new BotRuntimes(store, engine, options.skills, options.memoryConnection)
+    this.runtimes = new BotRuntimes(store, engine, options.skills, options.memoryConnection, options.connections)
     this.creation = new BotCreation(this, store)
     this.changed = options.changed ?? (() => {})
     this.memoryChanged = options.memoryChanged ?? (() => {})
@@ -93,6 +95,10 @@ export class BotService {
         }
       ) ?? (() => {})
     )
+  }
+
+  refreshConnections() {
+    return this.runtimes.refreshConnections()
   }
 
   prepareRuntimes() {
