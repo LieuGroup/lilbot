@@ -2,11 +2,13 @@ import { Database } from 'bun:sqlite'
 import { chmodSync } from 'node:fs'
 import { join } from 'node:path'
 import { type ComputerOperation, type ComputerResult, HelperWork } from '../shared/computer-schema'
+import { helperFrame } from './frame-auth'
 import { configDir, connectionHeaders, type Identity } from './identity'
-import { acknowledge, finish, prepareJournal, pruneJournal } from './journal'
+import { acknowledge, canAdmit, finish, prepareJournal, pruneJournal } from './journal'
 import { operate } from './operations'
 import { boundResult } from './result-bounds'
 import { verifyFrame, verifyServer } from './server-trust'
+import { service } from './service'
 
 export async function run(identity: Identity, signal: AbortSignal) {
   const lock = new Database(join(configDir, 'runner.lock'))
@@ -19,8 +21,15 @@ export async function run(identity: Identity, signal: AbortSignal) {
   let delay = 500
   let socket: WebSocket | undefined
   let authenticated = false
+  let revoked = false
+  let outgoing = 0
+  let nonce = ''
+  const emit = (frame: unknown) => {
+    if (authenticated && socket?.readyState === WebSocket.OPEN && socket.bufferedAmount < 64_000)
+      socket.send(helperFrame(identity.privateKey, identity.id, nonce, outgoing++, JSON.stringify(frame)))
+  }
   const send = (id: string, result: ComputerResult, final: boolean) => {
-    if (authenticated && socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'result', id, result: boundResult(result), final }))
+    emit({ type: 'result', id, result: boundResult(result), final })
   }
   const work = async (id: string, operation: ComputerOperation) => {
     const previous = db.query('SELECT result FROM requests WHERE id=?').get(id) as { result: string | null } | null
@@ -28,7 +37,7 @@ export async function run(identity: Identity, signal: AbortSignal) {
       if (previous.result) send(id, JSON.parse(previous.result), true)
       return
     }
-    if (active.size >= 8) {
+    if (active.size >= 8 || !canAdmit(db)) {
       db.query('INSERT INTO requests(id,result,finished_at) VALUES(?,?,?)').run(id, JSON.stringify({ output: '', error: 'Helper busy; submit a new request later.' }), Date.now())
       send(id, { output: '', error: 'Helper busy; submit a new request later.' }, true)
       return
@@ -53,10 +62,12 @@ export async function run(identity: Identity, signal: AbortSignal) {
   }
   signal.addEventListener('abort', stop)
   try {
-    while (!signal.aborted) {
+    while (!signal.aborted && !revoked) {
       await new Promise<void>(resolve => {
         const headers = connectionHeaders(identity)
         authenticated = false
+        outgoing = 0
+        nonce = headers['x-lilbot-nonce']
         let serverKey = ''
         let sequence = 0
         socket = new WebSocket(`${identity.url.replace(/^http/, 'ws')}/helper/connect`, { headers } as any)
@@ -65,11 +76,14 @@ export async function run(identity: Identity, signal: AbortSignal) {
         const timer = setInterval(() => {
           pruneJournal(db)
           if (Date.now() - lastHeartbeat > 35_000) socket?.close()
-          else if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'heartbeat' }))
+          else {
+            emit({ type: 'heartbeat' })
+            for (const row of db.query('SELECT id,result FROM requests WHERE finished_at IS NOT NULL LIMIT 8').all() as { id: string; result: string }[]) {
+              if (socket && socket.bufferedAmount < 64_000) send(row.id, JSON.parse(row.result), true)
+            }
+          }
         }, 10_000)
-        socket.onopen = () => {
-          socket?.send(JSON.stringify({ type: 'heartbeat' }))
-        }
+
         socket.onmessage = event => {
           try {
             const raw = JSON.parse(String(event.data))
@@ -88,8 +102,11 @@ export async function run(identity: Identity, signal: AbortSignal) {
               return
             }
             const frame = HelperWork.parse(JSON.parse(raw.payload))
-            if (frame.type === 'heartbeat') lastHeartbeat = Date.now()
-            else if (frame.type === 'revoked') {
+            if (frame.type === 'heartbeat') {
+              lastHeartbeat = Date.now()
+              if (frame.challenge) emit({ type: 'heartbeat', challenge: frame.challenge })
+            } else if (frame.type === 'revoked') {
+              revoked = true
               for (const controller of active.values()) controller.abort()
               socket?.close()
             } else if (frame.type === 'ack') acknowledge(db, frame.id)
@@ -113,7 +130,7 @@ export async function run(identity: Identity, signal: AbortSignal) {
           resolve()
         }
       })
-      if (!signal.aborted)
+      if (!signal.aborted && !revoked)
         await new Promise<void>(resolve => {
           const done = () => {
             clearTimeout(timer)
@@ -126,6 +143,7 @@ export async function run(identity: Identity, signal: AbortSignal) {
       delay = Math.min(delay * 2, 30_000)
     }
     while (active.size) await Bun.sleep(50)
+    if (revoked) await service('uninstall')
   } finally {
     signal.removeEventListener('abort', stop)
     db.close()

@@ -3,6 +3,7 @@ import { generateKeyPairSync, sign } from 'node:crypto'
 import { mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { codeId, codeKey, registrationMac } from '../../helper/frame-auth'
 import { botCapability } from '../../server/bots/bot-capability'
 import { ComputerService } from '../../server/computers/computer-service'
 import { ComputerStore } from '../../server/computers/computer-store'
@@ -37,11 +38,14 @@ function fixture() {
   })
   const pair = generateKeyPairSync('ed25519')
   const publicKey = pair.publicKey.export({ type: 'spki', format: 'pem' }).toString()
+  const code = service.auth.code('Test').code
   const body = {
-    code: service.auth.code('Test').code,
+    codeId: codeId(code),
+    mac: '',
     publicKey,
     hello: { name: 'Attacker choice', os: 'linux' as const, home: root, capabilities: ['exec', 'read', 'write', 'list', 'copy'] as ('exec' | 'read' | 'write' | 'list' | 'copy')[] }
   }
+  body.mac = registrationMac(codeKey(code), publicKey, body.hello)
   const registration = { ...body, signature: sign(null, Buffer.from(JSON.stringify(body)), pair.privateKey).toString('base64') }
   const { id } = service.auth.register(registration)
   const request = (key = pair.privateKey, nonce = crypto.randomUUID(), timestamp = String(Date.now())) =>
@@ -61,7 +65,12 @@ test('one-time codes, expiry, wrong keys, replay and immediate revocation', () =
   expect(() => service.auth.register(registration)).toThrow()
   const expired = service.auth.code('Test')
   db.query('UPDATE computer_codes SET expires_at=0').run()
-  const body = { code: expired.code, publicKey: registration.publicKey, hello: registration.hello }
+  const body = {
+    codeId: codeId(expired.code),
+    mac: registrationMac(codeKey(expired.code), registration.publicKey, registration.hello),
+    publicKey: registration.publicKey,
+    hello: registration.hello
+  }
   expect(() => service.auth.register({ ...body, signature: sign(null, Buffer.from(JSON.stringify(body)), pair.privateKey).toString('base64') })).toThrow()
   expect(service.auth.authenticate(request(generateKeyPairSync('ed25519').privateKey))).toBeNull()
   expect(service.auth.authenticate(request(undefined, undefined, String(Date.now() - 120_000)))).toBeNull()
@@ -78,7 +87,7 @@ test('one-time codes, expiry, wrong keys, replay and immediate revocation', () =
   )
   service.remove(id)
   expect(closed).toBe(true)
-  expect(service.auth.authenticate(request())).toBeNull()
+  expect(service.auth.authenticate(request())).toBe(id)
   expect(() => service.remove('leader')).toThrow()
 })
 test('idempotent durable queue, output isolation, cancellation and no implicit offline queue', async () => {
@@ -96,6 +105,7 @@ test('idempotent durable queue, output isolation, cancellation and no implicit o
     () => {}
   )
   service.tick()
+  await Bun.sleep(100)
   expect(frames.filter(f => f.type === 'work')).toHaveLength(1)
   disconnect()
   service.cancel('bot', input)
@@ -104,6 +114,7 @@ test('idempotent durable queue, output isolation, cancellation and no implicit o
     frame => frames.push(JSON.parse(frame)),
     () => {}
   )
+  await Bun.sleep(100)
   expect(frames.at(-1).type).toBe('cancel')
   service.result(id, (await service.submit('bot', input)).id, { output: 'late result' }, true)
   expect(service.read('bot', input).status).toBe('cancel_acked')
@@ -201,26 +212,11 @@ test('background command output is readable and cancellation terminates it', asy
   expect(service.read('bot', input).status).toBe('cancel_acked')
 })
 
-test('verified connections bypass a saturated address budget, frames exhaust a byte budget before parsing', async () => {
+test('connection attempts are limited before authentication', async () => {
   const { service, request } = fixture()
   const door = startPublicDoor(service, 0)
   cleanups.push(() => door.stop(true))
   const url = `http://127.0.0.1:${door.port}`
   for (let i = 0; i < 20; i++) await fetch(`${url}/helper/connect`)
-  expect((await fetch(`${url}/helper/connect`)).status).toBe(429)
-  const socket = new WebSocket(`${url.replace('http', 'ws')}/helper/connect`, { headers: request().headers } as any)
-  const messages: unknown[] = []
-  socket.onmessage = event => messages.push(JSON.parse(String(event.data)))
-  await new Promise<void>((resolve, reject) => {
-    socket.onopen = () => resolve()
-    socket.onerror = reject
-  })
-  const closed = new Promise<number>(resolve => {
-    socket.onclose = event => resolve(event.code)
-  })
-  // Valid large result frames for nonexistent requests: no persistence, still charged by bytes.
-  const frame = JSON.stringify({ type: 'result', id: 'unknown', result: { output: 'a'.repeat(5_500_000) }, final: false })
-  for (let i = 0; i < 4; i++) socket.send(frame)
-  expect(await closed).toBe(1009)
-  expect(messages.length).toBeGreaterThan(0)
+  expect((await fetch(`${url}/helper/connect`, { headers: request().headers })).status).toBe(429)
 })

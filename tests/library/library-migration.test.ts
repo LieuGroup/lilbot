@@ -18,7 +18,7 @@ test('library migration preserves shipped routines and their run aliases', () =>
     const [run] = store.claimDue(300_000)
     store.attach(run.id, 'stored', 300_000)
     db.exec(
-      'DROP TABLE computer_payloads; DROP TABLE computer_requests; DROP TABLE computer_nonces; DROP TABLE computer_codes; DROP TABLE computers; DROP TABLE thread_chats; DROP TABLE thread_deliveries; DROP TABLE threads; ALTER TABLE bot_prefs DROP COLUMN avatar_face_color; DROP TABLE skills; DROP TABLE skill_off; DROP TABLE skill_imports; DROP TABLE library_items; PRAGMA user_version = 10'
+      'DROP TABLE computer_payloads; DROP TABLE computer_requests; DROP TABLE computer_bytes; DROP TABLE computer_nonces; DROP TABLE computer_codes; DROP TABLE computers; DROP TABLE thread_chats; DROP TABLE thread_deliveries; DROP TABLE threads; ALTER TABLE bot_prefs DROP COLUMN avatar_face_color; DROP TABLE skills; DROP TABLE skill_off; DROP TABLE skill_imports; DROP TABLE library_items; PRAGMA user_version = 10'
     )
     db.close()
     db = openDatabase(path)

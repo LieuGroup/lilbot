@@ -165,7 +165,7 @@ try {
   mkdirSync(pinRoot)
   await checkPinning(binary, pinRoot, helperConfig, identity, createPublicKey(identity.privateKey).export({ type: 'spki', format: 'pem' }).toString())
   await call('computers.remove', { computer: identity.id })
-  if ((await fetch(`${door}/helper/connect`, { headers: connectionHeaders(identity) })).status !== 403) throw new Error('Removed key accepted')
+  if ((await fetch(`${door}/helper/connect`, { headers: connectionHeaders(identity) })).status !== 400) throw new Error('Removed key failed tombstone authentication')
   console.log('PASS: wrong key, consumed code, removed key and private paths refused')
 } finally {
   await stopHelper()

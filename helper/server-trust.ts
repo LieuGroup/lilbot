@@ -14,7 +14,8 @@ export function verifyServer(pin: string, id: string, nonce: string, frame: { pu
   }
 }
 
-export const frameMessage = (id: string, nonce: string, sequence: number, payload: string) => Buffer.from(JSON.stringify(['lilbot-frame-v1', id, nonce, sequence, payload]))
+export const frameMessage = (id: string, nonce: string, sequence: number, payload: string) =>
+  Buffer.from(JSON.stringify(['lilbot-frame-v2', id, nonce, sequence, createHash('sha256').update(payload).digest('hex')]))
 export function verifyFrame(publicKey: string, id: string, nonce: string, sequence: number, frame: { sequence: number; payload: string; signature: string }) {
   try {
     return (

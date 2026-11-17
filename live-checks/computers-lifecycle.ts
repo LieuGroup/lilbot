@@ -1,7 +1,6 @@
 import { generateKeyPairSync } from 'node:crypto'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { connectionHeaders } from '../helper/identity'
 import { ComputerService } from '../server/computers/computer-service'
 import { ComputerStore } from '../server/computers/computer-store'
 import { loadServerKey } from '../server/computers/server-key'
@@ -24,6 +23,7 @@ export async function checkLifecycle(command: string[], root: string) {
       () => 'full-access'
     )
   let service = makeService()
+  const tick = setInterval(() => service.tick(), 100)
   const pair = generateKeyPairSync('ed25519')
   store.add('lifecycle', { name: 'Lifecycle', os: 'linux', home: root, capabilities: ['exec'] }, pair.publicKey.export({ type: 'spki', format: 'pem' }).toString())
   let door = startPublicDoor(service, 0)
@@ -37,25 +37,20 @@ export async function checkLifecycle(command: string[], root: string) {
   writeFileSync(join(root, 'identity.json'), JSON.stringify(identity), { mode: 0o600 })
   const originalConnect = service.connect.bind(service)
   service.connect = (id, send, close) => originalConnect(id, send, code => close(code === 1001 ? 1008 : code))
-  const helper = Bun.spawn([...command, 'run'], { env: { ...process.env, LILBOT_HELPER_CONFIG_DIR: root }, stdout: 'ignore', stderr: 'inherit' })
-  let impostor: WebSocket | undefined
+  mkdirSync(join(root, 'bin'), { recursive: true })
+  writeFileSync(join(root, 'bin/systemctl'), '#!/bin/sh\nexit 0\n', { mode: 0o700 })
+  const helper = Bun.spawn([...command, 'run'], {
+    env: { ...process.env, HOME: root, PATH: `${root}/bin:${process.env.PATH}`, LILBOT_HELPER_CONFIG_DIR: root },
+    stdout: 'ignore',
+    stderr: 'inherit'
+  })
   try {
     await eventually(async () => service.list().some(c => c.id === identity.id && c.online))
-    impostor = new WebSocket(`${identity.url.replace('http', 'ws')}/helper/connect`, { headers: connectionHeaders(identity) } as any)
-    const closed = await new Promise<number>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('Conflict socket did not close')), 5000)
-      impostor!.onclose = event => {
-        clearTimeout(timer)
-        resolve(event.code)
-      }
-      impostor!.onerror = () => {}
-    })
-    if (closed !== 4001 || !service.list().find(c => c.id === identity.id)?.keyConflict) throw new Error('Key conflict was not refused and exposed')
     const start = performance.now()
     const fast = await service.submit('bot', { computer: identity.id, requestId: 'fast', operation: { kind: 'exec', command: 'echo hi' } })
     const elapsed = performance.now() - start
     if (fast.result?.output !== 'hi\n' || elapsed >= 100) throw new Error(`Fast exec failed: ${elapsed} ms`)
-    console.log(`PASS: key conflict refused; remote echo hi ${elapsed.toFixed(2)} ms`)
+    console.log(`PASS: remote echo hi ${elapsed.toFixed(2)} ms`)
     const originalResult = service.result.bind(service)
     let withheld = false
     service.result = (computer, id, result, final) => {
@@ -102,7 +97,7 @@ export async function checkLifecycle(command: string[], root: string) {
     })
     console.log('PASS: server restart (including unsigned 1008) preserved remote work; signed revocation terminated it')
   } finally {
-    impostor?.close()
+    clearInterval(tick)
     helper.kill()
     await helper.exited
     service.close()

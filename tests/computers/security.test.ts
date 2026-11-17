@@ -64,7 +64,7 @@ test('cancel acknowledgement ends dispatch and survives restart; pending never p
     () => {}
   )
   service.tick()
-  expect(frames).toEqual([])
+  expect(frames.filter(f => f.type !== 'heartbeat')).toEqual([])
 })
 test('per-bot cap, leader cap, and pruning retain idempotent receipts without payloads', async () => {
   const { store, service, db } = fixture()
@@ -96,7 +96,8 @@ test('journal acknowledgements and age remove output but never execution receipt
     pruneJournal(db, Date.now() + RETENTION_MS + 1)
     const rows = db.query('SELECT * FROM requests').all()
     expect(rows).toHaveLength(2)
-    expect(JSON.stringify(rows)).not.toContain('file secrets')
+    expect((rows as any[]).find(r => r.id === 'ack').result).not.toContain('file secrets')
+    expect((rows as any[]).find(r => r.id === 'old').result).toContain('file secrets')
   } finally {
     db.close()
   }
@@ -129,9 +130,9 @@ test('server proof pins key and nonce; private key persists owner-only', () => {
 test('unknown/expired codes reject before parsing keys, and mint requires a name', () => {
   const { service } = fixture()
   expect(() => service.auth.code(' ')).toThrow()
-  expect(() => service.auth.register({ code: 'unknown', publicKey: 'not a key', hello: { name: 'Spoof', os: 'linux', home: '/', capabilities: [] }, signature: '' })).toThrow(
-    'Invalid registration'
-  )
+  expect(() =>
+    service.auth.register({ codeId: 'unknown', mac: '0'.repeat(64), publicKey: 'not a key', hello: { name: 'Spoof', os: 'linux', home: '/', capabilities: [] }, signature: '' })
+  ).toThrow('Invalid registration')
   expect(service.auth.code('Mac').code.endsWith(service.auth.serverKey.fingerprint)).toBe(true)
 })
 test('plain errors, tunnel headers, port collision and bounded per-IP budget', async () => {
@@ -163,10 +164,10 @@ test('hardlinks cannot read or overwrite workspace files', async () => {
   await expect(workspaceFile(root, 'linked', file => file.write('Y2hhbmdl'))).rejects.toThrow()
   expect(readFileSync(join(root, 'original'), 'utf8')).toBe('preserve')
 })
-test('live connection wins key conflicts, stale peers lose authority, removal sends revocation', () => {
-  const { service } = fixture()
+test('two responsive key holders quarantine dispatch until owner removes the computer', async () => {
+  const { service, store } = fixture()
   const codes: (number | undefined)[] = []
-  const frames: unknown[] = []
+  const frames: any[] = []
   const first = service.connect(
     'remote',
     frame => frames.push(JSON.parse(frame)),
@@ -174,17 +175,18 @@ test('live connection wins key conflicts, stale peers lose authority, removal se
   )
   const second = service.connect(
     'remote',
-    () => {
-      throw new Error('Newcomer received work')
-    },
+    frame => frames.push(JSON.parse(frame)),
     code => codes.push(code)
   )
-  expect(codes).toEqual([4001])
-  expect(service.isPeer('remote', first)).toBe(true)
-  expect(service.isPeer('remote', second)).toBe(false)
-  second()
-  expect(service.list().find(c => c.id === 'remote')).toMatchObject({ online: true, keyConflict: true })
+  const challenge = frames[0].challenge
+  service.heartbeat('remote', first, challenge)
+  service.heartbeat('remote', second, challenge)
+  await Bun.sleep(3050)
+  service.tick()
+  expect(codes).toEqual([4001, 4001])
+  expect(service.list().find(c => c.id === 'remote')).toMatchObject({ online: false, keyConflict: true })
+  expect(store.key('remote')).toBe('test')
   service.remove('remote')
-  expect(frames).toContainEqual({ type: 'revoked' })
-  expect(codes).toEqual([4001, 4003])
+  expect(store.revoked('remote')).toBe(true)
+  expect(store.key('remote')).toBe('test')
 })

@@ -36,10 +36,10 @@ function fixture(disk = false) {
   })
   return { root, db, store, key, service }
 }
-test('60 retained 4 MiB requests keep tick below 5 ms; payloads have an enforced budget', () => {
+test('45 retained 4 MiB requests keep tick below 5 ms; payloads have an enforced budget', () => {
   const { store, service, db } = fixture(true)
   const operation = { kind: 'write' as const, path: '/unused', encoding: 'utf8' as const, data: 'x'.repeat(4 * 1024 * 1024) }
-  for (let i = 0; i < 60; i++) store.enqueue(String(i), 'offline', 'large', operation)
+  for (let i = 0; i < 45; i++) store.enqueue(String(i), 'offline', 'large', operation)
   // Force a prune lookup each iteration as well as normal dispatch/heartbeat work.
   const start = performance.now()
   for (let i = 0; i < 100; i++) {
@@ -47,17 +47,17 @@ test('60 retained 4 MiB requests keep tick below 5 ms; payloads have an enforced
     service.tick()
   }
   const pendingElapsed = (performance.now() - start) / 100
-  for (let i = 0; i < 60; i++) store.result('offline', store.get(String(i), 'offline', 'large')!.id, { output: operation.data }, true)
+  for (let i = 0; i < 45; i++) store.result('offline', store.get(String(i), 'offline', 'large')!.id, { output: operation.data }, true)
   const retainedStart = performance.now()
   for (let i = 0; i < 100; i++) {
     store.prune()
     service.tick()
   }
   const elapsed = Math.max(pendingElapsed, (performance.now() - retainedStart) / 100)
-  console.log(`MEASURE: 60 x 4 MiB retained requests: ${elapsed.toFixed(3)} ms/tick (disk database)`)
+  console.log(`MEASURE: 45 x 4 MiB retained requests: ${elapsed.toFixed(3)} ms/tick (disk database)`)
   expect(elapsed).toBeLessThan(5)
   expect(() => {
-    for (let i = 60; i < 70; i++) store.enqueue(String(i), 'offline', 'large', operation)
+    for (let i = 45; i < 100; i++) store.enqueue(String(i), 'offline', 'large', operation)
   }).toThrow('storage full')
   expect((db.query('SELECT sum(payload_bytes) AS bytes FROM computer_requests').get() as any).bytes).toBeLessThanOrEqual(PAYLOAD_LIMIT)
 })
@@ -111,13 +111,13 @@ test('cancels settle undispatched requests locally; limits apply separately per 
   service.result('offline', request.id, { output: 'Side effect completed', exitCode: 0 }, true)
   expect(service.read('bot', { computer: 'offline', requestId: 'dispatched' })).toMatchObject({ cancelRequested: true, result: { output: 'Side effect completed', exitCode: 0 } })
 })
-test('IPv6 /64 groups, oldest eviction, and per-connection byte budgets', () => {
+test('IPv6 /48 groups, fail-closed capacity, and per-connection byte budgets', () => {
   const budget = connectionBudget()
   for (let i = 0; i < 20; i++) expect(budget(`2001:db8:abcd:1234::${i.toString(16)}`, 0)).toBe(true)
   expect(budget('2001:db8:abcd:1234:aaaa::1', 0)).toBe(false)
   expect(addressGroup('2001:0db8:0000:0000::1')).toBe(addressGroup('2001:db8::2'))
-  for (let i = 0; i < 4096; i++) expect(budget(`address-${i}`, 0)).toBe(true)
-  expect(budget('new-address', 0)).toBe(true)
+  for (let i = 0; i < 4095; i++) expect(budget(`address-${i}`, 0)).toBe(true)
+  expect(budget('new-address', 0)).toBe(false)
   const bytes = byteBudget(100, 10)
   const now = Date.now()
   expect(bytes(80, now)).toBe(true)

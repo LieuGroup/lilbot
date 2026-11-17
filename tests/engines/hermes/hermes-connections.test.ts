@@ -57,3 +57,28 @@ test('concurrent preparations of one profile run one after another and apply onc
   expect(opened).toBe(1)
   expect(fake.calls.filter(call => call.method === 'mcp.servers.add')).toHaveLength(1)
 })
+
+test('unrelated inherited MCP failure does not break a proven connected bridge', async () => {
+  const fake = {
+    request: async (method: string) => {
+      if (method === 'mcp.servers.list') return { servers: [] }
+      if (method === 'reload.mcp') throw new Error('Hermes refused the request (mcp servers unavailable).')
+      if (method === 'mcp.servers.status')
+        return {
+          servers: [
+            { name: 'lilbot_t3', connected: true },
+            { name: 'unrelated', connected: false }
+          ]
+        }
+      return {}
+    }
+  }
+  expect(await prepareConnections(fake as any, [connection])).toBe(true)
+  fake.request = async (method: string) => {
+    if (method === 'mcp.servers.list') return { servers: [] }
+    if (method === 'reload.mcp') throw new Error('Hermes refused the request (mcp servers unavailable).')
+    if (method === 'mcp.servers.status') return { servers: [{ name: 'lilbot_t3', connected: false }] }
+    return {}
+  }
+  await expect(prepareConnections(fake as any, [connection])).rejects.toThrow('mcp servers unavailable')
+})

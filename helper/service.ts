@@ -17,9 +17,9 @@ export async function service(action: 'install' | 'uninstall') {
     if ((await child.exited) !== 0 && required) throw new Error('Service manager refused the operation.')
   }
   if (action === 'uninstall') {
+    await rm(path, { force: true })
     if (mac) await command(['launchctl', 'bootout', `gui/${process.getuid!()}`, path], false)
     else await command(['systemctl', '--user', 'disable', '--now', 'lilbot-helper.service'], false)
-    await rm(path, { force: true })
     if (!mac) await command(['systemctl', '--user', 'daemon-reload'])
     return
   }

@@ -25,7 +25,7 @@ export const ComputerOperation = z.discriminatedUnion('kind', [
     timeoutMs: z.number().int().min(1).max(3_600_000).default(60_000)
   }),
   z.object({ kind: z.literal('read'), path: z.string().min(1).max(4096) }),
-  z.object({ kind: z.literal('write'), path: z.string().min(1).max(4096), data: z.string().max(8_000_000), encoding: z.enum(['utf8', 'base64']).default('utf8') }),
+  z.object({ kind: z.literal('write'), path: z.string().min(1).max(4096), data: z.string().max(5_600_000), encoding: z.enum(['utf8', 'base64']).default('utf8') }),
   z.object({ kind: z.literal('list'), path: z.string().min(1).max(4096) })
 ])
 export type ComputerOperation = z.infer<typeof ComputerOperation>
@@ -59,13 +59,13 @@ export interface ComputerRequest {
   createdAt: number
 }
 export const HelperFrame = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('heartbeat') }),
+  z.object({ type: z.literal('heartbeat'), challenge: z.string().max(100).optional() }),
   z.object({ type: z.literal('result'), id: z.string(), result: ComputerResult, final: z.boolean().default(true) })
 ])
 export const HelperWork = z.discriminatedUnion('type', [
   z.object({ type: z.literal('work'), id: z.string(), operation: ComputerOperation }),
   z.object({ type: z.literal('cancel'), id: z.string() }),
-  z.object({ type: z.literal('heartbeat') }),
+  z.object({ type: z.literal('heartbeat'), challenge: z.string().max(100).optional() }),
   z.object({ type: z.literal('ack'), id: z.string() }),
   z.object({ type: z.literal('revoked') })
 ])

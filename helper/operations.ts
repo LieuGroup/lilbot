@@ -88,8 +88,8 @@ async function execute(op: Extract<ComputerOperation, { kind: 'exec' }>, signal:
       const next = output + decoder.decode(chunk, { stream: true })
       truncated ||= next.length > 200_000
       output = next.slice(-200_000)
-      if (Date.now() - lastProgress > 500) {
-        progress({ output: truncated ? TRUNCATED + output : output })
+      if (Date.now() - lastProgress > 1000) {
+        progress({ output: (truncated || output.length > 4096 ? TRUNCATED : '') + output.slice(-4096) })
         lastProgress = Date.now()
       }
     }

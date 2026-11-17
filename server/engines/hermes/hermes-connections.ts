@@ -32,9 +32,24 @@ export async function prepareConnections(socket: Pick<HermesSocket, 'request'>, 
   // then added and connected: that is what makes it fetch the bridge's new tool list.
   const present = stale.filter(connection => servers.some(server => server.name === connection.name))
   for (const connection of present) await socket.request('mcp.servers.remove', { name: connection.name })
-  if (present.length) await socket.request('reload.mcp', { confirm: true })
+  if (present.length) {
+    try {
+      await socket.request('reload.mcp', { confirm: true })
+    } catch (error) {
+      // Our stale entries are deliberately absent during this reload. Verify the replacements below.
+      if (!(error instanceof Error) || !error.message.includes('mcp servers unavailable')) throw error
+    }
+  }
   for (const connection of stale) await socket.request('mcp.servers.add', { name: connection.name, config: serverConfig(connection), bearer_token: connection.bearerToken })
-  await socket.request('reload.mcp', { confirm: true })
+  try {
+    await socket.request('reload.mcp', { confirm: true })
+  } catch (error) {
+    // An inherited optional server can fail reload even when our own bridge connected.
+    // Accept only evidence that every requested connection is actually ready.
+    if (!(error instanceof Error) || !error.message.includes('mcp servers unavailable')) throw error
+    const status = await socket.request('mcp.servers.status', {})
+    if (!connections.every(connection => status.servers?.some((row: { name: string; connected: boolean }) => row.name === connection.name && row.connected))) throw error
+  }
   return true
 }
 

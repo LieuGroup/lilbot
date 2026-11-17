@@ -365,6 +365,8 @@ worktree or pull-request handling. Running commands, reading files and using app
   until its settings change, so the URL carries the sign-in state (`?signin=<issued-at|signed-out>`): when a
   sign-in appears, expires or is revoked, the server notices within five seconds and re-prepares every bot
   (remove, `reload.mcp`, add, `reload.mcp`), which reconnects it and loads the new tool list.
+  If an unrelated inherited server fails that reload, preparation succeeds only when
+  `mcp.servers.status` confirms every requested LilBot connection is connected.
 - The bridge (`t3-bridge.ts`, `/engine/t3/mcp` on LilBot's loopback port) forwards Streamable HTTP MCP to
   T3 Code (`http://127.0.0.1:3773/mcp`, `LILBOT_T3_MCP_URL`). Callers present a per-bot key
   (`HMAC(engine token, "t3-bridge:<bot id>")`), which Hermes keeps in the profile's `.env`; deleted bots are
@@ -411,23 +413,30 @@ computer; the authenticated bot id owns its requests, never an id from the body.
   `cf-connecting-ip`, `cf-ray` and Cloudflare `cdn-loop` headers before routing, even with a valid Host.
   Never add the public name to `LILBOT_ALLOWED_HOSTS`. No webhook, app, browser socket or engine
   endpoint is exposed by the door. A separate tunnel requires deployment approval.
-- The door limits attempts to 20/address/minute (IPv6 grouped by /64), evicting the oldest of 4096 entries.
-  Valid signed connections bypass this attempt budget. Each socket has a 16.2 MB byte bucket,
-  replenished at 1 MB/s, checked before JSON parsing. Behind
-  Cloudflare it keys on `cf-connecting-ip`. Deploy a matching Cloudflare rate-limit rule on both
-  helper paths (20/minute/IP, block 60s), so rejected traffic does not reach the leader. Registration
-  checks the hashed code with a read-only query before key parsing or signature work; consumption
-  remains atomic. Codes, private keys and request contents never enter logs or URLs.
+- Before authentication the door limits all attempts to 20/address/minute and six/computer/minute.
+  IPv4-mapped addresses use IPv4 /32; IPv6 uses /48. At 4096 live groups new groups fail closed,
+  never recycle existing budgets. Nonce expiry is indexed. Socket message/byte buckets run before
+  parsing; progress is limited to once per second per request and 8 KiB, with 8 active requests.
+  Heartbeats are at most once per five seconds. Behind Cloudflare, the address is `cf-connecting-ip`.
+  Deployment needs Cloudflare **Pro or higher** for the combined hostname + exact helper paths rule,
+  20 requests/60 seconds/IP and a 60-second Block. Free only permits a 10-second period/block and
+  lacks Host matching; it cannot implement that rule. See Cloudflare's rate-limiting availability docs.
+  Registration sends a code identifier and HMAC over the public key and hello, plus key proof;
+  the raw install code never crosses the network. Code consumption remains atomic.
 - LilBot creates `computer-server-key.pem` under its data directory, mode 0600. Back it up securely
   alongside the database and preserve it on redeploy. The install code carries its SHA-256 public-key
   fingerprint: one paste registers and pins the server. Every connection proves the fresh helper
-  nonce with that key; subsequent frames are signed with the connection nonce and ordered sequence.
+  nonce with that key; frames in both directions sign a domain-separated payload digest,
+  connection nonce and ordered sequence.
   Unauthenticated, altered, replayed or different-key work is ignored. Key replacement requires
   explicit helper re-registration with a new install code. TLS remains required except on loopback.
 - Helpers sign method, path, computer id, timestamp and one-use nonce (60s window). Revocation aborts
   work only through a signed `revoked` frame. Unsigned close codes never abort work; server
-  restarts preserve remote commands. A newcomer is refused with 4001 while the existing peer
-  heartbeats, records `keyConflict`, and logs the computer id. Stale peers lose authority.
+  restarts preserve remote commands. A competing connection suspends dispatch while both receive
+  a three-second challenge. A responsive newcomer replaces an unresponsive incumbent; two responsive
+  peers are closed and `keyConflict` blocks dispatch until the owner removes/re-registers the computer.
+  Revoked public keys remain tombstones: reconnect authenticates and receives proof plus signed revoke.
+  The helper aborts work, removes its service and exits on verified revoke, including after offline removal.
   Reconnect backoff resets only after verified server proof. The helper identity is
   still a 0600 PEM file in a 0700 directory. Keychain is deferred: the built-in security CLI's shared
   trust would also allow same-user bot commands; a useful per-helper boundary needs a signed native
@@ -446,13 +455,17 @@ computer; the authenticated bot id owns its requests, never an id from the body.
   of undispatched work settles locally; dispatched work remains `cancelled` until a final result
   makes it terminal `cancel_acked`. The result and `cancelRequested` flag preserve late outcomes;
   the helper resends its stored result if cancellation arrives after completion.
-- Payloads live separately from queue metadata. Completed operations become only their SHA-256
-  digest and byte size immediately. Tool responses never contain operation payloads. Results expire
-  after five minutes; an indexed prune removes at most 64 payloads every 30 seconds. Pending status
-  polls never load payloads. A global 256 MiB payload budget bounds retained content; excess results
-  return an explicit omission error. Compact receipts remain for idempotency. Helper journals drop
-  output on acknowledgement or after five minutes, with indexed batches. Old backups need their
-  own retention policy. Heartbeats run every 10s; 35s without one is offline.
+- Payloads live separately from queue metadata. Completed operations become their SHA-256 digest
+  and byte size; tool responses never echo them. Foreground results expire after five minutes,
+  background results after 24 hours. Queued work expires after 24 hours with an explicit failure.
+  Indexed pruning processes at most 64 rows or about one large payload per tick. SQLite triggers keep
+  global (256 MiB) and per-bot (64 MiB) byte totals atomically. Read admission reserves 5.6 MB for its
+  result; operation JSON is capped at 5.7 MB. Omitted results are failed and never overwrite workspace files.
+  Progress stays in memory as a 4 KiB tail; at most eight completed results are cached for active readers. Helper journals retain unacknowledged results, admitting
+  at most 32 unacknowledged/running operations with worst-case space reserved; acknowledgements remove
+  payloads, not execution receipts. Old backups need separate retention. Heartbeats run every 10s;
+  35s without one is offline. Dispatch waits for socket buffer space, checks send outcomes and resumes
+  on drain/tick; commands send a small progress tail once a second and full output only on completion.
 - Results are bounded to 6 MB serialized JSON, with an explicit truncation marker. Commands have bounded output
   and a timeout (60s default, 1h maximum). Cancellation kills the process
   group and cancels pipe readers, so escaped descendants cannot keep requests busy. Child groups are
@@ -470,8 +483,11 @@ computer; the authenticated bot id owns its requests, never an id from the body.
 - `bun run check:computers` uses free ports, temporary data/workspaces/skills, a sentinel profile
   allowlist and one temporary bot, always cleaning up in finally. It checks real plugin calls,
   Hermes hard-stop refusal before submission, queue/reconnect, cancellation termination, a second
-  door with a different key, signed revocation versus server restart, key-conflict refusal, fast
+  door with a different key, signed revocation versus server restart, fast
   exec, copies, reused codes, wrong/revoked keys and private routes/headers.
+  `tests/computers/adversarial.test.ts` measures a same-process private `/api/health` listener during
+  signed floods with 100k receipts, 1M-row indexed admission, eight parallel 4 MiB copies, eight
+  coloured commands and offline storage filling. It also checks delivered bytes and per-bot isolation.
   It prints binary size and idle RSS. Mac runtime/launchd is not tested on the Linux leader.
 
 ## Skills

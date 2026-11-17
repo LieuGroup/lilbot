@@ -1,11 +1,17 @@
-import { createHash, createPublicKey, randomBytes, verify } from 'node:crypto'
+import { createPublicKey, randomBytes, timingSafeEqual, verify } from 'node:crypto'
 import { z } from 'zod'
+import { codeId, codeKey, registrationMac } from '../../helper/frame-auth'
 import { ComputerHello } from '../../shared/computer-schema'
 import type { ComputerStore } from './computer-store'
 import type { ServerKey } from './server-key'
 
-const hash = (value: string) => createHash('sha256').update(value).digest('hex')
-export const Registration = z.object({ code: z.string().max(200), publicKey: z.string().max(1000), hello: ComputerHello, signature: z.string().max(200) })
+export const Registration = z.object({
+  codeId: z.string().length(64),
+  mac: z.string().length(64),
+  publicKey: z.string().max(1000),
+  hello: ComputerHello,
+  signature: z.string().max(200)
+})
 export class ComputerAuth {
   constructor(
     private store: ComputerStore,
@@ -16,21 +22,29 @@ export class ComputerAuth {
     const code = `${randomBytes(24).toString('base64url')}.${this.serverKey.fingerprint}`
     const expiresAt = Date.now() + 10 * 60_000
     this.store.db.query('DELETE FROM computer_codes WHERE expires_at < ?').run(Date.now())
-    this.store.db.query('INSERT INTO computer_codes VALUES(?,?,?)').run(hash(code), expiresAt, name)
+    this.store.db.query('INSERT INTO computer_codes VALUES(?,?,?,?)').run(codeId(code), codeKey(code), expiresAt, name)
     return { code, expiresAt }
   }
   register(input: z.infer<typeof Registration>) {
-    const code = this.store.db.query('SELECT name FROM computer_codes WHERE hash=? AND expires_at>?').get(hash(input.code), Date.now()) as { name: string } | null
-    if (!code) throw new Error('Invalid registration.')
+    const code = this.store.db.query('SELECT name,secret FROM computer_codes WHERE hash=? AND expires_at>?').get(input.codeId, Date.now()) as {
+      name: string
+      secret: string
+    } | null
+    if (!code || !timingSafeEqual(Buffer.from(registrationMac(code.secret, input.publicKey, input.hello)), Buffer.from(input.mac))) throw new Error('Invalid registration.')
     const key = createPublicKey(input.publicKey)
     if (
       key.asymmetricKeyType !== 'ed25519' ||
-      !verify(null, Buffer.from(JSON.stringify({ code: input.code, publicKey: input.publicKey, hello: input.hello })), key, Buffer.from(input.signature, 'base64'))
+      !verify(
+        null,
+        Buffer.from(JSON.stringify({ codeId: input.codeId, mac: input.mac, publicKey: input.publicKey, hello: input.hello })),
+        key,
+        Buffer.from(input.signature, 'base64')
+      )
     )
       throw new Error('Invalid registration.')
     const hello = ComputerHello.parse(input.hello)
     return this.store.db.transaction(() => {
-      const used = this.store.db.query('DELETE FROM computer_codes WHERE hash=? AND expires_at>? RETURNING hash').get(hash(input.code), Date.now())
+      const used = this.store.db.query('DELETE FROM computer_codes WHERE hash=? AND expires_at>? RETURNING hash').get(input.codeId, Date.now())
       if (!used) throw new Error('Invalid registration.')
       const id = crypto.randomUUID()
       this.store.add(id, { ...hello, name: code.name }, input.publicKey)

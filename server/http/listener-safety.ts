@@ -6,22 +6,22 @@ export function isTunnelRequest(request: Request) {
 export function checkPublicPort(port: number, privatePort: number) {
   if (!Number.isInteger(port) || port < 1 || port > 65535 || port === privatePort) throw new Error('Public door needs a separate valid port.')
 }
-/** IPv6 addresses share a /64 budget, including compressed and IPv4-mapped forms. */
+/** Mapped IPv4 shares its /32; IPv6 shares a /48 to resist prefix rotation. */
 export function addressGroup(address: string) {
   if (isIP(address) !== 6) return address
-  let source = new URL(`http://[${address}]/`).hostname.slice(1, -1)
+  const source = new URL(`http://[${address}]/`).hostname.slice(1, -1)
   const parts = source.split('::')
   const left = parts[0].split(':').filter(Boolean)
   const right = (parts[1] ?? '').split(':').filter(Boolean)
-  const words = parts.length === 2 ? [...left, ...Array(8 - left.length - right.length).fill('0'), ...right] : left
-  source = words
-    .slice(0, 4)
-    .map(word => Number.parseInt(word, 16).toString(16))
-    .join(':')
-  return `${source}::/64`
+  const words = (parts.length === 2 ? [...left, ...Array(8 - left.length - right.length).fill('0'), ...right] : left).map(word => Number.parseInt(word, 16))
+  if (words.slice(0, 5).every(word => word === 0) && words[5] === 65535) return [words[6] >> 8, words[6] & 255, words[7] >> 8, words[7] & 255].join('.')
+  return `${words
+    .slice(0, 3)
+    .map(word => word.toString(16))
+    .join(':')}::/48`
 }
-/** Bounded unauthenticated attempt budget. Verified helpers bypass it. */
-export function connectionBudget() {
+/** No eviction of live budgets: new groups fail closed when capacity is reached. */
+export function connectionBudget(limit = 20) {
   const entries = new Map<string, { count: number; until: number }>()
   return (address: string, now = Date.now()) => {
     for (const [key, entry] of entries) {
@@ -31,15 +31,14 @@ export function connectionBudget() {
     address = addressGroup(address)
     let entry = entries.get(address)
     if (!entry) {
-      if (entries.size >= 4096) entries.delete(entries.keys().next().value!)
+      if (entries.size >= 4096) return false
       entry = { count: 0, until: now + 60_000 }
       entries.set(address, entry)
     }
-    return ++entry.count <= 20
+    return ++entry.count <= limit
   }
 }
-/** Token bucket per authenticated socket, checked before JSON parsing. */
-export function byteBudget(capacity = 16_200_000, perSecond = 1_000_000) {
+export function byteBudget(capacity = 52_000_000, perSecond = 2_000_000) {
   let remaining = capacity
   let last = Date.now()
   return (bytes: number, now = Date.now()) => {
