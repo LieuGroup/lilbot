@@ -30,7 +30,8 @@ export function adversary() {
     { name: 'Test', os: 'linux', home: root, capabilities: ['exec', 'write', 'read', 'copy'] },
     pair.publicKey.export({ type: 'spki', format: 'pem' }).toString()
   )
-  const door = startPublicDoor(service, 0)
+  const disconnections: number[] = []
+  const door = startPublicDoor(service, 0, code => disconnections.push(code))
   identity.url = `http://127.0.0.1:${door.port}`
   const privateApp = Bun.serve({
     hostname: '127.0.0.1',
@@ -51,25 +52,38 @@ export function adversary() {
   }
   async function measure(label: string, action: () => Promise<void>) {
     const samples: number[] = []
-    let done = false
-    const probe = (async () => {
-      while (!done) {
-        const start = performance.now()
-        await fetch(`http://127.0.0.1:${privateApp.port}/api/health`).then(r => r.text())
-        samples.push(performance.now() - start)
-        await Bun.sleep(2)
-      }
-    })()
+    const pending = new Set<Promise<void>>()
+    let stalledMs = 0
+    let last = performance.now()
+    const timer = setInterval(() => {
+      const now = performance.now()
+      const gap = now - last
+      if (gap > 20) stalledMs += gap - 5
+      // Weight delayed timer periods: a 200 ms stall is not just one good-looking sample.
+      if (gap > 20) for (let i = 1; i < Math.floor(gap / 5); i++) samples.push(gap - i * 5)
+      last = now
+      if (pending.size >= 32) return
+      const start = performance.now()
+      const probe = fetch(`http://127.0.0.1:${privateApp.port}/api/health`)
+        .then(r => r.text())
+        .then(() => {
+          samples.push(performance.now() - start)
+        })
+        .finally(() => pending.delete(probe))
+      pending.add(probe)
+    }, 5)
     try {
       await action()
       await Bun.sleep(100)
     } finally {
-      done = true
-      await probe
+      clearInterval(timer)
+      await Promise.all(pending)
     }
     samples.sort((a, b) => a - b)
     const p99 = samples[Math.floor(samples.length * 0.99)] ?? 0
-    console.log(`MEASURE: ${label}: private /api/health p99 ${p99.toFixed(2)} ms, max ${samples.at(-1)?.toFixed(2)} ms (${samples.length} probes)`)
+    console.log(
+      `MEASURE: ${label}: private /api/health p99 ${p99.toFixed(2)} ms, max ${samples.at(-1)?.toFixed(2)} ms, total event-loop stall ${stalledMs.toFixed(2)} ms (${samples.length} weighted samples)`
+    )
     return p99
   }
   function launch() {
@@ -91,6 +105,7 @@ export function adversary() {
     service,
     identity,
     door,
+    disconnections,
     client,
     measure,
     launch,

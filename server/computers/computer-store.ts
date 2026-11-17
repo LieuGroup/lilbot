@@ -5,7 +5,6 @@ import type { Computer, ComputerHello, ComputerOperation, ComputerRequest, Compu
 
 export const QUEUE_LIMIT = 32
 export const RETENTION_MS = 5 * 60_000
-export const PAYLOAD_LIMIT = 256 * 1024 * 1024
 export const BOT_PAYLOAD_LIMIT = 64 * 1024 * 1024
 export const BACKGROUND_RETENTION_MS = 24 * 60 * 60_000
 export const PRUNE_BATCH = 64
@@ -68,8 +67,7 @@ export class ComputerStore {
   }
   private reserve(bot: string, bytes: number, replacing = 0) {
     const total = (id: string) => (this.db.query('SELECT bytes FROM computer_bytes WHERE bot_id=?').get(id) as { bytes: number } | null)?.bytes ?? 0
-    if (total('') - replacing + bytes > PAYLOAD_LIMIT || total(bot) - replacing + bytes > BOT_PAYLOAD_LIMIT)
-      throw new Error('Computer payload storage full for this bot. Wait for results to expire.')
+    if (total(bot) - replacing + bytes > BOT_PAYLOAD_LIMIT) throw new Error('Computer payload storage full for this bot. Wait for results to expire.')
   }
   enqueue(bot: string, computer: string, requestId: string, operation: ComputerOperation, background = false) {
     if (operation.kind === 'write' && Buffer.byteLength(operation.data) > 5_600_000) throw new Error('Computer operation exceeds byte limit.')
@@ -157,6 +155,14 @@ export class ComputerStore {
   }
   running(id: string) {
     this.db.query("UPDATE computer_requests SET status='running',expires_at=NULL WHERE id=? AND status='pending'").run(id)
+  }
+  admitFinal(computer: string, id: string, bytes: number) {
+    return (
+      this.db
+        .query(`UPDATE computer_requests SET final_frames=final_frames+1,received_bytes=received_bytes+?
+      WHERE id=? AND computer_id=? AND final_frames<8 AND received_bytes+?<=48000000 RETURNING id`)
+        .get(bytes, id, computer, bytes) !== null
+    )
   }
   result(computer: string, id: string, result: ComputerResult, final: boolean) {
     if (!final) {

@@ -6,6 +6,7 @@ import { helperFrame } from './frame-auth'
 import { configDir, connectionHeaders, type Identity } from './identity'
 import { acknowledge, canAdmit, finish, prepareJournal, pruneJournal } from './journal'
 import { operate } from './operations'
+import { outbound } from './outbound'
 import { boundResult } from './result-bounds'
 import { verifyFrame, verifyServer } from './server-trust'
 import { service } from './service'
@@ -25,16 +26,30 @@ export async function run(identity: Identity, signal: AbortSignal) {
   let outgoing = 0
   let nonce = ''
   const emit = (frame: unknown) => {
-    if (authenticated && socket?.readyState === WebSocket.OPEN && socket.bufferedAmount < 64_000)
-      socket.send(helperFrame(identity.privateKey, identity.id, nonce, outgoing++, JSON.stringify(frame)))
+    if (!authenticated || socket?.readyState !== WebSocket.OPEN || socket.bufferedAmount >= 64_000) return false
+    socket.send(helperFrame(identity.privateKey, identity.id, nonce, outgoing++, JSON.stringify(frame)))
+    return true
   }
+  const sender = outbound(
+    emit,
+    () =>
+      (db.query('SELECT id FROM requests WHERE finished_at IS NOT NULL LIMIT 32').all() as { id: string }[]).map(({ id }) => ({
+        id,
+        result: () => (db.query('SELECT result FROM requests WHERE id=?').get(id) as { result: string }).result
+      })),
+    () => authenticated && socket?.readyState === WebSocket.OPEN && socket.bufferedAmount < 64_000
+  )
   const send = (id: string, result: ComputerResult, final: boolean) => {
-    emit({ type: 'result', id, result: boundResult(result), final })
+    if (final) sender.flush()
+    else emit({ type: 'result', id, result: boundResult(result), final })
   }
   const work = async (id: string, operation: ComputerOperation) => {
-    const previous = db.query('SELECT result FROM requests WHERE id=?').get(id) as { result: string | null } | null
+    const previous = db.query('SELECT result,finished_at FROM requests WHERE id=?').get(id) as { result: string | null; finished_at: number | null } | null
     if (previous) {
-      if (previous.result) send(id, JSON.parse(previous.result), true)
+      if (previous.result) {
+        if (previous.finished_at === null) sender.receipt(id, previous.result)
+        sender.flush()
+      }
       return
     }
     if (active.size >= 8 || !canAdmit(db)) {
@@ -67,22 +82,25 @@ export async function run(identity: Identity, signal: AbortSignal) {
         const headers = connectionHeaders(identity)
         authenticated = false
         outgoing = 0
+        sender.reset()
         nonce = headers['x-lilbot-nonce']
         let serverKey = ''
         let sequence = 0
         socket = new WebSocket(`${identity.url.replace(/^http/, 'ws')}/helper/connect`, { headers } as any)
         const timeout = setTimeout(() => socket?.close(), 15_000)
         let lastHeartbeat = Date.now()
+        let nextHeartbeat = 0
         const timer = setInterval(() => {
           pruneJournal(db)
           if (Date.now() - lastHeartbeat > 35_000) socket?.close()
           else {
-            emit({ type: 'heartbeat' })
-            for (const row of db.query('SELECT id,result FROM requests WHERE finished_at IS NOT NULL LIMIT 8').all() as { id: string; result: string }[]) {
-              if (socket && socket.bufferedAmount < 64_000) send(row.id, JSON.parse(row.result), true)
+            if (Date.now() >= nextHeartbeat) {
+              sender.heartbeat()
+              nextHeartbeat = Date.now() + 10_000
             }
+            sender.flush()
           }
-        }, 10_000)
+        }, 100)
 
         socket.onmessage = event => {
           try {
@@ -104,18 +122,24 @@ export async function run(identity: Identity, signal: AbortSignal) {
             const frame = HelperWork.parse(JSON.parse(raw.payload))
             if (frame.type === 'heartbeat') {
               lastHeartbeat = Date.now()
-              if (frame.challenge) emit({ type: 'heartbeat', challenge: frame.challenge })
+              if (frame.challenge) {
+                sender.heartbeat(frame.challenge)
+                sender.flush()
+              }
             } else if (frame.type === 'revoked') {
               revoked = true
               for (const controller of active.values()) controller.abort()
               socket?.close()
-            } else if (frame.type === 'ack') acknowledge(db, frame.id)
-            else if (frame.type === 'cancel') {
+            } else if (frame.type === 'ack') {
+              acknowledge(db, frame.id)
+              sender.acknowledge(frame.id)
+            } else if (frame.type === 'cancel') {
               active.get(frame.id)?.abort()
               if (!active.has(frame.id)) {
                 db.query('INSERT OR IGNORE INTO requests(id,result,finished_at) VALUES(?,?,?)').run(frame.id, JSON.stringify({ output: '', error: 'Cancelled.' }), Date.now())
-                const stored = db.query('SELECT result FROM requests WHERE id=?').get(frame.id) as { result: string }
-                send(frame.id, JSON.parse(stored.result), true)
+                const stored = db.query('SELECT result,finished_at FROM requests WHERE id=?').get(frame.id) as { result: string; finished_at: number | null }
+                if (stored.finished_at === null) sender.receipt(frame.id, stored.result)
+                sender.flush()
               }
             } else void work(frame.id, frame.operation).catch(() => socket?.close())
           } catch {

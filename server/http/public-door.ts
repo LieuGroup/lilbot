@@ -4,12 +4,12 @@ import { verifyHelperFrame } from '../../helper/frame-auth'
 import { HelperFrame } from '../../shared/computer-schema'
 import { Registration } from '../computers/computer-auth'
 import type { ComputerService } from '../computers/computer-service'
-import { payloadTurn } from '../computers/work-queue'
-import { byteBudget, connectionBudget, plainServerError } from './listener-safety'
+import { addressGroup, byteBudget, connectionBudget, plainServerError } from './listener-safety'
 
-export function startPublicDoor(computers: ComputerService, port: number) {
+export function startPublicDoor(computers: ComputerService, port: number, onClose: (code: number) => void = () => {}) {
   const allowed = connectionBudget()
   const perComputer = connectionBudget(6)
+  const signed = connectionBudget(6, true)
   const door = Bun.serve<{
     id: string
     nonce: string
@@ -32,10 +32,14 @@ export function startPublicDoor(computers: ComputerService, port: number) {
         const headers = { 'Cache-Control': 'no-store' }
         if (url.search || request.headers.has('origin')) return new Response('Forbidden', { status: 403, headers })
         const address = request.headers.get('cf-connecting-ip') ?? server.requestIP(request)?.address ?? 'unknown'
-        if (!allowed(address)) return new Response('Too many requests', { status: 429, headers })
-        const claimed = request.headers.get('x-lilbot-computer')
-        if (claimed && !perComputer(claimed)) return new Response('Too many requests', { status: 429, headers })
-        const id = url.pathname === '/helper/connect' && request.method === 'GET' ? computers.auth.authenticate(request) : null
+        const connecting = url.pathname === '/helper/connect' && request.method === 'GET'
+        const claimed = request.headers.get('x-lilbot-computer') ?? ''
+        // Unknown identities cannot allocate budgets. Valid signatures never spend an
+        // unauthenticated caller's budget, even from the same address or a full table.
+        if (connecting && !computers.store.key(claimed)) return new Response('Authentication refused', { status: 403, headers })
+        const id = connecting ? computers.auth.authenticate(request) : null
+        if (id && !signed(id)) return new Response('Too many requests', { status: 429, headers })
+        if (!id && (!allowed(address) || (connecting && !perComputer(`${claimed}:${addressGroup(address)}`)))) return new Response('Too many requests', { status: 429, headers })
         if (url.pathname === '/helper/register' && request.method === 'POST') {
           try {
             const input = Registration.parse(await request.json())
@@ -95,7 +99,8 @@ export function startPublicDoor(computers: ComputerService, port: number) {
         if (!socket.data.bytes?.(typeof message === 'string' ? Buffer.byteLength(message) : message.byteLength)) return socket.close(1009)
         if (!socket.data.messages?.(1)) return socket.close(1008)
         if (++socket.data.queued > 24) return socket.close(1008)
-        void payloadTurn(() => {
+        const arrivedAt = Date.now()
+        void computers.payload(socket.data.id, () => {
           if (socket.readyState !== 1 || !computers.isPeer(socket.data.id, socket.data.disconnect) || computers.store.revoked(socket.data.id)) return
           try {
             const envelope = JSON.parse(String(message))
@@ -103,16 +108,17 @@ export function startPublicDoor(computers: ComputerService, port: number) {
             socket.data.sequence++
             const frame = HelperFrame.parse(JSON.parse(envelope.payload))
             if (frame.type === 'heartbeat') {
-              if (!frame.challenge && Date.now() - socket.data.heartbeatAt < 5000) return socket.close(1008)
-              if (!frame.challenge) socket.data.heartbeatAt = Date.now()
+              if (!frame.challenge && arrivedAt - socket.data.heartbeatAt < 5000) return
+              if (!frame.challenge) socket.data.heartbeatAt = arrivedAt
               computers.heartbeat(socket.data.id, socket.data.disconnect, frame.challenge)
             } else {
               if (!frame.final) {
-                if (frame.result.output.length > 8192 || Date.now() - (socket.data.progress!.get(frame.id) ?? 0) < 900) return socket.close(1008)
+                if (frame.result.output.length > 8192 || arrivedAt - (socket.data.progress!.get(frame.id) ?? 0) < 900) return
                 if (socket.data.progress!.size >= 8 && !socket.data.progress!.has(frame.id)) return socket.close(1008)
-                socket.data.progress!.set(frame.id, Date.now())
+                socket.data.progress!.set(frame.id, arrivedAt)
               } else socket.data.progress!.delete(frame.id)
-              void payloadTurn(() => {
+              if (frame.final && !computers.store.admitFinal(socket.data.id, frame.id, Buffer.byteLength(envelope.payload))) return socket.close(1008)
+              void computers.payload(socket.data.id, () => {
                 if (computers.isPeer(socket.data.id, socket.data.disconnect) && !computers.store.revoked(socket.data.id))
                   computers.result(socket.data.id, frame.id, frame.result, frame.final)
               })
@@ -124,7 +130,8 @@ export function startPublicDoor(computers: ComputerService, port: number) {
           }
         })
       },
-      close(socket) {
+      close(socket, code) {
+        onClose(code)
         socket.data.disconnect?.()
       }
     }

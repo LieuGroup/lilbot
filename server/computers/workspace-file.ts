@@ -3,7 +3,6 @@ import { constants } from 'node:fs'
 import { open } from 'node:fs/promises'
 import { isAbsolute } from 'node:path'
 
-import { payloadTurn } from './work-queue'
 export async function workspaceFile<T>(root: string, path: string, use: (file: { read: () => Promise<string>; write: (data: string) => Promise<void> }) => Promise<T>): Promise<T> {
   const parts = path.split('/')
   if (isAbsolute(path) || parts.some(p => !p || p === '.' || p === '..' || p.includes('\\') || p.includes('\0'))) throw new Error('Use a relative workspace file path.')
@@ -32,9 +31,9 @@ export async function workspaceFile<T>(root: string, path: string, use: (file: {
       }
     }
     return await use({
-      read: () => payloadTurn(() => access(false)),
+      read: () => access(false),
       write: async data => {
-        await payloadTurn(() => access(true, data))
+        await access(true, data)
       }
     })
   } finally {

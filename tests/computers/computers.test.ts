@@ -212,11 +212,13 @@ test('background command output is readable and cancellation terminates it', asy
   expect(service.read('bot', input).status).toBe('cancel_acked')
 })
 
-test('connection attempts are limited before authentication', async () => {
-  const { service, request } = fixture()
+test('failed connects are limited without consuming the signed connection budget', async () => {
+  const { service, request, id } = fixture()
   const door = startPublicDoor(service, 0)
   cleanups.push(() => door.stop(true))
   const url = `http://127.0.0.1:${door.port}`
-  for (let i = 0; i < 20; i++) await fetch(`${url}/helper/connect`)
+  for (let i = 0; i < 6; i++) expect((await fetch(`${url}/helper/connect`, { headers: { 'x-lilbot-computer': id } })).status).toBe(403)
+  expect((await fetch(`${url}/helper/connect`, { headers: { 'x-lilbot-computer': id } })).status).toBe(429)
+  for (let i = 0; i < 6; i++) expect((await fetch(`${url}/helper/connect`, { headers: request().headers })).status).toBe(400)
   expect((await fetch(`${url}/helper/connect`, { headers: request().headers })).status).toBe(429)
 })

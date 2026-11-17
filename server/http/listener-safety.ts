@@ -21,7 +21,7 @@ export function addressGroup(address: string) {
     .join(':')}::/48`
 }
 /** No eviction of live budgets: new groups fail closed when capacity is reached. */
-export function connectionBudget(limit = 20) {
+export function connectionBudget(limit = 20, full = false) {
   const entries = new Map<string, { count: number; until: number }>()
   return (address: string, now = Date.now()) => {
     for (const [key, entry] of entries) {
@@ -31,7 +31,7 @@ export function connectionBudget(limit = 20) {
     address = addressGroup(address)
     let entry = entries.get(address)
     if (!entry) {
-      if (entries.size >= 4096) return false
+      if (entries.size >= 4096) return full
       entry = { count: 0, until: now + 60_000 }
       entries.set(address, entry)
     }

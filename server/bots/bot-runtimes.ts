@@ -88,7 +88,13 @@ export class BotRuntimes {
   async state(bot: BotRecord): Promise<RuntimeState> {
     this.validateMode(bot)
     try {
-      if (this.connection) await this.engine.configureComputers?.(bot.engineBotId, { ...this.connection, botId: bot.id })
+      if (this.connection) {
+        try {
+          await this.engine.configureComputers?.(bot.engineBotId, { ...this.connection, botId: bot.id })
+        } catch {
+          console.error(`[computers] could not configure bot ${bot.id}; continuing without computer tools`)
+        }
+      }
       if (this.skills && this.connection) {
         if (!this.skillsImported.has(bot.id) && !this.skills.importedBot(bot.id)) {
           for (const path of this.engine.userSkillPaths?.(bot.engineBotId) ?? []) this.skills.import(path, files(path))
