@@ -9,6 +9,9 @@ import { BotPrefsStore } from './bots/bot-prefs-store'
 import { BotService } from './bots/bot-service'
 import { BotStore } from './bots/bot-store'
 import { Workspaces } from './bots/workspaces'
+import { createT3Bridge } from './connections/t3-bridge'
+import { T3_BRIDGE_PATH, T3_DEFAULT_MCP_URL, t3Connection } from './connections/t3-connection'
+import { T3Grants } from './connections/t3-grant'
 import { openDatabase } from './database/database'
 import { HermesEngine } from './engines/hermes/hermes-engine'
 import { MEMORY_ADAPTER_VERSION } from './engines/hermes/hermes-memory-setup'
@@ -25,6 +28,7 @@ import { ReviewQueue } from './memory/review-queue'
 import { RoutineScheduler } from './routines/routine-scheduler'
 import { defaultRoutineSettings, RoutineService } from './routines/routine-service'
 import { RoutineStore } from './routines/routine-store'
+import { files } from './skills/skill-files'
 import { SkillsService } from './skills/skills-service'
 import { ThreadService } from './threads/thread-service'
 import { ThreadStore } from './threads/thread-store'
@@ -69,6 +73,9 @@ const skills = new SkillsService(process.env.LILBOT_SKILLS_DIR ?? join(homedir()
   server.publish(EVERYONE, JSON.stringify({ event: 'skills.changed' }))
   botsChanged()
 })
+// Coding goes to T3 Code: every bot gets its tools through LilBot's bridge and one shared sign-in
+// (`bun run t3:sign-in`), and the coding instructions as the LilBot skill `t3-coding` (installed below).
+const t3Grants = new T3Grants(join(DATA_DIR, 't3-grant.json'), () => server.publish(EVERYONE, JSON.stringify({ event: 'connections.changed' })))
 const prefs = new BotPrefsStore(database)
 const bots = new BotService(engine, store, prefs, new Workspaces(WORKSPACES_DIR), memory, {
   skills,
@@ -79,7 +86,24 @@ const bots = new BotService(engine, store, prefs, new Workspaces(WORKSPACES_DIR)
   },
   changed: botsChanged,
   memoryChanged,
-  memoryConnection: { url: `http://127.0.0.1:${PORT}`, tokenFile: join(DATA_DIR, 'engine-token') }
+  memoryConnection: { url: `http://127.0.0.1:${PORT}`, tokenFile: join(DATA_DIR, 'engine-token') },
+  connections: botId => [t3Connection(`http://127.0.0.1:${PORT}`, token, botId, t3Grants.generation())]
+})
+// A sign-in from `bun run t3:sign-in`, an expiry or a revocation changes which tools bots should see.
+let t3Generation = t3Grants.generation()
+setInterval(() => {
+  const next = t3Grants.generation()
+  if (next === t3Generation) return
+  t3Generation = next
+  server.publish(EVERYONE, JSON.stringify({ event: 'connections.changed' }))
+  void bots.refreshConnections()
+}, 5_000)
+const t3Bridge = createT3Bridge({
+  upstream: process.env.LILBOT_T3_MCP_URL ?? T3_DEFAULT_MCP_URL,
+  grants: t3Grants,
+  engineToken: token,
+  port: PORT,
+  botIds: () => store.list().map(bot => bot.id)
 })
 const routines = new RoutineService(routineStore, bots, () => server.publish(EVERYONE, JSON.stringify({ event: 'routines.changed' })), {
   ...defaultRoutineSettings,
@@ -185,6 +209,11 @@ const server = Bun.serve<SocketData>({
       return new Response('Expected a WebSocket upgrade', { status: 400 })
     }
 
+    if (url.pathname === T3_BRIDGE_PATH) {
+      // A proxied t3_thread_wait may take minutes; the default idle timeout would cut it off.
+      server.timeout(request, 0)
+      return t3Bridge(request)
+    }
     if (url.pathname.startsWith('/engine/')) return engineApi(request, url.pathname)
     if (url.pathname.startsWith('/api/library/')) {
       if (!socketAllowed(request, ALLOWED_HOSTS) || request.headers.get('sec-fetch-site') === 'cross-site') return new Response('Forbidden', { status: 403 })
@@ -228,7 +257,8 @@ const server = Bun.serve<SocketData>({
         activity,
         routines,
         library,
-        threads
+        threads,
+        () => ({ t3: t3Grants.status() })
       )
     },
     message(socket, message) {
@@ -239,5 +269,11 @@ const server = Bun.serve<SocketData>({
     }
   }
 })
+
+try {
+  skills.provide('t3-coding', files(join(import.meta.dir, 'connections', 't3-coding-skill')))
+} catch (error) {
+  console.error('[skills] could not install the t3-coding skill:', error instanceof Error ? error.message : error)
+}
 
 console.log(`LilBot listening on http://${server.hostname}:${server.port} (engine: Hermes)`)

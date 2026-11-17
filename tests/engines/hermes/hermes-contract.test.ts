@@ -65,6 +65,13 @@ const methods: Record<string, Uses> = {
   'plugins.manage': { table: 'methods', sends: ['action', 'name', 'enable'], reads: ['ok'] },
   'config.get': { table: 'methods', sends: ['key'], reads: ['value'] },
   'config.set': { table: 'methods', sends: ['key', 'value'], reads: ['value'] },
+  // LilBot's own MCP connections (T3 Code through LilBot's bridge): `hermes-connections.ts`.
+  'mcp.servers.list': { table: 'methods', sends: [], reads: ['servers'] },
+  // Read by `bun run check:coding` to see a bot's T3 tools load.
+  'mcp.servers.status': { table: 'methods', sends: [], reads: ['servers'] },
+  'mcp.servers.remove': { table: 'methods', sends: ['name'], reads: [] },
+  'mcp.servers.add': { table: 'methods', sends: ['name', 'config', 'bearer_token'], reads: [] },
+  'reload.mcp': { table: 'methods', sends: ['confirm'], reads: [] },
   'model.options': { table: 'methods', sends: [], reads: ['providers'] }
 }
 

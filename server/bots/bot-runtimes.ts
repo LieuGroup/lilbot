@@ -1,7 +1,7 @@
 /** Resolves LilBot ids to runtime ids. The database always wins over an engine's copy. */
 import type { BotCreateInput, BotUpdateInput } from '../../shared/bot-schema'
 import { LilBotError } from '../../shared/protocol'
-import type { BotEngine, RuntimeState } from '../engines/bot-engine'
+import type { BotEngine, McpConnection, RuntimeState } from '../engines/bot-engine'
 import { files } from '../skills/skill-files'
 import type { BotRecord, BotStore } from './bot-store'
 
@@ -15,7 +15,9 @@ export class BotRuntimes {
     readonly store: BotStore,
     private engine: BotEngine,
     private skills?: import('../skills/skills-service').SkillsService,
-    private connection?: import('../engines/bot-engine').MemoryConnection
+    private connection?: import('../engines/bot-engine').MemoryConnection,
+    /** LilBot-owned MCP connections every bot gets (`server/connections/`). */
+    private connections?: (botId: string) => McpConnection[]
   ) {}
 
   private loading?: Promise<void>
@@ -100,12 +102,26 @@ export class BotRuntimes {
           names: this.skills.list(bot.id).map(s => s.name)
         })
       }
+      const connections = this.connections?.(bot.id)
+      if (connections?.length) await this.engineFor(bot).prepareConnections?.(bot.engineBotId, connections)
       const state = await this.engineFor(bot).applyIdentity(bot.engineBotId, bot)
       this.states.set(bot.id, state)
       return state
     } catch (error) {
       this.states.set(bot.id, null)
       throw error
+    }
+  }
+
+  /** Gives every current bot its connections again, for example after the shared T3 sign-in changed. */
+  async refreshConnections(): Promise<void> {
+    if (!this.connections) return
+    for (const bot of this.store.list().filter(bot => bot.engineId === this.engine.id && this.states.get(bot.id))) {
+      try {
+        await this.engine.prepareConnections?.(bot.engineBotId, this.connections(bot.id))
+      } catch (error) {
+        console.error(`[connections] could not refresh bot ${bot.id}:`, error instanceof Error ? error.message : error)
+      }
     }
   }
 
