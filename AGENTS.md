@@ -327,6 +327,29 @@ start new sessions to expose `ask_bot` and `list_bots`. No Hermes patch or live 
 `bun run check:threads` uses a free port, isolated data/workspace/skills directories and an unmatched
 profile allowlist before creating two throwaway bots, then removes both profiles and directories.
 
+## Restart recovery
+
+Restarting **LilBot only** leaves Hermes turns and T3 tasks running. The browser reconnects and
+opens the persisted main conversation; it does not resubmit the user message. Hermes supplies the
+transcript, including tool work and the final answer, and whether the turn is still running.
+Routines recover the same persisted run and admission receipt. Bot threads recover their outbox
+and return the answer to the original caller session; they do not start a replacement exchange.
+The T3 bridge reloads its sign-in from the same data directory; stable per-bot request ids allow an
+uncertain launch to find the original T3 task, and its thread id allows later waits and reads.
+A bridge call in flight can fail during downtime; the bot must retry that call after reconnecting.
+
+`bun run check:restart` SIGKILLs only its own second server mid-turn, with temporary data,
+workspaces, skills and an explicit temporary-profile allowlist. It checks chat reconnects during
+work and after offline tool completion, a routine run and a thread round trip, using counter files
+to detect repeated side effects. It deletes its profiles and confirms with `hermes profile list`.
+T3 recovery has a unit test with a simulated upstream; the live grant is never copied into tests.
+
+This covers a LilBot process restart with its data preserved, not a Hermes crash or a machine
+reboot. An unknown engine receipt fails explicitly rather than repeating possibly completed work.
+A failed deployment that prevents LilBot starting still needs recovery outside LilBot. The
+self-development skill and an external rollback watchdog remain unconfirmed and are not installed.
+Keep development checks on an isolated server; never restart the live service as a test.
+
 ## Library
 
 `server/library/` owns delivered items in the `library_items` table; `shared/library-schema.ts`
@@ -387,8 +410,10 @@ worktree or pull-request handling. Running commands, reading files and using app
   into the skills library at startup and restored if it differs. It points bots at `~/code/home/AGENTS.md`
   for machines, models and repo locations, asks for one launch with a stable `clientRequestId`, following
   with `t3_thread_wait`/`t3_thread_read`, and the T3-returned `link` in the chat right away and with the result.
-- No Settings screen for the sign-in yet (`needs-ui`). No durable follow-up after a LilBot restart: the T3
-  thread keeps running and the bot can find it again with `t3_thread_list`.
+- No Settings screen for the sign-in yet (`needs-ui`). T3 tasks outlive a LilBot restart. The Hermes
+  turn retains the returned thread id and can resume `t3_thread_wait`/`t3_thread_read` after a lost bridge
+  call; an uncertain launch retries the original `clientRequestId`, never a replacement task. There is
+  no separate LilBot follow-up queue after the Hermes turn ends.
 - `bun run check:coding -- --code-file <file>` (or the code on stdin) signs in first, then on an isolated
   server with a temporary bot checks the signed-out, expired and refused messages, a repeated launch, and a
   real task in a throwaway repo registered as a temporary T3 project (run in the project root, so no
@@ -787,6 +812,7 @@ Cleaning up after a merge:
 - `bun live-checks/permissions-check.ts`: isolated second server; repairs a temporary profile from manual to off,
   runs a harmless recursive delete and file write, and checks no approvals remain. Deletes its profile and folders.
 - `bun run check:routines`: isolated routine create/run/open/pause/restart/resume/delete check.
+- `bun run check:restart`: isolated mid-turn process restarts; chat, routine and thread counters must stay at one.
 - `bun run t3:sign-in`: signs LilBot in to T3 Code with a pairing code from stdin or `--code-file`.
   Uses `LILBOT_DATA_DIR`; the running server picks the new sign-in up without a restart.
 - `bun run check:coding`: isolated coding check through T3 Code (needs a fresh pairing code; see Coding).
