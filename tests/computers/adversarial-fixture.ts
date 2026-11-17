@@ -1,3 +1,4 @@
+import { expect } from 'bun:test'
 import { generateKeyPairSync } from 'node:crypto'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -84,6 +85,7 @@ export function adversary() {
     console.log(
       `MEASURE: ${label}: private /api/health p99 ${p99.toFixed(2)} ms, max ${samples.at(-1)?.toFixed(2)} ms, total event-loop stall ${stalledMs.toFixed(2)} ms (${samples.length} weighted samples)`
     )
+    expect(stalledMs).toBeLessThan(2000)
     return p99
   }
   function launch() {

@@ -1,4 +1,4 @@
-import { createPublicKey, randomBytes, timingSafeEqual, verify } from 'node:crypto'
+import { createPublicKey, type KeyObject, randomBytes, timingSafeEqual, verify } from 'node:crypto'
 import { z } from 'zod'
 import { codeId, codeKey, registrationMac } from '../../helper/frame-auth'
 import { ComputerHello } from '../../shared/computer-schema'
@@ -13,6 +13,19 @@ export const Registration = z.object({
   signature: z.string().max(200)
 })
 export class ComputerAuth {
+  private keys = new Map<string, { pem: string; key: KeyObject }>()
+  publicKey(id: string) {
+    const pem = this.store.key(id)
+    if (!pem) {
+      this.keys.delete(id)
+      return null
+    }
+    const cached = this.keys.get(id)
+    if (cached?.pem === pem) return cached.key
+    const key = createPublicKey(pem)
+    this.keys.set(id, { pem, key })
+    return key
+  }
   constructor(
     private store: ComputerStore,
     readonly serverKey: ServerKey
@@ -56,7 +69,7 @@ export class ComputerAuth {
     const timestamp = request.headers.get('x-lilbot-time') ?? ''
     const nonce = request.headers.get('x-lilbot-nonce') ?? ''
     const signature = request.headers.get('x-lilbot-signature') ?? ''
-    const key = this.store.key(id)
+    const key = this.publicKey(id)
     if (!key || !/^[\w-]{16,100}$/.test(nonce) || !/^\d{13}$/.test(timestamp) || Math.abs(Date.now() - Number(timestamp)) > 60_000) return null
     const message = `${request.method}\n${new URL(request.url).pathname}\n${id}\n${timestamp}\n${nonce}`
     try {

@@ -33,7 +33,7 @@ export async function run(identity: Identity, signal: AbortSignal) {
   const sender = outbound(
     emit,
     () =>
-      (db.query('SELECT id FROM requests WHERE finished_at IS NOT NULL LIMIT 32').all() as { id: string }[]).map(({ id }) => ({
+      (db.query('SELECT id FROM requests WHERE finished_at IS NOT NULL ORDER BY finished_at, id LIMIT 32').all() as { id: string }[]).map(({ id }) => ({
         id,
         result: () => (db.query('SELECT result FROM requests WHERE id=?').get(id) as { result: string }).result
       })),
@@ -47,7 +47,7 @@ export async function run(identity: Identity, signal: AbortSignal) {
     const previous = db.query('SELECT result,finished_at FROM requests WHERE id=?').get(id) as { result: string | null; finished_at: number | null } | null
     if (previous) {
       if (previous.result) {
-        if (previous.finished_at === null) sender.receipt(id, previous.result)
+        sender.receipt(id, previous.result)
         sender.flush()
       }
       return
@@ -138,7 +138,7 @@ export async function run(identity: Identity, signal: AbortSignal) {
               if (!active.has(frame.id)) {
                 db.query('INSERT OR IGNORE INTO requests(id,result,finished_at) VALUES(?,?,?)').run(frame.id, JSON.stringify({ output: '', error: 'Cancelled.' }), Date.now())
                 const stored = db.query('SELECT result,finished_at FROM requests WHERE id=?').get(frame.id) as { result: string; finished_at: number | null }
-                if (stored.finished_at === null) sender.receipt(frame.id, stored.result)
+                sender.receipt(frame.id, stored.result)
                 sender.flush()
               }
             } else void work(frame.id, frame.operation).catch(() => socket?.close())

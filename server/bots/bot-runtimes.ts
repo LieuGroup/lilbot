@@ -2,6 +2,7 @@
 import type { BotCreateInput, BotUpdateInput } from '../../shared/bot-schema'
 import { LilBotError } from '../../shared/protocol'
 import type { BotEngine, McpConnection, RuntimeState } from '../engines/bot-engine'
+import { memoryRefusal } from '../memory/memory-safety'
 import { files } from '../skills/skill-files'
 import type { BotRecord, BotStore } from './bot-store'
 
@@ -91,8 +92,10 @@ export class BotRuntimes {
       if (this.connection) {
         try {
           await this.engine.configureComputers?.(bot.engineBotId, { ...this.connection, botId: bot.id })
-        } catch {
-          console.error(`[computers] could not configure bot ${bot.id}; continuing without computer tools`)
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : 'Unknown configuration error'
+          const safeDetail = memoryRefusal(detail) ? 'Configuration error contained sensitive data; details withheld' : detail.slice(0, 500)
+          console.error(`[computers] could not configure bot ${bot.id}; continuing without computer tools (${safeDetail})`)
         }
       }
       if (this.skills && this.connection) {

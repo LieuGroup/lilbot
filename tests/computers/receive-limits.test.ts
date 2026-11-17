@@ -48,9 +48,9 @@ test('final-frame count and byte allowance persist through store and socket repl
     expect(new ComputerStore(f.db).admitFinal('remote', row2.id, 1)).toBe(false)
     const peer = await f.client()
     peer.send({ type: 'result', id: row.id, final: true, result: { output: 'again' } })
-    await until(() => f.disconnections.length > 0)
-    expect(f.disconnections).toEqual([1008])
-    expect(f.store.status(row.id)).toBe('running')
+    await until(() => f.store.status(row.id) === 'failed')
+    expect(f.disconnections).toEqual([])
+    expect(f.store.get('bot', 'remote', 'large')?.result?.error).toContain('allowance')
   } finally {
     f.close()
   }
@@ -95,7 +95,7 @@ test('leader work does not wait behind a remote payload queue; brief reconnect g
   }
 })
 
-test('reconnecting cannot reset the final-frame budget for a completed request', async () => {
+test('completed result replays do not spend allowance or disconnect', async () => {
   const f = adversary()
   try {
     const row = f.store.enqueue('bot', 'remote', 'replay', { kind: 'read', path: '/unused' })
@@ -114,8 +114,9 @@ test('reconnecting cannot reset the final-frame budget for a completed request',
     }
     expect(f.store.get('bot', 'remote', 'replay')?.result?.output).toBe('ok')
     peer.send(frame)
-    await until(() => f.disconnections.length === 2)
-    expect(f.disconnections[1]).toBe(1008)
+    await Bun.sleep(100)
+    expect(f.disconnections).toHaveLength(1)
+    expect(f.db.query('SELECT final_frames FROM computer_requests WHERE id=?').get(row.id)).toEqual({ final_frames: 1 })
   } finally {
     f.close()
   }

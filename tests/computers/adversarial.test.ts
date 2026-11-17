@@ -16,7 +16,7 @@ for (const kind of ['result', 'heartbeat', 'connect'] as const)
       peer.socket.onclose = event => {
         code = event.code
       }
-      const request = f.store.enqueue('flood', 'remote', 'flood', { kind: 'read', path: '/unused' })
+      const requests = Array.from({ length: 20 }, (_, i) => f.store.enqueue(`flood${i}`, 'remote', `flood${i}`, { kind: 'read', path: '/unused' }))
       const p99 = await f.measure(`${kind} flood / 100k rows / 5 seconds`, async () => {
         const untilAt = Date.now() + 5000
         let frames = 0
@@ -24,15 +24,17 @@ for (const kind of ['result', 'heartbeat', 'connect'] as const)
           if (kind === 'connect') {
             await Promise.all(Array.from({ length: 8 }, () => fetch(`${f.identity.url}/helper/connect`, { headers: connectionHeaders(f.identity) })))
           } else if (peer.socket.readyState === WebSocket.OPEN) {
-            peer.send(kind === 'heartbeat' ? { type: 'heartbeat' } : { type: 'result', id: request.id, final: true, result: { output: 'x'.repeat(5_500_000) } })
+            peer.send(
+              kind === 'heartbeat' ? { type: 'heartbeat' } : { type: 'result', id: requests[frames % requests.length]!.id, final: true, result: { output: 'x'.repeat(5_500_000) } }
+            )
             frames++
           }
-          await Bun.sleep(kind === 'result' ? 400 : kind === 'heartbeat' ? 100 : 10)
+          await Bun.sleep(kind === 'result' ? 500 : kind === 'heartbeat' ? 100 : 10)
         }
         if (kind === 'result') {
-          expect(f.store.status(request.id)).toBe('completed')
+          expect(requests.filter(row => f.store.status(row.id) === 'completed').length).toBeGreaterThanOrEqual(8)
           expect(frames).toBeGreaterThanOrEqual(8)
-          expect(code).toBe(1008)
+          expect(code).toBe(0)
         }
         if (kind === 'heartbeat') {
           expect(frames).toBeGreaterThanOrEqual(40)

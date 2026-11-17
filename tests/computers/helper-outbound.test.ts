@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { outbound } from '../../helper/outbound'
 
-test('a buffered challenge is retained ahead of results; retry does not wait ten seconds', () => {
+test('a buffered challenge is retained ahead of results; results retry only on reconnect', () => {
   let ready = false
   const frames: any[] = []
   const rows = [{ id: 'large', result: () => JSON.stringify({ output: 'x'.repeat(4 * 1024 * 1024) }) }]
@@ -24,12 +24,12 @@ test('a buffered challenge is retained ahead of results; retry does not wait ten
   sender.flush(4099)
   expect(frames).toHaveLength(2)
   sender.flush(4100)
-  expect(frames).toHaveLength(3)
+  expect(frames).toHaveLength(2)
   sender.reset()
   sender.flush(4101)
-  expect(frames).toHaveLength(4)
+  expect(frames).toHaveLength(3)
   rows.length = 0
   sender.acknowledge('large')
   sender.flush(10000)
-  expect(frames).toHaveLength(4)
+  expect(frames).toHaveLength(3)
 })

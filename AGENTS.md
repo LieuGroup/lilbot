@@ -455,7 +455,7 @@ computer; the authenticated bot id owns its requests, never an id from the body.
   `computer_list_folder`, `computer_request`, `computer_cancel`, `computer_copy`. Machine output
   is untrusted data. Reads return base64; writes accept UTF-8 or base64.
 - Offline synchronous calls fail immediately; explicit background calls queue. Foreground waits
-  stop at 25s, allowing five seconds for a disconnected helper to return during a wait. Per bot and
+  stop at 25s. Eight 5.6 MB results cannot all arrive within that wait below about 1.8 MB/s; retry with the same requestId to recover the eventual result without re-executing. Waits allow five seconds for a disconnected helper to return during a wait. Per bot and
   computer, at most 32 pending/running/cancelling requests; at most 8 executions per
   leader/helper. Pending dispatch reads only id/status, loading payloads only when sent. Cancellation
   of undispatched work settles locally; dispatched work remains `cancelled` until a final result
@@ -472,12 +472,12 @@ computer; the authenticated bot id owns its requests, never an id from the body.
   Progress stays in memory as a 4 KiB tail; at most eight completed results are cached for active readers. Helper journals retain unacknowledged results, admitting
   at most 32 unacknowledged/running operations with worst-case space reserved; acknowledgements remove
   payloads, not execution receipts. Control replies wait for buffer space and take priority; a 100 ms
-  pump sends one result at a time and retries unacknowledged results after four seconds. Result rows
+  pump sends one result at a time, oldest finished first, once per connection; unacknowledged results retry after reconnect. Result rows
   are loaded individually, not eight large payloads at each heartbeat. Old backups need separate retention. Heartbeats run every 10s;
   35s without one is offline. Dispatch waits for socket buffer space, checks send outcomes and resumes
   on drain/tick; commands send a small progress tail once a second and full output only on completion.
-- Each request admits at most eight final frames and 48 MB of final-frame payload across all
-  connections and server restarts (migration 16). Unknown requests cannot allocate receive allowance.
+- Each live request admits at most eight final frames and 48 MB of final-frame payload across all
+  connections and server restarts (migration 16). Finished and unknown results are acknowledged without spending receive allowance. Exhausted live requests fail with an acknowledgement, never a disconnect.
   Helper traffic, submissions and dispatch serialize per computer, never behind another computer's
   queue; workspace I/O does not hold those queues. Deleting a bot seeks only its active requests.
   Failure to configure the computers plug-in is logged without making the bot unavailable.

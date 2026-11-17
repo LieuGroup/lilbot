@@ -160,7 +160,7 @@ export class ComputerStore {
     return (
       this.db
         .query(`UPDATE computer_requests SET final_frames=final_frames+1,received_bytes=received_bytes+?
-      WHERE id=? AND computer_id=? AND final_frames<8 AND received_bytes+?<=48000000 RETURNING id`)
+      WHERE id=? AND computer_id=? AND status IN ('pending','running','cancelled') AND final_frames<8 AND received_bytes+?<=48000000 RETURNING id`)
         .get(bytes, id, computer, bytes) !== null
     )
   }

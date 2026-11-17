@@ -36,7 +36,7 @@ export function startPublicDoor(computers: ComputerService, port: number, onClos
         const claimed = request.headers.get('x-lilbot-computer') ?? ''
         // Unknown identities cannot allocate budgets. Valid signatures never spend an
         // unauthenticated caller's budget, even from the same address or a full table.
-        if (connecting && !computers.store.key(claimed)) return new Response('Authentication refused', { status: 403, headers })
+        if (connecting && !computers.auth.publicKey(claimed)) return new Response('Authentication refused', { status: 403, headers })
         const id = connecting ? computers.auth.authenticate(request) : null
         if (id && !signed(id)) return new Response('Too many requests', { status: 429, headers })
         if (!id && (!allowed(address) || (connecting && !perComputer(`${claimed}:${addressGroup(address)}`)))) return new Response('Too many requests', { status: 429, headers })
@@ -61,7 +61,7 @@ export function startPublicDoor(computers: ComputerService, port: number, onClos
     websocket: {
       maxPayloadLength: 8_100_000,
       open(socket) {
-        const key = computers.store.key(socket.data.id)
+        const key = computers.auth.publicKey(socket.data.id)
         if (!key) return socket.close(4003)
         socket.data.bytes = byteBudget()
         socket.data.messages = byteBudget(24, 16)
@@ -104,7 +104,7 @@ export function startPublicDoor(computers: ComputerService, port: number, onClos
           if (socket.readyState !== 1 || !computers.isPeer(socket.data.id, socket.data.disconnect) || computers.store.revoked(socket.data.id)) return
           try {
             const envelope = JSON.parse(String(message))
-            if (!verifyHelperFrame(computers.store.key(socket.data.id)!, socket.data.id, socket.data.nonce, socket.data.sequence, envelope)) return socket.close(1007)
+            if (!verifyHelperFrame(computers.auth.publicKey(socket.data.id)!, socket.data.id, socket.data.nonce, socket.data.sequence, envelope)) return socket.close(1007)
             socket.data.sequence++
             const frame = HelperFrame.parse(JSON.parse(envelope.payload))
             if (frame.type === 'heartbeat') {
@@ -117,7 +117,10 @@ export function startPublicDoor(computers: ComputerService, port: number, onClos
                 if (socket.data.progress!.size >= 8 && !socket.data.progress!.has(frame.id)) return socket.close(1008)
                 socket.data.progress!.set(frame.id, arrivedAt)
               } else socket.data.progress!.delete(frame.id)
-              if (frame.final && !computers.store.admitFinal(socket.data.id, frame.id, Buffer.byteLength(envelope.payload))) return socket.close(1008)
+              if (frame.final && !computers.store.admitFinal(socket.data.id, frame.id, Buffer.byteLength(envelope.payload))) {
+                computers.result(socket.data.id, frame.id, { output: '', error: 'Result omitted: receive allowance exhausted.' }, true)
+                return
+              }
               void computers.payload(socket.data.id, () => {
                 if (computers.isPeer(socket.data.id, socket.data.disconnect) && !computers.store.revoked(socket.data.id))
                   computers.result(socket.data.id, frame.id, frame.result, frame.final)

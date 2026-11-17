@@ -1,14 +1,14 @@
-/** Control frames wait for buffer space; durable results retry without waiting for a heartbeat. */
+/** Control frames wait for buffer space; durable results are sent once per connection on the ordered TCP stream. */
 export function outbound(emit: (frame: unknown) => boolean, results: () => { id: string; result: () => string }[], ready = () => true) {
   const controls = new Map<string, unknown>()
-  const sentAt = new Map<string, number>()
+  const sent = new Set<string>()
   return {
     reset() {
       controls.clear()
-      sentAt.clear()
+      sent.clear()
     },
     acknowledge(id: string) {
-      sentAt.delete(id)
+      sent.delete(id)
     },
     receipt(id: string, result: string) {
       controls.set(`receipt:${id}`, { type: 'result', id, result: JSON.parse(result), final: true })
@@ -16,16 +16,16 @@ export function outbound(emit: (frame: unknown) => boolean, results: () => { id:
     heartbeat(challenge = '') {
       controls.set(challenge, { type: 'heartbeat', ...(challenge ? { challenge } : {}) })
     },
-    flush(now = Date.now()) {
+    flush(_now = Date.now()) {
       for (const [key, frame] of controls) {
         if (!emit(frame)) return
         controls.delete(key)
       }
       if (!ready()) return
       for (const row of results()) {
-        if (now - (sentAt.get(row.id) ?? -Infinity) < 4000) continue
+        if (sent.has(row.id)) continue
         if (!emit({ type: 'result', id: row.id, result: JSON.parse(row.result()), final: true })) return
-        sentAt.set(row.id, now)
+        sent.add(row.id)
         return
       }
     }
