@@ -105,7 +105,7 @@ test('the primary migration upgrades an existing database without losing prefere
     expect(prefs.prefs('b1').pinned).toBe(true)
     prefs.setPrimaryBot('b1')
     expect(prefs.primaryBot()).toBe('b1')
-    expect((upgraded.query('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(15)
+    expect((upgraded.query('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(16)
     upgraded.close()
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -123,7 +123,7 @@ test('upgrading the shipped creation schema preserves markers before adding dele
     db.close()
     const upgraded = openDatabase(path)
     expect(upgraded.query('SELECT bot_id FROM bot_creations').all()).toEqual([{ bot_id: 'created-before-upgrade' }])
-    expect((upgraded.query('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(15)
+    expect((upgraded.query('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(16)
     expect(new BotPrefsStore(upgraded).primaryBot()).toBeNull()
     upgraded.close()
   } finally {

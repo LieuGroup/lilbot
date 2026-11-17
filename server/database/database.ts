@@ -118,7 +118,11 @@ const migrations: string[] = [
    CREATE INDEX computer_pending ON computer_requests(computer_id,status,created_at);
    CREATE INDEX computer_bot_pending ON computer_requests(bot_id,computer_id,status);
    CREATE INDEX computer_expiry ON computer_requests(expires_at) WHERE expires_at IS NOT NULL;
-   CREATE TABLE computer_payloads (id TEXT PRIMARY KEY REFERENCES computer_requests(id) ON DELETE CASCADE, operation TEXT, result TEXT);`
+   CREATE TABLE computer_payloads (id TEXT PRIMARY KEY REFERENCES computer_requests(id) ON DELETE CASCADE, operation TEXT, result TEXT);`,
+  // Durable receive allowances and an active-only bot index (schema 15 has shipped).
+  `ALTER TABLE computer_requests ADD COLUMN final_frames INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE computer_requests ADD COLUMN received_bytes INTEGER NOT NULL DEFAULT 0;
+   CREATE INDEX computer_bot_active ON computer_requests(bot_id,status) WHERE status IN ('pending','running');`
 ]
 
 /** `path` may be ':memory:' for tests. Applies any migration steps the file has not seen. */

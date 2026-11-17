@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { operate } from '../../helper/operations'
 import { boundResult, RESULT_JSON_LIMIT, TRUNCATED } from '../../helper/result-bounds'
 import { ComputerService } from '../../server/computers/computer-service'
-import { ComputerStore, PAYLOAD_LIMIT, PRUNE_BATCH, RETENTION_MS } from '../../server/computers/computer-store'
+import { BOT_PAYLOAD_LIMIT, ComputerStore, PRUNE_BATCH, RETENTION_MS } from '../../server/computers/computer-store'
 import { loadServerKey } from '../../server/computers/server-key'
 import { openDatabase } from '../../server/database/database'
 import { addressGroup, byteBudget, connectionBudget } from '../../server/http/listener-safety'
@@ -57,9 +57,9 @@ test('45 retained 4 MiB requests keep tick below 5 ms; payloads have an enforced
   console.log(`MEASURE: 45 x 4 MiB retained requests: ${elapsed.toFixed(3)} ms/tick (disk database)`)
   expect(elapsed).toBeLessThan(5)
   expect(() => {
-    for (let i = 45; i < 100; i++) store.enqueue(String(i), 'offline', 'large', operation)
+    for (let i = 45; i < 100; i++) store.enqueue('fill', 'offline', String(i), operation)
   }).toThrow('storage full')
-  expect((db.query('SELECT sum(payload_bytes) AS bytes FROM computer_requests').get() as any).bytes).toBeLessThanOrEqual(PAYLOAD_LIMIT)
+  expect((db.query("SELECT bytes FROM computer_bytes WHERE bot_id='fill'").get() as any).bytes).toBeLessThanOrEqual(BOT_PAYLOAD_LIMIT)
 })
 test('large write never echoes data; finishes as digest and expires indexed, bounded batches', async () => {
   const { store, service, db, root } = fixture()

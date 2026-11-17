@@ -152,7 +152,7 @@ test('plain errors, tunnel headers, port collision and bounded per-IP budget', a
   }
   const door = startPublicDoor(service, 0)
   cleanups.push(() => door.stop(true))
-  const response = await fetch(`http://127.0.0.1:${door.port}/helper/connect`)
+  const response = await fetch(`http://127.0.0.1:${door.port}/helper/connect`, { headers: { 'x-lilbot-computer': 'remote' } })
   expect(response.status).toBe(500)
   expect(await response.text()).toBe('Internal server error')
 })

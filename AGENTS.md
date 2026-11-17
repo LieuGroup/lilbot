@@ -397,7 +397,8 @@ worktree or pull-request handling. Running commands, reading files and using app
 ## Computers
 
 `server/computers/` owns computer records, Ed25519 public keys, one-time install codes,
-replay nonces and durable request identities (migration 15). `shared/computer-schema.ts`
+replay nonces and durable request identities (migration 15); migration 16 adds persistent receive
+allowances and an active-only bot request index. `shared/computer-schema.ts`
 is shared with the standalone `helper/` client. The leader is always `leader` and executes
 locally through the same bounded operation runner without a helper. Every bot can use every
 computer; the authenticated bot id owns its requests, never an id from the body.
@@ -413,11 +414,15 @@ computer; the authenticated bot id owns its requests, never an id from the body.
   `cf-connecting-ip`, `cf-ray` and Cloudflare `cdn-loop` headers before routing, even with a valid Host.
   Never add the public name to `LILBOT_ALLOWED_HOSTS`. No webhook, app, browser socket or engine
   endpoint is exposed by the door. A separate tunnel requires deployment approval.
-- Before authentication the door limits all attempts to 20/address/minute and six/computer/minute.
-  IPv4-mapped addresses use IPv4 /32; IPv6 uses /48. At 4096 live groups new groups fail closed,
-  never recycle existing budgets. Nonce expiry is indexed. Socket message/byte buckets run before
+- Unknown connect ids are refused before allocating rate-limit entries. Failed authentication and
+  registration attempts are limited to 20/address/minute, and failed connects to six/(computer,address
+  group)/minute. Valid signatures have a separate six/computer/minute budget that remains available
+  when the unauthenticated tables are full. IPv4-mapped addresses use IPv4 /32; IPv6 uses /48.
+  At 4096 live unauthenticated groups new groups fail closed without recycling budgets.
+  Nonce expiry is indexed. Socket message/byte buckets run before
   parsing; progress is limited to once per second per request and 8 KiB, with 8 active requests.
-  Heartbeats are at most once per five seconds. Behind Cloudflare, the address is `cf-connecting-ip`.
+  Heartbeat/progress spacing uses arrival time before queueing; early frames are dropped without
+  disconnecting. Heartbeats are at most once per five seconds. Behind Cloudflare, the address is `cf-connecting-ip`.
   Deployment needs Cloudflare **Pro or higher** for the combined hostname + exact helper paths rule,
   20 requests/60 seconds/IP and a 60-second Block. Free only permits a 10-second period/block and
   lacks Host matching; it cannot implement that rule. See Cloudflare's rate-limiting availability docs.
@@ -450,7 +455,8 @@ computer; the authenticated bot id owns its requests, never an id from the body.
   `computer_list_folder`, `computer_request`, `computer_cancel`, `computer_copy`. Machine output
   is untrusted data. Reads return base64; writes accept UTF-8 or base64.
 - Offline synchronous calls fail immediately; explicit background calls queue. Foreground waits
-  stop at 25s. Per bot and computer, at most 32 pending/running/cancelling requests; at most 8 executions per
+  stop at 25s. Eight 5.6 MB results cannot all arrive within that wait below about 1.8 MB/s; retry with the same requestId to recover the eventual result without re-executing. Waits allow five seconds for a disconnected helper to return during a wait. Per bot and
+  computer, at most 32 pending/running/cancelling requests; at most 8 executions per
   leader/helper. Pending dispatch reads only id/status, loading payloads only when sent. Cancellation
   of undispatched work settles locally; dispatched work remains `cancelled` until a final result
   makes it terminal `cancel_acked`. The result and `cancelRequested` flag preserve late outcomes;
@@ -459,13 +465,22 @@ computer; the authenticated bot id owns its requests, never an id from the body.
   and byte size; tool responses never echo them. Foreground results expire after five minutes,
   background results after 24 hours. Queued work expires after 24 hours with an explicit failure.
   Indexed pruning processes at most 64 rows or about one large payload per tick. SQLite triggers keep
-  global (256 MiB) and per-bot (64 MiB) byte totals atomically. Read admission reserves 5.6 MB for its
+  global accounting and per-bot (64 MiB) byte totals atomically. Admission enforces the per-bot
+  quota only, so four full bots cannot deny a fifth its allowance; total disk use scales with bot count.
+  Read admission reserves 5.6 MB for its
   result; operation JSON is capped at 5.7 MB. Omitted results are failed and never overwrite workspace files.
   Progress stays in memory as a 4 KiB tail; at most eight completed results are cached for active readers. Helper journals retain unacknowledged results, admitting
   at most 32 unacknowledged/running operations with worst-case space reserved; acknowledgements remove
-  payloads, not execution receipts. Old backups need separate retention. Heartbeats run every 10s;
+  payloads, not execution receipts. Control replies wait for buffer space and take priority; a 100 ms
+  pump sends one result at a time, oldest finished first, once per connection; unacknowledged results retry after reconnect. Result rows
+  are loaded individually, not eight large payloads at each heartbeat. Old backups need separate retention. Heartbeats run every 10s;
   35s without one is offline. Dispatch waits for socket buffer space, checks send outcomes and resumes
   on drain/tick; commands send a small progress tail once a second and full output only on completion.
+- Each live request admits at most eight final frames and 48 MB of final-frame payload across all
+  connections and server restarts (migration 16). Finished and unknown results are acknowledged without spending receive allowance. Exhausted live requests fail with an acknowledgement, never a disconnect.
+  Helper traffic, submissions and dispatch serialize per computer, never behind another computer's
+  queue; workspace I/O does not hold those queues. Deleting a bot seeks only its active requests.
+  Failure to configure the computers plug-in is logged without making the bot unavailable.
 - Results are bounded to 6 MB serialized JSON, with an explicit truncation marker. Commands have bounded output
   and a timeout (60s default, 1h maximum). Cancellation kills the process
   group and cancels pipe readers, so escaped descendants cannot keep requests busy. Child groups are
@@ -488,7 +503,18 @@ computer; the authenticated bot id owns its requests, never an id from the body.
   `tests/computers/adversarial.test.ts` measures a same-process private `/api/health` listener during
   signed floods with 100k receipts, 1M-row indexed admission, eight parallel 4 MiB copies, eight
   coloured commands and offline storage filling. It also checks delivered bytes and per-bot isolation.
-  It prints binary size and idle RSS. Mac runtime/launchd is not tested on the Linux leader.
+  The harness uses five-second flood windows and bounded concurrent health probes, weights missed
+  5 ms probe intervals, and reports p99/max plus total event-loop stall above 20 ms. The 250 ms
+  weighted-p99 regression ceiling includes large synchronous JSON/signature/storage turns; it is
+  not a claim that every request completes within 50 ms. `helper-load.test.ts` runs a real helper
+  three times with a chatty background command and eight parallel 4 MiB copies in each direction,
+  asserting zero disconnects and byte-identical delivery. It prints binary size and idle RSS.
+  An independent review is still required before enabling a tunnel.
+- Real-Mac smoke checklist (not runnable on the Linux leader): obtain the trusted arm64/x64 binary,
+  confirm Gatekeeper handling, install with a fresh code and verify the launchd user service survives
+  logout/reboot; register and check name/OS/home, execute/read/write/copy, sleep and wake during work
+  and confirm reconnect without duplicate execution, then revoke online and offline and verify the
+  signed revoke stops work and removes launchd. Do not open a tunnel until independent review clears it.
 
 ## Skills
 

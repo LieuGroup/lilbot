@@ -4,11 +4,20 @@ import { ComputerCopy, ComputerRequestRef, ComputerSubmit } from '../../shared/c
 import { ComputerAuth } from './computer-auth'
 import type { ComputerStore } from './computer-store'
 import type { ServerKey } from './server-key'
-import { payloadTurn } from './work-queue'
+import { payloadQueue } from './work-queue'
 import { workspaceFile } from './workspace-file'
 
 type Peer = { send: (frame: string) => unknown; ready?: () => boolean; pong?: string; close: (code?: number) => void; disconnect?: () => void; seen: number; sent: Set<string> }
 export class ComputerService {
+  private queues = new Map<string, ReturnType<typeof payloadQueue>>()
+  payload<T>(computer: string, action: () => T | Promise<T>) {
+    let queue = this.queues.get(computer)
+    if (!queue) {
+      queue = payloadQueue()
+      this.queues.set(computer, queue)
+    }
+    return queue(action)
+  }
   readonly auth: ComputerAuth
   private closed = false
   private nextDispatch = new Map<string, number>()
@@ -143,13 +152,18 @@ export class ComputerService {
     const old = this.store.get(bot, input.computer, input.requestId)
     if (!computer.online && !input.background && !old) throw new Error('Computer offline. Retry when online, or explicitly queue a background request.')
     if (!computer.capabilities.includes(input.operation.kind)) throw new Error('Computer does not support this operation.')
-    const request = await payloadTurn(() => this.store.enqueue(bot, input.computer, input.requestId, input.operation, input.background))
+    const request = await this.payload(input.computer, () => this.store.enqueue(bot, input.computer, input.requestId, input.operation, input.background))
     this.dispatch(input.computer)
     if (input.background) return request
     const until = Date.now() + 25_000
+    let offlineSince = 0
     while (Date.now() < until) {
       if (!['pending', 'running'].includes(this.store.status(request.id))) return this.store.get(bot, input.computer, input.requestId)!
-      if (!this.list().find(c => c.id === input.computer)?.online) throw new Error(`Computer offline. Request ${input.requestId} retained; read or cancel it explicitly.`)
+      if (this.list().find(c => c.id === input.computer)?.online) offlineSince = 0
+      else {
+        offlineSince ||= Date.now()
+        if (Date.now() - offlineSince >= 5000) throw new Error(`Computer offline. Request ${input.requestId} retained; read or cancel it explicitly.`)
+      }
       await Bun.sleep(10)
     }
     return this.store.get(bot, input.computer, input.requestId)!
@@ -186,7 +200,7 @@ export class ComputerService {
     if (computer === 'leader') return this.dispatchNow(computer)
     if (this.closed || this.dispatching.has(computer)) return
     this.dispatching.add(computer)
-    void payloadTurn(() => this.dispatchNow(computer)).finally(() => this.dispatching.delete(computer))
+    void this.payload(computer, () => this.dispatchNow(computer)).finally(() => this.dispatching.delete(computer))
   }
   private dispatchNow(computer: string) {
     if (this.closed) return
