@@ -20,6 +20,7 @@ import type {
 import { watchHermesActivity } from './hermes-activity'
 import { botDetailFromProfile, botFromProfile, DEFAULT_PROFILE, providersFromModelOptions } from './hermes-bot-mapping'
 import { chatEventFrom, itemsFromRows, sessionLostEvents } from './hermes-chat-mapping'
+import { configureComputers } from './hermes-computers'
 import { connectionPreparer } from './hermes-connections'
 import { deleteRuntime } from './hermes-delete'
 import { installMemory, legacyNotes, memoryConnection, memoryCurrent, memoryInstalled } from './hermes-memory-setup'
@@ -206,6 +207,15 @@ export class HermesEngine implements BotEngine {
   async prepareConnections(id: string, connections: McpConnection[]) {
     await this.requireBot(id)
     await this.connections(id, connections)
+  }
+
+  private computerSettings = new Map<string, string>()
+  async configureComputers(id: string, settings: { url: string; tokenFile: string; botId: string }) {
+    await this.requireBot(id)
+    const key = JSON.stringify(settings)
+    if (this.computerSettings.get(id) === key) return
+    await configureComputers(id, settings)
+    this.computerSettings.set(id, key)
   }
 
   private skillSettings = new Map<string, string>()

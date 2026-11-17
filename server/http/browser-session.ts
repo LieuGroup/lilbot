@@ -31,7 +31,8 @@ export class BrowserSession {
     private routines?: RoutineService,
     private library?: LibraryService,
     private threads?: import('../threads/thread-service').ThreadService,
-    private connections?: () => ConnectionsStatus
+    private connections?: () => ConnectionsStatus,
+    private computers?: import('../computers/computer-service').ComputerService
   ) {}
 
   private routineService() {
@@ -42,9 +43,16 @@ export class BrowserSession {
     if (!this.library) throw new LilBotError('unavailable', 'Library is unavailable.')
     return this.library
   }
+  private computerService() {
+    if (!this.computers) throw new LilBotError('unavailable', 'Computers unavailable.')
+    return this.computers
+  }
   private handlers: Handlers = {
     'threads.list': ({ botId }) => this.threads!.list(botId),
     'threads.open': ({ botId, threadId }) => this.threads!.open(botId, threadId),
+    'computers.list': async () => this.computerService().list(),
+    'computers.installCode': async ({ name }) => this.computerService().auth.code(name),
+    'computers.remove': async ({ computer }) => this.computerService().remove(computer),
     'skills.list': ({ botId }) => this.bots.listSkills(botId),
     'skills.read': ({ botId, name }) => this.bots.readSkill(botId, name),
     'skills.setEnabled': ({ botId, name, enabled }) => this.bots.setSkill(botId, name, enabled),

@@ -96,7 +96,7 @@ test('the primary migration upgrades an existing database without losing prefere
     const db = openDatabase(path)
     new BotPrefsStore(db).setPrefs('b1', { pinned: true })
     db.exec(
-      'DROP TABLE thread_chats; DROP TABLE thread_deliveries; DROP TABLE threads; ALTER TABLE bot_prefs DROP COLUMN avatar_face_color; DROP TABLE library_items; DROP TABLE skills; DROP TABLE skill_off; DROP TABLE skill_imports; DROP TABLE routine_chats; DROP TABLE routine_runs; DROP TABLE routines; DROP TABLE bot_creations; DROP TABLE bot_delete_defaults; DROP TABLE bots; DROP TABLE bot_imports; DROP TABLE primary_bot; DROP TABLE bot_activity; DROP TABLE activity_cursors; PRAGMA user_version = 3'
+      'DROP TABLE computer_payloads; DROP TABLE computer_requests; DROP TABLE computer_bytes; DROP TABLE computer_nonces; DROP TABLE computer_codes; DROP TABLE computers; DROP TABLE thread_chats; DROP TABLE thread_deliveries; DROP TABLE threads; ALTER TABLE bot_prefs DROP COLUMN avatar_face_color; DROP TABLE library_items; DROP TABLE skills; DROP TABLE skill_off; DROP TABLE skill_imports; DROP TABLE routine_chats; DROP TABLE routine_runs; DROP TABLE routines; DROP TABLE bot_creations; DROP TABLE bot_delete_defaults; DROP TABLE bots; DROP TABLE bot_imports; DROP TABLE primary_bot; DROP TABLE bot_activity; DROP TABLE activity_cursors; PRAGMA user_version = 3'
     )
     db.close()
     const upgraded = openDatabase(path)
@@ -105,7 +105,7 @@ test('the primary migration upgrades an existing database without losing prefere
     expect(prefs.prefs('b1').pinned).toBe(true)
     prefs.setPrimaryBot('b1')
     expect(prefs.primaryBot()).toBe('b1')
-    expect((upgraded.query('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(14)
+    expect((upgraded.query('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(15)
     upgraded.close()
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -118,12 +118,12 @@ test('upgrading the shipped creation schema preserves markers before adding dele
   try {
     const db = openDatabase(path)
     db.exec(
-      "INSERT INTO bot_creations VALUES ('created-before-upgrade'); DROP TABLE thread_chats; DROP TABLE thread_deliveries; DROP TABLE threads; ALTER TABLE bot_prefs DROP COLUMN avatar_face_color; DROP TABLE library_items; DROP TABLE skills; DROP TABLE skill_off; DROP TABLE skill_imports; DROP TABLE routine_chats; DROP TABLE routine_runs; DROP TABLE routines; ALTER TABLE bots DROP COLUMN permission_mode; DROP TABLE bot_delete_defaults; ALTER TABLE bots DROP COLUMN deletion; PRAGMA user_version = 7"
+      "INSERT INTO bot_creations VALUES ('created-before-upgrade'); DROP TABLE computer_payloads; DROP TABLE computer_requests; DROP TABLE computer_bytes; DROP TABLE computer_nonces; DROP TABLE computer_codes; DROP TABLE computers; DROP TABLE thread_chats; DROP TABLE thread_deliveries; DROP TABLE threads; ALTER TABLE bot_prefs DROP COLUMN avatar_face_color; DROP TABLE library_items; DROP TABLE skills; DROP TABLE skill_off; DROP TABLE skill_imports; DROP TABLE routine_chats; DROP TABLE routine_runs; DROP TABLE routines; ALTER TABLE bots DROP COLUMN permission_mode; DROP TABLE bot_delete_defaults; ALTER TABLE bots DROP COLUMN deletion; PRAGMA user_version = 7"
     )
     db.close()
     const upgraded = openDatabase(path)
     expect(upgraded.query('SELECT bot_id FROM bot_creations').all()).toEqual([{ bot_id: 'created-before-upgrade' }])
-    expect((upgraded.query('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(14)
+    expect((upgraded.query('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(15)
     expect(new BotPrefsStore(upgraded).primaryBot()).toBeNull()
     upgraded.close()
   } finally {

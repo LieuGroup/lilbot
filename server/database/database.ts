@@ -96,7 +96,29 @@ const migrations: string[] = [
      sourceChat TEXT NOT NULL, text TEXT NOT NULL, kind TEXT NOT NULL, chatId TEXT, base INTEGER,
      status TEXT NOT NULL DEFAULT 'pending'
    );
-   CREATE TABLE thread_chats (chat_id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, thread_id TEXT NOT NULL);`
+   CREATE TABLE thread_chats (chat_id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, thread_id TEXT NOT NULL);`,
+  // Native computers: revocable public keys, one-use bootstrap and durable request identities.
+  `CREATE TABLE computers (id TEXT PRIMARY KEY, hello TEXT NOT NULL, public_key TEXT, last_seen INTEGER, key_conflict INTEGER NOT NULL DEFAULT 0, revoked INTEGER NOT NULL DEFAULT 0);
+   CREATE TABLE computer_codes (hash TEXT PRIMARY KEY, secret TEXT NOT NULL, expires_at INTEGER NOT NULL, name TEXT NOT NULL);
+   CREATE TABLE computer_nonces (computer_id TEXT NOT NULL, nonce TEXT NOT NULL, expires_at INTEGER NOT NULL, PRIMARY KEY(computer_id,nonce));
+   CREATE TABLE computer_requests (id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, computer_id TEXT NOT NULL REFERENCES computers(id), request_id TEXT NOT NULL,
+     status TEXT NOT NULL DEFAULT 'pending', created_at INTEGER NOT NULL, digest TEXT NOT NULL, size INTEGER NOT NULL,
+     background INTEGER NOT NULL DEFAULT 0, cancel_requested INTEGER NOT NULL DEFAULT 0, expires_at INTEGER, payload_bytes INTEGER NOT NULL DEFAULT 0, UNIQUE(bot_id,computer_id,request_id));
+   CREATE INDEX computer_nonce_expiry ON computer_nonces(expires_at);
+   CREATE INDEX computer_code_expiry ON computer_codes(expires_at);
+   CREATE TABLE computer_bytes (bot_id TEXT PRIMARY KEY, bytes INTEGER NOT NULL DEFAULT 0);
+   INSERT INTO computer_bytes VALUES ('',0);
+   CREATE TRIGGER computer_bytes_insert AFTER INSERT ON computer_requests BEGIN
+     INSERT INTO computer_bytes VALUES (NEW.bot_id,NEW.payload_bytes) ON CONFLICT(bot_id) DO UPDATE SET bytes=bytes+NEW.payload_bytes;
+     UPDATE computer_bytes SET bytes=bytes+NEW.payload_bytes WHERE bot_id='';
+   END;
+   CREATE TRIGGER computer_bytes_update AFTER UPDATE OF payload_bytes ON computer_requests BEGIN
+     UPDATE computer_bytes SET bytes=bytes+NEW.payload_bytes-OLD.payload_bytes WHERE bot_id IN ('',NEW.bot_id);
+   END;
+   CREATE INDEX computer_pending ON computer_requests(computer_id,status,created_at);
+   CREATE INDEX computer_bot_pending ON computer_requests(bot_id,computer_id,status);
+   CREATE INDEX computer_expiry ON computer_requests(expires_at) WHERE expires_at IS NOT NULL;
+   CREATE TABLE computer_payloads (id TEXT PRIMARY KEY REFERENCES computer_requests(id) ON DELETE CASCADE, operation TEXT, result TEXT);`
 ]
 
 /** `path` may be ':memory:' for tests. Applies any migration steps the file has not seen. */

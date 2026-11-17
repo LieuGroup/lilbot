@@ -1,3 +1,4 @@
+import { checkPublicPort, isTunnelRequest, plainServerError } from './http/listener-safety'
 /** LilBot server: serves the built web app and answers the browser's `/ws` requests through the bot engine.
  *  Binds to loopback only; reach it from other devices through the tailnet (`tailscale serve`). */
 
@@ -9,6 +10,9 @@ import { BotPrefsStore } from './bots/bot-prefs-store'
 import { BotService } from './bots/bot-service'
 import { BotStore } from './bots/bot-store'
 import { Workspaces } from './bots/workspaces'
+import { ComputerService } from './computers/computer-service'
+import { ComputerStore } from './computers/computer-store'
+import { loadServerKey } from './computers/server-key'
 import { createT3Bridge } from './connections/t3-bridge'
 import { T3_BRIDGE_PATH, T3_DEFAULT_MCP_URL, t3Connection } from './connections/t3-connection'
 import { T3Grants } from './connections/t3-grant'
@@ -17,6 +21,7 @@ import { HermesEngine } from './engines/hermes/hermes-engine'
 import { MEMORY_ADAPTER_VERSION } from './engines/hermes/hermes-memory-setup'
 import { BrowserSession } from './http/browser-session'
 import { createEngineApi, engineToken } from './http/engine-api'
+import { startPublicDoor } from './http/public-door'
 import { allowedHosts, socketAllowed } from './http/socket-guard'
 import { threadEvents } from './http/thread-events'
 import { LibraryService } from './library/library-service'
@@ -38,6 +43,8 @@ interface SocketData {
 }
 
 const PORT = Number(process.env.LILBOT_PORT ?? 3370)
+const PUBLIC_PORT = Number(process.env.LILBOT_PUBLIC_PORT ?? 3372)
+if (process.env.LILBOT_PUBLIC_ENABLED === '1') checkPublicPort(PUBLIC_PORT, PORT)
 const HOST = process.env.LILBOT_HOST ?? '127.0.0.1'
 /** LilBot's own database file lives here. */
 const DATA_DIR = process.env.LILBOT_DATA_DIR ?? join(homedir(), '.local', 'share', 'lilbot')
@@ -62,6 +69,15 @@ const memoryChanged = () => server.publish(EVERYONE, JSON.stringify({ event: 'me
 const token = engineToken(DATA_DIR)
 const store = new BotStore(database)
 const threadStore = new ThreadStore(database)
+const computers = new ComputerService(
+  new ComputerStore(database),
+  loadServerKey(DATA_DIR),
+  id => store.exists(id),
+  id => new Workspaces(WORKSPACES_DIR).pathFor(id),
+  () => server.publish(EVERYONE, JSON.stringify({ event: 'computers.changed' })),
+  id => store.get(id)?.permissionMode
+)
+setInterval(() => computers.tick(), 1000)
 const routineStore = new RoutineStore(database)
 const library = new LibraryService(
   new LibraryStore(database),
@@ -81,6 +97,7 @@ const bots = new BotService(engine, store, prefs, new Workspaces(WORKSPACES_DIR)
   skills,
   cleanupBot: botId => {
     routineStore.forgetBot(botId)
+    computers.forgetBot(botId)
     activity.forgetBot(botId)
     new ReviewQueue(database).forgetBot(botId)
   },
@@ -166,6 +183,7 @@ async function prepareMemory() {
 prepareMemory().catch(error => console.error('[memory] could not prepare memory for the bots:', error instanceof Error ? error.message : error))
 
 const engineApi = createEngineApi(memory, token, PORT, {
+  computers,
   bots,
   skills,
   routines,
@@ -195,54 +213,60 @@ async function serveStatic(pathname: string): Promise<Response> {
 }
 
 const server = Bun.serve<SocketData>({
+  development: false,
+  error: plainServerError,
   port: PORT,
   hostname: HOST,
   async fetch(request, server) {
-    const url = new URL(request.url)
-
-    if (url.pathname === '/ws') {
-      if (!socketAllowed(request, ALLOWED_HOSTS)) {
-        console.error(`[server] refused a socket for host ${request.headers.get('host')}`)
-        return new Response('Forbidden', { status: 403 })
-      }
-      if (server.upgrade(request, { data: {} })) return undefined
-      return new Response('Expected a WebSocket upgrade', { status: 400 })
-    }
-
-    if (url.pathname === T3_BRIDGE_PATH) {
-      // A proxied t3_thread_wait may take minutes; the default idle timeout would cut it off.
-      server.timeout(request, 0)
-      return t3Bridge(request)
-    }
-    if (url.pathname.startsWith('/engine/')) return engineApi(request, url.pathname)
-    if (url.pathname.startsWith('/api/library/')) {
-      if (!socketAllowed(request, ALLOWED_HOSTS) || request.headers.get('sec-fetch-site') === 'cross-site') return new Response('Forbidden', { status: 403 })
-      if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 })
-      const parts = url.pathname.split('/')
-      if (parts.length !== 5) return new Response('Not found', { status: 404 })
-      try {
-        const file = await library.content(decodeURIComponent(parts[3]), decodeURIComponent(parts[4]))
-        return new Response(file.data, {
-          headers: {
-            'Content-Type': file.mime,
-            'Content-Disposition': 'attachment',
-            'X-Content-Type-Options': 'nosniff',
-            'Content-Security-Policy': "sandbox; default-src 'none'",
-            'Cache-Control': 'no-store'
-          }
-        })
-      } catch {
-        return new Response('File missing or unavailable', { status: 404 })
-      }
-    }
-    if (url.pathname === '/api/health') return Response.json({ ok: true, engine: 'hermes' })
-    if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 })
-
     try {
-      return await serveStatic(url.pathname)
-    } catch (error) {
-      console.error('[server] static file failed:', error instanceof Error ? error.message : error)
-      return new Response('Not found', { status: 404 })
+      if (isTunnelRequest(request)) return new Response('Forbidden', { status: 403 })
+      const url = new URL(request.url)
+
+      if (url.pathname === '/ws') {
+        if (!socketAllowed(request, ALLOWED_HOSTS)) {
+          console.error(`[server] refused a socket for host ${request.headers.get('host')}`)
+          return new Response('Forbidden', { status: 403 })
+        }
+        if (server.upgrade(request, { data: {} })) return undefined
+        return new Response('Expected a WebSocket upgrade', { status: 400 })
+      }
+
+      if (url.pathname === T3_BRIDGE_PATH) {
+        server.timeout(request, 0)
+        return t3Bridge(request)
+      }
+      if (url.pathname.startsWith('/engine/')) return engineApi(request, url.pathname)
+      if (url.pathname.startsWith('/api/library/')) {
+        if (!socketAllowed(request, ALLOWED_HOSTS) || request.headers.get('sec-fetch-site') === 'cross-site') return new Response('Forbidden', { status: 403 })
+        if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 })
+        const parts = url.pathname.split('/')
+        if (parts.length !== 5) return new Response('Not found', { status: 404 })
+        try {
+          const file = await library.content(decodeURIComponent(parts[3]), decodeURIComponent(parts[4]))
+          return new Response(file.data, {
+            headers: {
+              'Content-Type': file.mime,
+              'Content-Disposition': 'attachment',
+              'X-Content-Type-Options': 'nosniff',
+              'Content-Security-Policy': "sandbox; default-src 'none'",
+              'Cache-Control': 'no-store'
+            }
+          })
+        } catch {
+          return new Response('File missing or unavailable', { status: 404 })
+        }
+      }
+      if (url.pathname === '/api/health') return Response.json({ ok: true, engine: 'hermes' })
+      if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 })
+
+      try {
+        return await serveStatic(url.pathname)
+      } catch (error) {
+        console.error('[server] static file failed:', error instanceof Error ? error.message : error)
+        return new Response('Not found', { status: 404 })
+      }
+    } catch {
+      return plainServerError()
     }
   },
   websocket: {
@@ -258,7 +282,8 @@ const server = Bun.serve<SocketData>({
         routines,
         library,
         threads,
-        () => ({ t3: t3Grants.status() })
+        () => ({ t3: t3Grants.status() }),
+        computers
       )
     },
     message(socket, message) {
@@ -277,3 +302,6 @@ try {
 }
 
 console.log(`LilBot listening on http://${server.hostname}:${server.port} (engine: Hermes)`)
+
+// Off until the dedicated tunnel is provisioned. Never target the private app port.
+if (process.env.LILBOT_PUBLIC_ENABLED === '1') startPublicDoor(computers, PUBLIC_PORT)

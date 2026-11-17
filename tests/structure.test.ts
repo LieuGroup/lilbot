@@ -74,3 +74,8 @@ test('routines do not depend on HTTP or a concrete engine', () => {
 test('threads depend only on neutral engine contracts and lower services', () => {
   expect([...crossings('server/threads', 'server/http'), ...crossings('server/threads', 'server/bots'), ...crossings('server/threads', 'server/engines/hermes')]).toEqual([])
 })
+
+test('computers are engine-neutral and never depend on HTTP or bot service', () => {
+  expect([...crossings('server/computers', 'server/http'), ...crossings('server/computers', 'server/bots'), ...crossings('server/computers', 'server/engines/hermes')]).toEqual([])
+  expect([...crossings('helper', 'server'), ...crossings('helper', 'web')]).toEqual([])
+})
