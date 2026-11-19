@@ -20,6 +20,7 @@ export interface BotServiceOptions {
   /** Called whenever a fact was saved or forgotten through the app. */
   memoryChanged?: () => void
   /** Where engine adapters reach LilBot's memory. Without it, bots are not connected to memory. */
+  history?: import('../history/history-service').HistoryService
   skills?: import('../skills/skills-service').SkillsService
   cleanupBot?: (botId: string) => void
   memoryConnection?: MemoryConnection
@@ -28,6 +29,7 @@ export interface BotServiceOptions {
 }
 
 export class BotService {
+  private history?: import('../history/history-service').HistoryService
   private skills?: import('../skills/skills-service').SkillsService
   private deletion: BotDeletion
   private runtimes: BotRuntimes
@@ -44,6 +46,7 @@ export class BotService {
     private memory: MemoryService,
     options: BotServiceOptions = {}
   ) {
+    this.history = options.history
     this.skills = options.skills
     this.runtimes = new BotRuntimes(store, engine, options.skills, options.memoryConnection, options.connections)
     this.creation = new BotCreation(this, store)
@@ -92,7 +95,8 @@ export class BotService {
             .runtimeAvailability(nativeId, available)
             .then(this.changed)
             .catch(() => this.changed())
-        }
+        },
+        (botId, chatId, event, key) => this.history?.record(botId, chatId, event, key)
       ) ?? (() => {})
     )
   }
@@ -234,11 +238,61 @@ export class BotService {
     await this.runtimes.state(bot)
     const workspace = await this.workspaces.ensure(botId)
     const main = this.prefs.mainChat(botId)
-    const chat = await this.runtimes.engineFor(bot).openChat(bot.engineBotId, chatId ?? main, { workspace, requireExisting }, onEvent)
+    const useHistory = !!this.history && !requireExisting && (!chatId || chatId === main)
+    const capture = this.capture(botId, onEvent, useHistory)
+    const chat = await this.runtimes.engineFor(bot).openChat(bot.engineBotId, chatId ?? main, { workspace, requireExisting, omitMessages: useHistory }, capture.event)
+    capture.opened(chat)
     chat.snapshot.botId = botId
     // First use, or the engine replaced a main conversation that no longer exists.
     if (!chatId && chat.snapshot.chatId !== main) this.prefs.setMainChat(botId, chat.snapshot.chatId)
+    if (this.history && useHistory) {
+      try {
+        await this.history.latest(bot, chat.snapshot)
+      } catch (error) {
+        chat.close()
+        throw error
+      }
+    }
     return chat
+  }
+
+  private capture(botId: string, onEvent: (event: ChatEvent) => void, enabled: boolean) {
+    let id = ''
+    const pending: ChatEvent[] = []
+    const event = (event: ChatEvent) => {
+      if (id && enabled) this.history?.record(botId, id, event)
+      else pending.push(event)
+      onEvent(event)
+    }
+    return {
+      event,
+      opened: (chat: OpenChat) => {
+        id = chat.snapshot.chatId
+        if (enabled) for (const e of pending) this.history?.record(botId, id, e)
+        const send = chat.send
+        chat.send = async (text, options) => {
+          if (enabled && !options?.hidden)
+            this.history?.record(botId, id, {
+              type: 'user.message',
+              messageId: options?.inputId ?? crypto.randomUUID(),
+              text,
+              attachments: [],
+              images: { support: 'unknown', imageCount: 0 }
+            })
+          return send(text, options)
+        }
+      }
+    }
+  }
+
+  historyReference(botId: string, chatId: string, item: Extract<import('../../shared/chat-schema').ChatItem, { kind: 'tool' }>, at: number) {
+    this.history?.store.reference(botId, chatId, item, at)
+  }
+
+  async historyPage(botId: string, cursor?: string, limit?: number) {
+    await this.requireBot(botId)
+    if (!this.history) throw new LilBotError('unavailable', 'History is unavailable.')
+    return this.history.store.page(botId, cursor, limit)
   }
 
   isMainChat(botId: string, chatId: string) {
@@ -251,9 +305,19 @@ export class BotService {
     await this.runtimes.initialize()
     await this.runtimes.state(bot)
     const workspace = await this.workspaces.ensure(botId)
-    const chat = await this.runtimes.engineFor(bot).openChat(bot.engineBotId, null, { workspace }, onEvent)
+    const capture = this.capture(botId, onEvent, true)
+    const chat = await this.runtimes.engineFor(bot).openChat(bot.engineBotId, null, { workspace }, capture.event)
+    capture.opened(chat)
     chat.snapshot.botId = botId
     this.prefs.setMainChat(botId, chat.snapshot.chatId)
+    if (this.history) {
+      try {
+        await this.history.latest(bot, chat.snapshot)
+      } catch (error) {
+        chat.close()
+        throw error
+      }
+    }
     return chat
   }
 

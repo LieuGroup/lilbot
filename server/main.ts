@@ -26,6 +26,8 @@ import { runningCommit } from './deploy/health'
 import { HermesEngine } from './engines/hermes/hermes-engine'
 import { MEMORY_ADAPTER_VERSION } from './engines/hermes/hermes-memory-setup'
 import { assertServerEnvironment } from './environment'
+import { HistoryService } from './history/history-service'
+import { HistoryStore } from './history/history-store'
 import { startAccessDoor } from './http/access-door'
 import { accessSettings } from './http/access-settings'
 import { appRoutes, type SocketData } from './http/app-routes'
@@ -117,9 +119,26 @@ const skills = new SkillsService(process.env.LILBOT_SKILLS_DIR ?? join(homedir()
 // (`bun run t3:sign-in`), and the coding instructions as the LilBot skill `t3-coding` (installed below).
 const t3Grants = new T3Grants(join(DATA_DIR, 't3-grant.json'), () => publish(EVERYONE, JSON.stringify({ event: 'connections.changed' })))
 const prefs = new BotPrefsStore(database)
+const history = new HistoryService(
+  new HistoryStore(database),
+  engine,
+  async () => {
+    await bots.listBots()
+    return store.list().filter(b => b.engineId === engine.id)
+  },
+  (bot, session) => store.exists(bot) && !routineStore.isRoutineChat(session) && !threadStore.isInternal(session),
+  (botId, chatId, rows) => rows.map(row => ({ ...row, item: attachments.merge({ botId, chatId, title: '', workspace: '', running: false, items: [row.item] }).items[0] })),
+  botId => publish(EVERYONE, JSON.stringify({ event: 'history.changed', botId }))
+)
+setInterval(
+  backgroundTask('history', () => history.tick()),
+  1000
+)
 const bots = new BotService(engine, store, prefs, new Workspaces(WORKSPACES_DIR), memory, {
   skills,
+  history,
   cleanupBot: botId => {
+    history.store.forget(botId)
     routineStore.forgetBot(botId)
     computers.forgetBot(botId)
     activity.forgetBot(botId)
@@ -160,7 +179,16 @@ const routines = new RoutineService(routineStore, bots, () => publish(EVERYONE, 
 const threads = new ThreadService(
   threadStore,
   bots,
-  () => threadEvents(threadStore, store, prefs, frame => publish(EVERYONE, JSON.stringify(frame))),
+  () =>
+    threadEvents(
+      threadStore,
+      store,
+      prefs,
+      frame => publish(EVERYONE, JSON.stringify(frame)),
+      (botId, chatId, item, at) => {
+        if (store.exists(botId)) history.store.reference(botId, chatId, item, at)
+      }
+    ),
   (d, working) => {
     for (const botId of [d.sender, d.target])
       if (store.exists(botId)) activity.observe({ botId, chatId: `thread:${d.id}`, key: `${d.id}:${working}:${Date.now()}`, status: working ? 'working' : 'finished' })
@@ -219,6 +247,7 @@ async function prepareMemory() {
 prepareMemory().catch(error => console.error('[memory] could not prepare memory for the bots:', error instanceof Error ? error.message : error))
 
 const engineApi = createEngineApi(memory, token, PORT, {
+  history,
   computers,
   deploymentNotice: () => deployNotice(DATA_DIR),
   bots,

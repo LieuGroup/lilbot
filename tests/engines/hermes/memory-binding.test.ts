@@ -13,8 +13,8 @@ spec = importlib.util.spec_from_file_location('adapter', sys.argv[1])
 module = importlib.util.module_from_spec(spec)
 sys.modules['adapter'] = module
 spec.loader.exec_module(module)
-assert module.VERSION == "0.8.0"
-assert "version: 0.8.0" in pathlib.Path(sys.argv[1]).with_name("plugin.yaml").read_text()
+assert module.VERSION == "0.9.0"
+assert "version: 0.9.0" in pathlib.Path(sys.argv[1]).with_name("plugin.yaml").read_text()
 tools = {tool["name"] for tool in module.LilBotMemoryProvider().get_tool_schemas()}
 assert {"ask_bot", "list_bots", "create_routine", "list_routines", "pause_routine", "resume_routine", "delete_routine", "give_file", "create_bot", "recall_memory", "update_memory"} <= tools
 calls = []
@@ -22,6 +22,13 @@ adapter = module.LilBotMemoryProvider()
 adapter._call = lambda endpoint, body: calls.append((endpoint, body)) or {}
 adapter.handle_tool_call("give_file", {"path": "result.txt", "title": "Result"})
 adapter.handle_tool_call("list_routines", {})
+adapter._token = "test-only"
+adapter.on_pre_compress([{"role": "user", "content": "likes orchids"}, {"role": "system", "content": "not evidence"}])
+assert calls[-1][0] == "history/save"
+assert "not evidence" not in calls[-1][1]["text"]
+calls.pop()
+adapter.handle_tool_call("search_conversations", {"query": "orchids"})
+assert calls.pop() == ("history/search", {"query": "orchids", "limit": 20})
 assert calls == [("library/give", {"path": "result.txt", "title": "Result"}), ("routines/list", {})]
 with tempfile.TemporaryDirectory() as directory:
     home = pathlib.Path(directory) / 'profiles' / 'native-id'

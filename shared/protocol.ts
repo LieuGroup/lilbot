@@ -61,6 +61,7 @@ export const methods = {
   /** Connects a bot to LilBot's memory and brings over the notes its engine kept. */
   'memory.connect': z.object({ botId }),
   /** Without `chatId`: the bot's main conversation, the same one on every device. */
+  'chat.history': z.object({ botId, cursor: z.string().max(2000).optional(), limit: z.number().int().min(1).max(100).default(100) }),
   'chat.open': z.object({ botId, chatId: chatId.optional() }),
   /** Starts a new session and makes it the bot's main conversation. */
   'chat.new': z.object({ botId }),
@@ -121,6 +122,7 @@ export interface Results {
   'memory.restore': { ok: true }
   'memory.pause': { ok: true }
   'memory.connect': { imported: number }
+  'chat.history': import('./history-schema').HistoryPage
   'chat.open': ChatSnapshot
   'chat.new': ChatSnapshot
   'chat.send': { ok: true; message?: import('./attachment-schema').AttachmentMessage }
@@ -144,6 +146,7 @@ export type EventFrame =
   | { event: 'library.changed'; botId: string }
   | { event: 'skills.changed' }
   | { event: 'threads.changed' }
+  | { event: 'history.changed'; botId: string }
   /** A connection's state changed (for example T3 Code refused LilBot's sign-in). */
   | { event: 'connections.changed' }
   | { event: 'computers.changed' }

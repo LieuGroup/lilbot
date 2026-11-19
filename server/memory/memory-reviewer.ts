@@ -50,6 +50,11 @@ export class MemoryReviewer {
     private botExists: (botId: string) => boolean = () => true
   ) {}
 
+  trackReview(chatId: string) {
+    this.reviewChats.push(chatId)
+    if (this.reviewChats.length > REMEMBERED_REVIEW_CHATS) this.reviewChats.shift()
+  }
+
   /** Whether this chat is a review session: its writes follow the stricter review rules. */
   isReview(chatId: string | undefined): boolean {
     return chatId !== undefined && this.reviewChats.includes(chatId)
@@ -90,8 +95,7 @@ export class MemoryReviewer {
       await this.engine.reviewMemory(botId, reviewPrompt(turns), {
         model: this.settings.model,
         onChat: chatId => {
-          this.reviewChats.push(chatId)
-          if (this.reviewChats.length > REMEMBERED_REVIEW_CHATS) this.reviewChats.shift()
+          this.trackReview(chatId)
         }
       })
       this.queue.done(botId, turns[turns.length - 1].id)

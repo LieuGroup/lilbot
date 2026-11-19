@@ -26,7 +26,8 @@
     "t3:sign-in": "bun server/connections/t3-sign-in-cli.ts",
     "deploy": "bun server/deploy/deploy-cli.ts",
     "check:deploy": "bun live-checks/deploy-check.ts",
-    "dev:setup": "bun scripts/dev-setup.ts"
+    "dev:setup": "bun scripts/dev-setup.ts",
+    "check:history": "bun live-checks/history-check.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

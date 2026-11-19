@@ -18,6 +18,7 @@ import type { MemoryReviewer } from '../memory/memory-reviewer'
 import { type MemoryService, shortId } from '../memory/memory-service'
 import type { RoutineService } from '../routines/routine-service'
 import { computerApi } from './computer-api'
+import { historyApi } from './history-api'
 import { routineApi } from './routine-api'
 
 const botId = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/)
@@ -61,6 +62,7 @@ const forBot = (fact: MemoryFact, reader: string) => ({
 const json = (status: number, body: unknown) => Response.json(body, { status })
 
 export interface EngineApiOptions {
+  history?: import('../history/history-service').HistoryService
   deploymentNotice?: () => string | undefined
   threads?: import('../threads/thread-service').ThreadService
   computers?: import('../computers/computer-service').ComputerService
@@ -112,12 +114,15 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
       pathname.startsWith('/engine/routines/') ||
       pathname.startsWith('/engine/skills/') ||
       pathname.startsWith('/engine/threads/') ||
+      pathname.startsWith('/engine/history/') ||
       pathname.startsWith('/engine/computers/')
     ) {
       try {
         const capability = request.headers.get('x-lilbot-bot-capability') ?? ''
         const caller = (await options.bots?.listBots())?.find(bot => matchesCapability(token, bot.id, capability))
         if (!caller || !options.bots || !options.botExists(caller.id)) return json(403, { error: 'Unknown bot credential.' })
+        if (pathname.startsWith('/engine/history/'))
+          return json(200, await historyApi(caller.id, pathname.slice('/engine/history/'.length), await request.json(), options.history, options.bots, options.reviewer))
         if (pathname.startsWith('/engine/threads/')) {
           if (!options.threads) return json(503, { error: 'Threads unavailable.' })
           const body = await request.json()

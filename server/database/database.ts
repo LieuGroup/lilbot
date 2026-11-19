@@ -1,4 +1,4 @@
-/** LilBot owns bot identity, engine bindings, preferences and memory. Chats stay with engines. */
+/** LilBot owns bot identity, engine bindings, preferences and memory. Conversation records also live here; engines own working context. */
 import { Database } from 'bun:sqlite'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
@@ -124,7 +124,19 @@ const migrations: string[] = [
    ALTER TABLE computer_requests ADD COLUMN received_bytes INTEGER NOT NULL DEFAULT 0;
    CREATE INDEX computer_bot_active ON computer_requests(bot_id,status) WHERE status IN ('pending','running');`,
   `CREATE TABLE attachments (id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, data TEXT NOT NULL);
-   CREATE TABLE attachment_messages (id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, chat_id TEXT NOT NULL, data TEXT NOT NULL);`
+   CREATE TABLE attachment_messages (id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, chat_id TEXT NOT NULL, data TEXT NOT NULL);`,
+  `CREATE TABLE history_sessions(bot TEXT NOT NULL,id TEXT NOT NULL,at INTEGER NOT NULL,cursor TEXT,complete INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(bot,id));
+   CREATE TABLE history_imports(bot TEXT PRIMARY KEY);
+   CREATE TABLE history_items(bot TEXT NOT NULL,session TEXT NOT NULL,id TEXT NOT NULL,at INTEGER NOT NULL,position INTEGER NOT NULL,item TEXT NOT NULL,text TEXT NOT NULL,UNIQUE(bot,id));
+   CREATE INDEX history_order ON history_items(bot,session,at,position);
+   CREATE INDEX history_session_order ON history_sessions(bot,at,id);
+   CREATE TABLE history_events(bot TEXT NOT NULL,session TEXT NOT NULL,at INTEGER NOT NULL,event TEXT NOT NULL,key TEXT NOT NULL,UNIQUE(bot,session,key));
+   CREATE VIRTUAL TABLE history_search USING fts5(text,content='history_items',content_rowid='rowid');
+   CREATE TRIGGER history_added AFTER INSERT ON history_items BEGIN INSERT INTO history_search(rowid,text) VALUES(new.rowid,new.text); END;
+   CREATE TRIGGER history_removed AFTER DELETE ON history_items BEGIN INSERT INTO history_search(history_search,rowid,text) VALUES('delete',old.rowid,old.text); END;
+   CREATE TRIGGER history_updated AFTER UPDATE ON history_items BEGIN
+     INSERT INTO history_search(history_search,rowid,text) VALUES('delete',old.rowid,old.text);
+     INSERT INTO history_search(rowid,text) VALUES(new.rowid,new.text); END;`
 ]
 
 /** `path` may be ':memory:' for tests. Applies any migration steps the file has not seen. */

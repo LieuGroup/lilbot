@@ -55,7 +55,7 @@ test('migration gives an existing identity full access without losing fields', a
       CREATE TABLE bots (id TEXT PRIMARY KEY, name TEXT, function TEXT, instructions TEXT, model TEXT,
       is_default INTEGER, engine_id TEXT, engine_bot_id TEXT);
       INSERT INTO bots VALUES ('old', 'Existing', 'work', 'instructions', NULL, 0, 'test', 'native');
-      DROP TABLE IF EXISTS attachment_messages; DROP TABLE IF EXISTS attachments; PRAGMA user_version = 6;`)
+      DROP TABLE IF EXISTS history_search; DROP TABLE IF EXISTS history_items; DROP TABLE IF EXISTS history_sessions; DROP TABLE IF EXISTS history_events; DROP TABLE IF EXISTS history_imports; DROP TABLE IF EXISTS attachment_messages; DROP TABLE IF EXISTS attachments; PRAGMA user_version = 6;`)
     old.close()
     const db = openDatabase(path)
     expect(new BotStore(db).get('old')).toMatchObject({ name: 'Existing', instructions: 'instructions', permissionMode: 'full-access', engineBotId: 'native' })
@@ -91,7 +91,7 @@ test('shipped deletion schema upgrades without changing tombstones or deletion d
     store.markDeleted(store.get('deleted'), choices)
     store.setDeleteDefaults(choices)
     db.exec(
-      'DROP TABLE library_items; DROP TABLE computer_payloads; DROP TABLE computer_requests; DROP TABLE computer_bytes; DROP TABLE computer_nonces; DROP TABLE computer_codes; DROP TABLE computers; DROP TABLE thread_chats; DROP TABLE thread_deliveries; DROP TABLE threads; ALTER TABLE bot_prefs DROP COLUMN avatar_face_color; DROP TABLE skills; DROP TABLE skill_off; DROP TABLE skill_imports; DROP TABLE routine_chats; DROP TABLE routine_runs; DROP TABLE routines; ALTER TABLE bots DROP COLUMN permission_mode; DROP TABLE IF EXISTS attachment_messages; DROP TABLE IF EXISTS attachments; PRAGMA user_version = 8'
+      'DROP TABLE library_items; DROP TABLE computer_payloads; DROP TABLE computer_requests; DROP TABLE computer_bytes; DROP TABLE computer_nonces; DROP TABLE computer_codes; DROP TABLE computers; DROP TABLE thread_chats; DROP TABLE thread_deliveries; DROP TABLE threads; ALTER TABLE bot_prefs DROP COLUMN avatar_face_color; DROP TABLE skills; DROP TABLE skill_off; DROP TABLE skill_imports; DROP TABLE routine_chats; DROP TABLE routine_runs; DROP TABLE routines; ALTER TABLE bots DROP COLUMN permission_mode; DROP TABLE IF EXISTS history_search; DROP TABLE IF EXISTS history_items; DROP TABLE IF EXISTS history_sessions; DROP TABLE IF EXISTS history_events; DROP TABLE IF EXISTS history_imports; DROP TABLE IF EXISTS attachment_messages; DROP TABLE IF EXISTS attachments; PRAGMA user_version = 8'
     )
     db.close()
     const upgraded = openDatabase(path)
@@ -99,7 +99,7 @@ test('shipped deletion schema upgrades without changing tombstones or deletion d
     expect(restored.list()).toEqual([])
     expect(restored.deleted('deleted')).toMatchObject({ bot: { name: 'Remembered', permissionMode: 'full-access' }, choices })
     expect(restored.deleteDefaults()).toEqual(choices)
-    expect(upgraded.query('PRAGMA user_version').get()).toEqual({ user_version: 17 })
+    expect(upgraded.query('PRAGMA user_version').get()).toEqual({ user_version: 18 })
     upgraded.close()
   } finally {
     rmSync(root, { recursive: true, force: true })

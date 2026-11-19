@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 NAME = Path(__file__).resolve().parent.name
 SETTINGS_FILE = "lilbot-memory.json"
 # Keep equal to plugin.yaml. LilBot warns when a bot still calls with an older one.
-VERSION = "0.8.0"
+VERSION = "0.9.0"
 DEFAULT_URL = "http://127.0.0.1:3370"
 DEFAULT_TOKEN_FILE = "~/.local/share/lilbot/engine-token"
 TIMEOUT_SECONDS = 5
@@ -149,13 +149,13 @@ class LilBotMemoryProvider(MemoryProvider):
         if not self._token:
             return {"error": "Memory is not connected to LilBot."}
         request = urllib.request.Request(
-            f"{self._url}/engine/{endpoint}" if endpoint.startswith(("bots/", "routines/", "library/", "threads/")) else f"{self._url}/engine/memory/{endpoint}",
+            f"{self._url}/engine/{endpoint}" if endpoint.startswith(("bots/", "routines/", "library/", "threads/", "history/")) else f"{self._url}/engine/memory/{endpoint}",
             data=json.dumps({"botId": self._bot, **({"chatId": self._chat} if self._chat else {}), **body}).encode(),
             headers={"Content-Type": "application/json", "Authorization": f"Bearer {self._token}", "X-LilBot-Adapter-Version": VERSION, "X-LilBot-Bot-Capability": self._creation_capability},
             method="POST",
         )
         try:
-            with urllib.request.urlopen(request, timeout=180 if endpoint.startswith(("bots/", "routines/")) else TIMEOUT_SECONDS) as response:
+            with urllib.request.urlopen(request, timeout=240 if endpoint.startswith(("bots/", "routines/", "history/save")) else TIMEOUT_SECONDS) as response:
                 return json.loads(response.read())
         except urllib.error.HTTPError as error:
             try:
@@ -194,11 +194,29 @@ class LilBotMemoryProvider(MemoryProvider):
         except Exception as error:  # the review is a safety net; a failed hand-off must not surface
             logger.debug("lilbot-memory: could not hand the turn to LilBot: %s", error)
 
+    def on_pre_compress(self, messages: list[dict[str, Any]]) -> str:
+        """Synchronous opportunity to save before Hermes compresses. No model runs in LilBot."""
+        if not self._primary or not self._token:
+            return ""
+        # Only conversational text, never system prompts, tool secrets or credentials.
+        evidence = [{"role": m.get("role"), "text": m.get("content", m.get("text", ""))}
+                    for m in messages if m.get("role") in ("user", "assistant")]
+        text = json.dumps(evidence, ensure_ascii=False)[-100000:]
+        result = self._call("history/save", {"text": text, "chatId": self._chat})
+        if result.get("saved"):
+            return "Lasting facts were reviewed for saving to LilBot memory before this summary."
+        logger.warning("lilbot-memory: pre-compression saving did not complete")
+        return ""
+
     def on_session_switch(self, new_session_id: str, **kwargs) -> None:
         self._chat = str(new_session_id or self._chat)
 
     def get_tool_schemas(self) -> list[dict[str, Any]]:
-        return list(TOOLS) + ROUTINE_TOOLS + THREAD_TOOLS + [{
+        return [{
+            "name": "search_conversations",
+            "description": "Search your own past conversations with Oscar, including earlier sessions. Returns snippets with stable ids and times. Excludes other bots, threads and routine runs. Use this to recover details no longer in context.",
+            "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["query"]}
+        }] + list(TOOLS) + ROUTINE_TOOLS + THREAD_TOOLS + [{
             "name": "give_file",
             "description": "Give Oscar a finished file from your workspace. It appears in your Library. Use a short title. Working files are not given automatically. The file must be inside your workspace and at most 50 MiB.",
             "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "title": {"type": "string"}}, "required": ["path", "title"]}
@@ -209,6 +227,8 @@ class LilBotMemoryProvider(MemoryProvider):
         }]
 
     def handle_tool_call(self, tool_name: str, args: dict[str, Any], **kwargs) -> str:
+        if tool_name == "search_conversations":
+            return json.dumps(self._call("history/search", {"query": str(args.get("query") or ""), "limit": args.get("limit", 20)}))
         if tool_name in THREAD_ACTIONS:
             return json.dumps(self._call("threads/" + THREAD_ACTIONS[tool_name], {**args, "chatId": self._chat}))
         if tool_name in ROUTINE_ACTIONS:
