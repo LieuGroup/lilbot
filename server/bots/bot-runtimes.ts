@@ -9,8 +9,6 @@ import type { BotRecord, BotStore } from './bot-store'
 
 export class BotRuntimes {
   private importing?: Promise<void>
-  private initialized = false
-  private skillsImported = new Set<string>()
   private prepared = new Set<string>()
   private states = new Map<string, RuntimeState | null>()
   constructor(
@@ -42,27 +40,22 @@ export class BotRuntimes {
   }
 
   initialize(): Promise<void> {
-    if (this.initialized) return Promise.resolve()
     if (!this.importing) {
       this.importing = (async () => {
         await this.load()
         for (const bot of this.store.list().filter(bot => bot.engineId === this.engine.id)) {
           try {
             if (!this.store.exists(bot.id)) continue
-            if (!this.prepared.has(bot.id)) {
-              this.validateMode(bot)
-              await this.engineFor(bot).prepareRuntime?.(bot.engineBotId, bot)
-              this.prepared.add(bot.id)
-            }
+            await this.prepare(bot)
             await this.state(bot)
           } catch (error) {
             this.states.set(bot.id, null)
             if (!(error instanceof LilBotError) || !['bot_not_found', 'runtime_unavailable', 'engine_unavailable', 'engine_timeout'].includes(error.code)) throw error
           }
         }
-        this.initialized = true
-      })().finally(() => {
+      })().catch(error => {
         this.importing = undefined
+        throw error
       })
     }
     return this.importing
@@ -76,6 +69,13 @@ export class BotRuntimes {
   engineFor(bot: BotRecord): BotEngine {
     if (bot.engineId !== this.engine.id) throw new LilBotError('runtime_unavailable', 'This bot’s engine is not available.')
     return this.engine
+  }
+
+  private async prepare(bot: BotRecord) {
+    if (this.prepared.has(bot.id)) return
+    this.validateMode(bot)
+    await this.engineFor(bot).prepareRuntime?.(bot.engineBotId, bot)
+    this.prepared.add(bot.id)
   }
 
   private validateMode(bot: Pick<BotRecord, 'permissionMode'>) {
@@ -100,10 +100,9 @@ export class BotRuntimes {
         }
       }
       if (this.skills && this.connection) {
-        if (!this.skillsImported.has(bot.id) && !this.skills.importedBot(bot.id)) {
+        if (!this.skills.importedBot(bot.id)) {
           for (const path of this.engine.userSkillPaths?.(bot.engineBotId) ?? []) this.skills.import(path, files(path))
           this.skills.markBotImported(bot.id)
-          this.skillsImported.add(bot.id)
         }
         await this.engine.configureSkills?.(bot.engineBotId, {
           root: this.skills.root,
@@ -139,8 +138,7 @@ export class BotRuntimes {
     if (failed) throw new Error('Connection refresh incomplete')
   }
 
-  async optionalState(bot: BotRecord): Promise<RuntimeState | null> {
-    await this.load()
+  snapshot(bot: BotRecord): RuntimeState | null {
     return this.states.get(bot.id) ?? null
   }
 
@@ -156,19 +154,12 @@ export class BotRuntimes {
     if (!available) this.states.set(bot.id, null)
     else {
       await this.state(bot)
-      if (!this.prepared.has(bot.id)) {
-        await this.engineFor(bot).prepareRuntime?.(bot.engineBotId, bot)
-        this.prepared.add(bot.id)
-      }
+      await this.prepare(bot)
     }
   }
 
   pending(bot: BotRecord): boolean {
     return bot.engineId === this.engine.id && !this.states.has(bot.id)
-  }
-
-  async available(bot: BotRecord): Promise<boolean> {
-    return (await this.optionalState(bot)) !== null
   }
 
   async create(input: BotCreateInput, id: string = crypto.randomUUID()): Promise<BotRecord> {
@@ -193,14 +184,13 @@ export class BotRuntimes {
     this.store.save(bot)
     const nativeId = await this.engine.createRuntime(bot)
     if (nativeId !== bot.engineBotId) this.store.bind(bot.id, nativeId)
-    this.skillsImported.add(bot.id)
     this.skills?.markBotImported(bot.id)
     const saved = this.store.get(bot.id)
     await this.state(saved)
     return saved
   }
 
-  async update({ botId, ...patch }: BotUpdateInput): Promise<BotRecord> {
+  async update({ botId, ...patch }: BotUpdateInput): Promise<void> {
     const previous = await this.require(botId)
     const bot = { ...previous, ...patch }
     this.validateMode(bot)
@@ -208,6 +198,5 @@ export class BotRuntimes {
     this.store.save(bot)
     if (bot.permissionMode !== previous.permissionMode) await this.engineFor(bot).prepareRuntime?.(bot.engineBotId, bot)
     await this.state(bot)
-    return bot
   }
 }

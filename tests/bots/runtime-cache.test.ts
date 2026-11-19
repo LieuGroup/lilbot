@@ -33,10 +33,10 @@ test('runtime disappearance invalidates cached availability and return refreshes
   const runtimes = new BotRuntimes(store, engine)
   await runtimes.initialize()
   await runtimes.runtimeAvailability('b1', false)
-  expect(await runtimes.available(store.get('b1'))).toBe(false)
+  expect(runtimes.snapshot(store.get('b1')) !== null).toBe(false)
   engine.applyIdentity = async () => ({ abilities: [{ kind: 'toolset', id: 'new', label: 'New', enabled: true }], memoryConnected: true })
   await runtimes.runtimeAvailability('b1', true)
-  expect(await runtimes.optionalState(store.get('b1'))).toEqual({ abilities: [{ kind: 'toolset', id: 'new', label: 'New', enabled: true }], memoryConnected: true })
+  expect(runtimes.snapshot(store.get('b1'))).toEqual({ abilities: [{ kind: 'toolset', id: 'new', label: 'New', enabled: true }], memoryConnected: true })
 })
 
 test('failed startup retries do not prepare successfully prepared bots again', async () => {
@@ -67,7 +67,7 @@ test('missing runtime reported during use makes subsequent reads unavailable wit
     throw new LilBotError('bot_not_found', 'gone')
   }
   await expect(runtimes.state(store.get('b1'))).rejects.toThrow('gone')
-  expect(await runtimes.available(store.get('b1'))).toBe(false)
+  expect(runtimes.snapshot(store.get('b1')) !== null).toBe(false)
 })
 
 test('only a changed permission mode prepares policy during updates', async () => {
@@ -127,7 +127,7 @@ test('computer plugin failure does not hide an otherwise usable bot and retries 
   }
   const runtimes = new BotRuntimes(store, engine, undefined, { url: 'http://localhost', tokenFile: '/unused', botId: 'b1' })
   await runtimes.initialize()
-  expect(await runtimes.available(store.get('b1'))).toBe(true)
+  expect(runtimes.snapshot(store.get('b1')) !== null).toBe(true)
   await runtimes.state(store.get('b1'))
   expect(attempts).toBe(2)
 })

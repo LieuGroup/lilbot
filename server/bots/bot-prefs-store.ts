@@ -17,8 +17,6 @@ interface PrefsRow {
   main_chat_id: string | null
 }
 
-export type PrefsPatch = Partial<BotPrefs>
-
 function prefsFrom(botId: string, row: PrefsRow | null): BotPrefs {
   // A stored avatar that is no longer in the lists (they changed) falls back like a missing one.
   const stored = Avatar.safeParse({ shape: row?.avatar_shape, color: row?.avatar_color, faceColor: row?.avatar_face_color ?? undefined })
@@ -47,7 +45,7 @@ export class BotPrefsStore {
     return new Map(botIds.map(botId => [botId, prefsFrom(botId, rows.get(botId) ?? null)]))
   }
 
-  setPrefs(botId: string, patch: PrefsPatch): BotPrefs {
+  setPrefs(botId: string, patch: Partial<BotPrefs>): BotPrefs {
     if (patch.sectionId && !this.db.query('SELECT 1 FROM sections WHERE id = ?').get(patch.sectionId)) {
       throw new LilBotError('section_not_found', 'That section does not exist.')
     }

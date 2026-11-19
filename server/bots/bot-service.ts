@@ -4,8 +4,9 @@ import type { Bot, BotCreateInput, BotDetail, BotPrefsInput, BotUpdateInput, Mod
 import type { ChatEvent } from '../../shared/chat-schema'
 import type { MemoryFact, MemoryWriteInput } from '../../shared/memory-schema'
 import { LilBotError } from '../../shared/protocol'
-import type { ActivityCursor, BotEngine, McpConnection, MemoryConnection, OpenChat } from '../engines/bot-engine'
+import type { ActivityCursor, BotEngine, McpConnection, MemoryConnection } from '../engines/bot-engine'
 import type { MemoryService } from '../memory/memory-service'
+import { BotConversations } from './bot-conversations'
 import { BotCreation } from './bot-creation'
 import { BotDeletion } from './bot-deletion'
 import { BotMemory } from './bot-memory'
@@ -19,7 +20,6 @@ export interface BotServiceOptions {
   changed?: () => void
   /** Called whenever a fact was saved or forgotten through the app. */
   memoryChanged?: () => void
-  /** Where engine adapters reach LilBot's memory. Without it, bots are not connected to memory. */
   history?: import('../history/history-service').HistoryService
   skills?: import('../skills/skills-service').SkillsService
   cleanupBot?: (botId: string) => void
@@ -30,6 +30,7 @@ export interface BotServiceOptions {
 
 export class BotService {
   private history?: import('../history/history-service').HistoryService
+  private conversations: BotConversations
   private skills?: import('../skills/skills-service').SkillsService
   private deletion: BotDeletion
   private runtimes: BotRuntimes
@@ -49,6 +50,7 @@ export class BotService {
     this.history = options.history
     this.skills = options.skills
     this.runtimes = new BotRuntimes(store, engine, options.skills, options.memoryConnection, options.connections)
+    this.conversations = new BotConversations(this.runtimes, prefs, workspaces, options.history)
     this.creation = new BotCreation(this, store)
     this.changed = options.changed ?? (() => {})
     this.memoryChanged = options.memoryChanged ?? (() => {})
@@ -114,31 +116,29 @@ export class BotService {
     const identities = this.runtimes.store.list()
     const prefs = this.prefs.prefsFor(identities.map(bot => bot.id))
     const primaryId = this.primaryId(identities)
-    return Promise.all(
-      identities.map(async identity => ({
-        ...this.identity(identity),
-        runnable: await this.runtimes.available(identity),
-        runtimePending: this.runtimes.pending(identity),
-        isPrimary: identity.id === primaryId,
-        prefs: prefs.get(identity.id) ?? this.prefs.prefs(identity.id),
-        workspace: this.workspaces.pathFor(identity.id)
-      }))
-    )
+    return identities.map(identity => ({
+      ...this.identity(identity),
+      runnable: this.runtimes.snapshot(identity) !== null,
+      runtimePending: this.runtimes.pending(identity),
+      isPrimary: identity.id === primaryId,
+      prefs: prefs.get(identity.id)!,
+      workspace: this.workspaces.pathFor(identity.id)
+    }))
   }
 
   async getBot(botId: string): Promise<BotDetail> {
     const bot = await this.requireBot(botId)
-    const state = await this.runtimes.optionalState(bot)
-    const runnable = state !== null
+    const state = this.runtimes.snapshot(bot)
+    const skills = this.skills?.list(botId) ?? []
     return {
       ...this.identity(bot),
       instructions: bot.instructions,
-      ...(state ?? { abilities: [], memoryConnected: false }),
+      memoryConnected: state?.memoryConnected ?? false,
       abilities: [
-        ...(state?.abilities ?? []).filter(a => a.kind !== 'skill' || !this.skills?.list(botId).some(s => s.name === a.id)),
-        ...(this.skills?.list(botId).map(s => ({ kind: 'skill' as const, id: s.name, label: s.name, enabled: s.enabled })) ?? [])
+        ...(state?.abilities ?? []).filter(a => a.kind !== 'skill' || !skills.some(s => s.name === a.id)),
+        ...skills.map(s => ({ kind: 'skill' as const, id: s.name, label: s.name, enabled: s.enabled }))
       ],
-      runnable,
+      runnable: state !== null,
       runtimePending: this.runtimes.pending(bot),
       ...this.own(bot)
     }
@@ -150,7 +150,7 @@ export class BotService {
       if (input.avatar) this.prefs.setPrefs(identity.id, { avatar: input.avatar })
       await this.workspaces.ensure(identity.id)
       await this.botMemory.connectNew(identity.id)
-      return { ...this.identity(identity), runnable: await this.runtimes.available(identity), runtimePending: this.runtimes.pending(identity), ...this.own(identity) }
+      return this.summary(identity)
     } finally {
       this.changed()
     }
@@ -169,7 +169,7 @@ export class BotService {
     const identity = await this.requireBot(botId)
     this.prefs.setPrefs(botId, patch)
     this.changed()
-    return { ...this.identity(identity), runnable: await this.runtimes.available(identity), runtimePending: this.runtimes.pending(identity), ...this.own(identity) }
+    return this.summary(identity)
   }
 
   /** The user adds a fact from the app. */
@@ -230,59 +230,12 @@ export class BotService {
     this.changed()
   }
 
-  /** Without `chatId`: the bot's main conversation, created on first use and the same for every
-   *  device from then on. With `chatId`: that chat, leaving the main conversation as it is. */
-  async openChat(botId: string, chatId: string | undefined, onEvent: (event: ChatEvent) => void, requireExisting = false): Promise<OpenChat> {
-    const bot = await this.requireBot(botId)
-    await this.runtimes.initialize()
-    await this.runtimes.state(bot)
-    const workspace = await this.workspaces.ensure(botId)
-    const main = this.prefs.mainChat(botId)
-    const useHistory = !!this.history && !requireExisting && (!chatId || chatId === main)
-    const capture = this.capture(botId, onEvent, useHistory)
-    const chat = await this.runtimes.engineFor(bot).openChat(bot.engineBotId, chatId ?? main, { workspace, requireExisting, omitMessages: useHistory }, capture.event)
-    capture.opened(chat)
-    chat.snapshot.botId = botId
-    // First use, or the engine replaced a main conversation that no longer exists.
-    if (!chatId && chat.snapshot.chatId !== main) this.prefs.setMainChat(botId, chat.snapshot.chatId)
-    if (this.history && useHistory) {
-      try {
-        await this.history.latest(bot, chat.snapshot)
-      } catch (error) {
-        chat.close()
-        throw error
-      }
-    }
-    return chat
+  openChat(botId: string, chatId: string | undefined, onEvent: (event: ChatEvent) => void, requireExisting = false) {
+    return this.conversations.open(botId, chatId, onEvent, requireExisting)
   }
 
-  private capture(botId: string, onEvent: (event: ChatEvent) => void, enabled: boolean) {
-    let id = ''
-    const pending: ChatEvent[] = []
-    const event = (event: ChatEvent) => {
-      if (id && enabled) this.history?.record(botId, id, event)
-      else pending.push(event)
-      onEvent(event)
-    }
-    return {
-      event,
-      opened: (chat: OpenChat) => {
-        id = chat.snapshot.chatId
-        if (enabled) for (const e of pending) this.history?.record(botId, id, e)
-        const send = chat.send
-        chat.send = async (text, options) => {
-          if (enabled && !options?.hidden)
-            this.history?.record(botId, id, {
-              type: 'user.message',
-              messageId: options?.inputId ?? crypto.randomUUID(),
-              text,
-              attachments: [],
-              images: { support: 'unknown', imageCount: 0 }
-            })
-          return send(text, options)
-        }
-      }
-    }
+  newChat(botId: string, onEvent: (event: ChatEvent) => void) {
+    return this.conversations.open(botId, null, onEvent)
   }
 
   historyReference(botId: string, chatId: string, item: Extract<import('../../shared/chat-schema').ChatItem, { kind: 'tool' }>, at: number) {
@@ -298,29 +251,6 @@ export class BotService {
   isMainChat(botId: string, chatId: string) {
     return this.prefs.mainChat(botId) === chatId
   }
-
-  /** A new session, which becomes the bot's main conversation. The earlier one stays in the engine. */
-  async newChat(botId: string, onEvent: (event: ChatEvent) => void): Promise<OpenChat> {
-    const bot = await this.requireBot(botId)
-    await this.runtimes.initialize()
-    await this.runtimes.state(bot)
-    const workspace = await this.workspaces.ensure(botId)
-    const capture = this.capture(botId, onEvent, true)
-    const chat = await this.runtimes.engineFor(bot).openChat(bot.engineBotId, null, { workspace }, capture.event)
-    capture.opened(chat)
-    chat.snapshot.botId = botId
-    this.prefs.setMainChat(botId, chat.snapshot.chatId)
-    if (this.history) {
-      try {
-        await this.history.latest(bot, chat.snapshot)
-      } catch (error) {
-        chat.close()
-        throw error
-      }
-    }
-    return chat
-  }
-
   async runRoutine(botId: string, prompt: string, options: import('../engines/bot-engine').RoutineOptions) {
     const bot = await this.requireBot(botId)
     await this.runtimes.state(bot)
@@ -328,6 +258,10 @@ export class BotService {
     // Deletion may have completed while the engine was running; do not restore its activity.
     await this.requireBot(botId)
     return result
+  }
+
+  private summary(bot: BotRecord): Bot {
+    return { ...this.identity(bot), runnable: this.runtimes.snapshot(bot) !== null, runtimePending: this.runtimes.pending(bot), ...this.own(bot) }
   }
 
   private identity(bot: BotRecord) {

@@ -16,7 +16,7 @@ export class BotMemory {
     const deleted = this.runtimes.store.deleted(botId)
     if (deleted) return { connected: false, botName: deleted.bot.name, ...this.memory.panel(botId) }
     const bot = await this.runtimes.require(botId)
-    const state = await this.runtimes.optionalState(bot)
+    const state = this.runtimes.snapshot(bot)
     return { connected: state?.memoryConnected ?? false, botName: bot.name, ...this.memory.panel(botId) }
   }
 
@@ -41,7 +41,7 @@ export class BotMemory {
     await this.runtimes.initialize()
     const connected: string[] = []
     for (const bot of this.runtimes.store.list()) {
-      const state = await this.runtimes.optionalState(bot)
+      const state = this.runtimes.snapshot(bot)
       if (!state || state.memoryConnected) continue
       await this.connect(bot.id)
       connected.push(bot.id)
