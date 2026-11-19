@@ -6,7 +6,7 @@ import type { Attachment } from '../../../shared/attachment-schema'
 import { lilbot, messageOf } from '../app/lilbot-socket'
 import { newMessageId } from '../attachments/attachment-rules'
 import { useBotStore } from '../bots/bot-store'
-import { applyChatEvent, chatFromHistory, chatFromSnapshot, emptyChat, type UserItem, withError, withSentMessage, withUserMessage } from './chat-state'
+import { applyChatEvent, chatFromHistory, chatFromSnapshot, type UserItem, withError, withNewSession, withSentMessage, withUserMessage } from './chat-state'
 import { emptySlot, updateChat, useChatStore } from './chat-store'
 
 const REOPEN_DELAY_MS = 3000
@@ -104,10 +104,11 @@ export function useChat(botId: string) {
     }
   }, [botId])
 
-  /** Start a new session; it becomes this bot's main conversation on every device. */
+  /** Start a new session; it becomes this bot's main conversation on every device. The history
+   *  stays on screen with a divider where the new session begins. */
   const newChat = useCallback(() => {
     startNew.current = true
-    updateChat(botId, current => ({ ...current, view: emptyChat, ready: false }))
+    updateChat(botId, current => ({ ...current, view: withNewSession(current.view), ready: false }))
     setOpenCount(count => count + 1)
   }, [botId])
 

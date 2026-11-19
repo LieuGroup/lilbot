@@ -55,6 +55,7 @@ web/src/           The web app (what you see in the browser).
   app/               start-up, the routes, the connection to the server, styles
   bots/              roster, bot menu and its dialogs, create bot, details panel and its Setup tab
   chat/              the conversation
+  history/           the conversation's earlier parts: paging, day lines, session dividers, its start
   attachments/       files in the composer and in sent messages, the drop area
   activity/          the details panel's Activity tab
   library/           the Library tab (placeholder until #14)
@@ -131,7 +132,7 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
     dialog titles. Weights 400, 500, 600. Icons 16px at stroke 1.75 in 28px buttons (`ui/icon-button.ts`).
   - Feature code imports parts as `@/ui/<part>`. Pages with forms are lazy routes in `app/router.tsx` and the
     details tabs are lazy chunks in `bots/bot-details-panel.tsx`, so
-    the chat's first load stays small (about 218 kB of JavaScript and 17 kB of styles, gzip -9, counting every
+    the chat's first load stays small (about 220 kB of JavaScript and 17 kB of styles, gzip -9, counting every
     file `dist/index.html` references; Vite's per-file sizes alone understate it). The bot menu, its dialogs and
     Settings are lazy too: the roster only writes to small stores and loads them on hover or first use. The
     image viewer (`ui/image-viewer.tsx`) loads on the first click on an image.
@@ -291,14 +292,39 @@ Server startup requires an explicit `LILBOT_ENV`; use the launcher for checks, n
 - The conversation uses AI Elements' Message Scroller: it opens at its latest message (also after a reload or
   resume); a sent message moves up and the reply grows below it (Oscar's choice); the list follows the reply only
   while the reader stays at the end. Only messages sent while the list is open are scroll anchors: the scroller jumps
-  to any anchor it did not see arrive (`chat/scroll-anchors.ts`). Each transcript load (`ChatView.load`) resets
-  which items count as arrived. Rows are memoised (`chat/message-list.tsx`, `chat/chat-item.tsx`), so a streamed
-  chunk redraws only the last one, and a reloaded transcript keeps the objects of unchanged items
-  (`reuseItems` in `chat/chat-state.ts`), so a reopen redraws nothing. A chat this page has not shown yet appears
-  from `chat.history` (a database read) while `chat.open` attaches; the message box takes typing meanwhile and
-  sends once the chat is open. The list first draws the latest 20 rows, then the earlier ones in a transition that
-  yields to typing; the scroller keeps the view in place as they arrive above. Queued messages show as dashed bubbles, the activity line as a shimmering Trace line (not
-  Reasoning: we get a status, not thinking text), tool use as Trace lines.
+  to any anchor it did not see arrive (`chat/scroll-anchors.ts`). Rows are counted by position in the conversation
+  (`ChatView.first` plus the index), and each transcript load (`ChatView.load`) moves the end of what counts as
+  arrived, so earlier parts loading above never become anchors. Rows are memoised (`chat/message-rows.tsx`,
+  `chat/chat-item.tsx`) and keyed by that position, so a streamed chunk redraws only the last one, an earlier part
+  redraws none of the rows below it, and a reloaded transcript keeps the objects of unchanged items (`reuseItems`
+  in `history/history-view.ts`), so a reopen redraws nothing. A chat this page has not shown yet appears from
+  `chat.history` (a database read) while `chat.open` attaches; the message box takes typing meanwhile and sends
+  once the chat is open. The list first draws the latest 20 rows, then the earlier ones in a transition that yields
+  to typing; the scroller keeps the view in place as they arrive above. Queued messages show as dashed bubbles, the
+  activity line as a shimmering Trace line (not Reasoning: we get a status, not thinking text), tool use as Trace lines.
+- Conversation history on screen (#67, Paper "11 Conversation history"; `web/src/history/`). The main
+  conversation is one continuous history across sessions, built from the snapshot's `history` page (other chats,
+  such as a routine run, show only their own transcript). Each row keeps the history's `id` and `at`.
+  - Opens on its latest part (100 rows). Scrolling within one screen of the top (or a conversation that fits the
+    screen) fetches the next earlier part with `chat.history` and its cursor (`use-older-history.ts`), one part at a
+    time. While it loads, "Loading earlier messages" with a spinner floats at the top of the conversation. It is an
+    overlay, never a row: the scroller keeps the reader's place only when the row that was first is still there and
+    has moved down, so the first row is always a message while more can load. The part is drawn in a transition,
+    like the first 20 rows; measured movement of the visible row when a part arrives is under 1 px.
+  - Day lines (12px, `foreground/50`, "Mon 9 Nov", with the year for another year) go between two rows on different
+    local days, never above the earliest loaded row unless it is the very start.
+  - The very start (the oldest page's `start`, which the server sends only once the import is complete): the bot's
+    avatar (44px), its name and "Your conversation started on 3 September 2026". While the import is still running,
+    a `history.changed` push for this bot, when the reader is at the top, reads the earliest part again (at most every
+    three seconds) and adds only rows older than the ones shown.
+  - "Latest": a floating pill (arrow and "Latest") at the bottom centre while scrolled up; it returns to the newest message.
+  - New session: the header button adds a divider at once and keeps the conversation; the new session's snapshot
+    replaces it with the saved divider. A divider is a hairline with "New session" and its time ("Today 14:20",
+    "Yesterday 09:05", "Tue 10 Nov 08:00"); only the newest one has the line "<bot> starts fresh from here. It keeps
+    its memory and can search what was said above."
+  - Reopening or reconnecting keeps the earlier parts already loaded when the new latest part shares a row with them
+    (`withLatest` in `history/history-view.ts`); rows that arrived live are replaced by their saved copies.
+    `MessageList` is keyed by bot, so a new session never remounts the scroller.
 - Hermes' wire contract lives in `~/.hermes/hermes-agent/apps/shared/src/gateway-contract.openrpc.json` and
   `tui_gateway/contracts/`. Read it before using a new method, and read only fields the contract declares (Hermes
   sends some undeclared extras; do not rely on them). Every method, parameter and field LilBot uses is listed in
@@ -363,7 +389,8 @@ and private-memory choices, matching #59; those choices continue to govern files
   `item` is a normal ChatItem or `{kind:'session', text:'New session'}`. Times are epoch milliseconds.
   The active session id remains `snapshot.chatId`; a new session retains earlier history.
 - `chat.history({botId, cursor?, limit?})` returns the same page, with a maximum/default of 100.
-  Pages are newest first, records within them chronological. Prepend older pages. Cursors are
+  Pages are newest first, records within them chronological. The web app prepends older pages (see the
+  conversation history screen above). Cursors are
   bot-bound sort keys, so new messages do not shift old pages. `start:{at}` appears only on the
   oldest page after import completes; `null` is not a definitive beginning while import is pending.
   `import` reports `complete`, discovered `sessions`, `completed` sessions and `items` count.
@@ -1072,7 +1099,6 @@ artwork, names or text.
 ## Known gaps
 
 - Activity observation polls persistent profile-bound sockets every second; very short activity may only be seen at completion. Hermes live listings expose at most 200 sessions per profile. A future host-scoped subscription could reduce latency.
-- The history screen (#67) still needs to consume the paging metadata; the existing screen displays the latest page.
 - Hermes limits a transcript row to 2 MiB and may rotate very old compression lineages; a first import can only recover rows Hermes still exposes. Already copied rows remain in LilBot.
 
 ## Rules

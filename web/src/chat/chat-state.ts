@@ -2,9 +2,15 @@
 import type { AttachmentMessage } from '../../../shared/attachment-schema'
 import type { ChatEvent, ChatItem, ChatSnapshot } from '../../../shared/chat-schema'
 import type { HistoryPage } from '../../../shared/history-schema'
+import { reuseItems, withLatest } from '../history/history-view'
 
-/** `streaming` marks the assistant message that is still being written. */
-export type ViewItem = ChatItem & { streaming?: boolean }
+/** Where a new session began, inside the one continuous conversation. */
+export type SessionMark = { kind: 'session'; text: string }
+/** `streaming` marks the assistant message that is still being written. Items from the saved
+ *  history carry its row `id` and time `at`. */
+export type ViewItem = (ChatItem | SessionMark) & { streaming?: boolean; id?: string; at?: number }
+/** Everything in the conversation except the session dividers. */
+export type MessageItem = Exclude<ViewItem, SessionMark>
 /** A message from the user, with its files when it has any. */
 export type UserItem = Extract<ChatItem, { kind: 'user' }>
 
@@ -21,28 +27,44 @@ export interface ChatView {
   title: string
   /** Counts the times the transcript came from the server rather than from a live event. */
   load: number
+  /** The position of `items[0]` in the conversation. Earlier parts go before it with lower
+   *  positions, so every row keeps its position (its key) as the list grows at either end. */
+  first: number
+  /** The cursor for the next earlier part of the history; null when none is known. */
+  older: string | null
+  /** The cursor that fetched the earliest part on screen (null: the latest part). */
+  oldestFrom: string | null
+  /** When the conversation started. Known once its very first part is on screen. */
+  start: number | null
+  /** The history is still being imported, so earlier rows may yet appear. */
+  importing: boolean
 }
 
-export const emptyChat: ChatView = { chatId: '', items: [], queued: [], awaitingStart: false, running: false, activity: '', title: '', load: 0 }
-
-/** A reloaded transcript keeps the objects of the items that did not change, so memoised rows
- *  are not drawn again. Items are compared by content; repeated identical items pair in order. */
-export function reuseItems(previous: readonly ViewItem[], next: ViewItem[]): ViewItem[] {
-  if (previous.length === 0) return next
-  const earlier = new Map<string, ViewItem[]>()
-  for (const item of previous) {
-    const key = JSON.stringify(item)
-    const same = earlier.get(key)
-    if (same) same.push(item)
-    else earlier.set(key, [item])
-  }
-  return next.map(item => earlier.get(JSON.stringify(item))?.shift() ?? item)
+export const emptyChat: ChatView = {
+  chatId: '',
+  items: [],
+  queued: [],
+  awaitingStart: false,
+  running: false,
+  activity: '',
+  title: '',
+  load: 0,
+  first: 0,
+  older: null,
+  oldestFrom: null,
+  start: null,
+  importing: false
 }
 
+/** The open chat. The bot's main conversation comes with its saved history (with session
+ *  dividers); any other chat has only its own transcript. */
 export function chatFromSnapshot(snapshot: ChatSnapshot, previous: ChatView = emptyChat): ChatView {
+  const history = snapshot.history
+    ? withLatest(previous, snapshot.history)
+    : { items: reuseItems(previous.items, snapshot.items), first: previous.first, older: null, oldestFrom: null, start: null, importing: false }
   return {
+    ...history,
     chatId: snapshot.chatId,
-    items: reuseItems(previous.items, snapshot.items),
     queued: [],
     awaitingStart: false,
     running: snapshot.running,
@@ -55,8 +77,14 @@ export function chatFromSnapshot(snapshot: ChatSnapshot, previous: ChatView = em
 /** The bot's saved conversation, shown while its chat is still opening. Nothing can be sent yet;
  *  the chat's own snapshot replaces it moments later. The latest record names the main session. */
 export function chatFromHistory(page: HistoryPage, previous: ChatView = emptyChat): ChatView {
-  const items: ViewItem[] = page.items.flatMap(row => (row.item.kind === 'session' ? [] : [row.item]))
-  return { ...emptyChat, chatId: page.items.at(-1)?.sessionId ?? '', items: reuseItems(previous.items, items), load: previous.load + 1 }
+  return { ...emptyChat, ...withLatest(previous, page), chatId: page.items.at(-1)?.sessionId ?? '', load: previous.load + 1 }
+}
+
+/** "New session" adds a divider at once; the new session's snapshot then confirms it. The
+ *  conversation above stays. */
+export function withNewSession(chat: ChatView): ChatView {
+  const items: ViewItem[] = chat.items.length > 0 ? [...stopWriting(chat.items), { kind: 'session', text: 'New session' }] : chat.items
+  return { ...chat, items, queued: [], awaitingStart: false, running: false, activity: '' }
 }
 
 export function withUserMessage(chat: ChatView, message: string | UserItem): ChatView {

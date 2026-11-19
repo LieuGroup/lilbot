@@ -7,12 +7,12 @@ import { Bubble, BubbleContent } from '@/ui/bubble'
 import { Message, MessageContent, MessageFooter } from '@/ui/message'
 import { Trace, TraceIcon, TraceLine, TraceTitle } from '@/ui/trace'
 import { ImageNote, SentAttachments } from '../attachments/message-attachments'
-import type { ViewItem } from './chat-state'
+import type { MessageItem } from './chat-state'
 
 /** One transcript item drawn with the AI Elements patterns: Message and Bubble for turns, a Tool
  *  trace line for tool use. Memoised: a streamed chunk changes only the last item, so earlier
  *  replies are not parsed or drawn again. */
-export const ChatItem = memo(function ChatItem({ item, botId }: { item: ViewItem; botId: string }) {
+export const ChatItem = memo(function ChatItem({ item, botId }: { item: MessageItem; botId: string }) {
   switch (item.kind) {
     case 'user':
       return (
