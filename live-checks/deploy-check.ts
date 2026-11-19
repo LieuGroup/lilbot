@@ -50,6 +50,7 @@ try {
   console.log('ok: healthy commit stays, independent watchdog exits, no rollback')
 
   const db = new Database(join(f.data, 'lilbot.db'))
+  db.exec('PRAGMA busy_timeout = 5000')
   db.exec("PRAGMA wal_autocheckpoint=0; CREATE TABLE deployment_marker(value TEXT); INSERT INTO deployment_marker VALUES ('before deploy')")
   db.close()
   const key = await readFile(join(f.data, 'computer-server-key.pem'), 'utf8')
@@ -76,6 +77,7 @@ try {
   assert.equal(rolled.logs?.includes('do-not-record-me'), false)
   assert.ok(rolled.logs?.includes('deliberate startup failure') || rolled.logs?.includes('newer LilBot'))
   const restored = new Database(join(f.data, 'lilbot.db'))
+  restored.exec('PRAGMA busy_timeout = 5000')
   assert.deepEqual(restored.query('SELECT * FROM deployment_marker').all(), [{ value: 'before deploy' }])
   restored.close()
   assert.equal(await readFile(join(f.data, 'computer-server-key.pem'), 'utf8'), key)

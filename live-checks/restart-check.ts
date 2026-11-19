@@ -112,6 +112,7 @@ try {
   // Make just this temporary routine due now; keep its normal interval and pause after admission.
   const { Database } = await import('bun:sqlite')
   const db = new Database(join(server.root, 'lilbot.db'))
+  db.exec('PRAGMA busy_timeout = 5000')
   try {
     db.query('UPDATE routines SET next_run_at=? WHERE id=?').run(Date.now() - 1, routine.id)
   } finally {

@@ -1,3 +1,4 @@
+import { backgroundTask } from './background'
 import { checkPublicPort, isTunnelRequest, plainServerError } from './http/listener-safety'
 /** LilBot server: serves the built web app and answers the browser's `/ws` requests through the bot engine.
  *  Binds to loopback only; reach it from other devices through the tailnet (`tailscale serve`). */
@@ -87,7 +88,10 @@ const computers = new ComputerService(
   () => publish(EVERYONE, JSON.stringify({ event: 'computers.changed' })),
   id => store.get(id)?.permissionMode
 )
-setInterval(() => computers.tick(), 1000)
+setInterval(
+  backgroundTask('computers', () => computers.tick()),
+  1000
+)
 const routineStore = new RoutineStore(database)
 const library = new LibraryService(
   new LibraryStore(database),
@@ -118,13 +122,16 @@ const bots = new BotService(engine, store, prefs, new Workspaces(WORKSPACES_DIR)
 })
 // A sign-in from `bun run t3:sign-in`, an expiry or a revocation changes which tools bots should see.
 let t3Generation = t3Grants.generation()
-setInterval(() => {
-  const next = t3Grants.generation()
-  if (next === t3Generation) return
-  t3Generation = next
-  publish(EVERYONE, JSON.stringify({ event: 'connections.changed' }))
-  void bots.refreshConnections()
-}, 5_000)
+setInterval(
+  backgroundTask('connections watcher', async () => {
+    const next = t3Grants.generation()
+    if (next === t3Generation) return
+    publish(EVERYONE, JSON.stringify({ event: 'connections.changed' }))
+    await bots.refreshConnections()
+    t3Generation = next
+  }),
+  5_000
+)
 const t3Bridge = createT3Bridge({
   upstream: process.env.LILBOT_T3_MCP_URL ?? T3_DEFAULT_MCP_URL,
   grants: t3Grants,
@@ -149,11 +156,17 @@ const threads = new ThreadService(
       if (store.exists(botId)) activity.observe({ botId, chatId: `thread:${d.id}`, key: `${d.id}:${working}:${Date.now()}`, status: working ? 'working' : 'finished' })
   }
 )
-setInterval(() => threads.tick(), 1000)
+setInterval(
+  backgroundTask('threads', () => threads.tick()),
+  1000
+)
 const scheduler = new RoutineScheduler(routines, event => {
   if (store.exists(event.botId)) activity.observe(event)
 })
-setInterval(() => scheduler.tick(), 1000)
+setInterval(
+  backgroundTask('routines', () => scheduler.tick()),
+  1000
+)
 /** Engine adapters on this machine reach memory here; see `engine-api.ts`. */
 
 // The after-chat memory review. LILBOT_REVIEW=off disables it; LILBOT_REVIEW_MODEL is
@@ -172,7 +185,10 @@ const reviewer = new MemoryReviewer(
   Date.now,
   id => store.exists(id)
 )
-setInterval(() => reviewer.tick(), 20_000)
+setInterval(
+  backgroundTask('memory reviewer', () => reviewer.tick()),
+  20_000
+)
 
 // Every bot uses LilBot's memory: bots on an older adapter are updated, and a bot that is not
 // connected yet is connected. Both take effect from the bot's next session.

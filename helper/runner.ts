@@ -13,9 +13,10 @@ import { service } from './service'
 
 export async function run(identity: Identity, signal: AbortSignal) {
   const lock = new Database(join(configDir, 'runner.lock'))
-  lock.exec('BEGIN EXCLUSIVE')
+  lock.exec('PRAGMA busy_timeout = 5000; BEGIN EXCLUSIVE')
   const path = join(configDir, 'requests.db')
   const db = new Database(path, { create: true })
+  db.exec('PRAGMA busy_timeout = 5000')
   chmodSync(path, 0o600)
   prepareJournal(db)
   const active = new Map<string, AbortController>()
@@ -91,14 +92,18 @@ export async function run(identity: Identity, signal: AbortSignal) {
         let lastHeartbeat = Date.now()
         let nextHeartbeat = 0
         const timer = setInterval(() => {
-          pruneJournal(db)
-          if (Date.now() - lastHeartbeat > 35_000) socket?.close()
-          else {
-            if (Date.now() >= nextHeartbeat) {
-              sender.heartbeat()
-              nextHeartbeat = Date.now() + 10_000
+          try {
+            pruneJournal(db)
+            if (Date.now() - lastHeartbeat > 35_000) socket?.close()
+            else {
+              if (Date.now() >= nextHeartbeat) {
+                sender.heartbeat()
+                nextHeartbeat = Date.now() + 10_000
+              }
+              sender.flush()
             }
-            sender.flush()
+          } catch {
+            console.error('[helper] heartbeat failed; will retry on the next tick.')
           }
         }, 100)
 

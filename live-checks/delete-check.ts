@@ -61,6 +61,7 @@ try {
       socket!.send(JSON.stringify({ id, method, params }))
     })
   db = new Database(join(root, 'lilbot.db'))
+  db.exec('PRAGMA busy_timeout = 5000')
   const assert = (ok: boolean, message: string) => {
     if (!ok) throw new Error(message)
   }

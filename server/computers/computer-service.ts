@@ -1,6 +1,7 @@
 import { homedir, hostname, platform } from 'node:os'
 import { operate } from '../../helper/operations'
 import { ComputerCopy, ComputerRequestRef, ComputerSubmit } from '../../shared/computer-schema'
+import { backgroundFailure, backgroundTask } from '../background'
 import { ComputerAuth } from './computer-auth'
 import type { ComputerStore } from './computer-store'
 import type { ServerKey } from './server-key'
@@ -27,10 +28,13 @@ export class ComputerService {
   private changeTimer?: ReturnType<typeof setTimeout>
   private notify() {
     if (!this.changeTimer)
-      this.changeTimer = setTimeout(() => {
-        this.changeTimer = undefined
-        this.changed()
-      }, 100)
+      this.changeTimer = setTimeout(
+        backgroundTask('computer changes', () => {
+          this.changeTimer = undefined
+          this.changed()
+        }),
+        100
+      )
   }
   private nextPrune = 0
   private local = new Map<string, AbortController>()
@@ -200,7 +204,9 @@ export class ComputerService {
     if (computer === 'leader') return this.dispatchNow(computer)
     if (this.closed || this.dispatching.has(computer)) return
     this.dispatching.add(computer)
-    void this.payload(computer, () => this.dispatchNow(computer)).finally(() => this.dispatching.delete(computer))
+    void this.payload(computer, () => this.dispatchNow(computer))
+      .finally(() => this.dispatching.delete(computer))
+      .catch(() => backgroundFailure('computer dispatch'))
   }
   private dispatchNow(computer: string) {
     if (this.closed) return
@@ -237,13 +243,15 @@ export class ComputerService {
       this.store.result('leader', request.id, { output: '', error: 'Leader restarted; outcome unknown. Not re-executed.' }, true)
       return
     }
+    const operation = this.store.operation(request.id)
     const controller = new AbortController()
-    this.local.set(request.id, controller)
     this.store.running(request.id)
-    void operate(this.store.operation(request.id), controller.signal, result => this.store.result('leader', request.id, result, false))
+    this.local.set(request.id, controller)
+    void operate(operation, controller.signal, result => this.store.result('leader', request.id, result, false))
       .then(result => this.store.result('leader', request.id, result, true))
       .catch(() => this.store.result('leader', request.id, { output: '', error: 'Operation failed.' }, true))
       .finally(() => this.local.delete(request.id))
+      .catch(() => backgroundFailure('computer result'))
   }
   async copy(bot: string, raw: unknown) {
     const input = ComputerCopy.parse(raw)

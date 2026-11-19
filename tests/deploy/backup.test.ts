@@ -14,7 +14,11 @@ test('online backup includes uncheckpointed WAL, restores old schema, and preser
   try {
     db.exec("PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; CREATE TABLE marker(value TEXT); INSERT INTO marker VALUES ('before')")
     await writeFile(join(root, 'computer-server-key.pem'), 'test key')
+    db.exec("BEGIN IMMEDIATE; INSERT INTO marker VALUES ('uncommitted')")
     await backupDatabase(file, join(root, 'copy.db'))
+    // The backup reads the committed WAL snapshot without requiring the writer to finish.
+    expect(db.inTransaction).toBe(true)
+    db.exec('ROLLBACK')
     db.exec("INSERT INTO marker VALUES ('after'); CREATE TABLE new_schema(value TEXT)")
     db.close()
     await restoreDatabase(join(root, 'copy.db'), file)
