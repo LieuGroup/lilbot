@@ -20,6 +20,7 @@ import { T3Grants } from './connections/t3-grant'
 import { openDatabase } from './database/database'
 import { HermesEngine } from './engines/hermes/hermes-engine'
 import { MEMORY_ADAPTER_VERSION } from './engines/hermes/hermes-memory-setup'
+import { assertServerEnvironment } from './environment'
 import { startAccessDoor } from './http/access-door'
 import { accessSettings } from './http/access-settings'
 import { appRoutes, type SocketData } from './http/app-routes'
@@ -41,6 +42,8 @@ import { files } from './skills/skill-files'
 import { SkillsService } from './skills/skills-service'
 import { ThreadService } from './threads/thread-service'
 import { ThreadStore } from './threads/thread-store'
+
+assertServerEnvironment(process.env)
 
 const PORT = Number(process.env.LILBOT_PORT ?? 3370)
 const PUBLIC_PORT = Number(process.env.LILBOT_PUBLIC_PORT ?? 3372)

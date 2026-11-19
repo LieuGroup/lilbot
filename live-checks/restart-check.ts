@@ -1,3 +1,4 @@
+import '../scripts/dev-env'
 /** SIGKILL only an isolated LilBot child while Hermes continues a non-idempotent file write. */
 import assert from 'node:assert/strict'
 import { readFile, writeFile } from 'node:fs/promises'

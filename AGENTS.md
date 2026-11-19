@@ -83,8 +83,7 @@ conversation per bot that is the same on every device, and the layout groundwork
 panel, the server pushes roster changes). On top of slice 2: bot list, create bot, the Setup panel (name, function,
 instructions, model, workspace, abilities read-only), chat with live tool rows, stop, and starting a new session.
 Memory (slice 4): LilBot's own memory system with a Memory panel; new bots use it from their first session, an
-existing bot is connected from its Memory panel. Hermes' default bot (Chief of Staff) is a test bot Oscar does not
-use: nothing about it needs protecting.
+existing bot is connected from its Memory panel. Hermes' default bot (Chief of Staff) is Oscar's live bot. Never use it for agent tests.
 It includes an after-chat review that saves what a chat missed. The user can choose a primary bot in Setup; it
 appears first in the roster and its conversation opens on app entry.
 The primary bot can create bots when asked, using `create_bot`. LilBot authenticates the caller with a
@@ -132,6 +131,41 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
     Settings are lazy too: the roster only writes to small stores and loads them on hover or first use.
 - Checks: Biome, `tsc`, `bun test`, Vite build, all through `bun run verify`. `bun run check:live` is the live
   check against the running Hermes.
+
+## Production and development
+
+Production is Oscar's daily app: `lilbot.service`, port 3370, `~/.local/share/lilbot`,
+`~/lilbot/workspaces`, `~/lilbot/skills`, and the existing `~/.hermes` gateway.
+Never test against these, restart them as a check, or use any live bot (including Chief of Staff).
+Production release folders and deployment are owned by #74. The orchestrator must add
+`Environment=LILBOT_ENV=production` to the production unit once; development setup never edits it.
+
+Run `bun run dev:setup` on the leader before live checks. It creates `~/lilbot-dev/` with
+`hermes/`, `hermes-locks/`, `data/`, `workspaces/` and `skills/`, and starts the separate
+`lilbot-dev-hermes.service`. Both `HERMES_HOME` and `HERMES_GATEWAY_LOCK_DIR` are explicit in that
+unit. Setup waits for a ready gateway, preserves existing config/credentials, and is idempotent.
+There is no standing dev LilBot instance, network address, or automatic start at login.
+Stop the dev gateway when no checks need it with `systemctl --user stop lilbot-dev-hermes.service`.
+
+Dev has an independently written CLIProxy provider config. `~/lilbot-dev/hermes/.env` (0600) contains
+only its named client-key variable, loaded via `EnvironmentFile` and inherited by dev profile clones. CLIProxy is on another host;
+there is no local key-issuing config, so setup copies only that variable from the production `.env`
+once. Calls share the upstream allowance. Never copy the entire `.env`, `auth.json`, MCP tokens,
+or production T3 grants. Authorize development T3 separately when needed.
+
+Every live-check entry imports `scripts/dev-env.ts` first, including direct `bun live-checks/...`
+runs. It sets `LILBOT_ENV=development`, the dev engine home/locks, loopback/free port and throwaway
+app directories under `~/lilbot-dev/runs/`. Checks remove their profiles and folders. Run live checks sequentially: Hermes plugin admission
+reads the shared dev profile catalogue while plugins are added or removed. Hermes CLI calls
+must pass `env: process.env` explicitly: Bun's default spawn environment can predate the initializer.
+`LILBOT_HERMES_BIN` selects the executable consistently; do not update the shared Hermes program to test a change.
+
+Development creates only `dev-` engine profiles and refuses other bindings. Production ignores
+`dev-` profiles, including persisted bindings. Development also checks the attach receipt's home
+before connecting. `server/environment.ts` rejects production paths/ports/service targets in checks,
+and requires all dev directories under the dev home. Production startup refuses test overrides,
+including profile allowlists, skipped memory setup, test intervals and local Access certificate URLs.
+Server startup requires an explicit `LILBOT_ENV`; use the launcher for checks, never an unconfigured server.
 
 ## How it works
 
@@ -853,5 +887,5 @@ Cleaning up after a merge:
 - `bun run check:memory`: connects a temporary bot to a throwaway memory, tells it facts, checks a new session knows
   them, prints tokens per turn, then deletes it. Inherited memory is disconnected before the baseline turn. A few model calls.
 - `bun run start`: run the server. `LILBOT_PORT` and `LILBOT_HOST` override the defaults.
-- `bun run dev`: Vite with hot reload, proxying `/ws` to a server on 3370.
-- After a change: `bun run verify && systemctl --user restart lilbot.service`.
+- `bun run dev`: Vite with hot reload, proxying to a dev server on `LILBOT_PORT` (default 3371); production ports are refused.
+- After a change: `bun run verify` and the relevant isolated live checks. Deployment belongs to #74; never restart production as a check.

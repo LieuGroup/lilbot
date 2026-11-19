@@ -1,12 +1,12 @@
+import { devScratch } from '../scripts/dev-env'
 /** Two browser-protocol clients on an isolated server and temporary profiles. */
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { BotStore } from '../server/bots/bot-store'
 import { openDatabase } from '../server/database/database'
 import { HermesEngine } from '../server/engines/hermes/hermes-engine'
 
-const root = mkdtempSync(join(homedir(), 'agent-tmp', 'activity-check-'))
+const root = devScratch('activity-check')
 const engine = new HermesEngine()
 const ids: string[] = []
 const nativeIds: string[] = []
@@ -148,7 +148,8 @@ try {
   for (const ws of clients) ws.close()
   server?.kill(9)
   if (server) await server.exited
-  for (const id of nativeIds) await Bun.spawn(['hermes', 'profile', 'delete', id, '-y'], { stdout: 'ignore', stderr: 'inherit' }).exited
+  for (const id of nativeIds)
+    await Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', id, '-y'], { env: process.env, stdout: 'ignore', stderr: 'inherit' }).exited
   rmSync(root, { recursive: true, force: true })
 }
 // Hermes management sockets stay reusable; the standalone check has no more work.

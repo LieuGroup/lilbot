@@ -1,9 +1,9 @@
+import { devScratch } from '../scripts/dev-env'
 /** Live check against the running Hermes: the real path a chat takes, on a temporary bot that is
  *  deleted afterwards. Run after every Hermes update and before finishing a slice: `bun run check:live`.
  *  Costs a few model calls. Never touches existing bots. */
 
-import { mkdtempSync, rmSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { BotPrefsStore } from '../server/bots/bot-prefs-store'
 import { BotService } from '../server/bots/bot-service'
@@ -23,7 +23,7 @@ const PORT = Number(process.env.LILBOT_CHECK_PORT ?? 3378)
 const TURN_TIMEOUT_MS = 90_000
 
 // The real engine, with a throwaway database and workspaces folder so nothing of the user's is touched.
-const scratch = mkdtempSync(join(homedir(), 'agent-tmp', 'lilbot-live-'))
+const scratch = devScratch('lilbot-live')
 const engine = new HermesEngine([])
 const database = openDatabase(join(scratch, 'lilbot.db'))
 const memory = new MemoryService(new MemoryStore(database))
@@ -76,7 +76,7 @@ function recorder() {
 }
 
 async function deleteBot(id: string) {
-  const child = Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', id, '-y'], { stdout: 'ignore', stderr: 'pipe' })
+  const child = Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', id, '-y'], { env: process.env, stdout: 'ignore', stderr: 'pipe' })
   const [stderr, code] = await Promise.all([new Response(child.stderr).text(), child.exited])
   if (code !== 0) throw new Error(`hermes profile delete ${id} exited ${code}: ${stderr.trim().slice(0, 200)}`)
 }

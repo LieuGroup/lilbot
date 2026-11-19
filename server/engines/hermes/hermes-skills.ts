@@ -61,6 +61,7 @@ export async function configureSkills(id: string, settings: { root: string; url:
     const child = Bun.spawn(
       [process.env.LILBOT_HERMES_BIN ?? 'hermes', ...(id === 'default' ? [] : ['-p', id]), 'config', 'set', key, typeof value === 'string' ? value : JSON.stringify(value)],
       {
+        env: process.env,
         stdout: 'ignore',
         stderr: 'pipe'
       }
@@ -71,6 +72,7 @@ export async function configureSkills(id: string, settings: { root: string; url:
   // Live handlers read this file for each request; catalogue changes need no plugin reload.
   if (!activate) return
   const enable = Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', ...(id === 'default' ? [] : ['-p', id]), 'plugins', 'enable', plugin, '--allow-tool-override'], {
+    env: process.env,
     stdout: 'ignore',
     stderr: 'pipe'
   })

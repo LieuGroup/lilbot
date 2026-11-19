@@ -1,3 +1,4 @@
+import { devScratch } from '../scripts/dev-env'
 /** `bun run check:coding -- --code-file <path>`: a temporary bot does a trivial coding task through
  *  T3 Code, on an isolated second server, in a throwaway repo registered as a temporary T3 project.
  *
@@ -7,8 +8,7 @@
  *  bots or real T3 projects. Cleanup runs in `finally`: thread stopped, settled and archived, project
  *  removed, Hermes profile deleted, T3 sign-in revoked, server stopped, temporary folders removed. */
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { BotStore } from '../server/bots/bot-store'
 import { bridgeKey, T3_BRIDGE_PATH, T3_DEFAULT_MCP_URL } from '../server/connections/t3-connection'
@@ -25,9 +25,9 @@ const code = codeFile ? readFileSync(codeFile, 'utf8') : await new Response(Bun.
 console.log('Signing in to T3 Code with the pairing code')
 const grant = await signInToT3({ mcpUrl: process.env.LILBOT_T3_MCP_URL ?? T3_DEFAULT_MCP_URL, code, label: LABEL })
 
-const run = (cmd: string, args: string[], cwd?: string) => execFileSync(cmd, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 })
-const scratch = mkdtempSync(join(homedir(), 'agent-tmp/lilbot-coding-'))
-const repo = join(homedir(), 'agent-tmp', `lilbot-coding-repo-${stamp}`)
+const run = (cmd: string, args: string[], cwd?: string) => execFileSync(cmd, args, { env: process.env, cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 })
+const scratch = devScratch('lilbot-coding')
+const repo = join(scratch, 'repo')
 const reservation = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response('') })
 const port = reservation.port!
 reservation.stop(true)
@@ -185,7 +185,8 @@ try {
   await server?.exited
   if (existsSync(join(scratch, 'lilbot.db'))) {
     const db = openDatabase(join(scratch, 'lilbot.db'))
-    for (const bot of new BotStore(db).list()) await step(`delete profile ${bot.engineBotId}`, () => run('hermes', ['profile', 'delete', bot.engineBotId, '-y']))
+    for (const bot of new BotStore(db).list())
+      await step(`delete profile ${bot.engineBotId}`, () => run(process.env.LILBOT_HERMES_BIN ?? 'hermes', ['profile', 'delete', bot.engineBotId, '-y']))
     db.close()
   }
   await step('revoke the check’s T3 sign-in', () => {

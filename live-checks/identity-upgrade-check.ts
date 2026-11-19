@@ -1,3 +1,4 @@
+import '../scripts/dev-env'
 /** Run only on a disposable copy (including WAL/SHM) of the live database. Never opens the live file. */
 import { Database } from 'bun:sqlite'
 import { realpathSync } from 'node:fs'
@@ -9,8 +10,8 @@ import { openDatabase } from '../server/database/database'
 import { HermesEngine } from '../server/engines/hermes/hermes-engine'
 
 const directory = process.argv[2]
-if (!directory || !realpathSync(directory).startsWith(`${realpathSync(join(homedir(), 'agent-tmp'))}/`)) {
-  throw new Error('Pass a disposable database copy under ~/agent-tmp, including WAL/SHM.')
+if (!directory || !realpathSync(directory).startsWith(`${realpathSync(join(homedir(), 'lilbot-dev', 'runs'))}/`)) {
+  throw new Error('Pass a disposable database copy under ~/lilbot-dev/runs, including WAL/SHM.')
 }
 const path = join(directory, 'lilbot.db')
 const tables = ['bot_prefs', 'primary_bot', 'memory_facts', 'sections', 'review_turns', 'bot_activity', 'activity_cursors']

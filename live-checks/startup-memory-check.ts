@@ -1,6 +1,7 @@
+import { devScratch } from '../scripts/dev-env'
 /** Real isolated-server regression for #29. Only creates/edits/deletes temporary profiles. */
 import { createHash } from 'node:crypto'
-import { mkdtempSync, readdirSync, readFileSync, renameSync, rmSync } from 'node:fs'
+import { readdirSync, readFileSync, renameSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, relative } from 'node:path'
 import { BotStore } from '../server/bots/bot-store'
@@ -9,7 +10,7 @@ import { HermesEngine } from '../server/engines/hermes/hermes-engine'
 import { installMemory, MEMORY_ADAPTER_VERSION } from '../server/engines/hermes/hermes-memory-setup'
 import { engineToken } from '../server/http/engine-api'
 
-const root = mkdtempSync(join(homedir(), 'agent-tmp', 'lilbot-startup-'))
+const root = devScratch('lilbot-startup')
 const db = openDatabase(join(root, 'lilbot.db'))
 const engine = new HermesEngine()
 const ids: string[] = []
@@ -39,7 +40,7 @@ function digest(path: string): Record<string, string> {
   return files
 }
 async function config(id: string, value: string) {
-  const child = Bun.spawn(['hermes', '-p', id, 'config', 'set', 'memory.provider', value], { stdout: 'ignore', stderr: 'pipe' })
+  const child = Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', '-p', id, 'config', 'set', 'memory.provider', value], { env: process.env, stdout: 'ignore', stderr: 'pipe' })
   if ((await child.exited) !== 0) throw new Error('Could not set temporary provider')
 }
 try {
@@ -96,7 +97,7 @@ try {
     await server.exited
   }
   for (const id of ids) {
-    const child = Bun.spawn(['hermes', 'profile', 'delete', id, '-y'], { stdout: 'ignore', stderr: 'pipe' })
+    const child = Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', id, '-y'], { env: process.env, stdout: 'ignore', stderr: 'pipe' })
     if ((await child.exited) !== 0) {
       console.error(`Cleanup failed for temporary profile ${id}`)
       process.exitCode = 1

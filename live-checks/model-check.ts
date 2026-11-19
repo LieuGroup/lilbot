@@ -1,11 +1,11 @@
+import { devScratch } from '../scripts/dev-env'
 /** Check model edit refusal and recovery against an isolated server and temporary profile. */
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { existsSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { BotStore } from '../server/bots/bot-store'
 import { openDatabase } from '../server/database/database'
 
-const scratch = mkdtempSync(join(homedir(), 'agent-tmp/lilbot-model-'))
+const scratch = devScratch('lilbot-model')
 const reservation = Bun.serve({ port: 0, fetch: () => new Response() })
 const port = reservation.port!
 reservation.stop(true)
@@ -96,7 +96,7 @@ try {
     db.close()
   }
   if (nativeId) {
-    const deletion = Bun.spawn(['hermes', 'profile', 'delete', nativeId, '-y'], { stdout: 'ignore', stderr: 'inherit' })
+    const deletion = Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', nativeId, '-y'], { env: process.env, stdout: 'ignore', stderr: 'inherit' })
     if ((await deletion.exited) !== 0) {
       console.error(`Could not delete temporary profile ${nativeId}`)
       process.exitCode = 1

@@ -1,11 +1,11 @@
+import { devScratch } from '../scripts/dev-env'
 /** Isolated browser-protocol check: no model calls and only profiles created by this server. */
 import { Database } from 'bun:sqlite'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-const root = await mkdtemp(join(homedir(), 'agent-tmp', 'lilbot-delete-'))
+const root = devScratch('lilbot-delete')
 const probe = Bun.serve({ port: 0, fetch: () => new Response('') })
 const port = probe.port!
 probe.stop(true)
@@ -68,9 +68,10 @@ try {
   for (const files of ['archive', 'delete'])
     for (const privateMemories of ['forget', 'keep']) {
       const bot = await call('bots.create', { name: `Delete Check ${Date.now()}`, function: '', instructions: '' })
-      created.push(bot.id)
+
       const native = db.query('SELECT engine_bot_id FROM bots WHERE id = ?').get(bot.id) as { engine_bot_id: string }
-      const profile = join(homedir(), '.hermes', 'profiles', native.engine_bot_id)
+      created.push(native.engine_bot_id)
+      const profile = join(process.env.HERMES_HOME!, 'profiles', native.engine_bot_id)
       const binding = join(profile, 'lilbot-memory.json')
       const capability = JSON.parse(await readFile(binding, 'utf8')).creation_capability
       assert(typeof capability === 'string' && capability.length > 0, 'Missing capability')
@@ -123,7 +124,8 @@ try {
   await server.exited
   db?.close()
   for (const id of created) {
-    if (existsSync(join(homedir(), '.hermes', 'profiles', id))) await Bun.spawn(['hermes', 'profile', 'delete', id, '-y'], { stdout: 'ignore', stderr: 'ignore' }).exited
+    if (existsSync(join(process.env.HERMES_HOME!, 'profiles', id)))
+      await Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', id, '-y'], { env: process.env, stdout: 'ignore', stderr: 'ignore' }).exited
   }
   await rm(root, { recursive: true, force: true })
   console.log('Temporary profiles and directories removed.')

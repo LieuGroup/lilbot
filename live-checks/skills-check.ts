@@ -1,12 +1,12 @@
+import { devScratch } from '../scripts/dev-env'
 /** A second, isolated server exercises the public protocol and a harmless approval-triggering command. */
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { existsSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { BotStore } from '../server/bots/bot-store'
 import { openDatabase } from '../server/database/database'
 import { HermesSocket } from '../server/engines/hermes/hermes-socket'
 
-const scratch = mkdtempSync(join(homedir(), 'agent-tmp/lilbot-skills-'))
+const scratch = devScratch('lilbot-skills')
 const reservation = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response('') })
 const port = reservation.port!
 reservation.stop(true)
@@ -132,7 +132,7 @@ try {
   if (existsSync(join(scratch, 'lilbot.db'))) {
     const db = openDatabase(join(scratch, 'lilbot.db'))
     for (const bot of new BotStore(db).list()) {
-      const deletion = Bun.spawn(['hermes', 'profile', 'delete', bot.engineBotId, '-y'], { stdout: 'ignore', stderr: 'inherit' })
+      const deletion = Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', bot.engineBotId, '-y'], { env: process.env, stdout: 'ignore', stderr: 'inherit' })
       if ((await deletion.exited) !== 0) process.exitCode = 1
     }
     db.close()

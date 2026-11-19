@@ -22,7 +22,8 @@
     "check:routines": "bun live-checks/routines-check.ts",
     "check:memory": "bun live-checks/memory-check.ts",
     "check:coding": "bun live-checks/coding-check.ts",
-    "t3:sign-in": "bun server/connections/t3-sign-in-cli.ts"
+    "t3:sign-in": "bun server/connections/t3-sign-in-cli.ts",
+    "dev:setup": "bun scripts/dev-setup.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

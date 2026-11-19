@@ -1,8 +1,8 @@
+import { devScratch } from '../scripts/dev-paths'
 /** Process and socket harness for restart-check. Never connects to the live LilBot service. */
 import { Database } from 'bun:sqlite'
 import assert from 'node:assert/strict'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
+import { rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 export async function waitFor<T>(label: string, read: () => Promise<T>, matches: (value: T) => boolean, timeout = 240_000): Promise<T> {
@@ -45,7 +45,7 @@ export class RestartServer {
   readonly gates: string[] = []
 
   static async create() {
-    const root = await mkdtemp(join(homedir(), 'agent-tmp', 'lilbot-restart-'))
+    const root = devScratch('lilbot-restart')
     const probe = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response('') })
     const port = probe.port!
     probe.stop(true)
@@ -159,7 +159,7 @@ export class RestartServer {
     this.db?.close()
     let failed = false
     for (const id of this.natives) {
-      const child = Bun.spawn(['hermes', 'profile', 'delete', id, '-y'], { stdout: 'ignore', stderr: 'inherit' })
+      const child = Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', id, '-y'], { env: process.env, stdout: 'ignore', stderr: 'inherit' })
       const timer = setTimeout(() => child.kill('SIGKILL'), 60_000)
       try {
         if (await child.exited) failed = true
@@ -167,7 +167,7 @@ export class RestartServer {
         clearTimeout(timer)
       }
     }
-    const list = Bun.spawn(['hermes', 'profile', 'list'], { stdout: 'pipe', stderr: 'inherit' })
+    const list = Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', 'list'], { env: process.env, stdout: 'pipe', stderr: 'inherit' })
     const timer = setTimeout(() => list.kill('SIGKILL'), 30_000)
     let listing: string
     let code: number
