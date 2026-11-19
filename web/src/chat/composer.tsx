@@ -40,7 +40,7 @@ export function Composer({ disabled, disabledHint, running, botName, staged, onS
   // A pasted screenshot or copied file is attached; pasted text stays text.
   const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
     const files = Array.from(event.clipboardData.files)
-    if (files.length === 0) return
+    if (files.length === 0 || disabled) return
     event.preventDefault()
     void staged.add(files)
   }

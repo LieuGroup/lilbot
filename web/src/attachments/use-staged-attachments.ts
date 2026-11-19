@@ -68,8 +68,16 @@ export function useStagedAttachments(botId: string) {
   const add = useCallback(
     async (picked: File[]) => {
       if (picked.length === 0) return
-      const known = limits ?? (await loadLimits().catch(() => undefined))
-      if (!known) return
+      let known = limits
+      if (!known) {
+        try {
+          known = await loadLimits()
+        } catch (failure) {
+          const reason = { code: 'limits_unavailable', message: `Could not attach the file. ${messageOf(failure)}` }
+          change(files => [...files, ...picked.map(file => ({ key: `staged-${++nextKey}`, name: file.name, size: file.size, state: 'refused' as const, reason }))])
+          return
+        }
+      }
       const accepted = current.current.files.filter(file => file.state !== 'refused').length
       const { take, leftOut } = splitBySlots(picked, accepted, known)
       const added = take.map(file => ({
