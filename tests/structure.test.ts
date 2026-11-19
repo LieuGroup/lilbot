@@ -84,3 +84,7 @@ test('computers are engine-neutral and never depend on HTTP or bot service', () 
 test('attachments do not depend on HTTP or a concrete engine', () => {
   expect([...crossings('server/attachments', 'server/http'), ...crossings('server/attachments', 'server/engines/hermes')]).toEqual([])
 })
+
+test('history depends on neutral engine contracts and storage, not HTTP or bot orchestration', () => {
+  expect([...crossings('server/history', 'server/http'), ...crossings('server/history', 'server/bots'), ...crossings('server/history', 'server/engines/hermes')]).toEqual([])
+})

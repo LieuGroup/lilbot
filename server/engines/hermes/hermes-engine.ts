@@ -25,6 +25,7 @@ import { configureComputers } from './hermes-computers'
 import { connectionPreparer } from './hermes-connections'
 import { deleteRuntime } from './hermes-delete'
 import { allowedProfile, requireProfileEnvironment } from './hermes-environment'
+import { conversations } from './hermes-history'
 import { installMemory, legacyNotes, memoryConnection, memoryCurrent, memoryInstalled } from './hermes-memory-setup'
 import { ensureFullAccess } from './hermes-permissions'
 import { runRoutine } from './hermes-routines'
@@ -39,6 +40,7 @@ const ROSTER_EVENTS = new Set(['sessions.changed', 'skills.changed'])
 const REVIEW_TIMEOUT_MS = 180_000
 
 export class HermesEngine implements BotEngine {
+  conversations = conversations
   readonly id = 'hermes'
   readonly supportedPermissionModes = ['full-access'] as const
   constructor(private botIds?: string[]) {}
@@ -47,7 +49,8 @@ export class HermesEngine implements BotEngine {
     bots: () => Promise<RuntimeBinding[]>,
     listener: (event: ActivityEvent) => void,
     cursor: ActivityCursor,
-    availability?: (nativeId: string, available: boolean) => void
+    availability?: (nativeId: string, available: boolean) => void,
+    conversationEvent?: (botId: string, chatId: string, event: ChatEvent, key: string) => void
   ) {
     const known = new Map<string, boolean>()
     return watchHermesActivity(
@@ -64,7 +67,8 @@ export class HermesEngine implements BotEngine {
         return bound.filter(bot => profiles.has(bot.engineBotId))
       },
       listener,
-      cursor
+      cursor,
+      conversationEvent
     )
   }
   /** Bot management goes through one shared connection on the default profile. */
@@ -298,10 +302,12 @@ export class HermesEngine implements BotEngine {
         // Only a chat that no longer exists is replaced by a fresh one. Any other refusal (Hermes
         // restarting, a contract change) is an error, so a long conversation is never swapped
         // for an empty one by accident.
-        session = await socket.request('session.resume', { session_id: chatId, source: 'gui', display_projection: true }).catch(error => {
-          if (!options.requireExisting && error instanceof LilBotError && error.code === 'hermes_not_found') return null
-          throw error
-        })
+        session = await socket
+          .request('session.resume', { session_id: chatId, source: 'gui', display_projection: true, omit_messages: options.omitMessages ?? false })
+          .catch(error => {
+            if (!options.requireExisting && error instanceof LilBotError && error.code === 'hermes_not_found') return null
+            throw error
+          })
       }
       // A new chat starts in the bot's own folder. A resumed chat keeps the folder it was made with.
       session ??= await socket.request('session.create', { source: 'gui', request_id: crypto.randomUUID(), client: CLIENT, cwd: options.workspace, cwd_explicit: true })

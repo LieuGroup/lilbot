@@ -49,6 +49,7 @@ export const ChatSnapshot = z.object({
   running: z.boolean(),
   /** The folder this chat works in, as the engine reports it. */
   workspace: z.string(),
+  history: z.custom<import('./history-schema').HistoryPage>().optional(),
   items: z.array(ChatItem)
 })
 export type ChatSnapshot = z.infer<typeof ChatSnapshot>

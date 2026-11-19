@@ -41,6 +41,7 @@ export interface ChatOptions {
   /** The bot's folder; the chat works there. */
   workspace: string
   /** Explicit history must not silently become a new conversation. */
+  omitMessages?: boolean
   requireExisting?: boolean
 }
 
@@ -59,13 +60,25 @@ export interface McpConnection {
 export type RuntimeBinding = { id: string; engineBotId: string }
 export type ActivityCursor = (botId: string, chatId: string) => string | undefined
 
+export interface ConversationSource {
+  list(): Promise<{ id: string; at: number }[]>
+  read(
+    id: string,
+    cursor?: string | null,
+    latest?: boolean
+  ): Promise<{ rows: { id: string; at: number; order: number; item: import('../../shared/chat-schema').ChatItem }[]; cursor: string | null; reset: boolean; empty: boolean }>
+  close(): void
+}
+
 export interface BotEngine {
+  conversations?(nativeId: string): Promise<ConversationSource>
   /** Observe existing bound runtimes; emit and persist cursors using the LilBot id. */
   watchActivity?(
     bots: () => Promise<RuntimeBinding[]>,
     listener: (event: ActivityEvent) => void,
     cursor: ActivityCursor,
-    availability?: (nativeId: string, available: boolean) => void
+    availability?: (nativeId: string, available: boolean) => void,
+    conversationEvent?: (botId: string, chatId: string, event: ChatEvent, key: string) => void
   ): () => void
   readonly supportedPermissionModes: readonly PermissionMode[]
   readonly id: string

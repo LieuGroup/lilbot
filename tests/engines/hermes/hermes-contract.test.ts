@@ -48,11 +48,13 @@ const methods: Record<string, Uses> = {
     sends: ['source', 'request_id', 'client', 'cwd', 'cwd_explicit', 'hidden', 'yolo', 'toolsets', 'model', 'provider'],
     reads: ['session_id', 'stored_session_id', 'running', 'execution_generation', 'info']
   },
+  'session.mutate': { table: 'x-canonical-methods', sends: ['session_id', 'request_id', 'expected_revision', 'expected_generation', 'operation', 'payload'], reads: ['revision'] },
+  'session.transcript': { table: 'x-canonical-methods', sends: ['session_id', 'cursor', 'limit', 'order'], reads: ['rows', 'next_cursor', 'reset'] },
   'session.info': { table: 'x-canonical-methods', sends: ['session_id'], reads: ['system_prompt'] },
   'session.resume': {
     table: 'x-canonical-methods',
-    sends: ['session_id', 'source', 'display_projection'],
-    reads: ['session_id', 'stored_session_id', 'display_messages', 'running', 'execution_generation', 'info']
+    sends: ['session_id', 'source', 'display_projection', 'omit_messages'],
+    reads: ['session_id', 'stored_session_id', 'display_messages', 'running', 'execution_generation', 'revision', 'info']
   },
   'prompt.submit': { table: 'x-canonical-methods', sends: ['session_id', 'text', 'input_id', 'display_kind', 'queued', 'attachments', 'api_text'], reads: ['admission_id'] },
   'image.attach_bytes': { table: 'x-canonical-methods', sends: ['session_id', 'content_base64'], reads: ['attached', 'path', 'mime'] },
@@ -113,7 +115,7 @@ describe.skipIf(!installed)('Hermes wire contract', () => {
 
   test('activity replay and list fields are declared', () => {
     for (const [name, used] of Object.entries({
-      CanonicalSessionListRow: ['session_id', 'running', 'started_at'],
+      CanonicalSessionListRow: ['session_id', 'id', 'source', 'running', 'started_at'],
       CanonicalReplayEvent: ['type', 'payload', 'seq'],
       CanonicalEventsResult: ['replay_epoch', 'last_sequence', 'open_requests', 'truncated']
     })) {
@@ -127,6 +129,14 @@ describe.skipIf(!installed)('Hermes wire contract', () => {
 
   test('attachment input fields remain declared', () => {
     expect(['path', 'mime'].filter(key => !fields(contract.components.schemas.CanonicalAttachment).has(key))).toEqual([])
+  })
+
+  test('history transcript fields remain declared', () => {
+    expect(
+      ['row_id', 'row_kind', 'timestamp', 'display_kind', 'role', 'text', 'tool_call_id', 'name', 'context', 'content'].filter(
+        key => !fields(contract.components.schemas.StoredTranscriptRow).has(key)
+      )
+    ).toEqual([])
   })
 
   test('thread transcript fields remain declared', () => {

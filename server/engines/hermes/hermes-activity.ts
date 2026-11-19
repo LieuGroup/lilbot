@@ -1,14 +1,22 @@
 /** Persistent, read-only profile sockets. No chat is resumed by the observer. */
+
 import type { ActivityEvent } from '../../../shared/activity-schema'
+import type { ChatEvent } from '../../../shared/chat-schema'
 import { backgroundFailure } from '../../background'
 import { type ActivityReplayState, type ActivityUpdate, applyActivityReplay, replayNeedsReset, replayPosition } from '../activity-replay'
 import type { RuntimeBinding } from '../bot-engine'
+import { chatEventFrom } from './hermes-chat-mapping'
 import { HermesSocket } from './hermes-socket'
 
 type Cursor = (botId: string, chatId: string) => string | undefined
 type Observer = { socket?: HermesSocket; retryAt: number; failures: number; sessions: Map<string, ActivityReplayState> }
 
-export function watchHermesActivity(bots: () => Promise<RuntimeBinding[]>, emit: (event: ActivityEvent) => void, cursor: Cursor): () => void {
+export function watchHermesActivity(
+  bots: () => Promise<RuntimeBinding[]>,
+  emit: (event: ActivityEvent) => void,
+  cursor: Cursor,
+  conversationEvent?: (botId: string, chatId: string, event: ChatEvent, key: string) => void
+): () => void {
   const startedAt = Date.now() / 1000
   const observers = new Map<string, Observer>()
   let stopped = false
@@ -41,6 +49,11 @@ export function watchHermesActivity(bots: () => Promise<RuntimeBinding[]>, emit:
         const reset = replayNeedsReset(previous, replay.replay_epoch, replay.truncated)
         // One full read re-baselines a gap/epoch change; do not loop if the buffer is itself truncated.
         if (reset) replay = await socket.request('session.events.since', { session_id: chatId, last_sequence: 0, replay_epoch: replay.replay_epoch })
+        if (conversationEvent)
+          for (const event of replay.events) {
+            const mapped = chatEventFrom(event)
+            if (mapped) conversationEvent(botId, chatId, mapped, `${replay.replay_epoch}:${event.seq}`)
+          }
         const updates: ActivityUpdate[] = replay.events.map((event: any) => ({
           sequence: event.seq,
           ...(event.type === 'message.start' ? { status: 'working', clearTool: true } : {}),

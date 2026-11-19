@@ -114,6 +114,7 @@ export class BrowserSession {
       return { ok: true }
     },
     'memory.connect': ({ botId }) => this.bots.connectMemory(botId),
+    'chat.history': async ({ botId, cursor, limit }) => this.mergeHistory(botId, await this.bots.historyPage(botId, cursor, limit)),
     'chat.open': ({ botId, chatId }, afterResponse) => this.track(afterResponse, onEvent => this.bots.openChat(botId, chatId, onEvent)),
     'chat.new': ({ botId }, afterResponse) => this.track(afterResponse, onEvent => this.bots.newChat(botId, onEvent)),
     'chat.send': async ({ chatId, text, attachmentIds, messageId }) => {
@@ -202,9 +203,31 @@ export class BrowserSession {
     })
     if (this.threads && this.bots.isMainChat(chat.snapshot.botId, chat.snapshot.chatId)) {
       const threads = await this.threads.list(chat.snapshot.botId)
-      chat.snapshot.items.push(...threads.map(thread => threadLine(thread, chat.snapshot.botId)))
+      chat.snapshot.items.push(
+        ...threads.map(thread => {
+          const line = threadLine(thread, chat.snapshot.botId)
+          this.bots.historyReference(chat.snapshot.botId, chatId, line, thread.createdAt)
+          return line
+        })
+      )
+    }
+    if (this.bots.isMainChat(chat.snapshot.botId, chatId)) {
+      try {
+        chat.snapshot.history = this.mergeHistory(chat.snapshot.botId, await this.bots.historyPage(chat.snapshot.botId))
+        chat.snapshot.items = chat.snapshot.history.items.flatMap(row => (row.item.kind === 'session' ? [] : [row.item]))
+      } catch (error) {
+        if (!(error instanceof LilBotError && error.code === 'unavailable')) throw error
+      }
     }
     return this.attachments ? this.attachments.merge(chat.snapshot) : chat.snapshot
+  }
+
+  private mergeHistory(botId: string, page: import('../../shared/history-schema').HistoryPage) {
+    for (const row of page.items)
+      if (row.item.kind !== 'session' && this.attachments) {
+        row.item = this.attachments.merge({ botId, chatId: row.sessionId, title: '', workspace: '', running: false, items: [row.item] }).items[0]
+      }
+    return page
   }
 
   private attachmentService() {

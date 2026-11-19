@@ -41,6 +41,7 @@ server/            The LilBot server (runs on the leader).
   routines/          app-owned schedules, run history and scheduler
   library/           Delivered workspace files, metadata, safe reads and folder listings.
   attachments/       Incoming chat files, streaming uploads and durable message associations.
+  history/           Conversation records, import checkpoints, paging and bot-scoped search.
   connections/       LilBot-owned connections given to every bot: T3 Code for coding (bridge, sign-in, skill).
   computers/         Computer identities, key registration and durable command requests.
   database/          LilBot's own SQLite file and its schema steps.
@@ -210,7 +211,7 @@ Server startup requires an explicit `LILBOT_ENV`; use the launcher for checks, n
 - `server/database/`: LilBot's own SQLite database (`bun:sqlite`), by default `~/.local/share/lilbot/lilbot.db`
   (`LILBOT_DATA_DIR`). It owns bot identity (name, function, instructions, model), engine/native-id bindings,
   memory, sidebar preferences, sections, main-conversation pointers and the primary-bot choice.
-  Tools, MCP connectors and conversation transcripts stay with the engine, except the T3 Code connection LilBot supplies (see Coding). Skills belong to LilBot. Identity is imported once, then LilBot wins
+  Tools and MCP connectors stay with the engine, except the T3 Code connection LilBot supplies (see Coding). Skills belong to LilBot. Identity is imported once, then LilBot wins
   on mismatch; model edits are checked against the engine’s available models before anything is saved,
   including when repairing a bot with an invalid saved model. Unsupported permission modes also fail before saving.
   Accepted edits (including name, function and instructions) are saved in the database before they are applied to the runtime.
@@ -301,7 +302,7 @@ What a bot is and who owns each part. Decided with Oscar on 2026-11-16 unless ma
 | Skills and per-bot skill switches | LilBot | shared skills library and SQLite |
 | Tools and MCP connectors | the engine, except LilBot's T3 Code connection | Hermes profile; the T3 connection is defined in `server/connections/` |
 | Workspace: one folder per bot on the shared computer | the bot | `~/lilbot/workspaces/<bot id>`, the working directory of its chats |
-| Conversation: one main conversation per bot; a new session replaces it as the main one | the engine | Hermes sessions; LilBot's database names the main one |
+| Conversation: continuous history, with one active session | LilBot record; engine working context | SQLite history items and session dividers; Hermes keeps model context |
 | Memory | LilBot | facts in LilBot's database; the engine reads and writes them through an adapter |
 | Primary bot, avatar, section, pinned, hidden, unread | the user | LilBot's own SQLite database |
 
@@ -328,6 +329,54 @@ What a bot is and who owns each part. Decided with Oscar on 2026-11-16 unless ma
 - Sidebar state belongs to the user, not the bot: pin, section, read/unread and hide are independent settings.
 - A bot's live state (running, writing, waiting, current activity) is separate from unread and from the health of
   its computer.
+
+## Conversation history
+
+`server/history/` owns the conversation record (migration **18**). Hermes owns the model's
+working context; LilBot never summarises. Streaming chat events are journalled before forwarding; observer replay is journalled by epoch/sequence when no browser is open,
+including user sends, tool rows and completion. A read-only background importer reconciles durable
+Hermes transcript rows, including work completed while LilBot was offline. Row ids are namespaced
+by engine/profile, and repeated pages upsert rather than duplicate. Attachment metadata is merged
+at the HTTP edge and copied with its original session; thread references are recorded at the same
+edge without indexing the thread's private transcript. Routine and hidden thread/review sessions
+are excluded. Deleting a bot removes its conversation record and journal, regardless of file/archive
+and private-memory choices, matching #59; those choices continue to govern files and facts.
+
+- `chat.open` / `chat.new` keep their existing snapshot and event shapes. `items` holds the latest
+  100 display records (without the new divider kind, for old clients). Additive `history` contains
+  `{items, nextCursor, start, import}`. Each history item is `{id, sessionId, at, author, item}`;
+  `item` is a normal ChatItem or `{kind:'session', text:'New session'}`. Times are epoch milliseconds.
+  The active session id remains `snapshot.chatId`; a new session retains earlier history.
+- `chat.history({botId, cursor?, limit?})` returns the same page, with a maximum/default of 100.
+  Pages are newest first, records within them chronological. Prepend older pages. Cursors are
+  bot-bound sort keys, so new messages do not shift old pages. `start:{at}` appears only on the
+  oldest page after import completes; `null` is not a definitive beginning while import is pending.
+  `import` reports `complete`, discovered `sessions`, `completed` sessions and `items` count.
+  `history.changed {botId}` tells new clients to refresh after background progress.
+- The importer does one 100-row page per bot per second, with atomic row/cursor checkpoints.
+  First open reads only the latest engine page and resumes with `omit_messages`; startup never
+  waits for history. Discovery runs every 30 seconds against both live and stored catalogues.
+  Both catalogue APIs cap at 200 without pagination. At that boundary the Hermes adapter reads
+  only session metadata from that profile's `state.db` in **read-only** mode, joining compression
+  parents; all message content still goes through `session.transcript`. This fallback depends on
+  Hermes' session table schema and has a fixture test. Errors leave import pending for retry.
+  Empty oldest-order pages retain their tail cursor, so later turns can be copied without rereading
+  months of history. Rewinds/resets never erase already copied rows: this is an append-only record.
+- Adapter **0.9.0** (`lilbot-memory-v0-9-0`) adds `search_conversations(query,limit?)`. It authenticates
+  with the existing bot-bound capability and searches only that bot's user/assistant rows, returning
+  snippets, ids, session ids and times plus import progress. Move this tool to #62's hub later.
+- `on_pre_compress` synchronously offers the conversation's user/assistant evidence (bounded to the
+  last 100,000 characters) to a hidden memory-only review by the same bot, before Hermes summarises.
+  It uses the normal memory rules and protections. Review sessions cannot recursively review
+  themselves. This uses Hermes' best-effort hook, not the v2 fail-closed checkpoint promise: an
+  unavailable server or failed review logs a warning and Hermes may proceed. No Hermes patch.
+
+Deploy through the usual release procedure: migration 18 adds the tables/index, adapter 0.9.0 gets
+its own provider folder, and existing data imports only after deploy. New sessions load the new
+search tool; do not restart Hermes or manually touch live profiles. Import is safe to resume after
+restart and safe to repeat. `bun run check:history` uses the dev launcher and a temporary bot, tests
+continuous history/paging/search, kills only its dev server mid-import, and tests forced compression.
+`bun live-checks/history-benchmark.ts` uses a synthetic 5,000-row dev copy (never production data).
 
 ## Threads
 
@@ -367,8 +416,7 @@ profile allowlist before creating two throwaway bots, then removes both profiles
 ## Restart recovery
 
 Restarting **LilBot only** leaves Hermes turns and T3 tasks running. The browser reconnects and
-opens the persisted main conversation; it does not resubmit the user message. Hermes supplies the
-transcript, including tool work and the final answer, and whether the turn is still running.
+opens the persisted main conversation; it does not resubmit the user message. Hermes supplies whether the turn is still running; LilBot reconciles the durable transcript into its own history, including tool work and the final answer.
 Routines recover the same persisted run and admission receipt. Bot threads recover their outbox
 and return the answer to the original caller session; they do not start a replacement exchange.
 The T3 bridge reloads its sign-in from the same data directory; stable per-bot request ids allow an
@@ -881,8 +929,7 @@ as turn count, not re-learning what the user removed, restore), nightly-labs Ope
 operations on a cheaper model, protecting what the user wrote), CopilotKit OpenBot (pause, provenance).
 
 Not built yet: the nightly tidy-up (merge duplicates, drop outdated facts), attaching facts relevant to the
-user's message automatically, holding a turn's writes until the turn succeeds, and saving before Hermes compresses
-a conversation (`on_pre_compress`).
+user's message automatically, and holding a turn's writes until the turn succeeds. Pre-compression saving is described under Conversation history.
 
 ## Routines
 
@@ -960,9 +1007,8 @@ artwork, names or text.
 ## Known gaps
 
 - Activity observation polls persistent profile-bound sockets every second; very short activity may only be seen at completion. Hermes live listings expose at most 200 sessions per profile. A future host-scoped subscription could reduce latency.
-- Opening a chat loads its whole history. A long-lived conversation needs paging and stable item ids
-  (Hermes: `omit_messages` on resume plus `session.transcript`).
-- Chats made before slice 3 are not a bot's main conversation; they are still in Hermes.
+- The history screen (#67) still needs to consume the paging metadata; the existing screen displays the latest page.
+- Hermes limits a transcript row to 2 MiB and may rotate very old compression lineages; a first import can only recover rows Hermes still exposes. Already copied rows remain in LilBot.
 
 ## Rules
 
