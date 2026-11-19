@@ -1,4 +1,5 @@
 import { devScratch } from '../scripts/dev-env'
+import { devPort } from '../scripts/dev-paths'
 import { startServer, deleteProfile } from './check-process'
 /** Check model edit refusal and recovery against an isolated server and temporary profile. */
 import { existsSync, rmSync } from 'node:fs'
@@ -7,9 +8,7 @@ import { BotStore } from '../server/bots/bot-store'
 import { openDatabase } from '../server/database/database'
 
 const scratch = devScratch('lilbot-model')
-const reservation = Bun.serve({ port: 0, fetch: () => new Response() })
-const port = reservation.port!
-reservation.stop(true)
+const port = devPort()
 const server = startServer({
   ...process.env,
   LILBOT_PORT: String(port),

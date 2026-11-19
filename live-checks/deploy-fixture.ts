@@ -1,3 +1,4 @@
+import { devPort } from '../scripts/dev-paths'
 /** Isolated systemd fixture. All writes are confined to this root and these two unit names. */
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
@@ -33,9 +34,7 @@ export class DeployFixture {
     await git(this.checkout, 'config', 'user.name', 'Deploy check')
     await git(this.checkout, 'config', 'user.email', 'deploy-check@example.invalid')
     await command([process.execPath, 'install', '--frozen-lockfile'], this.checkout)
-    const listener = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response('') })
-    this.port = listener.port!
-    listener.stop(true)
+    this.port = devPort()
     this.env = {
       ...process.env,
       LILBOT_DATA_DIR: this.data,

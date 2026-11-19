@@ -1,4 +1,5 @@
 import { devScratch } from '../scripts/dev-env'
+import { devPort } from '../scripts/dev-paths'
 import { startServer, deleteProfile } from './check-process'
 /** Measure real cold/warm roster reads with isolated, pre-imported temporary bots. */
 import { rmSync } from 'node:fs'
@@ -45,9 +46,7 @@ try {
       }))
     )
     db.close()
-    const reservation = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response('') })
-    const port = reservation.port!
-    reservation.stop(true)
+    const port = devPort()
     server = startServer({
       ...process.env,
       LILBOT_PORT: String(port),
