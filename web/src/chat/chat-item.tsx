@@ -6,20 +6,25 @@ import remarkGfm from 'remark-gfm'
 import { Bubble, BubbleContent } from '@/ui/bubble'
 import { Message, MessageContent, MessageFooter } from '@/ui/message'
 import { Trace, TraceIcon, TraceLine, TraceTitle } from '@/ui/trace'
+import { ImageNote, SentAttachments } from '../attachments/message-attachments'
 import type { ViewItem } from './chat-state'
 
 /** One transcript item drawn with the AI Elements patterns: Message and Bubble for turns, a Tool
  *  trace line for tool use. Memoised: a streamed chunk changes only the last item, so earlier
  *  replies are not parsed or drawn again. */
-export const ChatItem = memo(function ChatItem({ item }: { item: ViewItem }) {
+export const ChatItem = memo(function ChatItem({ item, botId }: { item: ViewItem; botId: string }) {
   switch (item.kind) {
     case 'user':
       return (
         <Message align="end">
-          <MessageContent>
-            <Bubble align="end" variant="outline" className="max-w-[min(480px,85%)]">
-              <BubbleContent className="rounded-[18px] border-transparent! px-3.5 py-2 text-[15px]/6 whitespace-pre-wrap">{item.text}</BubbleContent>
-            </Bubble>
+          <MessageContent className="gap-1.5">
+            {item.attachments && item.attachments.length > 0 && <SentAttachments files={item.attachments} />}
+            {item.text && (
+              <Bubble align="end" variant="outline" className="max-w-[min(480px,85%)]">
+                <BubbleContent className="rounded-[18px] border-transparent! px-3.5 py-2 text-[15px]/6 whitespace-pre-wrap">{item.text}</BubbleContent>
+              </Bubble>
+            )}
+            <ImageNote botId={botId} images={item.images} />
           </MessageContent>
         </Message>
       )

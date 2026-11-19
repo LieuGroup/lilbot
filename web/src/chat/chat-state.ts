@@ -1,15 +1,18 @@
 /** What a chat looks like on screen, and how each live event changes it. Pure functions only. */
+import type { AttachmentMessage } from '../../../shared/attachment-schema'
 import type { ChatEvent, ChatItem, ChatSnapshot } from '../../../shared/chat-schema'
 
 /** `streaming` marks the assistant message that is still being written. */
 export type ViewItem = ChatItem & { streaming?: boolean }
+/** A message from the user, with its files when it has any. */
+export type UserItem = Extract<ChatItem, { kind: 'user' }>
 
 export interface ChatView {
   chatId: string
   items: ViewItem[]
   /** Messages sent while the bot was busy. The engine runs them next; each joins the transcript
    *  when its turn starts, so it never lands in the middle of the reply being written. */
-  queued: string[]
+  queued: UserItem[]
   /** A message was sent to an idle bot and its turn has not started yet. */
   awaitingStart: boolean
   running: boolean
@@ -31,9 +34,22 @@ export function chatFromSnapshot(snapshot: ChatSnapshot): ChatView {
   }
 }
 
-export function withUserMessage(chat: ChatView, text: string): ChatView {
-  if (chat.running) return { ...chat, queued: [...chat.queued, text] }
-  return { ...chat, items: [...chat.items, { kind: 'user', text }], awaitingStart: true, running: true, activity: 'Sending...' }
+export function withUserMessage(chat: ChatView, message: string | UserItem): ChatView {
+  const item: UserItem = typeof message === 'string' ? { kind: 'user', text: message } : message
+  if (chat.running) return { ...chat, queued: [...chat.queued, item] }
+  return { ...chat, items: [...chat.items, item], awaitingStart: true, running: true, activity: 'Sending...' }
+}
+
+/** The server's record of a message sent with files (the `chat.send` answer or the `user.message`
+ *  event, whichever comes first) fills in the message already on screen with the same id. Every
+ *  other item keeps its object, so memoised rows and the scroller see no change. */
+export function withSentMessage(chat: ChatView, message: AttachmentMessage): ChatView {
+  const fill = <T extends ViewItem>(item: T): T =>
+    item.kind === 'user' && item.messageId === message.messageId ? { ...item, text: message.text, attachments: message.attachments, images: message.images } : item
+  const has = (items: ViewItem[]) => items.some(item => item.kind === 'user' && item.messageId === message.messageId)
+  if (has(chat.items)) return { ...chat, items: chat.items.map(fill) }
+  if (has(chat.queued)) return { ...chat, queued: chat.queued.map(fill) }
+  return chat
 }
 
 export const withError = (chat: ChatView, text: string): ChatView => ({
@@ -50,9 +66,10 @@ const stopWriting = (items: ViewItem[]): ViewItem[] => items.map(item => (isWrit
 
 export function applyChatEvent(chat: ChatView, event: ChatEvent): ChatView {
   switch (event.type) {
-    // The attachments screen adds rendering and optimistic-message reconciliation.
-    case 'user.message':
-      return chat
+    case 'user.message': {
+      const { type: _type, ...message } = event
+      return withSentMessage(chat, message)
+    }
     case 'thread':
       return chat.items.some(i => i.kind === 'tool' && i.threadId === event.threadId)
         ? chat
@@ -64,7 +81,7 @@ export function applyChatEvent(chat: ChatView, event: ChatEvent): ChatView {
       // This turn belongs to the message already in the transcript, or to the oldest queued one.
       if (chat.awaitingStart) return { ...chat, awaitingStart: false, running: true, activity: 'Thinking...' }
       const [next, ...rest] = chat.queued
-      const items: ViewItem[] = next === undefined ? chat.items : [...stopWriting(chat.items), { kind: 'user', text: next }]
+      const items: ViewItem[] = next === undefined ? chat.items : [...stopWriting(chat.items), next]
       return { ...chat, items, queued: rest, running: true, activity: 'Thinking...' }
     }
 
