@@ -3,7 +3,8 @@ import { checkPublicPort, isTunnelRequest, plainServerError } from './http/liste
  *  Binds to loopback only; reach it from other devices through the tailnet (`tailscale serve`). */
 
 import { homedir } from 'node:os'
-import { join, normalize } from 'node:path'
+import { join } from 'node:path'
+import type { WebSocketHandler } from 'bun'
 import { ActivityService } from './activity/activity-service'
 import { ActivityStore } from './activity/activity-store'
 import { BotPrefsStore } from './bots/bot-prefs-store'
@@ -19,10 +20,13 @@ import { T3Grants } from './connections/t3-grant'
 import { openDatabase } from './database/database'
 import { HermesEngine } from './engines/hermes/hermes-engine'
 import { MEMORY_ADAPTER_VERSION } from './engines/hermes/hermes-memory-setup'
+import { startAccessDoor } from './http/access-door'
+import { accessSettings } from './http/access-settings'
+import { appRoutes, type SocketData } from './http/app-routes'
 import { BrowserSession } from './http/browser-session'
 import { createEngineApi, engineToken } from './http/engine-api'
 import { startPublicDoor } from './http/public-door'
-import { allowedHosts, socketAllowed } from './http/socket-guard'
+import { allowedHosts } from './http/socket-guard'
 import { threadEvents } from './http/thread-events'
 import { LibraryService } from './library/library-service'
 import { LibraryStore } from './library/library-store'
@@ -38,13 +42,10 @@ import { SkillsService } from './skills/skills-service'
 import { ThreadService } from './threads/thread-service'
 import { ThreadStore } from './threads/thread-store'
 
-interface SocketData {
-  session?: BrowserSession
-}
-
 const PORT = Number(process.env.LILBOT_PORT ?? 3370)
 const PUBLIC_PORT = Number(process.env.LILBOT_PUBLIC_PORT ?? 3372)
 if (process.env.LILBOT_PUBLIC_ENABLED === '1') checkPublicPort(PUBLIC_PORT, PORT)
+const ACCESS = accessSettings(process.env, PORT, PUBLIC_PORT)
 const HOST = process.env.LILBOT_HOST ?? '127.0.0.1'
 /** LilBot's own database file lives here. */
 const DATA_DIR = process.env.LILBOT_DATA_DIR ?? join(homedir(), '.local', 'share', 'lilbot')
@@ -53,19 +54,23 @@ const WORKSPACES_DIR = process.env.LILBOT_WORKSPACES_DIR ?? join(homedir(), 'lil
 /** Every connected browser is subscribed to this topic. */
 const EVERYONE = 'everyone'
 const CHANGE_DELAY_MS = 300
+const publish = (topic: string, data: string) => {
+  server.publish(topic, data)
+  accessServer?.publish(topic, data)
+}
 
 // Several changes in a row (or a burst of engine events) become one "fetch the bot list again".
 let changeTimer: ReturnType<typeof setTimeout> | undefined
 function botsChanged() {
   clearTimeout(changeTimer)
-  changeTimer = setTimeout(() => server.publish(EVERYONE, JSON.stringify({ event: 'bots.changed' })), CHANGE_DELAY_MS)
+  changeTimer = setTimeout(() => publish(EVERYONE, JSON.stringify({ event: 'bots.changed' })), CHANGE_DELAY_MS)
 }
 
 const engine = new HermesEngine(process.env.LILBOT_BOT_IDS?.split(',').filter(Boolean))
 const database = openDatabase(join(DATA_DIR, 'lilbot.db'))
 const activity = new ActivityService(new ActivityStore(database), botsChanged)
 const memory = new MemoryService(new MemoryStore(database))
-const memoryChanged = () => server.publish(EVERYONE, JSON.stringify({ event: 'memory.changed' }))
+const memoryChanged = () => publish(EVERYONE, JSON.stringify({ event: 'memory.changed' }))
 const token = engineToken(DATA_DIR)
 const store = new BotStore(database)
 const threadStore = new ThreadStore(database)
@@ -74,7 +79,7 @@ const computers = new ComputerService(
   loadServerKey(DATA_DIR),
   id => store.exists(id),
   id => new Workspaces(WORKSPACES_DIR).pathFor(id),
-  () => server.publish(EVERYONE, JSON.stringify({ event: 'computers.changed' })),
+  () => publish(EVERYONE, JSON.stringify({ event: 'computers.changed' })),
   id => store.get(id)?.permissionMode
 )
 setInterval(() => computers.tick(), 1000)
@@ -83,15 +88,15 @@ const library = new LibraryService(
   new LibraryStore(database),
   id => new Workspaces(WORKSPACES_DIR).pathFor(id),
   id => store.exists(id),
-  botId => server.publish(EVERYONE, JSON.stringify({ event: 'library.changed', botId }))
+  botId => publish(EVERYONE, JSON.stringify({ event: 'library.changed', botId }))
 )
 const skills = new SkillsService(process.env.LILBOT_SKILLS_DIR ?? join(homedir(), 'lilbot', 'skills'), database, () => {
-  server.publish(EVERYONE, JSON.stringify({ event: 'skills.changed' }))
+  publish(EVERYONE, JSON.stringify({ event: 'skills.changed' }))
   botsChanged()
 })
 // Coding goes to T3 Code: every bot gets its tools through LilBot's bridge and one shared sign-in
 // (`bun run t3:sign-in`), and the coding instructions as the LilBot skill `t3-coding` (installed below).
-const t3Grants = new T3Grants(join(DATA_DIR, 't3-grant.json'), () => server.publish(EVERYONE, JSON.stringify({ event: 'connections.changed' })))
+const t3Grants = new T3Grants(join(DATA_DIR, 't3-grant.json'), () => publish(EVERYONE, JSON.stringify({ event: 'connections.changed' })))
 const prefs = new BotPrefsStore(database)
 const bots = new BotService(engine, store, prefs, new Workspaces(WORKSPACES_DIR), memory, {
   skills,
@@ -112,7 +117,7 @@ setInterval(() => {
   const next = t3Grants.generation()
   if (next === t3Generation) return
   t3Generation = next
-  server.publish(EVERYONE, JSON.stringify({ event: 'connections.changed' }))
+  publish(EVERYONE, JSON.stringify({ event: 'connections.changed' }))
   void bots.refreshConnections()
 }, 5_000)
 const t3Bridge = createT3Bridge({
@@ -122,7 +127,7 @@ const t3Bridge = createT3Bridge({
   port: PORT,
   botIds: () => store.list().map(bot => bot.id)
 })
-const routines = new RoutineService(routineStore, bots, () => server.publish(EVERYONE, JSON.stringify({ event: 'routines.changed' })), {
+const routines = new RoutineService(routineStore, bots, () => publish(EVERYONE, JSON.stringify({ event: 'routines.changed' })), {
   ...defaultRoutineSettings,
   // Only isolated servers with their own data folder and explicit profile allowlist may shorten it.
   minIntervalSeconds:
@@ -133,7 +138,7 @@ const routines = new RoutineService(routineStore, bots, () => server.publish(EVE
 const threads = new ThreadService(
   threadStore,
   bots,
-  () => threadEvents(threadStore, store, prefs, frame => server.publish(EVERYONE, JSON.stringify(frame))),
+  () => threadEvents(threadStore, store, prefs, frame => publish(EVERYONE, JSON.stringify(frame))),
   (d, working) => {
     for (const botId of [d.sender, d.target])
       if (store.exists(botId)) activity.observe({ botId, chatId: `thread:${d.id}`, key: `${d.id}:${working}:${Date.now()}`, status: working ? 'working' : 'finished' })
@@ -202,16 +207,32 @@ const DIST = join(import.meta.dir, '..', 'dist')
 
 const ALLOWED_HOSTS = allowedHosts(PORT, process.env.LILBOT_ALLOWED_HOSTS)
 
-async function serveStatic(pathname: string): Promise<Response> {
-  const relative = normalize(decodeURIComponent(pathname)).replace(/^(\.\.[/\\])+/, '')
-  const file = Bun.file(join(DIST, relative))
-  if (relative !== '/' && (await file.exists())) return new Response(file)
-
-  const index = Bun.file(join(DIST, 'index.html'))
-  if (await index.exists()) return new Response(index)
-  return new Response('LilBot web app is not built. Run: bun run build', { status: 503 })
+const websocket: WebSocketHandler<SocketData> = {
+  open(socket) {
+    socket.subscribe(EVERYONE)
+    socket.data.session = new BrowserSession(
+      bots,
+      frame => {
+        // A send after the browser left is expected and harmless.
+        if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(frame))
+      },
+      activity,
+      routines,
+      library,
+      threads,
+      () => ({ t3: t3Grants.status() }),
+      computers
+    )
+  },
+  message(socket, message) {
+    void socket.data.session?.handle(typeof message === 'string' ? message : message.toString())
+  },
+  close(socket) {
+    socket.data.session?.close()
+  }
 }
 
+const browserRoutes = appRoutes(library, DIST, ALLOWED_HOSTS, 'hermes')
 const server = Bun.serve<SocketData>({
   development: false,
   error: plainServerError,
@@ -221,79 +242,19 @@ const server = Bun.serve<SocketData>({
     try {
       if (isTunnelRequest(request)) return new Response('Forbidden', { status: 403 })
       const url = new URL(request.url)
-
-      if (url.pathname === '/ws') {
-        if (!socketAllowed(request, ALLOWED_HOSTS)) {
-          console.error(`[server] refused a socket for host ${request.headers.get('host')}`)
-          return new Response('Forbidden', { status: 403 })
-        }
-        if (server.upgrade(request, { data: {} })) return undefined
-        return new Response('Expected a WebSocket upgrade', { status: 400 })
-      }
-
       if (url.pathname === T3_BRIDGE_PATH) {
         server.timeout(request, 0)
         return t3Bridge(request)
       }
       if (url.pathname.startsWith('/engine/')) return engineApi(request, url.pathname)
-      if (url.pathname.startsWith('/api/library/')) {
-        if (!socketAllowed(request, ALLOWED_HOSTS) || request.headers.get('sec-fetch-site') === 'cross-site') return new Response('Forbidden', { status: 403 })
-        if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 })
-        const parts = url.pathname.split('/')
-        if (parts.length !== 5) return new Response('Not found', { status: 404 })
-        try {
-          const file = await library.content(decodeURIComponent(parts[3]), decodeURIComponent(parts[4]))
-          return new Response(file.data, {
-            headers: {
-              'Content-Type': file.mime,
-              'Content-Disposition': 'attachment',
-              'X-Content-Type-Options': 'nosniff',
-              'Content-Security-Policy': "sandbox; default-src 'none'",
-              'Cache-Control': 'no-store'
-            }
-          })
-        } catch {
-          return new Response('File missing or unavailable', { status: 404 })
-        }
-      }
-      if (url.pathname === '/api/health') return Response.json({ ok: true, engine: 'hermes' })
-      if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 })
-
-      try {
-        return await serveStatic(url.pathname)
-      } catch (error) {
-        console.error('[server] static file failed:', error instanceof Error ? error.message : error)
-        return new Response('Not found', { status: 404 })
-      }
+      return await browserRoutes(request, server)
     } catch {
       return plainServerError()
     }
   },
-  websocket: {
-    open(socket) {
-      socket.subscribe(EVERYONE)
-      socket.data.session = new BrowserSession(
-        bots,
-        frame => {
-          // A send after the browser left is expected and harmless.
-          if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(frame))
-        },
-        activity,
-        routines,
-        library,
-        threads,
-        () => ({ t3: t3Grants.status() }),
-        computers
-      )
-    },
-    message(socket, message) {
-      void socket.data.session?.handle(typeof message === 'string' ? message : message.toString())
-    },
-    close(socket) {
-      socket.data.session?.close()
-    }
-  }
+  websocket
 })
+const accessServer = ACCESS ? startAccessDoor(ACCESS, appRoutes(library, DIST, new Set([ACCESS.host]), 'hermes'), websocket) : undefined
 
 try {
   skills.provide('t3-coding', files(join(import.meta.dir, 'connections', 't3-coding-skill')))

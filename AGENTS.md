@@ -557,6 +557,40 @@ computer; the authenticated bot id owns its requests, never an id from the body.
     to also close the door, delete the drop-in, `systemctl --user daemon-reload` and restart
     `lilbot.service`. The private app is unaffected either way.
 
+## App behind Cloudflare Access
+
+The app has a third, loopback-only listener, separate from the private app and helper door.
+It is off by default. Enable with `LILBOT_ACCESS_ENABLED=1` and set **all** of:
+
+- `LILBOT_ACCESS_PORT` (suggested `3373`, must differ from the private and helper ports).
+- `LILBOT_ACCESS_HOST` (the public hostname, e.g. `bot.example.com`, without a scheme or port).
+- `LILBOT_ACCESS_TEAM` (the team domain, e.g. `<team>.cloudflareaccess.com`, without a scheme).
+- `LILBOT_ACCESS_AUD` (the Access application's audience tag).
+- `LILBOT_ACCESS_EMAIL` (the allowed sign-in email, service environment only; never commit or log it).
+
+Missing/invalid settings stop startup before opening listeners. The Access listener serves the same
+built app, browser routes (including library downloads), and `/ws` as the private app. Every HTTP
+request and socket handshake requires an RS256 Access JWT in `Cf-Access-Jwt-Assertion`; only `/ws`
+upgrades also accept the `CF_Authorization` cookie. A present header takes precedence over a cookie.
+It checks the configured issuer, audience, expiry/not-before (30 seconds of skew), and email
+(case-insensitive). Keys come only from `https://<team>/cdn-cgi/access/certs`, cached for ten minutes;
+an unknown key triggers refresh after a 30-second cooldown. Failed fetches have the same cooldown.
+Invalid/missing tokens, wrong Host or a mismatched Origin get a plain 403. Errors are plain 500s;
+development error pages are disabled. Tokens and the email are never logged.
+
+`/engine`, `/engine/*`, `/helper`, and `/helper/*` are always refused, including with a valid JWT.
+The private listener's Cloudflare-header refusal and helper door's two-path boundary stay in place.
+Never point the app tunnel at the private port or add the Access hostname to `LILBOT_ALLOWED_HOSTS`.
+
+`bun run check:access` starts an isolated second server with temporary data/workspaces/skills and
+an unmatched profile sentinel; no real bot or Cloudflare account is used. Its local RSA/JWKS fixture
+uses `LILBOT_ACCESS_TEST_CERTS_URL`, accepted only for HTTP on `127.0.0.1` with all three isolation
+directories and exactly `LILBOT_BOT_IDS=isolation-access-check`. Do not set this override in deployment.
+
+Deployment steps: **pending orchestrator setup** of the Access application and single-user allow rule,
+then a dedicated tunnel/DNS route, service environment, outside sign-in/socket check, and rollback
+instructions. Code alone does not provision Cloudflare or enable the listener.
+
 ## Skills
 
 `server/skills/` owns a shared standard SKILL.md library at `~/lilbot/skills`
