@@ -79,6 +79,7 @@ try {
       'This is an isolated LilBot test. Use create_routine for schedules, never cronjob. The test server permits 3-second intervals. For requests from Oscar set createdBy=oscar; for your own idea use bot. Do not ask for confirmation. Follow the exact schedule requested. Routine executions must do the file work and never create another routine.'
   })
   db = new Database(join(root, 'lilbot.db'))
+  db.exec('PRAGMA busy_timeout = 5000')
   nativeId = (db.query('SELECT engine_bot_id FROM bots WHERE id = ?').get(bot.id) as any).engine_bot_id
   const main = await call('chat.open', { botId: bot.id })
   await call('chat.send', {

@@ -4,6 +4,7 @@
  *  in memory. LilBot runs no model itself: the review is a session of the bot's own engine. */
 import type { BotModel } from '../../shared/bot-schema'
 import { LilBotError } from '../../shared/protocol'
+import { backgroundFailure } from '../background'
 import type { BotEngine } from '../engines/bot-engine'
 import type { PendingSummary, PendingTurn, ReviewQueue } from './review-queue'
 
@@ -75,7 +76,7 @@ export class MemoryReviewer {
     })
     if (!this.settings.enabled) return []
     const due = pending.filter(pending => this.due(pending))
-    for (const { botId } of due) void this.review(botId).catch(() => {})
+    for (const { botId } of due) void this.review(botId).catch(() => backgroundFailure('memory review'))
     return due.map(pending => pending.botId)
   }
 
@@ -105,7 +106,6 @@ export class MemoryReviewer {
       }
       // The turns stay queued; a persistent failure must not turn into a review every few seconds.
       this.retryAt.set(botId, this.now() + RETRY_AFTER_MS)
-      console.error(`[memory-review] review of ${botId} failed, retrying later:`, error instanceof Error ? error.message : error)
       throw error
     } finally {
       this.running.delete(botId)

@@ -16,6 +16,7 @@ if (!directory || !realpathSync(directory).startsWith(`${realpathSync(join(homed
 const path = join(directory, 'lilbot.db')
 const tables = ['bot_prefs', 'primary_bot', 'memory_facts', 'sections', 'review_turns', 'bot_activity', 'activity_cursors']
 const beforeDb = new Database(path, { readonly: true })
+beforeDb.exec('PRAGMA busy_timeout = 5000')
 const version = beforeDb.query('PRAGMA user_version').get()
 const before = tables.map(table => beforeDb.query(`SELECT * FROM ${table} ORDER BY rowid`).all())
 beforeDb.close()

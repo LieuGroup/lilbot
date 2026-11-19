@@ -1,6 +1,7 @@
 /** Resolves LilBot ids to runtime ids. The database always wins over an engine's copy. */
 import type { BotCreateInput, BotUpdateInput } from '../../shared/bot-schema'
 import { LilBotError } from '../../shared/protocol'
+import { backgroundFailure } from '../background'
 import type { BotEngine, McpConnection, RuntimeState } from '../engines/bot-engine'
 import { memoryRefusal } from '../memory/memory-safety'
 import { files } from '../skills/skill-files'
@@ -126,13 +127,16 @@ export class BotRuntimes {
   /** Gives every current bot its connections again, for example after the shared T3 sign-in changed. */
   async refreshConnections(): Promise<void> {
     if (!this.connections) return
+    let failed = false
     for (const bot of this.store.list().filter(bot => bot.engineId === this.engine.id && this.states.get(bot.id))) {
       try {
         await this.engine.prepareConnections?.(bot.engineBotId, this.connections(bot.id))
-      } catch (error) {
-        console.error(`[connections] could not refresh bot ${bot.id}:`, error instanceof Error ? error.message : error)
+      } catch {
+        backgroundFailure('bot connections')
+        failed = true
       }
     }
+    if (failed) throw new Error('Connection refresh incomplete')
   }
 
   async optionalState(bot: BotRecord): Promise<RuntimeState | null> {

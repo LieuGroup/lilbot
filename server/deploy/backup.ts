@@ -6,6 +6,7 @@ import { backup, DatabaseSync } from 'node:sqlite'
 export async function backupDatabase(source: string, target: string) {
   const db = new DatabaseSync(source, { readOnly: true })
   try {
+    db.exec('PRAGMA busy_timeout = 5000')
     await backup(db, target)
   } finally {
     db.close()
@@ -13,6 +14,7 @@ export async function backupDatabase(source: string, target: string) {
   await chmod(target, 0o600)
   const check = new DatabaseSync(target, { readOnly: true })
   try {
+    check.exec('PRAGMA busy_timeout = 5000')
     if (check.prepare('PRAGMA quick_check').get()?.quick_check !== 'ok') throw new Error('Database copy failed quick_check')
   } finally {
     check.close()

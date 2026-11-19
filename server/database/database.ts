@@ -129,7 +129,7 @@ const migrations: string[] = [
 export function openDatabase(path: string): Database {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
   const db = new Database(path, { create: true, strict: true })
-  db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON;')
+  db.exec('PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON;')
 
   const applied = (db.query('PRAGMA user_version').get() as { user_version: number }).user_version
   if (applied > migrations.length) throw new Error(`The database is from a newer LilBot (schema ${applied}, this build knows ${migrations.length}).`)

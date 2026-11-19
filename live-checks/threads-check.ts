@@ -84,6 +84,7 @@ try {
   await connect()
   assert.equal((await call('bots.list')).length, 0)
   db = new Database(join(root, 'lilbot.db'))
+  db.exec('PRAGMA busy_timeout = 5000')
   const create = async (name: string, instructions: string) => {
     const bot = await call('bots.create', { name, function: 'Temporary thread check', instructions })
     natives.push((db!.query('SELECT engine_bot_id FROM bots WHERE id=?').get(bot.id) as any).engine_bot_id)

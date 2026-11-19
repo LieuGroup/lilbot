@@ -1,5 +1,6 @@
 /** Persistent, read-only profile sockets. No chat is resumed by the observer. */
 import type { ActivityEvent } from '../../../shared/activity-schema'
+import { backgroundFailure } from '../../background'
 import { type ActivityReplayState, type ActivityUpdate, applyActivityReplay, replayNeedsReset, replayPosition } from '../activity-replay'
 import type { RuntimeBinding } from '../bot-engine'
 import { HermesSocket } from './hermes-socket'
@@ -69,8 +70,8 @@ export function watchHermesActivity(bots: () => Promise<RuntimeBinding[]>, emit:
       for (const id of observer.sessions.keys()) if (!live.has(id)) observer.sessions.delete(id)
       observer.failures = 0
       observer.retryAt = 0
-    } catch (error) {
-      console.error('[activity] could not observe bot:', botId, error instanceof Error ? error.message : error)
+    } catch {
+      backgroundFailure('activity observation')
       observer.socket?.close()
       observer.socket = undefined
       observer.retryAt = Date.now() + Math.min(60_000, 1000 * 2 ** Math.min(observer.failures++, 6))
@@ -97,8 +98,8 @@ export function watchHermesActivity(bots: () => Promise<RuntimeBinding[]>, emit:
           return read(bot, observer)
         })
       )
-    } catch (error) {
-      console.error('[activity] could not list bots:', error instanceof Error ? error.message : error)
+    } catch {
+      backgroundFailure('activity roster')
     } finally {
       if (!stopped) timer = setTimeout(sweep, Math.max(0, 1000 - (Date.now() - start)))
     }

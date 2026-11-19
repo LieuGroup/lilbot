@@ -1,6 +1,7 @@
 import type { ChatItem } from '../../shared/chat-schema'
 import { LilBotError } from '../../shared/protocol'
 import { ThreadAsk } from '../../shared/thread-schema'
+import { backgroundFailure } from '../background'
 import type { RoutineOptions } from '../engines/bot-engine'
 import { memoryRefusal } from '../memory/memory-safety'
 import { THREAD_LIMITS } from './thread-limits'
@@ -53,13 +54,16 @@ export class ThreadService {
       // Preserve order within a thread, while nested threads can make progress independently.
       if (pending.slice(0, index).some(other => other.threadId === d.threadId)) continue
       this.running.add(d.id)
-      this.activity(d, true)
-      void this.run(d)
+      void Promise.resolve()
+        .then(() => {
+          this.activity(d, true)
+          return this.run(d)
+        })
         .catch(error => {
           if (error instanceof LilBotError && ['bot_not_found', 'unsafe_message', 'thread_limit'].includes(error.code)) this.store.fail(d)
           else {
             this.retryAt.set(d.id, Date.now() + 30_000)
-            console.error(`[threads] delivery ${d.id} will retry:`, error instanceof Error ? error.message : error)
+            backgroundFailure('thread delivery')
           }
         })
         .finally(() => {
@@ -67,6 +71,7 @@ export class ThreadService {
           this.activity(d, false)
           this.changed()
         })
+        .catch(() => backgroundFailure('thread delivery cleanup'))
     }
   }
   private async run(d: Delivery) {

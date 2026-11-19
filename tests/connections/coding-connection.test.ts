@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test'
+import { expect, spyOn, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -58,4 +58,29 @@ test('a sign-in change gives every available bot its connections again', async (
   signIn = '1700000000000'
   await runtimes.refreshConnections()
   expect(urls).toEqual(['http://127.0.0.1:3370/engine/t3/mcp?signin=signed-out', 'http://127.0.0.1:3370/engine/t3/mcp?signin=1700000000000'])
+})
+
+test('failed connection refresh remains retryable and does not log engine payloads', async () => {
+  const f = fakeService()
+  const log = spyOn(console, 'error').mockImplementation(() => {})
+  let fail = false
+  let calls = 0
+  f.engine.prepareConnections = async () => {
+    calls++
+    if (fail) throw new Error('secret connection payload')
+  }
+  const runtimes = new BotRuntimes(f.store, f.engine, undefined, undefined, () => [])
+  try {
+    await runtimes.initialize()
+    fail = true
+    await expect(runtimes.refreshConnections()).rejects.toThrow('Connection refresh incomplete')
+    fail = false
+    await runtimes.refreshConnections()
+    expect(calls).toBe(2)
+    expect(JSON.stringify(log.mock.calls)).not.toContain('secret')
+  } finally {
+    log.mockRestore()
+    f.database.close()
+    rmSync(f.root, { recursive: true, force: true })
+  }
 })

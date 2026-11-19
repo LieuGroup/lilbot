@@ -1,4 +1,5 @@
 import type { ActivityEvent, BotActivity } from '../../shared/activity-schema'
+import { backgroundTask } from '../background'
 import type { ActivityStore } from './activity-store'
 
 const idle = { status: 'idle', text: '', machine: 'leader' } as const
@@ -41,11 +42,14 @@ export class ActivityService {
     if (event.status === 'finished' || event.status === 'failed') {
       this.timers.set(
         key,
-        setTimeout(() => {
-          sessions.delete(event.chatId)
-          this.timers.delete(key)
-          this.changed()
-        }, this.settleMs)
+        setTimeout(
+          backgroundTask('activity settlement', () => {
+            sessions.delete(event.chatId)
+            this.timers.delete(key)
+            this.changed()
+          }),
+          this.settleMs
+        )
       )
     }
   }

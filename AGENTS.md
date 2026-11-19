@@ -385,6 +385,11 @@ reboot. An unknown engine receipt fails explicitly rather than repeating possibl
 Failed deployments are recovered by an independent watchdog, described below. The self-development skill is not installed.
 Keep development checks on an isolated server; never restart the live service as a test.
 
+SQLite connections wait up to five seconds for short locks, including deploy copies and check clients.
+Background timers catch failures and retry on later ticks; their error logs contain fixed task labels,
+never exception payloads. A persistent database failure therefore logs and leaves work pending rather
+than terminating the server.
+
 ## Deployment safety net
 
 Production runs only from `~/lilbot/release`, a symlink to an immutable built folder under

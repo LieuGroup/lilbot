@@ -80,6 +80,7 @@ export class RestartServer {
       45_000
     )
     this.db ??= new Database(join(this.root, 'lilbot.db'))
+    this.db.exec('PRAGMA busy_timeout = 5000')
   }
 
   async connect() {
