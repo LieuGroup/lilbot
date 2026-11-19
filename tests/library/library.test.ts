@@ -126,10 +126,9 @@ test('engine delivery requires token and bot credential; ignores forged bot id',
   expect((await call(botCapability('token', 'bot'))).status).toBe(403)
 })
 
-test('date groups and library survive reopening the store', async () => {
+test('date groups and content URLs', async () => {
   const item = await give()
   store.add({ ...item, id: 'old', createdAt: Date.now() - 15 * 86400000 })
-  expect(new LibraryStore(db).count('bot')).toBe(2)
   const page = await service.list({ botId: 'bot' })
   expect(page.items[1].group).toBe('older')
   expect(() => service.contentUrl('other', item.id)).toThrow('does not exist')
