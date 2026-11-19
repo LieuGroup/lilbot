@@ -7,11 +7,7 @@ import { HermesSocket } from './hermes-socket'
 
 export async function conversations(nativeId: string): Promise<ConversationSource> {
   requireProfileEnvironment(nativeId)
-  const socket = await HermesSocket.connect(
-    nativeId === 'default' ? '' : nativeId,
-    () => {},
-    () => {}
-  )
+  const socket = await HermesSocket.connect(nativeId === 'default' ? '' : nativeId)
   return {
     close: () => socket.close(),
     async list() {

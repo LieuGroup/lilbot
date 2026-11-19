@@ -26,7 +26,7 @@ export class HermesSocket {
   ) {}
 
   /** `profile` empty = Hermes' default profile. Resolves once Hermes says the socket is ready. */
-  static async connect(profile: string, onEvent: (event: HermesEvent) => void, onClose: () => void): Promise<HermesSocket> {
+  static async connect(profile: string, onEvent: (event: HermesEvent) => void = () => {}, onClose: () => void = () => {}): Promise<HermesSocket> {
     const grant = await attachToHermes(profile)
     const socket = new WebSocket(grant.url, grant.protocols)
 
@@ -128,5 +128,34 @@ export class HermesSocket {
     }
     this.pending.clear()
     this.onClose()
+  }
+}
+
+/** Share one management socket, but never let an old close discard a newer attempt. */
+export function managementConnection() {
+  let current: Promise<HermesSocket> | null = null
+  const listeners = new Set<() => void>()
+  return {
+    subscribe(listener: () => void) {
+      listeners.add(listener)
+      return () => void listeners.delete(listener)
+    },
+    socket(): Promise<HermesSocket> {
+      if (current) return current
+      const attempt = HermesSocket.connect(
+        '',
+        event => {
+          if (event.type === 'sessions.changed' || event.type === 'skills.changed') for (const listener of listeners) listener()
+        },
+        () => {
+          if (current === attempt) current = null
+        }
+      )
+      current = attempt
+      attempt.catch(() => {
+        if (current === attempt) current = null
+      })
+      return attempt
+    }
   }
 }

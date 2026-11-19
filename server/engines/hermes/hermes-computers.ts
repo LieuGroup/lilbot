@@ -16,11 +16,7 @@ export async function configureComputers(id: string, settings: { url: string; to
     const child = Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', ...(id === 'default' ? [] : ['-p', id]), ...args], { env: process.env, stdout: 'ignore', stderr: 'ignore' })
     if ((await child.exited) !== 0) throw new Error('Could not configure computer tools.')
   }
-  const socket = await HermesSocket.connect(
-    id === 'default' ? '' : id,
-    () => {},
-    () => {}
-  )
+  const socket = await HermesSocket.connect(id === 'default' ? '' : id)
   try {
     await socket.request('plugins.manage', { action: 'toggle', name: plugin, enable: false })
     const result = await socket.request('plugins.manage', { action: 'toggle', name: plugin, enable: true })
