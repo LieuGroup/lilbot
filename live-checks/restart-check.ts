@@ -31,13 +31,16 @@ async function started(t: ReturnType<typeof task>) {
     value => value === '1'
   )
 }
+function sessionItems(chat: ChatSnapshot) {
+  return chat.history ? chat.history.items.filter(row => row.sessionId === chat.chatId).map(row => row.item) : chat.items
+}
 function assertTranscript(chat: ChatSnapshot, marker: string) {
   assert.equal(chat.running, false, 'Recovered conversation is still running')
   assert.ok(
-    chat.items.some(i => i.kind === 'tool'),
+    sessionItems(chat).some(i => i.kind === 'tool'),
     'Recovered transcript lost the tool work'
   )
-  assert.equal(chat.items.filter(i => i.kind === 'assistant' && i.text.includes(marker)).length, 1, 'Final answer is missing or duplicated')
+  assert.equal(sessionItems(chat).filter(i => i.kind === 'assistant' && i.text.includes(marker)).length, 1, 'Final answer is missing or duplicated')
 }
 async function settled(botId: string, marker: string) {
   return waitFor(
@@ -97,7 +100,7 @@ try {
     }
     const result = await settled(bot.id, `${name.toUpperCase()}_DONE`)
     assertTranscript(result, `${name.toUpperCase()}_DONE`)
-    assert.equal(result.items.filter((i: any) => i.kind === 'user').length, 1)
+    assert.equal(sessionItems(result).filter(i => i.kind === 'user').length, 1)
     assert.equal(await read(t.counter), '1')
     console.log(`ok: ${name} resumes the same conversation, tool history and final answer; counter=1`)
   }
