@@ -135,6 +135,11 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
     file `dist/index.html` references; Vite's per-file sizes alone understate it). The bot menu, its dialogs and
     Settings are lazy too: the roster only writes to small stores and loads them on hover or first use. The
     image viewer (`ui/image-viewer.tsx`) loads on the first click on an image.
+  - `bun run build` also writes brotli and gzip copies of the text files in `dist/` (`scripts/compress-dist.ts`).
+    `server/http/static-files.ts` serves them to every listener that serves the app (private, Access, dev):
+    the encoding the browser accepts, `Cache-Control: public, max-age=31536000, immutable` for hashed files under
+    `/assets/` (a missing one is a 404, never the page), `no-cache` with an ETag for `index.html` and other files.
+    A repeat visit downloads only the page (about 0.6 kB); a first visit about 206 kB instead of 814 kB.
 - Checks: Biome, `tsc`, `bun test`, Vite build, all through `bun run verify`. `bun run check:live` is the live
   check against the running Hermes.
 
@@ -187,6 +192,9 @@ Server startup requires an explicit `LILBOT_ENV`; use the launcher for checks, n
   session is refused with `profile_mismatch`). Sessions use Hermes' canonical methods (`x-canonical-methods` in
   the contract); profiles and models use the general `methods` table. Each connection starts with a
   single-use ticket from `hermes gateway attach --json` (about one second, the slowest step in opening a chat).
+  So after a chat opens, `hermes-spare-sockets.ts` attaches one spare connection for that profile in the
+  background; the bot's next open takes it and skips the attach (about 0.15-0.4 s instead of 1.1-1.8 s). A spare
+  holds no session. At most four profiles keep one, each for ten idle minutes; deleting a bot closes its spare.
 - `server/bots/bot-service.ts`: what LilBot does with bots, whichever client asks. It joins the three owners of a bot:
   LilBot's identity (`server/bots/bot-store.ts`), the engine (abilities and chats), and the user's preferences
   (`server/bots/bot-prefs-store.ts`), with the bot's workspace folder (`server/bots/workspaces.ts`).
@@ -283,8 +291,13 @@ Server startup requires an explicit `LILBOT_ENV`; use the launcher for checks, n
 - The conversation uses AI Elements' Message Scroller: it opens at its latest message (also after a reload or
   resume); a sent message moves up and the reply grows below it (Oscar's choice); the list follows the reply only
   while the reader stays at the end. Only messages sent while the list is open are scroll anchors: the scroller jumps
-  to any anchor it did not see arrive (`chat/scroll-anchors.ts`). Earlier items are memoised (`chat/chat-item.tsx`), so a streamed chunk redraws
-  only the last one. Queued messages show as dashed bubbles, the activity line as a shimmering Trace line (not
+  to any anchor it did not see arrive (`chat/scroll-anchors.ts`). Each transcript load (`ChatView.load`) resets
+  which items count as arrived. Rows are memoised (`chat/message-list.tsx`, `chat/chat-item.tsx`), so a streamed
+  chunk redraws only the last one, and a reloaded transcript keeps the objects of unchanged items
+  (`reuseItems` in `chat/chat-state.ts`), so a reopen redraws nothing. A chat this page has not shown yet appears
+  from `chat.history` (a database read) while `chat.open` attaches; the message box takes typing meanwhile and
+  sends once the chat is open. The list first draws the latest 20 rows, then the earlier ones in a transition that
+  yields to typing; the scroller keeps the view in place as they arrive above. Queued messages show as dashed bubbles, the activity line as a shimmering Trace line (not
   Reasoning: we get a status, not thinking text), tool use as Trace lines.
 - Hermes' wire contract lives in `~/.hermes/hermes-agent/apps/shared/src/gateway-contract.openrpc.json` and
   `tui_gateway/contracts/`. Read it before using a new method, and read only fields the contract declares (Hermes

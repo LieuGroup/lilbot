@@ -59,6 +59,13 @@ export class HermesSocket {
     return this.open
   }
 
+  /** Hands a connection made in advance (see `SpareSockets`) to the code that now uses it. */
+  rebind(onEvent: (event: HermesEvent) => void, onClose: () => void): this {
+    this.onEvent = onEvent
+    this.onClose = onClose
+    return this
+  }
+
   request<T = any>(method: string, params: Record<string, unknown> = {}): Promise<T> {
     if (!this.open) return Promise.reject(new LilBotError('engine_unavailable', 'The connection to Hermes is closed.'))
     const id = this.nextId++

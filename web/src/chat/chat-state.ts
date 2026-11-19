@@ -1,6 +1,7 @@
 /** What a chat looks like on screen, and how each live event changes it. Pure functions only. */
 import type { AttachmentMessage } from '../../../shared/attachment-schema'
 import type { ChatEvent, ChatItem, ChatSnapshot } from '../../../shared/chat-schema'
+import type { HistoryPage } from '../../../shared/history-schema'
 
 /** `streaming` marks the assistant message that is still being written. */
 export type ViewItem = ChatItem & { streaming?: boolean }
@@ -18,20 +19,44 @@ export interface ChatView {
   running: boolean
   activity: string
   title: string
+  /** Counts the times the transcript came from the server rather than from a live event. */
+  load: number
 }
 
-export const emptyChat: ChatView = { chatId: '', items: [], queued: [], awaitingStart: false, running: false, activity: '', title: '' }
+export const emptyChat: ChatView = { chatId: '', items: [], queued: [], awaitingStart: false, running: false, activity: '', title: '', load: 0 }
 
-export function chatFromSnapshot(snapshot: ChatSnapshot): ChatView {
+/** A reloaded transcript keeps the objects of the items that did not change, so memoised rows
+ *  are not drawn again. Items are compared by content; repeated identical items pair in order. */
+export function reuseItems(previous: readonly ViewItem[], next: ViewItem[]): ViewItem[] {
+  if (previous.length === 0) return next
+  const earlier = new Map<string, ViewItem[]>()
+  for (const item of previous) {
+    const key = JSON.stringify(item)
+    const same = earlier.get(key)
+    if (same) same.push(item)
+    else earlier.set(key, [item])
+  }
+  return next.map(item => earlier.get(JSON.stringify(item))?.shift() ?? item)
+}
+
+export function chatFromSnapshot(snapshot: ChatSnapshot, previous: ChatView = emptyChat): ChatView {
   return {
     chatId: snapshot.chatId,
-    items: snapshot.items,
+    items: reuseItems(previous.items, snapshot.items),
     queued: [],
     awaitingStart: false,
     running: snapshot.running,
     activity: snapshot.running ? 'Working...' : '',
-    title: snapshot.title
+    title: snapshot.title,
+    load: previous.load + 1
   }
+}
+
+/** The bot's saved conversation, shown while its chat is still opening. Nothing can be sent yet;
+ *  the chat's own snapshot replaces it moments later. The latest record names the main session. */
+export function chatFromHistory(page: HistoryPage, previous: ChatView = emptyChat): ChatView {
+  const items: ViewItem[] = page.items.flatMap(row => (row.item.kind === 'session' ? [] : [row.item]))
+  return { ...emptyChat, chatId: page.items.at(-1)?.sessionId ?? '', items: reuseItems(previous.items, items), load: previous.load + 1 }
 }
 
 export function withUserMessage(chat: ChatView, message: string | UserItem): ChatView {

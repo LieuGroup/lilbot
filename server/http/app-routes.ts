@@ -1,12 +1,12 @@
 /** Browser routes shared by the private app and the authenticated Access listener. */
 
-import { join, normalize } from 'node:path'
 import type { Server } from 'bun'
 import type { AttachmentService } from '../attachments/attachment-service'
 import type { LibraryService } from '../library/library-service'
 import { attachmentRoute } from './attachment-routes'
 import type { BrowserSession } from './browser-session'
 import { socketAllowed } from './socket-guard'
+import { staticFile } from './static-files'
 
 export interface SocketData {
   session?: BrowserSession
@@ -43,11 +43,6 @@ export function appRoutes(library: Pick<LibraryService, 'content'>, dist: string
     }
     if (url.pathname === '/api/health') return Response.json({ ok: true, engine: engineName })
     if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 })
-    const relative = normalize(decodeURIComponent(url.pathname)).replace(/^(\.\.[/\\])+/, '')
-    const file = Bun.file(join(dist, relative))
-    if (relative !== '/' && (await file.exists())) return new Response(file)
-    const index = Bun.file(join(dist, 'index.html'))
-    if (await index.exists()) return new Response(index)
-    return new Response('LilBot web app is not built. Run: bun run build', { status: 503 })
+    return staticFile(request, dist, url.pathname)
   }
 }
