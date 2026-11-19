@@ -20,6 +20,7 @@ class LilBotSocket {
   private threadsChangedListeners = new Set<() => void>()
   private routinesChangedListeners = new Set<() => void>()
   private memoryChangedListeners = new Set<() => void>()
+  private historyChangedListeners = new Set<(botId: string) => void>()
   connected = false
 
   connect() {
@@ -80,6 +81,12 @@ class LilBotSocket {
     return () => void this.memoryChangedListeners.delete(listener)
   }
 
+  /** Told when the history import brought in more of a bot's conversation. */
+  onHistoryChanged(listener: (botId: string) => void) {
+    this.historyChangedListeners.add(listener)
+    return () => void this.historyChangedListeners.delete(listener)
+  }
+
   onSkillsChanged(listener: () => void) {
     this.skillsChangedListeners.add(listener)
     return () => void this.skillsChangedListeners.delete(listener)
@@ -119,6 +126,10 @@ class LilBotSocket {
     }
     if (frame.event === 'memory.changed') {
       for (const listener of this.memoryChangedListeners) listener()
+      return
+    }
+    if (frame.event === 'history.changed') {
+      for (const listener of this.historyChangedListeners) listener(frame.botId)
       return
     }
     if (frame.event === 'skills.changed') {

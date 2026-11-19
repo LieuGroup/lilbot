@@ -2,7 +2,8 @@ import { describe, expect, test } from 'bun:test'
 
 import type { ChatEvent } from '../../shared/chat-schema'
 import type { HistoryPage } from '../../shared/history-schema'
-import { applyChatEvent, type ChatView, chatFromHistory, chatFromSnapshot, emptyChat, reuseItems, withSentMessage, withUserMessage } from '../../web/src/chat/chat-state'
+import { applyChatEvent, type ChatView, chatFromHistory, chatFromSnapshot, emptyChat, withNewSession, withSentMessage, withUserMessage } from '../../web/src/chat/chat-state'
+import { reuseItems } from '../../web/src/history/history-view'
 
 const play = (chat: ChatView, ...events: ChatEvent[]) => events.reduce(applyChatEvent, chat)
 const texts = (chat: ChatView) => chat.items.map(item => (item.kind === 'tool' ? `tool:${item.name}` : `${item.kind}:${item.text}`))
@@ -175,24 +176,35 @@ describe('messages with files', () => {
 })
 
 describe('opening a chat', () => {
-  const snapshot = (items: ChatView['items']) => ({ chatId: 'main', botId: 'b', title: '', running: false, workspace: '', items })
-  const page = (sessionId: string, items: HistoryPage['items'][number]['item'][]): HistoryPage => ({
-    items: items.map((item, n) => ({ id: `r${n}`, sessionId, at: n, author: item.kind === 'user' ? 'user' : 'bot', item })),
+  type Row = HistoryPage['items'][number]['item']
+  const page = (sessionId: string, items: Row[], ids = items.map((_, n) => `r${n}`)): HistoryPage => ({
+    items: items.map((item, n) => ({ id: ids[n], sessionId, at: n, author: item.kind === 'user' ? 'user' : 'bot', item })),
     nextCursor: null,
     start: null,
     import: { complete: true, sessions: 1, completed: 1, items: items.length }
   })
+  const snapshot = (history: HistoryPage) => ({
+    chatId: 'main',
+    botId: 'b',
+    title: '',
+    running: false,
+    workspace: '',
+    items: history.items.flatMap(row => (row.item.kind === 'session' ? [] : [row.item])),
+    history
+  })
 
-  test('shows the saved conversation without session dividers, named after its latest session', () => {
+  test('shows the saved conversation with its session dividers, named after its latest session', () => {
     const chat = chatFromHistory(
       page('main', [
+        { kind: 'user', text: 'old' },
         { kind: 'session', text: 'New session' },
         { kind: 'user', text: 'hi' },
         { kind: 'assistant', text: 'hello' }
       ])
     )
     expect(chat).toMatchObject({ chatId: 'main', running: false, load: 1 })
-    expect(texts(chat)).toEqual(['user:hi', 'assistant:hello'])
+    expect(texts(chat)).toEqual(['user:old', 'session:New session', 'user:hi', 'assistant:hello'])
+    expect(chat.items[2]).toMatchObject({ id: 'r2', at: 2 })
   })
 
   test('the snapshot keeps the objects of unchanged items and counts as a new load', () => {
@@ -203,17 +215,57 @@ describe('opening a chat', () => {
       ])
     )
     const opened = chatFromSnapshot(
-      snapshot([
-        { kind: 'user', text: 'hi' },
-        { kind: 'assistant', text: 'hello, edited' },
-        { kind: 'user', text: 'new' }
-      ]),
+      snapshot(
+        page('main', [
+          { kind: 'user', text: 'hi' },
+          { kind: 'assistant', text: 'hello, edited' },
+          { kind: 'user', text: 'new' }
+        ])
+      ),
       shown
     )
     expect(opened.items[0]).toBe(shown.items[0])
     expect(opened.items[1]).not.toBe(shown.items[1])
     expect(texts(opened)).toEqual(['user:hi', 'assistant:hello, edited', 'user:new'])
     expect(opened.load).toBe(2)
+  })
+
+  test('a chat without history keeps its own transcript', () => {
+    const opened = chatFromSnapshot({ chatId: 'run', botId: 'b', title: '', running: false, workspace: '', items: [{ kind: 'user', text: 'routine' }] })
+    expect(texts(opened)).toEqual(['user:routine'])
+    expect(opened).toMatchObject({ older: null, start: null, importing: false })
+  })
+
+  test('a new session adds a divider and keeps the conversation', () => {
+    let chat = chatFromHistory(page('main', [{ kind: 'user', text: 'hi' }]))
+    chat = play(withUserMessage(chat, 'more'), { type: 'turn.started' }, { type: 'text.delta', text: 'par' })
+    chat = withNewSession(chat)
+    expect(texts(chat)).toEqual(['user:hi', 'user:more', 'assistant:par', 'session:New session'])
+    expect(chat.items[2]).toMatchObject({ streaming: false })
+    expect(chat).toMatchObject({ running: false, activity: '', queued: [] })
+    // The new session's snapshot brings the saved divider in place of the one drawn at once.
+    const opened = chatFromSnapshot(
+      snapshot(
+        page(
+          'new',
+          [
+            { kind: 'user', text: 'hi' },
+            { kind: 'user', text: 'more' },
+            { kind: 'assistant', text: 'part' },
+            { kind: 'session', text: 'New session' }
+          ],
+          ['r0', 'r1', 'r2', 'session:new']
+        )
+      ),
+      chat
+    )
+    expect(texts(opened)).toEqual(['user:hi', 'user:more', 'assistant:part', 'session:New session'])
+    expect(opened.items[0]).toBe(chat.items[0])
+    expect(opened.items[3]).toMatchObject({ id: 'session:new' })
+  })
+
+  test('an empty chat gets no divider', () => {
+    expect(withNewSession(emptyChat).items).toEqual([])
   })
 
   test('repeated identical items pair with earlier objects one to one', () => {
