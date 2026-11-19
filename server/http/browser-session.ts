@@ -1,29 +1,25 @@
 /** One browser connection: checks each request, runs it on the bot service, and forwards chat events. */
 import type { z } from 'zod'
-import type { ChatEvent } from '../../shared/chat-schema'
 import type { ConnectionsStatus } from '../../shared/connections-schema'
 import { type EventFrame, LilBotError, type Method, methods, RequestFrame, type ResponseFrame, type Results } from '../../shared/protocol'
 import type { ActivityService } from '../activity/activity-service'
 import { type AttachmentService, attachmentLimits } from '../attachments/attachment-service'
 import type { BotService } from '../bots/bot-service'
-import type { OpenChat } from '../engines/bot-engine'
 import type { LibraryService } from '../library/library-service'
 import type { RoutineService } from '../routines/routine-service'
-import { threadLine } from './thread-events'
+import { type AfterResponse, BrowserChats } from './browser-chats'
 
-const MAX_OPEN_CHATS = 8
-
-/** Work a handler wants done right after its response has been sent. */
-type AfterResponse = (task: () => void) => void
+function requireService<T>(service: T | undefined, message: string): T {
+  if (!service) throw new LilBotError('unavailable', message)
+  return service
+}
 
 /** One handler per protocol method, with that method's checked params and its result type. A
  *  method added to the protocol without a handler here does not compile. */
 type Handlers = { [M in Method]: (params: z.output<(typeof methods)[M]>, afterResponse: AfterResponse) => Promise<Results[M]> }
 
 export class BrowserSession {
-  private chats = new Map<string, OpenChat>()
-  private closed = false
-  private views = new Map<string, () => void>()
+  private chats: BrowserChats
 
   constructor(
     private bots: BotService,
@@ -36,47 +32,33 @@ export class BrowserSession {
     private computers?: import('../computers/computer-service').ComputerService,
     private deploymentNotice?: () => string | undefined,
     private attachments?: AttachmentService
-  ) {}
+  ) {
+    this.chats = new BrowserChats(bots, sendFrame, activity, threads, attachments)
+  }
 
-  private routineService() {
-    if (!this.routines) throw new LilBotError('unavailable', 'Routines are unavailable.')
-    return this.routines
-  }
-  private libraryService() {
-    if (!this.library) throw new LilBotError('unavailable', 'Library is unavailable.')
-    return this.library
-  }
-  private computerService() {
-    if (!this.computers) throw new LilBotError('unavailable', 'Computers unavailable.')
-    return this.computers
-  }
   private handlers: Handlers = {
     'attachments.limits': async () => attachmentLimits,
-    'attachments.prepare': async ({ botId, files }) => this.attachmentService().prepare(botId, files),
-    'attachments.status': async ({ botId, ids }) => this.attachmentService().status(botId, ids),
+    'attachments.prepare': async ({ botId, files }) => requireService(this.attachments, 'Attachments are unavailable.').prepare(botId, files),
+    'attachments.status': async ({ botId, ids }) => requireService(this.attachments, 'Attachments are unavailable.').status(botId, ids),
     'deploy.status': async () => ({ notice: this.deploymentNotice?.() }),
     'threads.list': ({ botId }) => this.threads!.list(botId),
     'threads.open': ({ botId, threadId }) => this.threads!.open(botId, threadId),
-    'computers.list': async () => this.computerService().list(),
-    'computers.installCode': async ({ name }) => this.computerService().auth.code(name),
-    'computers.remove': async ({ computer }) => this.computerService().remove(computer),
+    'computers.list': async () => requireService(this.computers, 'Computers unavailable.').list(),
+    'computers.installCode': async ({ name }) => requireService(this.computers, 'Computers unavailable.').auth.code(name),
+    'computers.remove': async ({ computer }) => requireService(this.computers, 'Computers unavailable.').remove(computer),
     'skills.list': ({ botId }) => this.bots.listSkills(botId),
     'skills.read': ({ botId, name }) => this.bots.readSkill(botId, name),
     'skills.setEnabled': ({ botId, name, enabled }) => this.bots.setSkill(botId, name, enabled),
-    'routines.list': ({ botId }) => this.routineService().list(botId),
-    'routines.pause': ({ botId, id }) => this.routineService().pause(botId, id, true),
-    'routines.resume': ({ botId, id }) => this.routineService().pause(botId, id, false),
-    'routines.delete': ({ botId, id }) => this.routineService().delete(botId, id),
-    'routines.openRun': ({ botId, runId }, afterResponse) => this.track(afterResponse, onEvent => this.routineService().openRun(botId, runId, onEvent)),
-    'library.list': input => this.libraryService().list(input),
-    'library.workspace': ({ botId, path }) => this.libraryService().workspace(botId, path),
-    'library.content': async ({ botId, itemId }) => {
-      return this.libraryService().contentUrl(botId, itemId)
-    },
-    'connections.status': async () => {
-      if (!this.connections) throw new LilBotError('unavailable', 'Connections are unavailable.')
-      return this.connections()
-    },
+    'routines.list': ({ botId }) => requireService(this.routines, 'Routines are unavailable.').list(botId),
+    'routines.pause': ({ botId, id }) => requireService(this.routines, 'Routines are unavailable.').pause(botId, id, true),
+    'routines.resume': ({ botId, id }) => requireService(this.routines, 'Routines are unavailable.').pause(botId, id, false),
+    'routines.delete': ({ botId, id }) => requireService(this.routines, 'Routines are unavailable.').delete(botId, id),
+    'routines.openRun': ({ botId, runId }, afterResponse) =>
+      this.chats.track(afterResponse, onEvent => requireService(this.routines, 'Routines are unavailable.').openRun(botId, runId, onEvent)),
+    'library.list': input => requireService(this.library, 'Library is unavailable.').list(input),
+    'library.workspace': ({ botId, path }) => requireService(this.library, 'Library is unavailable.').workspace(botId, path),
+    'library.content': async ({ botId, itemId }) => requireService(this.library, 'Library is unavailable.').contentUrl(botId, itemId),
+    'connections.status': async () => requireService(this.connections, 'Connections are unavailable.')(),
     'bots.delete': input => this.bots.deleteBot(input),
     'bots.deleteDefaults.get': async () => this.bots.deleteDefaults(),
     'bots.deleteDefaults.set': async input => this.bots.setDeleteDefaults(input),
@@ -114,23 +96,21 @@ export class BrowserSession {
       return { ok: true }
     },
     'memory.connect': ({ botId }) => this.bots.connectMemory(botId),
-    'chat.history': async ({ botId, cursor, limit }) => this.mergeHistory(botId, await this.bots.historyPage(botId, cursor, limit)),
-    'chat.open': ({ botId, chatId }, afterResponse) => this.track(afterResponse, onEvent => this.bots.openChat(botId, chatId, onEvent)),
-    'chat.new': ({ botId }, afterResponse) => this.track(afterResponse, onEvent => this.bots.newChat(botId, onEvent)),
+    'chat.history': async ({ botId, cursor, limit }) => this.chats.mergeHistory(botId, await this.bots.historyPage(botId, cursor, limit)),
+    'chat.open': ({ botId, chatId }, afterResponse) => this.chats.track(afterResponse, onEvent => this.bots.openChat(botId, chatId, onEvent)),
+    'chat.new': ({ botId }, afterResponse) => this.chats.track(afterResponse, onEvent => this.bots.newChat(botId, onEvent)),
     'chat.send': async ({ chatId, text, attachmentIds, messageId }) => {
-      if (attachmentIds?.length) return { ok: true, message: await this.attachmentService().send(this.chat(chatId), text, attachmentIds, messageId!) }
-      await this.chat(chatId).send(text)
+      if (attachmentIds?.length)
+        return { ok: true, message: await requireService(this.attachments, 'Attachments are unavailable.').send(this.chats.get(chatId), text, attachmentIds, messageId!) }
+      await this.chats.get(chatId).send(text)
       return { ok: true }
     },
     'chat.stop': async ({ chatId }) => {
-      await this.chat(chatId).stop()
+      await this.chats.get(chatId).stop()
       return { ok: true }
     },
     'chat.close': async ({ chatId }) => {
-      this.chats.get(chatId)?.close()
-      this.views.get(chatId)?.()
-      this.views.delete(chatId)
-      this.chats.delete(chatId)
+      this.chats.closeChat(chatId)
       return { ok: true }
     }
   }
@@ -153,11 +133,7 @@ export class BrowserSession {
   }
 
   close() {
-    this.closed = true
-    for (const chat of this.chats.values()) chat.close()
-    this.chats.clear()
-    for (const unview of this.views.values()) unview()
-    this.views.clear()
+    this.chats.close()
   }
 
   private run(name: string, params: unknown, afterResponse: AfterResponse): Promise<unknown> {
@@ -168,76 +144,5 @@ export class BrowserSession {
     // The one place the method name and its params are re-joined after the check above.
     const handler = this.handlers[method] as (params: unknown, afterResponse: AfterResponse) => Promise<unknown>
     return handler(parsed.data, afterResponse)
-  }
-
-  /** Opens a chat through `open`, keeps its handle for this connection and forwards its events. */
-  private async track(afterResponse: AfterResponse, open: (onEvent: (event: ChatEvent) => void) => Promise<OpenChat>) {
-    if (this.chats.size >= MAX_OPEN_CHATS) throw new LilBotError('too_many_chats', 'Too many chats are open in this window.')
-    // The browser only listens for a chat once it has the response naming it, so events that
-    // arrive earlier wait here and go out right after that response.
-    let chatId = ''
-    let responded = false
-    const early: ChatEvent[] = []
-    const forward = (data: ChatEvent) => {
-      if (data.type === 'closed') {
-        this.chats.delete(chatId)
-        this.views.get(chatId)?.()
-        this.views.delete(chatId)
-      }
-      this.sendFrame({ event: 'chat', chatId, data })
-    }
-
-    const chat = await open(data => (responded ? forward(data) : early.push(data)))
-    if (this.closed) {
-      chat.close()
-      throw new LilBotError('closed', 'The connection was closed.')
-    }
-    chatId = chat.snapshot.chatId
-    this.chats.get(chatId)?.close()
-    this.chats.set(chatId, chat)
-    this.views.get(chatId)?.()
-    if (this.activity) this.views.set(chatId, this.activity.view(chat.snapshot.botId))
-    afterResponse(() => {
-      responded = true
-      for (const data of early) forward(data)
-    })
-    if (this.threads && this.bots.isMainChat(chat.snapshot.botId, chat.snapshot.chatId)) {
-      const threads = await this.threads.list(chat.snapshot.botId)
-      chat.snapshot.items.push(
-        ...threads.map(thread => {
-          const line = threadLine(thread, chat.snapshot.botId)
-          this.bots.historyReference(chat.snapshot.botId, chatId, line, thread.createdAt)
-          return line
-        })
-      )
-    }
-    if (this.bots.isMainChat(chat.snapshot.botId, chatId)) {
-      try {
-        chat.snapshot.history = this.mergeHistory(chat.snapshot.botId, await this.bots.historyPage(chat.snapshot.botId))
-        chat.snapshot.items = chat.snapshot.history.items.flatMap(row => (row.item.kind === 'session' ? [] : [row.item]))
-      } catch (error) {
-        if (!(error instanceof LilBotError && error.code === 'unavailable')) throw error
-      }
-    }
-    return this.attachments ? this.attachments.merge(chat.snapshot) : chat.snapshot
-  }
-
-  private mergeHistory(botId: string, page: import('../../shared/history-schema').HistoryPage) {
-    for (const row of page.items)
-      if (row.item.kind !== 'session' && this.attachments) {
-        row.item = this.attachments.merge({ botId, chatId: row.sessionId, title: '', workspace: '', running: false, items: [row.item] }).items[0]
-      }
-    return page
-  }
-
-  private attachmentService() {
-    if (!this.attachments) throw new LilBotError('unavailable', 'Attachments are unavailable.')
-    return this.attachments
-  }
-
-  private chat(chatId: string): OpenChat {
-    const chat = this.chats.get(chatId)
-    if (!chat) throw new LilBotError('chat_not_open', 'This chat is not open. Reload the page to continue.')
-    return chat
   }
 }
