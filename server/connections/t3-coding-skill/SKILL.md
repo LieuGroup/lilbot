@@ -58,3 +58,12 @@ own rules (its `AGENTS.md`). Say whether a pull request is wanted.
 When the thread finishes, report what it actually did (files changed, checks run and their
 result, a pull request if one was made) and repeat the thread's `link`. Report a failure as a
 failure, with what the thread said.
+
+## Deploying LilBot
+
+For LilBot itself, follow its AGENTS.md deployment procedure. Commit and verify in a clean
+development checkout, then use only `bun run deploy` to restart it. Never run a direct service restart.
+If the connection drops during deployment, the independent watchdog owns recovery. On your
+resumed turn read `bun run deploy --status` from that checkout and report its outcome to Oscar.
+Do not retry a deploy while the lock remains or remove a recovery lock automatically. A rollback
+switches the production release symlink and restores a database up to a minute old; do not replay side effects.

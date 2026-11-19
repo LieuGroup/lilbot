@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState } from 'react'
 
+import { DeployNotice } from '../deploy/deploy-notice'
 import { useSettings } from '../settings/settings-store'
 import { loadBotMenu, useBotMenu } from './bot-menu-target'
 import { useBotStore } from './bot-store'
@@ -17,7 +18,7 @@ const SettingsDialog = lazy(() => import('../settings/settings-dialog').then(mod
 /** The roster: primary bot first, then the user's sections, then the collapsed "Unassigned" and
  *  "Hidden" groups. With no sections yet, every bot is listed plainly. */
 export function BotSidebar() {
-  const { bots, sections, loaded, connected, error } = useBotStore()
+  const { bots, sections, loaded, connected, error, deploymentNotice } = useBotStore()
   const [query, setQuery] = useState<string | null>(null)
   const openId = useOpenBotId()
   const tab = useDetailsTab()
@@ -61,6 +62,7 @@ export function BotSidebar() {
           </ul>
         )}
       </div>
+      <DeployNotice notice={deploymentNotice} />
       <RosterFooter connected={connected} />
       <Suspense>
         {menuUsed && <BotMenuHost />}

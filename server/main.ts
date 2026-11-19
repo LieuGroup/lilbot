@@ -18,6 +18,8 @@ import { createT3Bridge } from './connections/t3-bridge'
 import { T3_BRIDGE_PATH, T3_DEFAULT_MCP_URL, t3Connection } from './connections/t3-connection'
 import { T3Grants } from './connections/t3-grant'
 import { openDatabase } from './database/database'
+import { deployNotice } from './deploy/deploy-notice'
+import { runningCommit } from './deploy/health'
 import { HermesEngine } from './engines/hermes/hermes-engine'
 import { MEMORY_ADAPTER_VERSION } from './engines/hermes/hermes-memory-setup'
 import { assertServerEnvironment } from './environment'
@@ -44,7 +46,7 @@ import { ThreadService } from './threads/thread-service'
 import { ThreadStore } from './threads/thread-store'
 
 assertServerEnvironment(process.env)
-
+const COMMIT = runningCommit(join(import.meta.dir, '..'))
 const PORT = Number(process.env.LILBOT_PORT ?? 3370)
 const PUBLIC_PORT = Number(process.env.LILBOT_PUBLIC_PORT ?? 3372)
 if (process.env.LILBOT_PUBLIC_ENABLED === '1') checkPublicPort(PUBLIC_PORT, PORT)
@@ -192,6 +194,7 @@ prepareMemory().catch(error => console.error('[memory] could not prepare memory 
 
 const engineApi = createEngineApi(memory, token, PORT, {
   computers,
+  deploymentNotice: () => deployNotice(DATA_DIR),
   bots,
   skills,
   routines,
@@ -224,7 +227,8 @@ const websocket: WebSocketHandler<SocketData> = {
       library,
       threads,
       () => ({ t3: t3Grants.status() }),
-      computers
+      computers,
+      () => deployNotice(DATA_DIR)
     )
   },
   message(socket, message) {
@@ -250,6 +254,7 @@ const server = Bun.serve<SocketData>({
         return t3Bridge(request)
       }
       if (url.pathname.startsWith('/engine/')) return engineApi(request, url.pathname)
+      if (url.pathname === '/api/health') return Response.json({ ok: true, engine: 'hermes', commit: COMMIT, pid: process.pid })
       return await browserRoutes(request, server)
     } catch {
       return plainServerError()

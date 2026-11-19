@@ -13,6 +13,7 @@ const chatId = z.string().min(1)
 
 /** Each method's params schema (checked on the server) and result type (trusted by the browser). */
 export const methods = {
+  'deploy.status': z.object({}),
   'threads.list': z.object({ botId }),
   'threads.open': z.object({ botId, threadId: z.string().min(1) }),
   'computers.list': z.object({}),
@@ -70,6 +71,7 @@ export type Method = keyof typeof methods
 export type Params<M extends Method> = z.input<(typeof methods)[M]>
 
 export interface Results {
+  'deploy.status': import('./deploy-schema').DeploymentStatus
   'threads.list': import('./thread-schema').BotThread[]
   'threads.open': import('./thread-schema').BotThread
   'computers.list': import('./computer-schema').Computer[]
