@@ -12,7 +12,6 @@ export interface Delivery {
   sourceChat: string
   text: string
   kind: 'request' | 'answer'
-  chatId: string | null
   base: number | null
   status: string
 }
