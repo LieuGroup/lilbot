@@ -23,6 +23,7 @@ import { chatEventFrom, itemsFromRows, sessionLostEvents } from './hermes-chat-m
 import { configureComputers } from './hermes-computers'
 import { connectionPreparer } from './hermes-connections'
 import { deleteRuntime } from './hermes-delete'
+import { allowedProfile, requireProfileEnvironment } from './hermes-environment'
 import { installMemory, legacyNotes, memoryConnection, memoryCurrent, memoryInstalled } from './hermes-memory-setup'
 import { ensureFullAccess } from './hermes-permissions'
 import { runRoutine } from './hermes-routines'
@@ -126,12 +127,14 @@ export class HermesEngine implements BotEngine {
   }
 
   async deleteRuntime(id: string) {
+    requireProfileEnvironment(id)
     if (!PROFILE_ID.test(id) || id === DEFAULT_PROFILE) throw new LilBotError('protected_bot', 'The default bot cannot be deleted.')
     if (this.botIds && !this.botIds.includes(id)) throw new LilBotError('bot_not_found', 'That bot does not exist.')
     await deleteRuntime(id)
   }
 
   async prepareRuntime(id: string) {
+    requireProfileEnvironment(id)
     const socket = await HermesSocket.connect(
       id === DEFAULT_PROFILE ? '' : id,
       () => {},
@@ -147,7 +150,7 @@ export class HermesEngine implements BotEngine {
   async refreshMemory(botIds: string[]): Promise<string[]> {
     const updated: string[] = []
     for (const id of botIds) {
-      if (this.botIds && !this.botIds.includes(id)) continue
+      if (!allowedProfile(id) || (this.botIds && !this.botIds.includes(id))) continue
       if (!memoryInstalled(id) || memoryCurrent(id)) continue
       const connection = await memoryConnection(id)
       if (!connection) continue
@@ -219,7 +222,10 @@ export class HermesEngine implements BotEngine {
   }
 
   private skillSettings = new Map<string, string>()
-  userSkillPaths = userSkillPaths
+  userSkillPaths = (id: string) => {
+    requireProfileEnvironment(id)
+    return userSkillPaths(id)
+  }
   async configureSkills(id: string, settings: Parameters<typeof configureSkills>[1]) {
     await this.requireBot(id)
     const key = JSON.stringify(settings)
@@ -340,7 +346,7 @@ export class HermesEngine implements BotEngine {
     const profiles: any[] = Array.isArray(result.profiles) ? result.profiles : []
     return profiles
       .map(botFromProfile)
-      .filter(bot => !this.botIds || this.botIds.includes(bot.id))
+      .filter(bot => allowedProfile(bot.id) && (!this.botIds || this.botIds.includes(bot.id)))
       .sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name))
   }
 

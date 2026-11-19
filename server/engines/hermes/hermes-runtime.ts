@@ -2,13 +2,14 @@
 import { LilBotError } from '../../../shared/protocol'
 import type { EngineBotDetail, RuntimeIdentity } from '../bot-engine'
 import { DEFAULT_PROFILE } from './hermes-bot-mapping'
+import { runtimePrefix } from './hermes-environment'
 import type { HermesSocket } from './hermes-socket'
 
 type Socket = Pick<HermesSocket, 'request'>
 
 export async function createRuntime(socket: Socket, identity: RuntimeIdentity): Promise<string> {
   // A runtime has its own id; the app persists the returned binding.
-  const id = crypto.randomUUID()
+  const id = `${runtimePrefix()}${crypto.randomUUID()}`
   await socket.request('profiles.create', {
     name: id,
     description: identity.function,

@@ -1,12 +1,12 @@
+import { devScratch } from '../scripts/dev-env'
 /** Measure real cold/warm roster reads with isolated, pre-imported temporary bots. */
-import { mkdtempSync, rmSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { BotStore } from '../server/bots/bot-store'
 import { openDatabase } from '../server/database/database'
 import { HermesEngine } from '../server/engines/hermes/hermes-engine'
 
-const root = mkdtempSync(join(homedir(), 'agent-tmp', 'lilbot-latency-'))
+const root = devScratch('lilbot-latency')
 const engine = new HermesEngine([])
 const ids: string[] = []
 let server: ReturnType<typeof Bun.spawn> | undefined
@@ -115,7 +115,7 @@ try {
     await server.exited
   }
   for (const id of ids) {
-    const child = Bun.spawn(['hermes', 'profile', 'delete', id, '-y'], { stdout: 'ignore', stderr: 'inherit' })
+    const child = Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', id, '-y'], { env: process.env, stdout: 'ignore', stderr: 'inherit' })
     if ((await child.exited) !== 0) {
       console.error(`Failed to clean temporary profile ${id}`)
       process.exitCode = 1

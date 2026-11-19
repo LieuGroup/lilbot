@@ -41,7 +41,7 @@ function installedFolders(home: string): string[] {
 
 async function configSet(botId: string, key: string, value: string) {
   const args = [...(botId === 'default' ? [] : ['-p', botId]), 'config', 'set', key, value]
-  const child = Bun.spawn([HERMES_BIN, ...args], { stdout: 'ignore', stderr: 'pipe' })
+  const child = Bun.spawn([HERMES_BIN, ...args], { env: process.env, stdout: 'ignore', stderr: 'pipe' })
   const [stderr, code] = await Promise.all([new Response(child.stderr).text(), child.exited])
   if (code !== 0) throw new Error(`hermes config set ${key} exited ${code}: ${stderr.trim().slice(0, 200)}`)
 }

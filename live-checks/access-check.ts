@@ -1,11 +1,11 @@
+import { devScratch } from '../scripts/dev-env'
 /** Isolated app/Access integration. No real profiles, service changes, or Cloudflare credentials. */
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { accessEnv, fakeAccess, token } from '../tests/http/access-fixture'
 
-const scratch = mkdtempSync(join(homedir(), 'agent-tmp', 'lilbot-access-'))
+const scratch = devScratch('lilbot-access')
 const fake = fakeAccess()
 function freePort(exclude: number[] = []): number {
   const probe = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response('') })
@@ -76,7 +76,7 @@ try {
       LILBOT_HOST: '127.0.0.1',
       LILBOT_PORT: String(privatePort),
       LILBOT_PUBLIC_ENABLED: '0',
-      LILBOT_PUBLIC_PORT: '3372',
+      LILBOT_PUBLIC_PORT: String(freePort([privatePort, accessPort])),
       LILBOT_ACCESS_PORT: String(accessPort),
       LILBOT_ACCESS_TEST_CERTS_URL: fake.settings.certsUrl.href,
       LILBOT_DATA_DIR: scratch,

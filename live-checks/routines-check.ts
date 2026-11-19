@@ -1,11 +1,11 @@
+import { devScratch } from '../scripts/dev-env'
 /** Exercises only a temporary bot and a second LilBot server. Never reads or mutates cron jobs. */
 import { Database } from 'bun:sqlite'
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
-import { homedir } from 'node:os'
+import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 
-const root = await mkdtemp(join(homedir(), 'agent-tmp', 'lilbot-routines-'))
+const root = devScratch('lilbot-routines')
 const probe = Bun.serve({ port: 0, fetch: () => new Response('') })
 const port = probe.port!
 probe.stop(true)
@@ -165,7 +165,7 @@ try {
   await server.exited
   db?.close()
   if (nativeId) {
-    const code = await Bun.spawn(['hermes', 'profile', 'delete', nativeId, '-y'], { stdout: 'ignore', stderr: 'inherit' }).exited
+    const code = await Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', nativeId, '-y'], { env: process.env, stdout: 'ignore', stderr: 'inherit' }).exited
     assert.equal(code, 0, `Could not remove temporary profile ${nativeId}`)
   }
   await rm(root, { recursive: true, force: true })

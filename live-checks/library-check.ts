@@ -1,10 +1,10 @@
+import { devScratch } from '../scripts/dev-env'
 /** Real protocol and download check, isolated from the live service and all existing bots. */
-import { mkdtempSync, rmSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { HermesEngine } from '../server/engines/hermes/hermes-engine'
 
-const scratch = mkdtempSync(join(homedir(), 'agent-tmp/lilbot-library-live-'))
+const scratch = devScratch('lilbot-library-live')
 const reservation = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response('') })
 const port = reservation.port!
 reservation.stop(true)
@@ -100,7 +100,7 @@ try {
   child?.kill()
   if (child) await child.exited
   if (nativeId) {
-    const cleanup = Bun.spawn(['hermes', 'profile', 'delete', nativeId, '-y'], { stdout: 'ignore', stderr: 'inherit' })
+    const cleanup = Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', nativeId, '-y'], { env: process.env, stdout: 'ignore', stderr: 'inherit' })
     if ((await cleanup.exited) !== 0) {
       console.error(`Cleanup failed for ${nativeId}`)
       process.exitCode = 1

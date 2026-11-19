@@ -1,13 +1,13 @@
+import { devScratch } from '../scripts/dev-env'
 /** Isolated end-to-end check. Never start against an unrestricted roster or the live service. */
 import { Database } from 'bun:sqlite'
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
-import { homedir } from 'node:os'
+import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { botCapability } from '../server/bots/bot-capability'
 import { ThreadStore } from '../server/threads/thread-store'
 
-const root = await mkdtemp(join(homedir(), 'agent-tmp', 'lilbot-threads-'))
+const root = devScratch('lilbot-threads')
 const probe = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response('') })
 const port = probe.port!
 probe.stop(true)
@@ -183,7 +183,7 @@ try {
     db.close()
   }
   for (const id of natives) {
-    const child = Bun.spawn(['hermes', 'profile', 'delete', id, '-y'], { stdout: 'ignore', stderr: 'inherit' })
+    const child = Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', id, '-y'], { env: process.env, stdout: 'ignore', stderr: 'inherit' })
     if (await child.exited) {
       console.error(`Failed to delete temporary profile ${id}`)
       process.exitCode = 1

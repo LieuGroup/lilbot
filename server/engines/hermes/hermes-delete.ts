@@ -8,6 +8,7 @@ export async function deleteRuntime(id: string) {
   // A previous attempt can remove the folder but fail to settle the gateway's routing identity.
   const exists = existsSync(join(process.env.HERMES_HOME ?? join(homedir(), '.hermes'), 'profiles', id))
   const child = Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', exists ? 'delete' : 'purge-identity', id, ...(exists ? ['-y'] : [])], {
+    env: process.env,
     stdout: 'ignore',
     stderr: 'ignore'
   })

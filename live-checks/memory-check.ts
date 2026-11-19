@@ -1,10 +1,10 @@
+import { devScratch } from '../scripts/dev-env'
 /** Live check of the memory system against the running Hermes, on a temporary bot that is deleted
  *  afterwards: `bun run check:memory`. It starts its own small LilBot memory endpoint with a
  *  throwaway database, connects the temporary bot to it, and checks that a fact told in one
  *  session is known in the next. It also prints how many tokens memory adds to a turn.
  *  Costs a few model calls. Never touches existing bots or the real database. */
-import { mkdtempSync, rmSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { BotPrefsStore } from '../server/bots/bot-prefs-store'
 import { BotService } from '../server/bots/bot-service'
@@ -29,7 +29,7 @@ const BOT_NAME = `${BOT_PREFIX} ${Date.now().toString(36)}`
 const PORT = Number(process.env.LILBOT_CHECK_PORT ?? 3379)
 const TURN_TIMEOUT_MS = 120_000
 
-const scratch = mkdtempSync(join(homedir(), 'agent-tmp', 'lilbot-memory-'))
+const scratch = devScratch('lilbot-memory')
 const database = openDatabase(join(scratch, 'lilbot.db'))
 const memory = new MemoryService(new MemoryStore(database))
 const engine = new HermesEngine([])
@@ -105,7 +105,7 @@ async function systemPromptOf(profile: string): Promise<string> {
 }
 
 async function deleteBot(id: string) {
-  const child = Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', id, '-y'], { stdout: 'ignore', stderr: 'pipe' })
+  const child = Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', id, '-y'], { env: process.env, stdout: 'ignore', stderr: 'pipe' })
   const [stderr, code] = await Promise.all([new Response(child.stderr).text(), child.exited])
   if (code !== 0) throw new Error(`hermes profile delete ${id} exited ${code}: ${stderr.trim().slice(0, 200)}`)
 }
@@ -235,7 +235,7 @@ try {
       await deleteBot(new BotStore(database).get(botId).engineBotId)
       check('temporary bot deleted', true)
     } catch (error) {
-      check('temporary bot deleted', false, `delete it by hand: hermes profile delete ${botId} -y. ${error instanceof Error ? error.message : ''}`)
+      check('temporary bot deleted', false, `Cleanup failed in the development Hermes home. ${error instanceof Error ? error.message : ''}`)
     }
   }
   server.stop(true)

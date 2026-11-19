@@ -1,7 +1,7 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.6.8/schema.json",
   "files": {
-    "includes": ["server/**", "helper/**", "shared/**", "web/src/**", "tests/**", "live-checks/**", "*.ts", "*.json", "!server/connections/t3-coding-skill"]
+    "includes": ["server/**", "helper/**", "shared/**", "web/src/**", "tests/**", "live-checks/**", "*.ts", "*.json", "!server/connections/t3-coding-skill", "scripts/**"]
   },
   "formatter": {
     "indentStyle": "space",
@@ -42,6 +42,16 @@
             "useKeyWithClickEvents": "off",
             "noNoninteractiveTabindex": "off",
             "noLabelWithoutControl": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["live-checks/**"],
+      "assist": {
+        "actions": {
+          "source": {
+            "organizeImports": "off"
           }
         }
       }

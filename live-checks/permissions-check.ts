@@ -1,12 +1,12 @@
+import { devScratch } from '../scripts/dev-env'
 /** A second, isolated server exercises the public protocol and a harmless approval-triggering command. */
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { existsSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { BotStore } from '../server/bots/bot-store'
 import { openDatabase } from '../server/database/database'
 import { HermesSocket } from '../server/engines/hermes/hermes-socket'
 
-const scratch = mkdtempSync(join(homedir(), 'agent-tmp/lilbot-permissions-'))
+const scratch = devScratch('lilbot-permissions')
 const port = Number(process.env.LILBOT_CHECK_PORT ?? 3381)
 const server = Bun.spawn(['bun', 'server/main.ts'], {
   env: {
@@ -107,7 +107,7 @@ try {
     db.close()
   }
   if (nativeId) {
-    const deletion = Bun.spawn(['hermes', 'profile', 'delete', nativeId, '-y'], { stdout: 'ignore', stderr: 'inherit' })
+    const deletion = Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', nativeId, '-y'], { env: process.env, stdout: 'ignore', stderr: 'inherit' })
     if ((await deletion.exited) !== 0) {
       console.error(`Could not delete temporary profile ${nativeId}`)
       process.exitCode = 1

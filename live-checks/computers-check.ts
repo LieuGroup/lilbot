@@ -1,10 +1,10 @@
+import { devScratch } from '../scripts/dev-env'
 import { checkLifecycle } from './computers-lifecycle'
 import { checkPinning } from './computers-pinning'
 /** Isolated server + compiled helper. Never installs a service or changes real bots. */
 
 import { createPublicKey, generateKeyPairSync } from 'node:crypto'
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { existsSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { connectionHeaders } from '../helper/identity'
 import { botCapability } from '../server/bots/bot-capability'
@@ -12,7 +12,7 @@ import { BotStore } from '../server/bots/bot-store'
 import { openDatabase } from '../server/database/database'
 import { browser, eventually, freePort } from './computers-client'
 
-const scratch = mkdtempSync(join(homedir(), 'agent-tmp/lilbot-computers-'))
+const scratch = devScratch('lilbot-computers')
 const binary = join(scratch, 'lilbot-helper')
 const port = freePort()
 const doorPort = freePort()
@@ -33,7 +33,7 @@ const launchHelper = () => {
 try {
   const hardStop = Bun.spawn(['python3', '-B', 'live-checks/computers-hard-stop.py'], { stdout: 'inherit', stderr: 'inherit' })
   if (await hardStop.exited) throw new Error('Hard-stop check failed')
-  const build = Bun.spawn(['bun', 'build', '--compile', 'helper/main.ts', '--outfile', binary], { stdout: 'ignore', stderr: 'inherit' })
+  const build = Bun.spawn(['bun', 'build', '--compile', 'helper/main.ts', '--outfile', binary], { env: process.env, stdout: 'ignore', stderr: 'inherit' })
   if (await build.exited) throw new Error('Helper build failed')
   const { mkdirSync } = await import('node:fs')
   const lifecycleRoot = join(scratch, 'lifecycle')
@@ -175,7 +175,7 @@ try {
   if (existsSync(join(scratch, 'lilbot.db'))) {
     const db = openDatabase(join(scratch, 'lilbot.db'))
     for (const bot of new BotStore(db).list()) {
-      const deletion = Bun.spawn(['hermes', 'profile', 'delete', bot.engineBotId, '-y'], { stdout: 'ignore', stderr: 'inherit' })
+      const deletion = Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', bot.engineBotId, '-y'], { env: process.env, stdout: 'ignore', stderr: 'inherit' })
       if (await deletion.exited) process.exitCode = 1
     }
     db.close()
