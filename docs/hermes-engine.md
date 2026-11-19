@@ -1,0 +1,100 @@
+# Hermes engine notes
+
+How `server/engines/hermes/` maps LilBot onto Hermes. Read this before changing the Hermes engine. The rules that
+apply everywhere (never fork or patch Hermes, read only declared contract fields, the contract test) are in
+`AGENTS.md` under "Hermes".
+
+## Connections
+
+- Each bot has a profile binding; a chat is a Hermes session. LilBot supplies instructions, model and permission mode
+  and repairs drift before use; it never writes a display name to the profile.
+- Bot management uses one shared gateway connection on the default profile. Each open chat has its own connection for
+  its bot's profile, because Hermes binds sessions to the profile the connection was attached with (another profile's
+  session is refused with `profile_mismatch`).
+- Sessions use Hermes' canonical methods (`x-canonical-methods` in the contract); profiles and models use the general
+  `methods` table.
+- Each connection starts with a single-use ticket from `hermes gateway attach --json` (about one second, the slowest
+  step in opening a chat). After a chat opens, `hermes-spare-sockets.ts` attaches one spare connection for that
+  profile in the background; the bot's next open takes it (about 0.15-0.4 s instead of 1.1-1.8 s). A spare holds no
+  session. At most four profiles keep one, each for ten idle minutes; deleting a bot closes its spare.
+
+## Permissions
+
+Full access is the persistent per-profile `approvals.mode: off`, so background runs inherit it. Chat and review
+checks reuse their profile-bound sockets; list/get reads never prepare permissions.
+
+## Activity observer
+
+One persistent observer socket per bound bot, polled in parallel once per second, reconnecting with capped
+exponential backoff. It reads visible live sessions and incremental replay events without resuming them; an epoch
+change or truncated replay gets one full baseline read. Derived session state survives sweeps; removed profiles
+release their sockets. It connects with native profile ids and emits activity and replay cursors with LilBot ids.
+Missing profiles and an unavailable engine are not observed.
+
+## Deletion
+
+Hermes has no delete RPC: its profile-delete CLI stops the runtime and deletes its transcripts. A retry after the
+folder is gone uses `profile purge-identity` to finish gateway identity settlement.
+
+## Memory adapter (`memory-adapter/`)
+
+- A memory provider plug-in, Python standard library only, holding no data. It puts the usage rules in the system
+  prompt (static, so prompt caching holds) and supplies the memory block once per turn. Hermes itself fences what a
+  provider supplies as "recalled memory, not new user input".
+- Connecting a bot (`hermes-memory-setup.ts`) copies the plug-in into the profile, selects it, and switches Hermes'
+  own `MEMORY.md`/`USER.md` memory off. Hermes' notes about the user become shared facts; an existing bot's own notes
+  become its private facts (a new bot starts as a copy of the main bot, so its notes are not imported). It takes
+  effect from the bot's next session. `removeMemory` undoes it.
+- Hermes keeps a plug-in's code loaded per folder until the gateway restarts, so each version has its own folder and
+  provider name (`lilbot-memory-v0-9-0`), loaded fresh on the bot's next session. Hermes' own background memory review
+  runs only with its built-in memory tool, which a connected bot no longer has.
+- `sync_turn` hands every finished turn of a real conversation to `/engine/memory/turn` on a thread (not scheduled
+  runs or sub-agents).
+- `on_pre_compress` is Hermes' best-effort hook, not the v2 fail-closed checkpoint promise: an unavailable server or a
+  failed review logs a warning and Hermes may proceed.
+
+## History import
+
+- First open reads only the latest engine page and resumes with `omit_messages`.
+- Tool results are keyed by their persisted `tool_call_id`: Hermes projects them without `row_id`.
+- Both session catalogue APIs cap at 200 without pagination. At that boundary the adapter reads only session metadata
+  from that profile's `state.db`, in read-only mode, joining compression parents; all message content still goes
+  through `session.transcript`. This depends on Hermes' session table schema and has a fixture test.
+- Hermes limits a transcript row to 2 MiB and may rotate very old compression lineages.
+
+## Attachments
+
+Image bytes are staged with canonical `image.attach_bytes`, then the declared `{path,mime}` goes to
+`prompt.submit.attachments`. The installed implementation only admits images from its profile cache there, so
+non-images are supplied as JSON-quoted workspace references in `api_text`, which also keeps the display marker out of
+model input. `model.options` declares `ModelCapabilities` with fast/reasoning flags and no vision field, so image
+support is reported as `unknown`. Hermes declares incoming `CanonicalAttachment` paths but no outgoing attachment
+manifest on `MessageCompletePayload` or `TranscriptMessage`.
+
+## T3 Code connection (`hermes-connections.ts`)
+
+- The connection is the profile MCP server `lilbot_t3`, managed with `mcp.servers.list/remove/add` and `reload.mcp`
+  only when it changed; other servers in the profile are untouched. The per-bot bridge key lives in the profile's
+  `.env`.
+- Hermes keeps a server's tool list until its settings change, so the URL carries the sign-in state
+  (`?signin=<issued-at|signed-out>`). When a sign-in appears, expires or is revoked, the server notices within five
+  seconds and re-prepares every bot (remove, `reload.mcp`, add, `reload.mcp`).
+- If an unrelated inherited server fails that reload, preparation succeeds only when `mcp.servers.status` confirms
+  every requested LilBot connection is connected.
+
+## Skills plug-in (`skills-adapter/`)
+
+- Separate from the memory adapter. It overrides the three skill tools to read LilBot's catalogue and route writes to
+  `/engine/skills/*`.
+- `.bundled_manifest` identifies shipped skills, which stay with Hermes. Hermes searches profile-local skills before
+  external/create directories, so LilBot suppresses the stale user entries in Hermes' manifest and supplies its own
+  catalogue. `skills.create_dir` and `skills.external_dirs` point to the library.
+
+## Routines
+
+Each run gets its own hidden `yolo` session in the bot's folder. Hermes' `cron.manage` was rejected: mirroring
+schedules would add a second source of truth and tie recovery to an engine.
+
+## Computers plug-in (`computers-adapter/`, `lilbot-computers-v1`)
+
+Independent of the memory adapter. `computer_exec` calls Hermes' own `detect_hardline_command` before submitting.
