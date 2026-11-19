@@ -3,7 +3,7 @@ import type { Ability, BotIdentity, ModelProvider } from '../../../shared/bot-sc
 import type { EngineBotDetail } from '../bot-engine'
 
 export const DEFAULT_PROFILE = 'default'
-export const UI_NAMESPACE = 'lilbot'
+const UI_NAMESPACE = 'lilbot'
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '')
 

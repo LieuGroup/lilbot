@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { cp, mkdir, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { HermesSocket } from './hermes-socket'
 
 export function skillHome(id: string) {
   if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(id)) throw new Error('Invalid profile id')
@@ -78,4 +79,12 @@ export async function configureSkills(id: string, settings: { root: string; url:
   })
   const enableError = await new Response(enable.stderr).text()
   if ((await enable.exited) !== 0) throw new Error(`Could not enable skills: ${enableError.slice(0, 200)}`)
+  const socket = await HermesSocket.connect(id === 'default' ? '' : id)
+  try {
+    await socket.request('plugins.manage', { action: 'toggle', name: plugin, enable: false })
+    const result = await socket.request('plugins.manage', { action: 'toggle', name: plugin, enable: true })
+    if (!result.ok) throw new Error('Skills plugin activation failed')
+  } finally {
+    socket.close()
+  }
 }

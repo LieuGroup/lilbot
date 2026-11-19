@@ -40,13 +40,12 @@ export async function runRoutine(botId: string, prompt: string, options: Routine
       const receipt = await socket.request('prompt.receipt', { session_id: session.session_id, admission_id: submitted.admission_id })
       if (receipt.status === 'terminal' || receipt.status === 'unknown') {
         const snapshot = await socket.request('session.resume', { session_id: session.stored_session_id, source: 'tool', display_projection: true })
-        const last = itemsFromRows(snapshot.display_messages)
-          .filter(item => item.kind === 'assistant')
-          .at(-1)
+        const items = itemsFromRows(snapshot.display_messages)
+        const last = items.filter(item => item.kind === 'assistant').at(-1)
         return {
-          items: itemsFromRows(snapshot.display_messages).slice(base),
+          items: items.slice(base),
           status: receipt.outcome === 'completed' ? ('completed' as const) : receipt.outcome === 'interrupted' ? ('stopped' as const) : ('failed' as const),
-          text: last?.kind === 'assistant' ? last.text : `Routine ended: ${receipt.outcome ?? receipt.status}. Execution was not retried.`
+          text: last ? last.text : `Routine ended: ${receipt.outcome ?? receipt.status}. Execution was not retried.`
         }
       }
       await Bun.sleep(1000)

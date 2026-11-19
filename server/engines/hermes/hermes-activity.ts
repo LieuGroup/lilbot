@@ -25,11 +25,7 @@ export function watchHermesActivity(
     if (Date.now() < observer.retryAt) return
     try {
       if (!observer.socket?.isOpen) {
-        const socket = await HermesSocket.connect(
-          engineBotId === 'default' ? '' : engineBotId,
-          () => {},
-          () => {}
-        )
+        const socket = await HermesSocket.connect(engineBotId === 'default' ? '' : engineBotId)
         if (stopped) {
           socket.close()
           return
