@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { ChatEvent } from '../../shared/chat-schema'
-import { applyChatEvent, type ChatView, chatFromSnapshot, emptyChat, withSentMessage, withUserMessage } from '../../web/src/chat/chat-state'
+import type { HistoryPage } from '../../shared/history-schema'
+import { applyChatEvent, type ChatView, chatFromHistory, chatFromSnapshot, emptyChat, reuseItems, withSentMessage, withUserMessage } from '../../web/src/chat/chat-state'
 
 const play = (chat: ChatView, ...events: ChatEvent[]) => events.reduce(applyChatEvent, chat)
 const texts = (chat: ChatView) => chat.items.map(item => (item.kind === 'tool' ? `tool:${item.name}` : `${item.kind}:${item.text}`))
@@ -170,5 +171,65 @@ describe('messages with files', () => {
     chat = play(chat, { type: 'turn.finished', status: 'completed', text: 'one' }, { type: 'turn.started' })
     expect(chat.items.at(-1)).toMatchObject({ kind: 'user', messageId: 'm2', attachments: [{ id: 'b' }] })
     expect(chat.queued).toEqual([])
+  })
+})
+
+describe('opening a chat', () => {
+  const snapshot = (items: ChatView['items']) => ({ chatId: 'main', botId: 'b', title: '', running: false, workspace: '', items })
+  const page = (sessionId: string, items: HistoryPage['items'][number]['item'][]): HistoryPage => ({
+    items: items.map((item, n) => ({ id: `r${n}`, sessionId, at: n, author: item.kind === 'user' ? 'user' : 'bot', item })),
+    nextCursor: null,
+    start: null,
+    import: { complete: true, sessions: 1, completed: 1, items: items.length }
+  })
+
+  test('shows the saved conversation without session dividers, named after its latest session', () => {
+    const chat = chatFromHistory(
+      page('main', [
+        { kind: 'session', text: 'New session' },
+        { kind: 'user', text: 'hi' },
+        { kind: 'assistant', text: 'hello' }
+      ])
+    )
+    expect(chat).toMatchObject({ chatId: 'main', running: false, load: 1 })
+    expect(texts(chat)).toEqual(['user:hi', 'assistant:hello'])
+  })
+
+  test('the snapshot keeps the objects of unchanged items and counts as a new load', () => {
+    const shown = chatFromHistory(
+      page('main', [
+        { kind: 'user', text: 'hi' },
+        { kind: 'assistant', text: 'hello' }
+      ])
+    )
+    const opened = chatFromSnapshot(
+      snapshot([
+        { kind: 'user', text: 'hi' },
+        { kind: 'assistant', text: 'hello, edited' },
+        { kind: 'user', text: 'new' }
+      ]),
+      shown
+    )
+    expect(opened.items[0]).toBe(shown.items[0])
+    expect(opened.items[1]).not.toBe(shown.items[1])
+    expect(texts(opened)).toEqual(['user:hi', 'assistant:hello, edited', 'user:new'])
+    expect(opened.load).toBe(2)
+  })
+
+  test('repeated identical items pair with earlier objects one to one', () => {
+    const a = { kind: 'user', text: 'ok' } as const
+    const b = { kind: 'user', text: 'ok' } as const
+    const next = reuseItems(
+      [a, b],
+      [
+        { kind: 'user', text: 'ok' },
+        { kind: 'user', text: 'ok' },
+        { kind: 'user', text: 'ok' }
+      ]
+    )
+    expect(next[0]).toBe(a)
+    expect(next[1]).toBe(b)
+    expect(next[2]).not.toBe(a)
+    expect(next[2]).not.toBe(b)
   })
 })

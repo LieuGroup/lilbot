@@ -1,5 +1,5 @@
 import { SparklesIcon } from 'lucide-react'
-import { useRef } from 'react'
+import { memo, startTransition, useEffect, useRef, useState } from 'react'
 
 import { Bubble, BubbleContent } from '@/ui/bubble'
 import { Message, MessageContent } from '@/ui/message'
@@ -16,14 +16,39 @@ interface MessageListProps {
   queued: UserItem[]
   activity: string
   emptyHint: string
+  /** `ChatView.load`: which load of the transcript this is. */
+  load: number
+}
+
+/** One row. Memoised with its item, so a streamed chunk or a reloaded transcript draws only the rows that changed. */
+const ChatRow = memo(function ChatRow({ item, index, anchor, botId }: { item: ViewItem; index: number; anchor: boolean; botId: string }) {
+  return (
+    // The transcript only grows at the end, so the position is a stable id.
+    <MessageScrollerItem messageId={String(index)} scrollAnchor={anchor}>
+      <ChatItem item={item} botId={botId} />
+    </MessageScrollerItem>
+  )
+})
+
+/** Rows drawn when the list opens: more than a screenful. The earlier rows follow in a transition,
+ *  which yields to typing, and the scroller keeps the view in place when they arrive above it. */
+const FIRST_ROWS = 20
+
+function useFirstRow(count: number) {
+  const [first, setFirst] = useState(() => Math.max(0, count - FIRST_ROWS))
+  useEffect(() => {
+    if (first > 0) startTransition(() => setFirst(0))
+  }, [first])
+  return first
 }
 
 /** The Chat pattern. A conversation opens at its end. A message you send moves up and the reply
  *  grows below it; the list follows the reply only while you stay at the end, never while you
  *  read back. */
-export function MessageList({ botId, items, queued, activity, emptyHint }: MessageListProps) {
-  const loaded = useRef(loadedTranscript(items))
-  loaded.current = updateLoaded(loaded.current, items)
+export function MessageList({ botId, items, queued, activity, emptyHint, load }: MessageListProps) {
+  const loaded = useRef(loadedTranscript(items, load))
+  loaded.current = updateLoaded(loaded.current, items, load)
+  const first = useFirstRow(items.length)
 
   return (
     <MessageScrollerProvider autoScroll defaultScrollPosition="end">
@@ -31,12 +56,10 @@ export function MessageList({ botId, items, queued, activity, emptyHint }: Messa
         <MessageScrollerViewport aria-label="Conversation">
           <MessageScrollerContent className="mx-auto w-full max-w-[744px] gap-[18px] px-4 py-5 md:px-8">
             {items.length === 0 && <p className="mt-[20vh] text-center text-muted-foreground">{emptyHint}</p>}
-            {items.map((item, index) => (
-              // The transcript only grows at the end, so the position is a stable id.
-              <MessageScrollerItem key={index} messageId={String(index)} scrollAnchor={isScrollAnchor(loaded.current, index, item.kind)}>
-                <ChatItem item={item} botId={botId} />
-              </MessageScrollerItem>
-            ))}
+            {items.slice(first).map((item, offset) => {
+              const index = first + offset
+              return <ChatRow key={index} item={item} index={index} anchor={isScrollAnchor(loaded.current, index, item.kind)} botId={botId} />
+            })}
             {/* Sent while the bot was busy: waits here until its turn starts. */}
             {queued.map((message, index) => (
               <MessageScrollerItem key={`queued-${index}`} messageId={`queued-${index}`}>

@@ -31,7 +31,8 @@ import { ensureFullAccess } from './hermes-permissions'
 import { runRoutine } from './hermes-routines'
 import { applyIdentity, createRuntime } from './hermes-runtime'
 import { configureSkills, userSkillPaths } from './hermes-skills'
-import { HermesSocket } from './hermes-socket'
+import { type HermesEvent, HermesSocket } from './hermes-socket'
+import { SpareSockets } from './hermes-spare-sockets'
 
 const CLIENT = { name: 'lilbot', version: '0.2.0' }
 const PROFILE_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/
@@ -42,6 +43,7 @@ const REVIEW_TIMEOUT_MS = 180_000
 export class HermesEngine implements BotEngine {
   conversations = conversations
   readonly id = 'hermes'
+  private spares = new SpareSockets()
   readonly supportedPermissionModes = ['full-access'] as const
   constructor(private botIds?: string[]) {}
 
@@ -135,6 +137,7 @@ export class HermesEngine implements BotEngine {
     requireProfileEnvironment(id)
     if (!PROFILE_ID.test(id) || id === DEFAULT_PROFILE) throw new LilBotError('protected_bot', 'The default bot cannot be deleted.')
     if (this.botIds && !this.botIds.includes(id)) throw new LilBotError('bot_not_found', 'That bot does not exist.')
+    this.spares.drop(id)
     await deleteRuntime(id)
   }
 
@@ -274,26 +277,27 @@ export class HermesEngine implements BotEngine {
 
     // Hermes binds a session to the profile its connection was attached with (checked live:
     // another profile's session is refused with profile_mismatch), so each chat has its own.
-    const socket = await HermesSocket.connect(
-      botId === DEFAULT_PROFILE ? '' : botId,
-      event => {
-        if (closed || (event.sessionId && sessionId && event.sessionId !== sessionId)) return
-        if (sessionLostEvents.has(event.type)) {
-          closed = true
-          socket.close()
-          onEvent({ type: 'closed', message: 'The bot moved this conversation. Reopening it.' })
-          return
-        }
-        if (event.executionGeneration !== undefined) generation = event.executionGeneration
-        const mapped = chatEventFrom(event)
-        if (mapped) onEvent(mapped)
-      },
-      () => {
-        if (closed) return
+    // A spare made after the bot's last open skips the attach step.
+    const profile = botId === DEFAULT_PROFILE ? '' : botId
+    const onSocketEvent = (event: HermesEvent) => {
+      if (closed || (event.sessionId && sessionId && event.sessionId !== sessionId)) return
+      if (sessionLostEvents.has(event.type)) {
         closed = true
-        onEvent({ type: 'closed', message: 'The connection to the bot was lost.' })
+        socket.close()
+        onEvent({ type: 'closed', message: 'The bot moved this conversation. Reopening it.' })
+        return
       }
-    )
+      if (event.executionGeneration !== undefined) generation = event.executionGeneration
+      const mapped = chatEventFrom(event)
+      if (mapped) onEvent(mapped)
+    }
+    const onSocketClose = () => {
+      if (closed) return
+      closed = true
+      onEvent({ type: 'closed', message: 'The connection to the bot was lost.' })
+    }
+    const spare = await this.spares.take(profile)
+    const socket = spare ? spare.rebind(onSocketEvent, onSocketClose) : await HermesSocket.connect(profile, onSocketEvent, onSocketClose)
 
     try {
       await ensureFullAccess(socket)
@@ -313,6 +317,7 @@ export class HermesEngine implements BotEngine {
       session ??= await socket.request('session.create', { source: 'gui', request_id: crypto.randomUUID(), client: CLIENT, cwd: options.workspace, cwd_explicit: true })
       sessionId = session.session_id
       if (typeof session.execution_generation === 'number') generation = session.execution_generation
+      this.spares.refill(profile)
 
       return {
         // ModelCapabilities in model.options has no vision field. Do not infer from names.

@@ -6,7 +6,7 @@ import type { Attachment } from '../../../shared/attachment-schema'
 import { lilbot, messageOf } from '../app/lilbot-socket'
 import { newMessageId } from '../attachments/attachment-rules'
 import { useBotStore } from '../bots/bot-store'
-import { applyChatEvent, chatFromSnapshot, emptyChat, type UserItem, withError, withSentMessage, withUserMessage } from './chat-state'
+import { applyChatEvent, chatFromHistory, chatFromSnapshot, emptyChat, type UserItem, withError, withSentMessage, withUserMessage } from './chat-state'
 import { emptySlot, updateChat, useChatStore } from './chat-store'
 
 const REOPEN_DELAY_MS = 3000
@@ -33,6 +33,16 @@ export function useChat(botId: string) {
     }
 
     const opening = startNew.current ? lilbot.call('chat.new', { botId }) : lilbot.call('chat.open', { botId })
+    // Opening waits on the engine (about a second). The saved conversation is a local read, so a
+    // chat this page has not shown yet appears at once and the snapshot replaces it.
+    if (!startNew.current && (useChatStore.getState().slots[botId]?.view.load ?? 0) === 0) {
+      lilbot
+        .call('chat.history', { botId })
+        .then(page => {
+          if (!cancelled) updateChat(botId, current => (current.ready || current.view.load > 0 ? current : { ...current, view: chatFromHistory(page, current.view) }))
+        })
+        .catch(() => {})
+    }
     startNew.current = false
     opening
       .then(snapshot => {
@@ -41,7 +51,7 @@ export function useChat(botId: string) {
           return
         }
         chatId.current = snapshot.chatId
-        updateChat(botId, () => ({ view: chatFromSnapshot(snapshot), ready: true, error: '' }))
+        updateChat(botId, current => ({ view: chatFromSnapshot(snapshot, current.view), ready: true, error: '' }))
         stopListening = lilbot.onChat(snapshot.chatId, event => {
           updateChat(botId, current => ({ ...current, view: applyChatEvent(current.view, event), ready: event.type === 'closed' ? false : current.ready }))
           if (event.type === 'closed') reopenSoon()

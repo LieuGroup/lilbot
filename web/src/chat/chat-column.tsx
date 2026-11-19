@@ -60,12 +60,20 @@ export function ChatColumn({ botId }: { botId: string }) {
       />
       {/* A new scroller per conversation, so each one opens at its latest message. */}
       <div className="relative flex min-h-0 flex-1 flex-col">
-        <MessageList key={chat.chatId || botId} botId={botId} items={chat.items} queued={chat.queued} activity={chat.running ? chat.activity : ''} emptyHint={hint} />
+        <MessageList
+          key={chat.chatId || botId}
+          botId={botId}
+          items={chat.items}
+          queued={chat.queued}
+          activity={chat.running ? chat.activity : ''}
+          emptyHint={hint}
+          load={chat.load}
+        />
         {drop.dragging && <DropOverlay limits={staged.limits} />}
       </div>
       <Composer
         disabled={!ready}
-        disabledHint={connected ? 'Opening chat...' : 'Reconnecting...'}
+        disabledHint={!connected ? 'Reconnecting...' : error || 'Opening chat...'}
         running={chat.running}
         botName={name}
         staged={staged}
