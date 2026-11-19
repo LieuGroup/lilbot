@@ -85,7 +85,11 @@ export function adversary() {
     console.log(
       `MEASURE: ${label}: private /api/health p99 ${p99.toFixed(2)} ms, max ${samples.at(-1)?.toFixed(2)} ms, total event-loop stall ${stalledMs.toFixed(2)} ms (${samples.length} weighted samples)`
     )
-    expect(stalledMs).toBeLessThan(2000)
+    // A cumulative stall budget grows with the workload duration and counts host
+    // scheduling jitter as application blocking. Bound latency instead, including
+    // the weighted timer gaps above so synchronous stalls cannot hide from p99.
+    expect(p99).toBeLessThan(250)
+    expect(samples.at(-1) ?? 0).toBeLessThan(1000)
     return p99
   }
   function launch() {
