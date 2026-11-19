@@ -57,9 +57,9 @@ export class DeployFixture {
     )
     await systemctl('daemon-reload')
   }
-  private async run(args: string[], timeout: number) {
+  private async run(args: string[], timeout: number, env = this.env) {
     return new Promise<{ code: number | null; output: string }>((resolve, reject) => {
-      const child = spawn(process.execPath, args, { cwd: this.checkout, env: this.env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] })
+      const child = spawn(process.execPath, args, { cwd: this.checkout, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] })
       let output = ''
       const collect = (data: Buffer) => {
         output = (output + data).slice(-12_000)
@@ -85,7 +85,9 @@ export class DeployFixture {
     })
   }
   async verify() {
-    const { code, output } = await this.run(['run', 'verify'], 600_000)
+    // Unit suites exercise both environments with mocks; do not globally force development.
+    // Keep isolated paths/home, and pass the development mode only to the actual test server.
+    const { code, output } = await this.run(['run', 'verify'], 600_000, { ...this.env, LILBOT_ENV: undefined })
     assert.equal(code, 0, `Isolated verification failed:\n${output}`)
   }
   async commit(message: string) {
