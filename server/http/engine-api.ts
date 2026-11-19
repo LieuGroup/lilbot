@@ -61,6 +61,7 @@ const forBot = (fact: MemoryFact, reader: string) => ({
 const json = (status: number, body: unknown) => Response.json(body, { status })
 
 export interface EngineApiOptions {
+  deploymentNotice?: () => string | undefined
   threads?: import('../threads/thread-service').ThreadService
   computers?: import('../computers/computer-service').ComputerService
   skills?: import('../skills/skills-service').SkillsService
@@ -176,8 +177,11 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
       }
 
       switch (route) {
-        case '/engine/memory/context':
-          return json(200, memory.contextBlock(body.botId))
+        case '/engine/memory/context': {
+          const context = memory.contextBlock(body.botId)
+          const notice = options.deploymentNotice?.()
+          return json(200, { ...context, text: [context.text, notice && `LilBot deployment status: ${notice}`].filter(Boolean).join('\n\n') })
+        }
         case '/engine/memory/recall':
           return json(200, { facts: memory.recall(body.botId, body.query, { kind: body.kind, limit: body.limit }).map(fact => forBot(fact, body.botId)) })
         case '/engine/memory/write': {

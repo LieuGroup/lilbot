@@ -13,6 +13,7 @@ interface BotStore {
   since: Record<string, number>
   loaded: boolean
   error: string
+  deploymentNotice?: string
   load: () => Promise<void>
   /** Put a created or edited bot into the list without another round trip. */
   upsert: (bot: Bot) => void
@@ -27,9 +28,9 @@ export const useBotStore = create<BotStore>((set, get) => ({
   error: '',
   load: async () => {
     try {
-      const [bots, sections] = await Promise.all([lilbot.call('bots.list', {}), lilbot.call('sections.list', {})])
+      const [bots, sections, deployment] = await Promise.all([lilbot.call('bots.list', {}), lilbot.call('sections.list', {}), lilbot.call('deploy.status', {})])
       const { bots: previous, since } = get()
-      set({ bots, sections, since: activitySince(previous, since, bots, Date.now()), loaded: true, error: '' })
+      set({ bots, sections, deploymentNotice: deployment.notice, since: activitySince(previous, since, bots, Date.now()), loaded: true, error: '' })
     } catch (error) {
       set({ error: messageOf(error) })
     }

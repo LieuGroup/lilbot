@@ -43,6 +43,7 @@ server/            The LilBot server (runs on the leader).
   connections/       LilBot-owned connections given to every bot: T3 Code for coding (bridge, sign-in, skill).
   computers/         Computer identities, key registration and durable command requests.
   database/          LilBot's own SQLite file and its schema steps.
+  deploy/            verified restart, database copies, rollback watchdog and notices.
   engines/           Whatever actually runs the bots.
     bot-engine.ts        the contract every engine must fulfil
     hermes/              the Hermes engine: the only place that knows Hermes exists
@@ -56,6 +57,7 @@ web/src/           The web app (what you see in the browser).
   library/           the Library tab (placeholder until #14)
   memory/            the Memory tab
   routines/          data client for the future Routines panel
+  deploy/            last deployment failure notice
   settings/          the Settings dialog (delete defaults)
   ui/                shadcn/ui parts (added by the shadcn CLI, ours to edit) and our own small shared
                      parts built from them (tab body, page header, icon button, notice, bot badge, form field)
@@ -380,9 +382,83 @@ T3 recovery has a unit test with a simulated upstream; the live grant is never c
 
 This covers a LilBot process restart with its data preserved, not a Hermes crash or a machine
 reboot. An unknown engine receipt fails explicitly rather than repeating possibly completed work.
-A failed deployment that prevents LilBot starting still needs recovery outside LilBot. The
-self-development skill and an external rollback watchdog remain unconfirmed and are not installed.
+Failed deployments are recovered by an independent watchdog, described below. The self-development skill is not installed.
 Keep development checks on an isolated server; never restart the live service as a test.
+
+## Deployment safety net
+
+Production runs only from `~/lilbot/release`, a symlink to an immutable built folder under
+`~/lilbot/releases/<commit>`. `~/code/LilBot` and T3 worktrees are development source only:
+editing or pulling there does not change production. Nobody edits release folders. Only
+`bun run deploy` creates/releases versions and restarts the live service.
+
+Commit changes, then run `bun run verify && bun run deploy` in a clean source checkout.
+Verification records the exact commit in that checkout's Git directory; dirty verification
+runs the checks but grants no deploy marker. Deploy exports that commit with `git archive`
+(no working tree or untracked files), installs its locked dependencies and builds its web app
+in a staging folder, then renames it to the commit's release folder. A release manifest supplies
+its running commit without needing Git metadata. Existing release folders are reused, never edited.
+
+One-time leader installation, performed by the orchestrator after merging this change:
+
+1. In the source checkout, run `bun install --frozen-lockfile` and `bun run verify`.
+2. Add `~/.config/systemd/user/lilbot.service.d/release.conf` with:
+   ```ini
+   [Service]
+   WorkingDirectory=%h/lilbot/release
+   ExecStart=
+   ExecStart=%h/.bun/bin/bun %h/lilbot/release/server/main.ts
+   ```
+   Keep `environment.conf` (`LILBOT_ENV=production`), `public-door.conf`, `access.conf`, all
+   existing unit settings, data directories and ports unchanged.
+3. `install -m 644 systemd/lilbot-deploy.service ~/.config/systemd/user/lilbot-deploy.service`
+   then `systemctl --user daemon-reload`. Do not enable the watchdog; deploy starts it on demand.
+4. Run `bun run deploy --bootstrap` once. It requires that no release symlink exists, builds
+   the first release, backs up the existing database, switches the symlink and restarts through
+   the watchdog. Existing data, keys, workspaces and skills stay where they are. There is no
+   earlier release on this first conversion: if it fails, the watchdog restores the database,
+   stops the service and retains the lock for manual repair. Subsequent deploys roll back normally.
+
+Deploy freezes its watchdog under `<data>/deploy/runner/` and starts the independent
+`lilbot-deploy.service`. It checks that the unit points at the configured release symlink, the
+health endpoint belongs to that unit, and its data directory matches. An atomic
+`<data>/deploy/lock/` excludes concurrent deploys, even if the caller disconnects.
+After the build, the watchdog copies the database, atomically switches the release symlink,
+restarts LilBot and checks health for 60 seconds. On failure it stops LilBot, restores the database,
+switches back to the previous release, and restarts once. No Git checkout, reset, install or build
+runs during rollback. It checks that old version for another 60 seconds. Failed recovery stops
+the service and retains the lock, releases and copies for a person; it never loops. A killed
+watchdog also leaves its lock. Development work, including uncommitted changes, stays untouched.
+
+Keep the last three release folders and three database copies. The active release is protected
+from pruning. Database copies in `<data>/deploy/backups/<id>/` contain `lilbot.db` and
+`version.json`. SQLite's online backup API folds committed `-wal` pages into a self-contained
+copy using the live database's locking/`-shm` state. Never raw-copy those three files independently.
+Restore happens with the unit stopped and removes stale WAL/SHM files. Up to a minute of data
+may be lost (accepted). The data directory is never replaced: `computer-server-key.pem`,
+`engine-token`, `t3-grant.json`, other secrets, workspaces and engine sessions stay in place.
+Copies use private directories/files (0700/0600). Preserve the server key securely alongside
+recovery copies; never print or commit it.
+
+`<data>/deploy/job.json` records the current outcome; `history/<id>.json` retains outcomes and
+masked journal lines, and `notice.json` holds the last failure. `bun run deploy --status` tells
+the deploying bot the outcome on its resumed turn; a surviving call returns it directly. The
+app fetches the notice on reconnect, and every bot's next memory context includes it. No new
+agent loop, developer bot or notification system. A healthy deploy does not erase failure
+history; a person may remove `notice.json` after acknowledging it.
+
+Overrides: `LILBOT_DATA_DIR`, `LILBOT_DEPLOY_UNIT`, `LILBOT_DEPLOY_WATCHDOG_UNIT`,
+`LILBOT_DEPLOY_HEALTH_URL` (loopback HTTP), `LILBOT_RELEASES_DIR` and `LILBOT_RELEASE_LINK`.
+Defaults match production. Other installations need a matching watchdog `ExecStart` pointing
+to their data directory's runner and job file. `check:deploy` uses its own clone, release root,
+symlink, data directory, free port and temporary systemd units, with an unmatched bot allowlist.
+It never tests production or any live bot, including Chief of Staff.
+
+Manual recovery: inspect `job.json` and both units, keep the service stopped, repair the cause,
+select the recorded release and database copy, and preserve every key. Only after confirming
+health should a person remove `deploy/lock/` and resume normal deployment. No automatic stale
+lock removal. The development profile prefix, production guard and separate Hermes home are supplied by
+the merged development-isolation work; release checks follow that boundary too.
 
 ## Library
 
@@ -822,16 +898,19 @@ artwork, names or text.
 
 ## Rules
 
+- Never test against the live service or any live bot, including Chief of Staff (`default`). Every check uses an
+  isolated server with temporary bots only.
+
 - Do not fork or patch Hermes. Configure it, or build on its API.
 - The attach ticket and anything under `~/.hermes` that holds credentials are never printed, logged or committed.
 - Test on a second server (`LILBOT_PORT=3371 LILBOT_DATA_DIR=<tmp> LILBOT_WORKSPACES_DIR=<tmp> bun server/main.ts`)
   with temporary bots, never Oscar's real bots, and
-  delete them afterwards with `hermes profile delete <id> -y`. Set `LILBOT_SKIP_MEMORY_SETUP=1` on a test
-  server that imports real profiles so start-up does not change their memory plug-ins or endpoints.
+  delete them afterwards with `hermes profile delete <id> -y`. Set `LILBOT_SKIP_MEMORY_SETUP=1` on every test
+  server so start-up does not change memory plug-ins or endpoints.
   Always set `LILBOT_BOT_IDS` to a temporary profile allowlist (or an unmatched sentinel before creating one):
   startup applies permission settings as well as identity. Never use an unrestricted test roster.
   Do not chat with or edit real bots on the test server.
-- Each slice ends with a real check against the running service: `bun run verify`, `bun run check:live`, then drive
+- Each slice ends with a real check against an isolated server with temporary bots only: `bun run verify`, `bun run check:live`, then drive
   the page in a browser.
 - Logic that can be tested without a browser or Hermes gets a test in `tests/` in the same change.
 - Keep docs in this file. Replace outdated text; do not append history.
@@ -881,6 +960,8 @@ Cleaning up after a merge:
   runs a harmless recursive delete and file write, and checks no approvals remain. Deletes its profile and folders.
 - `bun run check:routines`: isolated routine create/run/open/pause/restart/resume/delete check.
 - `bun run check:restart`: isolated mid-turn process restarts; chat, routine and thread counters must stay at one.
+- `bun run check:deploy`: temporary clone, data directory, free port and two temporary systemd user units;
+  checks healthy deploy, rollback at 60 seconds, restored WAL data, notices, and failed recovery. No profiles created.
 - `bun run t3:sign-in`: signs LilBot in to T3 Code with a pairing code from stdin or `--code-file`.
   Uses `LILBOT_DATA_DIR`; the running server picks the new sign-in up without a restart.
 - `bun run check:coding`: isolated coding check through T3 Code (needs a fresh pairing code; see Coding).
@@ -888,4 +969,5 @@ Cleaning up after a merge:
   them, prints tokens per turn, then deletes it. Inherited memory is disconnected before the baseline turn. A few model calls.
 - `bun run start`: run the server. `LILBOT_PORT` and `LILBOT_HOST` override the defaults.
 - `bun run dev`: Vite with hot reload, proxying to a dev server on `LILBOT_PORT` (default 3371); production ports are refused.
-- After a change: `bun run verify` and the relevant isolated live checks. Deployment belongs to #74; never restart production as a check.
+- After a change: run `bun run verify` and relevant isolated checks, then use `bun run deploy` from a clean source checkout when deploying.
+  Bots must only restart the live service through `bun run deploy`; never restart production as a check.

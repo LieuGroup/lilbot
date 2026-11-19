@@ -8,7 +8,7 @@
     "start": "bun server/main.ts",
     "dev": "vite",
     "typecheck": "tsc --noEmit",
-    "verify": "biome check . && tsc --noEmit && bun test tests && vite build",
+    "verify": "bun scripts/verify.ts",
     "lint": "biome check .",
     "format": "biome check --write .",
     "test": "bun test tests",
@@ -23,6 +23,8 @@
     "check:memory": "bun live-checks/memory-check.ts",
     "check:coding": "bun live-checks/coding-check.ts",
     "t3:sign-in": "bun server/connections/t3-sign-in-cli.ts",
+    "deploy": "bun server/deploy/deploy-cli.ts",
+    "check:deploy": "bun live-checks/deploy-check.ts",
     "dev:setup": "bun scripts/dev-setup.ts"
   },
   "dependencies": {

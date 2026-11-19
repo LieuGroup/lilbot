@@ -32,7 +32,8 @@ export class BrowserSession {
     private library?: LibraryService,
     private threads?: import('../threads/thread-service').ThreadService,
     private connections?: () => ConnectionsStatus,
-    private computers?: import('../computers/computer-service').ComputerService
+    private computers?: import('../computers/computer-service').ComputerService,
+    private deploymentNotice?: () => string | undefined
   ) {}
 
   private routineService() {
@@ -48,6 +49,7 @@ export class BrowserSession {
     return this.computers
   }
   private handlers: Handlers = {
+    'deploy.status': async () => ({ notice: this.deploymentNotice?.() }),
     'threads.list': ({ botId }) => this.threads!.list(botId),
     'threads.open': ({ botId, threadId }) => this.threads!.open(botId, threadId),
     'computers.list': async () => this.computerService().list(),
