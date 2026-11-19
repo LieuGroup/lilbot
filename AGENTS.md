@@ -377,7 +377,9 @@ What a bot is and who owns each part. Decided with Oscar on 2026-11-16 unless ma
 working context; LilBot never summarises. Streaming chat events are journalled before forwarding; observer replay is journalled by epoch/sequence when no browser is open,
 including user sends, tool rows and completion. A read-only background importer reconciles durable
 Hermes transcript rows, including work completed while LilBot was offline. Row ids are namespaced
-by engine/profile, and repeated pages upsert rather than duplicate. Attachment metadata is merged
+by engine/profile, and repeated pages upsert rather than duplicate. Tool results use their persisted
+`tool_call_id`: Hermes projects them without `row_id`. Migration **19** rewinds import checkpoints
+once to backfill tool lines in existing copies, preserving all stored rows. Attachment metadata is merged
 at the HTTP edge and copied with its original session; thread references are recorded at the same
 edge without indexing the thread's private transcript. Routine and hidden thread/review sessions
 are excluded. Deleting a bot removes its conversation record and journal, regardless of file/archive
@@ -417,7 +419,8 @@ Deploy through the usual release procedure: migration 18 adds the tables/index, 
 its own provider folder, and existing data imports only after deploy. New sessions load the new
 search tool; do not restart Hermes or manually touch live profiles. Import is safe to resume after
 restart and safe to repeat. `bun run check:history` uses the dev launcher and a temporary bot, tests
-continuous history/paging/search, kills only its dev server mid-import, and tests forced compression.
+continuous history/paging/search and tool lines after reload/new session, repairs a schema-18 copy,
+kills only its dev server mid-import, repeats the import without duplicates, and tests forced compression.
 `bun live-checks/history-benchmark.ts` uses a synthetic 5,000-row dev copy (never production data).
 
 ## Threads

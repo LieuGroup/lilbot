@@ -22,7 +22,15 @@ try {
   }
   const first = await server.call('chat.new', { botId: bot.id })
   await turn(first.chatId, 'The calibration code is orchid-copper-731. Reply OK. Do not save it to memory.')
-  await turn(first.chatId, 'Reply SECOND.')
+  await turn(first.chatId, 'Run terminal with date, then terminal with pwd, then reply SECOND.')
+  async function toolsAfterReload() {
+    await server.call('chat.close', { chatId: first.chatId })
+    const snapshot = await server.call('chat.open', { botId: bot.id })
+    const tools = snapshot.items.filter((item: any) => item.kind === 'tool')
+    assert.ok(tools.filter((item: any) => item.name === 'terminal').length >= 2, 'Reload lost terminal lines')
+    return tools
+  }
+  await toolsAfterReload()
   await server.call('chat.close', { chatId: first.chatId })
   const second = await server.call('chat.new', { botId: bot.id })
   await turn(second.chatId, 'Reply THIRD.')
@@ -36,6 +44,9 @@ try {
     () => server.call('chat.history', { botId: bot.id }),
     p => p.import.complete && p.items.some((r: any) => r.item.text?.includes('orchid-copper-731'))
   )
+  const expected = (await server.call('chat.open', { botId: bot.id })).history.items
+  const expectedTools = expected.filter((row: any) => row.item.kind === 'tool')
+  assert.ok(expectedTools.length >= 3, 'New session lost tool lines')
   let page = await server.call('chat.history', { botId: bot.id, limit: 2 })
   const ids = new Set<string>()
   let divider = 0
@@ -57,7 +68,8 @@ try {
 
   await server.crash()
   const db = new Database(join(server.root, 'lilbot.db'))
-  db.exec('DELETE FROM history_items; DELETE FROM history_sessions; DELETE FROM history_imports;')
+  // Simulate the deployed schema-18 copy: text rows and tail cursors, no tools.
+  db.exec("DELETE FROM history_items WHERE json_extract(item,'$.kind')='tool'; PRAGMA user_version=18;")
   await server.start()
   await server.connect()
   await waitFor(
@@ -75,6 +87,26 @@ try {
     p => p.import.complete
   )
   assert.equal((await server.call('chat.history', { botId: bot.id })).items.length, ids.size)
+  const repaired = (await server.call('chat.open', { botId: bot.id })).history.items
+  assert.deepEqual(
+    repaired.map((r: any) => r.id),
+    expected.map((r: any) => r.id),
+    'Repair changed ids or order'
+  )
+  assert.deepEqual(
+    repaired.filter((r: any) => r.item.kind === 'tool'),
+    expectedTools
+  )
+  await server.crash()
+  db.exec('UPDATE history_sessions SET cursor=NULL,complete=0;')
+  await server.start()
+  await server.connect()
+  await waitFor(
+    'forced re-import',
+    () => server.call('chat.history', { botId: bot.id }),
+    p => p.import.complete
+  )
+  assert.deepEqual((await server.call('chat.open', { botId: bot.id })).history.items, repaired, 'Re-import duplicated or changed rows')
   db.close()
   console.log('ok: dev server killed mid-import; resumed with no loss or duplicates')
   const reopened = await server.call('chat.open', { botId: bot.id })

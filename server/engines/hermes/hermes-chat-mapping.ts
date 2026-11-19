@@ -22,7 +22,7 @@ export function itemsFromRows(rows: unknown): ChatItem[] {
         name: text(name) || 'tool',
         detail: text(context),
         running: false,
-        ...(row.content == null ? {} : { result: typeof row.content === 'string' ? row.content : JSON.stringify(row.content) })
+        ...(row.content == null ? {} : { failed: toolFailed(row.content), result: typeof row.content === 'string' ? row.content : JSON.stringify(row.content) })
       })
   }
   return items
