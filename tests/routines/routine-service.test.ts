@@ -11,12 +11,11 @@ const flush = () => new Promise(resolve => setTimeout(resolve, 20))
 function setup() {
   const fake = fakeService()
   let time = 0
-  let changes = 0
   const store = new RoutineStore(fake.database)
   const service = new RoutineService(
     store,
     fake.service,
-    () => changes++,
+    () => {},
     { minIntervalSeconds: 300, selfCreatedCap: 2 },
     () => time
   )
@@ -28,7 +27,6 @@ function setup() {
       time = value
     },
     now: () => time,
-    changes: () => changes,
     clean: () => {
       fake.database.close()
       rmSync(fake.root, { recursive: true, force: true })
