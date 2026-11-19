@@ -50,6 +50,9 @@ const stopWriting = (items: ViewItem[]): ViewItem[] => items.map(item => (isWrit
 
 export function applyChatEvent(chat: ChatView, event: ChatEvent): ChatView {
   switch (event.type) {
+    // The attachments screen adds rendering and optimistic-message reconciliation.
+    case 'user.message':
+      return chat
     case 'thread':
       return chat.items.some(i => i.kind === 'tool' && i.threadId === event.threadId)
         ? chat

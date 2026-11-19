@@ -1,8 +1,9 @@
 /** Chat transcript and live events in LilBot's own terms. Engines translate into these. */
 import { z } from 'zod'
+import { Attachment, AttachmentMessage, ImageSupport } from './attachment-schema'
 
 export const ChatItem = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('user'), text: z.string() }),
+  z.object({ kind: z.literal('user'), text: z.string(), messageId: z.string().optional(), attachments: z.array(Attachment).optional(), images: ImageSupport.optional() }),
   z.object({ kind: z.literal('assistant'), text: z.string(), stopped: z.boolean().optional() }),
   z.object({
     kind: z.literal('tool'),
@@ -19,6 +20,7 @@ export const ChatItem = z.discriminatedUnion('kind', [
 export type ChatItem = z.infer<typeof ChatItem>
 
 export const ChatEvent = z.discriminatedUnion('type', [
+  AttachmentMessage.extend({ type: z.literal('user.message') }),
   z.object({ type: z.literal('turn.started') }),
   z.object({ type: z.literal('thread'), threadId: z.string(), name: z.string(), detail: z.string() }),
   /** Short status while the bot thinks, e.g. "pondering...". */

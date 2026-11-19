@@ -18,6 +18,7 @@
     "check:computers": "bun live-checks/computers-check.ts",
     "check:skills": "bun live-checks/skills-check.ts",
     "check:access": "bun live-checks/access-check.ts",
+    "check:attachments": "bun live-checks/attachments-check.ts",
     "check:live": "bun live-checks/chat-check.ts",
     "check:routines": "bun live-checks/routines-check.ts",
     "check:memory": "bun live-checks/memory-check.ts",

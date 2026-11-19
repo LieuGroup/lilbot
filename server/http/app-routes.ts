@@ -2,7 +2,9 @@
 
 import { join, normalize } from 'node:path'
 import type { Server } from 'bun'
+import type { AttachmentService } from '../attachments/attachment-service'
 import type { LibraryService } from '../library/library-service'
+import { attachmentRoute } from './attachment-routes'
 import type { BrowserSession } from './browser-session'
 import { socketAllowed } from './socket-guard'
 
@@ -10,9 +12,10 @@ export interface SocketData {
   session?: BrowserSession
 }
 
-export function appRoutes(library: Pick<LibraryService, 'content'>, dist: string, hosts: Set<string>, engineName: string) {
+export function appRoutes(library: Pick<LibraryService, 'content'>, dist: string, hosts: Set<string>, engineName: string, attachments?: AttachmentService) {
   return async (request: Request, server: Server<SocketData>): Promise<Response | undefined> => {
     const url = new URL(request.url)
+    if (url.pathname.startsWith('/api/attachments/')) return attachments ? attachmentRoute(request, hosts, attachments) : new Response('Not found', { status: 404 })
     if (url.pathname === '/ws') {
       if (!socketAllowed(request, hosts)) return new Response('Forbidden', { status: 403 })
       if (server.upgrade(request, { data: {} })) return undefined

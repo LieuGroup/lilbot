@@ -54,7 +54,8 @@ const methods: Record<string, Uses> = {
     sends: ['session_id', 'source', 'display_projection'],
     reads: ['session_id', 'stored_session_id', 'display_messages', 'running', 'execution_generation', 'info']
   },
-  'prompt.submit': { table: 'x-canonical-methods', sends: ['session_id', 'text', 'input_id', 'display_kind', 'queued'], reads: ['admission_id'] },
+  'prompt.submit': { table: 'x-canonical-methods', sends: ['session_id', 'text', 'input_id', 'display_kind', 'queued', 'attachments', 'api_text'], reads: ['admission_id'] },
+  'image.attach_bytes': { table: 'x-canonical-methods', sends: ['session_id', 'content_base64'], reads: ['attached', 'path', 'mime'] },
   'prompt.receipt': { table: 'x-canonical-methods', sends: ['session_id', 'admission_id'], reads: ['status', 'outcome'] },
   'session.interrupt': { table: 'x-canonical-methods', sends: ['session_id', 'execution_generation'], reads: [] },
   'profiles.list': { table: 'methods', sends: ['include_sessions'], reads: ['profiles'] },
@@ -122,6 +123,10 @@ describe.skipIf(!installed)('Hermes wire contract', () => {
 
   test('model inventory declares the provider fields used for validation', () => {
     expect(['slug', 'name', 'authenticated', 'models'].filter(key => !fields(contract.components.schemas.ModelOptionProvider).has(key))).toEqual([])
+  })
+
+  test('attachment input fields remain declared', () => {
+    expect(['path', 'mime'].filter(key => !fields(contract.components.schemas.CanonicalAttachment).has(key))).toEqual([])
   })
 
   test('thread transcript fields remain declared', () => {

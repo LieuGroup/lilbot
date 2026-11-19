@@ -1,6 +1,7 @@
 /** The browser <-> LilBot server protocol: JSON frames over one WebSocket. */
 
 import { z } from 'zod'
+import { AttachmentFile } from './attachment-schema'
 import { BotDeleteDefaults, BotDeleteInput } from './bot-delete-schema'
 import { type Bot, BotCreateInput, type BotDetail, BotPrefsInput, BotUpdateInput, type ModelProvider, type Section, sectionName } from './bot-schema'
 import type { ChatEvent, ChatSnapshot } from './chat-schema'
@@ -13,6 +14,9 @@ const chatId = z.string().min(1)
 
 /** Each method's params schema (checked on the server) and result type (trusted by the browser). */
 export const methods = {
+  'attachments.limits': z.object({}),
+  'attachments.prepare': z.object({ botId, files: z.array(AttachmentFile).max(100) }),
+  'attachments.status': z.object({ botId, ids: z.array(z.string().uuid()).max(100) }),
   'deploy.status': z.object({}),
   'threads.list': z.object({ botId }),
   'threads.open': z.object({ botId, threadId: z.string().min(1) }),
@@ -60,7 +64,12 @@ export const methods = {
   'chat.open': z.object({ botId, chatId: chatId.optional() }),
   /** Starts a new session and makes it the bot's main conversation. */
   'chat.new': z.object({ botId }),
-  'chat.send': z.object({ chatId, text: z.string().trim().min(1).max(200_000) }),
+  'chat.send': z
+    .object({ chatId, text: z.string().trim().max(200_000), attachmentIds: z.array(z.string().uuid()).max(10).optional(), messageId: z.string().uuid().optional() })
+    .refine(
+      p => (p.text.length > 0 || (p.attachmentIds?.length ?? 0) > 0) && (!p.attachmentIds?.length || !!p.messageId),
+      'Provide text or attachments, and a messageId for attachments.'
+    ),
   'chat.stop': z.object({ chatId }),
   'chat.close': z.object({ chatId }),
   /** LilBot's own connections, such as its T3 Code sign-in for coding. Never returns credentials. */
@@ -71,6 +80,9 @@ export type Method = keyof typeof methods
 export type Params<M extends Method> = z.input<(typeof methods)[M]>
 
 export interface Results {
+  'attachments.limits': { maxFileBytes: number; maxFilesPerMessage: number }
+  'attachments.prepare': import('./attachment-schema').Attachment[]
+  'attachments.status': import('./attachment-schema').Attachment[]
   'deploy.status': import('./deploy-schema').DeploymentStatus
   'threads.list': import('./thread-schema').BotThread[]
   'threads.open': import('./thread-schema').BotThread
@@ -111,7 +123,7 @@ export interface Results {
   'memory.connect': { imported: number }
   'chat.open': ChatSnapshot
   'chat.new': ChatSnapshot
-  'chat.send': { ok: true }
+  'chat.send': { ok: true; message?: import('./attachment-schema').AttachmentMessage }
   'chat.stop': { ok: true }
   'chat.close': { ok: true }
   'connections.status': import('./connections-schema').ConnectionsStatus

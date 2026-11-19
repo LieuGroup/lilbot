@@ -40,6 +40,7 @@ server/            The LilBot server (runs on the leader).
   threads/           shared bot exchanges, transcripts and durable deliveries
   routines/          app-owned schedules, run history and scheduler
   library/           Delivered workspace files, metadata, safe reads and folder listings.
+  attachments/       Incoming chat files, streaming uploads and durable message associations.
   connections/       LilBot-owned connections given to every bot: T3 Code for coding (bridge, sign-in, skill).
   computers/         Computer identities, key registration and durable command requests.
   database/          LilBot's own SQLite file and its schema steps.
@@ -68,7 +69,7 @@ live-checks/       Checks that talk to the real Hermes with a temporary bot.
 
 Rules that keep it this way:
 
-- A request flows downward only: `http/` -> `bots/`, `memory/`, `routines/`, `threads/` or `library/` -> `engines/` and `database/`. Nothing lower may
+- A request flows downward only: `http/` -> `bots/`, `memory/`, `routines/`, `threads/`, `attachments/` or `library/` -> `engines/` and `database/`. Nothing lower may
   import from something higher.
 - Nothing outside `server/engines/hermes/` knows about Hermes, except `main.ts`, which picks the engine. A second
   engine is a second folder under `server/engines/`.
@@ -490,6 +491,68 @@ Hermes declares incoming `CanonicalAttachment` paths but no outgoing attachment 
 therefore unavailable until the contract exposes it; tool image previews are not deliveries.
 No Library UI is built yet. `bun live-checks/library-check.ts` tests an isolated server and temporary
 bot end to end, including the push, protocol list, separate workspace, and download.
+## Chat attachments
+
+`server/attachments/` owns incoming files and message associations (migration 17). The screen
+in #66 uses the following protocol; no attachment UI is included in #55:
+
+- `attachments.limits({})` returns `maxFileBytes` (20 × 1024 × 1024) and
+  `maxFilesPerMessage` (10). `attachments.prepare({botId, files:[{name,size,mime}]})`
+  reserves files in selection order. It returns one `{id,name,size,mime,state,url,uploadUrl,reason?}`
+  per file, including refused entries. `reason` has a stable `code` and displayable `message`.
+  Files after the tenth are `too_many_files`; path/control-character names are `invalid_name`;
+  oversized files are `file_too_large`. The client retains existing selections when enforcing the
+  message limit; the server independently enforces it again on send. Refusals do not block other files.
+- PUT the raw File/Blob bytes (not multipart) to each accepted `uploadUrl`. State begins as
+  `uploading`; the PUT response returns `ready` or `refused`, with a per-file reason.
+  `attachments.status({botId,ids})` refreshes those records. Disable Send while selected files
+  are uploading; omit refused/removed ids. Removing an unsent chip does not delete its workspace file.
+  Interrupted uploads can be retried; if a partial file survived a server crash, the retry refuses
+  it without overwriting and the client must prepare a new file. No upload resumes at a byte offset.
+- `chat.send({chatId,text,attachmentIds,messageId})` requires a client UUID `messageId` when
+  attaching files. Text may be empty. Every attachment must be ready and belong to the open
+  chat's bot. Retries use the same id, text and file list (Hermes admission idempotency); changing
+  that payload is refused. The response includes `message:{messageId,text,attachments,images}`.
+  The same data is broadcast as the `user.message` chat event. #66 must reconcile this by
+  `messageId`, including optimistic/queued sends, rather than appending a second user bubble.
+- User items in chat snapshots carry the same optional `messageId`, `attachments` and `images`.
+  The association is saved before submission. A unique display-only marker in the engine's stored
+  text identifies the exact row; the HTTP edge replaces it with the original text and metadata.
+  The match allows the engine’s prepended image analysis and appended image references. This avoids associating repeated
+  identical messages by index or text alone. `api_text` keeps
+  the marker out of model input. Reopening on another device or after a server restart reads
+  SQLite; it never resubmits a message. An uncertain send is retried only by explicit client action.
+- `images` is `{support:'supported'|'unsupported'|'unknown', imageCount}`. Show #66's
+  “model cannot see images” note only for `unsupported` and a positive count. The installed Hermes
+  `model.options` catalogue's `ModelCapabilities` declares fast/reasoning flags, **no vision field**.
+  Therefore Hermes returns `unknown`, never a guessed false/true based on model names. Automatic
+  text-only-model detection requires a future declared capability in Hermes. The neutral protocol
+  already supports that signal and retains the state at send time.
+- GET each attachment's `url` for original bytes. Images can use the URL in the viewer; files
+  download with their original display filename. Headers force attachment disposition, no-sniff,
+  sandbox and no-store. The route is shared by the private and authenticated Access listeners,
+  with Host/Origin/cross-site checks, and is never installed on the public helper door.
+
+Uploads stream to generated names inside the bot's `attachments/` folder, through Linux
+file descriptors with no-follow and exclusive creation; original names never form paths. The
+stream itself enforces the size cap. Directory swaps are refused, partial failed writes removed,
+and reads verify SHA-256 against the upload before returning bytes. Names are untrusted display
+text. Browser MIME is normalized; PNG/JPEG/GIF/WebP magic determines image delivery. Other image
+formats are refused with `unsupported_image`, rather than silently sent as model-visible images.
+
+`BotEngine` receives the files with the message. Hermes stages image bytes with canonical
+`image.attach_bytes`, then passes its declared `{path,mime}` to `prompt.submit.attachments`.
+The installed implementation only admits images from its profile cache there, so non-images
+are supplied as JSON-quoted workspace references in `api_text`, accessible with normal file tools.
+The note explicitly treats file names and contents as data, not Oscar's instructions.
+Deletion's existing archive/delete workspace choice includes attachments; tombstones immediately
+refuse uploads and reads. Metadata remains in SQLite for attribution. Deploy applies migration 17
+with the normal verified deployment; no Hermes modification or production check is needed.
+
+`bun run check:attachments` uses the dev launcher and a temporary dev bot, checks a generated
+red/blue PNG, a text file, oversize refusal, the live metadata event, reload and byte-identical
+image reopening, and deletes the bot and scratch folders in `finally`.
+
 ## Coding (T3 Code)
 
 Coding goes to T3 Code, Oscar's coding backend, through its MCP tools. LilBot builds no coding engine,

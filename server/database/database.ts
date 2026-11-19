@@ -122,7 +122,9 @@ const migrations: string[] = [
   // Durable receive allowances and an active-only bot index (schema 15 has shipped).
   `ALTER TABLE computer_requests ADD COLUMN final_frames INTEGER NOT NULL DEFAULT 0;
    ALTER TABLE computer_requests ADD COLUMN received_bytes INTEGER NOT NULL DEFAULT 0;
-   CREATE INDEX computer_bot_active ON computer_requests(bot_id,status) WHERE status IN ('pending','running');`
+   CREATE INDEX computer_bot_active ON computer_requests(bot_id,status) WHERE status IN ('pending','running');`,
+  `CREATE TABLE attachments (id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, data TEXT NOT NULL);
+   CREATE TABLE attachment_messages (id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, chat_id TEXT NOT NULL, data TEXT NOT NULL);`
 ]
 
 /** `path` may be ':memory:' for tests. Applies any migration steps the file has not seen. */

@@ -4,6 +4,7 @@ import type { ChatEvent } from '../../shared/chat-schema'
 import type { ConnectionsStatus } from '../../shared/connections-schema'
 import { type EventFrame, LilBotError, type Method, methods, RequestFrame, type ResponseFrame, type Results } from '../../shared/protocol'
 import type { ActivityService } from '../activity/activity-service'
+import { type AttachmentService, attachmentLimits } from '../attachments/attachment-service'
 import type { BotService } from '../bots/bot-service'
 import type { OpenChat } from '../engines/bot-engine'
 import type { LibraryService } from '../library/library-service'
@@ -33,7 +34,8 @@ export class BrowserSession {
     private threads?: import('../threads/thread-service').ThreadService,
     private connections?: () => ConnectionsStatus,
     private computers?: import('../computers/computer-service').ComputerService,
-    private deploymentNotice?: () => string | undefined
+    private deploymentNotice?: () => string | undefined,
+    private attachments?: AttachmentService
   ) {}
 
   private routineService() {
@@ -49,6 +51,9 @@ export class BrowserSession {
     return this.computers
   }
   private handlers: Handlers = {
+    'attachments.limits': async () => attachmentLimits,
+    'attachments.prepare': async ({ botId, files }) => this.attachmentService().prepare(botId, files),
+    'attachments.status': async ({ botId, ids }) => this.attachmentService().status(botId, ids),
     'deploy.status': async () => ({ notice: this.deploymentNotice?.() }),
     'threads.list': ({ botId }) => this.threads!.list(botId),
     'threads.open': ({ botId, threadId }) => this.threads!.open(botId, threadId),
@@ -111,7 +116,8 @@ export class BrowserSession {
     'memory.connect': ({ botId }) => this.bots.connectMemory(botId),
     'chat.open': ({ botId, chatId }, afterResponse) => this.track(afterResponse, onEvent => this.bots.openChat(botId, chatId, onEvent)),
     'chat.new': ({ botId }, afterResponse) => this.track(afterResponse, onEvent => this.bots.newChat(botId, onEvent)),
-    'chat.send': async ({ chatId, text }) => {
+    'chat.send': async ({ chatId, text, attachmentIds, messageId }) => {
+      if (attachmentIds?.length) return { ok: true, message: await this.attachmentService().send(this.chat(chatId), text, attachmentIds, messageId!) }
       await this.chat(chatId).send(text)
       return { ok: true }
     },
@@ -198,7 +204,12 @@ export class BrowserSession {
       const threads = await this.threads.list(chat.snapshot.botId)
       chat.snapshot.items.push(...threads.map(thread => threadLine(thread, chat.snapshot.botId)))
     }
-    return chat.snapshot
+    return this.attachments ? this.attachments.merge(chat.snapshot) : chat.snapshot
+  }
+
+  private attachmentService() {
+    if (!this.attachments) throw new LilBotError('unavailable', 'Attachments are unavailable.')
+    return this.attachments
   }
 
   private chat(chatId: string): OpenChat {

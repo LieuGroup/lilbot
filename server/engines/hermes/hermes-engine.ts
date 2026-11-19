@@ -18,6 +18,7 @@ import type {
   RuntimeState
 } from '../bot-engine'
 import { watchHermesActivity } from './hermes-activity'
+import { prepareAttachments } from './hermes-attachments'
 import { botDetailFromProfile, botFromProfile, DEFAULT_PROFILE, providersFromModelOptions } from './hermes-bot-mapping'
 import { chatEventFrom, itemsFromRows, sessionLostEvents } from './hermes-chat-mapping'
 import { configureComputers } from './hermes-computers'
@@ -308,6 +309,8 @@ export class HermesEngine implements BotEngine {
       if (typeof session.execution_generation === 'number') generation = session.execution_generation
 
       return {
+        // ModelCapabilities in model.options has no vision field. Do not infer from names.
+        imageSupport: 'unknown',
         snapshot: {
           chatId: session.stored_session_id ?? session.session_id,
           botId,
@@ -321,7 +324,8 @@ export class HermesEngine implements BotEngine {
             session_id: sessionId,
             text,
             input_id: options?.inputId ?? crypto.randomUUID(),
-            ...(options?.hidden ? { display_kind: 'hidden' } : {})
+            ...(options?.hidden ? { display_kind: 'hidden' } : {}),
+            ...(options?.attachments?.length ? await prepareAttachments(socket, sessionId, options.apiText ?? text, options.attachments) : {})
           })
         },
         stop: async () => {
