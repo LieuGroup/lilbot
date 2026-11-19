@@ -39,8 +39,8 @@ test('development creates prefixed native profiles; refuses binding and deletion
     await expect(engine.deleteRuntime('production-id')).rejects.toThrow('other environment')
     expect(() => engine.userSkillPaths('default')).toThrow('other environment')
     // Even a persisted binding or allowlist must not bypass the environment filter.
-    ;(engine as any).manage = async () => ({ request: async () => ({ profiles: [{ name: 'default' }, { name: 'dev-123' }] }) })
-    expect((await (engine as any).profiles(false)).map((bot: any) => bot.id)).toEqual(['dev-123'])
+    ;(engine as any).management.socket = async () => ({ request: async () => ({ profiles: [{ name: 'default' }, { name: 'dev-123' }] }) })
+    expect((await (engine as any).profiles()).map((bot: any) => bot.id)).toEqual(['dev-123'])
     await expect(engine.openChat('default', null, {} as any, () => {})).rejects.toThrow('does not exist')
   } finally {
     if (previous === undefined) delete process.env.LILBOT_ENV
