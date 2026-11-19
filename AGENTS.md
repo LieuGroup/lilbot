@@ -54,6 +54,7 @@ web/src/           The web app (what you see in the browser).
   app/               start-up, the routes, the connection to the server, styles
   bots/              roster, bot menu and its dialogs, create bot, details panel and its Setup tab
   chat/              the conversation
+  attachments/       files in the composer and in sent messages, the drop area
   activity/          the details panel's Activity tab
   library/           the Library tab (placeholder until #14)
   memory/            the Memory tab
@@ -129,9 +130,10 @@ for behaviour he can check in the app. Keep an eye on speed and memory; measure 
     dialog titles. Weights 400, 500, 600. Icons 16px at stroke 1.75 in 28px buttons (`ui/icon-button.ts`).
   - Feature code imports parts as `@/ui/<part>`. Pages with forms are lazy routes in `app/router.tsx` and the
     details tabs are lazy chunks in `bots/bot-details-panel.tsx`, so
-    the chat's first load stays small (about 212 kB of JavaScript and 16 kB of styles, gzip -9, counting every
+    the chat's first load stays small (about 218 kB of JavaScript and 17 kB of styles, gzip -9, counting every
     file `dist/index.html` references; Vite's per-file sizes alone understate it). The bot menu, its dialogs and
-    Settings are lazy too: the roster only writes to small stores and loads them on hover or first use.
+    Settings are lazy too: the roster only writes to small stores and loads them on hover or first use. The
+    image viewer (`ui/image-viewer.tsx`) loads on the first click on an image.
 - Checks: Biome, `tsc`, `bun test`, Vite build, all through `bun run verify`. `bun run check:live` is the live
   check against the running Hermes.
 
@@ -250,8 +252,8 @@ Server startup requires an explicit `LILBOT_ENV`; use the launcher for checks, n
   button and, while the socket is down, "Offline · reconnecting" with a red dot
   (the composer then says "Reconnecting..."). The chat header is one 52px line: name, function, new session and the
   details toggle. Conversation column max 680px: bot text without a bubble (15/24), the user's message in a tinted
-  bubble, tool lines 13px, a round composer with an ink send/stop button (stop while the bot works and the box is
-  empty) and a disabled attach button kept for later.
+  bubble, tool lines 13px, a round composer with a plus button for files and an ink send/stop button (stop while
+  the bot works and the box is empty with no files). Attachments are described under "Chat attachments".
 - Bot menu (`bots/bot-menu.tsx`, Paper "02 Bot menu"): the row's "more" button or a right-click opens one shared
   menu (208px, 30px rows), anchored at the button or the cursor (`bots/bot-menu-target.ts` holds which bot and which
   dialog). Items: Pin/Unpin, Move to section (the sections with the current one checked, "No section", then "New
@@ -493,8 +495,41 @@ No Library UI is built yet. `bun live-checks/library-check.ts` tests an isolated
 bot end to end, including the push, protocol list, separate workspace, and download.
 ## Chat attachments
 
-`server/attachments/` owns incoming files and message associations (migration 17). The screen
-in #66 uses the following protocol; no attachment UI is included in #55:
+`server/attachments/` owns incoming files and message associations (migration 17). The screens
+(#66, Paper "10 Attachments") live in `web/src/attachments/` and use the protocol below.
+
+Screens:
+
+- Three ways in, several files at once: the composer's plus button (hidden file input), pasting files into
+  the message box (pasted text stays text), and dropping files anywhere on the conversation column. While
+  files are dragged over it a dashed "Drop to attach" area covers the message list with "Up to N files,
+  X MB each". `file-drop.tsx`.
+- Before sending (`composer-attachments.tsx`, AI Elements' Prompt Input attachments pattern on the shadcn
+  `ui/attachment.tsx` part, in a `block-start` addon): a row above the text. Images are 64px thumbnails
+  from the local bytes, files are chips (icon, name, size); each has a round remove button on its corner.
+  A file still uploading shows a blue spinner and Send is disabled ("Send (waiting for uploads)") until
+  every upload finishes. A message may be files only.
+- Refused (same file): a red-outlined row per refused file with the reason, and one red line for files
+  over the per-message limit ("3 files were left out. A message takes up to 10."). Both can be
+  dismissed and never block sending the rest. "Too large: 48 MB. The limit is 20 MB." is worded from
+  the file's size and `attachments.limits`; other refusals show the server's `reason.message`. The client
+  counts files already staged (not refused) against the limit before `attachments.prepare`. Texts and
+  rules are pure functions in `attachment-rules.ts` (tested in `tests/web/attachment-rules.test.ts`).
+- In the conversation (`message-attachments.tsx`): images above the user's bubble as 120×150 tiles
+  (radius 14, side by side, wrapping) that open the image viewer; files as chips that download through
+  their server URL; then the text bubble (none when the text is empty). Queued messages show their
+  files too. The send uses a client `messageId` (`newMessageId`, which also works on plain-HTTP pages);
+  the `chat.send` answer or the `user.message` event, whichever comes first, fills in the same message
+  (`withSentMessage` in `chat/chat-state.ts`), never a second bubble.
+- Image viewer (`ui/image-viewer.tsx`, lazy, plain props `{ image: { url, name }, onClose }`): the image
+  large, its name, download and close. Built for the Library (#54) to reuse.
+- "Model cannot see images": a tinted note under the message, only when the message's `images.support`
+  is `unsupported` with a positive count, with a "Change model" link to the Setup tab. Hermes reports
+  `unknown` today, so the note does not appear with Hermes bots yet.
+- File names are untrusted: always plain text (React text nodes, `alt`, `title`, `download`), never HTML.
+- Staged files belong to one bot: switching bots empties the composer's files and ignores late uploads.
+
+Protocol:
 
 - `attachments.limits({})` returns `maxFileBytes` (20 × 1024 × 1024) and
   `maxFilesPerMessage` (10). `attachments.prepare({botId, files:[{name,size,mime}]})`
@@ -513,7 +548,7 @@ in #66 uses the following protocol; no attachment UI is included in #55:
   attaching files. Text may be empty. Every attachment must be ready and belong to the open
   chat's bot. Retries use the same id, text and file list (Hermes admission idempotency); changing
   that payload is refused. The response includes `message:{messageId,text,attachments,images}`.
-  The same data is broadcast as the `user.message` chat event. #66 must reconcile this by
+  The same data is broadcast as the `user.message` chat event. The web app reconciles both by
   `messageId`, including optimistic/queued sends, rather than appending a second user bubble.
 - User items in chat snapshots carry the same optional `messageId`, `attachments` and `images`.
   The association is saved before submission. A unique display-only marker in the engine's stored
@@ -522,7 +557,7 @@ in #66 uses the following protocol; no attachment UI is included in #55:
   identical messages by index or text alone. `api_text` keeps
   the marker out of model input. Reopening on another device or after a server restart reads
   SQLite; it never resubmits a message. An uncertain send is retried only by explicit client action.
-- `images` is `{support:'supported'|'unsupported'|'unknown', imageCount}`. Show #66's
+- `images` is `{support:'supported'|'unsupported'|'unknown', imageCount}`. Show the
   “model cannot see images” note only for `unsupported` and a positive count. The installed Hermes
   `model.options` catalogue's `ModelCapabilities` declares fast/reasoning flags, **no vision field**.
   Therefore Hermes returns `unknown`, never a guessed false/true based on model names. Automatic

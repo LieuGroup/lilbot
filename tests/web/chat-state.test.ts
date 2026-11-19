@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { ChatEvent } from '../../shared/chat-schema'
-import { applyChatEvent, type ChatView, chatFromSnapshot, emptyChat, withUserMessage } from '../../web/src/chat/chat-state'
+import { applyChatEvent, type ChatView, chatFromSnapshot, emptyChat, withSentMessage, withUserMessage } from '../../web/src/chat/chat-state'
 
 const play = (chat: ChatView, ...events: ChatEvent[]) => events.reduce(applyChatEvent, chat)
 const texts = (chat: ChatView) => chat.items.map(item => (item.kind === 'tool' ? `tool:${item.name}` : `${item.kind}:${item.text}`))
@@ -65,7 +65,7 @@ describe('messages sent while the bot is busy', () => {
   test('wait in the queue and join the transcript when their own turn starts', () => {
     let chat = play(withUserMessage(emptyChat, 'first'), { type: 'turn.started' }, { type: 'text.delta', text: 'Working on fi' })
     chat = withUserMessage(chat, 'second')
-    expect(chat.queued).toEqual(['second'])
+    expect(chat.queued).toEqual([{ kind: 'user', text: 'second' }])
     expect(texts(chat)).toEqual(['user:first', 'assistant:Working on fi'])
 
     chat = play(chat, { type: 'text.delta', text: 'rst.' }, { type: 'turn.finished', status: 'completed', text: 'Working on first.' })
@@ -83,7 +83,7 @@ describe('messages sent while the bot is busy', () => {
     chat = withUserMessage(chat, 'second')
     chat = play(chat, { type: 'turn.started' }, { type: 'text.delta', text: 'A1' })
     expect(texts(chat)).toEqual(['user:first', 'assistant:A1'])
-    expect(chat.queued).toEqual(['second'])
+    expect(chat.queued).toEqual([{ kind: 'user', text: 'second' }])
   })
 })
 
@@ -120,4 +120,55 @@ test('thread references arrive once in the live stream and deduplicate snapshot 
   const next = applyChatEvent(emptyChat, event)
   expect(next.items).toEqual([{ kind: 'tool', toolId: 'thread:shared-thread', threadId: 'shared-thread', name: 'message to', detail: 'Engineer', running: false }])
   expect(applyChatEvent(next, event)).toBe(next)
+})
+
+describe('messages with files', () => {
+  const file = (id: string, mime = 'image/png') => ({
+    id,
+    name: `${id}.png`,
+    size: 10,
+    mime,
+    state: 'ready' as const,
+    url: `/api/attachments/b/${id}`,
+    uploadUrl: `/api/attachments/b/${id}`
+  })
+  const record = (messageId: string, support: 'unsupported' | 'unknown' = 'unsupported') => ({
+    messageId,
+    text: 'look',
+    attachments: [file('a')],
+    images: { support, imageCount: 1 }
+  })
+
+  test('the server record fills in the message already on screen, keeping every other item', () => {
+    const before = play(withUserMessage(emptyChat, 'hi'), { type: 'turn.started' }, { type: 'turn.finished', status: 'completed', text: 'hello' })
+    const sent = withUserMessage(before, { kind: 'user', text: 'look', messageId: 'm1', attachments: [file('a')] })
+    const chat = applyChatEvent(sent, { type: 'user.message', ...record('m1') })
+    expect(chat.items).toHaveLength(3)
+    expect(chat.items[0]).toBe(sent.items[0])
+    expect(chat.items[1]).toBe(sent.items[1])
+    expect(chat.items[2]).toMatchObject({ kind: 'user', messageId: 'm1', images: { support: 'unsupported', imageCount: 1 } })
+  })
+
+  test('whichever of the answer and the event arrives second changes nothing more', () => {
+    const sent = withUserMessage(emptyChat, { kind: 'user', text: 'look', messageId: 'm1', attachments: [file('a')] })
+    const once = withSentMessage(sent, record('m1'))
+    const twice = applyChatEvent(once, { type: 'user.message', ...record('m1') })
+    expect(twice.items).toHaveLength(1)
+    expect(twice.queued).toEqual([])
+  })
+
+  test('an unknown message id leaves the chat as it is', () => {
+    const sent = withUserMessage(emptyChat, 'plain')
+    expect(applyChatEvent(sent, { type: 'user.message', ...record('other') })).toBe(sent)
+  })
+
+  test('a queued message keeps its files and joins the transcript with them', () => {
+    let chat = play(withUserMessage(emptyChat, 'first'), { type: 'turn.started' })
+    chat = withUserMessage(chat, { kind: 'user', text: '', messageId: 'm2', attachments: [file('b')] })
+    chat = withSentMessage(chat, { ...record('m2', 'unknown'), text: '', attachments: [file('b')] })
+    expect(chat.queued[0]).toMatchObject({ messageId: 'm2', images: { support: 'unknown' } })
+    chat = play(chat, { type: 'turn.finished', status: 'completed', text: 'one' }, { type: 'turn.started' })
+    expect(chat.items.at(-1)).toMatchObject({ kind: 'user', messageId: 'm2', attachments: [{ id: 'b' }] })
+    expect(chat.queued).toEqual([])
+  })
 })

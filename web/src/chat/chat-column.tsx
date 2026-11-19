@@ -3,6 +3,8 @@ import { PanelRightIcon, SquarePenIcon } from 'lucide-react'
 import { Button } from '@/ui/button'
 import { iconButton } from '@/ui/icon-button'
 import { PageHeader } from '@/ui/page-header'
+import { DropOverlay, useFileDrop } from '../attachments/file-drop'
+import { useStagedAttachments } from '../attachments/use-staged-attachments'
 import { useBotStore } from '../bots/bot-store'
 import { rememberDetailsOpen, useDetailsTab } from '../bots/details-tabs'
 import { Composer } from './composer'
@@ -15,11 +17,13 @@ export function ChatColumn({ botId }: { botId: string }) {
   const connected = useBotStore(state => state.connected)
   const tab = useDetailsTab()
   const { chat, ready, error, send, stop, newChat } = useChat(botId)
+  const staged = useStagedAttachments(botId)
+  const drop = useFileDrop(files => void staged.add(files), ready)
   const name = bot?.name ?? botId
   const hint = error || (!connected ? 'Reconnecting...' : !ready ? 'Opening chat...' : `Send a message to start with ${name}.`)
 
   return (
-    <div className="flex h-full min-w-0 flex-col bg-card">
+    <div className="flex h-full min-w-0 flex-col bg-card" {...drop.handlers}>
       <PageHeader
         title={name}
         subtitle={bot?.function}
@@ -55,8 +59,19 @@ export function ChatColumn({ botId }: { botId: string }) {
         }
       />
       {/* A new scroller per conversation, so each one opens at its latest message. */}
-      <MessageList key={chat.chatId || botId} items={chat.items} queued={chat.queued} activity={chat.running ? chat.activity : ''} emptyHint={hint} />
-      <Composer disabled={!ready} disabledHint={connected ? 'Opening chat...' : 'Reconnecting...'} running={chat.running} botName={name} onSend={send} onStop={stop} />
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <MessageList key={chat.chatId || botId} botId={botId} items={chat.items} queued={chat.queued} activity={chat.running ? chat.activity : ''} emptyHint={hint} />
+        {drop.dragging && <DropOverlay limits={staged.limits} />}
+      </div>
+      <Composer
+        disabled={!ready}
+        disabledHint={connected ? 'Opening chat...' : 'Reconnecting...'}
+        running={chat.running}
+        botName={name}
+        staged={staged}
+        onSend={send}
+        onStop={stop}
+      />
     </div>
   )
 }

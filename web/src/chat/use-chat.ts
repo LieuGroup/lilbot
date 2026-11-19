@@ -2,9 +2,11 @@
  *  conversation, so every device sees the same one. This hook opens it, follows its events, and
  *  reopens it after a reconnect so the transcript always comes from the server. */
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { Attachment } from '../../../shared/attachment-schema'
 import { lilbot, messageOf } from '../app/lilbot-socket'
+import { newMessageId } from '../attachments/attachment-rules'
 import { useBotStore } from '../bots/bot-store'
-import { applyChatEvent, chatFromSnapshot, emptyChat, withError, withUserMessage } from './chat-state'
+import { applyChatEvent, chatFromSnapshot, emptyChat, type UserItem, withError, withSentMessage, withUserMessage } from './chat-state'
 import { emptySlot, updateChat, useChatStore } from './chat-store'
 
 const REOPEN_DELAY_MS = 3000
@@ -62,12 +64,21 @@ export function useChat(botId: string) {
     }
   }, [botId, connected, openCount])
 
+  /** A message with files carries a new id, so the server's record of it (the answer or the
+   *  `user.message` event) fills in the same message on screen rather than adding another. */
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, attachments: Attachment[] = []) => {
       if (!chatId.current) return
-      updateChat(botId, current => ({ ...current, view: withUserMessage(current.view, text) }))
+      const messageId = attachments.length > 0 ? newMessageId() : undefined
+      const item: UserItem = messageId ? { kind: 'user', text, messageId, attachments } : { kind: 'user', text }
+      updateChat(botId, current => ({ ...current, view: withUserMessage(current.view, item) }))
       try {
-        await lilbot.call('chat.send', { chatId: chatId.current, text })
+        const sent = await lilbot.call(
+          'chat.send',
+          messageId ? { chatId: chatId.current, text, attachmentIds: attachments.map(file => file.id), messageId } : { chatId: chatId.current, text }
+        )
+        const message = sent.message
+        if (message) updateChat(botId, current => ({ ...current, view: withSentMessage(current.view, message) }))
       } catch (failure) {
         updateChat(botId, current => ({ ...current, view: withError(current.view, `The message was not sent. ${messageOf(failure)}`) }))
       }
