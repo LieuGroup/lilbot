@@ -1,5 +1,5 @@
 import '../scripts/dev-env'
-/** Run only on a disposable copy (including WAL/SHM) of the live database. Never opens the live file. */
+/** Run only on a disposable development database (including WAL/SHM). Never copies or opens production data. */
 import { Database } from 'bun:sqlite'
 import { realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
