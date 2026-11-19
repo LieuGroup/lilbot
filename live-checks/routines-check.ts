@@ -1,4 +1,7 @@
 import { devScratch } from '../scripts/dev-env'
+import { checkClient } from './check-client'
+import { startServer, deleteProfile } from './check-process'
+import { devPort } from '../scripts/dev-paths'
 /** Exercises only a temporary bot and a second LilBot server. Never reads or mutates cron jobs. */
 import { Database } from 'bun:sqlite'
 import assert from 'node:assert/strict'
@@ -6,9 +9,7 @@ import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 
 const root = devScratch('lilbot-routines')
-const probe = Bun.serve({ port: 0, fetch: () => new Response('') })
-const port = probe.port!
-probe.stop(true)
+const port = devPort()
 const env = {
   ...process.env,
   LILBOT_PORT: String(port),
@@ -20,7 +21,7 @@ const env = {
   LILBOT_REVIEW: 'off',
   LILBOT_ROUTINE_TEST_INTERVAL_SECONDS: '3'
 }
-let server = Bun.spawn(['bun', 'server/main.ts'], { env, stdout: 'ignore', stderr: 'inherit' })
+let server = startServer(env)
 let socket: WebSocket | undefined
 let nativeId: string | undefined
 let db: Database | undefined
@@ -34,15 +35,8 @@ const waitFor = async <T>(read: () => Promise<T>, matches: (value: T) => boolean
   }
   throw new Error('Timed out waiting for routine check.')
 }
-let seq = 0
-const pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void }>()
 const events: string[] = []
-const call = (method: string, params = {}): Promise<any> =>
-  new Promise((resolve, reject) => {
-    const id = ++seq
-    pending.set(id, { resolve, reject })
-    socket!.send(JSON.stringify({ id, method, params }))
-  })
+let call!: Awaited<ReturnType<typeof checkClient>>['call']
 async function connect() {
   await waitFor(
     () =>
@@ -52,22 +46,9 @@ async function connect() {
     ok => ok,
     30_000
   )
-  socket = new WebSocket(`ws://127.0.0.1:${port}/ws`)
-  await new Promise<void>((resolve, reject) => {
-    socket!.onopen = () => resolve()
-    socket!.onerror = reject
-  })
-  socket.onmessage = event => {
-    const frame = JSON.parse(String(event.data))
-    if (frame.event) {
-      events.push(frame.event)
-      return
-    }
-    const waiter = pending.get(frame.id)
-    pending.delete(frame.id)
-    if (frame.ok) waiter?.resolve(frame.result)
-    else waiter?.reject(new Error(JSON.stringify(frame.error)))
-  }
+  const client = await checkClient(port, frame => events.push(frame.event))
+  socket = client.socket
+  call = client.call
 }
 try {
   await connect()
@@ -120,12 +101,11 @@ try {
   console.log(
     'ok: chat created an Oscar routine; dedicated full-access session wrote its file; result and openRun are available; main chat unchanged; pause prevents dispatch; change event delivered'
   )
-  // Restart while paused, verify persisted history; resume and catch one more run.
   socket?.close()
   server.kill()
   await server.exited
   env.LILBOT_BOT_IDS = nativeId!
-  server = Bun.spawn(['bun', 'server/main.ts'], { env, stdout: 'ignore', stderr: 'inherit' })
+  server = startServer(env)
   await connect()
   assert.equal((await call('routines.list', { botId: bot.id }))[0].paused, true)
   await call('routines.resume', { botId: bot.id, id: routine.id })
@@ -138,7 +118,7 @@ try {
   socket?.close()
   server.kill()
   await server.exited
-  server = Bun.spawn(['bun', 'server/main.ts'], { env, stdout: 'ignore', stderr: 'inherit' })
+  server = startServer(env)
   await connect()
   const recovered = await waitFor(
     () => call('routines.list', { botId: bot.id }),
@@ -148,7 +128,6 @@ try {
   console.log('ok: in-flight run recovered after process restart with the same run identity')
   await call('routines.delete', { botId: bot.id, id: routine.id })
   assert.deepEqual(await call('routines.list', { botId: bot.id }), [])
-  // Ask it to watch an outcome, leaving the decision to schedule up to the bot.
   const chat = await call('chat.open', { botId: bot.id })
   await call('chat.send', {
     chatId: chat.chatId,
@@ -166,7 +145,7 @@ try {
   await server.exited
   db?.close()
   if (nativeId) {
-    const code = await Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', nativeId, '-y'], { env: process.env, stdout: 'ignore', stderr: 'inherit' }).exited
+    const code = await deleteProfile(nativeId).exited
     assert.equal(code, 0, `Could not remove temporary profile ${nativeId}`)
   }
   await rm(root, { recursive: true, force: true })

@@ -1,4 +1,7 @@
 import { devScratch } from '../scripts/dev-env'
+import { checkClient } from './check-client'
+import { startServer, deleteProfile } from './check-process'
+import { devPort } from '../scripts/dev-paths'
 /** A second, isolated server exercises the public protocol and a harmless approval-triggering command. */
 import { existsSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -7,22 +10,16 @@ import { openDatabase } from '../server/database/database'
 import { HermesSocket } from '../server/engines/hermes/hermes-socket'
 
 const scratch = devScratch('lilbot-skills')
-const reservation = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response('') })
-const port = reservation.port!
-reservation.stop(true)
-const server = Bun.spawn(['bun', 'server/main.ts'], {
-  env: {
-    ...process.env,
-    LILBOT_PORT: String(port),
-    LILBOT_DATA_DIR: scratch,
-    LILBOT_WORKSPACES_DIR: join(scratch, 'workspaces'),
-    LILBOT_SKILLS_DIR: join(scratch, 'skills'),
-    LILBOT_BOT_IDS: 'isolated-no-profiles',
-    LILBOT_SKIP_MEMORY_SETUP: '1',
-    LILBOT_REVIEW: 'off'
-  },
-  stdout: 'ignore',
-  stderr: 'inherit'
+const port = devPort()
+const server = startServer({
+  ...process.env,
+  LILBOT_PORT: String(port),
+  LILBOT_DATA_DIR: scratch,
+  LILBOT_WORKSPACES_DIR: join(scratch, 'workspaces'),
+  LILBOT_SKILLS_DIR: join(scratch, 'skills'),
+  LILBOT_BOT_IDS: 'isolated-no-profiles',
+  LILBOT_SKIP_MEMORY_SETUP: '1',
+  LILBOT_REVIEW: 'off'
 })
 let socket: WebSocket | undefined
 let nativeId = ''
@@ -36,30 +33,12 @@ try {
       break
     await Bun.sleep(100)
   }
-  socket = new WebSocket(`ws://127.0.0.1:${port}/ws`)
-  await new Promise<void>((resolve, reject) => {
-    socket!.onopen = () => resolve()
-    socket!.onerror = reject
-  })
-  let nextId = 0
-  const pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>()
   let finish: (event: any) => void = () => {}
-  socket.onmessage = event => {
-    const frame = JSON.parse(String(event.data))
-    if (frame.id) {
-      const waiter = pending.get(frame.id)
-      pending.delete(frame.id)
-      if (frame.ok) waiter?.resolve(frame.result)
-      else waiter?.reject(new Error(frame.error.message))
-    }
+  const client = await checkClient(port, frame => {
     if (frame.event === 'chat' && frame.data.type === 'turn.finished') finish(frame.data)
-  }
-  const call = (method: string, params = {}): Promise<any> =>
-    new Promise((resolve, reject) => {
-      const id = ++nextId
-      pending.set(id, { resolve, reject })
-      socket!.send(JSON.stringify({ id, method, params }))
-    })
+  })
+  socket = client.socket
+  const call = client.call
   console.log('Creating temporary bot')
   const bot = await call('bots.create', {
     name: 'Permissions check',
@@ -132,7 +111,7 @@ try {
   if (existsSync(join(scratch, 'lilbot.db'))) {
     const db = openDatabase(join(scratch, 'lilbot.db'))
     for (const bot of new BotStore(db).list()) {
-      const deletion = Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', bot.engineBotId, '-y'], { env: process.env, stdout: 'ignore', stderr: 'inherit' })
+      const deletion = deleteProfile(bot.engineBotId)
       if ((await deletion.exited) !== 0) process.exitCode = 1
     }
     db.close()

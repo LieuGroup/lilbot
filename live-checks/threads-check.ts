@@ -1,4 +1,7 @@
 import { devScratch } from '../scripts/dev-env'
+import { checkClient } from './check-client'
+import { startServer, deleteProfile } from './check-process'
+import { devPort } from '../scripts/dev-paths'
 /** Isolated end-to-end check. Never start against an unrestricted roster or the live service. */
 import { Database } from 'bun:sqlite'
 import assert from 'node:assert/strict'
@@ -8,9 +11,7 @@ import { botCapability } from '../server/bots/bot-capability'
 import { ThreadStore } from '../server/threads/thread-store'
 
 const root = devScratch('lilbot-threads')
-const probe = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response('') })
-const port = probe.port!
-probe.stop(true)
+const port = devPort()
 const env = {
   ...process.env,
   LILBOT_PORT: String(port),
@@ -20,32 +21,12 @@ const env = {
   LILBOT_SKIP_MEMORY_SETUP: '1',
   LILBOT_BOT_IDS: 'isolation-no-existing-profile'
 }
-let server = Bun.spawn(['bun', 'server/main.ts'], { env, stdout: 'ignore', stderr: 'inherit' })
+let server = startServer(env)
 let socket: WebSocket | undefined
 let db: Database | undefined
 const natives: string[] = []
-let seq = 0
-const pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>()
 const events: any[] = []
-const call = (method: string, params = {}): Promise<any> =>
-  new Promise((resolve, reject) => {
-    const id = ++seq
-    const timer = setTimeout(() => {
-      pending.delete(id)
-      reject(new Error(`Timed out: ${method}`))
-    }, 180_000).unref()
-    pending.set(id, {
-      resolve: value => {
-        clearTimeout(timer)
-        resolve(value)
-      },
-      reject: error => {
-        clearTimeout(timer)
-        reject(error)
-      }
-    })
-    socket!.send(JSON.stringify({ id, method, params }))
-  })
+let call!: Awaited<ReturnType<typeof checkClient>>['call']
 async function waitFor<T>(read: () => Promise<T>, matches: (v: T) => boolean, timeout = 240_000): Promise<T> {
   const end = Date.now() + timeout
   while (Date.now() < end) {
@@ -64,21 +45,9 @@ async function connect() {
     Boolean,
     30_000
   )
-  socket = new WebSocket(`ws://127.0.0.1:${port}/ws`)
-  await new Promise<void>((resolve, reject) => {
-    socket!.onopen = () => resolve()
-    socket!.onerror = reject
-  })
-  socket.onmessage = event => {
-    const frame = JSON.parse(String(event.data))
-    if (frame.event) {
-      events.push(frame)
-      return
-    }
-    const task = pending.get(frame.id)
-    pending.delete(frame.id)
-    frame.ok ? task?.resolve(frame.result) : task?.reject(new Error(JSON.stringify(frame.error)))
-  }
+  const client = await checkClient(port, frame => events.push(frame), 180_000)
+  socket = client.socket
+  call = client.call
 }
 try {
   await connect()
@@ -165,7 +134,7 @@ try {
   server.kill()
   await server.exited
   env.LILBOT_BOT_IDS = natives.join(',')
-  server = Bun.spawn(['bun', 'server/main.ts'], { env, stdout: 'ignore', stderr: 'inherit' })
+  server = startServer(env)
   await connect()
   assert.equal((await ask(a.id, { to: b.id, requestId: 'live-one', chatId: main.chatId, text: 'Same delivery after restart' })).body.threadId, thread.id)
   assert.equal((await call('threads.open', { botId: a.id, threadId: thread.id })).messages.length, 2)
@@ -184,7 +153,7 @@ try {
     db.close()
   }
   for (const id of natives) {
-    const child = Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', id, '-y'], { env: process.env, stdout: 'ignore', stderr: 'inherit' })
+    const child = deleteProfile(id)
     if (await child.exited) {
       console.error(`Failed to delete temporary profile ${id}`)
       process.exitCode = 1

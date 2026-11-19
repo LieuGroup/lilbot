@@ -1,4 +1,5 @@
 import { devScratch } from '../scripts/dev-env'
+import { startServer, deleteProfile } from './check-process'
 /** Check model edit refusal and recovery against an isolated server and temporary profile. */
 import { existsSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -9,19 +10,15 @@ const scratch = devScratch('lilbot-model')
 const reservation = Bun.serve({ port: 0, fetch: () => new Response() })
 const port = reservation.port!
 reservation.stop(true)
-const server = Bun.spawn(['bun', 'server/main.ts'], {
-  env: {
-    ...process.env,
-    LILBOT_PORT: String(port),
-    LILBOT_DATA_DIR: scratch,
-    LILBOT_WORKSPACES_DIR: join(scratch, 'workspaces'),
-    LILBOT_SKILLS_DIR: join(scratch, 'skills'),
-    LILBOT_BOT_IDS: 'isolated-no-profiles',
-    LILBOT_SKIP_MEMORY_SETUP: '1',
-    LILBOT_REVIEW: 'off'
-  },
-  stdout: 'ignore',
-  stderr: 'inherit'
+const server = startServer({
+  ...process.env,
+  LILBOT_PORT: String(port),
+  LILBOT_DATA_DIR: scratch,
+  LILBOT_WORKSPACES_DIR: join(scratch, 'workspaces'),
+  LILBOT_SKILLS_DIR: join(scratch, 'skills'),
+  LILBOT_BOT_IDS: 'isolated-no-profiles',
+  LILBOT_SKIP_MEMORY_SETUP: '1',
+  LILBOT_REVIEW: 'off'
 })
 let socket: WebSocket | undefined
 let nativeId = ''
@@ -96,7 +93,7 @@ try {
     db.close()
   }
   if (nativeId) {
-    const deletion = Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', nativeId, '-y'], { env: process.env, stdout: 'ignore', stderr: 'inherit' })
+    const deletion = deleteProfile(nativeId)
     if ((await deletion.exited) !== 0) {
       console.error(`Could not delete temporary profile ${nativeId}`)
       process.exitCode = 1

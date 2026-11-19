@@ -1,4 +1,5 @@
 import { devScratch } from '../scripts/dev-env'
+import { startServer, deleteProfile } from './check-process'
 /** Two browser-protocol clients on an isolated server and temporary profiles. */
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -14,18 +15,14 @@ const port = Number(process.env.LILBOT_CHECK_PORT ?? 3371)
 let server: ReturnType<typeof Bun.spawn> | undefined
 const clients: WebSocket[] = []
 const start = async () => {
-  server = Bun.spawn(['bun', 'server/main.ts'], {
-    env: {
-      ...process.env,
-      LILBOT_PORT: String(port),
-      LILBOT_DATA_DIR: root,
-      LILBOT_WORKSPACES_DIR: join(root, 'workspaces'),
-      LILBOT_BOT_IDS: nativeIds.join(','),
-      LILBOT_SKIP_MEMORY_SETUP: '1',
-      LILBOT_REVIEW: 'off'
-    },
-    stdout: 'ignore',
-    stderr: 'inherit'
+  server = startServer({
+    ...process.env,
+    LILBOT_PORT: String(port),
+    LILBOT_DATA_DIR: root,
+    LILBOT_WORKSPACES_DIR: join(root, 'workspaces'),
+    LILBOT_BOT_IDS: nativeIds.join(','),
+    LILBOT_SKIP_MEMORY_SETUP: '1',
+    LILBOT_REVIEW: 'off'
   })
   for (let i = 0; i < 100; i++) {
     if (
@@ -148,8 +145,7 @@ try {
   for (const ws of clients) ws.close()
   server?.kill(9)
   if (server) await server.exited
-  for (const id of nativeIds)
-    await Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', id, '-y'], { env: process.env, stdout: 'ignore', stderr: 'inherit' }).exited
+  for (const id of nativeIds) await deleteProfile(id).exited
   rmSync(root, { recursive: true, force: true })
 }
 // Hermes management sockets stay reusable; the standalone check has no more work.

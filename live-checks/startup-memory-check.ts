@@ -1,4 +1,6 @@
 import { devScratch } from '../scripts/dev-env'
+import { deleteProfile } from './check-process'
+import { devPort } from '../scripts/dev-paths'
 /** Real isolated-server regression for #29. Only creates/edits/deletes temporary profiles. */
 import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync, renameSync, rmSync } from 'node:fs'
@@ -44,9 +46,7 @@ async function config(id: string, value: string) {
 }
 try {
   // Reserve a free port, then start the real server on it.
-  const reservation = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response('') })
-  const port = reservation.port!
-  reservation.stop(true)
+  const port = devPort()
   engineToken(root)
   for (let i = 0; i < 2; i++) {
     const id = await engine.createRuntime(identity)
@@ -96,7 +96,7 @@ try {
     await server.exited
   }
   for (const id of ids) {
-    const child = Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', id, '-y'], { env: process.env, stdout: 'ignore', stderr: 'pipe' })
+    const child = deleteProfile(id, 'pipe')
     if ((await child.exited) !== 0) {
       console.error(`Cleanup failed for temporary profile ${id}`)
       process.exitCode = 1

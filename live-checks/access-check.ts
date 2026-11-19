@@ -1,4 +1,6 @@
 import { devScratch } from '../scripts/dev-env'
+import { startServer } from './check-process'
+import { devPort } from '../scripts/dev-paths'
 /** Isolated app/Access integration. No real profiles, service changes, or Cloudflare credentials. */
 import assert from 'node:assert/strict'
 import { rmSync } from 'node:fs'
@@ -8,9 +10,7 @@ import { accessEnv, fakeAccess, token } from '../tests/http/access-fixture'
 const scratch = devScratch('lilbot-access')
 const fake = fakeAccess()
 function freePort(exclude: number[] = []): number {
-  const probe = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response('') })
-  const port = probe.port!
-  probe.stop(true)
+  const port = devPort()
   return [3370, 3372, ...exclude].includes(port) ? freePort(exclude) : port
 }
 const privatePort = freePort()
@@ -69,25 +69,21 @@ function changed(socket: WebSocket) {
   })
 }
 try {
-  child = Bun.spawn(['bun', 'server/main.ts'], {
-    env: {
-      ...process.env,
-      ...accessEnv,
-      LILBOT_HOST: '127.0.0.1',
-      LILBOT_PORT: String(privatePort),
-      LILBOT_PUBLIC_ENABLED: '0',
-      LILBOT_PUBLIC_PORT: String(freePort([privatePort, accessPort])),
-      LILBOT_ACCESS_PORT: String(accessPort),
-      LILBOT_ACCESS_TEST_CERTS_URL: fake.settings.certsUrl.href,
-      LILBOT_DATA_DIR: scratch,
-      LILBOT_WORKSPACES_DIR: join(scratch, 'workspaces'),
-      LILBOT_SKILLS_DIR: join(scratch, 'skills'),
-      LILBOT_BOT_IDS: 'isolation-access-check',
-      LILBOT_SKIP_MEMORY_SETUP: '1',
-      LILBOT_REVIEW: 'off'
-    },
-    stdout: 'ignore',
-    stderr: 'inherit'
+  child = startServer({
+    ...process.env,
+    ...accessEnv,
+    LILBOT_HOST: '127.0.0.1',
+    LILBOT_PORT: String(privatePort),
+    LILBOT_PUBLIC_ENABLED: '0',
+    LILBOT_PUBLIC_PORT: String(freePort([privatePort, accessPort])),
+    LILBOT_ACCESS_PORT: String(accessPort),
+    LILBOT_ACCESS_TEST_CERTS_URL: fake.settings.certsUrl.href,
+    LILBOT_DATA_DIR: scratch,
+    LILBOT_WORKSPACES_DIR: join(scratch, 'workspaces'),
+    LILBOT_SKILLS_DIR: join(scratch, 'skills'),
+    LILBOT_BOT_IDS: 'isolation-access-check',
+    LILBOT_SKIP_MEMORY_SETUP: '1',
+    LILBOT_REVIEW: 'off'
   })
   let ready = false
   for (let i = 0; i < 200; i++) {

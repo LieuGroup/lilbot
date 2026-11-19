@@ -1,4 +1,5 @@
 import { devScratch } from '../scripts/dev-env'
+import { startServer, deleteProfile } from './check-process'
 /** Measure real cold/warm roster reads with isolated, pre-imported temporary bots. */
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -47,18 +48,14 @@ try {
     const reservation = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response('') })
     const port = reservation.port!
     reservation.stop(true)
-    server = Bun.spawn(['bun', 'server/main.ts'], {
-      env: {
-        ...process.env,
-        LILBOT_PORT: String(port),
-        LILBOT_DATA_DIR: data,
-        LILBOT_WORKSPACES_DIR: join(data, 'workspaces'),
-        LILBOT_BOT_IDS: ids.slice(0, count).join(','),
-        LILBOT_SKIP_MEMORY_SETUP: '1',
-        LILBOT_REVIEW: 'off'
-      },
-      stdout: 'ignore',
-      stderr: 'inherit'
+    server = startServer({
+      ...process.env,
+      LILBOT_PORT: String(port),
+      LILBOT_DATA_DIR: data,
+      LILBOT_WORKSPACES_DIR: join(data, 'workspaces'),
+      LILBOT_BOT_IDS: ids.slice(0, count).join(','),
+      LILBOT_SKIP_MEMORY_SETUP: '1',
+      LILBOT_REVIEW: 'off'
     })
     for (let attempt = 0; attempt < 100; attempt++) {
       if (
@@ -115,7 +112,7 @@ try {
     await server.exited
   }
   for (const id of ids) {
-    const child = Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', id, '-y'], { env: process.env, stdout: 'ignore', stderr: 'inherit' })
+    const child = deleteProfile(id)
     if ((await child.exited) !== 0) {
       console.error(`Failed to clean temporary profile ${id}`)
       process.exitCode = 1

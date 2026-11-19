@@ -1,4 +1,7 @@
 import { devScratch } from '../scripts/dev-env'
+import { checkClient } from './check-client'
+import { startServer, deleteProfile } from './check-process'
+import { devPort } from '../scripts/dev-paths'
 /** Isolated browser-protocol check: no model calls and only profiles created by this server. */
 import { Database } from 'bun:sqlite'
 import { existsSync } from 'node:fs'
@@ -6,21 +9,15 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 const root = devScratch('lilbot-delete')
-const probe = Bun.serve({ port: 0, fetch: () => new Response('') })
-const port = probe.port!
-probe.stop(true)
-const server = Bun.spawn(['bun', 'server/main.ts'], {
-  env: {
-    ...process.env,
-    LILBOT_PORT: String(port),
-    LILBOT_DATA_DIR: root,
-    LILBOT_WORKSPACES_DIR: join(root, 'workspaces'),
-    LILBOT_BOT_IDS: 'isolation-no-existing-profile',
-    LILBOT_SKIP_MEMORY_SETUP: '1',
-    LILBOT_REVIEW: 'off'
-  },
-  stdout: 'ignore',
-  stderr: 'inherit'
+const port = devPort()
+const server = startServer({
+  ...process.env,
+  LILBOT_PORT: String(port),
+  LILBOT_DATA_DIR: root,
+  LILBOT_WORKSPACES_DIR: join(root, 'workspaces'),
+  LILBOT_BOT_IDS: 'isolation-no-existing-profile',
+  LILBOT_SKIP_MEMORY_SETUP: '1',
+  LILBOT_REVIEW: 'off'
 })
 const created: string[] = []
 let socket: WebSocket | undefined
@@ -35,31 +32,10 @@ try {
       break
     await Bun.sleep(100)
   }
-  socket = new WebSocket(`ws://127.0.0.1:${port}/ws`)
-  await new Promise<void>((resolve, reject) => {
-    socket!.onopen = () => resolve()
-    socket!.onerror = reject
-  })
-  let seq = 0
   const events: string[] = []
-  const waiting = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void }>()
-  socket.onmessage = event => {
-    const frame = JSON.parse(String(event.data))
-    if (frame.event) {
-      events.push(frame.event)
-      return
-    }
-    const pending = waiting.get(frame.id)
-    waiting.delete(frame.id)
-    if (frame.ok) pending?.resolve(frame.result)
-    else pending?.reject(new Error(JSON.stringify(frame.error)))
-  }
-  const call = (method: string, params = {}): Promise<any> =>
-    new Promise((resolve, reject) => {
-      const id = ++seq
-      waiting.set(id, { resolve, reject })
-      socket!.send(JSON.stringify({ id, method, params }))
-    })
+  const client = await checkClient(port, frame => events.push(frame.event))
+  socket = client.socket
+  const call = client.call
   db = new Database(join(root, 'lilbot.db'))
   db.exec('PRAGMA busy_timeout = 5000')
   const assert = (ok: boolean, message: string) => {
@@ -125,8 +101,7 @@ try {
   await server.exited
   db?.close()
   for (const id of created) {
-    if (existsSync(join(process.env.HERMES_HOME!, 'profiles', id)))
-      await Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', id, '-y'], { env: process.env, stdout: 'ignore', stderr: 'ignore' }).exited
+    if (existsSync(join(process.env.HERMES_HOME!, 'profiles', id))) await deleteProfile(id, 'ignore').exited
   }
   await rm(root, { recursive: true, force: true })
   console.log('Temporary profiles and directories removed.')
