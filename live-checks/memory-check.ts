@@ -235,7 +235,7 @@ try {
       await deleteBot(new BotStore(database).get(botId).engineBotId)
       check('temporary bot deleted', true)
     } catch (error) {
-      check('temporary bot deleted', false, `delete it by hand: hermes profile delete ${botId} -y. ${error instanceof Error ? error.message : ''}`)
+      check('temporary bot deleted', false, `Cleanup failed in the development Hermes home. ${error instanceof Error ? error.message : ''}`)
     }
   }
   server.stop(true)

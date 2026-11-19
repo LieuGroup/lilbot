@@ -2,7 +2,6 @@ import { devScratch } from '../scripts/dev-env'
 /** Real isolated-server regression for #29. Only creates/edits/deletes temporary profiles. */
 import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync, renameSync, rmSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { join, relative } from 'node:path'
 import { BotStore } from '../server/bots/bot-store'
 import { openDatabase } from '../server/database/database'
@@ -24,7 +23,7 @@ const identity = {
   permissionMode: 'full-access' as const,
   isDefault: false
 }
-const profile = (id: string) => join(process.env.HERMES_HOME ?? join(homedir(), '.hermes'), 'profiles', id)
+const profile = (id: string) => join(process.env.HERMES_HOME!, 'profiles', id)
 function digest(path: string): Record<string, string> {
   const files: Record<string, string> = {}
   for (const file of readdirSync(path, { recursive: true, withFileTypes: true })
