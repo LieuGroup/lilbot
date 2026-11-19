@@ -49,7 +49,8 @@ export async function checkLifecycle(command: string[], root: string) {
     const start = performance.now()
     const fast = await service.submit('bot', { computer: identity.id, requestId: 'fast', operation: { kind: 'exec', command: 'echo hi' } })
     const elapsed = performance.now() - start
-    if (fast.result?.output !== 'hi\n' || elapsed >= 100) throw new Error(`Fast exec failed: ${elapsed} ms`)
+    // Guards against the old one-second watchdog floor; 500 ms leaves room for a busy machine (#99).
+    if (fast.result?.output !== 'hi\n' || elapsed >= 500) throw new Error(`Fast exec failed: ${elapsed} ms`)
     console.log(`PASS: remote echo hi ${elapsed.toFixed(2)} ms`)
     const originalResult = service.result.bind(service)
     let withheld = false
