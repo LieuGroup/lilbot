@@ -37,8 +37,10 @@ export const digest = (data: Record<string, string>) =>
 export function metadata(text: string) {
   const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1]
   const field = (key: string) => new RegExp(`^${key}:\\s*["']?([^\\r\\n"']+)`, 'm').exec(front ?? '')?.[1]?.trim()
-  if (!front || !field('name') || !field('description')) throw new LilBotError('invalid_skill', 'SKILL.md needs name and description frontmatter.')
-  return { name: field('name')!, description: field('description')! }
+  const name = field('name')
+  const description = field('description')
+  if (!front || !name || !description) throw new LilBotError('invalid_skill', 'SKILL.md needs name and description frontmatter.')
+  return { name, description }
 }
 
 /** Hash all bytes, including binary assets; reject redirects anywhere in an imported tree. */
