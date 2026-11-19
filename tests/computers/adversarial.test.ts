@@ -54,7 +54,8 @@ test('reserve and enqueue stay indexed at one million receipts', () => {
     f.db.exec(`WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<1000000)
       INSERT INTO computer_requests(id,bot_id,computer_id,request_id,status,created_at,digest,size) SELECT 'r'||x,'bot','remote','r'||x,'completed',0,'',0 FROM n`)
     const samples: number[] = []
-    for (let i = 0; i < 100; i++) {
+    // Enough samples for p99 to represent a tail, rather than one scheduling pause.
+    for (let i = 0; i < 1000; i++) {
       const start = performance.now()
       const row = f.store.enqueue('bot', 'remote', `new${i}`, { kind: 'exec', command: 'true', timeoutMs: 1000 })
       samples.push(performance.now() - start)
@@ -63,8 +64,9 @@ test('reserve and enqueue stay indexed at one million receipts', () => {
     const plan = f.db.query('EXPLAIN QUERY PLAN SELECT bytes FROM computer_bytes WHERE bot_id=?').all('bot')
     expect(JSON.stringify(plan)).toContain('INDEX')
     samples.sort((a, b) => a - b)
-    console.log(`MEASURE: 1M receipts enqueue/reserve p99 ${samples[99].toFixed(3)} ms, mean ${(samples.reduce((a, b) => a + b, 0) / 100).toFixed(3)} ms; indexed byte counters`)
-    expect(samples[99]).toBeLessThan(50)
+    const p99 = samples[Math.floor(samples.length * 0.99)]
+    console.log(`MEASURE: 1M receipts enqueue/reserve p99 ${p99.toFixed(3)} ms, mean ${(samples.reduce((a, b) => a + b, 0) / samples.length).toFixed(3)} ms; indexed byte counters`)
+    expect(p99).toBeLessThan(50)
   } finally {
     f.close()
   }
