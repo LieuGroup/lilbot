@@ -102,17 +102,14 @@ export class MemoryService {
     return matches[0]
   }
 
-  /** The user forgets any fact, from the app. */
   forgetAsUser(factId: string) {
     if (!this.store.markForgotten(factId, this.now(), 'user')) throw new LilBotError('fact_not_found', 'That fact is not in memory.')
   }
 
-  /** The user brings a forgotten fact back. */
   restore(factId: string) {
     if (!this.store.restore(factId)) throw new LilBotError('fact_not_found', 'That fact is not among the forgotten ones.')
   }
 
-  /** The user switches a fact off (kept, not shown to bots) or back on. */
   setPaused(factId: string, paused: boolean) {
     if (!this.store.setPaused(factId, paused)) throw new LilBotError('fact_not_found', 'That fact is not in memory.')
   }

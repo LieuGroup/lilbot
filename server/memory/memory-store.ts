@@ -62,11 +62,6 @@ export class MemoryStore {
       .run({ ...fact })
   }
 
-  get(factId: string): MemoryFact | null {
-    const row = this.db.query<FactRow, [string]>('SELECT * FROM memory_facts WHERE id = ?').get(factId)
-    return row ? factFrom(row) : null
-  }
-
   /** What a bot is shown and can recall, newest first. `kind` and `limit` narrow it. */
   visible(botId: string, now: number, options: { kind?: MemoryKind; limit?: number } = {}): MemoryFact[] {
     return this.db
