@@ -30,7 +30,6 @@ export class ReviewQueue {
       .run(botId, chatId, cut(userText), cut(assistantText), at)
   }
 
-  /** How much is waiting per bot. */
   pending(): PendingSummary[] {
     return this.db.query<PendingSummary, []>('SELECT bot_id AS botId, COUNT(*) AS turns, MAX(created_at) AS lastAt FROM review_turns GROUP BY bot_id').all()
   }
@@ -44,7 +43,6 @@ export class ReviewQueue {
       .all(botId, limit)
   }
 
-  /** Drop the turns a review has covered. */
   done(botId: string, throughId: number) {
     this.db.query('DELETE FROM review_turns WHERE bot_id = ? AND id <= ?').run(botId, throughId)
   }
