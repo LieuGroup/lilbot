@@ -723,8 +723,11 @@ computer; the authenticated bot id owns its requests, never an id from the body.
     `lilbot-connect`, its own connector and credentials, separate from T3 Code's tunnel and the hosting server.
   - `~/.cloudflared/lilbot/config.yml` routes only `^/helper/(register|connect)$` on that hostname to
     `http://127.0.0.1:3372`; everything else gets 404 at the edge. The tunnel credentials JSON sits beside
-    it (0600). The broad account certificate (`cert.pem`) was deleted after creating the tunnel and DNS
-    record; changing DNS or deleting the tunnel needs a fresh `cloudflared tunnel login`.
+    it (0600). The same tunnel also carries the app hostname (see "App behind Cloudflare Access").
+  - Cloudflare access on the leader: `~/.cloudflared/cert.pem` (0600, zone `lilgroup.studio`, approved by
+    Oscar on 2026-11-19 and kept on purpose) lets agents manage LilBot's own DNS names and tunnels with
+    `cloudflared tunnel route dns ...` without him. Never print, log or commit it, and touch only LilBot's
+    own tunnels and names; the account holds others.
   - `cloudflared` 2026.10.4 in `~/.local/bin`, run by the user unit `lilbot-tunnel.service`
     (`--no-autoupdate`). The door is enabled by the drop-in
     `~/.config/systemd/user/lilbot.service.d/public-door.conf` (`LILBOT_PUBLIC_ENABLED=1`,
@@ -765,9 +768,23 @@ an unmatched profile sentinel; no real bot or Cloudflare account is used. Its lo
 uses `LILBOT_ACCESS_TEST_CERTS_URL`, accepted only for HTTP on `127.0.0.1` with all three isolation
 directories and exactly `LILBOT_BOT_IDS=isolation-access-check`. Do not set this override in deployment.
 
-Deployment steps: **pending orchestrator setup** of the Access application and single-user allow rule,
-then a dedicated tunnel/DNS route, service environment, outside sign-in/socket check, and rollback
-instructions. Code alone does not provision Cloudflare or enable the listener.
+Deployment (live since 2026-11-19, #75):
+- `https://bot.lilgroup.studio` is served by the `lilbot-connect` tunnel through its own ingress rule,
+  hostname `bot.lilgroup.studio` to `http://127.0.0.1:3373` (the Access listener only). The helper-path
+  rule for `lilbot-connect.lilgroup.studio` is unchanged.
+- A Cloudflare Access self-hosted application on that hostname allows exactly one email (the owner's,
+  kept out of this repo), signs in with the one-time email code and lasts 24 hours. It was created before
+  the DNS name, so the hostname was never reachable without the sign-in.
+- The listener's settings (`LILBOT_ACCESS_ENABLED=1`, `LILBOT_ACCESS_PORT=3373`, `LILBOT_ACCESS_HOST`,
+  `LILBOT_ACCESS_TEAM`, `LILBOT_ACCESS_AUD`, `LILBOT_ACCESS_EMAIL`) are in the 0600 drop-in
+  `~/.config/systemd/user/lilbot.service.d/access.conf`, never in the repo.
+- Check from outside: every path, including `/ws`, `/api/*`, `/engine/*` and `/helper/*`, answers with a
+  redirect to the Access sign-in; a forged token sent through the tunnel is redirected too, and sent
+  straight to the listener gets 403.
+- Roll back the app hostname only: remove its ingress rule from `~/.cloudflared/lilbot/config.yml` and
+  restart `lilbot-tunnel.service` (the helper door keeps working); optionally delete the DNS name and
+  the `access.conf` drop-in, then `systemctl --user daemon-reload` and restart `lilbot.service`.
+  Stopping `lilbot-tunnel.service` closes both public names at once. The tailnet address is unaffected.
 
 ## Skills
 
