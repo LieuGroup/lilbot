@@ -136,7 +136,9 @@ const migrations: string[] = [
    CREATE TRIGGER history_removed AFTER DELETE ON history_items BEGIN INSERT INTO history_search(history_search,rowid,text) VALUES('delete',old.rowid,old.text); END;
    CREATE TRIGGER history_updated AFTER UPDATE ON history_items BEGIN
      INSERT INTO history_search(history_search,rowid,text) VALUES('delete',old.rowid,old.text);
-     INSERT INTO history_search(rowid,text) VALUES(new.rowid,new.text); END;`
+     INSERT INTO history_search(rowid,text) VALUES(new.rowid,new.text); END;`,
+  // Revisit old transcripts once to backfill tool rows omitted by the row_id-only importer.
+  `UPDATE history_sessions SET cursor=NULL,complete=0;`
 ]
 
 /** `path` may be ':memory:' for tests. Applies any migration steps the file has not seen. */

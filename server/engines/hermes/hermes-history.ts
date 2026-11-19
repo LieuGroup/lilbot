@@ -1,8 +1,8 @@
 /** Read-only transcript access: never resumes an old session to import it. */
 import type { ConversationSource } from '../bot-engine'
-import { itemsFromRows } from './hermes-chat-mapping'
 import { requireProfileEnvironment } from './hermes-environment'
 import { historyCatalog } from './hermes-history-catalog'
+import { historyRows } from './hermes-history-mapping'
 import { HermesSocket } from './hermes-socket'
 
 export async function conversations(nativeId: string): Promise<ConversationSource> {
@@ -34,10 +34,7 @@ export async function conversations(nativeId: string): Promise<ConversationSourc
         limit: 100,
         order: latest ? 'latest' : 'oldest'
       })
-      const rows = result.rows.flatMap((row: any) => {
-        if (row.row_kind !== 'message' || row.display_kind === 'hidden' || typeof row.row_id !== 'number') return []
-        return itemsFromRows([row]).map(item => ({ id: `hermes:${nativeId}:${row.row_id}`, at: Math.round((row.timestamp ?? 0) * 1000), order: row.row_id, item }))
-      })
+      const rows = historyRows(nativeId, result.rows)
       return { rows, cursor: result.next_cursor, reset: result.reset, empty: result.rows.length === 0 }
     }
   }
