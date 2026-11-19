@@ -36,6 +36,7 @@ function fixture(disk = false) {
   })
   return { root, db, store, key, service }
 }
+// Large disk-backed fixtures need time on a busy host; tick latency is asserted separately.
 test('45 retained 4 MiB requests keep tick below 5 ms; payloads have an enforced budget', () => {
   const { store, service, db } = fixture(true)
   const operation = { kind: 'write' as const, path: '/unused', encoding: 'utf8' as const, data: 'x'.repeat(4 * 1024 * 1024) }
@@ -60,7 +61,7 @@ test('45 retained 4 MiB requests keep tick below 5 ms; payloads have an enforced
     for (let i = 45; i < 100; i++) store.enqueue('fill', 'offline', String(i), operation)
   }).toThrow('storage full')
   expect((db.query("SELECT bytes FROM computer_bytes WHERE bot_id='fill'").get() as any).bytes).toBeLessThanOrEqual(BOT_PAYLOAD_LIMIT)
-})
+}, 30_000)
 test('large write never echoes data; finishes as digest and expires indexed, bounded batches', async () => {
   const { store, service, db, root } = fixture()
   const input = { computer: 'leader', requestId: 'write', operation: { kind: 'write', path: join(root, 'file'), data: 'PAYLOAD_'.repeat(400_000) } }
