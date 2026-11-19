@@ -109,9 +109,18 @@ export interface BotEngine {
   onBotsChanged(listener: () => void): () => void
 }
 
+export interface EngineAttachment {
+  id: string
+  name: string
+  mime: string
+  path: string
+  data: Uint8Array
+}
+
 export interface OpenChat {
+  imageSupport?: 'supported' | 'unsupported' | 'unknown'
   snapshot: ChatSnapshot
-  send(text: string, options?: { hidden?: boolean; inputId?: string }): Promise<void>
+  send(text: string, options?: { hidden?: boolean; inputId?: string; apiText?: string; attachments?: EngineAttachment[] }): Promise<void>
   stop(): Promise<void>
   close(): void
 }

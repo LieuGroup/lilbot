@@ -8,6 +8,8 @@ import { join } from 'node:path'
 import type { WebSocketHandler } from 'bun'
 import { ActivityService } from './activity/activity-service'
 import { ActivityStore } from './activity/activity-store'
+import { AttachmentService } from './attachments/attachment-service'
+import { AttachmentStore } from './attachments/attachment-store'
 import { BotPrefsStore } from './bots/bot-prefs-store'
 import { BotService } from './bots/bot-service'
 import { BotStore } from './bots/bot-store'
@@ -98,6 +100,14 @@ const library = new LibraryService(
   id => new Workspaces(WORKSPACES_DIR).pathFor(id),
   id => store.exists(id),
   botId => publish(EVERYONE, JSON.stringify({ event: 'library.changed', botId }))
+)
+const attachments = new AttachmentService(
+  new AttachmentStore(database),
+  id => new Workspaces(WORKSPACES_DIR).pathFor(id),
+  id => store.exists(id),
+  (chatId, message) => {
+    publish(EVERYONE, JSON.stringify({ event: 'chat', chatId, data: { type: 'user.message', ...message } }))
+  }
 )
 const skills = new SkillsService(process.env.LILBOT_SKILLS_DIR ?? join(homedir(), 'lilbot', 'skills'), database, () => {
   publish(EVERYONE, JSON.stringify({ event: 'skills.changed' }))
@@ -244,7 +254,8 @@ const websocket: WebSocketHandler<SocketData> = {
       threads,
       () => ({ t3: t3Grants.status() }),
       computers,
-      () => deployNotice(DATA_DIR)
+      () => deployNotice(DATA_DIR),
+      attachments
     )
   },
   message(socket, message) {
@@ -255,7 +266,7 @@ const websocket: WebSocketHandler<SocketData> = {
   }
 }
 
-const browserRoutes = appRoutes(library, DIST, ALLOWED_HOSTS, 'hermes')
+const browserRoutes = appRoutes(library, DIST, ALLOWED_HOSTS, 'hermes', attachments)
 const server = Bun.serve<SocketData>({
   development: false,
   error: plainServerError,
@@ -278,7 +289,7 @@ const server = Bun.serve<SocketData>({
   },
   websocket
 })
-const accessServer = ACCESS ? startAccessDoor(ACCESS, appRoutes(library, DIST, new Set([ACCESS.host]), 'hermes'), websocket) : undefined
+const accessServer = ACCESS ? startAccessDoor(ACCESS, appRoutes(library, DIST, new Set([ACCESS.host]), 'hermes', attachments), websocket) : undefined
 
 try {
   skills.provide('t3-coding', files(join(import.meta.dir, 'connections', 't3-coding-skill')))
