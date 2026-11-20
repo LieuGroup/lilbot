@@ -91,11 +91,12 @@ export class ThreadRunner {
     await this.host.requireBot(d.target)
     const work = this.store.workThread(d)
     const stopped = () => !!work && this.store.get(work).status === 'cancelled'
-    if (stopped()) {
-      // Stopped before this turn ran, or while LilBot was down: make sure its session is not left running.
-      if (d.chatId) await this.host.stopRun?.(d.target, d.chatId)
-      throw new LilBotError('thread_cancelled', 'The exchange was stopped.')
+    const stillOn = () => {
+      if (stopped()) throw new LilBotError('thread_cancelled', 'The exchange was stopped.')
     }
+    // Stopped before this turn ran, or while LilBot was down: make sure its session is not left running.
+    if (stopped() && d.chatId) await this.host.stopRun?.(d.target, d.chatId)
+    stillOn()
     const thread = this.store.get(d.threadId)
     const sender = thread.participants.find(p => p.id === d.sender)?.name ?? 'a bot'
     if (d.kind !== 'notice') {
@@ -114,9 +115,6 @@ export class ThreadRunner {
     const internal = toWork || !!this.store.context(d.target, d.sourceChat)
     if (work) this.store.update(work, t => t.status !== 'working' && Object.assign(t, { status: 'working', startedAt: Date.now(), endedAt: null }))
     this.touched()
-    const stillOn = () => {
-      if (stopped()) throw new LilBotError('thread_cancelled', 'The exchange was stopped.')
-    }
     const result = await this.host.runRoutine(d.target, prompt, {
       runId: `thread-${d.id}`,
       chatId: toWork ? this.store.session(d.threadId, d.target) : d.sourceChat,

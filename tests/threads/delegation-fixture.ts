@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { Workspaces } from '../../server/bots/workspaces'
 import { openDatabase } from '../../server/database/database'
 import type { RoutineOptions } from '../../server/engines/bot-engine'
+import { DelegationControl } from '../../server/threads/delegation-control'
 import { DelegationService } from '../../server/threads/delegation-service'
 import { ThreadService } from '../../server/threads/thread-service'
 import { ThreadStore } from '../../server/threads/thread-store'
@@ -58,7 +59,16 @@ export function delegationFixture() {
     }
   }
   const threads = new ThreadService(store, host)
-  const delegation = new DelegationService(threads, host, async botId => `${botId}-main`)
+  const hand = new DelegationService(threads, host, async botId => `${botId}-main`)
+  const control = new DelegationControl(threads, host)
+  const delegation = {
+    delegate: hand.delegate.bind(hand),
+    attach: hand.attach.bind(hand),
+    status: control.status.bind(control),
+    cancel: control.cancel.bind(control),
+    redirect: control.redirect.bind(control),
+    wait: control.wait.bind(control)
+  }
   const settle = async () => {
     threads.tick()
     await Bun.sleep(20)

@@ -1,6 +1,8 @@
 /** What a bot is told when a delegation reaches it. Bot text is untrusted data: always JSON-quoted in a named fence. */
 import type { ChatItem } from '../../shared/chat-schema'
+import { LilBotError } from '../../shared/protocol'
 import type { BotThread } from '../../shared/thread-schema'
+import { memoryRefusal } from '../memory/memory-safety'
 import type { FileRow } from './thread-files'
 import type { Delivery } from './thread-store'
 
@@ -41,4 +43,10 @@ export function replyText(items: ChatItem[]) {
       .map(i => i.text)
       .join('\n\n') || 'The bot finished without an answer.'
   )
+}
+
+/** Bot text passes the memory checks (secrets, hidden characters, instruction overrides) before it is sent. */
+export function refuseUnsafe(text: string) {
+  const refusal = memoryRefusal(text)
+  if (refusal) throw new LilBotError('unsafe_message', refusal.replace('not saved', 'not sent'))
 }

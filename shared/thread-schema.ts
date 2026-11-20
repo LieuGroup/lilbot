@@ -22,10 +22,10 @@ export const DelegateInput = z.object({
   tasks: z
     .array(
       z.object({
-        to: z.string().min(1).max(100).optional().describe('Bot id or exact name; left out when continuing an exchange.'),
+        to: z.string().min(1).max(100).optional().describe('Bot id or exact name'),
         task: text,
         files: files.optional(),
-        exchangeId: exchangeId.optional().describe('Continue this exchange instead of starting a new one.')
+        exchangeId: exchangeId.optional().describe('Continue this exchange')
       })
     )
     .min(1)

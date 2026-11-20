@@ -6,6 +6,7 @@ import type { BotStore } from '../bots/bot-store'
 import type { Workspaces } from '../bots/workspaces'
 import type { ComputerService } from '../computers/computer-service'
 import type { MemoryService } from '../memory/memory-service'
+import type { DelegationControl } from '../threads/delegation-control'
 import type { DelegationService } from '../threads/delegation-service'
 import type { SystemChanges } from './system-changes'
 
@@ -24,7 +25,7 @@ export interface SystemDeps extends SystemFacts {
   activity: ActivityService
   memory: MemoryService
   memoryChanged: () => void
-  delegation: DelegationService
+  delegation: { hand: DelegationService; control: DelegationControl }
   changes: SystemChanges
   dataDir: string
 }

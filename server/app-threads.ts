@@ -9,6 +9,7 @@ import type { BotEngine } from './engines/bot-engine'
 import type { HistoryService } from './history/history-service'
 import { threadEvents } from './http/thread-events'
 import { CallingChats } from './threads/calling-chats'
+import { DelegationControl } from './threads/delegation-control'
 import { type DelegationHost, DelegationService } from './threads/delegation-service'
 import { ThreadService } from './threads/thread-service'
 import type { ThreadStore } from './threads/thread-store'
@@ -55,5 +56,6 @@ export function createThreads({ engine, store, prefs, bots, workspaces, history,
     calls.saw(bot.id, call.chatId, call.tool, call.args)
     threads.runner.sawTool(call.chatId, toolActivity(call.tool))
   })
-  return { threads, delegation: new DelegationService(threads, host, (botId, requestId) => calls.find(botId, requestId)) }
+  const delegation = { hand: new DelegationService(threads, host, (botId, requestId) => calls.find(botId, requestId)), control: new DelegationControl(threads, host) }
+  return { threads, delegation }
 }

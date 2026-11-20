@@ -41,7 +41,7 @@ server/            The LilBot server (runs on the leader).
   activity/          live status and unread
   memory/            The memory system: rules, facts table, safety, after-chat review.
   history/           Conversation records, import checkpoints, paging and bot-scoped search.
-  threads/           Bot-to-bot exchanges, transcripts and durable deliveries.
+  threads/           Bot-to-bot exchanges: delegation, files, control, transcripts and durable deliveries.
   routines/          App-owned schedules, run history and scheduler.
   library/           Delivered workspace files, metadata, safe reads and folder listings.
   attachments/       Incoming chat files, streaming uploads and durable message associations.
@@ -94,8 +94,8 @@ Built: roster, create bot, Setup panel (abilities read-only), chat with live too
 continuous main conversation per bot on every device, the three-column shell (roster, conversation, details panel with
 Activity, Library, Memory and Setup tabs), bot menu, delete confirmation, Settings, chat attachments, LilBot's own
 memory with a Memory panel and after-chat review, every bot knowing its system (the note) and operating the app through
-LilBot's own MCP tools, and the backends for routines,
-threads, library, skills, computers and coding through T3 Code. Next: the Routines and Library screens, the nightly
+LilBot's own MCP tools, delegation between bots (several tasks at once, files, status, stop, redirect, wait), and the
+backends for routines, threads, library, skills, computers and coding through T3 Code. Next: the Routines and Library screens, the nightly
 memory tidy-up and editing abilities. Webhooks and reports are not built. Desktop (Tauri) and iOS (Expo) come after the
 web app.
 
@@ -468,26 +468,50 @@ Visual specs (sizes, copy, Paper frames): [docs/screens.md](docs/screens.md).
 
 ## Threads
 
-`server/threads/` owns bot-to-bot exchanges (`shared/thread-schema.ts`): `ask_bot` and `list_bots`.
+`server/threads/` owns bot-to-bot exchanges (`shared/thread-schema.ts`): delegation on LilBot's MCP server
+(`lilbot_delegate` and the `lilbot_delegation_*` tools, `delegation-service.ts`) and the older plug-in tools `ask_bot`
+and `list_bots`, which keep working until #113 moves them. Detail, engine findings and measurements:
+[docs/threads.md](docs/threads.md).
 
-- Any bot may ask any other, never itself. A new request creates a thread; `threadId` continues the same work. Oscar
-  only reads (`threads.list`, `threads.open`, `threads.changed`); there is no thread write protocol. Both participants
-  read the same persisted transcript, including the other bot's tool rows.
+- Any bot may hand work to any other, never itself. One `lilbot_delegate` call names several bots, one task each; each
+  task is its own exchange and the call's tasks share a `batchId`. `exchangeId` continues the same work. Each exchange
+  has a nullable `parentId` for #141's work items, unused for now (`thread_links`).
 - The receiver works in its own hidden session with its own instructions, memory, skills, workspace and full access;
-  follow-ups reuse it. The asking bot returns at once; the answer is queued as a hidden input into the exact
-  originating session, even if Oscar has since started a new chat. Nested asks resume the parent thread, which then
-  reports to its requester.
+  follow-ups reuse it. The delegating bot returns at once; the answer is queued as a hidden input into the exact
+  originating session, even if Oscar has since started a new chat. Nested delegation resumes the parent exchange, which
+  then reports to its requester. MCP calls carry no session, so `calling-chats.ts` matches the call's `requestId`
+  against the `tool.start` events the engine reports (`BotEngine.onToolCall`); a call no hidden run reported is the
+  bot's main conversation.
+- Status per exchange: `waiting` (accepted, not started), `working` (with the receiver's live activity line, in memory,
+  and run time from `startedAt`), `finished`, `failed`, `cancelled` (with `stoppedBy`: the bot or Oscar).
+- Control is the delegating bot's only: status, cancel, redirect, wait. Cancel interrupts the receiver's hidden session
+  (`BotEngine.stopRun`) and drops its queued work; whatever still arrives is kept in the record as `withheld` and never
+  delivered. Redirect is bot text like a request, marked `redirect` in the transcript: steered into the running turn
+  (`BotEngine.steerRun`), joined to the first turn when the task has not started, otherwise the receiver's next turn;
+  a steer the turn never took runs as its next turn. Wait never holds a call open: each answer still arrives, and the
+  bot is told once when all are in (folded into the last answer, or a short LilBot notice).
+- Files travel with a request (`files` per task) or an answer (`lilbot_delegation_attach` by the receiver), by path in
+  the sender's own folder, with the chat-attachment limits (20 MB, 10 per message): every path part opened with
+  O_NOFOLLOW from the folder's descriptor, regular files only, written exclusive-create into
+  `<recipient folder>/exchanges/<exchange id>/` under a generated name. Copies only, never shared paths; names are
+  untrusted text. `thread_files` lists each file, its sender and where its copy is (none while not delivered). An
+  answer's files are copied when the answer goes out, so a withheld answer's files never move.
+- Oscar reads exchanges (`threads.list`, `threads.open`, `threads.changed`) and can stop one (`threads.cancel`,
+  recorded as stopped by Oscar; the delegating bot is told). He never writes into them. Both participants read the
+  same persisted transcript, including the other bot's tool rows and files per message.
 - Main conversations get one `tool` reference with `threadId` per exchange (in snapshots and idempotent `thread` chat
-  events), merged at the HTTP edge, never written as fake user messages. Opening them is future UI.
+  events), merged at the HTTP edge, never written as fake user messages. Opening them is #135's UI.
 - Hidden session aliases are persisted before submission and excluded from after-chat reviews, also after restart.
   Thread activity sets working/finished on both bots without unread; only the asking bot's visible answer to Oscar can
-  mark it unread.
-- Limits are in `thread-limits.ts` (depth, messages per thread with the answer reserved, characters per request,
-  concurrent deliveries). A limit refuses further asks and tells the bot to report back.
+  mark it unread. Status and activity changes push a plain `threads.changed`; the per-bot chat lines are rebuilt only
+  when exchanges are added or settle.
+- Limits are in `thread-limits.ts`: depth 3, 20 messages per thread with the answer reserved, 20,000 characters per
+  request, 6 deliveries running at once (measured on the dev gateway), 8 exchanges under way per delegating bot. A
+  limit refuses further work and tells the bot to report back.
 - Bot text passes memory-style secret, hidden-character and instruction-override checks and is delivered in a named,
   JSON-quoted fence, never as Oscar's instructions. Delivery and admission ids are persisted and reused across
   transport failures and restarts (the routine runner's receipt machinery); a terminal unknown receipt is never
-  resubmitted with a new identity.
+  resubmitted with a new identity. A stop recorded while LilBot was down is applied when the delivery is picked up.
 
 ## Restart recovery
 
@@ -496,7 +520,8 @@ Restarting LilBot only leaves Hermes turns and T3 tasks running; nothing is resu
 - The browser reconnects and opens the persisted main conversation. Hermes says whether the turn still runs; LilBot
   reconciles the durable transcript, including tool work and the final answer.
 - Routines recover the same persisted run and admission receipt. Threads recover their outbox and return the answer to
-  the original caller session, never a replacement exchange.
+  the original caller session, never a replacement exchange; a steered redirect is checked against the recovered
+  transcript, and a stop is applied again.
 - The T3 bridge reloads its sign-in from the data directory. Stable per-bot request ids let an uncertain launch find
   the original T3 task, and its thread id allows later waits and reads. A bridge call in flight during downtime
   fails; the bot retries it after reconnecting.
@@ -918,6 +943,9 @@ profiles, isolated directories, cleanup in `finally`. Most cost a few model call
 - `bun run check:history`: continuous history, paging and search, tool lines after reload and new session, backfill of
   tool rows into a copy that lost them; kills only its own server mid-import, repeats the import without duplicates; forced compression.
 - `bun run check:threads`: two temporary bots ask each other.
+- `bun run check:delegation`: a temporary lead hands two tasks to two helpers in one call, one with a file; the check,
+  with the lead's own MCP key, reads status, redirects one mid-command and stops the other; the answer returns once
+  with a file.
 - `bun run check:routines`: create from chat, a real file-writing run, open history, pause, restart, resume, delete.
 - `bun run check:restart`: SIGKILLs only its own second server mid-turn; chat, routine and thread side-effect counters
   must stay at one. Confirms its profiles are gone with `hermes profile list`.

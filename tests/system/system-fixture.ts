@@ -5,6 +5,7 @@ import { connectionKey } from '../../server/connections/connection-keys'
 import { SystemChanges } from '../../server/system/system-changes'
 import { SYSTEM_KEY_PURPOSE } from '../../server/system/system-connection'
 import { createSystemServer } from '../../server/system/system-server'
+import { DelegationControl } from '../../server/threads/delegation-control'
 import { DelegationService } from '../../server/threads/delegation-service'
 import { ThreadService } from '../../server/threads/thread-service'
 import { ThreadStore } from '../../server/threads/thread-store'
@@ -43,7 +44,7 @@ export function systemFixture() {
     activity: fake.activity,
     memory: fake.memory,
     memoryChanged: () => state.memoryPushes++,
-    delegation: new DelegationService(threads, host, async botId => `${botId}-main`),
+    delegation: { hand: new DelegationService(threads, host, async botId => `${botId}-main`), control: new DelegationControl(threads, host) },
     changes,
     dataDir: fake.root,
     engineToken: TOKEN,

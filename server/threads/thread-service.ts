@@ -3,9 +3,8 @@
 import { LilBotError } from '../../shared/protocol'
 import { type BotThread, ThreadAsk } from '../../shared/thread-schema'
 import { backgroundFailure } from '../background'
-import { memoryRefusal } from '../memory/memory-safety'
 import { ThreadFiles } from './thread-files'
-import { noticePrompt } from './thread-prompts'
+import { noticePrompt, refuseUnsafe } from './thread-prompts'
 import { type RunnerHost, ThreadRunner } from './thread-runner'
 import { type Delivery, FINAL, type ThreadStore } from './thread-store'
 import { ThreadWaits } from './thread-waits'
@@ -63,8 +62,7 @@ export class ThreadService {
     const caller = await this.host.requireBot(callerId)
     const prior = this.store.delivery(`${callerId}:${input.requestId}`)
     if (prior) return { threadId: prior.threadId, queued: true }
-    const refusal = memoryRefusal(input.text)
-    if (refusal) throw new LilBotError('unsafe_message', refusal.replace('not saved', 'not sent'))
+    refuseUnsafe(input.text)
     const delivery = this.store.accept(caller, await this.target(input.to), input)
     this.changed()
     return { threadId: delivery.threadId, queued: true }
