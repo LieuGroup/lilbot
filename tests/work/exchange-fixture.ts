@@ -4,7 +4,7 @@ import { delegationFixture } from '../threads/delegation-fixture'
 import { workFixture } from './work-fixture'
 
 export type Fixtures = { w: ReturnType<typeof workFixture>; d: ReturnType<typeof delegationFixture>; board: WorkBoard }
-export const joinedOn = (w: ReturnType<typeof workFixture>) => {
+const joinedOn = (w: ReturnType<typeof workFixture>) => {
   const d: Fixtures['d'] = delegationFixture({ database: w.database, work: w.links, changed: () => w.links.settleExchanges(id => d.store.get(id).stoppedBy?.name ?? null) })
   return { w, d, board: new WorkBoard(w.work, w.answers, d.threads) }
 }
