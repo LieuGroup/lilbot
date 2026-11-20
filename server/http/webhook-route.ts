@@ -1,6 +1,7 @@
-/** `POST /hook/<address>` on the helper door: the one public route that wakes a bot. It answers at once; the run
- *  happens later. Unknown, deleted or malformed addresses, other methods and a deleted bot's webhooks all get the
- *  door's own 404 (null here). Nothing about a request is logged except refused signatures, by webhook id, at most once a minute each. */
+/** `POST /hook/<address>` on the helper door: the one public route that wakes a bot. It answers once the event is
+ *  stored; the run happens later. Unknown, deleted or malformed addresses, other methods and a deleted bot's webhooks
+ *  all get the door's own 404 (null here). Nothing about a request is logged except refused signatures, by webhook id,
+ *  at most once a minute each. */
 import { WEBHOOK_LIMITS } from '../webhooks/webhook-limits'
 import type { WebhookService } from '../webhooks/webhook-service'
 import { connectionBudget, readLimited } from './listener-safety'
@@ -20,6 +21,14 @@ export function webhookRoute(webhooks: WebhookService) {
     console.warn(`[webhooks] refused an unsigned or wrongly signed delivery for webhook ${id}${more}`)
     refused.set(id, { at: now, more: 0 })
   }
+  // Preparing an event is synchronous (tens of milliseconds for the worst body): deliveries arriving together are
+  // prepared one at a time, each in its own turn of the event loop, so a burst never holds the server for its sum.
+  let line: Promise<unknown> = Promise.resolve()
+  const inTurn = <T>(work: () => T): Promise<T> => {
+    const next = line.then(() => new Promise(resolve => setTimeout(resolve, 0))).then(work)
+    line = next.catch(() => {})
+    return next
+  }
   return async (request: Request, token: string, address: string): Promise<HookAnswer> => {
     if (!perAddress(address)) return [429, 'Too many requests']
     const hook = request.method === 'POST' ? webhooks.find(token) : null
@@ -33,7 +42,13 @@ export function webhookRoute(webhooks: WebhookService) {
     }
     // Spent only once the sender proved itself, so an address alone cannot use up a signed webhook's budget.
     if (!perWebhook(hook.id)) return [429, 'Too many requests']
-    const outcome = webhooks.receive(hook, body, request.headers)
+    // Looked up again in its turn: the webhook may have been paused, deleted or given a new address while it waited.
+    const outcome = await inTurn(() => {
+      const now = webhooks.find(token)
+      return !now || now.id !== hook.id ? 'gone' : now.paused ? 'paused' : webhooks.receive(now, body, request.headers)
+    })
+    if (outcome === 'gone') return null
+    if (outcome === 'paused') return [409, 'Webhook paused']
     if (outcome === 'full') return [429, 'Too many events waiting']
     return [202, outcome === 'duplicate' ? 'Already received' : 'Accepted']
   }

@@ -933,7 +933,9 @@ signature scheme, and an address. Any sender may call one (Oscar, 2026-11-20).
 - Order at the door: path shape, per-client-address budget (120 a minute, `cf-connecting-ip`; a full table lets new
   addresses through), address check, paused (409, at once), body cap (256 KiB, by Content-Length or as it streams,
   413), signature, per-webhook budget (60 a minute, spent only after verification), repeat (202 "Already received"),
-  waiting cap (100, 429), and only then decoding and the safety check, then 202. Unknown, malformed or deleted
+  waiting cap (100, 429), and only then decoding and the safety check, then 202. Deliveries arriving together are
+  prepared one at a time, each in its own turn of the event loop (the webhook looked up again first: paused 409, gone
+  404), so a burst never holds the server for its sum. Unknown, malformed or deleted
   addresses, other methods and a deleted bot's webhooks get the same 404 as any other path. Limits: `webhook-limits.ts`.
 - Repeats (`webhook-delivery.ts`), remembered for seven days: by the sender's delivery id (`X-GitHub-Delivery`,
   `webhook-id`, `X-Delivery-Id`, `X-Event-Id`, `Idempotency-Key`; for Stripe only the event id in its signed body) and,
@@ -945,17 +947,19 @@ signature scheme, and an address. Any sender may call one (Oscar, 2026-11-20).
   over a second); at most 8 headers such as
   `x-github-event`, 200 characters each; every webhook address blanked (escaped, percent-encoded once or twice,
   HTML-entity and fullwidth slashes, whitespace after `/hook/`, the first 64 of a longer run, and any 16-character
-  piece of the webhook's own address, so a split one cannot be rebuilt; shorter pieces spread over fields, and other
+  piece of the webhook's own address, with any JSON escape the piece starts inside, so a split one cannot be rebuilt
+  and the string stays valid JSON; shorter pieces spread over fields, and other
   forms, are not blanked); cut to 24,000 characters inside the fence, headers included. Two scans must pass
   (`outsideReason`, the shared rules plus every format character but the soft hyphen, the three flags allowed): one
   over every decoded string and key as a model reads them (`folded`: whitespace collapsed; every mark removed before one
   NFKD pass, since reordering a long run of marks is quadratic and once blocked the server for 28 s; compatibility forms
   folded; default-ignorable characters and marks removed; scanned twice, with other control characters as spaces and
-  removed), and one over the stored string itself. The run's `<webhook-events>` fence joins the stored strings
+  removed when there are any), and one over the stored string itself. The run's `<webhook-events>` fence joins the stored strings
   unchanged (`fenceJson`: `<`, `>`, control and format characters and every default-ignorable character become `\u`
   escapes). Withheld events keep
   no payload; a run of only withheld events records a failed run and never wakes the bot. Preparing any body up to the
-  cap takes tens of milliseconds (`tests/webhooks/webhook-limits.test.ts` times it). The rules are a heuristic:
+  cap takes tens of milliseconds (`tests/webhooks/webhook-limits.test.ts` times it), and a minute's budget of the
+  costliest shapes sent at once never holds the event loop for long (`webhook-burst.test.ts`). The rules are a heuristic:
   paraphrase passes, which is why what a run may do matters.
 - Runs: a burst ends after 5 seconds without a new event or once its first event waited a minute. A run takes the
   oldest waiting events up to 48,000 characters (about 12,000 to 16,000 tokens; a typical GitHub `pull_request` event

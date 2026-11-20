@@ -100,6 +100,12 @@ test('a webhook address is blanked in the common encodings, also split across fi
       for (let at = 0; at + 16 <= token.length; at++) expect(shown.item).not.toContain(token.slice(at, at + 16))
       expect(() => JSON.parse(shown.item)).not.toThrow()
     }
+    // A piece that starts inside a JSON escape (the letter of a newline, a digit of a code) takes the escape with it.
+    for (const own of [`n${token.slice(0, 63)}`, `001f${token.slice(0, 60)}`, `d800${token.slice(0, 60)}`]) {
+      const shown = view(JSON.stringify({ t: `x\n${own.slice(1)} \u001f${own.slice(4)} \ud800${own.slice(4)} end` }), {}, own)
+      expect(shown.refusal).toBeNull()
+      expect(JSON.parse(shown.item).body.t).toContain('[address]')
+    }
     // Another webhook's address in a form the blanking does not know is still refused once folded.
     expect(view(JSON.stringify({ url: `\uFF0Fhook\uFF0F${'Ｑ'.repeat(64)}` })).refusal).toContain('webhook address')
     expect(JSON.parse(view('payload=%7B%22action%22%3A%22opened%22%7D', FORM).item).body).toEqual({ payload: { action: 'opened' } })

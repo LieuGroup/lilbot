@@ -65,17 +65,40 @@ export function strings(value: unknown, out: string[] = []): string[] {
   return out
 }
 
+/** Where a piece found at `at` in serialised JSON starts once a JSON escape it begins inside is taken with it: the
+ *  backslash of `\n` before its letter, or of `\u00e9` before one of its digits. Pieces hold no backslash, so only
+ *  their start can fall inside an escape. */
+function escapeStart(text: string, at: number) {
+  let back = 1
+  while (back <= 5 && back <= at && text[at - back] !== '\\') back++
+  if (back > 5 || back > at) return at
+  let run = 1
+  while (text[at - back - run] === '\\') run++
+  return run % 2 === 1 && (back === 1 || text[at - back + 1] === 'u') ? at - back : at
+}
+
 /** Addresses in the common encodings, and every 16-character piece of this webhook's own address (`token`). On
  *  serialised JSON this keeps it valid: a run of backslashes before a slash there is whole escaped pairs, an even
- *  number of them is taken, and the pieces are plain token characters. */
+ *  number of them is taken, and a piece that starts inside an escape takes the whole escape. */
 export function blank(text: string, token: string) {
   let out = text.replace(WEBHOOK_ADDRESS, '/hook/[address]')
-  for (let at = 0; at + PIECE <= token.length; at++) out = out.replaceAll(token.slice(at, at + PIECE), '[address]')
+  for (let at = 0; at + PIECE <= token.length; at++) {
+    const piece = token.slice(at, at + PIECE)
+    let found = out.indexOf(piece)
+    if (found < 0) continue
+    let next = ''
+    let from = 0
+    for (; found >= 0; found = out.indexOf(piece, from)) {
+      next += `${out.slice(from, escapeStart(out, found))}[address]`
+      from = found + PIECE
+    }
+    out = next + out.slice(from)
+  }
   return out
 }
 
-/** Text as the rules should see it, twice: once with control characters as spaces (between words), once with them
- *  removed (between letters). Compatibility forms are folded (fullwidth, ligatures, half-width marks) and default-ignorable
+/** Text as the rules should see it, twice when it has control characters: once with them as spaces (between words),
+ *  once with them removed (between letters). Compatibility forms are folded (fullwidth, ligatures, half-width marks) and default-ignorable
  *  characters and every mark are removed, so none of them splits a word past the scan. Marks go before the one NFKD
  *  pass: reordering a long run of them is quadratic, and once they are gone nothing NFKD produces can form such a run. */
 export function folded(text: string): string[] {
@@ -83,5 +106,7 @@ export function folded(text: string): string[] {
     .replace(/\p{M}/gu, '')
     .normalize('NFKD')
     .replace(/[\p{Default_Ignorable_Code_Point}\p{M}]/gu, '')
-  return [' ', ''].map(control => base.replace(/[^\P{Cc}\n]/gu, control).replace(/[^\S\n]+/g, ' '))
+  // Without control characters both copies are the same: scan one.
+  const controls = /[^\P{Cc}\n]/u.test(base) ? [' ', ''] : [' ']
+  return controls.map(control => base.replace(/[^\P{Cc}\n]/gu, control).replace(/[^\S\n]+/g, ' '))
 }

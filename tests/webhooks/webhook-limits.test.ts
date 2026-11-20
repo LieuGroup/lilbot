@@ -10,7 +10,8 @@ const TOKEN = 'Q'.repeat(64)
 const view = (text: string, headers: Record<string, string> = {}) => eventView(new TextEncoder().encode(text), new Headers(headers), null, 0, TOKEN)
 
 // Preparing an event runs on the server's only thread: a 40,000-deep body once blocked it for 1.2 s, a run of combining
-// marks for 28 s. Measured worst now is about 50 ms; the bound leaves room for a loaded machine.
+// marks for 28 s. Measured worst now is about 55 ms (U+FDFA, which NFKD expands 18 times); the bound leaves room for a
+// loaded machine. Bursts of these through the door: webhook-burst.test.ts.
 test('preparing any body up to the cap stays far below a second: deep, wide, long and many-keyed shapes', () => {
   const shapes: [string, Record<string, string>][] = [
     [`${'['.repeat(40_000)}${']'.repeat(40_000)}`, { 'content-type': 'application/json' }],
@@ -27,7 +28,12 @@ test('preparing any body up to the cap stays far below a second: deep, wide, lon
     ['a=1&'.repeat(SIZE / 4), { 'content-type': 'application/x-www-form-urlencoded' }],
     ['a&'.repeat(SIZE / 2), { 'content-type': 'application/x-www-form-urlencoded' }],
     ['=[&'.repeat(SIZE / 3), { 'content-type': 'application/x-www-form-urlencoded' }],
-    [JSON.stringify({ t: '\u0081'.repeat(SIZE / 2 - 20) }), {}]
+    [JSON.stringify({ t: '\u0081'.repeat(SIZE / 2 - 20) }), {}],
+    [JSON.stringify({ t: '\u007F'.repeat(SIZE - 20) }), {}],
+    [JSON.stringify({ t: '\u034F'.repeat(SIZE / 2 - 20) }), {}],
+    [JSON.stringify({ t: '\u{E0100}'.repeat(SIZE / 4 - 20) }), {}],
+    ['\uFDFA'.repeat(SIZE / 3), { 'content-type': 'text/plain' }],
+    ['\u3164'.repeat(SIZE / 3), { 'content-type': 'text/plain' }]
   ]
   for (const [body, headers] of shapes) {
     const started = performance.now()
@@ -54,17 +60,6 @@ test('combining marks, also those that decompose into two, are folded in linear 
     const started = performance.now()
     view(body, headers)
     expect(performance.now() - started).toBeLessThan(100)
-  }
-})
-
-test('a minute of the worst deliveries at once, through receive, holds the server for well under two seconds', async () => {
-  const f = await runFixture()
-  try {
-    const started = performance.now()
-    for (let i = 0; i < 60; i++) expect(f.send(`${i} ${MARKS[3][0]}`, MARKS[3][1])).toBe('accepted')
-    expect(performance.now() - started).toBeLessThan(1_500)
-  } finally {
-    f.clean()
   }
 })
 

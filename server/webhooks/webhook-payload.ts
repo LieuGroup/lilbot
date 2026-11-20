@@ -18,7 +18,8 @@ const SHOWN_HEADER = /^(content-type|user-agent|x-[a-z0-9-]{1,40}-event(-type)?)
 const HEADERS = 8
 
 const refused = (refusal: string): EventView => ({ item: '', size: 0, refusal })
-const fits = (item: string) => escapeJson(item).length <= WEBHOOK_LIMITS.eventChars
+// Escaping never shortens text, so a longer view is known not to fit without escaping it.
+const fits = (item: string) => item.length <= WEBHOOK_LIMITS.eventChars && escapeJson(item).length <= WEBHOOK_LIMITS.eventChars
 
 /** The view cut until it fits: the body as text, shortened in proportion to its escaped length. */
 function cut(view: Record<string, unknown>, text: string, token: string) {
