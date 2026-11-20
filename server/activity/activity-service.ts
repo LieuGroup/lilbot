@@ -4,9 +4,12 @@ import type { ActivityStore } from './activity-store'
 
 const idle = { status: 'idle', text: '', machine: 'leader' } as const
 
-/** Live state is per session; unread and viewing are per bot, shared by all clients. */
+/** Live state is per session; unread and viewing are per bot, shared by all clients. A reply, a session that
+ *  starts waiting for Oscar and one that fails each turn unread on; a later event that only repeats the
+ *  waiting/failed status (engines resend it with every new event) does not turn it on again. */
 export class ActivityService {
   private sessions = new Map<string, Map<string, Omit<BotActivity, 'unread'>>>()
+  private needsOscar = new Map<string, 'waiting' | 'failed'>()
   private viewers = new Map<string, number>()
   private timers = new Map<string, ReturnType<typeof setTimeout>>()
   constructor(
@@ -37,7 +40,11 @@ export class ActivityService {
               ? 'Failed'
               : ''
     sessions.set(event.chatId, { status: event.status, text, machine: 'leader' })
-    if (event.spoke && !this.viewers.get(event.botId)) this.store.setUnread(event.botId, true)
+    const attention = event.status === 'waiting' || event.status === 'failed' ? event.status : undefined
+    const turnedOn = !!attention && this.needsOscar.get(key) !== attention
+    if (attention) this.needsOscar.set(key, attention)
+    else this.needsOscar.delete(key)
+    if ((event.spoke || turnedOn) && !this.viewers.get(event.botId)) this.store.setUnread(event.botId, true)
     this.changed()
     if (event.status === 'finished' || event.status === 'failed') {
       this.timers.set(
@@ -76,6 +83,7 @@ export class ActivityService {
         this.timers.delete(key)
       }
     }
+    for (const key of this.needsOscar.keys()) if (JSON.parse(key)[0] === botId) this.needsOscar.delete(key)
     this.sessions.delete(botId)
     this.viewers.delete(botId)
     this.store.forgetBot(botId)

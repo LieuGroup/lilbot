@@ -309,8 +309,10 @@ What a bot is and who owns each part.
 - Activity (`server/activity/`): live per-session status and durable per-bot unread, in `bots.list` and pushed with
   `bots.changed`. Opening a chat marks its bot read, and any connected viewer keeps it read until the chat closes.
   Finished/failed settles after eight seconds. Replay cursors stop old replies becoming unread again after a restart.
-  Hidden memory reviews are excluded. `LILBOT_BOT_IDS` restricts the engine to a native-profile allowlist; runtimes
-  created on that server join it.
+  Unread turns on for a reply, for a session that starts waiting for Oscar and for one that fails, with or without text,
+  unless he is viewing; an engine repeating the same waiting/failed status with a later event does not turn it on again
+  (`ActivityService.needsOscar`). Hidden memory reviews are excluded. `LILBOT_BOT_IDS` restricts the engine to a
+  native-profile allowlist; runtimes created on that server join it.
 - Background timers (`background.ts`) catch failures and retry on later ticks; their logs carry
   fixed task labels, never exception payloads. A persistent database failure logs and leaves work pending rather than
   stopping the server.
@@ -776,6 +778,13 @@ independent.
 
 ## Known gaps
 
+- Hermes opens a waiting request (clarify, approval, sudo) only for a client that sends `client.capabilities
+  {server_requests: true}`; LilBot sends none, so `open_requests` stays empty, the tool call runs on without Oscar (a
+  clarify call waited about 90 seconds) and a question reaches him as a finished reply. The `waiting` status and its
+  unread rule are ready, but nothing produces them today. If a client ever advertises the capability, the Hermes
+  observer must also emit on a status change: a blocked request adds no replay events, so `key !== saved` stays false.
+  Hermes' `error` event (a failure outside a turn) is not mapped: a failed turn always ends with `message.complete`
+  status `error`.
 - Activity observation polls every second; very short activity may only be seen at completion. Hermes live listings
   show at most 200 sessions per profile. A host-scoped subscription could reduce latency.
 - A first history import can only recover rows Hermes still exposes (it may rotate very old compression lineages and
