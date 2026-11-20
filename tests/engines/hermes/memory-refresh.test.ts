@@ -12,10 +12,11 @@ test('refresh touches only supplied native ids, respects the allowlist, and skip
     script,
     `
     import { HermesEngine } from '${modulePath}/hermes-engine'
-    import { memoryCurrent } from '${modulePath}/hermes-memory-setup'
     const engine = new HermesEngine(['owned', 'unbound'])
     const result = await engine.refreshMemory(['owned', 'excluded', 'missing'])
-    if (JSON.stringify(result) !== '["owned"]' || !memoryCurrent('owned') || memoryCurrent('unbound') || memoryCurrent('excluded')) process.exit(1)
+    // A second pass finds the refreshed profile current; the untouched ones are checked below.
+    const again = await engine.refreshMemory(['owned'])
+    if (JSON.stringify(result) !== '["owned"]' || again.length) process.exit(1)
   `
   )
   try {
@@ -27,6 +28,7 @@ test('refresh touches only supplied native ids, respects the allowlist, and skip
       writeFileSync(join(home, 'lilbot-memory.json'), JSON.stringify({ url: 'http://localhost:1', token_file: token }))
     }
     const unbound = readFileSync(join(root, 'profiles/unbound/lilbot-memory.json'), 'utf8')
+    const excluded = readFileSync(join(root, 'profiles/excluded/lilbot-memory.json'), 'utf8')
     const child = Bun.spawn(['bun', script], {
       env: { ...process.env, HERMES_HOME: root, LILBOT_HERMES_BIN: '/usr/bin/true' },
       stdout: 'pipe',
@@ -35,6 +37,7 @@ test('refresh touches only supplied native ids, respects the allowlist, and skip
     const error = await new Response(child.stderr).text()
     expect(await child.exited, error).toBe(0)
     expect(readFileSync(join(root, 'profiles/unbound/lilbot-memory.json'), 'utf8')).toBe(unbound)
+    expect(readFileSync(join(root, 'profiles/excluded/lilbot-memory.json'), 'utf8')).toBe(excluded)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

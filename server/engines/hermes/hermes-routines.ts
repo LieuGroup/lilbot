@@ -3,13 +3,16 @@ import { DEFAULT_PROFILE } from './hermes-bot-mapping'
 import { itemsFromRows } from './hermes-chat-mapping'
 import { ensureFullAccess } from './hermes-permissions'
 import { HermesSocket } from './hermes-socket'
+import { reportToolCall } from './hermes-tool-calls'
 
 /** Hidden from main/history listings, but explicitly openable by its stored session id.
  * Repeating create and submit after a lost connection recovers their durable receipts. */
 export async function runRoutine(botId: string, prompt: string, options: RoutineOptions & ChatOptions, connect = HermesSocket.connect) {
+  const profile = botId === DEFAULT_PROFILE ? '' : botId
+  // Hidden sessions have no event replay; this socket is where their tool calls are seen.
   const socket = await connect(
-    botId === DEFAULT_PROFILE ? '' : botId,
-    () => {},
+    profile,
+    event => reportToolCall(profile, event.sessionId, event.type, event.payload),
     () => {}
   )
   try {

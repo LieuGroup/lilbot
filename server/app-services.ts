@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import type { EventFrame } from '../shared/protocol'
 import { ActivityService } from './activity/activity-service'
 import { ActivityStore } from './activity/activity-store'
+import { createThreads } from './app-threads'
 import { AttachmentService } from './attachments/attachment-service'
 import { AttachmentStore } from './attachments/attachment-store'
 import { backgroundTask } from './background'
@@ -24,7 +25,6 @@ import type { BotEngine } from './engines/bot-engine'
 import { HistoryService } from './history/history-service'
 import { HistoryStore } from './history/history-store'
 import { createEngineApi, engineToken } from './http/engine-api'
-import { threadEvents } from './http/thread-events'
 import { LibraryService } from './library/library-service'
 import { LibraryStore } from './library/library-store'
 import { defaultReviewSettings, MemoryReviewer } from './memory/memory-reviewer'
@@ -38,7 +38,6 @@ import { SkillsService } from './skills/skills-service'
 import { SystemChanges } from './system/system-changes'
 import { systemNote } from './system/system-note-facts'
 import { createSystemServer } from './system/system-server'
-import { ThreadService } from './threads/thread-service'
 import { ThreadStore } from './threads/thread-store'
 
 /** Construct services and their background tasks independently of the HTTP listeners. */
@@ -126,7 +125,19 @@ export function createAppServices(
     connections: botId => [t3Connection(`http://127.0.0.1:${PORT}`, token, botId, t3Grants.generation()), system.connection(botId)],
     systemNote: systemNote(facts)
   })
-  const system = createSystemServer({ ...facts, bots, activity, memory, memoryChanged, changes: new SystemChanges(database), dataDir: DATA_DIR, engineToken: token, port: PORT })
+  const { threads, delegation } = createThreads({ engine, store, prefs, bots, workspaces, history, activity, threadStore, publish })
+  const system = createSystemServer({
+    ...facts,
+    bots,
+    activity,
+    memory,
+    memoryChanged,
+    delegation,
+    changes: new SystemChanges(database),
+    dataDir: DATA_DIR,
+    engineToken: token,
+    port: PORT
+  })
   watchT3SignIn(
     t3Grants,
     () => publish({ event: 'connections.changed' }),
@@ -147,18 +158,6 @@ export function createAppServices(
         ? Math.max(1, Number(process.env.LILBOT_ROUTINE_TEST_INTERVAL_SECONDS))
         : defaultRoutineSettings.minIntervalSeconds
   })
-  const threads = new ThreadService(
-    threadStore,
-    bots,
-    () =>
-      threadEvents(threadStore, store, prefs, publish, (botId, chatId, item, at) => {
-        if (store.exists(botId)) history.store.reference(botId, chatId, item, at)
-      }),
-    (d, working) => {
-      for (const botId of [d.sender, d.target])
-        if (store.exists(botId)) activity.observe({ botId, chatId: `thread:${d.id}`, key: `${d.id}:${working}:${Date.now()}`, status: working ? 'working' : 'finished' })
-    }
-  )
   repeat('threads', 1000, () => threads.tick())
   const scheduler = new RoutineScheduler(routines, event => {
     if (store.exists(event.botId)) activity.observe(event)

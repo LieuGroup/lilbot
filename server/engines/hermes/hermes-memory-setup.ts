@@ -12,6 +12,7 @@ import { cp, readFile, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { LegacyNotes, MemoryConnection } from '../bot-engine'
+import { applied } from './hermes-applied'
 
 /** The name Hermes knows the provider by (plus a version). The data is not here: it is LilBot's. */
 const PLUGIN = 'lilbot-memory'
@@ -60,10 +61,10 @@ async function entries(path: string): Promise<string[]> {
 export const memoryInstalled = (botId: string) => existsSync(join(profileHome(botId), SETTINGS_FILE))
 
 /** Whether a connected bot has this repo's version of the plug-in. */
-export const memoryCurrent = (botId: string) => installedFolders(profileHome(botId)).includes(providerName(MEMORY_ADAPTER_VERSION))
+const memoryCurrent = (botId: string) => installedFolders(profileHome(botId)).includes(providerName(MEMORY_ADAPTER_VERSION))
 
 /** Where a connected bot was told LilBot is, so an upgrade keeps the same connection. */
-export async function memoryConnection(botId: string): Promise<MemoryConnection | null> {
+async function memoryConnection(botId: string): Promise<MemoryConnection | null> {
   try {
     const settings = JSON.parse(await readFile(join(profileHome(botId), SETTINGS_FILE), 'utf8'))
     return typeof settings.url === 'string' && typeof settings.token_file === 'string' ? { url: settings.url, tokenFile: settings.token_file, botId: settings.bot_id } : null
@@ -118,4 +119,22 @@ export async function removeMemory(botId: string) {
   await configSet(botId, 'memory.user_profile_enabled', 'true')
   for (const folder of installedFolders(home)) await rm(join(home, 'plugins', folder), { recursive: true, force: true })
   await rm(join(home, SETTINGS_FILE), { force: true })
+}
+
+/** Upgrades the connected adapters of these profiles. One that cannot be upgraded must not stop the others; it is
+ *  tried on the next start. Returns the profiles that were upgraded. */
+export async function refreshMemoryAdapters(ids: string[]): Promise<string[]> {
+  const updated: string[] = []
+  for (const id of ids) {
+    if (!memoryInstalled(id) || memoryCurrent(id)) continue
+    try {
+      const connection = await memoryConnection(id)
+      if (!connection) continue
+      await applied(id, null, '', () => installMemory(id, connection))
+      updated.push(id)
+    } catch {
+      console.error('[memory] could not update the memory adapter for a bot')
+    }
+  }
+  return updated
 }

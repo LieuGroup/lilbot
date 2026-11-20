@@ -94,7 +94,7 @@ export class ActivityService {
   }
 }
 
-function toolActivity(tool?: string): string {
+export function toolActivity(tool?: string): string {
   if (!tool) return 'Working'
   if (/terminal|exec|shell|command/.test(tool)) return 'Running commands'
   if (/search|browse|web/.test(tool)) return 'Searching the web'

@@ -8,30 +8,32 @@ export const MAX_BYTES = 20 * 1024 * 1024
 export const MAX_FILES = 10
 const folderFlags = C.O_RDONLY | C.O_DIRECTORY | C.O_NOFOLLOW
 
-async function attachmentFolder(root: string) {
+/** Opens `root` without following any link on the way, then each of `parts` below it, creating them (0700). */
+export async function openFolder(root: string, parts: string[]) {
+  const above = resolve(root).split('/').filter(Boolean)
   let handle = await open('/', folderFlags)
   try {
-    for (const part of resolve(root).split('/').filter(Boolean)) {
-      const next = await open(`/proc/self/fd/${handle.fd}/${part}`, folderFlags)
+    for (const [i, part] of [...above, ...parts].entries()) {
+      const path = `/proc/self/fd/${handle.fd}/${part}`
+      if (i >= above.length)
+        await mkdir(path, { mode: 0o700 }).catch(error => {
+          if (error.code !== 'EEXIST') throw error
+        })
+      const next = await open(path, folderFlags)
       await handle.close()
       handle = next
     }
-    const path = `/proc/self/fd/${handle.fd}/attachments`
-    await mkdir(path, { mode: 0o700 }).catch(error => {
-      if (error.code !== 'EEXIST') throw error
-    })
-    const next = await open(path, folderFlags)
-    await handle.close()
-    return next
+    return handle
   } catch (error) {
     await handle.close()
     throw error
   }
 }
 
-export async function writeAttachment(root: string, name: string, body: ReadableStream<Uint8Array> | null, expected: number) {
-  const folder = await attachmentFolder(root)
-  const path = `/proc/self/fd/${folder.fd}/${name}`
+/** Streams `body` into a new file `name` in `folder` below `root`: exclusive create, no links, size-capped, synced. */
+export async function writeAttachment(root: string, name: string, body: ReadableStream<Uint8Array> | null, expected: number, folder: string[] = ['attachments']) {
+  const target = await openFolder(root, folder)
+  const path = `/proc/self/fd/${target.fd}/${name}`
   let file: FileHandle | undefined
   let created = false
   try {
@@ -59,9 +61,9 @@ export async function writeAttachment(root: string, name: string, body: Readable
     if (size !== expected) throw new LilBotError('size_mismatch', 'The uploaded size does not match the file.')
     await file.sync()
     // Refuse a directory renamed/replaced while the body was streaming.
-    const current = await attachmentFolder(root)
+    const current = await openFolder(root, folder)
     try {
-      const before = await folder.stat(),
+      const before = await target.stat(),
         after = await current.stat()
       if (before.ino !== after.ino || before.dev !== after.dev) throw new Error('Attachment folder changed')
     } finally {
@@ -73,12 +75,12 @@ export async function writeAttachment(root: string, name: string, body: Readable
     throw error
   } finally {
     await file?.close()
-    await folder.close()
+    await target.close()
   }
 }
 
 export async function readAttachment(root: string, name: string, hash: string) {
-  const folder = await attachmentFolder(root)
+  const folder = await openFolder(root, ['attachments'])
   let file: FileHandle | undefined
   try {
     file = await open(`/proc/self/fd/${folder.fd}/${name}`, C.O_RDONLY | C.O_NOFOLLOW | C.O_NONBLOCK)
