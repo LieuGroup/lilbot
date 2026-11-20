@@ -6,9 +6,11 @@ app. Rules and the short version are in `AGENTS.md` under "System". Code: `serve
 
 ## The note
 
-- Written by LilBot, about 150 words: the bot's name, id, folder and model; that it runs in LilBot on the leader; the
-  other bots (up to eight, then a count); the computers; whether coding through T3 Code works; the running release;
-  and two lines pointing at `lilbot_about` and `lilbot_guide` with the rules for changing LilBot.
+- Written by LilBot, about 200 words: the bot's name, id, folder and model; that it runs in LilBot on the leader; the
+  other bots (up to eight, then a count); the computers; the standing rules for choosing a computer (static text
+  that adds no online state and no main mark: the per-message origin line and `lilbot_about` give those); whether coding
+  through T3 Code works; the running release; and two lines pointing at `lilbot_about` and `lilbot_guide` with the rules
+  for changing LilBot.
 - Delivered through the one engine-neutral system-prompt path: `BotRuntimes.state()` hands every engine
   `withNote(instructions, note)` as the bot's instructions. LilBot's database and the Setup panel keep the user's own
   text; `importBots` strips a note an engine still holds (`withoutNote`).
@@ -62,7 +64,7 @@ Every tool acts as the calling bot and calls the function the screen uses. Reads
 
 | Tool | Same as |
 |---|---|
-| `lilbot_about` | live facts: you, other bots, computers, T3, release, deploy status and last failure, recent changes |
+| `lilbot_about` | live facts: you, other bots, computers (with which is `main`), T3, release, deploy status and last failure, recent changes |
 | `lilbot_guide(topic?)` | text shipped in `server/system/guide/*.md` |
 | `lilbot_status(area)` | `connections.status` (t3), `computers.list`, `deploy.status` |
 | `lilbot_bots_list`, `lilbot_bot_read` | `bots.list` with `sections.list`, `bots.get` |

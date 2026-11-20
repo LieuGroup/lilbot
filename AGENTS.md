@@ -49,6 +49,7 @@ server/            The LilBot server (runs on the leader).
   connections/       LilBot-owned connection to T3 Code for coding (bridge, sign-in, skill) and the keys and replies MCP endpoints share.
   system/            LilBot's own MCP server through which bots operate the app, and the note every bot gets about its system.
   computers/         Computer identities, key registration and durable command requests.
+  devices/           Devices (one per browser or app install), what "my computer" means from each, and where each message came from.
   database/          LilBot's own SQLite file and its schema steps.
   deploy/            Verified restart, database copies, rollback watchdog and notices.
   engines/           Whatever actually runs the bots.
@@ -580,7 +581,7 @@ pull-request handling. Running commands, reading files and using apps stay ordin
 Every bot knows it lives in LilBot and can operate the app, not only a special developer bot. Tool list, measurements
 and how to add a tool: [docs/system-mcp.md](docs/system-mcp.md).
 
-- The note (`bots/system-note.ts`, about 150 words) is added after the user's instructions whenever an engine applies a
+- The note (`bots/system-note.ts`, about 200 words, the rules for choosing a computer included) is added after the user's instructions whenever an engine applies a
   bot. The stored and shown instructions never include it. It is the engine-neutral system-prompt path: Hermes does not
   show MCP `instructions`, and its per-turn memory block repeats in every turn. Keep volatile facts out of it (any change
   rewrites every bot's instructions); `lilbot_about` gives the live ones.
@@ -617,6 +618,36 @@ shared with the standalone `helper/` client. Protocol, limits, build and tests: 
 - Deliver the helper binary and its `.sha256` from a trusted channel; the sidecar detects corruption, not tampering.
 - A failure to configure the computers plug-in is logged without making the bot unavailable.
 
+### My computer: devices and the main computer
+
+`server/devices/` knows which device a message came from, so "my computer" can be worked out. Methods, push, limits and
+tests: [docs/computers.md](docs/computers.md#my-computer-devices-and-the-main-computer).
+
+- A device is one browser or app install: an id the client keeps, a name the client prefills (for example "MacBook ·
+  Chrome"; at most 100 characters, no control or hidden characters) and an optional link to one computer. `devices.current`
+  makes the record on first sight and returns it with `resolves` (the linked computer, else the main one, else none,
+  with its online state), `devices.rename`, `devices.linkComputer`, push `devices.changed`. `computers.setMain` marks
+  one computer (any, the leader included; removing it clears the mark) and `main` is on `computers.list`,
+  `lilbot_about`, `lilbot_status` and the computers plug-in's `list_computers`.
+- `computers.addThis.start` takes the device id: when a computer registers with that attempt's code, that device is
+  tied to it (a callback; `computers/` never imports `devices/`). The link can be changed or cleared by hand.
+- The origin is metadata, never Oscar's text. `chat.send` takes the device id; LilBot gives the engine a line outside the
+  text (device, its computer's name, id and online state, or "not a connected computer"; routines and bot requests say no
+  device sent them). Hermes gets it in `api_text`, so the stored transcript is exactly what Oscar typed. A device id
+  LilBot does not know is told to the bot as unrecognised. Never taken from the typed text.
+- Each stored user message carries the device id and its name at send time (renaming does not rewrite old messages;
+  messages from before have none), in snapshots, `chat.history` pages and the `user.message` event (also sent for plain
+  messages). A message with files keeps it in its own record; a plain message waits in `message_origins` until the
+  history importer matches it to its row: same bot, same text, oldest first, sent up to six hours before the row. A matched
+  row is remembered by id, so importing a page again gives the same answer.
+- The bot's rules live in the note and `server/system/guide/computers.md`: a computer named in the message, else the
+  origin device's, else the main one; ask Oscar in the reply (not with a tool: LilBot draws no card for one), listing
+  computers by name, when it is offline, none can be told or the words fit several; never guess for a command that
+  changes something; say which computer was used. The rules are static text: the note's existing line of computer names
+  is unchanged and it adds no online state and no main mark. Live facts come from the per-message line, `lilbot_about`
+  and `list_computers`.
+- A device id from a browser is not a security boundary: the private and Access listeners are already Oscar-only.
+
 ### Adding a computer from its browser
 
 Oscar opens LilBot on the machine, chooses "Add this computer", downloads the installer, opens it, and the computer
@@ -625,7 +656,7 @@ Protocol, browser behaviour, building and signing: [docs/computers.md](docs/comp
 
 - `computers.installCode` also returns `helperUrl`, the helper door origin, when `LILBOT_HELPER_URL` is set; the
   command-line dialog builds its command from it (no hostname in the web code) and says so when it is missing.
-- `computers.addThis.start({ name, system })` mints an ordinary install code (single use, 10 minutes) for an attempt
+- `computers.addThis.start({ name, system, deviceId? })` mints an ordinary install code (single use, 10 minutes) for an attempt
   and returns the downloads for that system, or `supported: false` (`system`: not macOS or Linux; `unavailable`: no
   installer built for this LilBot). `computers.addThis.status({ attemptId })` answers waiting, registered, connected or
   expired, with the computer once one registered with that attempt's code (migration 23 links them).
@@ -854,6 +885,10 @@ profiles, isolated directories, cleanup in `finally`. Most cost a few model call
 - `bun run check:system`: on the dev server, a temporary bot whose instructions never mention LilBot answers what it runs
   in, which version and how it would change LilBot, then pins another bot and creates one through its `lilbot_*` tools;
   checks the roster push, the change log and that an unchanged restart applies nothing.
+- `bun run check:my-computer`: on the dev server, two test computers (real helpers under throwaway homes) and a temporary bot:
+  a message from a device linked to one runs on it, from a device with no computer on the main one, with no main computer
+  the bot asks and lists both, and with the linked computer offline it runs nothing elsewhere; what ran where is read from
+  the server's request table, and `chat.history` rows carry their device.
 - `bun run check:coding -- --code-file <file>` (or the code on stdin): needs a fresh pairing code; signs in, checks the
   signed-out, expired and refused messages, a repeated launch and a real task, then archives its threads, removes its
   project and profile and revokes its sign-in.

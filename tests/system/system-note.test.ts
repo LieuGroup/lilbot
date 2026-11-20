@@ -24,7 +24,7 @@ const facts = (others: NoteFacts['others'] = [{ name: 'Writer', function: 'Draft
   release: 'abcdef012345'
 })
 
-test('the note states who the bot is, where it runs and points at the two tools, in about 150 words', () => {
+test('the note states who the bot is, where it runs and points at the two tools, in about 200 words', () => {
   const note = buildNote(facts())
   for (const part of [
     '"Bot One"',
@@ -35,6 +35,12 @@ test('the note states who the bot is, where it runs and points at the two tools,
     'Writer (Drafts posts)',
     'leader-box, MacBook',
     'abcdef012345',
+    'every message ends with a [LilBot origin] line',
+    'a computer named in the message means that one',
+    'ask Oscar which in your reply',
+    'do not use a tool to ask',
+    'never guess for a command that changes something',
+    'Say which computer you used',
     'lilbot_about',
     'lilbot_guide',
     'bun run deploy'
@@ -42,7 +48,7 @@ test('the note states who the bot is, where it runs and points at the two tools,
     expect(note).toContain(part)
   }
   expect(words(note)).toBeGreaterThan(90)
-  expect(words(note)).toBeLessThan(170)
+  expect(words(note)).toBeLessThan(210)
   expect(buildNote({ ...facts([]), bot: { ...facts().bot, model: null } })).toContain("the engine's default")
 })
 

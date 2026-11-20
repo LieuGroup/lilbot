@@ -19,6 +19,7 @@ import { T3Grants } from './connections/t3-grant'
 import { watchT3SignIn } from './connections/t3-watch'
 import { openDatabase } from './database/database'
 import { deployNotice } from './deploy/deploy-notice'
+import { createDevices } from './devices/device-service'
 import type { BotEngine } from './engines/bot-engine'
 import { HistoryService } from './history/history-service'
 import { HistoryStore } from './history/history-store'
@@ -73,6 +74,7 @@ export function createAppServices(
     id => store.get(id)?.permissionMode
   )
   repeat('computers', 1000, () => computers.tick())
+  const devices = createDevices(database, computers, publish)
   const reviewQueue = new ReviewQueue(database)
   const routineStore = new RoutineStore(database)
   const library = new LibraryService(
@@ -85,9 +87,7 @@ export function createAppServices(
     new AttachmentStore(database),
     id => workspaces.pathFor(id),
     id => store.exists(id),
-    (chatId, message) => {
-      publish({ event: 'chat', chatId, data: { type: 'user.message', ...message } })
-    }
+    (chatId, message) => publish({ event: 'chat', chatId, data: { type: 'user.message', ...message } })
   )
   const skills = new SkillsService(process.env.LILBOT_SKILLS_DIR ?? join(homedir(), 'lilbot', 'skills'), database, () => {
     publish({ event: 'skills.changed' })
@@ -105,7 +105,7 @@ export function createAppServices(
       return store.list().filter(b => b.engineId === engine.id)
     },
     (bot, session) => store.exists(bot) && !routineStore.isRoutineChat(session) && !threadStore.isInternal(session),
-    (botId, chatId, rows) => rows.map(row => ({ ...row, item: attachments.merge({ botId, chatId, title: '', workspace: '', running: false, items: [row.item] }).items[0] })),
+    (botId, chatId, rows) => devices.mergeRows(botId, rows).map(row => ({ ...row, item: attachments.mergeItem(botId, chatId, row.item) })),
     botId => publish({ event: 'history.changed', botId })
   )
   repeat('history', 1000, () => history.tick())
@@ -114,6 +114,7 @@ export function createAppServices(
     history,
     cleanupBot: botId => {
       history.store.forget(botId)
+      devices.forgetBot(botId)
       routineStore.forgetBot(botId)
       computers.forgetBot(botId)
       activity.forgetBot(botId)
@@ -195,5 +196,5 @@ export function createAppServices(
     adapterVersion: MEMORY_ADAPTER_VERSION,
     reviewer
   })
-  return { bots, store, skills, threadStore, library, computers, attachments, t3Grants, t3Bridge, systemMcp: system.handler, engineApi, activity, routines, threads }
+  return { bots, store, skills, threadStore, library, computers, devices, attachments, t3Grants, t3Bridge, systemMcp: system.handler, engineApi, activity, routines, threads }
 }

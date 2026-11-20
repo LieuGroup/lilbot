@@ -1,6 +1,7 @@
 import type { ChatEvent } from '../../shared/chat-schema'
 import { LilBotError } from '../../shared/protocol'
 import { RoutineCreate, type RoutineRun } from '../../shared/routine-schema'
+import { routineLine } from '../devices/origin-line'
 import type { OpenChat, RoutineOptions } from '../engines/bot-engine'
 import type { RoutineStore } from './routine-store'
 
@@ -62,6 +63,7 @@ export class RoutineService {
       `Scheduled routine (not a new message from Oscar). Carry out this task with full access, without asking for approval. Return a concise result for the Routines list; do not post it in the main chat.\n\n${routine.description}`,
       {
         runId: run.id,
+        origin: { line: routineLine },
         onChat: id => {
           this.store.attach(run.id, id, this.now())
           this.changed()

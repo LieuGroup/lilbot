@@ -12,6 +12,7 @@ const machine = (id: string, extra: Partial<Computer> = {}): Computer => ({
   online: false,
   lastSeen: null,
   keyConflict: false,
+  main: false,
   ...extra
 })
 

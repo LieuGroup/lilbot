@@ -1,9 +1,18 @@
 /** Chat transcript and live events in LilBot's own terms. Engines translate into these. */
 import { z } from 'zod'
 import { Attachment, AttachmentMessage, ImageSupport } from './attachment-schema'
+import { MessageOrigin } from './device-schema'
 
 export const ChatItem = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('user'), text: z.string(), messageId: z.string().optional(), attachments: z.array(Attachment).optional(), images: ImageSupport.optional() }),
+  z.object({
+    kind: z.literal('user'),
+    text: z.string(),
+    messageId: z.string().optional(),
+    attachments: z.array(Attachment).optional(),
+    images: ImageSupport.optional(),
+    /** The device it was sent from; messages sent before devices existed have none. */
+    origin: MessageOrigin.optional()
+  }),
   z.object({ kind: z.literal('assistant'), text: z.string(), stopped: z.boolean().optional() }),
   z.object({
     kind: z.literal('tool'),

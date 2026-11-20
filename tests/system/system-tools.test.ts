@@ -82,10 +82,18 @@ test('a bot reads its own setup by default and another bot’s by id', async () 
 test('status and about report computers, T3 Code and the release without credentials', async () => {
   const f = systemFixture()
   const about = (await f.call('b1', 'lilbot_about')).data
-  expect(about).toMatchObject({ release: 'abcdef012345', computers: [{ id: 'leader', name: 'leader-box', online: true }], deploy: { lastFailure: null } })
+  expect(about).toMatchObject({
+    release: 'abcdef012345',
+    computers: [
+      { id: 'leader', name: 'leader-box', online: true, main: false },
+      { id: 'mac', name: 'MacBook', online: false, main: true }
+    ],
+    deploy: { lastFailure: null }
+  })
   expect(about.codingThroughT3).toContain('available, signed in until')
   expect((await f.call('b1', 'lilbot_status', { area: 'computers' })).data).toEqual([
-    { id: 'leader', name: 'leader-box', os: 'linux', online: true, lastSeen: '2023-11-14T22:13:20.000Z' }
+    { id: 'leader', name: 'leader-box', os: 'linux', online: true, main: false, lastSeen: '2023-11-14T22:13:20.000Z' },
+    { id: 'mac', name: 'MacBook', os: 'darwin', online: false, main: true, lastSeen: '2023-11-14T22:13:20.000Z' }
   ])
   expect((await f.call('b1', 'lilbot_status', { area: 't3' })).data.state).toBe('connected')
   f.state.t3 = { state: 'expired', expiresAt: 1700000000000 }

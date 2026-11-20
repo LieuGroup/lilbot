@@ -6,6 +6,7 @@ import { BotDeleteDefaults, BotDeleteInput } from './bot-delete-schema'
 import { type Bot, BotCreateInput, type BotDetail, BotPrefsInput, BotUpdateInput, type ModelProvider, type Section, sectionName } from './bot-schema'
 import type { ChatEvent, ChatSnapshot } from './chat-schema'
 import { AddThisSystem } from './computer-add-schema'
+import { DeviceId, DeviceName } from './device-schema'
 import { LibraryListInput, type LibraryPage, type WorkspaceEntry } from './library-schema'
 import { type MemoryFact, MemoryWriteInput } from './memory-schema'
 import type { Routine } from './routine-schema'
@@ -24,8 +25,15 @@ export const methods = {
   'computers.list': z.object({}),
   'computers.installCode': z.object({ name: z.string().trim().min(1).max(100) }),
   'computers.remove': z.object({ computer: z.string().min(1) }),
+  /** Marks the computer bots use when a message comes from a device that is not a computer; null clears it. */
+  'computers.setMain': z.object({ computer: z.string().min(1).nullable() }),
+  /** This device's record; the first call makes it, named by `name` (the client's own guess). Later calls ignore `name`. */
+  'devices.current': z.object({ deviceId: DeviceId, name: DeviceName }),
+  'devices.rename': z.object({ deviceId: DeviceId, name: DeviceName }),
+  /** Says which connected computer this device runs on; null clears it. */
+  'devices.linkComputer': z.object({ deviceId: DeviceId, computer: z.string().min(1).nullable() }),
   /** Starts "Add this computer" on this device: a fresh code, the hand-over address and the matching download. */
-  'computers.addThis.start': z.object({ name: z.string().trim().min(1).max(100), system: AddThisSystem }),
+  'computers.addThis.start': z.object({ name: z.string().trim().min(1).max(100), system: AddThisSystem, deviceId: DeviceId.optional() }),
   'computers.addThis.status': z.object({ attemptId: z.string().uuid() }),
   'skills.list': z.object({ botId }),
   'skills.read': z.object({ botId, name: z.string() }),
@@ -70,7 +78,14 @@ export const methods = {
   /** Starts a new session and makes it the bot's main conversation. */
   'chat.new': z.object({ botId }),
   'chat.send': z
-    .object({ chatId, text: z.string().trim().max(200_000), attachmentIds: z.array(z.string().uuid()).max(10).optional(), messageId: z.string().uuid().optional() })
+    .object({
+      chatId,
+      text: z.string().trim().max(200_000),
+      attachmentIds: z.array(z.string().uuid()).max(10).optional(),
+      messageId: z.string().uuid().optional(),
+      /** The device the message is sent from; bots are told where it came from. */
+      deviceId: DeviceId.optional()
+    })
     .refine(
       p => (p.text.length > 0 || (p.attachmentIds?.length ?? 0) > 0) && (!p.attachmentIds?.length || !!p.messageId),
       'Provide text or attachments, and a messageId for attachments.'
@@ -95,6 +110,10 @@ export interface Results {
   /** `helperUrl`: the helper door origin for the command, when the server has `LILBOT_HELPER_URL`. */
   'computers.installCode': { code: string; expiresAt: number; helperUrl?: string }
   'computers.remove': { ok: true }
+  'computers.setMain': { ok: true }
+  'devices.current': import('./device-schema').Device
+  'devices.rename': import('./device-schema').Device
+  'devices.linkComputer': import('./device-schema').Device
   'computers.addThis.start': import('./computer-add-schema').AddThisStart
   'computers.addThis.status': import('./computer-add-schema').AddThisStatus
   'skills.list': import('./skills-schema').Skill[]
@@ -157,6 +176,8 @@ export type EventFrame =
   /** A connection's state changed (for example T3 Code refused LilBot's sign-in). */
   | { event: 'connections.changed' }
   | { event: 'computers.changed' }
+  /** A device was renamed or tied to a computer (here or in another tab): fetch `devices.current` again. */
+  | { event: 'devices.changed' }
 
 /** An error whose message is safe and useful to show to the user. */
 export class LilBotError extends Error {

@@ -50,15 +50,18 @@ function botsChanged() {
 }
 
 const engine = new HermesEngine(process.env.LILBOT_BOT_IDS?.split(',').filter(Boolean))
-const { bots, store, skills, threadStore, library, computers, attachments, t3Grants, t3Bridge, systemMcp, engineApi, activity, routines, threads } = createAppServices(engine, {
-  DATA_DIR,
-  WORKSPACES_DIR,
-  PORT,
-  MEMORY_ADAPTER_VERSION,
-  COMMIT,
-  publish: frame => publish(EVERYONE, JSON.stringify(frame)),
-  botsChanged
-})
+const { bots, store, skills, threadStore, library, computers, devices, attachments, t3Grants, t3Bridge, systemMcp, engineApi, activity, routines, threads } = createAppServices(
+  engine,
+  {
+    DATA_DIR,
+    WORKSPACES_DIR,
+    PORT,
+    MEMORY_ADAPTER_VERSION,
+    COMMIT,
+    publish: frame => publish(EVERYONE, JSON.stringify(frame)),
+    botsChanged
+  }
+)
 
 // Every bot uses LilBot's memory: bots on an older adapter are updated, and a bot that is not
 // connected yet is connected. Both take effect from the bot's next session.
@@ -105,7 +108,8 @@ const websocket: WebSocketHandler<SocketData> = {
       computers,
       () => deployNotice(DATA_DIR),
       attachments,
-      addThis
+      addThis,
+      devices
     )
   },
   message(socket, message) {

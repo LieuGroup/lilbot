@@ -56,6 +56,7 @@ test('an engine does not depend on what sits above it', () => {
     ...crossings('server/engines', 'server/routines'),
     ...crossings('server/engines', 'server/threads'),
     ...crossings('server/engines', 'server/attachments'),
+    ...crossings('server/engines', 'server/devices'),
     ...crossings('server/engines', 'server/system')
   ]).toEqual([])
 })
@@ -97,4 +98,18 @@ test('the system server and the note work for every engine: no HTTP layer, no co
     ...crossings('server/bots', 'server/system'),
     ...crossings('server/memory', 'server/system')
   ]).toEqual([])
+})
+
+test('devices sit on computers and neutral engine contracts: no HTTP, bots, system or concrete engine; computers and bots never import them; routines and threads take only the pure origin lines', () => {
+  expect([
+    ...crossings('server/devices', 'server/http'),
+    ...crossings('server/devices', 'server/bots'),
+    ...crossings('server/devices', 'server/system'),
+    ...crossings('server/devices', 'server/engines/hermes'),
+    ...crossings('server/computers', 'server/devices'),
+    ...crossings('server/bots', 'server/devices')
+  ]).toEqual([])
+  const lines = [...crossings('server/routines', 'server/devices'), ...crossings('server/threads', 'server/devices')]
+  expect(lines.length).toBeGreaterThan(0)
+  expect(lines.filter(line => !line.endsWith('-> server/devices/origin-line'))).toEqual([])
 })

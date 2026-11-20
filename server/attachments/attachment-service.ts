@@ -1,8 +1,8 @@
 import type { z } from 'zod'
 import type { Attachment, AttachmentFile, AttachmentMessage } from '../../shared/attachment-schema'
-import type { ChatSnapshot } from '../../shared/chat-schema'
+import type { ChatItem, ChatSnapshot } from '../../shared/chat-schema'
 import { LilBotError } from '../../shared/protocol'
-import type { OpenChat } from '../engines/bot-engine'
+import type { OpenChat, TurnOrigin } from '../engines/bot-engine'
 import { MAX_BYTES, MAX_FILES, readAttachment, writeAttachment } from './attachment-files'
 import type { AttachmentStore, StoredAttachment } from './attachment-store'
 
@@ -96,7 +96,7 @@ export class AttachmentService {
     this.require(botId)
     return { ...result, mime: file.mime, name: file.name }
   }
-  async send(chat: OpenChat, text: string, ids: string[], messageId: string) {
+  async send(chat: OpenChat, text: string, ids: string[], messageId: string, origin?: TurnOrigin) {
     const { botId, chatId } = chat.snapshot
     this.require(botId)
     if (this.sending.has(chatId)) throw new LilBotError('sending', 'Another message is being sent.')
@@ -111,15 +111,20 @@ export class AttachmentService {
         messageId,
         text,
         attachments: this.status(botId, ids),
-        images: { support: chat.imageSupport ?? 'unknown', imageCount: files.filter(f => f.mime.startsWith('image/')).length }
+        images: { support: chat.imageSupport ?? 'unknown', imageCount: files.filter(f => f.mime.startsWith('image/')).length },
+        ...(origin?.device ? { origin: origin.device } : {})
       }
       if (!this.store.message(botId, chatId, messageId)) this.store.record(botId, chatId, message)
-      await chat.send(wireText(message), { inputId: messageId, apiText: text, attachments: files })
+      await chat.send(wireText(message), { inputId: messageId, apiText: text, attachments: files, origin })
       this.changed(chatId, message)
       return message
     } finally {
       this.sending.delete(chatId)
     }
+  }
+  /** One item of a chat, with its files' metadata if it is a message with files. */
+  mergeItem(botId: string, chatId: string, item: ChatItem): ChatItem {
+    return this.merge({ botId, chatId, title: '', workspace: '', running: false, items: [item] }).items[0]
   }
   merge(snapshot: ChatSnapshot) {
     this.require(snapshot.botId)

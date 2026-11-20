@@ -191,8 +191,45 @@ builds and signing.
 - The link puts the code in a `lilbot-helper://` URL, which no server receives or logs; the code is single use for 10
   minutes either way.
 
+## My computer: devices and the main computer
+
+The rules are in `AGENTS.md` ("My computer"). Code: `server/devices/`, `shared/device-schema.ts`. Migration 24.
+
+- **Records.** `devices(id, name, computer_id, last_seen)`: the id is a UUID the client keeps; `devices.current` makes the
+  record on the first call and ignores `name` afterwards; a device not seen for 180 days is forgotten. A link to a
+  computer that was removed counts as no link (computer ids are never reused). `main_computer` holds one row at most
+  (`CHECK(only = 1)`), so one computer is main; removing it clears the mark. Migration 24 only creates tables and is
+  repeatable, so the older migration tests that upgrade from a rolled-back file keep working. Nothing here is a security boundary: the
+  device id comes from the browser, and the private and Access listeners are already Oscar-only.
+- **Methods.** `devices.current({ deviceId, name })`, `devices.rename`, `devices.linkComputer({ deviceId, computer |
+  null })`, `computers.setMain({ computer | null })`. `Device.resolves` is the answer the bot gets for "my computer"
+  (`linked`, else `main`, else `none`, each with the computer's name and online state), so the screen's line under the
+  card and the bot read the same thing. `devices.changed` and `computers.changed` pushes.
+- **Auto-link.** `computers.addThis.start` takes `deviceId`; `computer_attempt_devices` remembers it per install code,
+  and when the computer registers with that code `ComputerAuth.registered` ties the device to it (set by `createDevices`).
+- **The origin line.** `chat.send` takes `deviceId` (and `messageId` for a plain message; one is made when absent). The
+  engine gets `TurnOrigin { line, device? }` beside the text: `[LilBot origin: sent from the device "<name>", which is the
+  computer "<name>" (id <id>, online|offline).]`, or `..., which is not a connected computer.]`; a device LilBot does
+  not recognise, a routine run and another bot's message each have their own line. Names are JSON-quoted. Hermes puts
+  the line in `api_text`, so the model reads it and the stored transcript keeps only what Oscar typed (checked on the
+  development gateway: the transcript, `display_messages` and the session title hold the typed text only).
+- **Stored per message.** `ChatItem` (user) and `AttachmentMessage` carry `origin: { deviceId, name }`, the name at send
+  time. A message with files keeps it in its `attachment_messages` record (exact, by the existing marker). A plain
+  message has no id in Hermes' transcript rows and its text is never changed to add one, so `message_origins` holds it
+  (bot, text, device, time) until the importer's projection matches a row: the oldest waiting message of that bot with
+  the same text, sent no more than six hours before the row. The match is remembered by row id and its text is dropped,
+  so reading a page again gives the same answer. Waiting messages older than six hours, and those the engine refused,
+  are removed. A message from another client with the same text can only be mistaken for one of ours while one is
+  waiting. The `user.message` event is also published for plain messages.
+- **Bot-facing.** The standing rules are in the note and `server/system/guide/computers.md`; `main` is on `lilbot_about`,
+  `lilbot_status` and the computers plug-in's `list_computers`. The note's existing line of computer names is unchanged; the rules add no online state and no main mark, so
+  a computer coming online or becoming main never rewrites any bot's instructions.
+
 ## Tests
 
+- `tests/devices/` (device records and limits, the origin line, the message round trip through snapshot, history page and
+  event, the importer match), `tests/engines/hermes/hermes-origin.test.ts` and `bun run check:my-computer` (two test
+  computers, three devices, a real bot) cover "my computer".
 - `tests/computers/add-this-computer.test.ts`, `handover-listener.test.ts` and `bun run check:add-computer` cover the
   browser flow: settings, offered builds, the attempt link, reused/expired/unknown codes, download listeners, refused
   origins and hosts, single use, socket owners and the code staying out of output.

@@ -2,6 +2,7 @@ import type { ChatItem } from '../../shared/chat-schema'
 import { LilBotError } from '../../shared/protocol'
 import { ThreadAsk } from '../../shared/thread-schema'
 import { backgroundFailure } from '../background'
+import { botLine } from '../devices/origin-line'
 import type { RoutineOptions } from '../engines/bot-engine'
 import { memoryRefusal } from '../memory/memory-safety'
 import { THREAD_LIMITS } from './thread-limits'
@@ -89,6 +90,7 @@ export class ThreadService {
       chatId: d.kind === 'answer' ? d.sourceChat : this.store.session(d.threadId, d.target),
       onChat: id => this.store.attach(d, d.target, id, internal),
       baseline: length => this.store.baseline(d.id, length),
+      origin: { line: botLine },
       hiddenInput: true
     })
     const items = result.items?.filter(i => i.kind !== 'user') ?? [{ kind: 'assistant' as const, text: result.text }]

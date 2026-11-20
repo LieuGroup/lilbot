@@ -2,6 +2,7 @@
 import type { ActivityEvent } from '../../shared/activity-schema'
 import type { BotIdentity, BotModel, BotSetup, ModelProvider, PermissionMode } from '../../shared/bot-schema'
 import type { ChatEvent, ChatSnapshot } from '../../shared/chat-schema'
+import type { MessageOrigin } from '../../shared/device-schema'
 
 export type EngineBotDetail = BotIdentity & BotSetup
 export type RuntimeIdentity = BotIdentity & { instructions: string }
@@ -21,6 +22,13 @@ export interface LegacyNotes {
   ownNotes: string[]
 }
 
+/** Where a turn came from, given by LilBot beside the user's text and never part of it. `line` is what the model is told
+ *  for this turn only; `device` is what LilBot stores with a user message (a routine run or another bot has none). */
+export interface TurnOrigin {
+  line: string
+  device?: MessageOrigin
+}
+
 export interface ReviewOptions {
   /** The model to run the review on; without it, the bot's own. */
   model?: BotModel
@@ -35,6 +43,7 @@ export interface RoutineOptions {
   hiddenInput?: boolean
   baseline?: (length: number) => number
   onChat: (chatId: string) => void
+  origin?: TurnOrigin
 }
 
 export interface ChatOptions {
@@ -133,7 +142,7 @@ export interface EngineAttachment {
 export interface OpenChat {
   imageSupport?: 'supported' | 'unsupported' | 'unknown'
   snapshot: ChatSnapshot
-  send(text: string, options?: { hidden?: boolean; inputId?: string; apiText?: string; attachments?: EngineAttachment[] }): Promise<void>
+  send(text: string, options?: { hidden?: boolean; inputId?: string; apiText?: string; attachments?: EngineAttachment[]; origin?: TurnOrigin }): Promise<void>
   stop(): Promise<void>
   close(): void
 }

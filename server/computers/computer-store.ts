@@ -16,15 +16,9 @@ export class ComputerStore {
   constructor(readonly db: Database) {}
   list(): Computer[] {
     return this.db
-      .query('SELECT id, hello, last_seen, key_conflict FROM computers WHERE revoked = 0')
+      .query('SELECT id, hello, last_seen, key_conflict, id = (SELECT computer_id FROM main_computer) AS main FROM computers WHERE revoked = 0')
       .all()
-      .map((row: any) => ({
-        ...JSON.parse(row.hello),
-        id: row.id,
-        lastSeen: row.last_seen,
-        online: false,
-        keyConflict: !!row.key_conflict
-      }))
+      .map((row: any) => ({ ...JSON.parse(row.hello), id: row.id, lastSeen: row.last_seen, online: false, keyConflict: !!row.key_conflict, main: !!row.main }))
   }
   add(id: string, hello: ComputerHello, key: string | null) {
     this.db.query('INSERT INTO computers(id,hello,public_key) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET hello=excluded.hello').run(id, JSON.stringify(hello), key)
@@ -44,6 +38,7 @@ export class ComputerStore {
   revoke(id: string) {
     this.db.transaction(() => {
       this.db.query('UPDATE computers SET revoked=1 WHERE id=?').run(id)
+      this.db.query('DELETE FROM main_computer WHERE computer_id=?').run(id)
       for (const request of this.pending(id)) {
         this.cancelById(request.id, request.status)
         this.result(id, request.id, { output: '', error: 'Computer removed; outcome may be unknown.' }, true)

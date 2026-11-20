@@ -9,8 +9,12 @@ import { AddThisComputer } from '../../server/computers/add-this-computer'
 import { ComputerService } from '../../server/computers/computer-service'
 import { ComputerStore } from '../../server/computers/computer-store'
 import { DOWNLOAD_PATH, HelperDownloads, helperSettings } from '../../server/computers/helper-downloads'
+import { MainComputer } from '../../server/computers/main-computer'
 import { loadServerKey } from '../../server/computers/server-key'
 import { openDatabase } from '../../server/database/database'
+import { DeviceService } from '../../server/devices/device-service'
+import { DeviceStore } from '../../server/devices/device-store'
+import { OriginStore } from '../../server/devices/origin-store'
 import { appRoutes } from '../../server/http/app-routes'
 import { startPublicDoor } from '../../server/http/public-door'
 
@@ -151,4 +155,42 @@ test('downloads use the socket rules on the app listeners and never exist on the
   for (const name of ['old-build.zip', 'secret.zip', 'helper-settings.json', '..%2Flilbot.db', 'LilBot-Helper-macOS.zip.json'])
     expect((await get(DOWNLOAD_PATH + name)).status).toBe(404)
   expect((await fetch(new URL(`${DOWNLOAD_PATH}LilBot-Helper-macOS.zip`, door.url))).status).toBe(404)
+})
+
+test('adding a computer from a device ties that device to it; an attempt from no device, or an unknown one, ties nothing', () => {
+  const DEVICE = '11111111-1111-4111-8111-111111111111'
+  const reported: [string, string | null][] = []
+  const f = fixture()
+  let pushes = 0
+  const devices = new DeviceService(
+    new DeviceStore(f.db),
+    new OriginStore(f.db),
+    f.service,
+    new MainComputer(f.service.store, () => {}),
+    () => pushes++,
+    () => {}
+  )
+  f.service.auth.registered = (computer, device) => {
+    reported.push([computer, device])
+    devices.linkFromRegistration(device, computer)
+  }
+  f.build('lilbot-helper-linux-x64.tar.gz', 'linux', 'x64')
+  const attempt = (device?: string) => {
+    const started = f.add.start('Mac', { os: 'linux', arch: 'x64' }, device)
+    if (!started.supported) throw new Error('unsupported')
+    return f.service.auth.register(registration(started.code, f.settings)).id
+  }
+  devices.current(DEVICE, 'MacBook · Chrome')
+  const mine = attempt(DEVICE)
+  expect(devices.current(DEVICE, 'x')).toMatchObject({ computerId: mine, resolves: { via: 'linked', computerId: mine } })
+  expect(pushes).toBe(1)
+  const none = attempt()
+  const unknown = attempt('22222222-2222-4222-8222-222222222222')
+  expect(devices.current(DEVICE, 'x').computerId).toBe(mine)
+  expect(reported).toEqual([
+    [mine, DEVICE],
+    [none, null],
+    [unknown, '22222222-2222-4222-8222-222222222222']
+  ])
+  expect(pushes).toBe(1)
 })

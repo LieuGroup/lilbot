@@ -19,7 +19,8 @@ export class AddThisComputer {
     return this.downloads.settings?.door
   }
 
-  start(name: string, system: AddThisSystem): AddThisStart {
+  /** `deviceId`: the device this page runs on; when the computer registers, that device is tied to it. */
+  start(name: string, system: AddThisSystem, deviceId?: string): AddThisStart {
     if (system.os !== 'macos' && system.os !== 'linux') return { supported: false, reason: 'system' }
     const settings = this.downloads.settings
     const downloads = this.downloads.offer(system)
@@ -27,8 +28,10 @@ export class AddThisComputer {
     const { code, expiresAt } = this.computers.auth.code(name)
     const db = this.computers.store.db
     const attemptId = crypto.randomUUID()
+    db.query('DELETE FROM computer_attempt_devices WHERE code_id IN (SELECT code_id FROM computer_attempts WHERE expires_at < ?)').run(Date.now() - KEEP_MS)
     db.query('DELETE FROM computer_attempts WHERE expires_at < ?').run(Date.now() - KEEP_MS)
     db.query('INSERT INTO computer_attempts(id,code_id,expires_at) VALUES(?,?,?)').run(attemptId, codeId(code), expiresAt)
+    if (deviceId) db.query('INSERT INTO computer_attempt_devices(code_id,device_id) VALUES(?,?)').run(codeId(code), deviceId)
     const short = code.split('.')[0]
     return { supported: true, attemptId, expiresAt, code: short, handoverUrl: `http://127.0.0.1:${settings.port}`, link: `lilbot-helper://register#${short}`, downloads }
   }
