@@ -2,6 +2,7 @@
 
 import type { Server } from 'bun'
 import type { AttachmentService } from '../attachments/attachment-service'
+import { DOWNLOAD_PATH, type HelperDownloads } from '../computers/helper-downloads'
 import type { LibraryService } from '../library/library-service'
 import { attachmentRoute } from './attachment-routes'
 import type { BrowserSession } from './browser-session'
@@ -12,9 +13,18 @@ export interface SocketData {
   session?: BrowserSession
 }
 
-export function appRoutes(library: Pick<LibraryService, 'content'>, dist: string, hosts: Set<string>, engineName: string, attachments?: AttachmentService) {
+export function appRoutes(
+  library: Pick<LibraryService, 'content'>,
+  dist: string,
+  hosts: Set<string>,
+  engineName: string,
+  attachments?: AttachmentService,
+  downloads?: HelperDownloads
+) {
   return async (request: Request, server: Server<SocketData>): Promise<Response | undefined> => {
     const url = new URL(request.url)
+    if (url.pathname.startsWith(DOWNLOAD_PATH))
+      return downloads ? helperDownload(request, hosts, downloads, url.pathname.slice(DOWNLOAD_PATH.length)) : new Response('Not found', { status: 404 })
     if (url.pathname.startsWith('/api/attachments/')) return attachments ? attachmentRoute(request, hosts, attachments) : new Response('Not found', { status: 404 })
     if (url.pathname === '/ws') {
       if (!socketAllowed(request, hosts)) return new Response('Forbidden', { status: 403 })
@@ -45,4 +55,21 @@ export function appRoutes(library: Pick<LibraryService, 'content'>, dist: string
     if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 })
     return staticFile(request, dist, url.pathname)
   }
+}
+
+/** The installer carries no secret, but it is LilBot's own: same Host and Origin rules as the socket. */
+function helperDownload(request: Request, hosts: Set<string>, downloads: HelperDownloads, name: string) {
+  if (!socketAllowed(request, hosts) || request.headers.get('sec-fetch-site') === 'cross-site') return new Response('Forbidden', { status: 403 })
+  if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 })
+  const file = downloads.file(name)
+  if (!file) return new Response('Not found', { status: 404, headers: { 'Cache-Control': 'no-store' } })
+  return new Response(file, {
+    headers: {
+      'Content-Type': name.endsWith('.zip') ? 'application/zip' : 'application/gzip',
+      'Content-Disposition': `attachment; filename="${name}"`,
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "sandbox; default-src 'none'",
+      'Cache-Control': 'no-store'
+    }
+  })
 }

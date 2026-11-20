@@ -61,6 +61,7 @@ export class ComputerAuth {
       if (!used) throw new Error('Invalid registration.')
       const id = crypto.randomUUID()
       this.store.add(id, { ...hello, name: code.name }, input.publicKey)
+      this.store.db.query('UPDATE computer_attempts SET computer_id=? WHERE code_id=?').run(id, input.codeId)
       return { id }
     })()
   }

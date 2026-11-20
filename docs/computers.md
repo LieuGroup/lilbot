@@ -98,7 +98,96 @@ Detail for `server/computers/`, `helper/` and the `lilbot-computers-v1` plug-in.
   starts the service. `./lilbot-helper reset` stops and uninstalls the service and removes the local identity for
   re-registration with a fresh code, keeping execution receipts.
 
+## Adding a computer from its browser
+
+The rules are in `AGENTS.md` ("Adding a computer from its browser"). This is the detail for the screen (#68), the
+builds and signing.
+
+### What the page does
+
+1. Detect the system. `os`: `macos`, `linux`, `windows`, `ios`, `android`, `chromeos` or `other`; `arch`: `arm64`,
+   `x64` or `unknown`. Safari always reports an Intel Mac, so `unknown` is normal there; the Mac download is universal.
+   An iPad asking for the desktop site also looks like a Mac: `navigator.maxTouchPoints > 1` tells them apart.
+2. `computers.addThis.start({ name, system })`. On `supported: false`, show the unsupported-system state (`system`) or
+   "not ready" with the command-line link (`unavailable`). Otherwise keep `attemptId`, `expiresAt`, `code`,
+   `handoverUrl`, `link` and `downloads` (best first; `url` is same-origin and holds no secret).
+3. Download `downloads[0].url` (an `<a download>` or navigation). Show which file to open.
+4. Poll `GET <handoverUrl>/v1/hello` about every second while waiting, then `POST <handoverUrl>/v1/handover` with
+   `Content-Type: application/json` and `{ "code": code }`. From an HTTPS page, pass `targetAddressSpace: 'loopback'`
+   to both `fetch` calls (Chrome's Local Network Access needs it). `hello` answers
+   `{ app: 'lilbot-helper', version, state: 'waiting' | 'used' }`; the hand-over answers `{ ok: true }` (200) or
+   `{ ok: false }` (422 refused, 410 already used). A rejected fetch means no helper yet, or the browser blocked it.
+5. Poll `computers.addThis.status({ attemptId })` every two seconds and on every `computers.changed` push: `waiting`,
+   `registered` (helper registered, service starting), `connected` (online: show "<name> is connected"), `expired`.
+   `expiresAt` gives the time left.
+6. After about 30 seconds without a helper, show the fallbacks: when `downloads[0].link` is true, an "Open LilBot
+   Helper" button that navigates to `link` (needs a click: browsers ask before opening an app); and `code` as the one
+   line to paste into the installer's window, with Copy and the time left. Show the code nowhere else.
+
+### What each browser does (expected; not yet run on a Mac)
+
+- Chrome 142 and later: the first loopback request from an HTTPS page asks "access other apps and services on this
+  device"; allowing it makes path 1 work. Denying it leaves the link and the pasted line. `http://localhost` pages in
+  development skip the prompt.
+- Safari 18 and later blocks `http://127.0.0.1` from an HTTPS page as mixed content (WebKit bugs 279249, 171934), so
+  path 1 is expected to fail there and the link (path 2) carries the hand-over.
+- Both browsers ask before opening `lilbot-helper://` links, and the app must have been opened once so macOS knows it.
+- Record the real outcome per browser in #60 after the first Mac run.
+
+### The installers
+
+- macOS: `LilBot-Helper-macOS.zip` holding `LilBot Helper.app`: a small universal Swift launcher
+  (`helper/macos/launcher.swift`, the main executable and the `lilbot-helper` URL handler), the Bun helper twice
+  (`lilbot-helper-arm64`, `lilbot-helper-x64`; a fat Bun executable is unproven) and their checksums in Resources.
+  `LSUIElement`: no Dock icon. A zipped app beats a `.pkg`: no Installer steps and no administrator password.
+- Opening the app runs `setup`: native dialogs through `osascript` (script on stdin, the pasted line on stdout, never
+  argv), the loopback listener and a watch for a link. Links arrive as Apple Events, which only the launcher can
+  receive; it passes the URL to `lilbot-helper link` on stdin.
+- After registration the service install copies the binary out of the app (App Translocation runs it from a random
+  read-only path), checks its SHA-256, removes the copy's quarantine mark and loads the launchd agent. macOS shows a
+  "Background Items Added" notice.
+- Opened again on a registered Mac, the app replaces the installed binary and restarts the service: the update path.
+  A later version can compare `hello`'s `version` with the offered build.
+- Linux: `lilbot-helper-linux-<arch>.tar.gz` (binary and `.sha256`). Unpack and run `./lilbot-helper` in a terminal:
+  the same setup with the terminal as its window and a systemd user unit at the end.
+
+### Building and signing
+
+- The server writes `<data>/helper-settings.json` at start-up when `LILBOT_HELPER_URL` is set. Rebuild after changing
+  `LILBOT_HELPER_URL`, `LILBOT_ALLOWED_HOSTS`, the Access host or the server key: old builds stop being offered.
+- Linux, on the leader: `bun run build:helper-downloads [data dir]` (default `LILBOT_DATA_DIR`).
+- macOS, on the Mac with Xcode command-line tools and Bun, from a checkout of the same commit:
+  1. Copy the server's `helper-settings.json` to the Mac (public data).
+  2. Provide the signing settings, outside the repo, as environment variables or keys of
+     `~/.config/lilbot-signing/signing.json` (0600; `LILBOT_SIGNING_CONFIG` moves it): `LILBOT_SIGN_IDENTITY` (the
+     Developer ID Application identity in the keychain), `LILBOT_NOTARY_KEY_PATH` (App Store Connect API key `.p8`),
+     `LILBOT_NOTARY_KEY_ID`, `LILBOT_NOTARY_ISSUER_ID`.
+  3. `bun scripts/sign-macos-helper.ts --settings <helper-settings.json> --out <dir>`. It builds both helpers with the
+     settings baked in, signs them with the hardened runtime and Bun's JIT entitlements, compiles and signs the
+     launcher, signs and verifies the app, starts the helper (`version`), notarises with `notarytool --wait`, staples,
+     re-zips, checks Gatekeeper and writes the zip and its sidecar. It prints no identity, key or team.
+  4. Copy `LilBot-Helper-macOS.zip` and `LilBot-Helper-macOS.zip.json` into the server's `<data>/helper-downloads/`.
+- `--unsigned` skips the Developer ID and notarisation (ad-hoc signature). macOS 15 and later then refuses the first
+  open; System Settings > Privacy & Security > "Open Anyway" (then confirm) opens it. Right-click > Open no longer
+  bypasses Gatekeeper.
+
+### Threat notes
+
+- Another web page: refused by the exact Origin list (no CORS headers on refusal, so it cannot read anything) and by the
+  Host check against DNS rebinding. It may still notice that something listens on the port.
+- Another local user: their connection to the helper is refused by socket owner (`/proc/net/tcp` on Linux, `lsof` on
+  macOS, which lists only the user's own sockets). A forged Origin from a local process cannot redirect the helper,
+  because the door and fingerprint are baked in. Residual risk: another user who binds `127.0.0.1:47613` before
+  the helper starts would receive the page's code and could register their own helper in its place; the helper then
+  cannot listen and the computer that appears is theirs. LilBot's Macs are single-user; Remove revokes such a key.
+- The link puts the code in a `lilbot-helper://` URL, which no server receives or logs; the code is single use for 10
+  minutes either way.
+
 ## Tests
+
+- `tests/computers/add-this-computer.test.ts`, `handover-listener.test.ts` and `bun run check:add-computer` cover the
+  browser flow: settings, offered builds, the attempt link, reused/expired/unknown codes, download listeners, refused
+  origins and hosts, single use, socket owners and the code staying out of output.
 
 - `bun run check:computers`: real plug-in calls, Hermes hard-stop refusal before submission, queue/reconnect,
   cancellation, a second door with a different key, signed revocation versus server restart, fast exec, copies,
@@ -118,3 +207,7 @@ Obtain the trusted arm64/x64 binary, confirm Gatekeeper handling, install with a
 user service survives logout/reboot; register and check name/OS/home, execute/read/write/copy, sleep and wake during
 work and confirm reconnect without duplicate execution, then revoke online and offline and verify the signed revoke
 stops work and removes launchd.
+
+For the browser flow: on a Mac without the helper, in Safari and in Chrome, add this computer, open the download
+(signed: no warning; `--unsigned`: Open Anyway), and record which hand-over path completed (loopback, link or pasted
+line) and the time to online. Open the app again to check the update path keeps the computer.

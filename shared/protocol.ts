@@ -5,6 +5,7 @@ import { AttachmentFile } from './attachment-schema'
 import { BotDeleteDefaults, BotDeleteInput } from './bot-delete-schema'
 import { type Bot, BotCreateInput, type BotDetail, BotPrefsInput, BotUpdateInput, type ModelProvider, type Section, sectionName } from './bot-schema'
 import type { ChatEvent, ChatSnapshot } from './chat-schema'
+import { AddThisSystem } from './computer-schema'
 import { LibraryListInput, type LibraryPage, type WorkspaceEntry } from './library-schema'
 import { type MemoryFact, MemoryWriteInput } from './memory-schema'
 import type { Routine } from './routine-schema'
@@ -23,6 +24,9 @@ export const methods = {
   'computers.list': z.object({}),
   'computers.installCode': z.object({ name: z.string().trim().min(1).max(100) }),
   'computers.remove': z.object({ computer: z.string().min(1) }),
+  /** Starts "Add this computer" on this device: a fresh code, the hand-over address and the matching download. */
+  'computers.addThis.start': z.object({ name: z.string().trim().min(1).max(100), system: AddThisSystem }),
+  'computers.addThis.status': z.object({ attemptId: z.string().uuid() }),
   'skills.list': z.object({ botId }),
   'skills.read': z.object({ botId, name: z.string() }),
   'skills.setEnabled': z.object({ botId, name: z.string(), enabled: z.boolean() }),
@@ -90,6 +94,8 @@ export interface Results {
   'computers.list': import('./computer-schema').Computer[]
   'computers.installCode': { code: string; expiresAt: number }
   'computers.remove': { ok: true }
+  'computers.addThis.start': import('./computer-schema').AddThisStart
+  'computers.addThis.status': import('./computer-schema').AddThisStatus
   'skills.list': import('./skills-schema').Skill[]
   'skills.read': Record<string, string>
   'skills.setEnabled': { ok: true }
