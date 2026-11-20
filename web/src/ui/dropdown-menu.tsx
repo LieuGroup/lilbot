@@ -1,15 +1,40 @@
 import { Menu as MenuPrimitive } from '@base-ui/react/menu'
 import { cn } from 'cn'
-import { CheckIcon, ChevronRightIcon } from 'lucide-react'
+import { CheckIcon, ChevronRightIcon, SearchIcon } from 'lucide-react'
 import type * as React from 'react'
 
 // LilBot's menu (Paper "02 Bot menu"): a 208px card, radius 12, a 10% ring and a soft shadow,
 // 30px rows of 13px text, 15px icons at stroke 1.5 in the muted colour.
 const item =
-  "relative flex h-[30px] cursor-default items-center gap-2.5 rounded-[6px] px-2 text-[13px]/[18px] text-foreground outline-hidden select-none focus:bg-foreground/6 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:stroke-[1.5] [&_svg:not([class*='size-'])]:size-[15px] [&_svg:not([class*='text-'])]:text-muted-foreground"
+  "relative flex h-[30px] cursor-default items-center gap-2.5 rounded-[6px] px-2 text-[13px]/[18px] text-foreground outline-hidden select-none focus:bg-foreground/6 data-highlighted:bg-foreground/6 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:stroke-[1.5] [&_svg:not([class*='size-'])]:size-[15px] [&_svg:not([class*='text-'])]:text-muted-foreground"
 
 function DropdownMenu({ ...props }: MenuPrimitive.Root.Props) {
   return <MenuPrimitive.Root data-slot="dropdown-menu" {...props} />
+}
+
+/** Makes the menu inside it searchable: add `DropdownMenuInput` and put the items in `DropdownMenuList`. */
+const DropdownMenuFilter = MenuPrimitive.FilterProvider
+
+/** The search box of a filterable menu (Paper "14 Model picker"). 16px text on phones, so focusing it does not zoom. */
+function DropdownMenuInput({ className, ...props }: MenuPrimitive.Input.Props) {
+  return (
+    <label className="flex flex-none items-center gap-2 rounded-[6px] px-2 py-1.5 ring-1 ring-foreground/12 ring-inset">
+      <SearchIcon className="size-3.5 flex-none text-muted-foreground" strokeWidth={1.75} />
+      <MenuPrimitive.Input
+        data-slot="dropdown-menu-input"
+        className={cn('min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-foreground/50 md:text-[13px]/[18px]', className)}
+        {...props}
+      />
+    </label>
+  )
+}
+
+function DropdownMenuList({ className, ...props }: MenuPrimitive.List.Props) {
+  return <MenuPrimitive.List data-slot="dropdown-menu-list" className={cn('flex min-h-0 flex-col overflow-y-auto', className)} {...props} />
+}
+
+function DropdownMenuEmpty({ className, ...props }: MenuPrimitive.Empty.Props) {
+  return <MenuPrimitive.Empty data-slot="dropdown-menu-empty" className={cn('px-2 py-1.5 text-[13px]/[18px] text-muted-foreground empty:hidden', className)} {...props} />
 }
 
 function DropdownMenuTrigger({ ...props }: MenuPrimitive.Trigger.Props) {
@@ -115,9 +140,13 @@ function DropdownMenuSeparator({ className, ...props }: MenuPrimitive.Separator.
 export {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuEmpty,
+  DropdownMenuFilter,
   DropdownMenuGroup,
+  DropdownMenuInput,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuList,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,

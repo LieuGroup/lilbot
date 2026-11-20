@@ -43,3 +43,19 @@ export function modelLabel(groups: ModelGroup[], current: BotModel | null): stri
   const key = modelKey(current)
   return groups.flatMap(group => group.options).find(option => option.key === key)?.label ?? current?.model ?? 'Choose a model'
 }
+
+export interface ModelPillView {
+  label: string
+  saving: boolean
+  /** The saved model is no longer offered: the pill reads "Choose a model" in red. */
+  missing: boolean
+}
+
+/** What the composer's model pill shows. While a change saves it shows the new model. The saved
+ *  model counts as missing only once the engine's list has loaded (`providers` not null) and lacks it. */
+export function modelPillView(model: BotModel | null, providers: ModelProvider[] | null, saving: BotModel | null): ModelPillView {
+  if (saving) return { label: saving.model, saving: true, missing: false }
+  if (!model) return { label: 'Default model', saving: false, missing: false }
+  const offered = !providers || providers.some(provider => provider.provider === model.provider && provider.models.includes(model.model))
+  return offered ? { label: model.model, saving: false, missing: false } : { label: 'Choose a model', saving: false, missing: true }
+}

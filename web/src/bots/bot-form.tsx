@@ -1,12 +1,12 @@
 /** The bot's editable fields, shared by "New bot" and the bot's settings page. */
-import { type FormEvent, type ReactNode, useEffect, useId, useState } from 'react'
+import { type FormEvent, type ReactNode, useId, useState } from 'react'
 import { Button } from '@/ui/button'
 import { FormField } from '@/ui/form-field'
 import { Input } from '@/ui/input'
 import { Notice } from '@/ui/notice'
 import { Textarea } from '@/ui/textarea'
-import type { BotModel, ModelProvider } from '../../../shared/bot-schema'
-import { lilbot } from '../app/lilbot-socket'
+import type { BotModel } from '../../../shared/bot-schema'
+import { useModelProviders } from './model-list'
 import { ModelSelector } from './model-selector'
 
 export interface BotFormValues {
@@ -27,18 +27,11 @@ interface BotFormProps {
 
 export function BotForm({ initial, submitLabel, noModelLabel, onSubmit, children }: BotFormProps) {
   const [values, setValues] = useState(initial)
-  const [providers, setProviders] = useState<ModelProvider[]>([])
+  const providers = useModelProviders() ?? []
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
   const id = useId()
-
-  useEffect(() => {
-    lilbot
-      .call('models.list', {})
-      .then(setProviders)
-      .catch(() => setProviders([]))
-  }, [])
 
   const set = (patch: Partial<BotFormValues>) => {
     setValues(current => ({ ...current, ...patch }))

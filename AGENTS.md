@@ -184,7 +184,8 @@ behaviour he can check in the app. Keep an eye on speed and memory; measure befo
     file `dist/index.html` references; Vite's per-file sizes alone understate it). So feature code imports parts as
     `@/ui/<part>`; pages with forms are lazy routes in `app/router.tsx`; details tabs are lazy chunks in
     `bots/bot-details-panel.tsx`; the bot menu, its dialogs and Settings are lazy (the roster only writes to small
-    stores and loads them on hover or first use); the image viewer loads on the first click on an image.
+    stores and loads them on hover or first use); so is the composer's model menu (the pill writes to
+    `bots/model-picker-target.ts`); the image viewer loads on the first click on an image.
   - `bun run build` also writes brotli and gzip copies of `dist/` text files; `server/http/static-files.ts` serves the
     accepted encoding to every listener that serves the app, hashed `/assets/` files as immutable (a missing one is a
     404, never the page) and `index.html` as `no-cache` with an ETag.
@@ -362,6 +363,14 @@ Visual specs (sizes, copy, Paper frames): [docs/screens.md](docs/screens.md).
 - Avatars: ten vector cover shapes and twelve colours for cover and face. Shape and cover default from the bot's id;
   a missing face colour reads as ink without rewriting the row. Create and the bot menu's "Name and avatar"
   (`bots/edit-avatar-dialog.tsx`) use the same three picker rows.
+- Model picker: a pill in the composer after the attach button shows the bot's model id (`bots/model-pill.tsx`); it
+  opens the Model Selector menu upward (`bots/model-menu.tsx`, a lazy chunk): "Find a model" (Base UI's menu filter),
+  models grouped by provider with a tick on the current one (`ModelChoices`, shared with Setup's field). Choosing saves
+  at once with `bots.update`, also while the bot works; the pill shows a spinner meanwhile, a refusal puts the saved
+  model back and shows a red note in the composer. The saved model reads "Choose a model" in red only once `models.list`
+  has loaded without it. The engine's list is fetched once per connection (`bots/model-list.ts`). A model change
+  reaches the next session (the menu says so) until #80 applies it from the next message; #80 adds the effort row
+  between the models and that line. Setup shows the same value and reloads when it changes.
 
 ### Conversation scroll (AI Elements' Message Scroller)
 

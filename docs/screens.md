@@ -32,8 +32,17 @@ and icon sizes follow the Stack rules in `AGENTS.md`.
   composer then says "Reconnecting...").
 - Chat header, one 52px line: name, function, new session and the details toggle.
 - Conversation column max 680px: bot text without a bubble (15/24), the user's message in a tinted bubble, tool lines
-  13px, a round composer with a plus button for files and an ink send/stop button (stop while the bot works and the
-  box is empty with no files).
+  13px, a round composer in two rows: the text, then a plus button for files, the model pill and an ink send/stop
+  button (stop while the bot works and the box is empty with no files).
+
+## Model picker (`bots/model-pill.tsx`, `bots/model-menu.tsx`, Paper "14 Model picker")
+
+- Pill: 28px, fully rounded, the model id at 13/18 500 muted with a 13px chevron; hover and open tint it
+  (`foreground/6`). Saving: a 12px spinner before the new model. Saved model no longer offered: "Choose a model" in red.
+  A bot without its own model reads "Default model". A refused change shows a red-outlined note above the text.
+- Menu: 280px card, radius 8, opens upward from the pill. "Find a model" box, then provider names (12px muted) over
+  30px model rows; the current one has a tick before it, weight 500 and a tint, the others line up after the tick.
+  A last muted line: "Changes <bot>'s model. Applies after New session." The reasoning effort row comes with #80.
 
 ## Bot menu (`bots/bot-menu.tsx`, Paper "02 Bot menu")
 
