@@ -885,8 +885,8 @@ profiles, isolated directories, cleanup in `finally`. Most cost a few model call
 - `bun run check:live`: a temporary bot with a throwaway memory endpoint chats, stops, resumes and is deleted.
 - `bun run check:memory`: tells a temporary bot facts and checks a new session knows them; prints tokens per turn.
   Inherited memory is disconnected before the baseline turn.
-- `bun run check:history`: continuous history, paging and search, tool lines after reload and new session, repair of
-  a schema-18 copy; kills only its own server mid-import, repeats the import without duplicates; forced compression.
+- `bun run check:history`: continuous history, paging and search, tool lines after reload and new session, backfill of
+  tool rows into a copy that lost them; kills only its own server mid-import, repeats the import without duplicates; forced compression.
 - `bun run check:threads`: two temporary bots ask each other.
 - `bun run check:routines`: create from chat, a real file-writing run, open history, pause, restart, resume, delete.
 - `bun run check:restart`: SIGKILLs only its own second server mid-turn; chat, routine and thread side-effect counters

@@ -68,8 +68,9 @@ try {
 
   await server.crash()
   const db = new Database(join(server.root, 'lilbot.db'))
-  // Simulate the deployed schema-18 copy: text rows and tail cursors, no tools.
-  db.exec("DELETE FROM history_items WHERE json_extract(item,'$.kind')='tool'; PRAGMA user_version=18;")
+  // Simulate a copy that has text rows but no tool rows and must be imported again from the start. The upgrade that
+  // does this to old copies (migration 19) is covered by tests/history/history-repair.test.ts.
+  db.exec("DELETE FROM history_items WHERE json_extract(item,'$.kind')='tool'; UPDATE history_sessions SET cursor=NULL,complete=0;")
   await server.start()
   await server.connect()
   await waitFor(
