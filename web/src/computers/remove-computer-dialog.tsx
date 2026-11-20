@@ -31,7 +31,7 @@ export function RemoveComputerDialog({ computer, onClose }: { computer: { id: st
         <div className="flex flex-col gap-1.5">
           <DialogTitle className="text-base/[22px] font-semibold tracking-[-0.01em]">Remove {computer?.name}?</DialogTitle>
           <DialogDescription className="text-[13px]/5 text-muted-foreground">
-            Your bots can no longer use it. If it is online, its helper removes itself. To use the machine again, add it again.
+            Your bots can no longer use it. Its helper removes itself the next time it connects. To use the machine again, add it again.
           </DialogDescription>
         </div>
         {error && <Notice tone="error">{error}</Notice>}
