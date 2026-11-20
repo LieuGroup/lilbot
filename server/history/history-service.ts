@@ -66,7 +66,8 @@ export class HistoryService {
           if (!session || !this.allowed(bot.id, session.id)) continue
           const page = await value.source.read(session.id, session.cursor)
           if (!this.allowed(bot.id, session.id)) continue
-          this.store.write(bot.id, session.id, this.project(bot.id, session.id, page.rows), page.cursor, page.empty)
+          // New turns after a finished import are catching up, not a new import: the start marker must stay.
+          this.store.write(bot.id, session.id, this.project(bot.id, session.id, page.rows), page.cursor, page.empty || !!session.complete)
           if (page.rows.length || !session.complete) this.changed(bot.id)
           if (page.empty) dirty?.delete(session.id)
         } catch {
