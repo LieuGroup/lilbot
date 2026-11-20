@@ -22,6 +22,9 @@ export interface ChatView {
   queued: UserItem[]
   /** A message was sent to an idle bot and its turn has not started yet. */
   awaitingStart: boolean
+  /** Where the running turn's output begins, when it started with no message on screen: a message from
+   *  another device whose event comes after its turn started goes there. */
+  bareTurn: number | null
   running: boolean
   activity: string
   title: string
@@ -45,6 +48,7 @@ export const emptyChat: ChatView = {
   items: [],
   queued: [],
   awaitingStart: false,
+  bareTurn: null,
   running: false,
   activity: '',
   title: '',
@@ -67,6 +71,7 @@ export function chatFromSnapshot(snapshot: ChatSnapshot, previous: ChatView = em
     chatId: snapshot.chatId,
     queued: [],
     awaitingStart: false,
+    bareTurn: null,
     running: snapshot.running,
     activity: snapshot.running ? 'Working...' : '',
     title: snapshot.title,
@@ -84,7 +89,7 @@ export function chatFromHistory(page: HistoryPage, previous: ChatView = emptyCha
  *  conversation above stays. */
 export function withNewSession(chat: ChatView): ChatView {
   const items: ViewItem[] = chat.items.length > 0 ? [...stopWriting(chat.items), { kind: 'session', text: 'New session' }] : chat.items
-  return { ...chat, items, queued: [], awaitingStart: false, running: false, activity: '' }
+  return { ...chat, items, queued: [], awaitingStart: false, bareTurn: null, running: false, activity: '' }
 }
 
 export const withError = (chat: ChatView, text: string): ChatView => ({
@@ -116,8 +121,8 @@ export function applyChatEvent(chat: ChatView, event: ChatEvent): ChatView {
       // This turn belongs to the message already in the transcript, or to the oldest queued one.
       if (chat.awaitingStart) return { ...chat, awaitingStart: false, running: true, activity: 'Thinking...' }
       const [next, ...rest] = chat.queued
-      const items: ViewItem[] = next === undefined ? chat.items : [...stopWriting(chat.items), next]
-      return { ...chat, items, queued: rest, running: true, activity: 'Thinking...' }
+      if (next === undefined) return { ...chat, bareTurn: chat.items.length, running: true, activity: 'Thinking...' }
+      return { ...chat, items: [...stopWriting(chat.items), next], queued: rest, running: true, activity: 'Thinking...' }
     }
 
     case 'activity':
@@ -162,7 +167,7 @@ export function applyChatEvent(chat: ChatView, event: ChatEvent): ChatView {
       }
       items = items.map(item => (item.kind === 'tool' && item.running ? { ...item, running: false } : item))
       // Still running when another message is waiting: the engine starts it next.
-      return { ...chat, items, running: chat.queued.length > 0, activity: chat.queued.length > 0 ? 'Thinking...' : '' }
+      return { ...chat, items, bareTurn: null, running: chat.queued.length > 0, activity: chat.queued.length > 0 ? 'Thinking...' : '' }
     }
 
     case 'title':

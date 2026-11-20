@@ -111,7 +111,8 @@ cannot open a server folder).
 
 - Message origin (Paper "15 Devices and main computer"): a user message sent from another device has a 12px muted
   "from <device name>" under its bubble, right-aligned, plain text; messages from this device, and older ones with no
-  origin, show nothing. A message from another device or tab appears live from its `user.message` event.
+  origin, show nothing. A message from another device or tab appears live from its `user.message` event; when the
+  engine started its turn first, it goes before that turn's reply (`ChatView.bareTurn`).
 
 - Loading line: "Loading earlier messages" with a spinner, floating at the top. Measured movement of the visible row
   when a part arrives is under 1 px.

@@ -23,9 +23,13 @@ export function withSentMessage(chat: ChatView, message: AttachmentMessage): Cha
 }
 
 /** The `user.message` event. A message this page did not send (another device or tab) joins the
- *  conversation as if it had been sent here: the server tells every page before the bot starts on it. */
+ *  conversation as if it had been sent here. The engine may start its turn before the server
+ *  publishes it; then it goes where that turn's output begins. */
 export function withArrivedMessage(chat: ChatView, message: AttachmentMessage): ChatView {
   const known = chat.items.some(isMessage(message.messageId)) || chat.queued.some(isMessage(message.messageId))
   if (known) return withSentMessage(chat, message)
-  return withUserMessage(chat, { kind: 'user', ...message })
+  const item: UserItem = { kind: 'user', ...message }
+  const at = chat.bareTurn
+  if (at === null) return withUserMessage(chat, item)
+  return { ...chat, items: [...chat.items.slice(0, at), item, ...chat.items.slice(at)], bareTurn: null }
 }

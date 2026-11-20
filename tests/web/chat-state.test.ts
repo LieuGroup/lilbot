@@ -141,3 +141,17 @@ test('a message sent from another device joins the conversation once, with where
   expect(chat.items[0]).toMatchObject({ origin })
   expect(chat.running).toBe(false)
 })
+
+test("a message from another device whose turn started first goes before that turn's reply", () => {
+  const origin = { deviceId: 'phone', name: 'iPhone · Safari' }
+  const message = { messageId: 'm3', text: 'late event', attachments: [], images: { support: 'unknown' as const, imageCount: 0 }, origin }
+  const chat = play(
+    emptyChat,
+    { type: 'turn.started' },
+    { type: 'text.delta', text: 'On it' },
+    { type: 'user.message', ...message },
+    { type: 'turn.finished', status: 'completed', text: 'On it' }
+  )
+  expect(texts(chat)).toEqual(['user:late event', 'assistant:On it'])
+  expect(chat).toMatchObject({ running: false, queued: [] })
+})
