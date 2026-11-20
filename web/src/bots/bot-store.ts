@@ -43,12 +43,14 @@ export const useBotStore = create<BotStore>((set, get) => ({
   }
 }))
 
-/** Start the socket once and reload the bots after every (re)connect. */
+/** Start the socket once; after every (re)connect reload the bots and make sure the server knows this device. */
 export function startConnection() {
   lilbot.onBotsChanged(() => void useBotStore.getState().load())
   lilbot.onConnection(connected => {
     useBotStore.setState({ connected })
-    if (connected) void useBotStore.getState().load()
+    if (!connected) return
+    void useBotStore.getState().load()
+    void import('../devices/current-device').then(device => device.registerDevice())
   })
   lilbot.connect()
 }

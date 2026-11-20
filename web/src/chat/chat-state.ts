@@ -1,8 +1,8 @@
 /** What a chat looks like on screen, and how each live event changes it. Pure functions only. */
-import type { AttachmentMessage } from '../../../shared/attachment-schema'
 import type { ChatEvent, ChatItem, ChatSnapshot } from '../../../shared/chat-schema'
 import type { HistoryPage } from '../../../shared/history-schema'
 import { reuseItems, withLatest } from '../history/history-view'
+import { withArrivedMessage } from './user-messages'
 
 /** Where a new session began, inside the one continuous conversation. */
 type SessionMark = { kind: 'session'; text: string }
@@ -22,6 +22,9 @@ export interface ChatView {
   queued: UserItem[]
   /** A message was sent to an idle bot and its turn has not started yet. */
   awaitingStart: boolean
+  /** Where the running turn's output begins, when it started with no message on screen: a message from
+   *  another device whose event comes after its turn started goes there. */
+  bareTurn: number | null
   running: boolean
   activity: string
   title: string
@@ -45,6 +48,7 @@ export const emptyChat: ChatView = {
   items: [],
   queued: [],
   awaitingStart: false,
+  bareTurn: null,
   running: false,
   activity: '',
   title: '',
@@ -67,6 +71,7 @@ export function chatFromSnapshot(snapshot: ChatSnapshot, previous: ChatView = em
     chatId: snapshot.chatId,
     queued: [],
     awaitingStart: false,
+    bareTurn: null,
     running: snapshot.running,
     activity: snapshot.running ? 'Working...' : '',
     title: snapshot.title,
@@ -84,25 +89,7 @@ export function chatFromHistory(page: HistoryPage, previous: ChatView = emptyCha
  *  conversation above stays. */
 export function withNewSession(chat: ChatView): ChatView {
   const items: ViewItem[] = chat.items.length > 0 ? [...stopWriting(chat.items), { kind: 'session', text: 'New session' }] : chat.items
-  return { ...chat, items, queued: [], awaitingStart: false, running: false, activity: '' }
-}
-
-export function withUserMessage(chat: ChatView, message: string | UserItem): ChatView {
-  const item: UserItem = typeof message === 'string' ? { kind: 'user', text: message } : message
-  if (chat.running) return { ...chat, queued: [...chat.queued, item] }
-  return { ...chat, items: [...chat.items, item], awaitingStart: true, running: true, activity: 'Sending...' }
-}
-
-/** The server's record of a message sent with files (the `chat.send` answer or the `user.message`
- *  event, whichever comes first) fills in the message already on screen with the same id. Every
- *  other item keeps its object, so memoised rows and the scroller see no change. */
-export function withSentMessage(chat: ChatView, message: AttachmentMessage): ChatView {
-  const fill = <T extends ViewItem>(item: T): T =>
-    item.kind === 'user' && item.messageId === message.messageId ? { ...item, text: message.text, attachments: message.attachments, images: message.images } : item
-  const has = (items: ViewItem[]) => items.some(item => item.kind === 'user' && item.messageId === message.messageId)
-  if (has(chat.items)) return { ...chat, items: chat.items.map(fill) }
-  if (has(chat.queued)) return { ...chat, queued: chat.queued.map(fill) }
-  return chat
+  return { ...chat, items, queued: [], awaitingStart: false, bareTurn: null, running: false, activity: '' }
 }
 
 export const withError = (chat: ChatView, text: string): ChatView => ({
@@ -121,7 +108,7 @@ export function applyChatEvent(chat: ChatView, event: ChatEvent): ChatView {
   switch (event.type) {
     case 'user.message': {
       const { type: _type, ...message } = event
-      return withSentMessage(chat, message)
+      return withArrivedMessage(chat, message)
     }
     case 'thread':
       return chat.items.some(i => i.kind === 'tool' && i.threadId === event.threadId)
@@ -134,8 +121,8 @@ export function applyChatEvent(chat: ChatView, event: ChatEvent): ChatView {
       // This turn belongs to the message already in the transcript, or to the oldest queued one.
       if (chat.awaitingStart) return { ...chat, awaitingStart: false, running: true, activity: 'Thinking...' }
       const [next, ...rest] = chat.queued
-      const items: ViewItem[] = next === undefined ? chat.items : [...stopWriting(chat.items), next]
-      return { ...chat, items, queued: rest, running: true, activity: 'Thinking...' }
+      if (next === undefined) return { ...chat, bareTurn: chat.items.length, running: true, activity: 'Thinking...' }
+      return { ...chat, items: [...stopWriting(chat.items), next], queued: rest, running: true, activity: 'Thinking...' }
     }
 
     case 'activity':
@@ -180,7 +167,7 @@ export function applyChatEvent(chat: ChatView, event: ChatEvent): ChatView {
       }
       items = items.map(item => (item.kind === 'tool' && item.running ? { ...item, running: false } : item))
       // Still running when another message is waiting: the engine starts it next.
-      return { ...chat, items, running: chat.queued.length > 0, activity: chat.queued.length > 0 ? 'Thinking...' : '' }
+      return { ...chat, items, bareTurn: null, running: chat.queued.length > 0, activity: chat.queued.length > 0 ? 'Thinking...' : '' }
     }
 
     case 'title':

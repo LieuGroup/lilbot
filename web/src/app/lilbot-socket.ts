@@ -86,6 +86,11 @@ class LilBotSocket {
     return this.onPush('computers.changed', () => listener())
   }
 
+  /** Told when a device was renamed or tied to a computer, here or in another tab. */
+  onDevicesChanged(listener: () => void) {
+    return this.onPush('devices.changed', () => listener())
+  }
+
   /** Told when the history import brought in more of a bot's conversation. */
   onHistoryChanged(listener: (botId: string) => void) {
     return this.onPush('history.changed', frame => listener(frame.botId))

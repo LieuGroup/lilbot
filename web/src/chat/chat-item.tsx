@@ -7,12 +7,14 @@ import { Bubble, BubbleContent } from '@/ui/bubble'
 import { Message, MessageContent, MessageFooter } from '@/ui/message'
 import { Trace, TraceIcon, TraceLine, TraceTitle } from '@/ui/trace'
 import { ImageNote, SentAttachments } from '../attachments/message-attachments'
+import { thisDeviceId } from '../devices/this-device'
 import type { MessageItem } from './chat-state'
 
 /** One transcript item drawn with the AI Elements patterns: Message and Bubble for turns, a Tool
  *  trace line for tool use. Memoised: a streamed chunk changes only the last item, so earlier
  *  replies are not parsed or drawn again. `queued` draws a user message still waiting for the
- *  bot's current turn to end as a dashed, muted bubble. */
+ *  bot's current turn to end as a dashed, muted bubble. A message sent from another device says
+ *  which one under its bubble; the name is the device's own text, drawn as plain text. */
 export const ChatItem = memo(function ChatItem({ item, botId, queued = false }: { item: MessageItem; botId: string; queued?: boolean }) {
   switch (item.kind) {
     case 'user':
@@ -30,6 +32,7 @@ export const ChatItem = memo(function ChatItem({ item, botId, queued = false }: 
               </Bubble>
             )}
             {!queued && <ImageNote botId={botId} images={item.images} />}
+            {item.origin && item.origin.deviceId !== thisDeviceId() && <span className="-mt-0.5 self-end pr-1 text-xs text-muted-foreground">from {item.origin.name}</span>}
           </MessageContent>
         </Message>
       )

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { AddThisStatus, AddThisSystem, HelperDownload } from '../../../shared/computer-add-schema'
 import { lilbot, messageOf } from '../app/lilbot-socket'
 import { useNow } from '../app/use-now'
+import { thisDeviceId } from '../devices/this-device'
 import { needsCode, phaseOf } from './add-phase'
 import { handOver } from './helper-handover'
 
@@ -45,7 +46,7 @@ export function useAddAttempt(name: string, system: AddThisSystem) {
     setBusy(true)
     setError('')
     try {
-      const started = await lilbot.call('computers.addThis.start', { name, system })
+      const started = await lilbot.call('computers.addThis.start', { name, system, deviceId: thisDeviceId() })
       if (!started.supported) return setRefused(started.reason)
       const [download] = started.downloads
       setStatus(null)

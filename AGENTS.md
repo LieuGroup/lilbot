@@ -65,6 +65,7 @@ web/src/           The web app.
   activity/, library/, memory/   their details tabs (Library is a placeholder)
   routines/, threads/, skills/   data clients for panels not built yet
   computers/         the Settings > Computers page (list, remove, add this computer, add by command line)
+  devices/           this browser's device id and name, and the "This device" block on the Computers page
   deploy/            last deployment failure notice
   settings/          the Settings dialog
   ui/                shadcn/ui parts (ours to edit) and our own small shared parts built from them
@@ -649,6 +650,13 @@ tests: [docs/computers.md](docs/computers.md#my-computer-devices-and-the-main-co
   is unchanged and it adds no online state and no main mark. Live facts come from the per-message line, `lilbot_about`
   and `list_computers`.
 - A device id from a browser is not a security boundary: the private and Access listeners are already Oscar-only.
+- Screens (`web/src/devices/`, [docs/screens.md](docs/screens.md)): the browser keeps its device id in
+  `localStorage` (`devices/this-device.ts`, made on first use) and registers it with `devices.current` on every
+  connection; every `chat.send` carries it and a client `messageId`, so the `user.message` event fills in the sent
+  message, and a message from another device or tab joins the conversation live. Settings > Computers starts with
+  "This device" (name, "Runs on", the line from `resolves`); the list has the Main tag and "Make main"; the last step
+  of "Add this computer" has the "Make it my main computer" switch. A user message from another device shows
+  "from <name>" under it, as plain text.
 
 ### Adding a computer from its browser
 

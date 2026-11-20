@@ -62,22 +62,34 @@ in the dialog. Sentences are `bots/delete-copy.ts`.
 720×480 dialog with General, Bots, Memory and Computers on the left. Bots: "When a bot is deleted", the same two
 choices as the delete dialog, saved at once with `bots.deleteDefaults.set`. General and Memory are placeholders.
 
-## Computers (`web/src/computers/`, Paper "12 Computers", lazy page of Settings)
+## Computers (`web/src/computers/`, Paper "12 Computers" and "15 Devices and main computer", lazy page of Settings)
 
 - Title row: "Computers" and the ink "Add this computer" button, which opens the dialog below.
-- One card (`bg-background`, 12 radius, hairline dividers), one row per machine, the leader first: 8px dot (`success`
+- This device (`web/src/devices/this-device-card.tsx`, the same block on a phone): the label "This device", then a
+  two-row card. Name: a 220px field (200px below `sm`), prefilled once from system and browser ("Mac · Chrome",
+  `device-name.ts`), saved with `devices.rename` on Enter or leaving the field (an empty name goes back). Runs on: a
+  select of every computer, a separator and a muted "Not one of these" (`devices.linkComputer`). Under the card one 12px
+  muted line from `Device.resolves` (`device-line.ts`): tied, main, no main, or "<computer> is offline. Bots will ask
+  before using another computer." (offline wins). It reads `devices.current` again on `devices.changed`,
+  `computers.changed` and every reconnect.
+- The label "Computers", then one card (`bg-background`, 12 radius, hairline dividers), one row per machine, the leader first: 8px dot (`success`
   online, `foreground/20` offline, `destructive` key conflict), name 13/500, a 12px line (`computer-rows.ts`: "Linux ·
-  where LilBot runs · online", "macOS · offline · last seen 2 hours ago", the red key-conflict sentence) and Remove
-  (not on the leader), which asks "Remove <name>?" first. The list reads `computers.list` again on every
+  where LilBot runs · online", "macOS · offline · last seen 2 hours ago", the red key-conflict sentence; the row this
+  device runs on adds "· this device runs on it"). The main computer has a "★ Main" tag after its name. Two fixed slots
+  keep the actions in columns: "Make main" (84px, not on the main computer, `computers.setMain`) and Remove (60px, not
+  on the leader), which asks "Remove <name>?" first. The list reads `computers.list` again on every
   `computers.changed`; the page's 30-second tick keeps "last seen" counting.
-- Under the card: "Every bot can use every computer here. Offline machines pick up queued work when they wake." At the
-  bottom, the link "Add a machine without a screen…".
+- Under the card: "Every bot can use every computer here. The main computer is the one bots use when you write from a
+  phone, or from a device that is not one of these." At the bottom, the link "Add a machine without a screen…".
 - Add this computer (`add-computer-dialog.tsx`, 400px, lazy; the steps are `add-step-*.tsx`, the flow is
   `use-add-attempt.ts`, the screen for each state is `add-phase.ts`). Step 1: Name (prefilled "Mac" or "Linux
   computer", the browser cannot know the host name) and Download, with "For Apple silicon Macs" style build line;
   nothing is minted before Download. Step 2: "Open the installer" names the downloaded file, a spinner row with the time
   left, "Download again". The page tries the loopback hand-over (`helper-handover.ts`) and polls status. Step 3: green
-  check, "<name> is connected", Done. After about 30 s without a helper it shows "Still waiting for the helper" with the
+  check, "<name> is connected", "This browser is tied to it, so "my computer" written from here means this Mac" (the
+  start call carries the device id, so the server ties them), and the switch "Make it my main computer · Used when you
+  write from your phone" (`use-main-choice.ts`): on when no computer was main, which makes the new one main at once so
+  closing keeps it; off when one was; turning it off gives the mark back to the previous main, or none. Done. After about 30 s without a helper it shows "Still waiting for the helper" with the
   short code and Copy, the time left, Download again, and "Open LilBot Helper" when the build answers
   `lilbot-helper://` links (the link, which holds the code, is never rendered). After 10 minutes: "This attempt ran
   out" with Start again. On a system that is not macOS or Linux (the page decides at open, nothing minted) or when the
@@ -96,6 +108,11 @@ Avatar, name and pill tabs. Activity shows the live state (with how long, only w
 cannot open a server folder).
 
 ## Conversation history (Paper "11 Conversation history", `web/src/history/`)
+
+- Message origin (Paper "15 Devices and main computer"): a user message sent from another device has a 12px muted
+  "from <device name>" under its bubble, right-aligned, plain text; messages from this device, and older ones with no
+  origin, show nothing. A message from another device or tab appears live from its `user.message` event; when the
+  engine started its turn first, it goes before that turn's reply (`ChatView.bareTurn`).
 
 - Loading line: "Loading earlier messages" with a spinner, floating at the top. Measured movement of the visible row
   when a part arrives is under 1 px.

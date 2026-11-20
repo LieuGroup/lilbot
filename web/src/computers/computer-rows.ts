@@ -10,6 +10,8 @@ export interface ComputerRow {
   /** The 12px line under the name. */
   line: string
   isLeader: boolean
+  /** The computer bots use when a message comes from a device that is not a computer. */
+  main: boolean
 }
 
 const OS_NAMES: Partial<Record<Computer['os'], string>> = { darwin: 'macOS', linux: 'Linux', win32: 'Windows', freebsd: 'FreeBSD' }
@@ -45,12 +47,21 @@ function lineOf(computer: Computer, status: ComputerStatus, now: number): string
   return `${os} · offline · ${computer.lastSeen === null ? 'never connected' : `last seen ${agoOf(now - computer.lastSeen)}`}`
 }
 
-/** The leader first, then the others by name. A key conflict outranks online. */
-export function computerRows(computers: Computer[], now: number): ComputerRow[] {
+/** The leader first, then the others by name. A key conflict outranks online. `deviceComputer` is the computer this
+ *  device runs on, whose line says so. */
+export function computerRows(computers: Computer[], now: number, deviceComputer: string | null = null): ComputerRow[] {
   return computers
     .map(computer => {
       const status = statusOf(computer)
-      return { id: computer.id, name: computer.name, status, line: lineOf(computer, status, now), isLeader: computer.id === 'leader' }
+      const line = lineOf(computer, status, now)
+      return {
+        id: computer.id,
+        name: computer.name,
+        status,
+        line: computer.id === deviceComputer && status !== 'conflict' ? `${line} · this device runs on it` : line,
+        isLeader: computer.id === 'leader',
+        main: computer.main
+      }
     })
     .sort((a, b) => Number(b.isLeader) - Number(a.isLeader) || a.name.localeCompare(b.name))
 }
