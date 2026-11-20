@@ -9,6 +9,7 @@ import { files, safeText } from '../../server/skills/skill-files'
 import { CallingChats } from '../../server/threads/calling-chats'
 import { ThreadStore } from '../../server/threads/thread-store'
 import { WebhookStore } from '../../server/webhooks/webhook-store'
+import { WorkBoard } from '../../server/work/work-board'
 import type { EventFrame } from '../../shared/protocol'
 import { fakeService } from '../helpers/fake-engine'
 
@@ -29,7 +30,8 @@ function wired() {
     calls,
     publish: frame => frames.push(frame)
   })
-  return { ...fake, ...work, frames, history, calls }
+  const board = new WorkBoard(work.work, work.answers, { oscarAnswer: () => {}, dropped: () => async () => {} })
+  return { ...fake, ...work, board, frames, history, calls }
 }
 
 test('needs Oscar marks the bot unread and waiting through the activity service, unless he is viewing it', async () => {

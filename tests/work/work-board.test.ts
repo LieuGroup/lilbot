@@ -25,12 +25,12 @@ test('Oscar drops an item with a reason, and the bot can report on it no more', 
   const f = workFixture()
   const item = await f.open('a')
   const pushes = f.state.pushes
-  const dropped = f.board.drop(item.id, 'Not needed any more')
+  const dropped = await f.board.drop(item.id, 'Not needed any more')
   expect(dropped).toMatchObject({ status: 'dropped', dropReason: 'Not needed any more' })
   expect(dropped.events.at(-1)).toMatchObject({ by: 'oscar', status: 'dropped' })
   expect(f.state.pushes).toBe(pushes + 1)
   await expect(f.work.act('a', { requestId: 'late', itemId: item.id, status: 'working' })).rejects.toThrow('dropped')
-  expect(() => f.board.drop(item.id, 'Again')).toThrow('dropped')
+  await expect(f.board.drop(item.id, 'Again')).rejects.toThrow('dropped')
 })
 
 test('Oscar answers the one question: saved, the item goes back to work, and the bot gets it in its main conversation once', async () => {

@@ -68,34 +68,68 @@ export class ThreadService {
     this.changed()
     return { threadId: delivery.threadId, queued: true }
   }
-  /** Stops an exchange under way: the receiver's turn ends, work queued for it is dropped, and anything that still
-   *  arrives stays in the record without being delivered. When Oscar stops it, the delegating bot is told. */
-  async cancel(threadId: string, by: StoppedBy) {
+  /** The database part of stopping an exchange under way, so a caller can do it inside its own transaction: work queued for the
+   *  receiver is dropped, and anything its running turn still says stays in the record without being delivered. When Oscar stops
+   *  it, the delegating bot is told. Null when the exchange has settled already; `end` then interrupts the receiver's turn. */
+  stopping(threadId: string, by: StoppedBy, reason?: string) {
     const thread = this.store.get(threadId)
     if (by.kind === 'bot' && thread.participants[0].id !== by.id) throw new LilBotError('thread_forbidden', 'Only the bot that handed over this work can stop it.')
-    if ((FINAL as readonly string[]).includes(thread.status)) return this.view(thread)
-    const [delegator, receiver] = thread.participants
+    if ((FINAL as readonly string[]).includes(thread.status)) return null
+    const receiver = thread.participants[1]
     const running = this.runner.runningFor(threadId)
     const stopped = this.store.db.transaction(() => {
       const next = this.store.update(threadId, t => Object.assign(t, { status: 'cancelled', endedAt: Date.now(), stoppedBy: { ...by, at: Date.now() } }))
       // The running turn settles itself when it ends, so what it says is still recorded (as withheld).
       for (const id of this.store.pendingWork(threadId)) if (id !== running?.id) this.store.setStatus(id, 'done')
-      const origin = this.store.origin(threadId, receiver.id)
-      if (by.kind === 'oscar' && origin)
-        this.store.enqueue(
+      if (by.kind === 'oscar')
+        this.tellDelegator(
+          next,
           `stopped:${threadId}:${next.messages.length}`,
-          threadId,
-          delegator.id,
-          delegator.id,
-          origin.sourceChat,
-          noticePrompt(`Oscar stopped the task you handed to ${JSON.stringify(receiver.name)} (exchange ${threadId}). Its answer will not come.`),
-          'notice'
+          `Oscar stopped the task you handed to ${JSON.stringify(receiver.name)} (exchange ${threadId})${reason ? `, saying ${JSON.stringify(reason)}` : ''}. Its answer will not come.`
         )
       this.waits.settle(threadId, null)
       return next
     })()
-    if (running?.chatId) await this.host.stopRun?.(running.target, running.chatId).catch(() => backgroundFailure('thread stop'))
-    this.changed()
-    return this.view(stopped)
+    const end = async () => {
+      if (running?.chatId) await this.host.stopRun?.(running.target, running.chatId).catch(() => backgroundFailure('thread stop'))
+      this.changed()
+    }
+    return { thread: stopped, end }
+  }
+  async cancel(threadId: string, by: StoppedBy) {
+    const stop = this.stopping(threadId, by)
+    if (!stop) return this.view(this.store.get(threadId))
+    await stop.end()
+    return this.view(stop.thread)
+  }
+
+  /** Oscar answered the receiver's question on its work item: its next turn in this exchange, so what it says then comes back to
+   *  the delegating bot like any answer. Refuses like `accept` when the exchange cannot take another message. */
+  oscarAnswer(threadId: string, id: string, prompt: string) {
+    const [delegator, receiver] = this.store.get(threadId).participants
+    const origin = this.store.origin(threadId, receiver.id)
+    if (!origin) throw new LilBotError('thread_missing', 'That exchange has no request to continue.')
+    this.store.accept(delegator, receiver, { requestId: id, text: prompt, chatId: origin.sourceChat, threadId, kind: 'oscar' })
+  }
+
+  /** Oscar dropped the work item this exchange was handed out as. A running exchange is stopped, with the same database part as
+   *  `cancel`; one that has settled only tells the delegating bot. Returns what ends the receiver's turn once the caller commits. */
+  dropped(threadId: string, reason: string) {
+    const stop = this.stopping(threadId, { kind: 'oscar', id: null, name: 'Oscar' }, reason)
+    if (stop) return stop.end
+    const thread = this.store.get(threadId)
+    this.tellDelegator(
+      thread,
+      `dropped:${threadId}`,
+      `Oscar dropped the work item of the task you handed to ${JSON.stringify(thread.participants[1].name)} (exchange ${threadId}), saying ${JSON.stringify(reason)}. Its work is no longer wanted.`
+    )
+    return async () => {}
+  }
+
+  /** LilBot's word to the delegating bot, in the conversation it handed the work from. */
+  private tellDelegator(thread: BotThread, id: string, text: string) {
+    const [delegator, receiver] = thread.participants
+    const origin = this.store.origin(thread.id, receiver.id)
+    if (origin) this.store.enqueue(id, thread.id, delegator.id, delegator.id, origin.sourceChat, noticePrompt(text), 'notice')
   }
 }

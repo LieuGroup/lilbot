@@ -16,6 +16,14 @@ import { LilBotError } from '../../shared/protocol'
 type Bot = { id: string; name: string }
 const BOTS: Bot[] = ['a', 'b', 'c'].map(id => ({ id, name: id.toUpperCase() }))
 
+/** The exchanges between bots, for the tests that join them (`new WorkBoard(w.work, w.answers, d.threads)`); alone, an exchange refuses. */
+const noExchanges = {
+  oscarAnswer() {
+    throw new LilBotError('thread_missing', 'No exchanges here.')
+  },
+  dropped: () => async () => {}
+}
+
 export function workFixture(options: { database?: Database; requireBot?: (id: string) => Promise<Bot> } = {}) {
   const database = options.database ?? openDatabase(':memory:')
   const state = {
@@ -47,14 +55,40 @@ export function workFixture(options: { database?: Database; requireBot?: (id: st
     changed: () => state.pushes++
   })
   const delivered: { botId: string; prompt: string; runId: string; chatId: string | null }[] = []
+  const interrupted: { botId: string; chatId: string | null }[] = []
+  /** `interrupt` and `deliver`, in the order they happened. */
+  const order: string[] = []
   const deliver = { fail: null as Error | null }
-  const answers = new WorkAnswers(database, async (botId, prompt, runId, chatId) => {
-    if (deliver.fail) throw deliver.fail
-    delivered.push({ botId, prompt, runId, chatId })
-  })
+  const answers = new WorkAnswers(
+    database,
+    async (botId, prompt, runId, chatId) => {
+      if (deliver.fail) throw deliver.fail
+      order.push('deliver')
+      delivered.push({ botId, prompt, runId, chatId })
+    },
+    async (botId, chatId) => {
+      order.push('interrupt')
+      interrupted.push({ botId, chatId })
+    }
+  )
   const links = new WorkLinks(work, answers)
   /** Opens an item for `botId` with a definition, as a bot would. */
   const open = (botId: string, extra: Record<string, unknown> = {}) =>
     work.act(botId, { requestId: crypto.randomUUID(), title: 'Write the report', done: 'report.md lists every month', ...extra })
-  return { database, state, work, answers, delivered, deliver, board: new WorkBoard(work, answers), links, threadStore, routineStore, webhookStore, open }
+  return {
+    database,
+    state,
+    work,
+    answers,
+    delivered,
+    interrupted,
+    order,
+    deliver,
+    board: new WorkBoard(work, answers, noExchanges),
+    links,
+    threadStore,
+    routineStore,
+    webhookStore,
+    open
+  }
 }

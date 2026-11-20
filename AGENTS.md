@@ -563,10 +563,23 @@ startup and restored if it differs, like `t3-coding`).
   request ids make retries safe) and `lilbot_work_list` (mine, every bot's, or one in full).
 - Oscar: `work.list` (bot, status, updated between `from` and `to`), `work.open`, `work.drop` (with his reason),
   `work.answer`, `work.brief` (needs him, failed and done since a time, the last day by default) and the push
-  `work.changed`. An answer is saved, the item returns to `working` (or `open` if it never started), and the answer is
-  delivered once through `work_answers`: a hidden turn with a stable run id in the bot's main conversation for work from
-  a conversation, otherwise in the session the work came from. Transport failures retry after 30 seconds. Screens:
-  `needs-ui`.
+  `work.changed`. Screens: `needs-ui`.
+- An answer is saved, the item returns to `working` (or `open` if it never started), and is delivered once through
+  `work_answers`: a hidden turn with a stable run id in the bot's main conversation for work from a conversation,
+  otherwise in the session the work came from; transport failures retry after 30 seconds. On an item handed over by
+  another bot (origin an exchange) it instead continues the exchange (a thread delivery of kind `oscar`, from the
+  delegating bot's side): the receiver's next turn, whose reply returns to the delegating bot as an ordinary thread
+  answer in its own session. An exchange that cannot take another message (full, failed) gets the direct delivery, so
+  an answer is never lost. The delegating bot reads the question and answer on the child item with `lilbot_work_list`.
+- `work.drop` (one transaction) drops the item and every unfinished item below it, with the same reason, and stops the
+  work. An exchange's own item stops that exchange as Oscar in the same transaction (`ThreadService.dropped`: the
+  delegating bot is told with his reason; only the interrupt of the receiver's turn follows the commit, and the
+  runner repeats it after a restart; an exchange that has answered already only tells the delegating bot). Any other
+  owner is told in the session the item belongs to through `work_answers` (`drop-<item id>`: stop, report nothing
+  further, say so). If it was `working`, the row first waits as `stopping` until the running turn of that session has
+  been ended (once), so the bot reads the notice and not its own last words. A secondary item opened inside an
+  exchange's session is only told: ending that turn would end the exchange. A dropped handed-over parent gives its
+  delegating bot two notices: its own and the exchange's "Oscar stopped".
 - The note has two static lines on when to open an item: before any work beyond a reply, however small (changing
   something, handed over, scheduled or from outside), not for answering a question.
 
@@ -578,8 +591,8 @@ Restarting LilBot only leaves Hermes turns and T3 tasks running; nothing is resu
   reconciles the durable transcript, including tool work and the final answer.
 - Routines and webhook runs recover the same persisted run and admission receipt. Threads recover their outbox and return the answer to
   the original caller session, never a replacement exchange; a steered redirect is checked against the recovered
-  transcript, and a stop is applied again. Oscar's answers on the work board still waiting are delivered with the same
-  run id.
+  transcript, and a stop is applied again. Oscar's answers and drop notices on the work board still waiting are
+  delivered with the same run id; a drop's exchange stop is already saved.
 - The T3 bridge reloads its sign-in from the data directory. Stable per-bot request ids let an uncertain launch find
   the original T3 task, and its thread id allows later waits and reads. A bridge call in flight during downtime
   fails; the bot retries it after reconnecting.
@@ -1097,6 +1110,10 @@ profiles, isolated directories, cleanup in `finally`. Most cost a few model call
 - `bun run check:work`: a temporary bot asked for a small real task opens an item, defines done, adds evidence and
   finishes it (seen in `work.list`); done without evidence is refused, by the bot's attempt and a direct call with its
   key; a task it hands to a second bot inside an item becomes that bot's child item, which the helper finishes.
+- `bun run check:work-drop`: two temporary bots, with the dev server SIGKILLed right after a drop and after an answer. Oscar
+  drops an item mid-work: its turn ends, the bot is told once and says so. Dropping a parent drops the child and stops its
+  exchange as Oscar. Oscar answers the child's question: the helper continues in the exchange and the lead gets the outcome
+  once in its own conversation; the lead reads the question and answer with `lilbot_work_list`.
 - `bun run check:routines`: create from chat, a real file-writing run, open history, pause, restart, resume, delete.
 - `bun run check:webhooks`: a dev server with its own helper door on loopback and a temporary bot whose webhook is made
   through its MCP tool: a signed event wakes it and the result is recorded and opens; a repeat, an unsigned and a

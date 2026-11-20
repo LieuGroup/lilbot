@@ -54,6 +54,8 @@ export interface ThreadMessage {
   items: ChatItem[]
   /** A change of course from the delegating bot while the work was under way. */
   redirect?: true
+  /** Oscar's answer to the receiver's question on its work item, passed on by LilBot; the author is the delegating bot. */
+  oscar?: true
   files?: ExchangeFile[]
   /** Arrived after the exchange was stopped: kept here, never delivered. */
   withheld?: true
