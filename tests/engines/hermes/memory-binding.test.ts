@@ -13,10 +13,11 @@ spec = importlib.util.spec_from_file_location('adapter', sys.argv[1])
 module = importlib.util.module_from_spec(spec)
 sys.modules['adapter'] = module
 spec.loader.exec_module(module)
-assert module.VERSION == "0.9.1"
-assert "version: 0.9.1" in pathlib.Path(sys.argv[1]).with_name("plugin.yaml").read_text()
+assert module.VERSION == "0.10.0"
+assert "version: 0.10.0" in pathlib.Path(sys.argv[1]).with_name("plugin.yaml").read_text()
 tools = {tool["name"] for tool in module.LilBotMemoryProvider().get_tool_schemas()}
-assert {"ask_bot", "list_bots", "create_routine", "list_routines", "pause_routine", "resume_routine", "delete_routine", "give_file", "create_bot", "recall_memory", "update_memory"} <= tools
+assert {"create_routine", "list_routines", "pause_routine", "resume_routine", "delete_routine", "give_file", "create_bot", "recall_memory", "update_memory"} <= tools
+assert not {"ask_bot", "list_bots"} & tools
 calls = []
 adapter = module.LilBotMemoryProvider()
 adapter._call = lambda endpoint, body: calls.append((endpoint, body)) or {}

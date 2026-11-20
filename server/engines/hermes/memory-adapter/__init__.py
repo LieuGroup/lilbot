@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import Any
 
 from agent.memory_provider import MemoryProvider
-from .threads import TOOLS as THREAD_TOOLS, ACTIONS as THREAD_ACTIONS
 from .routines import TOOLS as ROUTINE_TOOLS, ACTIONS as ROUTINE_ACTIONS
 
 try:
@@ -36,7 +35,7 @@ logger = logging.getLogger(__name__)
 NAME = Path(__file__).resolve().parent.name
 SETTINGS_FILE = "lilbot-memory.json"
 # Keep equal to plugin.yaml. LilBot warns when a bot still calls with an older one.
-VERSION = "0.9.1"
+VERSION = "0.10.0"
 DEFAULT_URL = "http://127.0.0.1:3370"
 DEFAULT_TOKEN_FILE = "~/.local/share/lilbot/engine-token"
 TIMEOUT_SECONDS = 5
@@ -149,7 +148,7 @@ class LilBotMemoryProvider(MemoryProvider):
         if not self._token:
             return {"error": "Memory is not connected to LilBot."}
         request = urllib.request.Request(
-            f"{self._url}/engine/{endpoint}" if endpoint.startswith(("bots/", "routines/", "library/", "threads/", "history/")) else f"{self._url}/engine/memory/{endpoint}",
+            f"{self._url}/engine/{endpoint}" if endpoint.startswith(("bots/", "routines/", "library/", "history/")) else f"{self._url}/engine/memory/{endpoint}",
             data=json.dumps({"botId": self._bot, **({"chatId": self._chat} if self._chat else {}), **body}).encode(),
             headers={"Content-Type": "application/json", "Authorization": f"Bearer {self._token}", "X-LilBot-Adapter-Version": VERSION, "X-LilBot-Bot-Capability": self._creation_capability},
             method="POST",
@@ -216,7 +215,7 @@ class LilBotMemoryProvider(MemoryProvider):
             "name": "search_conversations",
             "description": "Search your own past conversations with Oscar, including earlier sessions. Returns snippets with stable ids and times. Excludes other bots, threads and routine runs. Use this to recover details no longer in context.",
             "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["query"]}
-        }] + list(TOOLS) + ROUTINE_TOOLS + THREAD_TOOLS + [{
+        }] + list(TOOLS) + ROUTINE_TOOLS + [{
             "name": "give_file",
             "description": "Give Oscar a finished file from your workspace. It appears in your Library. Use a short title. Working files are not given automatically. The file must be inside your workspace and at most 50 MiB.",
             "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "title": {"type": "string"}}, "required": ["path", "title"]}
@@ -229,8 +228,6 @@ class LilBotMemoryProvider(MemoryProvider):
     def handle_tool_call(self, tool_name: str, args: dict[str, Any], **kwargs) -> str:
         if tool_name == "search_conversations":
             return json.dumps(self._call("history/search", {"query": str(args.get("query") or ""), "limit": args.get("limit", 20)}))
-        if tool_name in THREAD_ACTIONS:
-            return json.dumps(self._call("threads/" + THREAD_ACTIONS[tool_name], {**args, "chatId": self._chat}))
         if tool_name in ROUTINE_ACTIONS:
             return json.dumps(self._call("routines/" + ROUTINE_ACTIONS[tool_name], args))
         if tool_name == "give_file":

@@ -1,5 +1,6 @@
-/** Exchanges between bots: asking (`ask_bot`), reading (bots and Oscar), and stopping (the delegating bot or Oscar).
- *  Running the deliveries is `thread-runner.ts`; the delegation tools on LilBot's MCP server are `delegation-service.ts`. */
+/** Exchanges between bots: asking (`ask`, for sessions that loaded plug-in 0.9.x through the engine API), reading (bots and
+ *  Oscar), and stopping (the delegating bot or Oscar). Running the deliveries is `thread-runner.ts`; the delegation tools on
+ *  LilBot's MCP server are `delegation-service.ts`. */
 import { LilBotError } from '../../shared/protocol'
 import { type BotThread, ThreadAsk } from '../../shared/thread-schema'
 import { backgroundFailure } from '../background'
@@ -54,7 +55,7 @@ export class ThreadService {
   /** Resolves `to` (an id or a unique name) among current bots. */
   async target(to: string) {
     const matches = (await this.host.listBots()).filter(b => b.id === to || b.name === to)
-    if (matches.length !== 1) throw new LilBotError('thread_target', 'Choose an exact bot id or unique bot name from list_bots.')
+    if (matches.length !== 1) throw new LilBotError('thread_target', 'Choose an exact bot id or unique bot name from lilbot_bots_list.')
     return matches[0]
   }
   async ask(callerId: string, raw: ThreadAsk) {

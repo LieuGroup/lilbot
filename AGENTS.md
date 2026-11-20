@@ -154,6 +154,7 @@ directories and files (0700/0600).
 - Put nothing new into Hermes plug-ins. A new bot-facing tool goes on LilBot's own MCP server (`server/system/`), with the
   same service function the screen uses, so a second engine gets it for free; the plug-ins keep only what MCP cannot do.
 - How LilBot maps onto Hermes (connections, plug-ins, importer, MCP): [docs/hermes-engine.md](docs/hermes-engine.md).
+  What any engine must provide, as a checklist: [docs/engine-contract.md](docs/engine-contract.md).
 
 ## Stack
 
@@ -469,8 +470,9 @@ Visual specs (sizes, copy, Paper frames): [docs/screens.md](docs/screens.md).
 ## Threads
 
 `server/threads/` owns bot-to-bot exchanges (`shared/thread-schema.ts`): delegation on LilBot's MCP server
-(`lilbot_delegate` and the `lilbot_delegation_*` tools, `delegation-service.ts`) and the older plug-in tools `ask_bot`
-and `list_bots`, which keep working until #113 moves them. Detail, engine findings and measurements:
+(`lilbot_delegate` and the `lilbot_delegation_*` tools, `delegation-service.ts`). The plug-in tools `ask_bot` and
+`list_bots` ended with adapter 0.10.0 (#113): new sessions use `lilbot_delegate` and `lilbot_bots_list`. The engine API's
+`threads/ask` and `threads/bots` stay only for sessions that loaded 0.9.x. Detail, engine findings and measurements:
 [docs/threads.md](docs/threads.md).
 
 - Any bot may hand work to any other, never itself. One `lilbot_delegate` call names several bots, one task each; each
@@ -954,7 +956,8 @@ profiles, isolated directories, cleanup in `finally`. Most cost a few model call
   Inherited memory is disconnected before the baseline turn.
 - `bun run check:history`: continuous history, paging and search, tool lines after reload and new session, backfill of
   tool rows into a copy that lost them; kills only its own server mid-import, repeats the import without duplicates; forced compression.
-- `bun run check:threads`: two temporary bots ask each other.
+- `bun run check:threads`: a temporary bot hands work to another with `lilbot_delegate` and the answer returns; a receiver hands
+  it on to a third from its hidden session; the engine API's legacy `threads/ask` still answers idempotently, with its limits.
 - `bun run check:delegation`: a temporary lead hands two tasks to two helpers in one call, one with a file; then it
   reads their status, redirects one mid-command and stops the other; the first answer returns once, with a file.
 - `bun run check:routines`: create from chat, a real file-writing run, open history, pause, restart, resume, delete.
