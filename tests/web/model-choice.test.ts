@@ -3,8 +3,8 @@ import type { ModelProvider } from '../../shared/bot-schema'
 import { modelFromKey, modelGroups, modelKey, modelLabel, modelPillView } from '../../web/src/bots/model-choice'
 
 const providers: ModelProvider[] = [
-  { provider: 'anthropic', name: 'Anthropic', models: ['claude-sonnet-5-5', 'claude-opus-5-5'] },
-  { provider: 'openrouter', name: 'OpenRouter', models: ['vendor/model::v2'] }
+  { provider: 'anthropic', name: 'Anthropic', models: ['claude-sonnet-5-5', 'claude-opus-5-5'], capabilities: [] },
+  { provider: 'openrouter', name: 'OpenRouter', models: ['vendor/model::v2'], capabilities: [] }
 ]
 
 test('a model survives the trip through its key, even with the separator in its name', () => {

@@ -10,15 +10,15 @@ import { BotService } from '../../server/bots/bot-service'
 import { BotStore } from '../../server/bots/bot-store'
 import { Workspaces } from '../../server/bots/workspaces'
 import { openDatabase } from '../../server/database/database'
-import type { BotEngine, EngineBotDetail, OpenChat } from '../../server/engines/bot-engine'
+import type { BotEngine, EngineBotDetail, OpenChat, SessionChange } from '../../server/engines/bot-engine'
 import { MemoryService } from '../../server/memory/memory-service'
 import { MemoryStore } from '../../server/memory/memory-store'
 import { ReviewQueue } from '../../server/memory/review-queue'
-import type { BotIdentity } from '../../shared/bot-schema'
+import type { BotIdentity, ModelProvider } from '../../shared/bot-schema'
 import type { ChatEvent } from '../../shared/chat-schema'
 import { LilBotError } from '../../shared/protocol'
 
-export const bot: BotIdentity = { id: 'b1', name: 'Bot One', function: '', model: null, isDefault: false, permissionMode: 'full-access' }
+export const bot: BotIdentity = { id: 'b1', name: 'Bot One', function: '', model: null, reasoningEffort: null, isDefault: false, permissionMode: 'full-access' }
 export const detail: EngineBotDetail = { ...bot, instructions: '', abilities: [], memoryConnected: false }
 
 export function fakeEngine(options: { earlyEvents?: ChatEvent[] } = {}) {
@@ -29,10 +29,18 @@ export function fakeEngine(options: { earlyEvents?: ChatEvent[] } = {}) {
   let chats = 0
   const reviews: string[] = []
   const failReviews = { value: false }
+  const models = { value: [] as ModelProvider[] }
+  const sessionChanges: { botId: string; chatId: string; change: SessionChange }[] = []
+  const failUpdates = { value: false }
+  /** The engine holds back every model switch for a confirmation, like a conversation of 100,000+ tokens. */
+  const holdModelSwitch = { value: false }
+  /** What each new session was asked to start with. */
+  const created: { chatId: string; reasoningEffort?: string }[] = []
   const runtimeIds = new Set(['b1'])
   const engine: BotEngine = {
     id: 'test',
     runRoutine: async (_botId, _prompt, options) => {
+      created.push({ chatId: `routine-${options.runId}`, reasoningEffort: options.reasoningEffort })
       options.onChat(`routine-${options.runId}`)
       return { status: 'completed', text: 'Done' }
     },
@@ -51,7 +59,13 @@ export function fakeEngine(options: { earlyEvents?: ChatEvent[] } = {}) {
       return { abilities: [], memoryConnected: false }
     },
     validateModel: async () => {},
-    listModels: async () => [],
+    listModels: async () => models.value,
+    updateSession: async (botId, chatId, change) => {
+      sessionChanges.push({ botId, chatId, change })
+      if (failUpdates.value) throw new LilBotError('engine_unavailable', 'The connection to Hermes is closed.')
+      if (holdModelSwitch.value && change.model) throw new LilBotError('confirm_required', 'The engine asks for a confirmation.')
+      return { effort: change.reasoningEffort === undefined ? null : change.reasoningEffort }
+    },
     onBotsChanged: () => () => {},
     refreshMemory: async () => [],
     reviewMemory: async (botId, prompt, reviewOptions) => {
@@ -66,6 +80,7 @@ export function fakeEngine(options: { earlyEvents?: ChatEvent[] } = {}) {
     },
     openChat: async (botId, chatId, chatOptions, onEvent): Promise<OpenChat> => {
       const id = chatId && stored.has(chatId) ? chatId : `chat-${++chats}`
+      if (!stored.has(id)) created.push({ chatId: id, reasoningEffort: chatOptions.reasoningEffort })
       stored.add(id)
       log.push(`open:${id}:${chatOptions.workspace.split('/').at(-1)}`)
       emitters.set(id, onEvent)
@@ -81,7 +96,20 @@ export function fakeEngine(options: { earlyEvents?: ChatEvent[] } = {}) {
       }
     }
   }
-  return { engine, runtimeIds, log, stored, reviews, failReviews, emit: (chatId: string, event: ChatEvent) => emitters.get(chatId)?.(event) }
+  return {
+    engine,
+    runtimeIds,
+    log,
+    stored,
+    reviews,
+    failReviews,
+    models,
+    sessionChanges,
+    failUpdates,
+    holdModelSwitch,
+    created,
+    emit: (chatId: string, event: ChatEvent) => emitters.get(chatId)?.(event)
+  }
 }
 
 export function fakeService(options?: Parameters<typeof fakeEngine>[0]) {

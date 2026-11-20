@@ -165,6 +165,7 @@ export class BotRuntimes {
       instructions: input.instructions,
       model: input.model ?? this.store.list().find(bot => bot.isDefault)?.model ?? null,
       isDefault: false,
+      reasoningEffort: null,
       permissionMode: input.permissionMode ?? 'full-access',
       engineId: this.engine.id,
       engineBotId: ''

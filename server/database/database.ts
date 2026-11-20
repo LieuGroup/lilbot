@@ -160,7 +160,9 @@ const migrations: string[] = [
    CREATE TABLE IF NOT EXISTS devices(id TEXT PRIMARY KEY, name TEXT NOT NULL, computer_id TEXT, created_at INTEGER NOT NULL, last_seen INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS message_origins(id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, text TEXT NOT NULL, device_id TEXT NOT NULL, device_name TEXT NOT NULL, at INTEGER NOT NULL, row_id TEXT);
    CREATE INDEX IF NOT EXISTS message_origins_pending ON message_origins(bot_id, at) WHERE row_id IS NULL;
-   CREATE UNIQUE INDEX IF NOT EXISTS message_origins_row ON message_origins(bot_id, row_id) WHERE row_id IS NOT NULL;`
+   CREATE UNIQUE INDEX IF NOT EXISTS message_origins_row ON message_origins(bot_id, row_id) WHERE row_id IS NOT NULL;`,
+  // The user's reasoning effort per bot; null follows the engine's default.
+  `ALTER TABLE bots ADD COLUMN reasoning_effort TEXT;`
 ]
 
 /** `path` may be ':memory:' for tests. Applies any migration steps the file has not seen. */

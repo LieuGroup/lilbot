@@ -89,6 +89,7 @@ test('unknown and deleted bots cannot read, write, forget or enqueue turns', asy
     function: '',
     instructions: '',
     model: null,
+    reasoningEffort: null,
     permissionMode: 'full-access' as const,
     isDefault: false,
     engineId: 'test',

@@ -45,9 +45,10 @@ const methods: Record<string, Uses> = {
   },
   'session.create': {
     table: 'x-canonical-methods',
-    sends: ['source', 'request_id', 'client', 'cwd', 'cwd_explicit', 'hidden', 'yolo', 'toolsets', 'model', 'provider'],
+    sends: ['source', 'request_id', 'client', 'cwd', 'cwd_explicit', 'hidden', 'yolo', 'toolsets', 'model', 'provider', 'reasoning'],
     reads: ['session_id', 'stored_session_id', 'running', 'execution_generation', 'info']
   },
+  // Operations `model` ({model, provider, reasoning}) and `reasoning` ({effort}); their payloads are not in the schema, so `check:reasoning` exercises both.
   'session.mutate': { table: 'x-canonical-methods', sends: ['session_id', 'request_id', 'expected_revision', 'expected_generation', 'operation', 'payload'], reads: ['revision'] },
   'session.transcript': { table: 'x-canonical-methods', sends: ['session_id', 'cursor', 'limit', 'order'], reads: ['rows', 'next_cursor', 'reset'] },
   'session.info': { table: 'x-canonical-methods', sends: ['session_id'], reads: ['system_prompt'] },
@@ -88,6 +89,7 @@ const events: Record<string, string[]> = {
   'tool.complete': ['tool_id', 'result'],
   'message.complete': ['status', 'text', 'usage'],
   'session.title': ['title'],
+  'session.info': ['model', 'provider', 'reasoning_effort', 'reasoning_effort_wire'],
   error: ['message'],
   'session.reclaimed': []
 }
@@ -123,8 +125,15 @@ describe.skipIf(!installed)('Hermes wire contract', () => {
     }
   })
 
-  test('model inventory declares the provider fields used for validation', () => {
-    expect(['slug', 'name', 'authenticated', 'models'].filter(key => !fields(contract.components.schemas.ModelOptionProvider).has(key))).toEqual([])
+  test('model inventory declares the provider fields used for validation and the per-model capabilities', () => {
+    const schemas = contract.components.schemas
+    expect(['slug', 'name', 'authenticated', 'models', 'capabilities'].filter(key => !fields(schemas.ModelOptionProvider).has(key))).toEqual([])
+    expect(['reasoning', 'can_disable_reasoning'].filter(key => !fields(schemas.ModelCapabilities).has(key))).toEqual([])
+  })
+
+  test('a session reports the effort it chose and the one it really sends', () => {
+    const info = fields(contract.components.schemas.CanonicalSnapshotInfo)
+    expect(['model', 'provider', 'reasoning_effort', 'reasoning_effort_wire'].filter(key => !info.has(key))).toEqual([])
   })
 
   test('attachment input fields remain declared', () => {

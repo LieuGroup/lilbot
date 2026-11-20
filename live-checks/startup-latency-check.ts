@@ -23,6 +23,7 @@ try {
         instructions: '',
         model: null,
         isDefault: false,
+        reasoningEffort: null,
         permissionMode: 'full-access'
       })
     )
@@ -40,6 +41,7 @@ try {
         instructions: '',
         model: null,
         isDefault: false,
+        reasoningEffort: null,
         permissionMode: 'full-access' as const,
         engineId: 'hermes',
         engineBotId: id

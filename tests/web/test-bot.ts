@@ -19,6 +19,7 @@ export function testBot(id: string, options: Options = {}): Bot {
     name: id,
     function: options.function ?? '',
     model: null,
+    reasoningEffort: null,
     permissionMode: 'full-access',
     isDefault: options.isDefault ?? false,
     isPrimary: options.isPrimary ?? false,

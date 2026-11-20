@@ -3,10 +3,10 @@ import type { ActivityEvent } from '../../../shared/activity-schema'
 import type { BotIdentity, BotModel } from '../../../shared/bot-schema'
 import type { ChatEvent } from '../../../shared/chat-schema'
 import { LilBotError } from '../../../shared/protocol'
-import type { ActivityCursor, BotEngine, ChatOptions, McpConnection, MemoryConnection, ReviewOptions, RuntimeBinding, RuntimeIdentity } from '../bot-engine'
+import type { ActivityCursor, BotEngine, ChatOptions, McpConnection, MemoryConnection, ReviewOptions, RuntimeBinding, RuntimeIdentity, SessionChange } from '../bot-engine'
 import { watchHermesActivity } from './hermes-activity'
 import { adapterHash, applied, hashOf } from './hermes-applied'
-import { botDetailFromProfile, botFromProfile, DEFAULT_PROFILE, providersFromModelOptions } from './hermes-bot-mapping'
+import { botDetailFromProfile, botFromProfile, DEFAULT_PROFILE, providersFromModelOptions, requireListedModel } from './hermes-bot-mapping'
 import { openChat } from './hermes-chat'
 import { configureComputers } from './hermes-computers'
 import { connectionPreparer } from './hermes-connections'
@@ -18,6 +18,7 @@ import { installMemory, legacyNotes, memoryConnection, memoryCurrent, memoryInst
 import { ensureFullAccess } from './hermes-permissions'
 import { runRoutine } from './hermes-routines'
 import { applyIdentity, createRuntime } from './hermes-runtime'
+import { updateSession } from './hermes-session-settings'
 import { configureSkills, userSkillPaths } from './hermes-skills'
 import { HermesSocket, managementConnection } from './hermes-socket'
 import { SpareSockets } from './hermes-spare-sockets'
@@ -164,15 +165,15 @@ export class HermesEngine implements BotEngine {
     await applied(id, 'skills', hashOf(adapterHash('skills-adapter'), settings, userSkillPaths(id)), () => configureSkills(id, settings, activate))
     this.skillSettings.set(id, key)
   }
-  async validateModel(model: BotModel): Promise<void> {
-    const providers = await this.listModels()
-    if (!providers.some(provider => provider.provider === model.provider && provider.models.includes(model.model))) {
-      throw new LilBotError('invalid_model', `Model "${model.model}" is not available from provider "${model.provider}". Choose an available model.`)
-    }
-  }
+  validateModel = async (model: BotModel) => requireListedModel(await this.listModels(), model)
 
   async listModels() {
     return providersFromModelOptions(await (await this.management.socket()).request('model.options'))
+  }
+
+  async updateSession(botId: string, chatId: string, change: SessionChange) {
+    await this.requireBot(botId)
+    return updateSession(botId, chatId, change)
   }
 
   async openChat(botId: string, chatId: string | null, options: ChatOptions, onEvent: (event: ChatEvent) => void) {

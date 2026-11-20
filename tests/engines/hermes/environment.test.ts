@@ -28,6 +28,7 @@ test('development creates prefixed native profiles; refuses binding and deletion
         function: '',
         instructions: '',
         model: null,
+        reasoningEffort: null,
         permissionMode: 'full-access',
         isDefault: false
       }

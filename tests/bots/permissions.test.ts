@@ -83,6 +83,7 @@ test('shipped deletion schema upgrades without changing tombstones or deletion d
       instructions: '',
       model: null,
       isDefault: false,
+      reasoningEffort: null,
       permissionMode: 'full-access',
       engineId: 'test',
       engineBotId: 'native'
@@ -91,7 +92,7 @@ test('shipped deletion schema upgrades without changing tombstones or deletion d
     store.markDeleted(store.get('deleted'), choices)
     store.setDeleteDefaults(choices)
     db.exec(
-      'DROP TABLE library_items; DROP TABLE computer_payloads; DROP TABLE computer_requests; DROP TABLE computer_bytes; DROP TABLE computer_nonces; DROP TABLE computer_codes; DROP TABLE computers; DROP TABLE thread_chats; DROP TABLE thread_deliveries; DROP TABLE threads; ALTER TABLE bot_prefs DROP COLUMN pinned_at; ALTER TABLE bot_prefs DROP COLUMN avatar_face_color; DROP TABLE skills; DROP TABLE skill_off; DROP TABLE skill_imports; DROP TABLE routine_chats; DROP TABLE routine_runs; DROP TABLE routines; ALTER TABLE bots DROP COLUMN permission_mode; DROP TABLE IF EXISTS history_search; DROP TABLE IF EXISTS history_items; DROP TABLE IF EXISTS history_sessions; DROP TABLE IF EXISTS history_events; DROP TABLE IF EXISTS history_imports; DROP TABLE IF EXISTS attachment_messages; DROP TABLE IF EXISTS attachments; PRAGMA user_version = 8'
+      'ALTER TABLE bots DROP COLUMN reasoning_effort; DROP TABLE library_items; DROP TABLE computer_payloads; DROP TABLE computer_requests; DROP TABLE computer_bytes; DROP TABLE computer_nonces; DROP TABLE computer_codes; DROP TABLE computers; DROP TABLE thread_chats; DROP TABLE thread_deliveries; DROP TABLE threads; ALTER TABLE bot_prefs DROP COLUMN pinned_at; ALTER TABLE bot_prefs DROP COLUMN avatar_face_color; DROP TABLE skills; DROP TABLE skill_off; DROP TABLE skill_imports; DROP TABLE routine_chats; DROP TABLE routine_runs; DROP TABLE routines; ALTER TABLE bots DROP COLUMN permission_mode; DROP TABLE IF EXISTS history_search; DROP TABLE IF EXISTS history_items; DROP TABLE IF EXISTS history_sessions; DROP TABLE IF EXISTS history_events; DROP TABLE IF EXISTS history_imports; DROP TABLE IF EXISTS attachment_messages; DROP TABLE IF EXISTS attachments; PRAGMA user_version = 8'
     )
     db.close()
     const upgraded = openDatabase(path)
@@ -99,7 +100,7 @@ test('shipped deletion schema upgrades without changing tombstones or deletion d
     expect(restored.list()).toEqual([])
     expect(restored.deleted('deleted')).toMatchObject({ bot: { name: 'Remembered', permissionMode: 'full-access' }, choices })
     expect(restored.deleteDefaults()).toEqual(choices)
-    expect(upgraded.query('PRAGMA user_version').get()).toEqual({ user_version: 24 })
+    expect(upgraded.query('PRAGMA user_version').get()).toEqual({ user_version: 25 })
     upgraded.close()
   } finally {
     rmSync(root, { recursive: true, force: true })

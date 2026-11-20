@@ -67,6 +67,7 @@ test('ticks discard even single turns of unknown or deleted bots while preservin
     function: '',
     instructions: '',
     model: null,
+    reasoningEffort: null,
     permissionMode: 'full-access' as const,
     isDefault: false,
     engineId: 'fake',

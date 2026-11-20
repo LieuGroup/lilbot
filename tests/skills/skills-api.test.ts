@@ -17,7 +17,18 @@ test('skill preparation uses only bound live bots and Setup reports saved off sw
   const db = openDatabase(':memory:')
   try {
     const store = new BotStore(db)
-    store.save({ id: 'a', engineId: 'test', engineBotId: 'native-a', name: 'A', function: '', instructions: '', model: null, isDefault: false, permissionMode: 'full-access' })
+    store.save({
+      id: 'a',
+      engineId: 'test',
+      engineBotId: 'native-a',
+      name: 'A',
+      function: '',
+      instructions: '',
+      model: null,
+      reasoningEffort: null,
+      isDefault: false,
+      permissionMode: 'full-access'
+    })
     store.import('test', [])
     const configured: string[] = []
     const engine = {

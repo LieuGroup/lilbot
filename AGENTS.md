@@ -240,7 +240,7 @@ What a bot is and who owns each part.
 
 | Part | Owner | Where it lives |
 |---|---|---|
-| Identity (name, function), instructions, model, permission mode, engine binding | LilBot | `bots` table in LilBot's database |
+| Identity (name, function), instructions, model, reasoning effort, permission mode, engine binding | LilBot | `bots` table in LilBot's database |
 | Skills and per-bot skill switches | LilBot | shared skills library and SQLite |
 | Tools and MCP connectors | the engine, except LilBot's own two connections: T3 Code and the system server | Hermes profile; defined in `server/connections/` and `server/system/` |
 | Workspace: one folder per bot on the shared computer | the bot | `~/lilbot/workspaces/<bot id>`, the working directory of its chats |
@@ -300,6 +300,25 @@ What a bot is and who owns each part.
 - Identity is imported once, then LilBot wins on mismatch. Model edits are checked against the engine's available
   models before anything is saved, also when repairing a bot with an invalid saved model; unsupported permission
   modes fail before saving. Accepted edits are saved in the database before they are applied to the runtime.
+- Model and reasoning effort (`bots/bot-session-settings.ts`, details in [docs/hermes-engine.md](docs/hermes-engine.md)):
+  the effort is `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` or unset (the engine's default; `ultra` is
+  not offered). It is saved with the bot, one per bot, kept as chosen when the model changes, and an unknown level is
+  refused before saving. `models.list` keeps `models` and adds `capabilities` per model (`reasoning`,
+  `canDisableReasoning`: null when the engine does not say, so hide "Off" only for false).
+  - An edit to model or effort is saved, then applied to the bot's main conversation with `session.mutate`
+    (`BotEngine.updateSession`), so it takes effect from the next message, also while a turn runs: the running turn
+    finishes as it was. Edits to one bot run in order. An effort for a model that does not reason stays saved and is not sent.
+  - Every session LilBot creates for the bot starts with its effort: chats, routine runs and bot threads (a session that is
+    resumed keeps its own). The memory review keeps its own model and gets none.
+  - `effectiveReasoningEffort` on the bot is what the engine says it sends for the main conversation (null: none). It is
+    kept in memory from the session when a chat opens, after an edit and from `session.info` events, never read on demand,
+    and absent until the engine has reported it. Null cannot tell "off" from the engine's default (both are sent as no
+    level): read it with `reasoningEffort`.
+  - The engine can hold a conversation's switch back (a conversation of 100,000+ tokens, an expensive model, a data
+    policy) until its own confirmation: `bots.update` then answers `confirm_required` after saving (the same edit's
+    effort still applies), the choice stays saved for new conversations and the conversation keeps its model. That
+    refusal is not retried by later edits. The engine's confirmation token is not declared in its contract,
+    so LilBot does not use it. The first message after a switch has no prompt cache.
 - `server/database/database.ts` owns the schema as an ordered list of migration steps: add a step, never edit a
   shipped one. Each store file owns the SQL of its tables. Default file `~/.local/share/lilbot/lilbot.db`
   (`LILBOT_DATA_DIR`). SQLite connections wait up to five seconds for short locks.
@@ -883,6 +902,10 @@ profiles, isolated directories, cleanup in `finally`. Most cost a few model call
 - `bun run deploy` (`--status`, `--bootstrap`): see Deploy. `bun run t3:sign-in`: redeem a T3 pairing code from stdin
   or `--code-file`, into `LILBOT_DATA_DIR`. `bun run build:helper`: build the computer helper.
 - `bun run check:live`: a temporary bot with a throwaway memory endpoint chats, stops, resumes and is deleted.
+- `bun run check:reasoning`: on an isolated server, the effort is readable before a message, a model and effort edit applies
+  from the next message (between turns and mid-turn, with the earlier context kept), and a routine run and a bot thread
+  start with the bot's effort. `bun run check:model-switch`: a switch to a smaller window compacts first and the
+  save-before-compress hook runs; a switch of a 100,000+ token conversation is refused with `confirm_required`.
 - `bun run check:memory`: tells a temporary bot facts and checks a new session knows them; prints tokens per turn.
   Inherited memory is disconnected before the baseline turn.
 - `bun run check:history`: continuous history, paging and search, tool lines after reload and new session, repair of

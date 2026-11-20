@@ -1,5 +1,6 @@
 /** Legacy identity import and runtime capabilities from Hermes profiles. */
-import type { Ability, BotIdentity, ModelProvider } from '../../../shared/bot-schema'
+import type { Ability, BotIdentity, BotModel, ModelCapability, ModelProvider } from '../../../shared/bot-schema'
+import { LilBotError } from '../../../shared/protocol'
 import type { EngineBotDetail } from '../bot-engine'
 
 export const DEFAULT_PROFILE = 'default'
@@ -17,6 +18,7 @@ export function botFromProfile(profile: Record<string, any>): BotIdentity {
     name: displayName(profile),
     function: text(profile.description),
     model: profile.model ? { provider: text(profile.provider), model: text(profile.model) } : null,
+    reasoningEffort: null,
     permissionMode: 'full-access',
     isDefault: profile.is_default === true
   }
@@ -45,9 +47,26 @@ export function providersFromModelOptions(result: Record<string, any>): ModelPro
   const providers: any[] = Array.isArray(result.providers) ? result.providers : []
   return providers
     .filter(provider => provider.authenticated === true && Array.isArray(provider.models) && provider.models.length > 0)
-    .map(provider => ({
-      provider: text(provider.slug),
-      name: text(provider.name) || text(provider.slug),
-      models: provider.models.filter((model: unknown) => typeof model === 'string')
-    }))
+    .map(provider => {
+      const models: string[] = provider.models.filter((model: unknown) => typeof model === 'string')
+      return {
+        provider: text(provider.slug),
+        name: text(provider.name) || text(provider.slug),
+        models,
+        capabilities: models.map(id => capabilityOf(id, provider.capabilities?.[id]))
+      }
+    })
+}
+
+/** A model the engine reports nothing about is taken to think: the engine adapts a level it cannot use. */
+const capabilityOf = (id: string, capability: Record<string, unknown> | undefined): ModelCapability => ({
+  id,
+  reasoning: capability?.reasoning !== false,
+  canDisableReasoning: typeof capability?.can_disable_reasoning === 'boolean' ? capability.can_disable_reasoning : null
+})
+
+export function requireListedModel(providers: ModelProvider[], model: BotModel) {
+  if (!providers.some(provider => provider.provider === model.provider && provider.models.includes(model.model))) {
+    throw new LilBotError('invalid_model', `Model "${model.model}" is not available from provider "${model.provider}". Choose an available model.`)
+  }
 }

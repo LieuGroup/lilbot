@@ -117,3 +117,23 @@ test('restart during a running delivery recovers its terminal receipt and transc
   expect(connections).toBe(2)
   expect(recovered).toMatchObject({ status: 'completed', text: 'Done once', items: [{ kind: 'tool' }, { kind: 'assistant', text: 'Done once' }] })
 })
+
+test('a routine session is created with the bot’s reasoning effort, and without one when there is none', async () => {
+  const created: any[] = []
+  const connect = async () =>
+    ({
+      request: async (method: string, params: any) => {
+        if (method === 'config.get') return { value: 'off' }
+        if (method === 'session.create') created.push(params)
+        if (method === 'session.create') return { session_id: 'live', stored_session_id: 'stored' }
+        if (method === 'prompt.submit') return { admission_id: 'receipt' }
+        if (method === 'prompt.receipt') return { status: 'terminal', outcome: 'completed' }
+        return { display_messages: [] }
+      },
+      close: () => {}
+    }) as unknown as HermesSocket
+  await runRoutine('native-id', 'task', { workspace: '/test', runId: 'one', reasoningEffort: 'xhigh', onChat: () => {} }, connect)
+  await runRoutine('native-id', 'task', { workspace: '/test', runId: 'two', onChat: () => {} }, connect)
+  expect(created[0].reasoning).toBe('xhigh')
+  expect('reasoning' in created[1]).toBe(false)
+})

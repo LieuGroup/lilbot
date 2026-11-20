@@ -18,6 +18,7 @@ try {
   nativeId = await engine.createRuntime({
     id: crypto.randomUUID(),
     model: { provider: 'cliproxyapi', model: 'anthropic/claude-sonnet-5-5' },
+    reasoningEffort: null,
     permissionMode: 'full-access',
     isDefault: false,
     name: 'Attachments live check',

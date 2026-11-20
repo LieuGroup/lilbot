@@ -12,6 +12,11 @@ export type PermissionMode = z.infer<typeof PermissionMode>
 export const BotModel = z.object({ provider: z.string(), model: z.string() })
 export type BotModel = z.infer<typeof BotModel>
 
+/** How hard a bot's model thinks. `none` turns thinking off. A bot with no effort follows the engine's default.
+ *  `ultra` is left out: no provider accepts it. */
+export const ReasoningEffort = z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
+export type ReasoningEffort = z.infer<typeof ReasoningEffort>
+
 /** A bot’s durable identity. */
 export const BotIdentity = z.object({
   id: z.string(),
@@ -19,6 +24,8 @@ export const BotIdentity = z.object({
   /** What the bot is for, in a sentence or two. */
   function: z.string(),
   model: BotModel.nullable(),
+  /** The user's choice, kept as chosen when the model changes. Null: the engine's default. */
+  reasoningEffort: ReasoningEffort.nullable().default(null),
   permissionMode: PermissionMode.default('full-access'),
   /** The engine's built-in main bot; it cannot be deleted. */
   isDefault: z.boolean()
@@ -48,7 +55,10 @@ export const Bot = BotIdentity.extend({
   activity: BotActivity.optional(),
   prefs: BotPrefs,
   /** The bot's own folder on the shared computer; its chats work there. */
-  workspace: z.string()
+  workspace: z.string(),
+  /** The level the engine really sends for the main conversation, which may differ from `reasoningEffort`
+   *  (the engine adapts a level the model does not take). Null: none is sent. Absent until the engine has reported it. */
+  effectiveReasoningEffort: z.string().nullable().optional()
 })
 export type Bot = z.infer<typeof Bot>
 
@@ -89,6 +99,8 @@ export const BotUpdateInput = z.object({
   function: botFunction.optional(),
   instructions: instructions.optional(),
   model: BotModel.optional(),
+  /** Null goes back to the engine's default. */
+  reasoningEffort: ReasoningEffort.nullable().optional(),
   permissionMode: PermissionMode.optional()
 })
 export type BotUpdateInput = z.infer<typeof BotUpdateInput>
@@ -107,5 +119,9 @@ export type Section = z.infer<typeof Section>
 
 export const sectionName = z.string().trim().min(1, 'Give the section a name.').max(40)
 
-export const ModelProvider = z.object({ provider: z.string(), name: z.string(), models: z.array(z.string()) })
+/** What the engine says one model can do. `canDisableReasoning` is null when the engine does not say: hide "Off" only when false. */
+export const ModelCapability = z.object({ id: z.string(), reasoning: z.boolean(), canDisableReasoning: z.boolean().nullable() })
+export type ModelCapability = z.infer<typeof ModelCapability>
+
+export const ModelProvider = z.object({ provider: z.string(), name: z.string(), models: z.array(z.string()), capabilities: z.array(ModelCapability) })
 export type ModelProvider = z.infer<typeof ModelProvider>

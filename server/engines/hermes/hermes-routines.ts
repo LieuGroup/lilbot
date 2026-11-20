@@ -23,7 +23,8 @@ export async function runRoutine(botId: string, prompt: string, options: Routine
           request_id: `routine-${options.runId}`,
           client: { name: 'lilbot', version: '0.2.0' },
           cwd: options.workspace,
-          cwd_explicit: true
+          cwd_explicit: true,
+          ...(options.reasoningEffort ? { reasoning: options.reasoningEffort } : {})
         })
     // Both identities are persisted before the prompt can run (also excludes memory reviews).
     for (const id of new Set([session.stored_session_id, session.session_id])) if (typeof id === 'string') options.onChat(id)
