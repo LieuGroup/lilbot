@@ -1,6 +1,7 @@
 /** What a bot's model and reasoning effort mean for its conversations: the effort a new session starts with, what an edit does to
  *  the open main conversation, and the level the engine says it really sends there. */
 import type { BotModel, BotUpdateInput, ModelProvider, ReasoningEffort } from '../../shared/bot-schema'
+import { LilBotError } from '../../shared/protocol'
 import type { BotEngine, SessionChange } from '../engines/bot-engine'
 import type { BotPrefsStore } from './bot-prefs-store'
 import type { BotRecord } from './bot-store'
@@ -60,7 +61,13 @@ export class SessionSettings {
         this.unapplied.delete(bot.id)
         if (result) this.noteEffective(bot.id, result.effort)
       } catch (error) {
-        this.unapplied.add(bot.id)
+        // A switch the engine holds back is an answer, not a failure to retry: the choice stays saved and the level still applies.
+        if (error instanceof LilBotError && error.code === 'confirm_required') {
+          if (change.model && change.reasoningEffort !== undefined)
+            await this.engine
+              .updateSession(bot.engineBotId, chatId, { reasoningEffort: change.reasoningEffort })
+              .then(result => result && this.noteEffective(bot.id, result.effort))
+        } else this.unapplied.add(bot.id)
         throw error
       }
     }

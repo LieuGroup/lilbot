@@ -311,10 +311,12 @@ What a bot is and who owns each part.
     resumed keeps its own). The memory review keeps its own model and gets none.
   - `effectiveReasoningEffort` on the bot is what the engine says it sends for the main conversation (null: none). It is
     kept in memory from the session when a chat opens, after an edit and from `session.info` events, never read on demand,
-    and absent until the engine has reported it.
+    and absent until the engine has reported it. Null cannot tell "off" from the engine's default (both are sent as no
+    level): read it with `reasoningEffort`.
   - The engine can hold a conversation's switch back (a conversation of 100,000+ tokens, an expensive model, a data
-    policy) until its own confirmation: `bots.update` then answers `confirm_required`, the choice stays saved for new
-    conversations and the conversation keeps its model. The engine's confirmation token is not declared in its contract,
+    policy) until its own confirmation: `bots.update` then answers `confirm_required` after saving (the same edit's
+    effort still applies), the choice stays saved for new conversations and the conversation keeps its model. That
+    refusal is not retried by later edits. The engine's confirmation token is not declared in its contract,
     so LilBot does not use it. The first message after a switch has no prompt cache.
 - `server/database/database.ts` owns the schema as an ordered list of migration steps: add a step, never edit a
   shipped one. Each store file owns the SQL of its tables. Default file `~/.local/share/lilbot/lilbot.db`

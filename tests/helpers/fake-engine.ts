@@ -32,6 +32,8 @@ export function fakeEngine(options: { earlyEvents?: ChatEvent[] } = {}) {
   const models = { value: [] as ModelProvider[] }
   const sessionChanges: { botId: string; chatId: string; change: SessionChange }[] = []
   const failUpdates = { value: false }
+  /** The engine holds back every model switch for a confirmation, like a conversation of 100,000+ tokens. */
+  const holdModelSwitch = { value: false }
   /** What each new session was asked to start with. */
   const created: { chatId: string; reasoningEffort?: string }[] = []
   const runtimeIds = new Set(['b1'])
@@ -61,6 +63,7 @@ export function fakeEngine(options: { earlyEvents?: ChatEvent[] } = {}) {
     updateSession: async (botId, chatId, change) => {
       sessionChanges.push({ botId, chatId, change })
       if (failUpdates.value) throw new LilBotError('engine_unavailable', 'The connection to Hermes is closed.')
+      if (holdModelSwitch.value && change.model) throw new LilBotError('confirm_required', 'The engine asks for a confirmation.')
       return { effort: change.reasoningEffort === undefined ? null : change.reasoningEffort }
     },
     onBotsChanged: () => () => {},
@@ -103,6 +106,7 @@ export function fakeEngine(options: { earlyEvents?: ChatEvent[] } = {}) {
     models,
     sessionChanges,
     failUpdates,
+    holdModelSwitch,
     created,
     emit: (chatId: string, event: ChatEvent) => emitters.get(chatId)?.(event)
   }

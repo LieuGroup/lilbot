@@ -100,6 +100,34 @@ try {
     `edit returned in ${took} ms mid-turn; running turn finished on ${SONNET.model} with effort ${during}; effort became ${after} at the turn's end; the next message ran on ${next.model}`
   )
 
+  // An effort alone during a turn is held the same way: the running turn keeps its level, the next one gets the new level.
+  const slow = server.events.length
+  await server.call('chat.send', { chatId: main.chatId, text: 'Run the shell command `sleep 14` in the terminal and then reply with just DONE.' })
+  await waitFor(
+    'tool start',
+    async () => server.events.slice(slow),
+    f => f.some(e => e.chatId === main.chatId && e.data?.type === 'tool.started'),
+    60_000
+  )
+  const before = (await engineView(native, main.chatId)).reasoning_effort_wire
+  await server.call('bots.update', { botId: a.id, reasoningEffort: 'xhigh' })
+  const running = (await engineView(native, main.chatId)).reasoning_effort_wire
+  assert.equal(running, before, 'the running turn changed its effort')
+  await waitFor(
+    'turn end',
+    async () => server.events.slice(slow),
+    f => f.some(e => e.chatId === main.chatId && e.data?.type === 'turn.finished'),
+    180_000
+  )
+  const ended = await waitFor(
+    'effort at the turn boundary',
+    async () => (await server.call('bots.get', { botId: a.id })).effectiveReasoningEffort,
+    v => v === 'xhigh',
+    15_000
+  )
+  assert.equal((await engineView(native, main.chatId)).reasoning_effort_wire, ended)
+  say(`effort-only edit during a turn was accepted, the running turn kept ${before}, and ${ended} applied from the turn's end`)
+
   // New sessions made afterwards: a routine run and a bot thread.
   const db = openDatabase(join(server.root, 'lilbot.db'))
   const s = await server.createBot('Effort sender', instructions)
