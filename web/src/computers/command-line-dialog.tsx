@@ -11,6 +11,7 @@ import { installCommand } from './install-command'
 interface Minted {
   code: string
   expiresAt: number
+  helperUrl?: string
 }
 
 /** "Add by command line": name the machine, get the one-time command. The code exists only in this
@@ -56,9 +57,9 @@ function Body({ onClose }: { onClose: () => void }) {
   }, [expired])
 
   async function copy() {
-    if (!minted) return
+    if (!minted?.helperUrl) return
     try {
-      await navigator.clipboard.writeText(installCommand(minted.code))
+      await navigator.clipboard.writeText(installCommand(minted.code, minted.helperUrl))
       setCopied('Copied')
     } catch {
       setCopied('Could not copy')
@@ -94,9 +95,10 @@ function Body({ onClose }: { onClose: () => void }) {
           </Button>
         )}
       </form>
-      {minted && (
+      {minted && !minted.helperUrl && <Notice tone="error">This LilBot has no helper address set up, so it cannot give a command. Set LILBOT_HELPER_URL first.</Notice>}
+      {minted?.helperUrl && (
         <div className="flex items-start gap-2.5 rounded-[10px] bg-background p-3">
-          <code className="min-w-0 flex-1 font-mono text-xs/[18px] break-all">{installCommand(minted.code)}</code>
+          <code className="min-w-0 flex-1 font-mono text-xs/[18px] break-all">{installCommand(minted.code, minted.helperUrl)}</code>
           <button
             type="button"
             onClick={copy}

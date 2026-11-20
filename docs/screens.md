@@ -51,8 +51,7 @@ choices as the delete dialog, saved at once with `bots.deleteDefaults.set`. Gene
 
 ## Computers (`web/src/computers/`, Paper "12 Computers", lazy page of Settings)
 
-- Title row: "Computers" and the ink "Add this computer" button. Until the browser flow (#60) exists the button opens a
-  "Coming soon" note.
+- Title row: "Computers" and the ink "Add this computer" button, which opens the dialog below.
 - One card (`bg-background`, 12 radius, hairline dividers), one row per machine, the leader first: 8px dot (`success`
   online, `foreground/20` offline, `destructive` key conflict), name 13/500, a 12px line (`computer-rows.ts`: "Linux ·
   where LilBot runs · online", "macOS · offline · last seen 2 hours ago", the red key-conflict sentence) and Remove
@@ -60,6 +59,18 @@ choices as the delete dialog, saved at once with `bots.deleteDefaults.set`. Gene
   `computers.changed`; the page's 30-second tick keeps "last seen" counting.
 - Under the card: "Every bot can use every computer here. Offline machines pick up queued work when they wake." At the
   bottom, the link "Add a machine without a screen…".
+- Add this computer (`add-computer-dialog.tsx`, 400px, lazy; the steps are `add-step-*.tsx`, the flow is
+  `use-add-attempt.ts`, the screen for each state is `add-phase.ts`). Step 1: Name (prefilled "Mac" or "Linux
+  computer", the browser cannot know the host name) and Download, with "For Apple silicon Macs" style build line;
+  nothing is minted before Download. Step 2: "Open the installer" names the downloaded file, a spinner row with the time
+  left, "Download again". The page tries the loopback hand-over (`helper-handover.ts`) and polls status. Step 3: green
+  check, "<name> is connected", Done. After about 30 s without a helper it shows "Still waiting for the helper" with the
+  short code and Copy, the time left, Download again, and "Open LilBot Helper" when the build answers
+  `lilbot-helper://` links (the link, which holds the code, is never rendered). After 10 minutes: "This attempt ran
+  out" with Start again. On a system that is not macOS or Linux (the page decides at open, nothing minted) or when the
+  server says `supported: false`: "This device can't be added" (or "Not ready yet" for `unavailable`, not in the
+  prototype) and "Add by command line instead", which opens the dialog below. The code appears only in the
+  not-detected state and the command-line dialog; it is dropped once the helper registers or the attempt ends.
 - Add by command line (`command-line-dialog.tsx`, 432px): a name field and "Create command"; the code is minted only
   then (`computers.installCode`), shown inside `printf '%s' '<code>' | ./lilbot-helper install <helper door>`
   (`install-command.ts`) with Copy and "Valid for m:ss more". When it runs out the page drops the code and says so. The
