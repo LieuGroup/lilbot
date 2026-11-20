@@ -146,7 +146,7 @@ try {
     180_000
   )
   const routineInfo = await engineView(native, run.chatId, 'tool')
-  assert.equal(routineInfo.reasoning_effort, 'minimal')
+  assert.equal(routineInfo.reasoning_effort, 'xhigh')
   const senderChat = await server.call('chat.open', { botId: s.id })
   const delivery = new ThreadStore(db).accept(
     { id: s.id, name: 'Effort sender' },
@@ -161,7 +161,7 @@ try {
   )
   const threadInfo = await engineView([...server.natives].at(-1)!, threadChat.chatId, 'tool')
   assert.equal(threadInfo.reasoning_effort, 'medium')
-  say(`routine run session sent effort ${routineInfo.reasoning_effort} (bot's choice: minimal); thread session sent ${threadInfo.reasoning_effort} (bot's choice: medium)`)
+  say(`routine run session sent effort ${routineInfo.reasoning_effort} (bot's choice: xhigh); thread session sent ${threadInfo.reasoning_effort} (bot's choice: medium)`)
   db.close()
 } finally {
   watching?.close()
