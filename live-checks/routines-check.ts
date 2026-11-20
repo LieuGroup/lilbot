@@ -57,7 +57,7 @@ try {
     name: `Routine check ${Date.now()}`,
     function: 'Test schedules',
     instructions:
-      'This is an isolated LilBot test. Use create_routine for schedules, never cronjob. The test server permits 3-second intervals. For requests from Oscar set createdBy=oscar; for your own idea use bot. Do not ask for confirmation. Follow the exact schedule requested. Routine executions must do the file work and never create another routine.'
+      'This is an isolated LilBot test. Schedule work with LilBot routines, never cronjob. The test server permits 3-second intervals. For requests from Oscar set createdBy=oscar; for your own idea use bot. Do not ask for confirmation. Follow the exact schedule requested. Routine executions must do the file work and never create another routine.'
   })
   db = new Database(join(root, 'lilbot.db'))
   db.exec('PRAGMA busy_timeout = 5000')
@@ -73,6 +73,9 @@ try {
   )
   const routine = routines[0]
   assert.equal(routine.createdBy, 'oscar')
+  const usedTool = (tool: string) => (db!.query('SELECT COUNT(*) AS n FROM system_changes WHERE bot_id = ? AND tool = ?').get(bot.id, tool) as { n: number }).n
+  const scheduled = usedTool('lilbot_routine')
+  assert.ok(scheduled >= 1, 'the bot scheduled it through its lilbot_routine tool')
   assert.equal(routine.schedule.seconds, 3)
   const completed = await waitFor(
     () => call('routines.list', { botId: bot.id }),
@@ -137,6 +140,7 @@ try {
     () => call('routines.list', { botId: bot.id }),
     rows => rows.some((r: any) => r.createdBy === 'bot')
   )
+  assert.ok(usedTool('lilbot_routine') > scheduled, 'the bot made its own routine through lilbot_routine too')
   for (const own of autonomous) await call('routines.delete', { botId: bot.id, id: own.id })
   console.log('ok: bot chose a self-created routine, marked bot; restart, resume and deletion verified')
 } finally {

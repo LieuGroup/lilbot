@@ -234,8 +234,9 @@ error pages and answer errors with a plain 500.
 - **Engine API** (`server/http/engine-api.ts`, `/engine/*` on the private listener): for engine plug-ins on this
   machine. Loopback only, no browsers, token from `<data>/engine-token`. A plug-in acts as one bot through the
   bot-bound capability in its profile settings: the server takes the caller from that capability, ignores bot ids in
-  request bodies, and refuses unknown and deleted bots, including the bot behind a creation capability. Every bot
-  tool (memory, `create_bot`, routines, threads, library, skills, computers, conversation search) goes through it;
+  request bodies, and refuses unknown and deleted bots, including the bot behind a creation capability. The bot
+  tools still on the plug-ins (memory, library, skills, computers, conversation search) go through it, and so do the
+  routes kept for sessions that loaded an older adapter (`bots/create`, `routines/*`, `threads/*`);
   the T3 bridge and LilBot's own MCP server use their own per-bot keys (see Coding and System).
 - **Cloudflare:** both public names run through LilBot's own `lilbot-connect` tunnel. `~/.cloudflared/cert.pem` lets
   agents manage LilBot's own DNS names and tunnels; touch only LilBot's own tunnels and names, the account holds
@@ -269,7 +270,7 @@ What a bot is and who owns each part.
   moves the mark. The roster puts it first; app entry opens its conversation. Bots answer whoever gave them the work:
   Oscar in that chat, another bot in their shared thread. Nothing routes to the primary automatically; extra
   knowledge for the primary is not decided.
-- Any bot creates bots when asked (`create_bot`, `lilbot_bot_create`): LilBot ignores caller ids and models in the
+- Any bot creates bots when asked (`lilbot_bot_create`; the plug-in's `create_bot` ended with adapter 0.11.0): LilBot ignores caller ids and models in the
   arguments. The caller writes the instructions and function; the new bot inherits its model. Request ids prevent duplicate creation, including concurrent retries and server restarts. The bot appears at
   once; a hidden first prompt starts its main conversation with its own greeting and task suggestions, which normal
   activity observation marks unread. The caller returns a link. The app's create form stays available.
@@ -796,7 +797,7 @@ and how to add a tool: [docs/system-mcp.md](docs/system-mcp.md).
   refused. Tools are prefixed `lilbot_`.
 - Each tool calls the service function the screen uses, so rules, checks and `bots.changed` pushes are identical, and each
   change is logged with the calling bot. There are no destructive tools: deleting a bot, removing a computer and
-  forgetting another bot's private facts are Oscar's to do. The one exception is a bot deleting its own webhooks.
+  forgetting another bot's private facts are Oscar's to do. The exceptions are a bot deleting its own webhooks and its own routines.
 - A release that changes a tool reconnects every bot once; an unchanged restart applies nothing. Tests fail when the tool
   list or a guide (`server/system/guide/*.md`, shipped with each release) drifts.
 
@@ -986,7 +987,11 @@ independent.
 - A schedule is an interval in seconds, daily at HH:MM, or weekly on a local weekday at HH:MM. Calendar schedules
   default to `Australia/Adelaide` and store an IANA zone. DST gaps skip that day's missing time; repeated times run at
   their first occurrence only.
-- Bot tools: `create_routine`, `list_routines`, `pause_routine`, `resume_routine`, `delete_routine`. `createdBy:
+- Bot tools (LilBot's MCP server, the caller's own routines only): `lilbot_routine` (`action`: create, pause, resume,
+  delete) and `lilbot_routines_list` (the latest five runs of each routine, results cut to 500 characters). Two tools,
+  not five: two listing lines a turn instead of five (#113). The plug-in's `create_routine`, `list_routines`,
+  `pause_routine`, `resume_routine` and `delete_routine` ended with adapter 0.11.0; the engine API's `routines/*` stay
+  only for sessions that loaded an older one. `createdBy:
   oscar` means the bot acts on an explicit request, `bot` its own initiative (attribution trusts the bot, not a
   security boundary). A bot may self-create at most five, paused included; the minimum interval is five minutes for
   all. Repeating a create request id returns the original; deletion leaves a tombstone against resurrection.

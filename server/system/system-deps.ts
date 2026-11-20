@@ -6,6 +6,7 @@ import type { BotStore } from '../bots/bot-store'
 import type { Workspaces } from '../bots/workspaces'
 import type { ComputerService } from '../computers/computer-service'
 import type { MemoryService } from '../memory/memory-service'
+import type { RoutineService } from '../routines/routine-service'
 import type { DelegationControl } from '../threads/delegation-control'
 import type { DelegationService } from '../threads/delegation-service'
 import type { GroupService } from '../threads/group-service'
@@ -31,6 +32,7 @@ export interface SystemDeps extends SystemFacts {
   /** Handing work to one bot, and working together in temporary groups. */
   delegation: { hand: DelegationService; control: DelegationControl; groups: GroupService }
   work: WorkService
+  routines: RoutineService
   webhooks: WebhookService
   changes: SystemChanges
   dataDir: string

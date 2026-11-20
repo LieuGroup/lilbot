@@ -31,6 +31,8 @@ const EXPECTED_TOOLS = [
   'lilbot_group',
   'lilbot_work',
   'lilbot_work_list',
+  'lilbot_routine',
+  'lilbot_routines_list',
   'lilbot_webhook_create',
   'lilbot_webhooks_list',
   'lilbot_webhook_pause',
@@ -79,7 +81,7 @@ test('the handshake answers like an MCP server and lists exactly the agreed tool
   expect(unknown.code).toBe(-32601)
 })
 
-test("nothing destructive is offered: no delete, remove or forget of bots, computers or facts; only the bot's own webhooks", async () => {
+test("nothing destructive is offered: no delete, remove or forget of bots, computers or facts; only the bot's own webhooks and routines", async () => {
   const f = systemFixture()
   const names = f.tools.map(tool => tool.name)
   expect(names.filter(name => /delete|remove|forget|destroy|revoke/.test(name))).toEqual(['lilbot_delete_defaults_get', 'lilbot_delete_defaults_set', 'lilbot_webhook_delete'])

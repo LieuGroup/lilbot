@@ -2,6 +2,8 @@
 import { Workspaces } from '../../server/bots/workspaces'
 import type { ComputerService } from '../../server/computers/computer-service'
 import { connectionKey } from '../../server/connections/connection-keys'
+import { RoutineService } from '../../server/routines/routine-service'
+import { RoutineStore } from '../../server/routines/routine-store'
 import { SystemChanges } from '../../server/system/system-changes'
 import { SYSTEM_KEY_PURPOSE } from '../../server/system/system-connection'
 import { createSystemServer } from '../../server/system/system-server'
@@ -38,6 +40,13 @@ export function systemFixture() {
     runRoutine: fake.service.runRoutine.bind(fake.service),
     folder: (id: string) => workspaces.ensure(id)
   }
+  const routines = new RoutineService(
+    new RoutineStore(fake.database),
+    fake.service,
+    () => {},
+    undefined,
+    () => 1_700_000_000_000
+  )
   const work = workFixture({ database: fake.database, requireBot: id => fake.service.requireBot(id) })
   const threads = new ThreadService(new ThreadStore(fake.database), host, undefined, undefined, undefined, groupHostFor(fake.root, work.links).host)
   const server = createSystemServer({
@@ -52,6 +61,7 @@ export function systemFixture() {
     memoryChanged: () => state.memoryPushes++,
     delegation: { hand: new DelegationService(threads, host, async botId => `${botId}-main`, work.links), control: new DelegationControl(threads, host), groups: threads.groups! },
     work: work.work,
+    routines,
     webhooks,
     changes,
     dataDir: fake.root,
@@ -75,7 +85,7 @@ export function systemFixture() {
     const text: string = result.content[0].text
     return result.isError ? { error: text } : { data: JSON.parse(text) }
   }
-  return { ...fake, ...server, state, changes, threads, work, webhooks, rosterPushes: fake.changes, request, as, rpc, call }
+  return { ...fake, ...server, state, changes, threads, work, routines, webhooks, rosterPushes: fake.changes, request, as, rpc, call }
 }
 
 /** A second bot in the roster. */

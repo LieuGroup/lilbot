@@ -129,7 +129,7 @@ try {
 
   const made = await ask(
     a.id,
-    'Use your lilbot_bot_create tool (not create_bot) to create a bot named "System C" with function "Check helper" and instructions "Reply briefly." Reply DONE_CREATE and its link.'
+    'Use your lilbot_bot_create tool to create a bot named "System C" with function "Check helper" and instructions "Reply briefly." Reply DONE_CREATE and its link.'
   )
   assert.ok(
     made.tools.some(tool => tool.endsWith('lilbot_bot_create')),
