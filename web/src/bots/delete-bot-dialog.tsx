@@ -8,7 +8,7 @@ import type { Bot } from '../../../shared/bot-schema'
 import { lilbot, messageOf } from '../app/lilbot-socket'
 import { openSettings } from '../settings/settings-store'
 import { deleteBot } from './bot-actions'
-import { DeleteChoices } from './delete-choices'
+import { DeleteChoices, LOADING_CHOICES } from './delete-choices'
 import { deleteSummary } from './delete-copy'
 import { useOpenBotId } from './details-tabs'
 
@@ -65,7 +65,7 @@ function Confirm({ bot, onClose }: { bot: Bot; onClose: () => void }) {
         <DialogTitle className="text-base/[22px] font-semibold tracking-[-0.01em]">Delete {bot.name}?</DialogTitle>
         <DialogDescription className="text-[13px]/5 text-muted-foreground">{deleteSummary(routines)}</DialogDescription>
       </div>
-      <DeleteChoices value={choices ?? { files: 'archive', privateMemories: 'forget' }} place="dialog" facts={facts} disabled={!choices || deleting} onChange={setChoices} />
+      <DeleteChoices value={choices ?? LOADING_CHOICES} place="dialog" facts={facts} disabled={!choices || deleting} onChange={setChoices} />
       {error && <Notice tone="error">{error}</Notice>}
       <div className="flex items-center justify-between gap-3">
         <button

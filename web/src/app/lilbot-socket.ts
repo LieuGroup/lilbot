@@ -15,9 +15,7 @@ class LilBotSocket {
   private pending = new Map<number, Pending>()
   private chatListeners = new Map<string, Set<ChatListener>>()
   private connectionListeners = new Set<(connected: boolean) => void>()
-  private botsChangedListeners = new Set<() => void>()
-  private memoryChangedListeners = new Set<() => void>()
-  private historyChangedListeners = new Set<(botId: string) => void>()
+  private pushListeners = new Map<string, Set<(frame: any) => void>>()
   connected = false
 
   connect() {
@@ -66,22 +64,26 @@ class LilBotSocket {
     }
   }
 
+  private onPush(event: string, listener: (frame: any) => void) {
+    const listeners = this.pushListeners.get(event) ?? new Set()
+    this.pushListeners.set(event, listeners)
+    listeners.add(listener)
+    return () => void listeners.delete(listener)
+  }
+
   /** Told when bots, preferences or sections changed, here or on another device. */
   onBotsChanged(listener: () => void) {
-    this.botsChangedListeners.add(listener)
-    return () => void this.botsChangedListeners.delete(listener)
+    return this.onPush('bots.changed', () => listener())
   }
 
   /** Told when a fact was saved or forgotten, by a bot or in the app. */
   onMemoryChanged(listener: () => void) {
-    this.memoryChangedListeners.add(listener)
-    return () => void this.memoryChangedListeners.delete(listener)
+    return this.onPush('memory.changed', () => listener())
   }
 
   /** Told when the history import brought in more of a bot's conversation. */
   onHistoryChanged(listener: (botId: string) => void) {
-    this.historyChangedListeners.add(listener)
-    return () => void this.historyChangedListeners.delete(listener)
+    return this.onPush('history.changed', frame => listener(frame.botId))
   }
 
   onConnection(listener: (connected: boolean) => void) {
@@ -102,20 +104,12 @@ class LilBotSocket {
       console.warn('LilBot: dropped a frame that was not JSON')
       return
     }
-    if (frame.event === 'bots.changed') {
-      for (const listener of this.botsChangedListeners) listener()
-      return
-    }
-    if (frame.event === 'memory.changed') {
-      for (const listener of this.memoryChangedListeners) listener()
-      return
-    }
-    if (frame.event === 'history.changed') {
-      for (const listener of this.historyChangedListeners) listener(frame.botId)
-      return
-    }
     if (frame.event === 'chat') {
       for (const listener of this.chatListeners.get(frame.chatId) ?? []) listener(frame.data)
+      return
+    }
+    if (frame.event) {
+      for (const listener of this.pushListeners.get(frame.event) ?? []) listener(frame)
       return
     }
     const waiting = this.pending.get(frame.id)

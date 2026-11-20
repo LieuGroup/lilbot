@@ -30,6 +30,12 @@ test('the roster groups bots: primary on top, sections in order, then unassigned
   expect(groups.hidden.map(bot => bot.id)).toEqual(['secret'])
 })
 
+test('grouping leaves the bot list in its order', () => {
+  const bots = [bot('a'), bot('b', { isPrimary: true }), bot('c', { prefs: { pinned: true } })]
+  rosterGroups(bots, [])
+  expect(bots.map(bot => bot.id)).toEqual(['a', 'b', 'c'])
+})
+
 test('search matches every word in the name or function, hidden bots included', () => {
   const bots = [bot('Server Engineer', { function: 'Keeps the leader running' }), bot('Release Notes', { prefs: { hidden: true } })]
   expect(searchBots(bots, 'leader server').map(bot => bot.id)).toEqual(['Server Engineer'])

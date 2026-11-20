@@ -7,7 +7,7 @@ import { iconButton } from '@/ui/icon-button'
 import { Notice } from '@/ui/notice'
 import type { BotDeleteDefaults } from '../../../shared/bot-delete-schema'
 import { lilbot, messageOf } from '../app/lilbot-socket'
-import { DeleteChoices } from '../bots/delete-choices'
+import { DeleteChoices, LOADING_CHOICES } from '../bots/delete-choices'
 import { SETTINGS_PAGES, type SettingsPage, useSettings } from './settings-store'
 
 /** Bots: what deleting a bot does unless chosen otherwise. Saved at once. */
@@ -33,7 +33,7 @@ function BotsPage() {
       <h3 id="delete-defaults" className="px-0.5 text-xs text-muted-foreground">
         When a bot is deleted
       </h3>
-      <DeleteChoices value={defaults ?? { files: 'archive', privateMemories: 'forget' }} place="settings" disabled={!defaults} onChange={save} />
+      <DeleteChoices value={defaults ?? LOADING_CHOICES} place="settings" disabled={!defaults} onChange={save} />
       <p className="px-0.5 pt-1 text-xs text-muted-foreground">You can still choose differently each time you delete a bot.</p>
       {error && <Notice tone="error">{error}</Notice>}
     </section>

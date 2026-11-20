@@ -2,6 +2,9 @@ import { ToggleGroup, ToggleGroupItem } from '@/ui/toggle-group'
 import type { BotDeleteDefaults } from '../../../shared/bot-delete-schema'
 import { filesHint, memoriesHint } from './delete-copy'
 
+/** Shown while the saved defaults are still loading. */
+export const LOADING_CHOICES: BotDeleteDefaults = { files: 'archive', privateMemories: 'forget' }
+
 /** One labelled two-option switch. Clicking the chosen option again keeps it chosen. */
 function ChoiceRow<T extends string>({
   label,

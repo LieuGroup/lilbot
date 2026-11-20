@@ -5,7 +5,6 @@ import { BotDetailsPanel } from '../bots/bot-details-panel'
 import { BotSidebar } from '../bots/bot-sidebar'
 import { useBotStore } from '../bots/bot-store'
 import { detailsOpenByDefault, useDetailsTab } from '../bots/details-tabs'
-import { primaryBot } from '../bots/primary-bot'
 import { ChatColumn } from '../chat/chat-column'
 
 // Pages with forms and menus load on first use, so opening the app and its chat stays light.
@@ -58,7 +57,7 @@ function BotLayout() {
 function Home() {
   const bots = useBotStore(state => state.bots)
   const navigate = useNavigate()
-  const primary = primaryBot(bots)
+  const primary = bots.find(bot => bot.isPrimary)
   useEffect(() => {
     if (primary) void navigate({ to: '/bots/$botId', params: { botId: primary.id }, replace: true })
   }, [primary?.id, navigate])
