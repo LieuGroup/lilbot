@@ -271,6 +271,12 @@ What a bot is and who owns each part.
   cached at startup and refreshed on creation, updates, memory connection and observed profile disappearance/return.
   Roster and detail reads use that snapshot and database identities, with `runtimePending` until preparation
   finishes; they never wait for engine calls, profile preparation, memory refresh or the activity observer.
+- Start-up preparation (`bots/runtime-readiness.ts`) is one flight per bot: permissions, tools (computers, skills,
+  connections), then identity. The server prepares the primary bot first, the rest five at a time after a short
+  head start, in the background. A chat, review or routine waits only for its own bot's flight (`BotRuntimes.use`),
+  never the roster. A bot whose preparation fails settles as unavailable, never `runtimePending`, and is retried
+  after 5 s, 15 s, 45 s, then every two minutes until it is ready or deleted; one bot's failure never stops another's.
+  Every settle pushes `bots.changed`. `initialize()` rejects only when the one-time import fails.
 - Every start-up pass that touches engine profiles (permissions, memory refresh, skills, connections), and memory
   connection, uses only the non-deleted database bindings, by native id, never all engine profiles. Only the one-time
   import into a new database needs engine discovery. That import is atomic and idempotent: existing bots keep their

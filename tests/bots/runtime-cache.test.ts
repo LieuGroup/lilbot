@@ -39,7 +39,7 @@ test('runtime disappearance invalidates cached availability and return refreshes
   expect(runtimes.snapshot(store.get('b1'))).toEqual({ abilities: [{ kind: 'toolset', id: 'new', label: 'New', enabled: true }], memoryConnected: true })
 })
 
-test('failed startup retries do not prepare successfully prepared bots again', async () => {
+test('a bot that fails to prepare settles as unavailable; a retry prepares only that bot', async () => {
   const { store, engine } = fakeService()
   store.save({ ...store.get('b1'), id: 'b2', engineBotId: 'b2' })
   const prepared: string[] = []
@@ -48,15 +48,16 @@ test('failed startup retries do not prepare successfully prepared bots again', a
     prepared.push(id)
   }
   let fail = true
-  engine.applyIdentity = async id => {
-    if (id === 'b2' && fail) throw new Error('temporary failure')
-    return { abilities: [], memoryConnected: false }
-  }
-  const runtimes = new BotRuntimes(store, engine)
-  await expect(runtimes.initialize()).rejects.toThrow('temporary failure')
-  fail = false
+  engine.applyIdentity = async () => ({ abilities: [], memoryConnected: false })
+  const runtimes = new BotRuntimes(store, engine, undefined, undefined, undefined, { retryDelays: [1_000_000] })
   await runtimes.initialize()
+  expect(prepared).toEqual(['b1'])
+  expect(runtimes.snapshot(store.get('b2'))).toBeNull()
+  expect(runtimes.pending(store.get('b2'))).toBe(false)
+  fail = false
+  await runtimes.use(store.get('b2'))
   expect(prepared).toEqual(['b1', 'b2'])
+  expect(runtimes.snapshot(store.get('b2'))).not.toBeNull()
 })
 
 test('missing runtime reported during use makes subsequent reads unavailable without retries', async () => {

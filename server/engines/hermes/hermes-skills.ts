@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { cp, mkdir, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { HermesSocket } from './hermes-socket'
+import { configurePlugin, hermesCli } from './hermes-plugins'
 
 export function skillHome(id: string) {
   if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(id)) throw new Error('Invalid profile id')
@@ -54,37 +54,10 @@ export async function configureSkills(id: string, settings: { root: string; url:
           .map(path => /^name:\s*["']?([^\r\n"']+)/m.exec(readFileSync(join(path, 'SKILL.md'), 'utf8'))?.[1]?.trim())
           .filter(Boolean)
       ])
-    ],
-    [`plugins.entries.${plugin}.enabled`]: true,
-    [`plugins.entries.${plugin}.allow_tool_override`]: true
+    ]
   }
-  for (const [key, value] of Object.entries(values)) {
-    const child = Bun.spawn(
-      [process.env.LILBOT_HERMES_BIN ?? 'hermes', ...(id === 'default' ? [] : ['-p', id]), 'config', 'set', key, typeof value === 'string' ? value : JSON.stringify(value)],
-      {
-        env: process.env,
-        stdout: 'ignore',
-        stderr: 'pipe'
-      }
-    )
-    const error = await new Response(child.stderr).text()
-    if ((await child.exited) !== 0) throw new Error(`Could not configure ${key}: ${error.slice(0, 200)}`)
-  }
-  // Live handlers read this file for each request; catalogue changes need no plugin reload.
-  if (!activate) return
-  const enable = Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', ...(id === 'default' ? [] : ['-p', id]), 'plugins', 'enable', plugin, '--allow-tool-override'], {
-    env: process.env,
-    stdout: 'ignore',
-    stderr: 'pipe'
-  })
-  const enableError = await new Response(enable.stderr).text()
-  if ((await enable.exited) !== 0) throw new Error(`Could not enable skills: ${enableError.slice(0, 200)}`)
-  const socket = await HermesSocket.connect(id === 'default' ? '' : id)
-  try {
-    await socket.request('plugins.manage', { action: 'toggle', name: plugin, enable: false })
-    const result = await socket.request('plugins.manage', { action: 'toggle', name: plugin, enable: true })
-    if (!result.ok) throw new Error('Skills plugin activation failed')
-  } finally {
-    socket.close()
-  }
+  for (const [key, value] of Object.entries(values)) await hermesCli(id, ['config', 'set', key, typeof value === 'string' ? value : JSON.stringify(value)])
+  // Live handlers read the settings file for each request; catalogue changes need no plugin reload.
+  const entry = `plugins.entries.${plugin}`
+  await configurePlugin(id, plugin, { [`${entry}.enabled`]: 'true', [`${entry}.allow_tool_override`]: 'true' }, activate)
 }

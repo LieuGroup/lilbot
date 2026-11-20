@@ -26,7 +26,7 @@ export class BotDeletion {
   }
 
   private async run(input: BotDeleteInput): Promise<{ ok: true }> {
-    await this.runtimes.initialize()
+    await this.runtimes.load()
     const store = this.runtimes.store
     const tombstone = store.deleted(input.botId)
     if (tombstone?.complete) return { ok: true }
@@ -38,6 +38,7 @@ export class BotDeletion {
     const choices = tombstone?.choices ?? { files: input.files ?? defaults.files, privateMemories: input.privateMemories ?? defaults.privateMemories }
     store.markDeleted(bot, choices)
     try {
+      await this.runtimes.release(bot.id)
       try {
         await engine.deleteRuntime(bot.engineBotId)
       } catch (error) {

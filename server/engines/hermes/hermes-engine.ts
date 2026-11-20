@@ -5,6 +5,7 @@ import type { ChatEvent } from '../../../shared/chat-schema'
 import { LilBotError } from '../../../shared/protocol'
 import type { ActivityCursor, BotEngine, ChatOptions, McpConnection, MemoryConnection, ReviewOptions, RuntimeBinding, RuntimeIdentity } from '../bot-engine'
 import { watchHermesActivity } from './hermes-activity'
+import { adapterHash, applied, hashOf } from './hermes-applied'
 import { botDetailFromProfile, botFromProfile, DEFAULT_PROFILE, providersFromModelOptions } from './hermes-bot-mapping'
 import { openChat } from './hermes-chat'
 import { configureComputers } from './hermes-computers'
@@ -72,7 +73,7 @@ export class HermesEngine implements BotEngine {
   async connectMemory(botId: string, connection: MemoryConnection) {
     await this.requireBot(botId)
     const notes = await legacyNotes(botId)
-    await installMemory(botId, connection)
+    await applied(botId, null, '', () => installMemory(botId, connection))
     return notes
   }
 
@@ -85,7 +86,7 @@ export class HermesEngine implements BotEngine {
 
   async applyIdentity(id: string, identity: RuntimeIdentity) {
     const detail = await this.getBot(id)
-    await applyIdentity(await this.management.socket(), id, identity, detail)
+    await applied(id, null, '', async () => applyIdentity(await this.management.socket(), id, identity, detail))
     return { abilities: detail.abilities, memoryConnected: detail.memoryConnected }
   }
 
@@ -112,10 +113,15 @@ export class HermesEngine implements BotEngine {
     for (const id of botIds) {
       if (!allowedProfile(id) || (this.botIds && !this.botIds.includes(id))) continue
       if (!memoryInstalled(id) || memoryCurrent(id)) continue
-      const connection = await memoryConnection(id)
-      if (!connection) continue
-      await installMemory(id, connection)
-      updated.push(id)
+      try {
+        const connection = await memoryConnection(id)
+        if (!connection) continue
+        await applied(id, null, '', () => installMemory(id, connection))
+        updated.push(id)
+      } catch {
+        // One profile that cannot be upgraded must not stop the others; it is tried on the next start.
+        console.error('[memory] could not update the memory adapter for a bot')
+      }
     }
     return updated
   }
@@ -133,7 +139,7 @@ export class HermesEngine implements BotEngine {
   private connections = connectionPreparer(id => HermesSocket.connect(id === DEFAULT_PROFILE ? '' : id))
   async prepareConnections(id: string, connections: McpConnection[]) {
     await this.requireBot(id)
-    await this.connections(id, connections)
+    await applied(id, 'connections', hashOf(connections), () => this.connections(id, connections))
   }
 
   private computerSettings = new Map<string, string>()
@@ -141,7 +147,7 @@ export class HermesEngine implements BotEngine {
     await this.requireBot(id)
     const key = JSON.stringify(settings)
     if (this.computerSettings.get(id) === key) return
-    await configureComputers(id, settings)
+    await applied(id, 'computers', hashOf(adapterHash('computers-adapter'), settings), () => configureComputers(id, settings))
     this.computerSettings.set(id, key)
   }
 
@@ -155,7 +161,7 @@ export class HermesEngine implements BotEngine {
     const key = JSON.stringify(settings)
     if (this.skillSettings.get(id) === key) return
     const activate = !this.skillSettings.has(id)
-    await configureSkills(id, settings, activate)
+    await applied(id, 'skills', hashOf(adapterHash('skills-adapter'), settings, userSkillPaths(id)), () => configureSkills(id, settings, activate))
     this.skillSettings.set(id, key)
   }
   async validateModel(model: BotModel): Promise<void> {
