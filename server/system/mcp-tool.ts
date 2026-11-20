@@ -7,8 +7,9 @@ export interface McpTool {
   name: string
   description: string
   input: z.ZodType
-  /** Reads change nothing; every other tool is logged as a change made by the calling bot. */
-  readOnly: boolean
+  /** Reads change nothing; every other call is logged as a change made by the calling bot. A tool with an action field
+   *  says per call whether it only reads. */
+  readOnly: boolean | ((args: any) => boolean)
   run: (caller: string, args: any) => Promise<unknown>
 }
 

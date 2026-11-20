@@ -3,8 +3,9 @@ import { LilBotError } from '../../shared/protocol'
 import type { BotThread, ThreadMessage } from '../../shared/thread-schema'
 import { THREAD_LIMITS } from './thread-limits'
 
-/** request, redirect and oscar (his answer to its question on its work item) are work for the receiver; answer is a reply back; notice is LilBot's own word. */
-type DeliveryKind = 'request' | 'redirect' | 'oscar' | 'answer' | 'notice'
+/** request, redirect and oscar (his answer to its question on its work item) are work for the receiver; answer is a reply back; notice is LilBot's own word.
+ *  In a group, point is the leader's point for one member and round a round's replies for the leader. */
+type DeliveryKind = 'request' | 'redirect' | 'oscar' | 'answer' | 'notice' | 'point' | 'round'
 export const isWork = (kind: DeliveryKind) => kind === 'request' || kind === 'redirect' || kind === 'oscar'
 const WORK = "kind IN ('request','redirect','oscar')"
 export interface Delivery {
@@ -82,7 +83,7 @@ export class ThreadStore {
   }
   /** The thread whose receiver works when this delivery runs: its own for work, the asking context for an answer. */
   workThread(d: Delivery): string | null {
-    if (isWork(d.kind)) return d.threadId
+    if (d.kind !== 'answer' && d.kind !== 'notice') return d.threadId
     return d.kind === 'answer' ? (this.context(d.target, d.sourceChat)?.thread_id ?? null) : null
   }
   accept(caller: Bot, target: Bot, input: Accept, record?: (id: string, thread: BotThread) => void) {
@@ -110,6 +111,7 @@ export class ThreadStore {
             endedAt: null,
             stoppedBy: null
           }
+      if (thread.group) throw new LilBotError('thread_forbidden', 'That is a group: use lilbot_group.')
       if (!thread.participants.some(p => p.id === caller.id) || !thread.participants.some(p => p.id === target.id))
         throw new LilBotError('thread_forbidden', 'Only the two participants can use this thread.')
       if ((!input.threadId && depth > THREAD_LIMITS.depth) || thread.depth > THREAD_LIMITS.depth)
@@ -185,7 +187,7 @@ export class ThreadStore {
     return true
   }
   /** Queues `text` from `sender` into `target`'s chat, unless that delivery already exists. */
-  enqueue(id: string, threadId: string, sender: string, target: string, sourceChat: string, text: string, kind: 'answer' | 'notice') {
+  enqueue(id: string, threadId: string, sender: string, target: string, sourceChat: string, text: string, kind: Exclude<DeliveryKind, 'request' | 'redirect'>) {
     this.db
       .query('INSERT OR IGNORE INTO thread_deliveries(id,threadId,sender,target,sourceChat,text,kind) VALUES(?,?,?,?,?,?,?)')
       .run(id, threadId, sender, target, sourceChat, text, kind)

@@ -1,10 +1,16 @@
 /** Exchanges between bots: asking (`ask`, for sessions that loaded plug-in 0.9.x through the engine API), reading (bots and
  *  Oscar), and stopping (the delegating bot or Oscar). Running the deliveries is `thread-runner.ts`; the delegation tools on
- *  LilBot's MCP server are `delegation-service.ts`. */
+ *  LilBot's MCP server are `delegation-service.ts`. Given a group host, it also runs temporary groups (`group-service.ts`). */
 import { LilBotError } from '../../shared/protocol'
 import { type BotThread, ThreadAsk } from '../../shared/thread-schema'
 import { backgroundFailure } from '../background'
+import { GroupEnding, type GroupHost } from './group-end'
+import { GroupRounds } from './group-rounds'
+import { GroupService } from './group-service'
+import { GroupStore } from './group-store'
+import { groupView, rosterGroups } from './group-view'
 import { ThreadFiles } from './thread-files'
+import { GROUP_LIMITS, type GroupLimits } from './thread-limits'
 import { noticePrompt, refuseUnsafe } from './thread-prompts'
 import { type RunnerHost, ThreadRunner } from './thread-runner'
 import { type Delivery, FINAL, type ThreadStore } from './thread-store'
@@ -19,27 +25,54 @@ export class ThreadService {
   readonly runner: ThreadRunner
   readonly files: ThreadFiles
   readonly waits: ThreadWaits
+  readonly groups?: GroupService
+  private groupStore?: GroupStore
   constructor(
     readonly store: ThreadStore,
     private host: ThreadHost,
     readonly changed: () => void = () => {},
     activity: (d: Delivery, working: boolean) => void = () => {},
-    touched: () => void = () => {}
+    touched: () => void = () => {},
+    groupHost?: GroupHost,
+    limits: GroupLimits = GROUP_LIMITS
   ) {
     this.files = new ThreadFiles(store.db)
     this.waits = new ThreadWaits(store)
-    this.runner = new ThreadRunner(store, this.files, this.waits, host, changed, activity, touched)
+    let rounds: GroupRounds | undefined
+    if (groupHost && host.folder) {
+      const groups = new GroupStore(store.db)
+      const ending = new GroupEnding(
+        store,
+        groups,
+        this.files,
+        { ...groupHost, stopRun: host.stopRun },
+        () => this.runner,
+        id => this.stopHandedOut(id),
+        changed,
+        limits
+      )
+      rounds = new GroupRounds(store, groups, this.files, ending, host.folder, limits, changed)
+      this.groups = new GroupService(this, groups, ending, { ...host, ...groupHost }, limits)
+      this.groupStore = groups
+    }
+    this.runner = new ThreadRunner(store, this.files, this.waits, host, changed, activity, touched, rounds)
   }
   tick() {
     this.runner.tick()
+    this.groups?.ending.tick()
+  }
+  /** Running groups by bot, for the roster. */
+  roster() {
+    return this.groupStore ? rosterGroups(this.store, this.groupStore) : new Map()
   }
   /** The stored exchange with its files per message and the receiver's live activity line. */
   view(thread: BotThread): BotThread {
     const files = this.files.byMessage(thread.id)
     return {
       ...thread,
-      activity: thread.status === 'working' ? this.runner.activityOf(thread.id) : null,
-      messages: thread.messages.map(m => (files.has(m.id) ? { ...m, files: files.get(m.id) } : m))
+      activity: thread.status === 'working' && !thread.group ? this.runner.lineOf(this.runner.runningFor(thread.id)) : null,
+      messages: thread.messages.map(m => (files.has(m.id) ? { ...m, files: files.get(m.id) } : m)),
+      ...(thread.group && this.groupStore ? { group: groupView(thread, this.groupStore, this.runner) } : {})
     }
   }
   async list(botId: string) {
@@ -73,6 +106,7 @@ export class ThreadService {
    *  it, the delegating bot is told. Null when the exchange has settled already; `end` then interrupts the receiver's turn. */
   stopping(threadId: string, by: StoppedBy, reason?: string) {
     const thread = this.store.get(threadId)
+    if (thread.group) throw new LilBotError('thread_forbidden', 'That is a group: its leader closes it with lilbot_group.')
     if (by.kind === 'bot' && thread.participants[0].id !== by.id) throw new LilBotError('thread_forbidden', 'Only the bot that handed over this work can stop it.')
     if ((FINAL as readonly string[]).includes(thread.status)) return null
     const receiver = thread.participants[1]
@@ -96,7 +130,12 @@ export class ThreadService {
     }
     return { thread: stopped, end }
   }
-  async cancel(threadId: string, by: StoppedBy) {
+  /** Stops an exchange, or (Oscar only) a group. */
+  async cancel(threadId: string, by: StoppedBy): Promise<BotThread> {
+    if (this.store.get(threadId).group) {
+      if (by.kind === 'bot' || !this.groups) throw new LilBotError('thread_forbidden', 'That is a group: its leader closes it with lilbot_group.')
+      return this.groups.stop(threadId)
+    }
     const stop = this.stopping(threadId, by)
     if (!stop) return this.view(this.store.get(threadId))
     await stop.end()
@@ -131,5 +170,10 @@ export class ThreadService {
     const [delegator, receiver] = thread.participants
     const origin = this.store.origin(thread.id, receiver.id)
     if (origin) this.store.enqueue(id, thread.id, delegator.id, delegator.id, origin.sourceChat, noticePrompt(text), 'notice')
+  }
+  /** Stops an exchange a member handed out from its session in a group that has ended, as that member. */
+  private stopHandedOut(threadId: string) {
+    const [by] = this.store.get(threadId).participants
+    return this.cancel(threadId, { kind: 'bot', id: by.id, name: by.name })
   }
 }

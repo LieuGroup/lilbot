@@ -148,6 +148,14 @@ export class WorkStore {
   children(parentId: string): WorkSummary[] {
     return (this.db.query(`${SELECT} WHERE w.parent_id = ? ORDER BY w.created_at, w.rowid`).all(parentId) as Row[]).map(row => summary(item(row)))
   }
+  /** The item LilBot opened (no request id) for this owner's part in an exchange or a group, if any. */
+  prepared(ownerId: string, origin: WorkOrigin): StoredItem | null {
+    if (origin.kind !== 'exchange' && origin.kind !== 'group') return null
+    const row = this.db
+      .query(`${SELECT} WHERE w.owner_id = ? AND w.origin_kind = ? AND w.origin_id = ? AND w.request_id IS NULL`)
+      .get(ownerId, origin.kind, origin.id) as Row | null
+    return row ? item(row) : null
+  }
   /** The owner's unfinished items opened in this session. */
   unfinishedIn(ownerId: string, chatId: string): string[] {
     const rows = this.db.query("SELECT id FROM work_items WHERE owner_id = ? AND chat_id = ? AND status NOT IN ('done','failed','dropped')").all(ownerId, chatId)

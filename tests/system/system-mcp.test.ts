@@ -28,6 +28,7 @@ const EXPECTED_TOOLS = [
   'lilbot_delegation_redirect',
   'lilbot_delegation_wait',
   'lilbot_delegation_attach',
+  'lilbot_group',
   'lilbot_work',
   'lilbot_work_list',
   'lilbot_webhook_create',

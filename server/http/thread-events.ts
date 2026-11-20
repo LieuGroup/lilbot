@@ -4,12 +4,14 @@ import type { ChatItem } from '../../shared/chat-schema'
 import type { BotThread } from '../../shared/thread-schema'
 
 export function threadLine(thread: BotThread, botId: string): Extract<ChatItem, { kind: 'tool' }> {
+  const [first] = thread.participants
+  const leads = first.id === botId
   return {
     kind: 'tool',
     toolId: `thread:${thread.id}`,
     threadId: thread.id,
-    name: thread.participants[0].id === botId ? 'message to' : 'message from',
-    detail: thread.participants.find(p => p.id !== botId)!.name,
+    name: thread.group ? (leads ? 'group' : `in ${first.name}'s group`) : leads ? 'message to' : 'message from',
+    detail: thread.group ? thread.group.purpose : thread.participants.find(p => p.id !== botId)!.name,
     running: false
   }
 }

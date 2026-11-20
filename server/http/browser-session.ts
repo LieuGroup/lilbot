@@ -104,7 +104,14 @@ export class BrowserSession {
     'bots.delete': input => this.bots.deleteBot(input),
     'bots.deleteDefaults.get': async () => this.bots.deleteDefaults(),
     'bots.deleteDefaults.set': async input => this.bots.setDeleteDefaults(input),
-    'bots.list': async () => (await this.bots.listBots()).map(bot => (this.activity ? { ...bot, activity: this.activity.state(bot.id) } : bot)),
+    'bots.list': async () => {
+      const groups = this.threads?.roster() ?? new Map()
+      return (await this.bots.listBots()).map(bot => ({
+        ...bot,
+        ...(this.activity ? { activity: this.activity.state(bot.id) } : {}),
+        ...(groups.has(bot.id) ? { groups: groups.get(bot.id) } : {})
+      }))
+    },
     'activity.setUnread': ({ botId, unread }) => setUnread(this.bots, this.activity, botId, unread),
     'bots.get': ({ botId }) => this.bots.getBot(botId),
     'bots.create': input => this.bots.createBot(input),

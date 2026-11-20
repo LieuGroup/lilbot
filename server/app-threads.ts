@@ -1,16 +1,22 @@
-/** Builds the exchanges between bots and connects them to the engine, the activity service and the browsers. */
+/** Builds the exchanges and temporary groups between bots and connects them to the engine, the activity service, memory,
+ *  the Library, the work board and the browsers. */
 import type { EventFrame } from '../shared/protocol'
 import { type ActivityService, toolActivity } from './activity/activity-service'
 import type { BotPrefsStore } from './bots/bot-prefs-store'
 import type { BotService } from './bots/bot-service'
 import type { BotStore } from './bots/bot-store'
+import type { SessionRoot } from './bots/hidden-chats'
 import type { Workspaces } from './bots/workspaces'
 import type { BotEngine } from './engines/bot-engine'
 import type { HistoryService } from './history/history-service'
 import { threadEvents } from './http/thread-events'
+import type { LibraryService } from './library/library-service'
+import type { MemoryService } from './memory/memory-service'
 import type { CallingChats } from './threads/calling-chats'
 import { DelegationControl } from './threads/delegation-control'
 import { type DelegationHost, DelegationService } from './threads/delegation-service'
+import type { GroupHost } from './threads/group-end'
+import { groupLimits } from './threads/thread-limits'
 import { ThreadService } from './threads/thread-service'
 import type { ThreadStore } from './threads/thread-store'
 import type { WorkLinks } from './work/work-links'
@@ -26,10 +32,18 @@ interface ThreadDeps {
   threadStore: ThreadStore
   calls: CallingChats
   work: WorkLinks
+  memory: MemoryService
+  library: LibraryService
+  /** The workspaces folder, where each group's shared folder lives. */
+  root: string
+  rootOf: SessionRoot
   publish: (frame: EventFrame) => void
+  botsChanged: () => void
+  memoryChanged: () => void
 }
 
-export function createThreads({ engine, store, prefs, bots, workspaces, history, activity, threadStore, calls, work, publish }: ThreadDeps) {
+export function createThreads(deps: ThreadDeps) {
+  const { engine, store, prefs, bots, workspaces, history, activity, threadStore, calls, work, publish } = deps
   const native = (botId: string) => store.get(botId).engineBotId
   const host: DelegationHost = {
     requireBot: id => bots.requireBot(id),
@@ -38,6 +52,20 @@ export function createThreads({ engine, store, prefs, bots, workspaces, history,
     folder: botId => workspaces.ensure(botId),
     stopRun: async (botId, chatId) => (await engine.stopRun?.(native(botId), chatId)) ?? false,
     steerRun: async (botId, chatId, text) => (await engine.steerRun?.(native(botId), chatId, text)) ?? 'not_running'
+  }
+  const groupHost: GroupHost = {
+    root: deps.root,
+    journal: (botId, text, chatId) => {
+      deps.memory.write({ botId, kind: 'journal', scope: 'bot', text, author: 'bot', via: 'chat', sourceChatId: chatId ?? undefined })
+      deps.memoryChanged()
+    },
+    give: async (botId, path, title, chatId) => {
+      await deps.library.give(botId, { path, title, chatId })
+    },
+    callingChat: (botId, requestId) => calls.find(botId, requestId),
+    rootOf: deps.rootOf,
+    work,
+    rosterChanged: deps.botsChanged
   }
   const threads = new ThreadService(
     threadStore,
@@ -52,7 +80,9 @@ export function createThreads({ engine, store, prefs, bots, workspaces, history,
       for (const botId of [d.sender, d.target])
         if (store.exists(botId)) activity.observe({ botId, chatId: `thread:${d.id}`, key: `${d.id}:${working}:${Date.now()}`, status: working ? 'working' : 'finished' })
     },
-    () => publish({ event: 'threads.changed' })
+    () => publish({ event: 'threads.changed' }),
+    groupHost,
+    groupLimits(process.env)
   )
   engine.onToolCall?.(call => {
     const bot = store.list().find(b => b.engineId === engine.id && b.engineBotId === call.engineBotId)
@@ -60,6 +90,6 @@ export function createThreads({ engine, store, prefs, bots, workspaces, history,
     calls.saw(bot.id, call.chatId, call.tool, call.args)
     threads.runner.sawTool(call.chatId, toolActivity(call.tool))
   })
-  const delegation = { hand: new DelegationService(threads, host, (botId, requestId) => calls.find(botId, requestId), work), control: new DelegationControl(threads, host) }
-  return { threads, delegation }
+  const hand = new DelegationService(threads, host, (botId, requestId) => calls.find(botId, requestId), work)
+  return { threads, delegation: { hand, control: new DelegationControl(threads, host), groups: threads.groups! } }
 }

@@ -15,6 +15,7 @@
     "check:restart": "bun live-checks/restart-check.ts",
     "check:threads": "bun live-checks/threads-check.ts",
     "check:delegation": "bun live-checks/delegation-check.ts",
+    "check:groups": "bun live-checks/groups-check.ts",
     "check:work": "bun live-checks/work-check.ts",
     "check:work-drop": "bun live-checks/work-drop-check.ts",
     "check:checks": "bun live-checks/checks-check.ts",

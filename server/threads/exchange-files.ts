@@ -17,7 +17,7 @@ export interface CopiedFile {
   /** Where the copy is, relative to the recipient's folder. */
   copy: string
 }
-const SAFE_EXCHANGE = /^[A-Za-z0-9-]{1,64}$/
+const SAFE_PART = /^(?!\.\.?$)[A-Za-z0-9._-]{1,64}$/
 const refused = (input: string, why: string) => new LilBotError('invalid_file', `${JSON.stringify(input.slice(0, 200))} ${why}.`)
 
 /** `input` is relative to `root` or absolute inside it. Every part is opened with O_NOFOLLOW, so a link is refused. */
@@ -58,20 +58,23 @@ export async function checkFiles(root: string, inputs: string[], already = 0) {
   return checked
 }
 
-export async function copyFile(fromRoot: string, source: string, toRoot: string, exchangeId: string): Promise<CopiedFile> {
-  if (!SAFE_EXCHANGE.test(exchangeId)) throw new LilBotError('invalid_file', 'Unknown exchange.')
+/** Copies into `folder` below `toRoot`: `exchanges/<exchange id>` in a bot's own folder, or a group's shared folder. */
+export async function copyFile(fromRoot: string, source: string, toRoot: string, folder: string[]): Promise<CopiedFile> {
+  if (!folder.every(part => SAFE_PART.test(part))) throw new LilBotError('invalid_file', 'Unknown exchange.')
   const opened = await openOwn(fromRoot, source)
   try {
     const name = basename(opened.path)
+    // A copy of a copy (a group file the leader keeps) gets a fresh prefix instead of a second one.
     const stored = `${crypto.randomUUID().slice(0, 8)}-${
       name
+        .replace(/^[0-9a-f]{8}-/, '')
         .replace(/[^A-Za-z0-9._-]/g, '_')
         .replace(/^\.+/, '')
         .slice(-80) || 'file'
     }`
     const body = Bun.file(`/proc/self/fd/${opened.handle.fd}`).stream()
-    const { hash, size } = await writeAttachment(toRoot, stored, body, opened.size, ['exchanges', exchangeId])
-    return { name, size, sha256: hash, source: opened.path, copy: `exchanges/${exchangeId}/${stored}` }
+    const { hash, size } = await writeAttachment(toRoot, stored, body, opened.size, folder)
+    return { name, size, sha256: hash, source: opened.path, copy: [...folder, stored].join('/') }
   } finally {
     await opened.handle.close()
   }
@@ -79,13 +82,33 @@ export async function copyFile(fromRoot: string, source: string, toRoot: string,
 
 /** Removes a copy that was never recorded (a retried or refused request), through the folder's descriptor. */
 export async function removeCopy(root: string, copy: string) {
-  const [, exchangeId, name] = copy.split('/')
-  const folder = await openFolder(root, ['exchanges', exchangeId])
+  const parts = copy.split('/')
+  const name = parts.pop()
+  const folder = await openFolder(root, parts)
   try {
     await unlink(`/proc/self/fd/${folder.fd}/${name}`)
   } finally {
     await folder.close()
   }
+}
+
+/** Files a bot attaches to the reply it is working on: checked now, recorded without a copy until the reply goes out. */
+export async function stageFiles(files: ThreadFiles, root: string, at: { threadId: string; messageId: string; sender: string }, inputs: string[]) {
+  const staged = files.forMessage(at.messageId)
+  const checked = await checkFiles(root, inputs, staged.length)
+  for (const [n, f] of checked.entries())
+    files.add({
+      id: `${at.messageId}:${staged.length + n}`,
+      thread_id: at.threadId,
+      message_id: at.messageId,
+      sender: at.sender,
+      name: f.name,
+      size: f.size,
+      sha256: null,
+      source: f.source,
+      copy: null
+    })
+  return [...staged.map(f => f.name), ...checked.map(f => f.name)]
 }
 
 /** Files a receiver attached to a reply, copied into the recipient's folder as the answer goes out. One that vanished
@@ -96,7 +119,7 @@ export async function sendFiles(files: ThreadFiles, folder: (botId: string) => P
   const [fromRoot, toRoot] = [await folder(from), await folder(to)]
   for (const row of rows) {
     try {
-      const copy = await copyFile(fromRoot, row.source, toRoot, row.thread_id)
+      const copy = await copyFile(fromRoot, row.source, toRoot, ['exchanges', row.thread_id])
       files.copied(row.id, copy.copy, copy.sha256)
     } catch (error) {
       if (!(error instanceof LilBotError)) throw error

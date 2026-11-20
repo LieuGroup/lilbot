@@ -41,7 +41,7 @@ server/            The LilBot server (runs on the leader).
   activity/          live status and unread
   memory/            The memory system: rules, facts table, safety, after-chat review.
   history/           Conversation records, import checkpoints, paging and bot-scoped search.
-  threads/           Bot-to-bot exchanges: delegation, files, control, transcripts and durable deliveries.
+  threads/           Bot-to-bot exchanges: delegation, temporary groups, files, control, transcripts and durable deliveries.
   routines/          App-owned schedules, run history and scheduler.
   webhooks/          Outside events: secret addresses, sender signatures, accepted deliveries and their runs.
   work/              The work board: items with "done" definitions, evidence and results, Oscar's answers, its skill.
@@ -96,7 +96,8 @@ Built: roster, create bot, Setup panel (abilities read-only), chat with live too
 continuous main conversation per bot on every device, the three-column shell (roster, conversation, details panel with
 Activity, Library, Memory and Setup tabs), bot menu, delete confirmation, Settings, chat attachments, LilBot's own
 memory with a Memory panel and after-chat review, every bot knowing its system (the note) and operating the app through
-LilBot's own MCP tools, delegation between bots (several tasks at once, files, status, stop, redirect, wait), and the
+LilBot's own MCP tools, delegation between bots (several tasks at once, files, status, stop, redirect, wait), temporary
+groups of bots (rounds, a shared folder, an outcome; #133), and the
 backends for routines, webhooks, threads, library, skills, computers, the work board with its check levels and coding
 through T3 Code. Next: the Routines, Webhooks (#138), Library and work board screens, the check levels' track record and
 spot checks (#142), the nightly memory tidy-up and editing abilities. Reports are not built. Desktop (Tauri) and iOS (Expo) come after the
@@ -526,6 +527,45 @@ Visual specs (sizes, copy, Paper frames): [docs/screens.md](docs/screens.md).
   transport failures and restarts (the routine runner's receipt machinery); a terminal unknown receipt is never
   resubmitted with a new identity. A stop recorded while LilBot was down is applied when the delivery is picked up.
 
+### Temporary groups
+
+A group (#133) is a thread with more than two participants: its first participant leads, 2 to 4 others are members, and
+`group` on the thread holds the purpose, rounds, total turns, end and kept files (`thread_groups` beside it). It runs on
+the same outbox, receipts, hidden sessions, file copies and fences as delegation (`group-*.ts`, detail in
+[docs/threads.md](docs/threads.md)). One tool, `lilbot_group`, with an action field: `start`, `say`, `attach`, `close`,
+`status`.
+
+- Any bot may start one from any session except a group session (no group inside a group; members may still delegate
+  to one bot). Retries with the same `requestId` find the same group or round. The first point goes with the start.
+- A round: the leader's point (to all, or to named members) becomes one `point` delivery per member, run in parallel in
+  each member's own hidden group session (the runner orders deliveries per member within a group). Each prompt carries
+  only what that member has not seen (`seen` per bot) plus the point, other bots' words fenced and cut, a message failing
+  the shared checks withheld. A member's final response is its reply. When every member a point was for is done, one
+  `round` delivery takes the replies to the leader's own hidden group session, in the same transaction; there it says
+  the next point or closes. A member's own delegation answered later into its group session joins the discussion.
+- Who has replied, member states (`waiting`, `working` with the live activity line, `replied`, `idle`) and the round's
+  addressees are worked out from the deliveries and the runner, never stored twice.
+- Ending, once, in one transaction (`group-end.ts`): the leader closes with an outcome; Oscar stops it
+  (`threads.cancel`, recorded as stopped by Oscar); or it ends by itself at the round limit (once the last round's
+  replies are in), the message limit (a point that does not fit is refused; a group with no room for another round
+  ends), the time limit, going quiet (nothing queued or running, no point for 15 minutes) or an unreachable leader. The
+  outcome, or LilBot's reason with the replies the leader had not seen, is a `notice` into the conversation the group was
+  started from, and each member gets a private journal fact (purpose, how it ended, the outcome, its own part; a shorter
+  one when memory refuses). Then turns still running stop (on close, not the leader's own), exchanges members handed
+  out from the group stop, their unfinished work items drop and the folder is archived; that part retries until done.
+  Late words are kept as `withheld`. An ended group is read-only.
+- Shared folder: `<workspaces>/.groups/<group id>/`, created through no-follow descriptors. Files from a point or a
+  member's `attach` are copied in with delegation's rules and listed with their full path in each prompt. On close the
+  leader's `keep` copies files into its own folder (`groups/<group id>/`) and gives them to its Library (the same
+  `LibraryService.give` as `give_file`), before the folder moves to `<workspaces>/.archive/.groups/<group id>/`.
+- Oscar: `threads.list` and `threads.open` include groups (`group` with members' states, rounds with who replied, the
+  round limit, turns, end and kept files), `threads.changed` and `threads.cancel`. `bots.list` gives each bot the
+  running groups it is in (`groups`: id, purpose, round, round limit, leading), pushed with `bots.changed` when a group
+  starts, opens a round or ends. Each participant's main conversation gets a `group` / `in <leader>'s group` line.
+- Limits (`GROUP_LIMITS` in `thread-limits.ts`): 4 members, 6 rounds, 40 messages, 120 minutes, 15 quiet minutes, 2
+  running groups per leader, 6,000 characters per earlier message in a prompt. `LILBOT_GROUP_TEST_ROUNDS` lowers the
+  round limit for a dev server with the test data folder and allowlist; production refuses it.
+
 ## Work
 
 `server/work/` owns the work board (`shared/work-schema.ts`): every real piece of bot work is an item Oscar can see, with
@@ -543,7 +583,8 @@ startup and restored if it differs, like `t3-coding`).
   asked by the routine or webhook (named by its task); anything else is a conversation, asked by Oscar unless the bot
   says `self`. A session the engine continued after compressing one of those counts as it (`bots/hidden-chats.ts`,
   `sessionRoots`, the lookup the hidden-session check uses); while its lineage cannot be read the work call is refused
-  rather than credited to Oscar. Groups join with #133.
+  rather than credited to Oscar. A group session is the group (origin `group`), asked by its leader; the leader's own
+  group session is its own work (`self`).
 - Rules: opening needs a kind; with a definition (or at level 0) it starts the work; `working` needs the definition and a
   kind; `done` needs them, at least one evidence entry and a result, unless the item is at level 0. Only the owner reports
   on its item; the caller is the key's bot. `needs_oscar` carries exactly one question; a second while one waits is
@@ -558,6 +599,11 @@ startup and restored if it differs, like `t3-coding`).
   definition yet, in the same transaction. The receiver's prompt names it; its first open from that session fills it in.
   A stopped exchange drops its child item ("The exchange was stopped by ..."). A routine or webhook run that reports on
   an existing item is linked to it (`links`, from the event log).
+- Groups: a group started inside an item (`itemId`, else the leader's only unfinished one) sets the group's `parentId`
+  and opens each member's child item (`<group id>:<member id>`, origin `group`, asked by the leader) in the group's
+  transaction; a member's first point names it, and its first open from its group session fills it in (the item LilBot
+  opened has no request id: `WorkStore.prepared`). When the group ends, members' unfinished items for it are dropped
+  ("The group closed.", "The group was stopped by Oscar.", "The group ended by itself.").
 - An item opened in a conversation leaves a `tool` line there (`workItemId`, `toolId: work:<id>`) in LilBot's history.
 - Bot tools (System MCP): `lilbot_work` (no itemId: open; with itemId: definition, evidence and status in one call;
   request ids make retries safe) and `lilbot_work_list` (mine, every bot's, or one in full).
@@ -1141,6 +1187,10 @@ profiles, isolated directories, cleanup in `finally`. Most cost a few model call
   it on to a third from its hidden session; the engine API's legacy `threads/ask` still answers idempotently, with its limits.
 - `bun run check:delegation`: a temporary lead hands two tasks to two helpers in one call, one with a file; then it
   reads their status, redirects one mid-command and stops the other; the first answer returns once, with a file.
+- `bun run check:groups`: on a dev server with the round limit at 3, a temporary lead starts a group with two members and a
+  file; both reply at once; LilBot is killed mid-round 2 and restarted (the member's gated script ran once); the member
+  attaches a file, the lead closes and keeps it (Library, archive, journal facts) and the outcome reaches its
+  conversation; a second group is stopped by Oscar; a third ends by itself at the round limit. Nothing is delivered twice.
 - `bun run check:work`: a temporary bot asked for a small real task opens an item, defines done, adds evidence and
   finishes it (seen in `work.list`); done without evidence is refused, by the bot's attempt and a direct call with its
   key; a task it hands to a second bot inside an item becomes that bot's child item, which the helper finishes.

@@ -6,6 +6,7 @@ import { createSystemMcp } from './system-mcp'
 import { aboutTools } from './tool-about'
 import { botTools } from './tool-bots'
 import { delegationTools } from './tool-delegation'
+import { groupTools } from './tool-groups'
 import { memoryTools } from './tool-memory'
 import { rosterTools } from './tool-roster'
 import { settingsTools } from './tool-settings'
@@ -24,6 +25,7 @@ export function createSystemServer(deps: SystemDeps & { engineToken: string; por
     ...memoryTools(deps),
     ...settingsTools(deps),
     ...delegationTools(deps),
+    ...groupTools(deps),
     ...workTools(deps),
     ...webhookTools(deps)
   ]

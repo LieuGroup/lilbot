@@ -2,7 +2,7 @@
  *  Built on the same exchanges as `ThreadService.ask`; control over them is `delegation-control.ts`. */
 import { LilBotError } from '../../shared/protocol'
 import { AttachInput, DelegateInput } from '../../shared/thread-schema'
-import { type CopiedFile, checkFiles, copyFile, removeCopy } from './exchange-files'
+import { type CopiedFile, checkFiles, copyFile, removeCopy, stageFiles } from './exchange-files'
 import { THREAD_LIMITS } from './thread-limits'
 import { refuseUnsafe } from './thread-prompts'
 import type { ThreadHost, ThreadService } from './thread-service'
@@ -87,7 +87,7 @@ export class DelegationService {
     const copies: CopiedFile[] = []
     let recorded = false
     try {
-      for (const file of t.files ?? []) copies.push(await copyFile(t.root, file, toRoot, newId))
+      for (const file of t.files ?? []) copies.push(await copyFile(t.root, file, toRoot, ['exchanges', newId]))
       return this.store.accept(
         caller,
         target,
@@ -126,23 +126,11 @@ export class DelegationService {
   async attach(botId: string, raw: { exchangeId: string; files: string[] }) {
     const input = AttachInput.parse(raw)
     await this.host.requireBot(botId)
+    if (this.store.get(input.exchangeId).group) throw new LilBotError('thread_forbidden', 'That is a group: attach with lilbot_group.')
     const running = this.threads.runner.runningFor(input.exchangeId)
     if (!running || running.target !== botId) throw new LilBotError('not_running', 'Attach files while you work on that exchange; they go back with your answer.')
-    const messageId = `${running.id}:reply`
-    const staged = this.threads.files.forMessage(messageId)
-    const checked = await checkFiles(await this.host.folder(botId), input.files, staged.length)
-    for (const [n, f] of checked.entries())
-      this.threads.files.add({
-        id: `${messageId}:${staged.length + n}`,
-        thread_id: input.exchangeId,
-        message_id: messageId,
-        sender: botId,
-        name: f.name,
-        size: f.size,
-        sha256: null,
-        source: f.source,
-        copy: null
-      })
-    return { exchangeId: input.exchangeId, files: [...staged.map(f => f.name), ...checked.map(f => f.name)], note: 'They are copied to the other bot with your answer.' }
+    const at = { threadId: input.exchangeId, messageId: `${running.id}:reply`, sender: botId }
+    const files = await stageFiles(this.threads.files, await this.host.folder(botId), at, input.files)
+    return { exchangeId: input.exchangeId, files, note: 'They are copied to the other bot with your answer.' }
   }
 }

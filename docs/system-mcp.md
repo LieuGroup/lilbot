@@ -53,6 +53,11 @@ provider returns from `get_tool_schemas` are not in Hermes' registry and stay ea
 compact schema: the adapter's twelve tools cost about 2,300 tokens, the rest of its 2,956 is the rules and the memory
 block. The six webhook tools (#12) add six listing lines, about 270 tokens. There is no per-tool switch; `tools.tool_search.enabled: off` makes the whole profile eager, built-ins included.
 
+### Temporary groups' cost (#133)
+
+One listing line (+162 characters, about 40 tokens a turn) and +1,299 characters of full `tools/list`; the note is
+unchanged. Measurements in `docs/threads.md`.
+
 ### The work board's cost (#141, against main at 3ae7cc0, characters from `systemFixture`)
 
 | | before | after |
@@ -120,6 +125,7 @@ Every tool acts as the calling bot and calls the function the screen uses. Reads
 | `lilbot_delegate` | hand one task to each named bot, with files; one exchange each, one batch (`docs/threads.md`) |
 | `lilbot_delegation_status`, `_cancel`, `_redirect`, `_wait` | the delegating bot's control; cancel is the same `ThreadService.cancel` as `threads.cancel` |
 | `lilbot_delegation_attach` | the receiver's files for its answer |
+| `lilbot_group` | temporary groups (#133): `start`, `say`, `attach`, `close`, `status` in one tool; `GroupService`, the same records as `threads.list`, `threads.open` and `threads.cancel` (`docs/threads.md`) |
 | `lilbot_work` | the work board: without itemId opens an item (`WorkService.act`), with itemId reports on the caller's own item: definition, evidence, status in one call; with `verdict`, the check LilBot asked the caller to do |
 | `lilbot_work_list` | the caller's items, every bot's, or one in full: the same records as `work.list` and `work.open` |
 | `lilbot_webhook_create` | `WebhookService.create` for the caller (five webhooks a bot; the same `requestId` returns the current address and any secret LilBot made again) |
@@ -135,7 +141,7 @@ work done by `lilbot_delegate` and `lilbot_bots_list`.
 
 MCP requests carry no session (checked live: two sessions of one bot send identical requests, `_meta` holds only a
 progress token). A tool that needs the calling conversation takes a `requestId` and resolves it from the engine's
-`tool.start` reports (`server/threads/calling-chats.ts`, which traces `lilbot_delegate` and `lilbot_work`).
+`tool.start` reports (`server/threads/calling-chats.ts`, which traces `lilbot_delegate`, `lilbot_work` and `lilbot_group`).
 
 Judgment calls: a memory tool may name another bot's panel (as Oscar can on the screens), but only a fact in that
 panel can be named, by the short id a bot sees; the default is the calling bot's own. Another bot's private facts can
@@ -145,7 +151,7 @@ be listed, paused and restored, never forgotten.
 
 `system_changes` (the last schema step, `system-changes.ts`) records, per action tool, the time, the calling bot's id and name at
 that moment, the tool, the target (bot, fact or section id) and the names of the fields changed, never their values.
-Reads and refused calls leave nothing. `lilbot_about` shows the latest eight. Deleting a bot keeps its rows.
+Reads (also a `lilbot_group` status call) and refused calls leave nothing. `lilbot_about` shows the latest eight. Deleting a bot keeps its rows.
 
 ## What an engine provides
 

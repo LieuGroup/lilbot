@@ -1,5 +1,6 @@
 /** Real thread services over an in-memory database and a temporary workspaces folder, with an engine whose runs
- *  stay open until the test finishes them, so status, stop and redirect can be seen mid-run. */
+ *  stay open until the test finishes them, so status, stop and redirect can be seen mid-run. Groups run too: journal
+ *  entries and Library gifts are recorded for the tests to read. */
 import type { Database } from 'bun:sqlite'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -9,9 +10,12 @@ import { openDatabase } from '../../server/database/database'
 import type { RoutineOptions } from '../../server/engines/bot-engine'
 import { DelegationControl } from '../../server/threads/delegation-control'
 import { DelegationService, type DelegationWork } from '../../server/threads/delegation-service'
+import type { GroupHost, GroupWork } from '../../server/threads/group-end'
+import type { GroupLimits } from '../../server/threads/thread-limits'
 import { ThreadService } from '../../server/threads/thread-service'
 import { ThreadStore } from '../../server/threads/thread-store'
 import type { ChatItem } from '../../shared/chat-schema'
+import { LilBotError } from '../../shared/protocol'
 
 type Result = { status: string; text: string; items?: ChatItem[] }
 interface Run {
@@ -28,8 +32,34 @@ export function removeFixtureFolders() {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 }
 
-/** `database` and `work` join it to a work board; `changed` hears every exchange change. */
-export function delegationFixture(options: { database?: Database; work?: DelegationWork; changed?: () => void } = {}) {
+/** A group host over a workspaces folder: memory refuses journal entries `refuse` matches; `chats` says which session a
+ *  bot's next call comes from (its main conversation by default). */
+export function groupHostFor(root: string, work?: GroupWork, refuse: (text: string) => boolean = () => false) {
+  const chats = new Map<string, string>()
+  const journal: { botId: string; text: string; chatId: string | null }[] = []
+  const given: { botId: string; path: string; title: string; chatId: string }[] = []
+  const pushes = { roster: 0 }
+  const host: GroupHost = {
+    root,
+    journal: (botId, text, chatId) => {
+      if (refuse(text)) throw new LilBotError('fact_refused', 'That fact cannot be saved.')
+      journal.push({ botId, text, chatId })
+    },
+    give: async (botId, path, title, chatId) => {
+      given.push({ botId, path, title, chatId })
+    },
+    callingChat: async botId => chats.get(botId) ?? `${botId}-main`,
+    rootOf: (_botId, chatId) => chatId,
+    work,
+    rosterChanged: () => pushes.roster++
+  }
+  return { host, chats, journal, given, pushes }
+}
+
+/** `database` and `work` join it to a work board; `changed` hears every exchange change; `limits` and `refuse` shape groups. */
+export function delegationFixture(
+  options: { database?: Database; work?: DelegationWork & GroupWork; changed?: () => void; limits?: GroupLimits; refuse?: (text: string) => boolean } = {}
+) {
   const root = mkdtempSync(join(tmpdir(), 'lilbot-delegation-'))
   roots.push(root)
   const workspaces = new Workspaces(root)
@@ -41,7 +71,7 @@ export function delegationFixture(options: { database?: Database; work?: Delegat
   const host = {
     requireBot: async (id: string) => {
       const bot = bots.find(b => b.id === id)
-      if (!bot) throw new Error('missing')
+      if (!bot) throw new LilBotError('bot_not_found', 'That bot does not exist.')
       return bot
     },
     listBots: async () => bots,
@@ -67,8 +97,9 @@ export function delegationFixture(options: { database?: Database; work?: Delegat
       return 'steered' as const
     }
   }
-  const threads = new ThreadService(store, host, options.changed)
-  const hand = new DelegationService(threads, host, async botId => `${botId}-main`, options.work)
+  const group = groupHostFor(root, options.work, options.refuse)
+  const threads = new ThreadService(store, host, options.changed, undefined, undefined, group.host, options.limits)
+  const hand = new DelegationService(threads, host, botId => group.host.callingChat(botId, ''), options.work)
   const control = new DelegationControl(threads, host)
   const delegation = {
     delegate: hand.delegate.bind(hand),
@@ -82,5 +113,12 @@ export function delegationFixture(options: { database?: Database; work?: Delegat
     threads.tick()
     await Bun.sleep(20)
   }
-  return { root, store, threads, delegation, runs, stops, steers, settle, path: (bot: string, file: string) => join(root, bot, file) }
+  const groups = threads.groups!
+  /** Deletes a bot from the fixture's engine. */
+  const remove = (id: string) =>
+    bots.splice(
+      bots.findIndex(b => b.id === id),
+      1
+    )
+  return { root, store, threads, delegation, groups, group, runs, stops, steers, settle, remove, path: (bot: string, file: string) => join(root, bot, file) }
 }

@@ -1,7 +1,7 @@
-# Threads and delegation
+# Threads, delegation and temporary groups
 
 Rules and the short version are in `AGENTS.md` under "Threads". Code: `server/threads/`, tools in
-`server/system/tool-delegation.ts`, schema in `shared/thread-schema.ts`.
+`server/system/tool-delegation.ts` and `tool-groups.ts`, schema in `shared/thread-schema.ts`.
 
 ## Parts
 
@@ -15,10 +15,17 @@ Rules and the short version are in `AGENTS.md` under "Threads". Code: `server/th
 | `thread-waits.ts` | "tell me when all are in" |
 | `calling-chats.ts` | which conversation made an MCP call |
 | `thread-prompts.ts` | what a bot is told |
+| `group-service.ts`, `group-open.ts` | the `lilbot_group` actions; opening a round |
+| `group-rounds.ts` | the runner's group hooks: which deliveries work in a group, recording a turn, settling a round |
+| `group-end.ts` | ending once, the outcome and journal facts, the work after the end, time and quiet |
+| `group-store.ts`, `group-folder.ts` | `thread_groups` and the group's deliveries; the shared folder and its archive |
+| `group-prompts.ts`, `group-view.ts` | what group members and the leader are told; Oscar's view, the bots' status, the roster |
 
 Delivery kinds: `request` (work), `redirect` (a change of course), `oscar` (Oscar's answer to the receiver's question on its
 work item, #156: work like a request, sent from the delegating bot's side, never checked as bot text), `answer` (a reply
-back), `notice` (LilBot's own word: "Oscar stopped it", "Oscar dropped the work item", "all are in"). Delivery states: `pending`, `steered` (reached a running turn directly), `done`.
+back), `notice` (LilBot's own word: "Oscar stopped it", "Oscar dropped the work item", "all are in", a group's outcome), and
+in groups `point` (the leader's point for one member) and `round` (a round's replies for the leader). Delivery states:
+`pending`, `steered` (reached a running turn directly), `done`.
 
 ## Engine findings (dev gateway, 2026-11-20)
 
@@ -66,3 +73,57 @@ and share the upstream model allowance with production.
   interrupted. The running delivery settles itself when the engine returns, so its words are kept as `withheld`. Its
   session-creation and baseline callbacks refuse to go on once stopped, so nothing new is admitted; after a restart the
   outbox applies the stop again instead of running.
+
+## Temporary groups (#133)
+
+What Oscar approved through the screens (#136) is built as the design thread proposed; the choices below are this
+implementation's.
+
+- **Where things run.** Members and the leader each get one hidden group session (`thread_chats` to the group), reused
+  every round, so a member keeps its own context and the after-chat review never sees it (`isInternal`, and through
+  `hidden-chats.ts` its compression continuations). The leader's main conversation sees only its start call, the
+  group line and, at the end, the outcome turn.
+- **Ids.** `group:<id>:<round>:<member>` for a point, `group:<id>:<round>:leader` for a round's replies,
+  `group:<id>:end` for the outcome; the point message is `group:<id>:<round>` and each reply `<delivery id>:reply`.
+  Every enqueue is `INSERT OR IGNORE`, and a turn's reply, the round's settling and the leader's delivery are one
+  transaction, so a restart can neither lose a round nor repeat one. The runner orders deliveries per member within a
+  group (`<group>\n<member>`), so members run in parallel while each member's turns stay in order, a delegation answer
+  into its group session included.
+- **Prompts.** Built when a point or round is queued and stored as the delivery's text (`point`, `round` and `notice` are
+  LilBot's own prompt; the bot text inside was checked and fenced when it was built). Each carries only messages the bot
+  has not been shown (`group.seen`), each cut to 6,000 characters; the full discussion, tool rows included, is
+  `lilbot_group` status. The leader's first round prompt repeats the purpose and its first point, since its group
+  session starts empty.
+- **The leader's turns.** Its tool lines join the point it made in that turn; a turn that made no point is a message of
+  its own (so a leader that only talks stays visible). The turn that closes the group counts in the total.
+- **Round limit.** The group ends by itself as soon as the last allowed round's replies are in, without another leader
+  turn; the replies go with the reason to the conversation it was started from, where the leader writes its outcome.
+  The leader's prompt before the last round says so.
+- **Turns.** Every member and leader turn recorded before the end, plus the closing turn. Late turns count nothing.
+- **Files.** One copy per file in the group folder (not one per member): members read it by full path. A kept file is a
+  copy of that copy in the leader's own folder, so the Library item survives the archive. A copy of a copy gets one
+  fresh prefix, not two.
+- **Journal facts** are written in the end transaction, `kind: journal`, `scope: bot`, `author: bot`, `via: chat`, with
+  the member's group session as the source chat (memory has no `via` for LilBot itself; the Memory panel shows it as
+  learned in a chat). The longest of three versions that memory accepts is saved; a refusal never blocks the end.
+- **Work after the end** (`settle`) is marked done in `thread_groups.settled` and retried from the tick (30 seconds
+  after a failure) until the folder is archived.
+- **Oscar on a member's item.** A member's child item is an ordinary item to the board (#160): his answer or drop reaches
+  the member as a turn of its own in its group session, outside the discussion, and a drop interrupts the member's
+  running turn, which then counts as its reply.
+- **Roster.** `bots.list` carries `groups` per bot instead of a new method, so the existing `bots.changed` push keeps the
+  roster's "Working together" section and members' row states current.
+
+## Tool cost (#133, against main at de6f103, characters from `systemFixture`)
+
+| | before | after |
+|---|---|---|
+| listing lines Hermes shows every turn (name and first sentence) | 3,290 (32 tools) | 3,452 (+162: `lilbot_group`) |
+| full `tools/list`, fetched only by `tool_describe` or an eager engine | 13,410 | 14,709 (+1,299) |
+| the note | unchanged | unchanged |
+
+Per turn that is one listing line, about 40 tokens at #154's 45 a tool. `lilbot_group`'s schema is 864 characters, read
+only when a bot looks the tool up; the guide topic `groups` adds one name to `lilbot_guide`'s topic list. One tool with
+an action field instead of five: a status call is a read and leaves no change record (`McpTool.readOnly` may be a
+function of the arguments).
+

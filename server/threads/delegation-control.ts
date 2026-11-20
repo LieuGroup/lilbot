@@ -25,8 +25,9 @@ export class DelegationControl {
       ? ids.map(id => this.store.get(id))
       : this.store
           .list(botId)
-          .filter(t => t.participants[0].id === botId)
+          .filter(t => t.participants[0].id === botId && !t.group)
           .filter((t, i) => !(FINAL as readonly string[]).includes(t.status) || i < 10)
+    if (threads.some(t => t.group)) throw new LilBotError('thread_forbidden', 'That is a group: use lilbot_group.')
     if (threads.some(t => t.participants[0].id !== botId)) throw new LilBotError('thread_forbidden', 'Only the bot that handed over this work can do that.')
     return threads
   }

@@ -44,6 +44,10 @@ export const BotPrefs = z.object({
 })
 export type BotPrefs = z.infer<typeof BotPrefs>
 
+/** A running temporary group the bot is in, for the roster's "Working together" section and its row state. */
+export const BotGroup = z.object({ id: z.string(), purpose: z.string(), round: z.number(), roundCap: z.number(), leading: z.boolean() })
+export type BotGroup = z.infer<typeof BotGroup>
+
 /** What lists and headers need. */
 export const Bot = BotIdentity.extend({
   /** The user's primary bot, resolved by LilBot rather than the engine. */
@@ -53,6 +57,8 @@ export const Bot = BotIdentity.extend({
   /** Runtime preparation has not finished; runnable is not yet known. */
   runtimePending: z.boolean().optional(),
   activity: BotActivity.optional(),
+  /** Running groups it leads or is in; absent when none. */
+  groups: z.array(BotGroup).optional(),
   prefs: BotPrefs,
   /** The bot's own folder on the shared computer; its chats work there. */
   workspace: z.string(),

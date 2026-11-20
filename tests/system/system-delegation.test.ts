@@ -14,3 +14,17 @@ test('delegation tools act as the calling bot and only on work it handed out', a
   expect((await f.call('b1', 'lilbot_delegation_cancel', { exchangeId: exchange.exchangeId })).data).toMatchObject({ status: 'cancelled', stoppedBy: 'Bot One' })
   expect(f.changes.recent(10).map(c => c.tool)).toEqual(['lilbot_delegation_cancel', 'lilbot_delegation_wait', 'lilbot_delegate'])
 })
+
+test('lilbot_group acts as the calling bot: a start is a change, a status call is a read and leaves no record', async () => {
+  const f = systemFixture()
+  await addBot(f, 'Helper')
+  await addBot(f, 'Checker')
+  const group = (await f.call('b1', 'lilbot_group', { action: 'start', requestId: 'g', purpose: 'Name it', members: ['Helper', 'Checker'], text: 'Ideas?', leaderId: 'x' })).data
+  expect(group).toMatchObject({ leader: 'Bot One', purpose: 'Name it', round: 1, state: 'running' })
+  expect((await f.threads.open('b1', group.groupId)).participants[0].id).toBe('b1')
+  expect((await f.call('b1', 'lilbot_group', { action: 'status', groupId: group.groupId })).data.messages[0].text).toContain('"Ideas?"')
+  expect((await f.call('b1', 'lilbot_group', { action: 'say', groupId: group.groupId, requestId: 's', text: 'More?' })).error).toContain('under way')
+  expect(f.changes.recent(10).map(c => [c.tool, c.target])).toEqual([['lilbot_group', '']])
+  const listed = (await (await f.rpc('b1', 'tools/list')).json()).result.tools.find((t: { name: string }) => t.name === 'lilbot_group')
+  expect(listed.annotations.readOnlyHint).toBe(false)
+})
