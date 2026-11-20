@@ -114,12 +114,12 @@ implementation's.
 - **Roster.** `bots.list` carries `groups` per bot instead of a new method, so the existing `bots.changed` push keeps the
   roster's "Working together" section and members' row states current.
 
-## Tool cost (#133, against main at 191f241, characters from `systemFixture`)
+## Tool cost (#133, against main at de6f103, characters from `systemFixture`)
 
 | | before | after |
 |---|---|---|
-| listing lines Hermes shows every turn (name and first sentence) | 3,284 (32 tools) | 3,446 (+162: `lilbot_group`) |
-| full `tools/list`, fetched only by `tool_describe` or an eager engine | 12,720 | 14,019 (+1,299) |
+| listing lines Hermes shows every turn (name and first sentence) | 3,290 (32 tools) | 3,452 (+162: `lilbot_group`) |
+| full `tools/list`, fetched only by `tool_describe` or an eager engine | 13,410 | 14,709 (+1,299) |
 | the note | unchanged | unchanged |
 
 Per turn that is one listing line, about 40 tokens at #154's 45 a tool. `lilbot_group`'s schema is 864 characters, read
