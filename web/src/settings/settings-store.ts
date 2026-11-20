@@ -4,7 +4,8 @@ import { create } from 'zustand'
 export const SETTINGS_PAGES = [
   { id: 'general', label: 'General' },
   { id: 'bots', label: 'Bots' },
-  { id: 'memory', label: 'Memory' }
+  { id: 'memory', label: 'Memory' },
+  { id: 'computers', label: 'Computers' }
 ] as const
 export type SettingsPage = (typeof SETTINGS_PAGES)[number]['id']
 
