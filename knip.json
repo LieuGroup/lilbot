@@ -1,0 +1,13 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "server/deploy/watchdog.ts",
+    "helper/main.ts",
+    "scripts/*.ts",
+    "live-checks/*-check.ts",
+    "live-checks/history-benchmark.ts",
+    "tests/**/*.test.ts",
+    "web/src/app/styles.css"
+  ],
+  "project": ["server/**/*.ts", "helper/**/*.ts", "shared/**/*.ts", "web/src/**/*.{ts,tsx}", "scripts/**/*.ts", "live-checks/**/*.ts", "tests/**/*.ts", "web/src/**/*.css"]
+}

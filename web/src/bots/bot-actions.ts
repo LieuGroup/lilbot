@@ -10,7 +10,7 @@ import { useBotStore } from './bot-store'
 const reload = () => useBotStore.getState().load()
 
 /** Run a menu action; a failure is shown in the roster until the next action. */
-export async function attempt(action: () => Promise<unknown>) {
+async function attempt(action: () => Promise<unknown>) {
   useBotMenu.setState({ error: '' })
   try {
     await action()

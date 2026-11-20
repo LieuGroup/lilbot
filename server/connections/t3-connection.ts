@@ -9,7 +9,7 @@ export const T3_BRIDGE_PATH = '/engine/t3/mcp'
 /** T3 Code's MCP server on this machine. */
 export const T3_DEFAULT_MCP_URL = 'http://127.0.0.1:3773/mcp'
 /** Long enough for a `t3_thread_wait` the coding skill asks for (at most ten minutes). */
-export const T3_TIMEOUT_SECONDS = 900
+const T3_TIMEOUT_SECONDS = 900
 /** Offered when the sign-in is missing, expired or revoked; its answer says how to renew. */
 export const T3_STATUS_TOOL = 't3_connection_status'
 

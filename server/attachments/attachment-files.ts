@@ -8,7 +8,7 @@ export const MAX_BYTES = 20 * 1024 * 1024
 export const MAX_FILES = 10
 const folderFlags = C.O_RDONLY | C.O_DIRECTORY | C.O_NOFOLLOW
 
-export async function attachmentFolder(root: string) {
+async function attachmentFolder(root: string) {
   let handle = await open('/', folderFlags)
   try {
     for (const part of resolve(root).split('/').filter(Boolean)) {

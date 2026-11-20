@@ -173,7 +173,8 @@ behaviour he can check in the app. Keep an eye on speed and memory; measure befo
   - `bun run build` also writes brotli and gzip copies of `dist/` text files; `server/http/static-files.ts` serves the
     accepted encoding to every listener that serves the app, hashed `/assets/` files as immutable (a missing one is a
     404, never the page) and `index.html` as `no-cache` with an ETag.
-- Checks: Biome, `tsc`, `bun test`, Vite build, all through `bun run verify`.
+- Checks: Biome, `tsc`, knip (unused files, exports, dependencies), the 200-line file limit, `bun test`, Vite build, all
+  through `bun run verify`.
 
 ## Listeners and trust boundaries
 
@@ -660,6 +661,17 @@ independent.
 - Rules and decisions live in this file; area detail in `docs/<area>.md`. Replace outdated text; do not append
   history.
 
+### Before you open a PR
+
+- No dead code: unused files, exports, parameters, branches or settings.
+- No duplicates: reuse the existing helper instead of writing it again.
+- No pass-through layers, and no option with one caller.
+- No comments that restate the code or tell history.
+- No tests that assert nothing real or repeat another test.
+- Files stay under 200 lines. `scripts/size-exceptions.json` lists the older offenders; it may only shrink.
+- `bun run verify` passes, including knip and the size limit.
+- The PR body states the lines and web-bundle delta from the verify growth report.
+
 ## Issues and labels
 
 Work is tracked as GitHub issues on this repo, split across threads: a discussion thread files backend issues, an
@@ -700,7 +712,8 @@ Cleaning up after a merge:
 Every `check:*` and `bun live-checks/*.ts` follows the development rules above: dev launcher, temporary `dev-`
 profiles, isolated directories, cleanup in `finally`. Most cost a few model calls.
 
-- `bun run verify`: lint, typecheck, unit and contract tests, web build into `dist/`. `bun run format` applies
+- `bun run verify`: lint, typecheck, knip, file-size limit, unit and contract tests, web build into `dist/`, then a growth
+  report (lines per folder, web first-load size). `bun run format` applies
   formatting.
 - `bun run dev:setup`: create or repair the development home and start the dev gateway.
 - `bun run dev`: Vite with hot reload, proxying to a dev server on `LILBOT_PORT` (default 3371); production ports are

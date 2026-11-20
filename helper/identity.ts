@@ -14,7 +14,7 @@ export interface Identity {
 export function loadIdentity(): Identity {
   return JSON.parse(readFileSync(join(configDir, 'identity.json'), 'utf8'))
 }
-export function validateUrl(raw: string) {
+function validateUrl(raw: string) {
   const url = new URL(raw)
   if (
     url.username ||

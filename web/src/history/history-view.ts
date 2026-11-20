@@ -7,7 +7,7 @@ import type { ChatView, ViewItem } from '../chat/chat-state'
 /** The parts of `ChatView` that come from the history. */
 export type HistoryFields = Pick<ChatView, 'items' | 'first' | 'older' | 'oldestFrom' | 'start' | 'importing'>
 
-export const historyItems = (rows: readonly HistoryItem[]): ViewItem[] => rows.map(row => ({ ...row.item, id: row.id, at: row.at }))
+const historyItems = (rows: readonly HistoryItem[]): ViewItem[] => rows.map(row => ({ ...row.item, id: row.id, at: row.at }))
 
 /** A reloaded transcript keeps the objects of the items that did not change, so memoised rows
  *  are not drawn again. Items are compared by content; repeated identical items pair in order. */
