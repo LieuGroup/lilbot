@@ -2,6 +2,8 @@ import { expect, test } from 'bun:test'
 import { ActivityService } from '../../server/activity/activity-service'
 import { ActivityStore } from '../../server/activity/activity-store'
 import { openDatabase } from '../../server/database/database'
+import { RoutineScheduler } from '../../server/routines/routine-scheduler'
+import type { RoutineService } from '../../server/routines/routine-service'
 
 function setup() {
   const db = openDatabase(':memory:')
@@ -59,6 +61,59 @@ test('another working session outlives a completed one', async () => {
   activity.observe({ botId: 'b', chatId: 'two', key: '1', status: 'finished' })
   await Bun.sleep(20)
   expect(activity.state('b').status).toBe('working')
+  activity.close()
+  db.close()
+})
+
+/** The rules a session that needs Oscar (waiting for him, or failed) follows, with no text spoken. */
+async function needsOscarRules(status: 'waiting' | 'failed') {
+  const { db, store, activity } = setup()
+  const event = { botId: 'b', chatId: 'c', status } as const
+  const stopViewing = activity.view('b')
+  activity.observe({ ...event, key: 'e:1' })
+  expect(activity.state('b').unread).toBe(false)
+  stopViewing()
+  // Engines resend the status with every later event: Oscar already saw this one.
+  activity.observe({ ...event, key: 'e:2' })
+  expect(activity.state('b').unread).toBe(false)
+  activity.observe({ botId: 'b', chatId: 'c', key: 'e:3', status: 'working' })
+  activity.observe({ ...event, key: 'e:4' })
+  expect(activity.state('b').unread).toBe(true)
+  activity.setUnread('b', false)
+  await Bun.sleep(20)
+  activity.observe({ ...event, key: 'e:5' })
+  expect(activity.state('b').unread).toBe(false)
+  activity.close()
+  const restarted = new ActivityService(store, () => {})
+  restarted.observe({ ...event, key: 'e:5' })
+  expect(restarted.state('b').unread).toBe(false)
+  restarted.close()
+  db.close()
+}
+
+test('a turn that ends waiting for Oscar turns unread on, once, unless he is viewing', () => needsOscarRules('waiting'))
+
+test('a failed turn turns unread on, once, unless he is viewing', () => needsOscarRules('failed'))
+
+test('a failed routine run turns unread on unless he is viewing, and an exchange between bots never does', async () => {
+  const { db, activity } = setup()
+  const failing = (id: string) =>
+    new RoutineScheduler(
+      { store: { claimDue: () => [], pending: () => [{ id, botId: 'b' }] }, run: async () => ({ status: 'failed', text: 'Broke' }) } as unknown as RoutineService,
+      event => activity.observe(event)
+    )
+  const stopViewing = activity.view('b')
+  failing('r1').tick()
+  await Bun.sleep(5)
+  expect(activity.state('b')).toMatchObject({ status: 'failed', unread: false })
+  stopViewing()
+  failing('r2').tick()
+  await Bun.sleep(5)
+  expect(activity.state('b')).toMatchObject({ status: 'failed', unread: true })
+  activity.setUnread('b', false)
+  activity.observe({ botId: 'b', chatId: 'thread:1', key: '1:true', status: 'working' })
+  activity.observe({ botId: 'b', chatId: 'thread:1', key: '1:false', status: 'finished' })
+  expect(activity.state('b').unread).toBe(false)
   activity.close()
   db.close()
 })
