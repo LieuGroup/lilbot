@@ -539,9 +539,9 @@ startup and restored if it differs, like `t3-coding`).
   evidence, result, times and an optional parent. Statuses and kinds are checked in code, not SQL, so #142 can add states
   without a table rebuild. `work_events` keeps every change with where it came from.
 - Who asked and the origin come from LilBot's records of the calling session (`app-work.ts`, `workSessions`): an
-  exchange's hidden session is the exchange, asked by the delegating bot; a routine run's session is the run, asked by
-  the routine; anything else is a conversation, asked by Oscar unless the bot says `self`. Webhook runs join when #151
-  lands (one resolver line); groups with #133.
+  exchange's hidden session is the exchange, asked by the delegating bot; a routine or webhook run's session is the run,
+  asked by the routine or webhook (named by its task); anything else is a conversation, asked by Oscar unless the bot
+  says `self`. Groups join with #133.
 - Rules: opening with a definition (or at level 0) starts the work; `working` needs the definition; `done` needs it, at least one evidence entry and a result, unless the item was
   opened at level 0. The level is set at opening only (so it cannot be lowered to skip the check). Only the owner reports
   on its item; the caller is the key's bot. `needs_oscar` carries exactly one question; a second while one waits is
@@ -849,8 +849,9 @@ Oscar.
   one-off request is not a standing preference, one fact goes in once, and never save secrets, what can be looked up,
   task progress or "tool X is broken". `memory-safety.ts` refuses facts carrying model instructions, secrets or
   invisible characters (zero-width, bidi controls, the byte-order mark, stray tag characters), from bots and from the
-  user. Soft hyphens, flag emoji (tag sequences) and other format characters stay ordinary text there and in bot-to-bot
-  messages; only webhook payloads refuse every format character but the soft hyphen. Every rule scans in linear time.
+  user. Soft hyphens, the England, Scotland and Wales flags (the only tag sequences allowed; other tag characters are
+  hidden ASCII) and other format characters stay ordinary text there and in bot-to-bot messages; only webhook payloads
+  refuse every format character but the soft hyphen. Every rule scans in linear time.
 - Plug-in versions: the current one is in `memory-adapter/plugin.yaml`. To ship a change, bump `version` there and
   `VERSION` in `__init__.py`: each version installs into its own folder and loads on the bot's next session; start-up
   reinstalls older adapters only for bound, non-deleted profiles. LilBot warns when a bot still calls with an older
@@ -937,16 +938,19 @@ signature scheme, and an address. Any sender may call one (Oscar, 2026-11-20).
   for every signed scheme, by the SHA-256 of the signed body, since id headers are not signed and a body may have no
   id. Unsigned webhooks dedupe by header only (identical alerts from them are legitimate).
 - What the bot is shown (`webhook-payload.ts`, `webhook-decode.ts`): each event becomes one JSON string at receive
-  time: JSON decoded and a form body's fields decoded, both refused past 64 levels of nesting (counted in one pass
-  before parsing: writing a deeper value back blocks the server for over a second); at most 8 headers such as
+  time: JSON decoded and a form body's fields decoded (only text that opens with `[` or `{` is parsed), both refused
+  past 64 levels of nesting (counted in one pass before parsing: writing a deeper value back blocks the server for
+  over a second); at most 8 headers such as
   `x-github-event`, 200 characters each; every webhook address blanked (escaped, percent-encoded once or twice,
   HTML-entity and fullwidth slashes, whitespace after `/hook/`, the first 64 of a longer run, and any 16-character
   piece of the webhook's own address, so a split one cannot be rebuilt; shorter pieces spread over fields, and other
   forms, are not blanked); cut to 24,000 characters inside the fence, headers included. Two scans must pass
-  (`outsideReason`, the shared rules plus every format character but the soft hyphen, flag emoji allowed): one over
-  every decoded string and key with whitespace and control characters collapsed and compatibility forms folded
-  (NFKC), as a model reads them, and one over the stored string itself. The run's `<webhook-events>` fence joins the
-  stored strings unchanged (`fenceJson`: `<`, `>` and every format character become `\u` escapes). Withheld events keep
+  (`outsideReason`, the shared rules plus every format character but the soft hyphen, the three flags allowed): one
+  over every decoded string and key as a model reads them (`folded`: whitespace and control characters collapsed,
+  compatibility forms decomposed with NFKD in 256-character pieces, since normalising a run of combining marks is
+  quadratic and once blocked the server for 28 s, then default-ignorable characters and combining marks removed), and
+  one over the stored string itself. The run's `<webhook-events>` fence joins the stored strings unchanged
+  (`fenceJson`: `<`, `>`, format characters and every default-ignorable character become `\u` escapes). Withheld events keep
   no payload; a run of only withheld events records a failed run and never wakes the bot. Preparing any body up to the
   cap takes tens of milliseconds (`tests/webhooks/webhook-limits.test.ts` times it). The rules are a heuristic:
   paraphrase passes, which is why what a run may do matters.

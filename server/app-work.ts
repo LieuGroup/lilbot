@@ -12,6 +12,7 @@ import type { LibraryStore } from './library/library-store'
 import type { RoutineStore } from './routines/routine-store'
 import type { CallingChats } from './threads/calling-chats'
 import type { ThreadStore } from './threads/thread-store'
+import type { WebhookStore } from './webhooks/webhook-store'
 import { WorkAnswers } from './work/work-answers'
 import { WorkBoard } from './work/work-board'
 import { WorkLinks } from './work/work-links'
@@ -25,6 +26,7 @@ interface WorkDeps {
   bots: BotService
   threadStore: ThreadStore
   routineStore: RoutineStore
+  webhookStore: WebhookStore
   libraryStore: LibraryStore
   activity: ActivityService
   history: Pick<HistoryStore, 'reference'>
@@ -51,8 +53,8 @@ function routineName(routines: RoutineStore, botId: string, routineId: string) {
   }
 }
 
-/** Where a bot's session came from: an exchange's hidden session, a routine run's session, or else a conversation. */
-export function workSessions(threadStore: ThreadStore, routineStore: RoutineStore) {
+/** Where a bot's session came from: an exchange's hidden session, a routine or webhook run's session, or else a conversation. */
+export function workSessions(threadStore: ThreadStore, routineStore: RoutineStore, webhookStore: WebhookStore) {
   return (botId: string, chatId: string): SessionOrigin => {
     const exchange = threadStore.context(botId, chatId)?.thread_id
     if (exchange) {
@@ -64,15 +66,17 @@ export function workSessions(threadStore: ThreadStore, routineStore: RoutineStor
       const routineId = routineStore.run(botId, run).routineId
       return { origin: { kind: 'routine_run', id: run }, askedBy: { kind: 'routine', id: routineId, name: routineName(routineStore, botId, routineId) } }
     }
+    const hook = webhookStore.runForChat(botId, chatId)
+    if (hook) return { origin: { kind: 'webhook_run', id: hook.runId }, askedBy: { kind: 'webhook', id: hook.webhookId, name: hook.task.slice(0, 100) } }
     return { origin: { kind: 'conversation', id: chatId }, askedBy: null }
   }
 }
 
-export function createWork({ database, store, prefs, bots, threadStore, routineStore, libraryStore, activity, history, calls, publish }: WorkDeps) {
+export function createWork({ database, store, prefs, bots, threadStore, routineStore, webhookStore, libraryStore, activity, history, calls, publish }: WorkDeps) {
   const work = new WorkService(new WorkStore(database), {
     requireBot: id => bots.requireBot(id),
     callingChat: (botId, requestId) => calls.find(botId, requestId),
-    session: workSessions(threadStore, routineStore),
+    session: workSessions(threadStore, routineStore, webhookStore),
     libraryTitle: (botId, itemId) => libraryStore.get(botId, itemId)?.title ?? null,
     waiting: (botId, itemId, key, on) => {
       if (store.exists(botId)) activity.observe({ botId, chatId: `work:${itemId}`, key, status: on ? 'waiting' : 'finished' })

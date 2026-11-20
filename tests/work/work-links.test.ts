@@ -98,3 +98,16 @@ test('a routine run opens items as the routine, and links an item it reports on'
   const linked = await w.work.act('a', { requestId: 'run-2', itemId: earlier.id, evidence: [proof] })
   expect(linked.links).toEqual([{ kind: 'routine_run', id: run.id }])
 })
+
+test('a webhook run opens items as the webhook, with the run as their origin', async () => {
+  const w = workFixture()
+  w.database.exec("INSERT INTO bots(id, name, function, instructions, engine_id, engine_bot_id) VALUES ('a', 'A', '', '', 'test', 'a')")
+  const hook = w.webhookStore.create('a', { requestId: 'gh', description: 'Triage new issues', source: 'GitHub', createdBy: 'oscar' }, null, 0)
+  w.webhookStore.events.add(hook.id, { deliveryId: null, bodyHash: null }, { item: '{}', size: 2, refusal: null }, 0)
+  const [run] = w.webhookStore.claimDue(60_000)
+  w.webhookStore.attach(run.id, 'a-webhook-session', 60_000)
+  w.state.chats.set('a', 'a-webhook-session')
+  const item = await w.work.act('a', { requestId: 'hook-1', title: 'Triage issue 7', done: 'a label on issue 7', asked: 'self' })
+  expect(item.origin).toEqual({ kind: 'webhook_run', id: run.id })
+  expect(item.askedBy).toEqual({ kind: 'webhook', id: hook.id, name: 'Triage new issues' })
+})

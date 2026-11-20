@@ -1,5 +1,4 @@
 /** The browser <-> LilBot server protocol: JSON frames over one WebSocket. */
-
 import { z } from 'zod'
 import { AttachmentFile } from './attachment-schema'
 import { BotDeleteDefaults, BotDeleteInput } from './bot-delete-schema'
@@ -10,12 +9,11 @@ import { DeviceId, DeviceName } from './device-schema'
 import { LibraryListInput, type LibraryPage, type WorkspaceEntry } from './library-schema'
 import { type MemoryFact, MemoryWriteInput } from './memory-schema'
 import type { Routine } from './routine-schema'
-import { type WorkResults, workMethods } from './work-schema'
 import { type WebhookResults, webhookMethods } from './webhook-schema'
+import { type WorkResults, workMethods } from './work-schema'
 
 const botId = z.string().min(1)
 const chatId = z.string().min(1)
-
 /** Each method's params schema (checked on the server) and result type (trusted by the browser). */
 export const methods = {
   ...webhookMethods,
@@ -169,7 +167,6 @@ export interface Results extends WorkResults, WebhookResults {
 }
 
 export const RequestFrame = z.object({ id: z.number(), method: z.string(), params: z.unknown() })
-
 export type ResponseFrame = { id: number; ok: true; result: unknown } | { id: number; ok: false; error: { code: string; message: string } }
 
 /** What the server sends without being asked. `bots.changed` means: fetch the bot list again

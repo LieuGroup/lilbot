@@ -8,13 +8,14 @@ const SLASH = String.raw`(?:\\{0,16}\/|%(?:25){0,3}2F|&#0{0,4}47;|&#x0{0,4}2f;|&
  *  characters of a longer run. Every quantifier is bounded, so scanning stays linear. */
 export const WEBHOOK_ADDRESS = new RegExp(String.raw`${SLASH}hook${SLASH}(?:\\[nrt]|\s){0,4}[A-Za-z0-9_-]{64}`, 'gi')
 
-/** The Scotland, England and Wales flags: an emoji tag sequence is ordinary text, a stray tag character is not. */
-const FLAGS = /\u{1F3F4}[\u{E0020}-\u{E007E}]{1,16}\u{E007F}/gu
+/** The England, Scotland and Wales flags, the only emoji tag sequences in use: any other tag characters are hidden ASCII. */
+const FLAGS = /\u{1F3F4}\u{E0067}\u{E0062}(?:\u{E0065}\u{E006E}\u{E0067}|\u{E0073}\u{E0063}\u{E0074}|\u{E0077}\u{E006C}\u{E0073})\u{E007F}/gu
 const HIDING = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF\u{E0000}-\u{E007F}]/u
 /** Every format character but the soft hyphen: refused in outside data (`outsideReason`) only. */
 const FORMAT = /[^\P{Cf}\u00AD]/u
-/** Where a run of token characters starts (never inside one), so finding a JWT stays linear. */
-const TOKEN_RUNS = /(?<![A-Za-z0-9_-])([A-Za-z0-9_-]{13,})\.[A-Za-z0-9_-]{10,}\./g
+/** A run of token characters (starting where one starts, never inside one) followed by `.`, a second run and `.`. The
+ *  tail is a lookahead, so the second run can begin the next match (`cookie.domainexample.<jwt>`); still linear. */
+const TOKEN_RUNS = /(?<![A-Za-z0-9_-])([A-Za-z0-9_-]{13,})(?=\.[A-Za-z0-9_-]{10,}\.)/g
 
 /** A JWT, also inside a longer token run (`x-eyJ…`): the first `eyJ` of a run leaves the most characters after it. */
 function hasJwt(text: string) {
@@ -66,14 +67,15 @@ export function memoryRefusal(text: string): string | null {
 
 const unit = (code: number) => `\\u${code.toString(16).padStart(4, '0')}`
 const units = (char: string) => (char.length === 1 ? unit(char.charCodeAt(0)) : unit(char.charCodeAt(0)) + unit(char.charCodeAt(1)))
-/** JSON text with `<`, `>` and format characters written as `\u` escapes (UTF-16 units, so tag characters become
- *  surrogate pairs). In JSON they only occur inside strings, so the meaning is unchanged; the model never sees them raw. */
+/** JSON text with `<`, `>`, format characters and every other default-ignorable character (variation selectors,
+ *  Hangul fillers, the combining grapheme joiner) written as `\u` escapes (UTF-16 units, so tag characters and the
+ *  supplementary variation selectors become surrogate pairs). In JSON they only occur inside strings, so the meaning is unchanged; the model never sees them raw. */
 export const escapeJson = (json: string) =>
   json
     .replaceAll('<', '\\u003c')
     .replaceAll('>', '\\u003e')
     .replaceAll('\u00AD', '\\u00ad')
-    .replace(/\p{Cf}/gu, units)
+    .replace(/[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu, units)
 
 /** Serialised JSON as a named fence the data cannot close and cannot hide text in. */
 export const fenceJson = (name: string, json: string) => `<${name}>\n${escapeJson(json)}\n</${name}>`

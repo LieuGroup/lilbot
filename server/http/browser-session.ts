@@ -10,8 +10,8 @@ import type { AddThisComputer } from '../computers/add-this-computer'
 import type { DeviceService } from '../devices/device-service'
 import type { LibraryService } from '../library/library-service'
 import type { RoutineService } from '../routines/routine-service'
-import type { WorkBoard } from '../work/work-board'
 import type { WebhookService } from '../webhooks/webhook-service'
+import type { WorkBoard } from '../work/work-board'
 import { type AfterResponse, BrowserChats } from './browser-chats'
 
 function requireService<T>(service: T | undefined, message: string): T {

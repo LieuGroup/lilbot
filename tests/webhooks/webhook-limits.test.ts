@@ -9,7 +9,8 @@ const SIZE = WEBHOOK_LIMITS.bodyBytes
 const TOKEN = 'Q'.repeat(64)
 const view = (text: string, headers: Record<string, string> = {}) => eventView(new TextEncoder().encode(text), new Headers(headers), null, 0, TOKEN)
 
-// Preparing an event runs on the server's only thread. A 40,000-deep body used to block it for 1.2 s.
+// Preparing an event runs on the server's only thread: a 40,000-deep body once blocked it for 1.2 s, a run of combining
+// marks for 28 s. Measured worst now is about 50 ms; the bound leaves room for a loaded machine.
 test('preparing any body up to the cap stays far below a second: deep, wide, long and many-keyed shapes', () => {
   const shapes: [string, Record<string, string>][] = [
     [`${'['.repeat(40_000)}${']'.repeat(40_000)}`, { 'content-type': 'application/json' }],
@@ -23,12 +24,17 @@ test('preparing any body up to the cap stays far below a second: deep, wide, lon
     [JSON.stringify({ t: '<'.repeat(SIZE - 20) }), {}],
     [JSON.stringify({ t: '­'.repeat(SIZE / 2 - 20) }), {}],
     [JSON.stringify({ t: TOKEN.repeat(4_000) }), {}],
-    ['a=1&'.repeat(SIZE / 4), { 'content-type': 'application/x-www-form-urlencoded' }]
+    ['a=1&'.repeat(SIZE / 4), { 'content-type': 'application/x-www-form-urlencoded' }],
+    ['a&'.repeat(SIZE / 2), { 'content-type': 'application/x-www-form-urlencoded' }],
+    // Combining marks: normalising a long run is quadratic (a 256 KiB run once blocked the server for 28 s).
+    [JSON.stringify({ comment: `a${'\u0345'.repeat(SIZE / 8)}${'\u0334'.repeat(SIZE / 8)}` }), {}],
+    [`a${'\u0315\u0316'.repeat(SIZE / 4)}`, { 'content-type': 'text/plain' }],
+    [`${'\u0345'.repeat(30)}\uFF9E`.repeat(SIZE / 62), { 'content-type': 'text/plain' }]
   ]
   for (const [body, headers] of shapes) {
     const started = performance.now()
     const shown = view(body, headers)
-    expect(performance.now() - started).toBeLessThan(250)
+    expect(performance.now() - started).toBeLessThan(150)
     expect(shown.size).toBeLessThanOrEqual(WEBHOOK_LIMITS.eventChars)
   }
   expect(view(`${'['.repeat(MAX_DEPTH + 1)}${']'.repeat(MAX_DEPTH + 1)}`).refusal).toContain('nested more than')

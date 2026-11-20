@@ -21,18 +21,6 @@ type Row = {
   deleted: number
   last_event_at: number | null
 }
-type RunRow = {
-  id: string
-  webhook_id: string
-  bot_id: string
-  created_at: number
-  events: number
-  started_at: number | null
-  finished_at: number | null
-  chat_id: string | null
-  status: WebhookRun['status']
-  result: string
-}
 /** What the door needs to know about the webhook an address names. */
 export interface LiveWebhook {
   id: string
@@ -42,19 +30,10 @@ export interface LiveWebhook {
   signing: Signing | null
 }
 
-const runFrom = (r: RunRow): WebhookRun => ({
-  id: r.id,
-  webhookId: r.webhook_id,
-  botId: r.bot_id,
-  createdAt: r.created_at,
-  events: r.events,
-  startedAt: r.started_at,
-  finishedAt: r.finished_at,
-  chatId: r.chat_id,
-  status: r.status,
-  result: r.result
-})
-const UNSETTLED = `SELECT r.* FROM webhook_runs r JOIN webhooks w ON w.id = r.webhook_id JOIN bots b ON b.id = r.bot_id WHERE w.deleted = 0 AND b.deletion IS NULL AND r.status IN ('pending', 'running')`
+/** A run row as `WebhookRun`, named in SQL. */
+const RUN = (r: string) =>
+  `${r}.id, ${r}.webhook_id AS webhookId, ${r}.bot_id AS botId, ${r}.created_at AS createdAt, ${r}.events, ${r}.started_at AS startedAt, ${r}.finished_at AS finishedAt, ${r}.chat_id AS chatId, ${r}.status, ${r}.result`
+const UNSETTLED = `SELECT ${RUN('r')} FROM webhook_runs r JOIN webhooks w ON w.id = r.webhook_id JOIN bots b ON b.id = r.bot_id WHERE w.deleted = 0 AND b.deletion IS NULL AND r.status IN ('pending', 'running')`
 
 export class WebhookStore {
   readonly events: WebhookEvents
@@ -72,7 +51,7 @@ export class WebhookStore {
       paused: !!row.paused,
       createdAt: row.created_at,
       lastEventAt: row.last_event_at,
-      runs: (this.db.query('SELECT * FROM webhook_runs WHERE webhook_id = ? ORDER BY created_at DESC LIMIT 50').all(row.id) as RunRow[]).map(runFrom)
+      runs: this.db.query(`SELECT ${RUN('webhook_runs')} FROM webhook_runs WHERE webhook_id = ? ORDER BY created_at DESC LIMIT 50`).all(row.id) as WebhookRun[]
     }
   }
   private row(botId: string, id: string): Row {
@@ -175,18 +154,26 @@ export class WebhookStore {
       .immediate()
   }
   pending(): WebhookRun[] {
-    return (this.db.query(UNSETTLED).all() as RunRow[]).map(runFrom)
+    return this.db.query(UNSETTLED).all() as WebhookRun[]
   }
   run(botId: string, id: string): WebhookRun {
-    const row = this.db.query('SELECT * FROM webhook_runs WHERE id = ? AND bot_id = ?').get(id, botId) as RunRow | null
-    if (!row) throw new LilBotError('run_not_found', 'That run does not exist for this bot.')
-    return runFrom(row)
+    const run = this.db.query(`SELECT ${RUN('webhook_runs')} FROM webhook_runs WHERE id = ? AND bot_id = ?`).get(id, botId) as WebhookRun | null
+    if (!run) throw new LilBotError('run_not_found', 'That run does not exist for this bot.')
+    return run
   }
   attach(id: string, chatId: string, now: number) {
     this.db.transaction(() => {
       this.db.query("UPDATE webhook_runs SET chat_id = COALESCE(chat_id, ?), status = 'running', started_at = COALESCE(started_at, ?) WHERE id = ?").run(chatId, now, id)
       this.db.query('INSERT OR IGNORE INTO webhook_chats VALUES (?, ?)').run(chatId, id)
     })()
+  }
+  /** The webhook run a bot's session belongs to, with its webhook's task (kept for a deleted one), for the work board. */
+  runForChat(botId: string, chatId: string) {
+    return this.db
+      .query(
+        'SELECT r.id AS runId, w.id AS webhookId, w.description AS task FROM webhook_chats c JOIN webhook_runs r ON r.id = c.run_id JOIN webhooks w ON w.id = r.webhook_id WHERE c.chat_id = ? AND r.bot_id = ?'
+      )
+      .get(chatId, botId) as { runId: string; webhookId: string; task: string } | null
   }
   isWebhookChat(chatId: string) {
     return !!this.db.query('SELECT 1 FROM webhook_chats WHERE chat_id = ?').get(chatId)

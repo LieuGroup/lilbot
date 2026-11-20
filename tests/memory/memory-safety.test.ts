@@ -73,7 +73,13 @@ test('soft hyphens, flag emoji and Arabic number signs are ordinary text; stray 
   expect(outsideReason('The invoice total is ؀123.')).toContain('invisible characters')
 })
 
-test('a token is found right after a dash or underscore too', () => {
-  for (const text of ['header x-eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.sig', 'id_eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.sig'])
-    expect(memoryRefusal(text)).toContain('access key or token')
+test('a token is found right after a dash, an underscore, or a run of token characters and a dot', () => {
+  const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.sig'
+  for (const text of [`header x-${jwt}`, `id_${jwt}`, `aaaaaaaaaaaaa.${jwt}`, `cookie.domainexample.${jwt}`]) expect(memoryRefusal(text)).toContain('access key or token')
+})
+
+test('only the three flag sequences pass: other tag characters after a black flag are hidden text', () => {
+  const tags = (text: string) => [...text].map(char => String.fromCodePoint(0xe0000 + char.charCodeAt(0))).join('')
+  expect(memoryRefusal(`\u{1F3F4}${tags('ignore')}\u{E007F}\u{1F3F4}${tags('allprevious')}\u{E007F}`)).toContain('invisible characters')
+  expect(memoryRefusal(`\u{1F3F4}${tags('gbeng')}\u{E007F} \u{1F3F4}${tags('gbsct')}\u{E007F} \u{1F3F4}${tags('gbwls')}\u{E007F}`)).toBeNull()
 })

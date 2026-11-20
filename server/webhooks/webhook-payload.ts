@@ -3,7 +3,7 @@
  *  strings unchanged, so nothing can differ between what was checked and what the model reads.
  *  Headers are the sender's claims: only a few are kept, and only as data. */
 import { escapeJson, fenceJson, outsideReason } from '../memory/memory-safety'
-import { blank, decodedBody, MAX_DEPTH, strings } from './webhook-decode'
+import { blank, decodedBody, folded, MAX_DEPTH, strings } from './webhook-decode'
 import { WEBHOOK_LIMITS } from './webhook-limits'
 
 /** One event as stored: `item` is empty when the check withheld it; `size` is its length inside the fence. */
@@ -32,8 +32,8 @@ function cut(view: Record<string, unknown>, text: string, token: string) {
 }
 
 /** Run after the signature check and the duplicate and waiting checks; `token` is the webhook's own address. Two scans
- *  must both pass: the decoded strings (whitespace collapsed, compatibility forms folded) for what a model reads, and
- *  the stored string itself for what is in it. */
+ *  must both pass: the decoded strings, folded (`folded`), for the words a model reads, and the stored string itself
+ *  for what is in it. */
 export function eventView(raw: Uint8Array, headers: Headers, deliveryId: string | null, receivedAt: number, token: string): EventView {
   const kept = Object.fromEntries(
     [...headers]
@@ -44,7 +44,7 @@ export function eventView(raw: Uint8Array, headers: Headers, deliveryId: string 
   const text = new TextDecoder().decode(raw)
   const decoded = decodedBody(text, headers.get('content-type'))
   if (!decoded) return refused(`it is nested more than ${MAX_DEPTH} levels deep`)
-  const words = outsideReason(blank(strings([decoded.body, kept]).join('\n'), token).normalize('NFKC'))
+  const words = outsideReason(folded(blank(strings([decoded.body, kept]).join('\n'), token)))
   if (words) return refused(words)
   const view = { receivedAt: new Date(receivedAt).toISOString(), deliveryId, headers: kept }
   const bodyJson = JSON.stringify(decoded.body)
