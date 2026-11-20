@@ -1,6 +1,7 @@
 /** An engine that lives in memory and records what was asked of it, plus a ready-made service
  *  around it with an in-memory database and a temporary workspaces folder. */
-import { mkdtempSync } from 'node:fs'
+import { afterAll } from 'bun:test'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ActivityService } from '../../server/activity/activity-service'
@@ -120,6 +121,8 @@ export function fakeService(options?: Parameters<typeof fakeEngine>[0]) {
   const prefs = new BotPrefsStore(database)
   const memory = new MemoryService(new MemoryStore(database))
   const root = mkdtempSync(join(tmpdir(), 'lilbot-ws-'))
+  // Removed when the test file (or the describe block that made it) finishes, so no caller has to remember it.
+  afterAll(() => rmSync(root, { recursive: true, force: true }))
   let changes = 0
   let memoryChanges = 0
   const activity = new ActivityService(new ActivityStore(database), () => {})

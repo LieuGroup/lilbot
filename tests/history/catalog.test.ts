@@ -18,10 +18,13 @@ test('overflow catalogue handles >200 sessions, compression roots and hidden run
     add.run('routine', 500, null, null, 1, 0, 'tool')
     add.run('thread', 600, null, null, 1, 0, 'local')
     add.run('branch', 700, 's1', null, 0, 0, 'local')
+    // Hermes writes a compression child without its parent's hidden mark: a webhook run continued as a visible session.
+    add.run('webhook-run', 800, null, 'compression', 1, 1, 'tool')
+    add.run('webhook-child', 900, 'webhook-run', null, 0, 0, 'local')
     const rows = readHistoryCatalog(path)
     expect(rows).toHaveLength(252)
     expect(rows.find(r => r.id === 'root')?.at).toBe(300_000)
-    expect(rows.some(r => ['tip', 'routine', 'thread'].includes(r.id))).toBe(false)
+    expect(rows.some(r => ['tip', 'routine', 'thread', 'webhook-run', 'webhook-child'].includes(r.id))).toBe(false)
   } finally {
     db.close()
     rmSync(dir, { recursive: true, force: true })

@@ -10,6 +10,7 @@ import type { AddThisComputer } from '../computers/add-this-computer'
 import type { DeviceService } from '../devices/device-service'
 import type { LibraryService } from '../library/library-service'
 import type { RoutineService } from '../routines/routine-service'
+import type { WebhookService } from '../webhooks/webhook-service'
 import type { WorkBoard } from '../work/work-board'
 import { type AfterResponse, BrowserChats } from './browser-chats'
 
@@ -38,7 +39,8 @@ export class BrowserSession {
     private attachments?: AttachmentService,
     private addThis?: AddThisComputer,
     private devices?: DeviceService,
-    private work?: WorkBoard
+    private work?: WorkBoard,
+    private webhooks?: WebhookService
   ) {
     this.chats = new BrowserChats(bots, sendFrame, activity, threads, attachments)
   }
@@ -84,6 +86,13 @@ export class BrowserSession {
     'routines.delete': ({ botId, id }) => requireService(this.routines, 'Routines are unavailable.').delete(botId, id),
     'routines.openRun': ({ botId, runId }, afterResponse) =>
       this.chats.track(afterResponse, onEvent => requireService(this.routines, 'Routines are unavailable.').openRun(botId, runId, onEvent)),
+    'webhooks.list': ({ botId }) => requireService(this.webhooks, 'Webhooks are unavailable.').list(botId),
+    'webhooks.pause': ({ botId, id }) => requireService(this.webhooks, 'Webhooks are unavailable.').pause(botId, id, true),
+    'webhooks.resume': ({ botId, id }) => requireService(this.webhooks, 'Webhooks are unavailable.').pause(botId, id, false),
+    'webhooks.delete': ({ botId, id }) => requireService(this.webhooks, 'Webhooks are unavailable.').delete(botId, id),
+    'webhooks.address': ({ botId, id }) => requireService(this.webhooks, 'Webhooks are unavailable.').currentAddress(botId, id),
+    'webhooks.openRun': ({ botId, runId }, afterResponse) =>
+      this.chats.track(afterResponse, onEvent => requireService(this.webhooks, 'Webhooks are unavailable.').openRun(botId, runId, onEvent)),
     'library.list': input => requireService(this.library, 'Library is unavailable.').list(input),
     'library.workspace': ({ botId, path }) => requireService(this.library, 'Library is unavailable.').workspace(botId, path),
     'library.content': async ({ botId, itemId }) => requireService(this.library, 'Library is unavailable.').contentUrl(botId, itemId),

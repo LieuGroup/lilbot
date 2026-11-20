@@ -1,9 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 
 import { openDatabase } from '../../server/database/database'
-import { memoryRefusal } from '../../server/memory/memory-safety'
+import { memoryRefusal, outsideReason } from '../../server/memory/memory-safety'
 import { MemoryService } from '../../server/memory/memory-service'
 import { MemoryStore } from '../../server/memory/memory-store'
+import { refuseUnsafe } from '../../server/threads/thread-prompts'
 
 describe('what may not be stored', () => {
   const refused = [
@@ -56,4 +57,29 @@ test('a bot is told when it holds more lasting facts than it is shown', () => {
   expect(memory.overflowNotice('b')).toBeNull()
   for (let i = 0; i < 30; i++) memory.write({ botId: 'b', kind: 'profile', text: `Fact ${i} ${'x'.repeat(300)}`, author: 'bot' })
   expect(memory.overflowNotice('b')).toMatch(/over its budget: \d+ facts are no longer shown/)
+})
+
+// Shared with bot edits and bot-to-bot text (a delegated answer is withheld whole when refused): ordinary text passes.
+test('soft hyphens, flag emoji and Arabic number signs are ordinary text; stray tag and zero-width characters are not', () => {
+  for (const text of [
+    'Oscar prefers co­operative wording in release notes.',
+    'Holiday in \u{1F3F4}\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F} and \u{1F3F4}\u{E0067}\u{E0062}\u{E0077}\u{E006C}\u{E0073}\u{E007F} in May.',
+    'The invoice total is ؀123.'
+  ])
+    expect(memoryRefusal(text)).toBeNull()
+  expect(() => refuseUnsafe('Answer: done \u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}')).not.toThrow()
+  expect(memoryRefusal('Hidden \u{E0041}\u{E0042} text')).toContain('invisible characters')
+  expect(memoryRefusal('Zero​width')).toContain('invisible characters')
+  expect(outsideReason('The invoice total is ؀123.')).toContain('invisible characters')
+})
+
+test('a token is found right after a dash, an underscore, or a run of token characters and a dot', () => {
+  const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.sig'
+  for (const text of [`header x-${jwt}`, `id_${jwt}`, `aaaaaaaaaaaaa.${jwt}`, `cookie.domainexample.${jwt}`]) expect(memoryRefusal(text)).toContain('access key or token')
+})
+
+test('only the three flag sequences pass: other tag characters after a black flag are hidden text', () => {
+  const tags = (text: string) => [...text].map(char => String.fromCodePoint(0xe0000 + char.charCodeAt(0))).join('')
+  expect(memoryRefusal(`\u{1F3F4}${tags('ignore')}\u{E007F}\u{1F3F4}${tags('allprevious')}\u{E007F}`)).toContain('invisible characters')
+  expect(memoryRefusal(`\u{1F3F4}${tags('gbeng')}\u{E007F} \u{1F3F4}${tags('gbsct')}\u{E007F} \u{1F3F4}${tags('gbwls')}\u{E007F}`)).toBeNull()
 })

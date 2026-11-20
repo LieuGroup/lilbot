@@ -25,6 +25,7 @@
     "check:attachments": "bun live-checks/attachments-check.ts",
     "check:live": "bun live-checks/chat-check.ts",
     "check:routines": "bun live-checks/routines-check.ts",
+    "check:webhooks": "bun live-checks/webhooks-check.ts",
     "check:memory": "bun live-checks/memory-check.ts",
     "check:reasoning": "bun live-checks/reasoning-check.ts",
     "check:model-switch": "bun live-checks/model-switch-check.ts",

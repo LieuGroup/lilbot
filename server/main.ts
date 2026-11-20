@@ -20,6 +20,7 @@ import { appRoutes, type SocketData } from './http/app-routes'
 import { BrowserSession } from './http/browser-session'
 import { startPublicDoor } from './http/public-door'
 import { allowedHosts } from './http/socket-guard'
+import { webhookRoute } from './http/webhook-route'
 import { files } from './skills/skill-files'
 import { SYSTEM_PATH } from './system/system-connection'
 
@@ -27,7 +28,8 @@ assertServerEnvironment(process.env)
 const COMMIT = runningCommit(join(import.meta.dir, '..'))
 const PORT = Number(process.env.LILBOT_PORT ?? 3370)
 const PUBLIC_PORT = Number(process.env.LILBOT_PUBLIC_PORT ?? 3372)
-if (process.env.LILBOT_PUBLIC_ENABLED === '1') checkPublicPort(PUBLIC_PORT, PORT)
+const PUBLIC_ENABLED = process.env.LILBOT_PUBLIC_ENABLED === '1'
+if (PUBLIC_ENABLED) checkPublicPort(PUBLIC_PORT, PORT)
 const ACCESS = accessSettings(process.env, PORT, PUBLIC_PORT)
 const HOST = process.env.LILBOT_HOST ?? '127.0.0.1'
 /** LilBot's own database file lives here. */
@@ -50,13 +52,15 @@ function botsChanged() {
 }
 
 const engine = new HermesEngine(process.env.LILBOT_BOT_IDS?.split(',').filter(Boolean))
-const { bots, store, skills, threadStore, library, computers, devices, attachments, t3Grants, t3Bridge, systemMcp, engineApi, activity, routines, threads, board } =
+const { bots, store, skills, hiddenChat, library, computers, devices, attachments, t3Grants, t3Bridge, system, engineApi, activity, routines, threads, board, webhooks } =
   createAppServices(engine, {
     DATA_DIR,
     WORKSPACES_DIR,
     PORT,
     MEMORY_ADAPTER_VERSION,
     COMMIT,
+    // `helperSettings` below refuses a helper URL that is not the door's HTTPS origin.
+    HOOK_ORIGIN: PUBLIC_ENABLED && process.env.LILBOT_HELPER_URL ? new URL(process.env.LILBOT_HELPER_URL).origin : undefined,
     publish: frame => publish(EVERYONE, JSON.stringify(frame)),
     botsChanged
   })
@@ -81,7 +85,7 @@ prepareMemory().catch(error => console.error('[memory] could not prepare memory 
 
 engine.onBotsChanged(botsChanged)
 bots.watchActivity(event => {
-  if (!threadStore.isInternal(event.chatId)) activity.observe(event)
+  if (!hiddenChat(event.botId, event.chatId)) activity.observe(event)
 }, activity.cursor)
 const DIST = join(import.meta.dir, '..', 'dist')
 const downloads = new HelperDownloads(join(DATA_DIR, 'helper-downloads'), helperSettings(process.env, PORT, ACCESS?.host, computers.auth.serverKey.fingerprint))
@@ -108,7 +112,8 @@ const websocket: WebSocketHandler<SocketData> = {
       attachments,
       addThis,
       devices,
-      board
+      board,
+      webhooks
     )
   },
   message(socket, message) {
@@ -136,7 +141,7 @@ const server = Bun.serve<SocketData>({
       if (url.pathname === SYSTEM_PATH) {
         // Creating a bot waits for its greeting: no idle timeout.
         server.timeout(request, 0)
-        return systemMcp(request)
+        return system.handler(request)
       }
       if (url.pathname.startsWith('/engine/')) return engineApi(request, url.pathname)
       if (url.pathname === '/api/health') return Response.json({ ok: true, engine: 'hermes', commit: COMMIT, pid: process.pid })
@@ -164,4 +169,4 @@ for (const [name, folder] of [
 console.log(`LilBot listening on http://${server.hostname}:${server.port} (engine: Hermes)`)
 
 // Off until the dedicated tunnel is provisioned. Never target the private app port.
-if (process.env.LILBOT_PUBLIC_ENABLED === '1') startPublicDoor(computers, PUBLIC_PORT)
+if (PUBLIC_ENABLED) startPublicDoor(computers, PUBLIC_PORT, { hooks: webhookRoute(webhooks) })

@@ -29,7 +29,13 @@ const EXPECTED_TOOLS = [
   'lilbot_delegation_wait',
   'lilbot_delegation_attach',
   'lilbot_work',
-  'lilbot_work_list'
+  'lilbot_work_list',
+  'lilbot_webhook_create',
+  'lilbot_webhooks_list',
+  'lilbot_webhook_pause',
+  'lilbot_webhook_resume',
+  'lilbot_webhook_delete',
+  'lilbot_webhook_new_address'
 ]
 
 test('only engine processes on this machine with a current bot’s own system key get in', async () => {
@@ -72,10 +78,10 @@ test('the handshake answers like an MCP server and lists exactly the agreed tool
   expect(unknown.code).toBe(-32601)
 })
 
-test('nothing destructive is offered: no delete, remove or forget of bots, computers or facts', async () => {
+test("nothing destructive is offered: no delete, remove or forget of bots, computers or facts; only the bot's own webhooks", async () => {
   const f = systemFixture()
   const names = f.tools.map(tool => tool.name)
-  expect(names.filter(name => /delete|remove|forget|destroy|revoke/.test(name))).toEqual(['lilbot_delete_defaults_get', 'lilbot_delete_defaults_set'])
+  expect(names.filter(name => /delete|remove|forget|destroy|revoke/.test(name))).toEqual(['lilbot_delete_defaults_get', 'lilbot_delete_defaults_set', 'lilbot_webhook_delete'])
   for (const forbidden of ['lilbot_bot_delete', 'lilbot_computer_remove', 'lilbot_memory_forget']) {
     const result = (await (await f.rpc('b1', 'tools/call', { name: forbidden, arguments: { botId: 'b1' } })).json()).result
     expect(result.isError).toBe(true)

@@ -13,6 +13,7 @@ import { connectionPreparer } from './hermes-connections'
 import { deleteRuntime } from './hermes-delete'
 import { allowedProfile, requireProfileEnvironment } from './hermes-environment'
 import { conversations } from './hermes-history'
+import { compressionRoot } from './hermes-history-catalog'
 import { reviewMemory } from './hermes-memory-review'
 import { installMemory, legacyNotes, memoryInstalled, refreshMemoryAdapters } from './hermes-memory-setup'
 import { ensureFullAccess } from './hermes-permissions'
@@ -28,6 +29,7 @@ import { onToolCall } from './hermes-tool-calls'
 const PROFILE_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/
 export class HermesEngine implements BotEngine {
   conversations = conversations
+  compressionRoot = compressionRoot
   readonly id = 'hermes'
   private spares = new SpareSockets()
   readonly supportedPermissionModes = ['full-access'] as const

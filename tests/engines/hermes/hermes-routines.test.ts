@@ -137,3 +137,25 @@ test('a routine session is created with the bot’s reasoning effort, and withou
   expect(created[0].reasoning).toBe('xhigh')
   expect('reasoning' in created[1]).toBe(false)
 })
+
+test('a run asked for toolsets starts its session with only those; without, the session has every toolset', async () => {
+  const created: any[] = []
+  const connect = async () =>
+    ({
+      request: async (method: string, params: any) => {
+        if (method === 'config.get') return { value: 'off' }
+        if (method === 'session.create') {
+          created.push(params)
+          return { session_id: 'live', stored_session_id: 'stored' }
+        }
+        if (method === 'prompt.submit') return { admission_id: 'receipt' }
+        if (method === 'prompt.receipt') return { status: 'terminal', outcome: 'completed' }
+        return { display_messages: [] }
+      },
+      close: () => {}
+    }) as unknown as HermesSocket
+  await runRoutine('native-id', 'task', { workspace: '/test', runId: 'narrow', onChat: () => {}, toolsets: ['web'] }, connect)
+  await runRoutine('native-id', 'task', { workspace: '/test', runId: 'wide', onChat: () => {} }, connect)
+  expect(created[0].toolsets).toEqual(['web'])
+  expect('toolsets' in created[1]).toBe(false)
+})

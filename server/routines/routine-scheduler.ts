@@ -1,14 +1,21 @@
 import type { ActivityEvent } from '../../shared/activity-schema'
 import { backgroundFailure } from '../background'
-import type { RoutineService } from './routine-service'
+
+/** What the scheduler dispatches: routines, and webhooks (`server/webhooks/`), which reuse it. Activity for a run
+ *  uses the chat id `<kind>:<run id>`. */
+export interface RunSource<R extends { id: string; botId: string }> {
+  readonly kind: string
+  readonly store: { claimDue(now: number): unknown; pending(): R[] }
+  run(run: R): Promise<{ status: string }>
+}
 
 /** Persist before dispatch. Retrying the SAME run uses the engine's durable request identities.
  * One routine never overlaps itself. Pause/delete stop future dispatch; an admitted run may finish. */
-export class RoutineScheduler {
+export class RoutineScheduler<R extends { id: string; botId: string }> {
   private running = new Set<string>()
   private retryAt = new Map<string, number>()
   constructor(
-    private service: RoutineService,
+    private service: RunSource<R>,
     private observe: (event: ActivityEvent) => void = () => {},
     private now = Date.now
   ) {}
@@ -19,12 +26,18 @@ export class RoutineScheduler {
       this.running.add(run.id)
       void Promise.resolve()
         .then(() => {
-          this.observe({ botId: run.botId, chatId: `routine:${run.id}`, key: `${run.id}:working`, status: 'working' })
+          this.observe({ botId: run.botId, chatId: `${this.service.kind}:${run.id}`, key: `${run.id}:working`, status: 'working' })
           return this.service.run(run)
         })
         .then(result => {
           this.retryAt.delete(run.id)
-          this.observe({ botId: run.botId, chatId: `routine:${run.id}`, key: `${run.id}:settled`, status: result.status === 'completed' ? 'finished' : 'failed', spoke: true })
+          this.observe({
+            botId: run.botId,
+            chatId: `${this.service.kind}:${run.id}`,
+            key: `${run.id}:settled`,
+            status: result.status === 'completed' ? 'finished' : 'failed',
+            spoke: true
+          })
         })
         .catch(() => {
           // Unknown submission outcome is never marked failed and replaced with a fresh run.

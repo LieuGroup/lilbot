@@ -1,5 +1,6 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import type { ActivityEvent } from '../shared/activity-schema'
 import type { EventFrame } from '../shared/protocol'
 import { ActivityService } from './activity/activity-service'
 import { ActivityStore } from './activity/activity-store'
@@ -11,6 +12,7 @@ import { backgroundTask } from './background'
 import { BotPrefsStore } from './bots/bot-prefs-store'
 import { BotService } from './bots/bot-service'
 import { BotStore } from './bots/bot-store'
+import { hiddenChats, sessionRoots } from './bots/hidden-chats'
 import { Workspaces } from './bots/workspaces'
 import { ComputerService } from './computers/computer-service'
 import { ComputerStore } from './computers/computer-store'
@@ -33,7 +35,7 @@ import { MemoryService } from './memory/memory-service'
 import { MemoryStore } from './memory/memory-store'
 import { ReviewQueue } from './memory/review-queue'
 import { RoutineScheduler } from './routines/routine-scheduler'
-import { defaultRoutineSettings, RoutineService } from './routines/routine-service'
+import { RoutineService, routineSettings } from './routines/routine-service'
 import { RoutineStore } from './routines/routine-store'
 import { SkillsService } from './skills/skills-service'
 import { SystemChanges } from './system/system-changes'
@@ -41,6 +43,8 @@ import { systemNote } from './system/system-note-facts'
 import { createSystemServer } from './system/system-server'
 import { CallingChats } from './threads/calling-chats'
 import { ThreadStore } from './threads/thread-store'
+import { WebhookService } from './webhooks/webhook-service'
+import { WebhookStore } from './webhooks/webhook-store'
 
 /** Construct services and their background tasks independently of the HTTP listeners. */
 export function createAppServices(
@@ -52,11 +56,13 @@ export function createAppServices(
     MEMORY_ADAPTER_VERSION: string
     /** The running release. */
     COMMIT: string
+    /** The helper door's public origin, where webhook addresses point. */
+    HOOK_ORIGIN: string | undefined
     publish: (frame: EventFrame) => void
     botsChanged: () => void
   }
 ) {
-  const { DATA_DIR, WORKSPACES_DIR, PORT, MEMORY_ADAPTER_VERSION, COMMIT, publish, botsChanged } = settings
+  const { DATA_DIR, WORKSPACES_DIR, PORT, MEMORY_ADAPTER_VERSION, COMMIT, HOOK_ORIGIN, publish, botsChanged } = settings
   const repeat = (name: string, interval: number, run: () => unknown | Promise<unknown>) => setInterval(backgroundTask(name, run), interval)
   const workspaces = new Workspaces(WORKSPACES_DIR)
   const database = openDatabase(join(DATA_DIR, 'lilbot.db'))
@@ -79,6 +85,9 @@ export function createAppServices(
   const reviewQueue = new ReviewQueue(database)
   const routineStore = new RoutineStore(database)
   const libraryStore = new LibraryStore(database)
+  const webhookStore = new WebhookStore(database)
+  const rootOf = sessionRoots(engine, store)
+  const hiddenChat = hiddenChats(rootOf, chat => routineStore.isRoutineChat(chat) || threadStore.isInternal(chat) || webhookStore.isWebhookChat(chat))
   const library = new LibraryService(
     libraryStore,
     id => workspaces.pathFor(id),
@@ -106,7 +115,7 @@ export function createAppServices(
       await bots.listBots()
       return store.list().filter(b => b.engineId === engine.id)
     },
-    (bot, session) => store.exists(bot) && !routineStore.isRoutineChat(session) && !threadStore.isInternal(session),
+    (bot, session) => store.exists(bot) && !hiddenChat(bot, session),
     (botId, chatId, rows) => devices.mergeRows(botId, rows).map(row => ({ ...row, item: attachments.mergeItem(botId, chatId, row.item) })),
     botId => publish({ event: 'history.changed', botId })
   )
@@ -118,6 +127,7 @@ export function createAppServices(
       history.store.forget(botId)
       devices.forgetBot(botId)
       routineStore.forgetBot(botId)
+      webhookStore.forgetBot(botId)
       computers.forgetBot(botId)
       activity.forgetBot(botId)
       reviewQueue.forgetBot(botId)
@@ -130,21 +140,12 @@ export function createAppServices(
     systemNote: systemNote(facts)
   })
   const calls = new CallingChats(botId => prefs.mainChat(botId))
-  const { work, board, links, answers } = createWork({ database, store, prefs, bots, threadStore, routineStore, libraryStore, activity, history: history.store, calls, publish })
+  const runs = { threadStore, routineStore, webhookStore, rootOf }
+  const { work, board, links, answers } = createWork({ database, store, prefs, bots, ...runs, libraryStore, activity, history: history.store, calls, publish })
   const { threads, delegation } = createThreads({ engine, store, prefs, bots, workspaces, history, activity, threadStore, calls, work: links, publish })
-  const system = createSystemServer({
-    ...facts,
-    bots,
-    activity,
-    memory,
-    memoryChanged,
-    delegation,
-    work,
-    changes: new SystemChanges(database),
-    dataDir: DATA_DIR,
-    engineToken: token,
-    port: PORT
-  })
+  const webhooks = new WebhookService(webhookStore, bots, token, HOOK_ORIGIN, () => publish({ event: 'webhooks.changed' }))
+  const changes = new SystemChanges(database)
+  const system = createSystemServer({ ...facts, bots, activity, memory, memoryChanged, delegation, work, webhooks, changes, dataDir: DATA_DIR, engineToken: token, port: PORT })
   watchT3SignIn(
     t3Grants,
     () => publish({ event: 'connections.changed' }),
@@ -157,21 +158,16 @@ export function createAppServices(
     port: PORT,
     botIds: () => store.list().map(bot => bot.id)
   })
-  const routines = new RoutineService(routineStore, bots, () => publish({ event: 'routines.changed' }), {
-    ...defaultRoutineSettings,
-    // Only isolated servers with their own data folder and explicit profile allowlist may shorten it.
-    minIntervalSeconds:
-      process.env.LILBOT_DATA_DIR && process.env.LILBOT_BOT_IDS && process.env.LILBOT_ROUTINE_TEST_INTERVAL_SECONDS
-        ? Math.max(1, Number(process.env.LILBOT_ROUTINE_TEST_INTERVAL_SECONDS))
-        : defaultRoutineSettings.minIntervalSeconds
-  })
+  const routines = new RoutineService(routineStore, bots, () => publish({ event: 'routines.changed' }), routineSettings(process.env))
   repeat('threads', 1000, () => threads.tick())
   repeat('work answers', 1000, () => answers.tick())
-  const scheduler = new RoutineScheduler(routines, event => {
+  const observeRun = (event: ActivityEvent) => {
     if (store.exists(event.botId)) activity.observe(event)
-  })
-  repeat('routines', 1000, () => scheduler.tick())
-  // The after-chat memory review.
+  }
+  const routineScheduler = new RoutineScheduler(routines, observeRun)
+  repeat('routines', 1000, () => routineScheduler.tick())
+  const webhookScheduler = new RoutineScheduler(webhooks, observeRun)
+  repeat('webhooks', 1000, () => webhookScheduler.tick())
   const reviewer = new MemoryReviewer(reviewQueue, bots, reviewSettingsFrom(process.env), Date.now, id => store.exists(id))
   repeat('memory reviewer', 20_000, () => reviewer.tick())
 
@@ -187,8 +183,8 @@ export function createAppServices(
     botExists: id => store.exists(id),
     onMemoryChanged: memoryChanged,
     adapterVersion: MEMORY_ADAPTER_VERSION,
-    reviewer
+    reviewer,
+    hiddenChat
   })
-  const systemMcp = system.handler
-  return { bots, store, skills, threadStore, library, computers, devices, attachments, t3Grants, t3Bridge, systemMcp, engineApi, activity, routines, threads, board }
+  return { bots, store, skills, library, computers, devices, attachments, t3Grants, t3Bridge, system, engineApi, activity, routines, threads, board, webhooks, hiddenChat }
 }

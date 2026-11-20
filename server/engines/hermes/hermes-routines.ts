@@ -27,6 +27,7 @@ export async function runRoutine(botId: string, prompt: string, options: Routine
           client: { name: 'lilbot', version: '0.2.0' },
           cwd: options.workspace,
           cwd_explicit: true,
+          ...(options.toolsets ? { toolsets: options.toolsets } : {}),
           ...(options.reasoningEffort ? { reasoning: options.reasoningEffort } : {})
         })
     // Both identities are persisted before the prompt can run (also excludes memory reviews).

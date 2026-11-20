@@ -8,6 +8,7 @@ import type { ComputerService } from '../computers/computer-service'
 import type { MemoryService } from '../memory/memory-service'
 import type { DelegationControl } from '../threads/delegation-control'
 import type { DelegationService } from '../threads/delegation-service'
+import type { WebhookService } from '../webhooks/webhook-service'
 import type { WorkService } from '../work/work-service'
 import type { SystemChanges } from './system-changes'
 
@@ -28,6 +29,7 @@ export interface SystemDeps extends SystemFacts {
   memoryChanged: () => void
   delegation: { hand: DelegationService; control: DelegationControl }
   work: WorkService
+  webhooks: WebhookService
   changes: SystemChanges
   dataDir: string
 }

@@ -8,6 +8,7 @@ import { RoutineStore } from '../../server/routines/routine-store'
 import { files, safeText } from '../../server/skills/skill-files'
 import { CallingChats } from '../../server/threads/calling-chats'
 import { ThreadStore } from '../../server/threads/thread-store'
+import { WebhookStore } from '../../server/webhooks/webhook-store'
 import type { EventFrame } from '../../shared/protocol'
 import { fakeService } from '../helpers/fake-engine'
 
@@ -21,6 +22,8 @@ function wired() {
     bots: fake.service,
     threadStore: new ThreadStore(fake.database),
     routineStore: new RoutineStore(fake.database),
+    webhookStore: new WebhookStore(fake.database),
+    rootOf: (_bot, chat) => chat,
     libraryStore: new LibraryStore(fake.database),
     history,
     calls,

@@ -51,7 +51,7 @@ behind `tool_search`, `tool_describe` and `tool_call` whenever one exists: the m
 only limits the listing (5% of the context or 4,000 tokens; past that it falls back to names only). Tools a memory
 provider returns from `get_tool_schemas` are not in Hermes' registry and stay eager at about 0.43 tokens a character of
 compact schema: the adapter's twelve tools cost about 2,300 tokens, the rest of its 2,956 is the rules and the memory
-block. There is no per-tool switch; `tools.tool_search.enabled: off` makes the whole profile eager, built-ins included.
+block. The six webhook tools (#12) add six listing lines, about 270 tokens. There is no per-tool switch; `tools.tool_search.enabled: off` makes the whole profile eager, built-ins included.
 
 ### The work board's cost (#141, against main at 3ae7cc0, characters from `systemFixture`)
 
@@ -110,9 +110,14 @@ Every tool acts as the calling bot and calls the function the screen uses. Reads
 | `lilbot_delegation_attach` | the receiver's files for its answer |
 | `lilbot_work` | the work board: without itemId opens an item (`WorkService.act`), with itemId reports on the caller's own item: definition, evidence, status in one call |
 | `lilbot_work_list` | the caller's items, every bot's, or one in full: the same records as `work.list` and `work.open` |
+| `lilbot_webhook_create` | `WebhookService.create` for the caller (five webhooks a bot; the same `requestId` returns the current address and any secret LilBot made again) |
+| `lilbot_webhooks_list` | `webhooks.list` for the caller (latest five runs, results cut to 500 characters and fenced as outside data; never addresses or secrets) |
+| `lilbot_webhook_pause`, `_resume`, `_delete` | `webhooks.pause`, `.resume`, `.delete`, only the caller's own webhooks |
+| `lilbot_webhook_new_address` | `WebhookService.newAddress`: the old address stops working at once |
 
 Not offered, by decision: deleting a bot, removing a computer, forgetting another bot's private facts, changing a bot's
-permission mode, registering computers. Routines, library, skills, computers, `create_bot`, `search_conversations` and
+permission mode, registering computers. The one delete a bot has is of its own webhooks (Oscar's decision on #12).
+Routines, library, skills, computers, `create_bot`, `search_conversations` and
 memory writes stay on the engine plug-ins until #113 moves them; `ask_bot` and `list_bots` ended with adapter 0.10.0, their
 work done by `lilbot_delegate` and `lilbot_bots_list`.
 

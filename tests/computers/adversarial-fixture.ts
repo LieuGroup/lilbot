@@ -32,7 +32,7 @@ export function adversary() {
     pair.publicKey.export({ type: 'spki', format: 'pem' }).toString()
   )
   const disconnections: number[] = []
-  const door = startPublicDoor(service, 0, code => disconnections.push(code))
+  const door = startPublicDoor(service, 0, { onClose: code => disconnections.push(code) })
   identity.url = `http://127.0.0.1:${door.port}`
   const privateApp = Bun.serve({
     hostname: '127.0.0.1',

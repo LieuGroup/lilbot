@@ -7,7 +7,7 @@ How LilBot's two public names are deployed on the leader. What each listener acc
 
 - Zone `lilgroup.studio` (Cloudflare Free). Tunnel `lilbot-connect` with its own connector and credentials, separate
   from T3 Code's tunnel and the hosting server.
-- `~/.cloudflared/lilbot/config.yml` holds both ingress rules; the tunnel credentials JSON sits beside it (0600).
+- `~/.cloudflared/lilbot/config.yml` holds the ingress rules; the tunnel credentials JSON sits beside it (0600).
 - `cloudflared` 2026.10.4 in `~/.local/bin`, run by the user unit `lilbot-tunnel.service` (`--no-autoupdate`).
 - `~/.cloudflared/cert.pem` (0600, zone `lilgroup.studio`, kept on purpose with Oscar's approval) lets agents manage
   LilBot's own DNS names and tunnels with `cloudflared tunnel route dns ...` without him. Touch only LilBot's own
@@ -25,6 +25,38 @@ How LilBot's two public names are deployed on the leader. What each listener acc
 - Roll back: `systemctl --user disable --now lilbot-tunnel.service` (hostname unreachable at once). To also close the
   door, delete the drop-in, `systemctl --user daemon-reload` and restart `lilbot.service`. The private app is
   unaffected either way.
+
+## Webhook route on the helper door (not applied yet)
+
+LilBot answers `POST /hook/<address>` on the helper door (AGENTS.md, Webhooks). The tunnel does not route it yet: the
+orchestrator adds the rule below after a separate security review. Agents building LilBot never edit
+`~/.cloudflared/lilbot/config.yml` or restart `lilbot-tunnel.service`.
+
+- The address is `/hook/` and exactly 64 base64url characters. Add this rule directly below the helper rule, on the
+  same hostname and service, so nothing else under `/hook/` reaches the door:
+
+  ```yaml
+    - hostname: lilbot-connect.lilgroup.studio
+      path: ^/hook/[A-Za-z0-9_-]{64}$
+      service: http://127.0.0.1:3372
+  ```
+
+- Validate before restarting: `cloudflared tunnel --config ~/.cloudflared/lilbot/config.yml ingress validate`, and
+  `cloudflared tunnel --config ~/.cloudflared/lilbot/config.yml ingress rule https://lilbot-connect.lilgroup.studio/hook/<64 characters>`
+  names the new rule while `/hook/short`, `/hook/<65 characters>` and `/hook/<64>/x` fall to `http_status:404`.
+- The door itself needs nothing new: `LILBOT_PUBLIC_ENABLED=1` and `LILBOT_HELPER_URL` (the helper door origin) are
+  already set; webhook addresses are built from `LILBOT_HELPER_URL`.
+- Check from outside after the restart (no real bot is involved):
+  - `POST /hook/<64 random characters>` returns 404 `Not found`, byte for byte the same as `POST /nothing`;
+  - `GET` on the same path returns that 404 too; any query string or `Origin` header returns 403;
+  - `/hook/<63 characters>` and `/hook/<65 characters>` get the edge's 404 (the door never sees them);
+  - a body over 256 KiB returns 413; more than 120 requests a minute from one address return 429;
+  - `/helper/register` and `/helper/connect` behave as before.
+- Real senders: Bot Fight Mode, a WAF managed challenge or "Under attack" mode on the zone would answer GitHub's or
+  Stripe's servers with a challenge page they cannot pass. Before the first real webhook, check in the dashboard
+  (read-only) that none applies to `lilbot-connect.lilgroup.studio/hook/*`; changing zone settings is Oscar's call.
+- Roll back: remove the rule and restart `lilbot-tunnel.service`; every address is unreachable at once and the helper
+  paths keep working. To refuse webhooks at the door too, pause or delete them in the app.
 
 ## App: `https://bot.lilgroup.studio`
 
