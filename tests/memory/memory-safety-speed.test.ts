@@ -31,3 +31,11 @@ test('the rewritten token rule still finds real tokens', () => {
   expect(unsafeReason('{"jwt":"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.sig"}')).toContain('access key or token')
   expect(unsafeReason('a-word-eyJ-not-a-token')).toBeNull()
 })
+
+test('the control and variation-selector rule is linear on 256 KiB', () => {
+  for (const text of [repeat('\u0085'), repeat('a\u{E0100}'), repeat('️'), repeat('\u{1F3F4}\u{E0067}'), `${'a'.repeat(SIZE)}\u007F`]) {
+    const started = performance.now()
+    unsafeReason(text)
+    expect(performance.now() - started).toBeLessThan(100)
+  }
+})

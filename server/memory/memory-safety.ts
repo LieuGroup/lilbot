@@ -11,6 +11,10 @@ export const WEBHOOK_ADDRESS = new RegExp(String.raw`${SLASH}hook${SLASH}(?:\\[n
 /** The England, Scotland and Wales flags, the only emoji tag sequences in use: any other tag characters are hidden ASCII. */
 const FLAGS = /\u{1F3F4}\u{E0067}\u{E0062}(?:\u{E0065}\u{E006E}\u{E0067}|\u{E0073}\u{E0063}\u{E0074}|\u{E0077}\u{E006C}\u{E0073})\u{E007F}/gu
 const HIDING = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF\u{E0000}-\u{E007F}]/u
+/** DEL and the C1 controls draw nothing, and neither do variation selectors 17 and up (the first sixteen stay: emoji use
+ *  VS16), so a model can read text there that a person cannot. Exported for `scripts/count-hidden-characters.ts`. */
+export const CONTROLS = /[\u007F-\u009F]/u
+export const HIGH_VARIATION_SELECTORS = /[\u{E0100}-\u{E01EF}]/u
 /** Every format character but the soft hyphen: refused in outside data (`outsideReason`) only. */
 const FORMAT = /[^\P{Cf}\u00AD]/u
 /** A run of token characters (starting where one starts, never inside one) followed by `.`, a second run and `.`. The
@@ -49,8 +53,8 @@ const rules: Rule[] = [
   matches(new RegExp(WEBHOOK_ADDRESS.source, 'i'), 'it contains a webhook address'),
   // Sending data out, or running fetched code.
   matches(/\b(curl|wget)\b[^\n]{0,80}\|\s*(ba|z)?sh\b/i, 'it contains a command that runs downloaded code'),
-  // Characters that hide or reorder text (zero-width, bidi controls and isolates, the byte-order mark, stray tags).
-  { test: text => HIDING.test(text.replace(FLAGS, '')), reason: 'it contains invisible characters' }
+  // Characters that hide or reorder text (zero-width, bidi controls and isolates, the byte-order mark, stray tags, DEL, C1 controls, variation selectors 17 and up).
+  { test: text => HIDING.test(text.replace(FLAGS, '')) || CONTROLS.test(text) || HIGH_VARIATION_SELECTORS.test(text), reason: 'it contains invisible characters' }
 ]
 
 /** What makes this text unsafe (instructions for the model, a secret, hidden characters), or null when it is fine. */
