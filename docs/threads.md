@@ -9,15 +9,16 @@ Rules and the short version are in `AGENTS.md` under "Threads". Code: `server/th
 |---|---|
 | `thread-store.ts` | `threads` (JSON transcript and status), `thread_links` (batch, parent), `thread_deliveries` (the outbox) |
 | `thread-runner.ts` | the outbox: runs each delivery in its bot's hidden session, keeps status, records answers |
-| `thread-service.ts` | `ask` (the engine API's legacy `threads/ask`, kept for sessions on adapter 0.9.x), reading (bots and Oscar), stopping |
+| `thread-service.ts` | `ask` (the engine API's legacy `threads/ask`, kept for sessions on adapter 0.9.x), reading (bots and Oscar), stopping (`stopping` is its database part, which the work board runs inside its own transaction), Oscar's answer and drop on a work item |
 | `delegation-service.ts` | the MCP tools: delegate in batches with files, status, redirect, wait, attach |
 | `exchange-files.ts`, `thread-files.ts` | copying files safely; `thread_files` records them |
 | `thread-waits.ts` | "tell me when all are in" |
 | `calling-chats.ts` | which conversation made an MCP call |
 | `thread-prompts.ts` | what a bot is told |
 
-Delivery kinds: `request` (work), `redirect` (a change of course), `answer` (a reply back), `notice` (LilBot's own word:
-"Oscar stopped it", "all are in"). Delivery states: `pending`, `steered` (reached a running turn directly), `done`.
+Delivery kinds: `request` (work), `redirect` (a change of course), `oscar` (Oscar's answer to the receiver's question on its
+work item, #156: work like a request, sent from the delegating bot's side, never checked as bot text), `answer` (a reply
+back), `notice` (LilBot's own word: "Oscar stopped it", "Oscar dropped the work item", "all are in"). Delivery states: `pending`, `steered` (reached a running turn directly), `done`.
 
 ## Engine findings (dev gateway, 2026-11-20)
 

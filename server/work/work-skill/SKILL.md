@@ -44,6 +44,8 @@ evidence; show the part of an output that proves the point.
 - `done` with a result: one or two sentences on what came of it and where it is. One call can add the evidence
   and finish.
 - `failed` with what went wrong and what you tried; `dropped` with the reason. Nothing is deleted.
+- Oscar can drop an item, and items handed over under it: LilBot tells you in the session the item belongs to. Stop
+  that work at once, report nothing more on it (the board refuses it) and say in one line that you stopped.
 
 ## 4. Handing work over
 

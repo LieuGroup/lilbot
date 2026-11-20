@@ -10,7 +10,7 @@ import { sendFiles } from './exchange-files'
 import type { ThreadFiles } from './thread-files'
 import { THREAD_LIMITS } from './thread-limits'
 import { answerPrompt, replyText, workPrompt } from './thread-prompts'
-import type { Delivery, ThreadStore } from './thread-store'
+import { type Delivery, isWork, type ThreadStore } from './thread-store'
 import type { ThreadWaits } from './thread-waits'
 
 type RunResult = { status: string; text: string; items?: ChatItem[] }
@@ -99,19 +99,19 @@ export class ThreadRunner {
     stillOn()
     const thread = this.store.get(d.threadId)
     const sender = thread.participants.find(p => p.id === d.sender)?.name ?? 'a bot'
-    if (d.kind !== 'notice') {
+    if (d.kind !== 'notice' && d.kind !== 'oscar') {
       if (d.text.length > THREAD_LIMITS.text) throw new LilBotError('unsafe_message', 'The answer exceeds the thread text limit.')
       if (memoryRefusal(d.text)) throw new LilBotError('unsafe_message', 'Unsafe bot message withheld.')
     }
     const redirects = d.kind === 'request' ? this.store.redirectsAfter(d) : []
     const files = this.files.forMessage(d.id)
     const prompt =
-      d.kind === 'notice'
+      d.kind === 'notice' || d.kind === 'oscar'
         ? d.text
         : d.kind === 'answer'
           ? answerPrompt(thread, sender, d.text, files, this.waits.foldedInto(d.id))
           : workPrompt(d, thread, sender, files, redirects)
-    const toWork = d.kind === 'request' || d.kind === 'redirect'
+    const toWork = isWork(d.kind)
     const internal = toWork || !!this.store.context(d.target, d.sourceChat)
     if (work) this.store.update(work, t => t.status !== 'working' && Object.assign(t, { status: 'working', startedAt: Date.now(), endedAt: null }))
     this.touched()
@@ -134,7 +134,7 @@ export class ThreadRunner {
   }
 
   private responseFor(d: Delivery) {
-    if (d.kind === 'request' || d.kind === 'redirect') return { target: d.sender, sourceChat: d.sourceChat, threadId: d.threadId }
+    if (isWork(d.kind)) return { target: d.sender, sourceChat: d.sourceChat, threadId: d.threadId }
     const parent = d.kind === 'answer' ? this.store.context(d.target, d.sourceChat) : null
     const origin = parent && this.store.origin(parent.thread_id, d.target)
     return origin ? { target: origin.sender, sourceChat: origin.sourceChat, threadId: parent.thread_id } : null

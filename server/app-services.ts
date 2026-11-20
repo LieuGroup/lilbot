@@ -45,6 +45,7 @@ import { CallingChats } from './threads/calling-chats'
 import { ThreadStore } from './threads/thread-store'
 import { WebhookService } from './webhooks/webhook-service'
 import { WebhookStore } from './webhooks/webhook-store'
+import { WorkBoard } from './work/work-board'
 
 /** Construct services and their background tasks independently of the HTTP listeners. */
 export function createAppServices(
@@ -141,8 +142,9 @@ export function createAppServices(
   })
   const calls = new CallingChats(botId => prefs.mainChat(botId))
   const runs = { threadStore, routineStore, webhookStore, rootOf }
-  const { work, board, links, answers } = createWork({ database, store, prefs, bots, ...runs, libraryStore, activity, history: history.store, calls, publish })
+  const { work, links, answers } = createWork({ database, engine, store, prefs, bots, ...runs, libraryStore, activity, history: history.store, calls, publish })
   const { threads, delegation } = createThreads({ engine, store, prefs, bots, workspaces, history, activity, threadStore, calls, work: links, publish })
+  const board = new WorkBoard(work, answers, threads)
   const webhooks = new WebhookService(webhookStore, bots, token, HOOK_ORIGIN, () => publish({ event: 'webhooks.changed' }))
   const changes = new SystemChanges(database)
   const system = createSystemServer({ ...facts, bots, activity, memory, memoryChanged, delegation, work, webhooks, changes, dataDir: DATA_DIR, engineToken: token, port: PORT })

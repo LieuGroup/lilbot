@@ -1,4 +1,5 @@
-/** Builds the work board and connects it to the bots, exchanges, routine runs, activity, history and browsers. */
+/** Builds the work board's service and connects it to the bots, exchanges, routine runs, activity, history and browsers; Oscar's side
+ *  (`WorkBoard`) is built after the exchanges, which it stops and answers through. */
 import type { Database } from 'bun:sqlite'
 import type { ChatItem } from '../shared/chat-schema'
 import { type EventFrame, LilBotError } from '../shared/protocol'
@@ -8,6 +9,7 @@ import type { BotService } from './bots/bot-service'
 import type { BotStore } from './bots/bot-store'
 import type { SessionRoot } from './bots/hidden-chats'
 import { boardLine } from './devices/origin-line'
+import type { BotEngine } from './engines/bot-engine'
 import type { HistoryStore } from './history/history-store'
 import type { LibraryStore } from './library/library-store'
 import type { RoutineStore } from './routines/routine-store'
@@ -15,13 +17,13 @@ import type { CallingChats } from './threads/calling-chats'
 import type { ThreadStore } from './threads/thread-store'
 import type { WebhookStore } from './webhooks/webhook-store'
 import { WorkAnswers } from './work/work-answers'
-import { WorkBoard } from './work/work-board'
 import { WorkLinks } from './work/work-links'
 import { type SessionOrigin, WorkService } from './work/work-service'
 import { type StoredItem, WorkStore } from './work/work-store'
 
 interface WorkDeps {
   database: Database
+  engine: BotEngine
   store: BotStore
   prefs: BotPrefsStore
   bots: BotService
@@ -83,7 +85,7 @@ export function workSessions(threadStore: ThreadStore, routineStore: RoutineStor
   }
 }
 
-export function createWork({ database, store, prefs, bots, threadStore, routineStore, webhookStore, rootOf, libraryStore, activity, history, calls, publish }: WorkDeps) {
+export function createWork({ database, engine, store, prefs, bots, threadStore, routineStore, webhookStore, rootOf, libraryStore, activity, history, calls, publish }: WorkDeps) {
   const work = new WorkService(new WorkStore(database), {
     requireBot: id => bots.requireBot(id),
     callingChat: (botId, requestId) => calls.find(botId, requestId),
@@ -97,8 +99,15 @@ export function createWork({ database, store, prefs, bots, threadStore, routineS
     },
     changed: () => publish({ event: 'work.changed' })
   })
-  const answers = new WorkAnswers(database, (botId, prompt, runId, chatId) =>
-    bots.runRoutine(botId, prompt, { runId, chatId: chatId ?? prefs.mainChat(botId) ?? undefined, hiddenInput: true, onChat: () => {}, origin: { line: boardLine } })
+  /** The session a bot's answer or notice goes to: the one it came from, else its main conversation. */
+  const sessionOf = (botId: string, chatId: string | null) => chatId ?? prefs.mainChat(botId) ?? undefined
+  const answers = new WorkAnswers(
+    database,
+    (botId, prompt, runId, chatId) => bots.runRoutine(botId, prompt, { runId, chatId: sessionOf(botId, chatId), hiddenInput: true, onChat: () => {}, origin: { line: boardLine } }),
+    async (botId, chatId) => {
+      const session = sessionOf(botId, chatId)
+      if (session && store.exists(botId)) await engine.stopRun?.(store.get(botId).engineBotId, session)
+    }
   )
-  return { work, answers, board: new WorkBoard(work, answers), links: new WorkLinks(work, answers) }
+  return { work, answers, links: new WorkLinks(work, answers) }
 }

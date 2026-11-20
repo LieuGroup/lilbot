@@ -3,8 +3,10 @@ import { LilBotError } from '../../shared/protocol'
 import type { BotThread, ThreadMessage } from '../../shared/thread-schema'
 import { THREAD_LIMITS } from './thread-limits'
 
-/** request: work for the receiver. redirect: a change of course for it. answer: a reply back. notice: LilBot's own word. */
-type DeliveryKind = 'request' | 'redirect' | 'answer' | 'notice'
+/** request, redirect and oscar (his answer to its question on its work item) are work for the receiver; answer is a reply back; notice is LilBot's own word. */
+type DeliveryKind = 'request' | 'redirect' | 'oscar' | 'answer' | 'notice'
+export const isWork = (kind: DeliveryKind) => kind === 'request' || kind === 'redirect' || kind === 'oscar'
+const WORK = "kind IN ('request','redirect','oscar')"
 export interface Delivery {
   id: string
   threadId: string
@@ -28,7 +30,7 @@ export interface Accept {
   batchId?: string | null
   /** The delegating bot's work item a new exchange is handed out under. */
   parentId?: string | null
-  kind?: 'request' | 'redirect'
+  kind?: 'request' | 'redirect' | 'oscar'
 }
 type Bot = { id: string; name: string }
 export const FINAL = ['finished', 'failed', 'cancelled'] as const
@@ -80,7 +82,7 @@ export class ThreadStore {
   }
   /** The thread whose receiver works when this delivery runs: its own for work, the asking context for an answer. */
   workThread(d: Delivery): string | null {
-    if (d.kind === 'request' || d.kind === 'redirect') return d.threadId
+    if (isWork(d.kind)) return d.threadId
     return d.kind === 'answer' ? (this.context(d.target, d.sourceChat)?.thread_id ?? null) : null
   }
   accept(caller: Bot, target: Bot, input: Accept, record?: (id: string, thread: BotThread) => void) {
@@ -115,9 +117,7 @@ export class ThreadStore {
       if (!input.threadId && this.open(caller.id) >= THREAD_LIMITS.openPerBot)
         throw new LilBotError('thread_limit', `You already have ${THREAD_LIMITS.openPerBot} delegations under way. Wait for answers or stop one first.`)
       // Pending requests reserve their answer; continuations reserve through append below.
-      const pending = (
-        this.db.query("SELECT count(*) AS n FROM thread_deliveries WHERE threadId=? AND kind IN ('request','redirect') AND status!='done'").get(thread.id) as { n: number }
-      ).n
+      const pending = (this.db.query(`SELECT count(*) AS n FROM thread_deliveries WHERE threadId=? AND ${WORK} AND status!='done'`).get(thread.id) as { n: number }).n
       if (thread.state !== 'open' || thread.messages.length + pending + 2 > THREAD_LIMITS.messages)
         throw new LilBotError('thread_limit', 'Thread message limit reached. Report back to whoever asked you.')
       const kind = input.kind ?? 'request'
@@ -127,7 +127,7 @@ export class ThreadStore {
         authorName: caller.name,
         createdAt: Date.now(),
         items: [{ kind: 'assistant', text: input.text }],
-        ...(kind === 'redirect' ? { redirect: true } : {})
+        ...(kind === 'redirect' ? { redirect: true } : kind === 'oscar' ? { oscar: true } : {})
       })
       if (thread.status !== 'working') Object.assign(thread, { status: 'waiting', endedAt: null })
       this.save(thread)
@@ -142,9 +142,7 @@ export class ThreadStore {
   }
   /** Exchanges this bot started that still have work queued or under way. */
   open(botId: string) {
-    return (
-      this.db.query("SELECT count(DISTINCT threadId) AS n FROM thread_deliveries WHERE sender=? AND kind IN ('request','redirect') AND status!='done'").get(botId) as { n: number }
-    ).n
+    return (this.db.query(`SELECT count(DISTINCT threadId) AS n FROM thread_deliveries WHERE sender=? AND ${WORK} AND status!='done'`).get(botId) as { n: number }).n
   }
   origin(threadId: string, target: string): Delivery | null {
     return this.db.query("SELECT * FROM thread_deliveries WHERE threadId=? AND target=? AND kind='request' ORDER BY rowid DESC LIMIT 1").get(threadId, target) as Delivery | null
@@ -162,9 +160,7 @@ export class ThreadStore {
   }
   /** Work queued or under way in this thread: requests and redirects not yet done. */
   pendingWork(threadId: string): string[] {
-    return (this.db.query("SELECT id FROM thread_deliveries WHERE threadId=? AND kind IN ('request','redirect') AND status!='done'").all(threadId) as { id: string }[]).map(
-      r => r.id
-    )
+    return (this.db.query(`SELECT id FROM thread_deliveries WHERE threadId=? AND ${WORK} AND status!='done'`).all(threadId) as { id: string }[]).map(r => r.id)
   }
   steered(threadId: string): Delivery[] {
     return this.db.query("SELECT * FROM thread_deliveries WHERE threadId=? AND status='steered' ORDER BY rowid").all(threadId) as Delivery[]
