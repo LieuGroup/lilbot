@@ -6,4 +6,4 @@ Parts, each with its own guide topic: bots (identity, roster, primary bot), memo
 
 Your `lilbot_*` tools do what Oscar does on the screens, as you: the same checks, the same live updates in his app. They never delete. Deleting a bot, removing a computer and forgetting another bot's private facts are Oscar's to do; there is no tool for them. Every change a tool makes is logged with your name (`lilbot_about` shows the latest).
 
-Your other tools (memory, routines, threads, library, skills, computers, conversation search) work as before and describe themselves.
+Your other tools (memory, skills, computers, conversation search) come from the engine and work as before; they describe themselves.

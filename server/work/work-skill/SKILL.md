@@ -38,7 +38,7 @@ The definition says how you, Oscar or another bot will know the work is done, wi
 
 Each entry says what it proves and points at one real thing you read yourself, after doing the work:
 
-- `library`: a file you gave to the Library (`give_file`), for results Oscar should open.
+- `library`: a file you gave to the Library (`lilbot_give_file`), for results Oscar should open.
 - `url`: a page you opened and saw the result on.
 - `command` and `output`: the read-only command you ran to check the result, and the part of its output that
   shows it (`cat`, `ls -l`, `git log -1`, `curl -s`, a test run). Use absolute paths, so another bot can repeat it.

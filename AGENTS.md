@@ -236,8 +236,8 @@ error pages and answer errors with a plain 500.
   machine. Loopback only, no browsers, token from `<data>/engine-token`. A plug-in acts as one bot through the
   bot-bound capability in its profile settings: the server takes the caller from that capability, ignores bot ids in
   request bodies, and refuses unknown and deleted bots, including the bot behind a creation capability. The bot
-  tools still on the plug-ins (memory, library, skills, computers, conversation search) go through it, and so do the
-  routes kept for sessions that loaded an older adapter (`bots/create`, `routines/*`, `threads/*`);
+  tools still on the plug-ins (memory, skills, computers, conversation search) go through it, and so do the
+  routes kept for sessions that loaded an older adapter (`bots/create`, `routines/*`, `threads/*`, `library/give`);
   the T3 bridge and LilBot's own MCP server use their own per-bot keys (see Coding and System).
 - **Cloudflare:** both public names run through LilBot's own `lilbot-connect` tunnel. `~/.cloudflared/cert.pem` lets
   agents manage LilBot's own DNS names and tunnels; touch only LilBot's own tunnels and names, the account holds
@@ -559,7 +559,7 @@ the same outbox, receipts, hidden sessions, file copies and fences as delegation
 - Shared folder: `<workspaces>/.groups/<group id>/`, created through no-follow descriptors. Files from a point or a
   member's `attach` are copied in with delegation's rules and listed with their full path in each prompt. On close the
   leader's `keep` copies files into its own folder (`groups/<group id>/`) and gives them to its Library (the same
-  `LibraryService.give` as `give_file`), before the folder moves to `<workspaces>/.archive/.groups/<group id>/`.
+  `LibraryService.give` as `lilbot_give_file`), before the folder moves to `<workspaces>/.archive/.groups/<group id>/`.
 - Oscar: `threads.list` and `threads.open` include groups (`group` with members' states, rounds with who replied, the
   round limit, turns, end and kept files), `threads.changed` and `threads.cancel`. `bots.list` gives each bot the
   running groups it is in (`groups`: id, purpose, round, round limit, leading), pushed with `bots.changed` when a group
@@ -757,9 +757,14 @@ production only through it.
 
 ## Library
 
-`server/library/` owns delivered items (`shared/library-schema.ts`). A bot delivers with `give_file`, which needs a
-title and a chat or routine run; routine session aliases resolve to the persisted run id for that bot, never a
-caller-supplied one.
+`server/library/` owns delivered items (`shared/library-schema.ts`). A bot delivers with `lilbot_give_file` (path, title,
+`requestId`; LilBot's MCP server, #113), which needs a title and the conversation the call came from. That comes from
+LilBot's records of the call (`giveFrom` in `app-work.ts`: the `requestId` matched against the engine's tool starts, as
+for `lilbot_delegate` and `lilbot_work`), never from an argument: a routine run's two session aliases and a session the
+engine continued after compressing it resolve to the persisted run id of that bot (`workSessions`), a webhook run's
+session is recorded as the conversation, and a lineage that cannot be read refuses and gives nothing. Each call is
+logged in `system_changes`. The adapter's `give_file` ended with adapter 0.12.0; the engine API's `/engine/library/give`
+stays for sessions that loaded an older adapter.
 
 - Items point to workspace files, never copies; only explicitly given files appear. Kinds: media (image/audio/video
   MIME), page (.md/.html/.htm), file. Size limit in `library-files.ts`.
@@ -954,6 +959,9 @@ and per-bot off switches in SQLite. All skills default on; Setup shows the same 
   filesystem access for full-access bots. Tool changes apply at once; prompt catalogues refresh next session.
 - New and edited skill text refuses secrets and hidden characters; instructions in a skill are allowed. Authorship
   comes from the bot's capability.
+- The three skill tools stay on the Hermes skills plug-in, not on the MCP server (#113, third slice): Hermes' own
+  `skill_manage` cannot be dropped without a patch, and without the override it would write into the library with no
+  check and no author. Evidence and the way back: [docs/hermes-engine.md](docs/hermes-engine.md#skills-plug-in-skills-adapter).
 - Import copies user skill folders from bound, non-deleted profiles once per source path, never moving or deleting
   profile files. Identical copies coalesce; different contents get a stable hash-suffixed name. Imported text is not
   retroactively filtered. Native engine skills stay with the engine; changing one through the app tool first creates
@@ -1286,5 +1294,6 @@ profiles, isolated directories, cleanup in `finally`. Most cost a few model call
   signed-out, expired and refused messages, a repeated launch and a real task, then archives its threads, removes its
   project and profile and revokes its sign-in.
 - `bun live-checks/permissions-check.ts`: repairs a temporary profile from manual approvals to off, runs a harmless
-  recursive delete and file write, and checks no approvals remain. `bun live-checks/library-check.ts`: give, push,
-  list, separate workspace and download.
+  recursive delete and file write, and checks no approvals remain. `bun live-checks/library-check.ts`: a temporary bot told only to
+  deliver a file gives it through `lilbot_give_file` (a `system_changes` row names the item), then push, list, separate
+  workspace and download; then a routine run it created gives a file from its hidden session and the item records that run.

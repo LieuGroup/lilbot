@@ -83,8 +83,14 @@ These stay in the engine's folder because they hook the engine's own turn loop. 
 | Hard-stop guard | Runs the engine's own dangerous-command check before `computer_exec` and refuses a hit. A guard for full-access bots, not a security boundary | `/engine/computers/submit` |
 
 Until their families move to the system server ([#113](https://github.com/LieuGroup/lilbot/issues/113)), the engine also
-carries the bot tools for memory, library, skills, computers and `search_conversations`. A second
-engine gets those from the system server instead of writing them again.
+carries the bot tools for memory, skills, computers and `search_conversations`. A second engine gets those from the
+system server instead of writing them again (the library's `lilbot_give_file` is already there).
+
+Skills are the one family that is not a plain move. Hermes keeps its own `skills_list`, `skill_view` and `skill_manage`
+and its prompt names them, and its `skill_manage` writes straight into the shared library; the Hermes plug-in overrides
+the three so every write goes through LilBot's checks and author record ([hermes-engine.md](hermes-engine.md#skills-plug-in-skills-adapter)).
+An engine without skill tools of its own would get a `lilbot_skills` tool on the system server, calling the same
+`SkillsService` that `/engine/skills/*` does; that is not built until such an engine exists.
 
 ## 6. Safety
 

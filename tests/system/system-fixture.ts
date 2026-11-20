@@ -1,13 +1,17 @@
 /** LilBot's MCP server over the in-memory fake engine: real services, real database, no network. */
+import { giveFrom } from '../../server/app-work'
 import { Workspaces } from '../../server/bots/workspaces'
 import type { ComputerService } from '../../server/computers/computer-service'
 import { connectionKey } from '../../server/connections/connection-keys'
 import { GoalService } from '../../server/goals/goal-service'
+import { LibraryService } from '../../server/library/library-service'
+import { LibraryStore } from '../../server/library/library-store'
 import { RoutineService } from '../../server/routines/routine-service'
 import { RoutineStore } from '../../server/routines/routine-store'
 import { SystemChanges } from '../../server/system/system-changes'
 import { SYSTEM_KEY_PURPOSE } from '../../server/system/system-connection'
 import { createSystemServer } from '../../server/system/system-server'
+import { CallingChats } from '../../server/threads/calling-chats'
 import { DelegationControl } from '../../server/threads/delegation-control'
 import { DelegationService } from '../../server/threads/delegation-service'
 import { ThreadService } from '../../server/threads/thread-service'
@@ -27,7 +31,10 @@ export function systemFixture() {
   const fake = fakeService()
   const state = { memoryPushes: 0, t3: { state: 'connected', expiresAt: Date.now() + 86_400_000 } as T3ConnectionStatus }
   const changes = new SystemChanges(fake.database)
-  const webhooks = new WebhookService(new WebhookStore(fake.database), fake.service, TOKEN, 'https://door.example')
+  const webhookStore = new WebhookStore(fake.database)
+  const routineStore = new RoutineStore(fake.database)
+  const threadStore = new ThreadStore(fake.database)
+  const webhooks = new WebhookService(webhookStore, fake.service, TOKEN, 'https://door.example')
   const computers = {
     list: () => [
       { id: 'leader', name: 'leader-box', os: 'linux', online: true, lastSeen: 1700000000000, keyConflict: false, main: false },
@@ -42,14 +49,23 @@ export function systemFixture() {
     folder: (id: string) => workspaces.ensure(id)
   }
   const routines = new RoutineService(
-    new RoutineStore(fake.database),
+    routineStore,
     fake.service,
     () => {},
     undefined,
     () => 1_700_000_000_000
   )
   const work = workFixture({ database: fake.database, requireBot: id => fake.service.requireBot(id) })
-  const threads = new ThreadService(new ThreadStore(fake.database), host, undefined, undefined, undefined, groupHostFor(fake.root, work.links).host)
+  const threads = new ThreadService(threadStore, host, undefined, undefined, undefined, groupHostFor(fake.root, work.links).host)
+  /** The conversation each bot's next call comes from (default: its main one) and the compression continuations (a session to the one it began as; null: unreadable). */
+  const calls = new CallingChats(botId => `${botId}-main`, 0)
+  const roots = new Map<string, string | null>()
+  const library = new LibraryService(
+    new LibraryStore(fake.database),
+    id => workspaces.pathFor(id),
+    id => fake.store.exists(id)
+  )
+  const giveFile = giveFrom(library, calls, threadStore, routineStore, webhookStore, (_bot, chat) => (roots.has(chat) ? roots.get(chat)! : chat))
   const goals = new GoalService(
     work.goalStore,
     work.work,
@@ -70,6 +86,7 @@ export function systemFixture() {
     work: work.work,
     routines,
     goals,
+    giveFile,
     webhooks,
     changes,
     dataDir: fake.root,
@@ -93,7 +110,28 @@ export function systemFixture() {
     const text: string = result.content[0].text
     return result.isError ? { error: text } : { data: JSON.parse(text) }
   }
-  return { ...fake, ...server, state, changes, threads, work, goals, routines, webhooks, rosterPushes: fake.changes, request, as, rpc, call }
+  return {
+    ...fake,
+    ...server,
+    state,
+    changes,
+    threads,
+    work,
+    goals,
+    routines,
+    routineStore,
+    webhookStore,
+    workspaces,
+    library,
+    calls,
+    roots,
+    webhooks,
+    rosterPushes: fake.changes,
+    request,
+    as,
+    rpc,
+    call
+  }
 }
 
 /** A second bot in the roster. */
