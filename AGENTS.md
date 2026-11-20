@@ -557,8 +557,7 @@ startup and restored if it differs, like `t3-coding`).
   a conversation, otherwise in the session the work came from. Transport failures retry after 30 seconds. Screens:
   `needs-ui`.
 - The note has two static lines on when to open an item: before any work beyond a reply, however small (changing
-  something, handed over, scheduled or from outside), not for answering a question. The first live run with a softer
-  wording saw a bot skip the item for a one-file task.
+  something, handed over, scheduled or from outside), not for answering a question.
 
 ## Restart recovery
 
