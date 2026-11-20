@@ -53,7 +53,20 @@ provider returns from `get_tool_schemas` are not in Hermes' registry and stay ea
 compact schema: the adapter's twelve tools cost about 2,300 tokens, the rest of its 2,956 is the rules and the memory
 block. There is no per-tool switch; `tools.tool_search.enabled: off` makes the whole profile eager, built-ins included.
 
-WORK_MEASUREMENT_PLACEHOLDER
+### The work board's cost (#141, against main at 3ae7cc0, characters from `systemFixture`)
+
+| | before | after |
+|---|---|---|
+| listing lines Hermes shows every turn (name and first sentence) | 2,370 (24 tools) | 2,658 (+288: `lilbot_work`, `lilbot_work_list`) |
+| the note (minimal facts) | 1,203 | 1,522 (+319: the two work lines) |
+| full `tools/list`, fetched only by `tool_describe` or an eager engine | 9,403 | 10,405 (+1,002) |
+
+Per turn that is two listing lines (about 90 tokens at #154's 45 a tool) and about 80 tokens of note. `lilbot_work`'s own
+schema is 1,458 characters, read only when a bot looks the tool up. `inputSchema` leaves out `minLength`, `maxLength`,
+`minItems`, `maxItems` and `format` (the server parses every call with the same zod schema, so the limits still hold and
+a refusal says which): that took about 950 characters off the 24 older tools' schemas, which keeps the full list's growth
+to about half the two new tools. A tool's first sentence is all the model sees until it looks the tool up: make it say
+what the tool is for.
 
 ## The server
 
@@ -127,6 +140,7 @@ specifics (how the connection is applied, what is skipped on restart) are in `do
 
 Add it to a `server/system/tool-*.ts` file with `readTool` or `actionTool`, reusing the schema from `shared/` and the
 service function the screen calls; add a line to the guide topic it belongs to; add it to the list in
-`tests/system/system-mcp.test.ts`. Keep the description to one sentence: every tool costs tokens in every turn. Prefer
-one tool whose fields cover several steps (as `lilbot_work` does) over a tool per step, keep `.describe()` for fields
-whose name does not say enough, and measure the `tools/list` characters before and after.
+`tests/system/system-mcp.test.ts`. Every tool costs a listing line in every turn: its first sentence must say what it is
+for, and the rest stays short. Prefer one tool whose fields cover several steps (as `lilbot_work` does) over a tool per
+step, keep `.describe()` for fields whose name does not say enough, and measure the listing and `tools/list` before and
+after.

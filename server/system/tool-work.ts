@@ -8,10 +8,10 @@ export function workTools({ work }: SystemDeps): McpTool[] {
   return [
     actionTool(
       'lilbot_work',
-      'Your work board. No itemId: open an item (title, done). With itemId: report on your item, all in one call: done, evidence of the real result, status (needs_oscar with one question; done or failed with result; dropped with reason). Done needs done and evidence unless level 0.',
+      'Open a work item for work beyond a reply (no itemId; title, done), or report on your own item (itemId): done definition, evidence of the real result and status in one call. Status needs_oscar takes one question; done or failed a result; dropped a reason. Done needs a definition and evidence unless level 0.',
       WorkInput,
       (caller, input) => work.act(caller, input)
     ),
-    readTool('lilbot_work_list', "Work items: yours, every bot's (mine false), or one in full with its evidence.", WorkReadInput, (caller, input) => work.read(caller, input))
+    readTool('lilbot_work_list', "List work items: yours, every bot's (mine false), or one in full with its evidence.", WorkReadInput, (caller, input) => work.read(caller, input))
   ]
 }
