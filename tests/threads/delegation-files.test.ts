@@ -1,7 +1,9 @@
-import { expect, test } from 'bun:test'
+import { afterAll, expect, test } from 'bun:test'
 import { mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { delegationFixture } from './delegation-fixture'
+import { delegationFixture, removeFixtureFolders } from './delegation-fixture'
+
+afterAll(removeFixtureFolders)
 
 const write = (path: string, text: string) => {
   mkdirSync(dirname(path), { recursive: true })

@@ -1,6 +1,8 @@
-import { expect, test } from 'bun:test'
+import { afterAll, expect, test } from 'bun:test'
 import { CallingChats } from '../../server/threads/calling-chats'
-import { delegationFixture } from './delegation-fixture'
+import { delegationFixture, removeFixtureFolders } from './delegation-fixture'
+
+afterAll(removeFixtureFolders)
 
 const two = {
   requestId: 'r',

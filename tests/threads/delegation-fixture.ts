@@ -1,6 +1,6 @@
 /** Real thread services over an in-memory database and a temporary workspaces folder, with an engine whose runs
  *  stay open until the test finishes them, so status, stop and redirect can be seen mid-run. */
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Workspaces } from '../../server/bots/workspaces'
@@ -21,8 +21,15 @@ interface Run {
   finish(text?: string, before?: ChatItem[], status?: string): void
 }
 
+const roots: string[] = []
+/** Each test file removes the folders its fixtures made: `afterAll(removeFixtureFolders)`. */
+export function removeFixtureFolders() {
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
+}
+
 export function delegationFixture() {
   const root = mkdtempSync(join(tmpdir(), 'lilbot-delegation-'))
+  roots.push(root)
   const workspaces = new Workspaces(root)
   const store = new ThreadStore(openDatabase(':memory:'))
   const bots = ['a', 'b', 'c', 'd'].map(id => ({ id, name: id.toUpperCase() }))
