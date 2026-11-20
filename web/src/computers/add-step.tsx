@@ -22,7 +22,7 @@ export function AddStep({ attempt, detected, supported, name, onName, onClose, o
   if (!supported) return <UnsupportedStep device={detected.device} unavailable={false} onCommandLine={onCommandLine} onClose={onClose} />
   if (phase === 'unsupported' || phase === 'unavailable')
     return <UnsupportedStep device={detected.device} unavailable={phase === 'unavailable'} onCommandLine={onCommandLine} onClose={onClose} />
-  if (phase === 'connected') return <ConnectedStep name={status?.computer?.name ?? name} machine={machine} onDone={onClose} />
+  if (phase === 'connected') return <ConnectedStep name={status?.computer?.name ?? name} computerId={status?.computer?.id} machine={machine} onDone={onClose} />
   if (phase === 'expired') return <ExpiredStep onClose={onClose} onAgain={attempt.reset} />
   const { attempt: running } = attempt
   if (phase === 'name' || !running)

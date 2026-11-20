@@ -1,12 +1,26 @@
 import { Button } from '@/ui/button'
+import { Notice } from '@/ui/notice'
+import { Switch } from '@/ui/switch'
 import { Badge, CancelButton, Footer, Heading, QuietLink, TEXT_BUTTON } from './add-dialog-parts'
+import { useMainChoice } from './use-main-choice'
 
-/** Step 3: the computer is online. */
-export function ConnectedStep({ name, machine, onDone }: { name: string; machine: string; onDone: () => void }) {
+/** Step 3: the computer is online, and this browser is tied to it. */
+export function ConnectedStep({ name, computerId, machine, onDone }: { name: string; computerId?: string; machine: string; onDone: () => void }) {
+  const main = useMainChoice(computerId)
   return (
     <>
       <Badge tone="success" />
-      <Heading title={`${name} is connected`}>Every bot can use it now. The helper starts by itself when this {machine} starts.</Heading>
+      <Heading title={`${name} is connected`}>Every bot can use it now. This browser is tied to it, so "my computer" written from here means this {machine}.</Heading>
+      <div className="flex items-center justify-between gap-3 rounded-lg bg-background py-2.5 pr-3 pl-3.5">
+        <div className="flex flex-col">
+          <span id="make-main" className="text-[13px]/[18px] font-medium">
+            Make it my main computer
+          </span>
+          <span className="text-xs text-muted-foreground">Used when you write from your phone</span>
+        </div>
+        <Switch aria-labelledby="make-main" checked={main.on} disabled={!main.ready} onCheckedChange={main.toggle} />
+      </div>
+      {main.error && <Notice tone="error">{main.error}</Notice>}
       <Footer>
         <Button className={TEXT_BUTTON} onClick={onDone}>
           Done

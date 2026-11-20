@@ -1,8 +1,8 @@
 /** What a chat looks like on screen, and how each live event changes it. Pure functions only. */
-import type { AttachmentMessage } from '../../../shared/attachment-schema'
 import type { ChatEvent, ChatItem, ChatSnapshot } from '../../../shared/chat-schema'
 import type { HistoryPage } from '../../../shared/history-schema'
 import { reuseItems, withLatest } from '../history/history-view'
+import { withArrivedMessage } from './user-messages'
 
 /** Where a new session began, inside the one continuous conversation. */
 type SessionMark = { kind: 'session'; text: string }
@@ -87,24 +87,6 @@ export function withNewSession(chat: ChatView): ChatView {
   return { ...chat, items, queued: [], awaitingStart: false, running: false, activity: '' }
 }
 
-export function withUserMessage(chat: ChatView, message: string | UserItem): ChatView {
-  const item: UserItem = typeof message === 'string' ? { kind: 'user', text: message } : message
-  if (chat.running) return { ...chat, queued: [...chat.queued, item] }
-  return { ...chat, items: [...chat.items, item], awaitingStart: true, running: true, activity: 'Sending...' }
-}
-
-/** The server's record of a message sent with files (the `chat.send` answer or the `user.message`
- *  event, whichever comes first) fills in the message already on screen with the same id. Every
- *  other item keeps its object, so memoised rows and the scroller see no change. */
-export function withSentMessage(chat: ChatView, message: AttachmentMessage): ChatView {
-  const fill = <T extends ViewItem>(item: T): T =>
-    item.kind === 'user' && item.messageId === message.messageId ? { ...item, text: message.text, attachments: message.attachments, images: message.images } : item
-  const has = (items: ViewItem[]) => items.some(item => item.kind === 'user' && item.messageId === message.messageId)
-  if (has(chat.items)) return { ...chat, items: chat.items.map(fill) }
-  if (has(chat.queued)) return { ...chat, queued: chat.queued.map(fill) }
-  return chat
-}
-
 export const withError = (chat: ChatView, text: string): ChatView => ({
   ...chat,
   items: [...chat.items, { kind: 'error', text }],
@@ -121,7 +103,7 @@ export function applyChatEvent(chat: ChatView, event: ChatEvent): ChatView {
   switch (event.type) {
     case 'user.message': {
       const { type: _type, ...message } = event
-      return withSentMessage(chat, message)
+      return withArrivedMessage(chat, message)
     }
     case 'thread':
       return chat.items.some(i => i.kind === 'tool' && i.threadId === event.threadId)

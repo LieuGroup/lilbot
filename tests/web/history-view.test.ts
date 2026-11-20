@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { HistoryPage } from '../../shared/history-schema'
-import { type ChatView, chatFromHistory, chatFromSnapshot, withUserMessage } from '../../web/src/chat/chat-state'
+import { type ChatView, chatFromHistory, chatFromSnapshot } from '../../web/src/chat/chat-state'
+import { withUserMessage } from '../../web/src/chat/user-messages'
 import { canLoadOlder, olderRequest, reuseItems, withOlder } from '../../web/src/history/history-view'
 import { snapshot } from './chat-helpers'
 

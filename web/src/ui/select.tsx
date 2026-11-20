@@ -82,6 +82,10 @@ function SelectItem({ className, children, ...props }: SelectPrimitive.Item.Prop
   )
 }
 
+function SelectSeparator({ className, ...props }: SelectPrimitive.Separator.Props) {
+  return <SelectPrimitive.Separator data-slot="select-separator" className={cn('pointer-events-none -mx-1 my-1 h-px bg-border', className)} {...props} />
+}
+
 function SelectScrollUpButton({ className, ...props }: React.ComponentProps<typeof SelectPrimitive.ScrollUpArrow>) {
   return (
     <SelectPrimitive.ScrollUpArrow
@@ -106,4 +110,4 @@ function SelectScrollDownButton({ className, ...props }: React.ComponentProps<ty
   )
 }
 
-export { Select, SelectContent, SelectItem, SelectTrigger, SelectValue }
+export { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue }

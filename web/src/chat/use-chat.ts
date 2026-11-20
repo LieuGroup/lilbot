@@ -6,8 +6,10 @@ import type { Attachment } from '../../../shared/attachment-schema'
 import { lilbot, messageOf } from '../app/lilbot-socket'
 import { newMessageId } from '../attachments/attachment-rules'
 import { useBotStore } from '../bots/bot-store'
-import { applyChatEvent, chatFromHistory, chatFromSnapshot, type UserItem, withError, withNewSession, withSentMessage, withUserMessage } from './chat-state'
+import { thisDeviceId } from '../devices/this-device'
+import { applyChatEvent, chatFromHistory, chatFromSnapshot, type UserItem, withError, withNewSession } from './chat-state'
 import { emptySlot, updateChat, useChatStore } from './chat-store'
+import { withSentMessage, withUserMessage } from './user-messages'
 
 const REOPEN_DELAY_MS = 3000
 
@@ -74,19 +76,24 @@ export function useChat(botId: string) {
     }
   }, [botId, connected, openCount])
 
-  /** A message with files carries a new id, so the server's record of it (the answer or the
-   *  `user.message` event) fills in the same message on screen rather than adding another. */
+  /** Every message carries a new id, so the server's record of it (the answer or the `user.message`
+   *  event) fills in the same message on screen rather than adding another. It also says which
+   *  device sent it. */
   const send = useCallback(
     async (text: string, attachments: Attachment[] = []) => {
       if (!chatId.current) return
-      const messageId = attachments.length > 0 ? newMessageId() : undefined
-      const item: UserItem = messageId ? { kind: 'user', text, messageId, attachments } : { kind: 'user', text }
+      const messageId = newMessageId()
+      const files = attachments.length > 0
+      const item: UserItem = files ? { kind: 'user', text, messageId, attachments } : { kind: 'user', text, messageId }
       updateChat(botId, current => ({ ...current, view: withUserMessage(current.view, item) }))
       try {
-        const sent = await lilbot.call(
-          'chat.send',
-          messageId ? { chatId: chatId.current, text, attachmentIds: attachments.map(file => file.id), messageId } : { chatId: chatId.current, text }
-        )
+        const sent = await lilbot.call('chat.send', {
+          chatId: chatId.current,
+          text,
+          messageId,
+          deviceId: thisDeviceId(),
+          ...(files ? { attachmentIds: attachments.map(file => file.id) } : {})
+        })
         const message = sent.message
         if (message) updateChat(botId, current => ({ ...current, view: withSentMessage(current.view, message) }))
       } catch (failure) {

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
-import { applyChatEvent, chatFromSnapshot, emptyChat, withUserMessage } from '../../web/src/chat/chat-state'
+import { applyChatEvent, chatFromSnapshot, emptyChat } from '../../web/src/chat/chat-state'
+import { withSentMessage, withUserMessage } from '../../web/src/chat/user-messages'
 import { play, texts } from './chat-helpers'
 
 describe('a normal turn', () => {
@@ -117,4 +118,26 @@ test('thread references arrive once in the live stream and deduplicate snapshot 
   const next = applyChatEvent(emptyChat, event)
   expect(next.items).toEqual([{ kind: 'tool', toolId: 'thread:shared-thread', threadId: 'shared-thread', name: 'message to', detail: 'Engineer', running: false }])
   expect(applyChatEvent(next, event)).toBe(next)
+})
+
+test("the server's record of a sent message fills in where it came from", () => {
+  const chat = withUserMessage(emptyChat, { kind: 'user', text: 'hi', messageId: 'm1' })
+  const origin = { deviceId: 'd1', name: 'Mac · Chrome' }
+  const sent = withSentMessage(chat, { messageId: 'm1', text: 'hi', attachments: [], images: { support: 'unknown', imageCount: 0 }, origin })
+  expect(sent.items[0]).toMatchObject({ kind: 'user', text: 'hi', origin })
+})
+
+test('a message sent from another device joins the conversation once, with where it came from', () => {
+  const origin = { deviceId: 'phone', name: 'iPhone · Safari' }
+  const message = { messageId: 'm2', text: 'from the phone', attachments: [], images: { support: 'unknown' as const, imageCount: 0 }, origin }
+  const chat = play(
+    emptyChat,
+    { type: 'user.message', ...message },
+    { type: 'turn.started' },
+    { type: 'user.message', ...message },
+    { type: 'turn.finished', status: 'completed', text: 'ok' }
+  )
+  expect(texts(chat)).toEqual(['user:from the phone', 'assistant:ok'])
+  expect(chat.items[0]).toMatchObject({ origin })
+  expect(chat.running).toBe(false)
 })

@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { HistoryPage } from '../../shared/history-schema'
-import { applyChatEvent, chatFromHistory, chatFromSnapshot, emptyChat, withNewSession, withSentMessage, withUserMessage } from '../../web/src/chat/chat-state'
+import { applyChatEvent, chatFromHistory, chatFromSnapshot, emptyChat, withNewSession } from '../../web/src/chat/chat-state'
+import { withSentMessage, withUserMessage } from '../../web/src/chat/user-messages'
 import { play, snapshot, texts } from './chat-helpers'
 
 describe('messages with files', () => {
@@ -39,9 +40,9 @@ describe('messages with files', () => {
     expect(twice.queued).toEqual([])
   })
 
-  test('an unknown message id leaves the chat as it is', () => {
+  test("the server's record of an unknown message id leaves the chat as it is", () => {
     const sent = withUserMessage(emptyChat, 'plain')
-    expect(applyChatEvent(sent, { type: 'user.message', ...record('other') })).toBe(sent)
+    expect(withSentMessage(sent, record('other'))).toBe(sent)
   })
 
   test('a queued message keeps its files and joins the transcript with them', () => {
