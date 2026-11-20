@@ -20,12 +20,15 @@ export function dayLabel(at: number, now = Date.now()) {
 }
 
 const pad = (value: number) => String(value).padStart(2, '0')
-const time = (at: number) => `${pad(new Date(at).getHours())}:${pad(new Date(at).getMinutes())}`
+const time = (at: number) => {
+  const date = new Date(at)
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
 
 /** When a session began: "Today 14:20", "Yesterday 09:05", otherwise "Mon 9 Nov 14:20". */
 export function sessionTime(at: number, now = Date.now()) {
-  const days = dayKey(now) === dayKey(at) ? 0 : dayKey(now - DAY) === dayKey(at) ? 1 : 2
-  return `${days === 0 ? 'Today' : days === 1 ? 'Yesterday' : dayLabel(at, now)} ${time(at)}`
+  const day = dayKey(now) === dayKey(at) ? 'Today' : dayKey(now - DAY) === dayKey(at) ? 'Yesterday' : dayLabel(at, now)
+  return `${day} ${time(at)}`
 }
 
 /** "3 September 2026", for the start of the conversation. */

@@ -2,7 +2,8 @@ import { describe, expect, test } from 'bun:test'
 
 import type { HistoryPage } from '../../shared/history-schema'
 import { type ChatView, chatFromHistory, chatFromSnapshot, withUserMessage } from '../../web/src/chat/chat-state'
-import { canLoadOlder, olderRequest, withOlder } from '../../web/src/history/history-view'
+import { canLoadOlder, olderRequest, reuseItems, withOlder } from '../../web/src/history/history-view'
+import { snapshot } from './chat-helpers'
 
 /** Rows `from` to `to - 1` of one long conversation, as the server pages them. */
 function part(from: number, to: number, more: { nextCursor?: string | null; start?: number | null; complete?: boolean } = {}): HistoryPage {
@@ -17,7 +18,6 @@ function part(from: number, to: number, more: { nextCursor?: string | null; star
   }
 }
 const texts = (chat: ChatView) => chat.items.map(item => ('text' in item ? item.text : item.kind))
-const snapshot = (history: HistoryPage) => ({ chatId: 's', botId: 'b', title: '', running: false, workspace: '', items: [], history })
 
 describe('loading earlier parts', () => {
   test('an earlier part goes above with lower positions; the rows on screen keep theirs', () => {
@@ -87,4 +87,21 @@ describe('reopening keeps the earlier parts', () => {
     expect(after.items).toHaveLength(100)
     expect(after).toMatchObject({ older: 'c500', oldestFrom: null })
   })
+})
+
+test('repeated identical items pair with earlier objects one to one', () => {
+  const a = { kind: 'user', text: 'ok' } as const
+  const b = { kind: 'user', text: 'ok' } as const
+  const next = reuseItems(
+    [a, b],
+    [
+      { kind: 'user', text: 'ok' },
+      { kind: 'user', text: 'ok' },
+      { kind: 'user', text: 'ok' }
+    ]
+  )
+  expect(next[0]).toBe(a)
+  expect(next[1]).toBe(b)
+  expect(next[2]).not.toBe(a)
+  expect(next[2]).not.toBe(b)
 })

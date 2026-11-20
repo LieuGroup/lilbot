@@ -26,6 +26,7 @@ interface Staged {
 }
 
 let nextKey = 0
+const fromRecord = (record: Attachment) => ({ attachment: record, state: record.state, reason: record.reason })
 const revoke = (files: StagedFile[]) => {
   for (const file of files) if (file.preview) URL.revokeObjectURL(file.preview)
 }
@@ -107,12 +108,12 @@ export function useStagedAttachments(botId: string) {
       records.forEach((record, index) => {
         const { key } = added[index]
         if (tooMany.has(key)) return
-        patch(key, { attachment: record, state: record.state, reason: record.reason })
+        patch(key, fromRecord(record))
         if (record.state !== 'uploading') return
         const controller = new AbortController()
         uploads.current.set(key, controller)
         uploadFile(record, take[index], controller.signal)
-          .then(result => patch(key, { attachment: result, state: result.state, reason: result.reason }))
+          .then(result => patch(key, fromRecord(result)))
           .catch(() => {}) // Aborted: the file was removed or the composer closed.
           .finally(() => uploads.current.delete(key))
       })
