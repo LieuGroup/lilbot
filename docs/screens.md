@@ -9,13 +9,17 @@ and icon sizes follow the Stack rules in `AGENTS.md`.
 - Wide screen: roster 272px and details panel 332px on the page tint (`bg-background`), the conversation on
   `bg-card`; a `hairline` divides them.
 - Roster (`bots/bot-sidebar.tsx`, Paper "16 Roster: pinned tiles and collapsed rail"): app icon, then collapse
-  (wide screens only), search and new bot; the tiles; sections as 12px labels; collapsed "Unassigned" and "Hidden"
-  groups with counts. Grouping is `bots/roster-groups.ts`.
-- Tiles (`bots/roster-tiles.tsx`): 82px wide, radius 12, a 52px avatar and the name under it (12/16, weight 500, one
-  line with an ellipsis); three fit across at 272px and more wrap. Primary first with a star badge at the avatar's
-  bottom right, then pinned bots oldest pin first. Unread: a 600 name and a 12px blue dot at the avatar's top right.
-  Working: a small blue spinner badge in place of the star. Open: the pressed tint (`foreground/6`). No status line:
-  the title gives the name and the row's one-line state. A 20px "more" button appears at the top right on hover.
+  (wide screens only), search and new bot; the tiles (or the primary's row); sections as 12px labels; collapsed
+  "Unassigned" and "Hidden" groups with counts. Grouping is `bots/roster-groups.ts`.
+- Tiles (`bots/roster-tiles.tsx`, Paper frames 5 to 7): only once a bot is pinned; with nothing pinned the primary is an
+  ordinary first row with its star and state line. Tiles share the roster's width equally, at most three to a line
+  (two tiles half each, three or more a third each; a shorter last line keeps that width). Radius 12, gap 4, padding
+  10 top, 8 bottom, 6 at the sides (4 with three to a line), a 52px avatar at the top and the name under it (12/15,
+  weight 500, centred, up to two lines, then an ellipsis); tiles in a line are as tall as the tallest. Primary first
+  with a star badge at the avatar's bottom right (on the muted tint when the tile is open), then pinned bots oldest pin
+  first. Unread: a 600 name and a 12px blue dot at the avatar's top right. Working: a small blue spinner badge in place
+  of the star. Open: the pressed tint (`foreground/6`). No status line: the title gives the name and the row's
+  one-line state. A 20px "more" button appears at the top right on hover.
 - Rail (`bots/roster-rail.tsx`): 64px. The app icon, then 36px avatars in 48px slots (radius 12) in the roster's
   order, with a 28px hairline between groups; open groups only. Same dot, spinner, star and open tint, scaled down.
   Pointing at an avatar shows a dark label (`ui/tooltip.tsx`) with the name (13/18, 500) and the state (12/16, 70%).

@@ -11,8 +11,9 @@ const sizes = {
 }
 
 /** A bot's avatar with its signals, for tiles and the rail: the blue unread dot at the top right;
- *  at the bottom right a blue spinner while it works, otherwise the primary bot's star. */
-export function AvatarMarks({ bot, size }: { bot: Bot; size: keyof typeof sizes }) {
+ *  at the bottom right a blue spinner while it works, otherwise the primary bot's star. On an open
+ *  tile the badge sits on the muted tint. */
+export function AvatarMarks({ bot, size, active = false }: { bot: Bot; size: keyof typeof sizes; active?: boolean }) {
   const { tone, unread } = rowState(bot)
   const at = sizes[size]
   const badge = tone === 'working' ? 'working' : bot.isPrimary ? 'primary' : null
@@ -21,7 +22,7 @@ export function AvatarMarks({ bot, size }: { bot: Bot; size: keyof typeof sizes 
       <BotBadge name={bot.name} avatar={bot.prefs.avatar} size={at.avatar} />
       {unread && <span className={cn('absolute rounded-full bg-primary ring-2 ring-background', at.dot)} />}
       {badge && (
-        <span className={cn('absolute flex items-center justify-center rounded-full bg-background', at.badge)}>
+        <span className={cn('absolute flex items-center justify-center rounded-full', active ? 'bg-muted' : 'bg-background', at.badge)}>
           {badge === 'working' ? (
             <LoaderCircleIcon aria-hidden="true" strokeWidth={3} className={cn('animate-spin text-primary', at.icon)} />
           ) : (
