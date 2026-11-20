@@ -31,6 +31,7 @@ const EXPECTED_TOOLS = [
   'lilbot_group',
   'lilbot_work',
   'lilbot_work_list',
+  'lilbot_goal',
   'lilbot_routine',
   'lilbot_routines_list',
   'lilbot_webhook_create',

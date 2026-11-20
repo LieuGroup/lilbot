@@ -8,10 +8,12 @@ import type { BotService } from '../bots/bot-service'
 import { setUnread } from '../bots/bot-unread'
 import type { AddThisComputer } from '../computers/add-this-computer'
 import type { DeviceService } from '../devices/device-service'
+import type { GoalBoard } from '../goals/goal-board'
 import type { LibraryService } from '../library/library-service'
 import type { RoutineService } from '../routines/routine-service'
 import type { WebhookService } from '../webhooks/webhook-service'
 import type { WorkBoard } from '../work/work-board'
+import { boardHandlers } from './board-handlers'
 import { type AfterResponse, BrowserChats } from './browser-chats'
 
 function requireService<T>(service: T | undefined, message: string): T {
@@ -21,7 +23,7 @@ function requireService<T>(service: T | undefined, message: string): T {
 
 /** One handler per protocol method, with that method's checked params and its result type. A
  *  method added to the protocol without a handler here does not compile. */
-type Handlers = { [M in Method]: (params: z.output<(typeof methods)[M]>, afterResponse: AfterResponse) => Promise<Results[M]> }
+export type Handlers = { [M in Method]: (params: z.output<(typeof methods)[M]>, afterResponse: AfterResponse) => Promise<Results[M]> }
 
 export class BrowserSession {
   private chats: BrowserChats
@@ -40,7 +42,8 @@ export class BrowserSession {
     private addThis?: AddThisComputer,
     private devices?: DeviceService,
     private work?: WorkBoard,
-    private webhooks?: WebhookService
+    private webhooks?: WebhookService,
+    private goals?: GoalBoard
   ) {
     this.chats = new BrowserChats(bots, sendFrame, activity, threads, attachments)
   }
@@ -58,15 +61,10 @@ export class BrowserSession {
       await this.threads!.open(botId, threadId)
       return this.threads!.cancel(threadId, { kind: 'oscar', id: null, name: 'Oscar' })
     },
-    'work.list': async input => requireService(this.work, 'The work board is unavailable.').list(input),
-    'work.open': async ({ itemId }) => requireService(this.work, 'The work board is unavailable.').open(itemId),
-    'work.drop': async ({ itemId, reason }) => requireService(this.work, 'The work board is unavailable.').drop(itemId, reason),
-    'work.answer': async ({ itemId, answer }) => requireService(this.work, 'The work board is unavailable.').answer(itemId, answer),
-    'work.pass': async ({ itemId, note }) => requireService(this.work, 'The work board is unavailable.').pass(itemId, note),
-    'work.sendBack': async ({ itemId, reason }) => requireService(this.work, 'The work board is unavailable.').sendBack(itemId, reason),
-    'work.levels.get': async () => requireService(this.work, 'The work board is unavailable.').levels(),
-    'work.levels.set': async input => requireService(this.work, 'The work board is unavailable.').setLevel(input),
-    'work.brief': async ({ since }) => requireService(this.work, 'The work board is unavailable.').brief(since),
+    ...boardHandlers(
+      () => requireService(this.work, 'The work board is unavailable.'),
+      () => requireService(this.goals, 'Goals are unavailable.')
+    ),
     'computers.list': async () => requireService(this.computers, 'Computers unavailable.').list(),
     'computers.installCode': async ({ name }) => ({
       ...requireService(this.computers, 'Computers unavailable.').auth.code(name),

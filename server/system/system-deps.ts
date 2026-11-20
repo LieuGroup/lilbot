@@ -5,6 +5,7 @@ import type { BotService } from '../bots/bot-service'
 import type { BotStore } from '../bots/bot-store'
 import type { Workspaces } from '../bots/workspaces'
 import type { ComputerService } from '../computers/computer-service'
+import type { GoalService } from '../goals/goal-service'
 import type { MemoryService } from '../memory/memory-service'
 import type { RoutineService } from '../routines/routine-service'
 import type { DelegationControl } from '../threads/delegation-control'
@@ -33,6 +34,7 @@ export interface SystemDeps extends SystemFacts {
   delegation: { hand: DelegationService; control: DelegationControl; groups: GroupService }
   work: WorkService
   routines: RoutineService
+  goals: GoalService
   webhooks: WebhookService
   changes: SystemChanges
   dataDir: string

@@ -1,10 +1,11 @@
-/** The work board's two tools: one to open and report (and give a check's verdict), one to read. Both call `WorkService`, the same records Oscar's
- *  `work.list` and `work.open` read. Few tools and short text: every tool costs tokens on every turn. */
+/** The work board's two tools: one to open and report (and give a check's verdict), one to read items or goals. They call `WorkService` and
+ *  `GoalService`, the same records Oscar's `work.list`, `work.open` and `goals.open` read. Few tools and short text: every tool costs tokens on every turn. */
+import { GoalReadInput } from '../../shared/goal-schema'
 import { WorkInput, WorkReadInput } from '../../shared/work-schema'
 import { actionTool, type McpTool, readTool } from './mcp-tool'
 import type { SystemDeps } from './system-deps'
 
-export function workTools({ work }: SystemDeps): McpTool[] {
+export function workTools({ work, goals }: SystemDeps): McpTool[] {
   return [
     actionTool(
       'lilbot_work',
@@ -12,6 +13,11 @@ export function workTools({ work }: SystemDeps): McpTool[] {
       WorkInput,
       (caller, input) => work.act(caller, input)
     ),
-    readTool('lilbot_work_list', "List work items: yours, every bot's (mine false), or one in full with its evidence.", WorkReadInput, (caller, input) => work.read(caller, input))
+    readTool(
+      'lilbot_work_list',
+      "List work items or goals: yours, every bot's (mine false), or one in full with its evidence.",
+      WorkReadInput.extend(GoalReadInput.shape),
+      (caller, input) => (input.goals || input.goalId ? goals.read(caller, input) : work.read(caller, input))
+    )
   ]
 }

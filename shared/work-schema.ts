@@ -56,6 +56,8 @@ export interface WorkSummary {
   askedBy: WorkAsker
   origin: WorkOrigin
   parentId: string | null
+  /** The agreed goal this work is for (#143), given when the item is opened. */
+  goalId: string | null
   /** Null on items from before kinds, and on an exchange's item until its receiver says. */
   kind: WorkKind | null
   /** 0 no check, 1 the bot checks the real result itself, 2 a second bot reproduces it, 3 Oscar checks. Never lowered. */
@@ -96,7 +98,7 @@ export interface WorkBrief {
 const text = (max: number) => z.string().trim().min(1).max(max)
 const itemId = z.string().min(1).max(100)
 
-const EvidenceInput = z.object({
+export const EvidenceInput = z.object({
   proves: text(500),
   library: z.string().max(100).optional().describe('Library item id'),
   url: z.string().url().max(2000).optional(),
@@ -126,6 +128,7 @@ export const WorkInput = z.object({
     .optional()
     .describe("At least the kind's default; raise it for anything hard to undo, never lower. 0 no check, 1 you check the real result, 2 another bot reproduces it, 3 Oscar"),
   asked: z.enum(['oscar', 'self']).optional().describe('Who asked, in a conversation (default oscar)'),
+  goalId: itemId.optional().describe('At open: the agreed goal of yours this work is for'),
   status: z.enum(['working', 'needs_oscar', 'done', 'failed', 'dropped']).optional(),
   question: text(1000).optional(),
   evidence: z.array(EvidenceInput).max(10).optional(),

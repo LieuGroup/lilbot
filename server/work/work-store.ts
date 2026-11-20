@@ -21,6 +21,7 @@ type Row = {
   origin_id: string
   chat_id: string | null
   parent_id: string | null
+  goal_id: string | null
   question: string | null
   result: string
   drop_reason: string | null
@@ -38,9 +39,12 @@ export type NewItem = Omit<StoredItem, 'question' | 'result' | 'dropReason' | 'e
   at: number
 }
 /** What a change may set. */
-export type ItemChange = Partial<Omit<StoredItem, 'id' | 'ownerId' | 'ownerName' | 'askedBy' | 'origin' | 'parentId' | 'evidenceCount' | 'check' | 'createdAt' | 'updatedAt'>>
+export type ItemChange = Partial<
+  Omit<StoredItem, 'id' | 'ownerId' | 'ownerName' | 'askedBy' | 'origin' | 'parentId' | 'goalId' | 'evidenceCount' | 'check' | 'createdAt' | 'updatedAt'>
+>
 export interface ListFilter {
   ownerId?: string
+  goalId?: string
   status?: WorkStatus[]
   from?: number
   to?: number
@@ -72,6 +76,7 @@ function item(row: Row): StoredItem {
     askedBy: { kind: row.asked_kind, id: row.asked_id, name: row.asked_name },
     origin: { kind: row.origin_kind, id: row.origin_id },
     parentId: row.parent_id,
+    goalId: row.goal_id,
     kind: row.kind,
     checkLevel: row.check_level,
     defaultLevel: row.default_level,
@@ -105,33 +110,18 @@ export class WorkStore {
   /** False when an item with this id exists already. */
   create(n: NewItem): boolean {
     const { askedBy: asked, origin } = n
-    const values = [
-      n.id,
-      n.ownerId,
-      n.ownerName,
-      n.requestId,
-      n.title,
-      n.done,
-      n.kind,
-      n.checkLevel,
-      n.defaultLevel,
-      n.status,
-      asked.kind,
-      asked.id,
-      asked.name,
-      origin.kind,
-      origin.id
-    ]
+    const values = [n.id, n.ownerId, n.ownerName, n.requestId, n.title, n.done, n.kind, n.checkLevel, n.defaultLevel, n.status]
+    const from = [asked.kind, asked.id, asked.name, origin.kind, origin.id]
     const sql = `INSERT OR IGNORE INTO work_items(id, owner_id, owner_name, request_id, title, done, kind, check_level, default_level, status, asked_kind, asked_id, asked_name,
-      origin_kind, origin_id, chat_id, parent_id, created_at, updated_at, started_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
-    return this.db.query(sql).run(...values, n.chatId, n.parentId, n.at, n.at, n.status === 'working' ? n.at : null).changes > 0
+      origin_kind, origin_id, chat_id, parent_id, goal_id, created_at, updated_at, started_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    return this.db.query(sql).run(...values, ...from, n.chatId, n.parentId, n.goalId, n.at, n.at, n.status === 'working' ? n.at : null).changes > 0
   }
   update(id: string, change: ItemChange, at: number) {
     const keys = Object.keys(change) as (keyof ItemChange)[]
     const sets = keys.map(key => `${COLUMNS[key]} = ?`)
     this.db.query(`UPDATE work_items SET ${[...sets, 'updated_at = ?'].join(', ')} WHERE id = ?`).run(...keys.map(key => change[key] ?? null), at, id)
   }
-  list({ ownerId, status, from, to, limit }: ListFilter): WorkSummary[] {
+  list({ ownerId, goalId, status, from, to, limit }: ListFilter): WorkSummary[] {
     const where: string[] = []
     const args: (string | number)[] = []
     const add = (clause: string, ...values: (string | number)[]) => {
@@ -139,6 +129,7 @@ export class WorkStore {
       args.push(...values)
     }
     if (ownerId) add('w.owner_id = ?', ownerId)
+    if (goalId) add('w.goal_id = ?', goalId)
     if (status?.length) add(`w.status IN (${status.map(() => '?').join(',')})`, ...status)
     if (from !== undefined) add('w.updated_at >= ?', from)
     if (to !== undefined) add('w.updated_at <= ?', to)

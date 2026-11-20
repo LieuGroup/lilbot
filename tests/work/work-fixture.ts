@@ -3,6 +3,8 @@
 import type { Database } from 'bun:sqlite'
 import { workSessions } from '../../server/app-work'
 import { openDatabase } from '../../server/database/database'
+import { requireAgreed } from '../../server/goals/goal-rules'
+import { GoalStore } from '../../server/goals/goal-store'
 import { RoutineStore } from '../../server/routines/routine-store'
 import { ThreadStore } from '../../server/threads/thread-store'
 import { WebhookStore } from '../../server/webhooks/webhook-store'
@@ -45,6 +47,7 @@ export function workFixture(options: { database?: Database; requireBot?: (id: st
   const threadStore = new ThreadStore(database)
   const routineStore = new RoutineStore(database)
   const webhookStore = new WebhookStore(database)
+  const goalStore = new GoalStore(database)
   const work = new WorkService(new WorkStore(database), {
     requireBot:
       options.requireBot ??
@@ -57,6 +60,7 @@ export function workFixture(options: { database?: Database; requireBot?: (id: st
     callingChat: async botId => (state.chats.has(botId) ? state.chats.get(botId)! : `${botId}-main`),
     session: workSessions(threadStore, routineStore, webhookStore, (_bot, chat) => (state.roots.has(chat) ? state.roots.get(chat)! : chat)),
     libraryTitle: (botId, itemId) => state.library.get(`${botId}:${itemId}`) ?? null,
+    checkGoal: (botId, goalId) => requireAgreed(goalStore.get(goalId), botId),
     waiting: (botId, itemId, key, on) => state.waits.push({ botId, itemId, key, on }),
     line: item => state.lines.push(item),
     tell: (id, item, prompt) => answers.queue(id, item, prompt),
@@ -110,6 +114,7 @@ export function workFixture(options: { database?: Database; requireBot?: (id: st
     threadStore,
     routineStore,
     webhookStore,
+    goalStore,
     open
   }
 }

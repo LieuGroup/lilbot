@@ -24,6 +24,8 @@ export interface WorkHost {
   session(botId: string, chatId: string): SessionOrigin
   /** The title of the bot's own Library item, or null. */
   libraryTitle(botId: string, itemId: string): string | null
+  /** Refuses a goal that is not the bot's own or not agreed: nothing is done for a goal before Oscar agrees. */
+  checkGoal(botId: string, goalId: string): void
   /** While an item needs Oscar its bot shows as waiting and turns unread (unless he is viewing); `on` false ends it. */
   waiting(botId: string, itemId: string, key: string, on: boolean): void
   /** The line in a conversation that links to an item opened there. */
@@ -120,6 +122,7 @@ export class WorkService {
     if (!input.kind) throw noKind()
     const least = this.levels.floor(input.kind, caller.id)
     if (input.level !== undefined && input.level < least) throw belowDefault(input.kind, least)
+    if (input.goalId) this.host.checkGoal(caller.id, input.goalId)
     const asked: WorkAsker = session.askedBy ?? (input.asked === 'self' ? { kind: 'self', id: caller.id, name: caller.name } : { kind: 'oscar', id: null, name: 'Oscar' })
     const id = crypto.randomUUID()
     const at = this.now()
@@ -138,6 +141,7 @@ export class WorkService {
       origin: session.origin,
       chatId,
       parentId: ours?.id ?? null,
+      goalId: input.goalId ?? null,
       at
     })
     this.store.log(id, { at, by: 'bot', kind: 'opened', status: 'open', text: input.title, via: session.origin })

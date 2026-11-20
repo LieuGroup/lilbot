@@ -45,6 +45,7 @@ server/            The LilBot server (runs on the leader).
   routines/          App-owned schedules, run history and scheduler.
   webhooks/          Outside events: secret addresses, sender signatures, accepted deliveries and their runs.
   work/              The work board: items with "done" definitions, evidence and results, Oscar's answers, its skill.
+  goals/             Oscar's outcomes: the bot's agreement, a measured target, the review routine and its reviews.
   library/           Delivered workspace files, metadata, safe reads and folder listings.
   attachments/       Incoming chat files, streaming uploads and durable message associations.
   skills/            The shared skills library, per-bot switches and each engine's "Include this engine's skills" switch.
@@ -98,8 +99,8 @@ Activity, Library, Memory and Setup tabs), bot menu, delete confirmation, Settin
 memory with a Memory panel and after-chat review, every bot knowing its system (the note) and operating the app through
 LilBot's own MCP tools, delegation between bots (several tasks at once, files, status, stop, redirect, wait), temporary
 groups of bots (rounds, a shared folder, an outcome; #133), and the
-backends for routines, webhooks, threads, library, skills, computers, the work board with its check levels and coding
-through T3 Code. Next: the Routines, Webhooks (#138), Library and work board screens, the check levels' track record and
+backends for routines, webhooks, threads, library, skills, computers, the work board with its check levels, goals and
+coding through T3 Code. Next: the Routines, Webhooks (#138), Library, work board and goal screens, the check levels' track record and
 spot checks (#142), the nightly memory tidy-up and editing abilities. Reports are not built. Desktop (Tauri) and iOS (Expo) come after the
 web app.
 
@@ -365,7 +366,7 @@ forget) are kept with `bots.deleteDefaults.get/set`. The primary bot and the eng
   choice.
 - Kept: shared facts; private facts unless forgotten (`memory.list` still shows a tombstone's facts for attribution
   and restoration); library and attachment metadata (the bot loses access); thread records with the names captured
-  at creation; work items with the owner's name (unfinished ones are dropped: "The bot was deleted."); skills it wrote,
+  at creation; work items and goals with the owner's name (unfinished ones are dropped: "The bot was deleted."); skills it wrote,
   with their authorship; the log of changes bots made through the system server (with the name the bot had).
 
 ## Web app
@@ -577,7 +578,7 @@ startup and restored if it differs, like `t3-coding`).
 - An item: id, title, owner (name captured at opening), who asked (`oscar`, `bot`, `routine`, `webhook` or `self`),
   origin (`conversation`, `exchange`, `group`, `routine_run`, `webhook_run`), the "done" definition, kind of work, check
   level (0-3) and the kind's default when it got its kind, status (`open`, `working`, `checking`, `needs_oscar`, `done`,
-  `failed`, `dropped`), evidence, result, its checks, times and an optional parent. Statuses and kinds are checked in
+  `failed`, `dropped`), evidence, result, its checks, times, an optional parent and an optional goal (see Goals). Statuses and kinds are checked in
   code, not SQL. `work_events` keeps every change with where it came from.
 - Who asked and the origin come from LilBot's records of the calling session (`app-work.ts`, `workSessions`): an
   exchange's hidden session is the exchange, asked by the delegating bot; a routine or webhook run's session is the run,
@@ -664,6 +665,53 @@ skill (`server/work/check-skill/`, installed like `lilbot-work`).
 - The note has two static lines on when to open an item: before any work beyond a reply, however small (changing
   something, handed over, scheduled or from outside), not for answering a question.
 
+## Goals
+
+`server/goals/` owns goals (`shared/goal-schema.ts`, #143). Oscar gives an outcome once, in his words; the bot proposes an
+agreement and a target measured from a real source; once he agrees, the bot works on the board and LilBot's review
+routine reports against the target on a rhythm. The bot promises the work and measures honestly; it does not promise the
+number. How to propose and review is the guide topic `goals` (no skill: a skill's catalogue line costs every turn).
+
+- A goal belongs to one bot: Oscar's words, the agreement (what it does alone, needs from Oscar: access, money, a
+  decision; cannot influence), the target (measure, source, the baseline value with the time LilBot saved it and one
+  evidence pointer of the reading, the target value, a due date `YYYY-MM-DD` in Adelaide), the review rhythm (a routine
+  schedule, default weekly on Monday at 09:00 Adelaide) and a state: `proposed`, `agreed`, `paused`, `reached`, `dropped`
+  (the last two final). Events and reviews are never deleted (`goal_events`, `goal_reviews`).
+- Bot tool (System MCP): `lilbot_goal` with `action`. `propose` without goalId: a new goal, only from a conversation session
+  (never a routine or webhook run, an exchange or a check; the call is traced like `lilbot_work`), with Oscar's words,
+  the agreement and the target; with goalId, a new version of a proposed goal or a change to an agreed or paused one
+  (`why`; a new agreement, target or rhythm, or `drop`). `progress`: a review. Reads go through `lilbot_work_list`
+  (`goals`, `goalId`), so goals add one listing line per turn. Request ids make retries safe; text passes `memoryRefusal`;
+  a target differs from its baseline and is due today or later; a rhythm keeps the routines' minimum interval.
+- Nothing proactive before Oscar agrees: a work item links to a goal (`goalId` at opening, nullable `work_items.goal_id`)
+  only while it is the bot's own and `agreed` (`WorkHost.checkGoal`); reviews likewise; there is no routine before.
+- Oscar: `goals.list` (bot, states), `goals.open` (its reviews, work items and events), `goals.agree` (a proposed goal
+  starts, a paused one resumes, a proposed change applies and a proposal to drop drops it; `review` replaces the rhythm),
+  `goals.adjust` (his words; the bot proposes again), `goals.pause`, `goals.drop` (optional reason), push
+  `goals.changed`. A proposed goal or a change waits for Oscar: the bot shows waiting and turns unread (`goal:<id>`), like a
+  `needs_oscar` item, and it is not also a work item, so he has one way to answer. Screens: `needs-ui`.
+- Each decision is saved with its notice in one transaction. Notices are hidden turns in the bot's main conversation
+  through `work_answers` (`WorkAnswers.notify`, stable run ids): agreed (open an item per thing it does alone and a
+  `needs_oscar` item with one question per thing it needs from Oscar), resumed, change applied, adjusted, paused, dropped.
+- The review routine (`goal-routines.ts`) is made through `RoutineService.create` once the goal is agreed, with
+  `createdBy: oscar` (his agreement is the request), so it is not one of the bot's five; request id `goal-<id>-<n>`. A
+  tick every five seconds keeps it matching the goal: running while agreed, paused while paused, removed otherwise, on
+  the goal's rhythm (a new rhythm replaces it as `n+1`); one the bot paused or deleted with its routine tools comes back.
+  Its task names the goal and reads it live, so a changed target needs no new routine.
+- A review comes only from a run of the goal's own review routine (the calling session's routine), so reviews keep the
+  rhythm; it needs the value read now, `did` (what the bot did of what it said) and evidence. LilBot compares the value with
+  the previous review (or the baseline) and the target: moved toward, away or not at all, met, and stalled (not met, and
+  nothing moved toward the target in this and the previous review, or past due). A stalled review is refused without a
+  change or drop in the same call, unless one already waits. The report becomes a work item through `WorkService.act`,
+  linked to the goal: kind `figure` (level 2 by default, so a second bot reproduces the reading; Oscar may change the
+  default), the reading as a number entry plus the bot's own evidence, and a result that keeps "Number: ..." and
+  "Work: ... (items for the goal: ...)" apart. Review items are not counted as the goal's work.
+- Reached only when the latest review met the target and its work item is `done` (checked at its level), never on the
+  bot's number alone; the routine is then removed.
+- `goals.drop` drops every unfinished item of the goal in the same transaction (`WorkBoard.dropping`, the same as
+  `work.drop`, which tells the bot about each); only with none does the bot get the goal's own notice. A deleted bot's
+  goals are dropped ("The bot was deleted."); its routines go with it.
+
 ## Restart recovery
 
 Restarting LilBot only leaves Hermes turns and T3 tasks running; nothing is resubmitted.
@@ -672,8 +720,9 @@ Restarting LilBot only leaves Hermes turns and T3 tasks running; nothing is resu
   reconciles the durable transcript, including tool work and the final answer.
 - Routines and webhook runs recover the same persisted run and admission receipt. Threads recover their outbox and return the answer to
   the original caller session, never a replacement exchange; a steered redirect is checked against the recovered
-  transcript, and a stop is applied again. Oscar's answers and drop notices on the work board still waiting are
-  delivered with the same run id; a drop's exchange stop is already saved.
+  transcript, and a stop is applied again. Oscar's answers, drop notices and goal notices still waiting are
+  delivered with the same run id; a drop's exchange stop is already saved. A goal's review routine is made, paused or
+  removed to match the saved goal on the next goals tick.
 - The T3 bridge reloads its sign-in from the data directory. Stable per-bot request ids let an uncertain launch find
   the original T3 task, and its thread id allows later waits and reads. A bridge call in flight during downtime
   fails; the bot retries it after reconnecting.
@@ -993,8 +1042,8 @@ independent.
   `pause_routine`, `resume_routine` and `delete_routine` ended with adapter 0.11.0; the engine API's `routines/*` stay
   only for sessions that loaded an older one. `createdBy:
   oscar` means the bot acts on an explicit request, `bot` its own initiative (attribution trusts the bot, not a
-  security boundary). A bot may self-create at most five, paused included; the minimum interval is five minutes for
-  all. Repeating a create request id returns the original; deletion leaves a tombstone against resurrection.
+  security boundary). A bot may self-create at most five, paused included; a goal's review routine is LilBot's (see
+  Goals) and not one of them. The minimum interval is five minutes for all. Repeating a create request id returns the original; deletion leaves a tombstone against resurrection.
 - The scheduler atomically creates a run and advances the next time before engine calls. After downtime it runs once
   for the oldest missed time and skips the rest. A routine never overlaps itself. Pause stops new occurrences (an
   admitted run may finish); resume starts at the next future time without replaying.
@@ -1207,6 +1256,10 @@ profiles, isolated directories, cleanup in `finally`. Most cost a few model call
   Oscar; with a second, a true claim the owner makes itself comes back verified by the other bot, and a false one comes
   back not verified with what the checker saw, returns to the owner, then waits for Oscar. The owner cannot skip or answer
   its own check.
+- `bun run check:goals`: a temporary bot told in chat to grow notes.txt in its folder to 10 lines proposes a goal with a
+  baseline read from the file; nothing exists for it before `goals.agree`; after it, the review routine (90 s through the
+  routine test override, not one of the bot's five) and goal work items appear; the first review is a `figure` item from
+  the routine run with the reading as evidence, checked against the file; passing Oscar's check reaches a met goal.
 - `bun run check:routines`: create from chat, a real file-writing run, open history, pause, restart, resume, delete.
 - `bun run check:webhooks`: a dev server with its own helper door on loopback and a temporary bot whose webhook is made
   through its MCP tool: a signed event wakes it and the result is recorded and opens; a repeat, an unsigned and a

@@ -4,6 +4,7 @@ import type { ActivityEvent } from '../shared/activity-schema'
 import type { EventFrame } from '../shared/protocol'
 import { ActivityService } from './activity/activity-service'
 import { ActivityStore } from './activity/activity-store'
+import { createGoals } from './app-goals'
 import { createThreads } from './app-threads'
 import { createWork } from './app-work'
 import { AttachmentService } from './attachments/attachment-service'
@@ -25,6 +26,7 @@ import { openDatabase } from './database/database'
 import { deployNotice } from './deploy/deploy-notice'
 import { createDevices } from './devices/device-service'
 import type { BotEngine } from './engines/bot-engine'
+import { GoalStore } from './goals/goal-store'
 import { HistoryService } from './history/history-service'
 import { HistoryStore } from './history/history-store'
 import { createEngineApi, engineToken } from './http/engine-api'
@@ -45,7 +47,6 @@ import { CallingChats } from './threads/calling-chats'
 import { ThreadStore } from './threads/thread-store'
 import { WebhookService } from './webhooks/webhook-service'
 import { WebhookStore } from './webhooks/webhook-store'
-import { WorkBoard } from './work/work-board'
 import { WorkCheckStore } from './work/work-check-store'
 
 /** Construct services and their background tasks independently of the HTTP listeners. */
@@ -136,6 +137,7 @@ export function createAppServices(
       activity.forgetBot(botId)
       reviewQueue.forgetBot(botId)
       links.forgetBot(botId)
+      goals.forgetBot(botId)
     },
     changed: botsChanged,
     memoryChanged,
@@ -144,15 +146,15 @@ export function createAppServices(
     systemNote: systemNote(facts)
   })
   const calls = new CallingChats(botId => prefs.mainChat(botId))
-  const runs = { threadStore, routineStore, webhookStore, rootOf }
+  const runs = { threadStore, routineStore, webhookStore, rootOf, goalStore: new GoalStore(database) }
   const { work, links, answers, checks } = createWork({ database, engine, store, prefs, bots, ...runs, libraryStore, workspaces, activity, history: history.store, calls, publish })
   const threadDeps = { engine, store, prefs, bots, workspaces, history, activity, threadStore, calls, work: links, memory, library, root: WORKSPACES_DIR, rootOf, publish }
   const { threads, delegation } = createThreads({ ...threadDeps, botsChanged, memoryChanged })
-  const board = new WorkBoard(work, answers, threads)
-  const webhooks = new WebhookService(webhookStore, bots, token, HOOK_ORIGIN, () => publish({ event: 'webhooks.changed' }))
   const routines = new RoutineService(routineStore, bots, () => publish({ event: 'routines.changed' }), routineSettings(process.env))
-  const changes = new SystemChanges(database)
-  const system = createSystemServer({ ...facts, bots, activity, memory, memoryChanged, delegation, work, routines, webhooks, changes, engineToken: token, port: PORT })
+  const { goals, boards } = createGoals({ goalStore: runs.goalStore, work, answers, threads, routines, activity, store, publish, repeat })
+  const webhooks = new WebhookService(webhookStore, bots, token, HOOK_ORIGIN, () => publish({ event: 'webhooks.changed' }))
+  const deps = { ...facts, bots, activity, memory, memoryChanged, delegation, work, goals, routines, webhooks, changes: new SystemChanges(database) }
+  const system = createSystemServer({ ...deps, engineToken: token, port: PORT })
   watchT3SignIn(
     t3Grants,
     () => publish({ event: 'connections.changed' }),
@@ -193,5 +195,5 @@ export function createAppServices(
     reviewer,
     hiddenChat
   })
-  return { bots, store, skills, library, computers, devices, attachments, t3Grants, t3Bridge, system, engineApi, activity, routines, threads, board, webhooks, hiddenChat }
+  return { bots, store, skills, library, computers, devices, attachments, t3Grants, t3Bridge, system, engineApi, activity, routines, threads, boards, webhooks, hiddenChat }
 }

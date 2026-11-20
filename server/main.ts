@@ -52,7 +52,7 @@ function botsChanged() {
 }
 
 const engine = new HermesEngine(process.env.LILBOT_BOT_IDS?.split(',').filter(Boolean))
-const { bots, store, skills, hiddenChat, library, computers, devices, attachments, t3Grants, t3Bridge, system, engineApi, activity, routines, threads, board, webhooks } =
+const { bots, store, skills, hiddenChat, library, computers, devices, attachments, t3Grants, t3Bridge, system, engineApi, activity, routines, threads, boards, webhooks } =
   createAppServices(engine, {
     DATA_DIR,
     WORKSPACES_DIR,
@@ -112,8 +112,9 @@ const websocket: WebSocketHandler<SocketData> = {
       attachments,
       addThis,
       devices,
-      board,
-      webhooks
+      boards.work,
+      webhooks,
+      boards.goals
     )
   },
   message(socket, message) {
