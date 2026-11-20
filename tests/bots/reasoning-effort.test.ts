@@ -98,7 +98,10 @@ test('when the engine cannot apply the edit it is still saved, the error is repo
 test('a switch the engine holds back is reported, the choice stays saved, the level still applies, and later effort edits do not repeat the switch', async () => {
   const f = await withMainChat()
   f.holdModelSwitch.value = true
-  await expect(f.service.updateBot({ botId: 'b1', model: { provider: 'p', model: 'other' }, reasoningEffort: 'high' })).rejects.toMatchObject({ code: 'confirm_required' })
+  await expect(f.service.updateBot({ botId: 'b1', model: { provider: 'p', model: 'other' }, reasoningEffort: 'high' })).rejects.toMatchObject({
+    code: 'confirm_required',
+    message: 'This long conversation keeps its model until New session; new conversations use the new one.'
+  })
   expect(f.store.get('b1')).toMatchObject({ model: { provider: 'p', model: 'other' }, reasoningEffort: 'high' })
   expect(f.sessionChanges.map(entry => entry.change)).toEqual([{ model: { provider: 'p', model: 'other' }, reasoningEffort: 'high' }, { reasoningEffort: 'high' }])
   expect((await f.service.getBot('b1')).effectiveReasoningEffort).toBe('high')

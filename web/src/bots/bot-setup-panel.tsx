@@ -3,6 +3,7 @@ import { Notice } from '@/ui/notice'
 import { Panel } from '@/ui/panel'
 import { Separator } from '@/ui/separator'
 import type { Ability, BotDetail } from '../../../shared/bot-schema'
+import { LilBotError } from '../../../shared/protocol'
 import { lilbot, messageOf } from '../app/lilbot-socket'
 import { BotForm } from './bot-form'
 import { useBotStore } from './bot-store'
@@ -45,12 +46,16 @@ function AbilitySummary({ abilities }: { abilities: Ability[] }) {
 export function BotSetupPanel({ botId }: { botId: string }) {
   const connected = useBotStore(state => state.connected)
   const upsert = useBotStore(state => state.upsert)
-  // A rename from the bot menu or a model change from the composer reloads the form, so saving it
-  // cannot bring the old name or model back.
+  // A rename from the bot menu or a model or effort change from the composer reloads the form, so saving it
+  // cannot bring the old values back. A new level reported as sent only reloads the hint.
   const name = useBotStore(state => state.bots.find(bot => bot.id === botId)?.name)
   const model = useBotStore(state => modelKey(state.bots.find(bot => bot.id === botId)?.model ?? null))
+  const effort = useBotStore(state => state.bots.find(bot => bot.id === botId)?.reasoningEffort)
+  const sent = useBotStore(state => state.bots.find(bot => bot.id === botId)?.effectiveReasoningEffort)
   const [loaded, setBot] = useState<BotDetail | null>(null)
   const [error, setError] = useState('')
+  /** A switch saved for new conversations that the open one could not take. */
+  const [kept, setKept] = useState<{ botId: string; message: string } | null>(null)
   const bot = loaded?.id === botId ? loaded : null
 
   useEffect(() => {
@@ -64,7 +69,7 @@ export function BotSetupPanel({ botId }: { botId: string }) {
     return () => {
       cancelled = true
     }
-  }, [botId, connected, name, model])
+  }, [botId, connected, name, model, effort, sent])
 
   return (
     <Panel>
@@ -73,17 +78,26 @@ export function BotSetupPanel({ botId }: { botId: string }) {
       {bot && (
         <>
           <PrimaryBotAction botId={botId} />
+          {kept?.botId === botId && <Notice tone="ok">{kept.message}</Notice>}
           <BotForm
-            key={`${bot.id}:${bot.name}:${modelKey(bot.model)}`}
-            initial={{ name: bot.name, function: bot.function, instructions: bot.instructions, model: bot.model }}
+            key={`${bot.id}:${bot.name}:${modelKey(bot.model)}:${bot.reasoningEffort}`}
+            initial={{ name: bot.name, function: bot.function, instructions: bot.instructions, model: bot.model, reasoningEffort: bot.reasoningEffort }}
+            sentEffort={bot.effectiveReasoningEffort}
             submitLabel="Save changes"
             onSubmit={async values => {
-              const updated = await lilbot.call('bots.update', {
+              setKept(null)
+              const input = {
                 botId,
                 name: values.name,
                 function: values.function,
                 instructions: values.instructions,
+                reasoningEffort: values.reasoningEffort,
                 ...(values.model ? { model: values.model } : {})
+              }
+              const updated = await lilbot.call('bots.update', input).catch(async failure => {
+                if (!(failure instanceof LilBotError && failure.code === 'confirm_required')) throw failure
+                setKept({ botId, message: failure.message })
+                return lilbot.call('bots.get', { botId })
               })
               setBot(updated)
               upsert(updated)

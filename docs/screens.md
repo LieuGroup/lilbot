@@ -37,12 +37,19 @@ and icon sizes follow the Stack rules in `AGENTS.md`.
 
 ## Model picker (`bots/model-pill.tsx`, `bots/model-menu.tsx`, Paper "14 Model picker")
 
-- Pill: 28px, fully rounded, the model id at 13/18 500 muted with a 13px chevron; hover and open tint it
-  (`foreground/6`). Saving: a 12px spinner before the new model. Saved model no longer offered: "Choose a model" in red.
-  A bot without its own model reads "Default model". A refused change shows a red-outlined note above the text.
+- Pill: 28px, fully rounded, "model · Effort" at 13/18 500 muted with a 13px chevron (the model alone when it does not
+  reason); hover and open tint it (`foreground/6`). Saving: a 12px spinner before the new values. Sent level differs from
+  the chosen one: a 13px info circle after the effort. Saved model no longer offered: "Choose a model" in red. A bot
+  without its own model reads "Default model". A refused change shows a red-outlined note above the text; a switch the
+  open conversation could not take shows a hairline-outlined note with an info icon.
 - Menu: 280px card, radius 8, opens upward from the pill. "Find a model" box, then provider names (12px muted) over
   30px model rows; the current one has a tick before it, weight 500 and a tint, the others line up after the tick.
-  A last muted line: "Changes <bot>'s model. Applies after New session." The reasoning effort row comes with #80.
+  Then "Reasoning effort" with the current level muted and a chevron (two lines when it reads "<chosen>, sent as
+  <sent>"), hidden for a model that does not reason. A last muted line: "Changes <bot>'s model and effort, from the next
+  message."
+- Effort submenu: 196px, to the right (over the menu on a phone): Default, Off ("if the model allows" when the engine
+  does not say; hidden when it cannot be disabled), a divider, Minimal, Low, Medium, High, Extra high, Max, with the
+  same tick rows. Setup's "Reasoning effort" field opens the same list.
 
 ## Bot menu (`bots/bot-menu.tsx`, Paper "02 Bot menu")
 

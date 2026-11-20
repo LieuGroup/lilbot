@@ -8,7 +8,7 @@ import { DropOverlay, useFileDrop } from '../attachments/file-drop'
 import { useStagedAttachments } from '../attachments/use-staged-attachments'
 import { useBotStore } from '../bots/bot-store'
 import { rememberDetailsOpen, useDetailsTab } from '../bots/details-tabs'
-import { dismissModelError, useModelPicker } from '../bots/model-picker-target'
+import { dismissModelNote, useModelPicker } from '../bots/model-picker-target'
 import { ModelPill } from '../bots/model-pill'
 import { Composer } from './composer'
 import { MessageList } from './message-list'
@@ -21,7 +21,7 @@ export function ChatColumn({ botId }: { botId: string }) {
   const tab = useDetailsTab()
   const { chat, ready, error, send, stop, newChat } = useChat(botId)
   const staged = useStagedAttachments(botId)
-  const modelError = useModelPicker(state => (state.error?.botId === botId ? state.error.message : ''))
+  const modelNote = useModelPicker(state => (state.note?.botId === botId ? state.note : null))
   const drop = useFileDrop(files => void staged.add(files), ready)
   const name = bot?.name ?? botId
   const hint = error || (!connected ? 'Reconnecting...' : !ready ? 'Opening chat...' : `Send a message to start with ${name}.`)
@@ -75,9 +75,9 @@ export function ChatColumn({ botId }: { botId: string }) {
         staged={staged}
         model={<ModelPill botId={botId} disabled={!connected} />}
         note={
-          modelError && (
-            <ComposerNote label="Dismiss" onDismiss={dismissModelError}>
-              <p className="text-[13px]/[18px] text-destructive">The model was not changed. {modelError}</p>
+          modelNote && (
+            <ComposerNote label="Dismiss" tone={modelNote.tone} onDismiss={dismissModelNote}>
+              <p className={modelNote.tone === 'error' ? 'text-[13px]/[18px] text-destructive' : 'text-[13px]/[18px] text-foreground'}>{modelNote.message}</p>
             </ComposerNote>
           )
         }

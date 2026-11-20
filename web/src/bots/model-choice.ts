@@ -1,7 +1,14 @@
 /** The choices in a bot's model menu, from the engine's model list. Pure functions only. */
-import type { BotModel, ModelProvider } from '../../../shared/bot-schema'
+import type { Bot, BotModel, ModelProvider, ReasoningEffort } from '../../../shared/bot-schema'
+import { capabilityOf, effortLabel, reasons, sentDiffers } from './reasoning-effort'
 
 const SEPARATOR = '::'
+
+/** A change the composer's menu saves: the model, the effort or both. */
+export interface PickerChange {
+  model?: BotModel
+  reasoningEffort?: ReasoningEffort | null
+}
 
 interface ModelOption {
   key: string
@@ -46,16 +53,30 @@ export function modelLabel(groups: ModelGroup[], current: BotModel | null): stri
 
 export interface ModelPillView {
   label: string
+  /** The effort's name after the model; null for a model that does not reason. */
+  effort: string | null
+  /** The engine sends another level than the one chosen: an info mark after the effort. */
+  differs: boolean
   saving: boolean
   /** The saved model is no longer offered: the pill reads "Choose a model" in red. */
   missing: boolean
 }
 
-/** What the composer's model pill shows. While a change saves it shows the new model. The saved
- *  model counts as missing only once the engine's list has loaded (`providers` not null) and lacks it. */
-export function modelPillView(model: BotModel | null, providers: ModelProvider[] | null, saving: BotModel | null): ModelPillView {
-  if (saving) return { label: saving.model, saving: true, missing: false }
-  if (!model) return { label: 'Default model', saving: false, missing: false }
-  const offered = !providers || providers.some(provider => provider.provider === model.provider && provider.models.includes(model.model))
-  return offered ? { label: model.model, saving: false, missing: false } : { label: 'Choose a model', saving: false, missing: true }
+type PillBot = Pick<Bot, 'model' | 'reasoningEffort' | 'effectiveReasoningEffort'>
+
+/** What the composer's model pill shows. While a change saves it shows the new values. The saved model counts as missing
+ *  only once the engine's list has loaded (`providers` not null) and lacks it. */
+export function modelPillView(bot: PillBot, providers: ModelProvider[] | null, saving: PickerChange | null): ModelPillView {
+  const model = saving?.model ?? bot.model
+  const chosen = saving?.reasoningEffort !== undefined ? saving.reasoningEffort : bot.reasoningEffort
+  const offered = !model || !providers || providers.some(provider => provider.provider === model.provider && provider.models.includes(model.model))
+  if (!saving && !offered) return { label: 'Choose a model', effort: null, differs: false, saving: false, missing: true }
+  const thinks = reasons(capabilityOf(providers, model))
+  return {
+    label: model?.model ?? 'Default model',
+    effort: thinks ? effortLabel(chosen) : null,
+    differs: !saving && thinks && sentDiffers(chosen, bot.effectiveReasoningEffort),
+    saving: !!saving,
+    missing: false
+  }
 }
