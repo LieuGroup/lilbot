@@ -151,7 +151,7 @@ try {
   const delivery = new ThreadStore(db).accept(
     { id: s.id, name: 'Effort sender' },
     { id: t.id, name: 'Effort target' },
-    { requestId: 'effort-thread', to: t.id, text: 'Reply with exactly THREAD_OK.', chatId: senderChat.chatId }
+    { requestId: 'effort-thread', text: 'Reply with exactly THREAD_OK.', chatId: senderChat.chatId }
   )
   const threadChat = await waitFor(
     'thread delivery',
