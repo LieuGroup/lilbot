@@ -4,7 +4,7 @@ import { devPort } from '../scripts/dev-paths'
  *  service manager under a throwaway HOME, a wrong-origin refusal, the page's loopback hand-over and the computer
  *  coming online. Never installs a service or touches a real bot. */
 
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { browser, eventually } from './computers-client'
@@ -94,16 +94,37 @@ try {
   console.log('PASS: page hand-over registered the helper and prepared its service under the throwaway HOME')
 
   // What the service manager would start.
-  children.push(spawn([join(configDir, 'lilbot-helper'), 'run'], helperEnv))
+  let service = spawn([join(configDir, 'lilbot-helper'), 'run'], helperEnv)
+  children.push(service)
   await eventually(async () => (await call('computers.addThis.status', { attemptId: attempt.attemptId })).state === 'connected')
   const status = await call('computers.addThis.status', { attemptId: attempt.attemptId })
   if (status.computer.name !== 'Handover check' || !status.computer.online) throw new Error('Wrong computer')
   console.log(`PASS: "${status.computer.name}" online; attempt state connected`)
+
+  // Remove, then add the same machine again by opening the same download.
   await call('computers.remove', { computer: status.computer.id })
+  if ((await service.exited) !== 0 || existsSync(join(configDir, 'identity.json'))) throw new Error('Revoked helper kept its identity')
+  const again = await call('computers.addThis.start', { name: 'Handover again', system: { os: 'linux', arch: 'x64' } })
+  const reopened = spawn([join(scratch, 'opened', 'lilbot-helper')], helperEnv)
+  children.push(reopened)
+  await eventually(async () => (await hello(page))?.ok === true)
+  const second = await fetch(`${helper}/v1/handover`, {
+    method: 'POST',
+    headers: { origin: page, 'content-type': 'application/json' },
+    body: JSON.stringify({ code: again.code })
+  })
+  if (!second.ok || (await reopened.exited) !== 0) throw new Error('Second hand-over refused')
+  service = spawn([join(configDir, 'lilbot-helper'), 'run'], helperEnv)
+  children.push(service)
+  await eventually(async () => (await call('computers.addThis.status', { attemptId: again.attemptId })).state === 'connected')
+  const readded = await call('computers.addThis.status', { attemptId: again.attemptId })
+  if (readded.computer.id === status.computer.id) throw new Error('Re-added under the revoked key')
+  console.log('PASS: a removed computer is added again by opening the same download')
+  await call('computers.remove', { computer: readded.computer.id })
   for (const child of children) child.kill()
   await Promise.all(children.map(child => child.exited))
   const output = (await Promise.all(logs)).join('\n')
-  if (output.includes(attempt.code) || readFileSync(join(configDir, 'identity.json'), 'utf8').includes(attempt.code)) throw new Error('The code reached a log')
+  if (output.includes(attempt.code) || output.includes(again.code)) throw new Error('The code reached a log')
   console.log('PASS: the code appears in no server or helper output and in no download URL')
 } finally {
   client?.close()

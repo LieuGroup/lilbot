@@ -5,7 +5,7 @@ import { AttachmentFile } from './attachment-schema'
 import { BotDeleteDefaults, BotDeleteInput } from './bot-delete-schema'
 import { type Bot, BotCreateInput, type BotDetail, BotPrefsInput, BotUpdateInput, type ModelProvider, type Section, sectionName } from './bot-schema'
 import type { ChatEvent, ChatSnapshot } from './chat-schema'
-import { AddThisSystem } from './computer-schema'
+import { AddThisSystem } from './computer-add-schema'
 import { LibraryListInput, type LibraryPage, type WorkspaceEntry } from './library-schema'
 import { type MemoryFact, MemoryWriteInput } from './memory-schema'
 import type { Routine } from './routine-schema'
@@ -94,8 +94,8 @@ export interface Results {
   'computers.list': import('./computer-schema').Computer[]
   'computers.installCode': { code: string; expiresAt: number }
   'computers.remove': { ok: true }
-  'computers.addThis.start': import('./computer-schema').AddThisStart
-  'computers.addThis.status': import('./computer-schema').AddThisStatus
+  'computers.addThis.start': import('./computer-add-schema').AddThisStart
+  'computers.addThis.status': import('./computer-add-schema').AddThisStatus
   'skills.list': import('./skills-schema').Skill[]
   'skills.read': Record<string, string>
   'skills.setEnabled': { ok: true }

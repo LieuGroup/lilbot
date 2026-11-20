@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { join } from 'node:path'
 import { z } from 'zod'
 import { HANDOVER_PORT, type HelperSettings, settingsHash, settingsJson } from '../../helper/settings'
-import type { AddThisSystem, HelperDownload } from '../../shared/computer-schema'
+import type { AddThisSystem, HelperDownload } from '../../shared/computer-add-schema'
 
 export const DOWNLOAD_PATH = '/api/computers/download/'
 const FILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,100}\.(zip|tar\.gz)$/

@@ -37,8 +37,8 @@ Detail for `server/computers/`, `helper/` and the `lilbot-computers-v1` plug-in.
 - Helpers sign method, path, computer id, timestamp and a one-use nonce (60 s window).
 - Revocation aborts work only through a signed `revoked` frame. Unsigned close codes never abort work; server restarts
   preserve remote commands. Revoked public keys stay as tombstones: a reconnect authenticates and receives proof plus
-  a signed revoke. The helper aborts work, removes its service and exits on a verified revoke, also after offline
-  removal. Reconnect backoff resets only after verified server proof.
+  a signed revoke. The helper aborts work, removes its service and its identity file and exits on a verified revoke,
+  also after offline removal, so it can be added again. Reconnect backoff resets only after verified server proof.
 - A competing connection suspends dispatch while both receive a three-second challenge. A responsive newcomer
   replaces an unresponsive incumbent; two responsive peers are closed and `keyConflict` blocks dispatch until the
   owner removes and re-registers the computer.
@@ -126,6 +126,9 @@ builds and signing.
 
 ### What each browser does (expected; not yet run on a Mac)
 
+- Run on the Linux leader: Chromium 157 on a loopback dev page did the whole hand-over (CORS preflight, `hello`,
+  `POST`, computer connected, listener closed afterwards). An HTTPS page under Local Network Access and Safari are
+  untested.
 - Chrome 142 and later: the first loopback request from an HTTPS page asks "access other apps and services on this
   device"; allowing it makes path 1 work. Denying it leaves the link and the pasted line. `http://localhost` pages in
   development skip the prompt.
