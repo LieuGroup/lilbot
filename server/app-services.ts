@@ -111,7 +111,7 @@ export function createAppServices(
   // Every bot gets the shared T3 sign-in and the t3-coding skill.
   const t3Grants = new T3Grants(join(DATA_DIR, 't3-grant.json'), () => publish({ event: 'connections.changed' }))
   const prefs = new BotPrefsStore(database)
-  const facts = { store, workspaces, computers, t3: () => t3Grants.status(), commit: COMMIT }
+  const facts = { store, workspaces, computers, t3: () => t3Grants.status(), commit: COMMIT, dataDir: DATA_DIR }
   const history = new HistoryService(
     new HistoryStore(database),
     engine,
@@ -150,8 +150,9 @@ export function createAppServices(
   const { threads, delegation } = createThreads({ ...threadDeps, botsChanged, memoryChanged })
   const board = new WorkBoard(work, answers, threads)
   const webhooks = new WebhookService(webhookStore, bots, token, HOOK_ORIGIN, () => publish({ event: 'webhooks.changed' }))
+  const routines = new RoutineService(routineStore, bots, () => publish({ event: 'routines.changed' }), routineSettings(process.env))
   const changes = new SystemChanges(database)
-  const system = createSystemServer({ ...facts, bots, activity, memory, memoryChanged, delegation, work, webhooks, changes, dataDir: DATA_DIR, engineToken: token, port: PORT })
+  const system = createSystemServer({ ...facts, bots, activity, memory, memoryChanged, delegation, work, routines, webhooks, changes, engineToken: token, port: PORT })
   watchT3SignIn(
     t3Grants,
     () => publish({ event: 'connections.changed' }),
@@ -164,7 +165,6 @@ export function createAppServices(
     port: PORT,
     botIds: () => store.list().map(bot => bot.id)
   })
-  const routines = new RoutineService(routineStore, bots, () => publish({ event: 'routines.changed' }), routineSettings(process.env))
   repeat('threads', 1000, () => threads.tick())
   repeat('work answers', 1000, () => answers.tick())
   repeat('work checks', 1000, () => checks.tick())

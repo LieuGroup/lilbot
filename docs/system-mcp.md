@@ -85,6 +85,29 @@ Per turn that is about 2 tokens. `lilbot_work`'s schema grows from 1,060 to 1,60
 to 435, read only when a bot looks the tool up (about 290 tokens more then). A checker's verdict goes through
 `lilbot_work` instead of a new tool, which would have added a listing line (about 45 tokens) to every turn of every bot.
 
+### Routines and `create_bot` moved (#113, second slice; before on main at 5067341, after on this branch)
+
+A whole bot, measured directly on a temporary dev bot (memory adapter connected, `cliproxyapi anthropic/claude-sonnet-5-5`,
+fresh session, same prompt, `contextTokens`). The absolute level differs from the sum of parts above (that table adds
+separate measurements from an older commit); the rows below compare like with like.
+
+| | before | after |
+|---|---|---|
+| whole bot, tokens a turn | 20,768 | 19,802 (-966, -4.7%) |
+| tools Hermes sends in full every turn besides its own and Tool Search | 10 | 4 (`search_conversations`, `recall_memory`, `update_memory`, `give_file`) |
+| schema characters of those adapter tools | 4,460 | 2,093 (-2,367: the five routine tools 1,823, `create_bot` 544) |
+| `lilbot_*` listing lines (name and first sentence) | 33 | 35 (+2, 225 characters) |
+
+The saving is 2,367 eager characters (about 1,020 tokens at 0.43 a character) against two listing lines (about 90 tokens).
+Five routine tools would have been five lines, about 225 tokens a turn; `lilbot_routine` with an `action` field plus
+`lilbot_routines_list` is two, about 90. One tool for everything would be 45 more tokens saved but cannot work: a list
+inside an action tool is logged as a change in `system_changes` and carries no `readOnlyHint` (`McpTool.readOnly` is one
+flag per tool, and the tool-list test pins both). `lilbot_routine`'s schema is 1,631 characters (its `schedule` is the
+three-way choice of the screens), read only when a bot looks the tool up. Its first sentence names the four actions and
+says it replaces the engine's cron: Hermes' own `cronjob` tool is not deferred, so the MCP tool is found through its
+listing line and the adapter's one-line rule. `check:routines` names no tool, and the bot still schedules through
+`lilbot_routine` (rows in `system_changes`) for both an Oscar request and its own idea.
+
 ## The server
 
 - `POST /engine/lilbot/mcp` on the private listener (`main.ts`, beside the T3 bridge). Streamable HTTP answered as plain
@@ -92,7 +115,7 @@ to 435, read only when a bot looks the tool up (about 290 tokens more then). A c
   the Access listener or the helper door (their `/engine/*` refusal covers it; `tests/http/access-door.test.ts`).
 - One key per bot per purpose: `connectionKey(engineToken, "lilbot-system", botId)`. The server accepts only keys of
   current bots (`store.list()`), so a deleted bot is refused. The T3 bridge's key (purpose `t3-bridge`) is unchanged and
-  does not work here. Future bot tools (memory, routines, library, skills, computers, `create_bot`: #113) join this server
+  does not work here. Future bot tools (memory, library, skills, computers: #113) join this server
   with the same key.
 - Arguments are checked by zod schemas built from `shared/`; keys a schema does not name are dropped, so no argument
   can claim another identity. The caller id only ever comes from the key. `inputSchema` is generated from the same
@@ -112,7 +135,7 @@ Every tool acts as the calling bot and calls the function the screen uses. Reads
 | `lilbot_guide(topic?)` | text shipped in `server/system/guide/*.md` |
 | `lilbot_status(area)` | `connections.status` (t3), `computers.list`, `deploy.status` |
 | `lilbot_bots_list`, `lilbot_bot_read` | `bots.list` with `sections.list`, `bots.get` |
-| `lilbot_bot_create` | `create_bot`: `BotService.createFromBot` (any bot; request-id idempotency; model inherited) |
+| `lilbot_bot_create` | `BotService.createFromBot` (any bot; request-id idempotency; model inherited); the plug-in's `create_bot` ended with adapter 0.11.0 |
 | `lilbot_bot_edit` | `bots.update` for name, function, instructions, model, reasoning effort (not the permission mode); bot text gets the creation-time `memoryRefusal` check |
 | `lilbot_primary_set` | `bots.setPrimary` |
 | `lilbot_models_list` | `models.list` |
@@ -128,16 +151,18 @@ Every tool acts as the calling bot and calls the function the screen uses. Reads
 | `lilbot_group` | temporary groups (#133): `start`, `say`, `attach`, `close`, `status` in one tool; `GroupService`, the same records as `threads.list`, `threads.open` and `threads.cancel` (`docs/threads.md`) |
 | `lilbot_work` | the work board: without itemId opens an item (`WorkService.act`), with itemId reports on the caller's own item: definition, evidence, status in one call; with `verdict`, the check LilBot asked the caller to do |
 | `lilbot_work_list` | the caller's items, every bot's, or one in full: the same records as `work.list` and `work.open` |
+| `lilbot_routine` | `routines.*` for the caller's own routines: `action` create (`RoutineService.create`; request-id idempotency, five of its own, five-minute minimum), pause, resume or delete (`id`) |
+| `lilbot_routines_list` | `routines.list` for the caller: latest five runs each, results cut to 500 characters |
 | `lilbot_webhook_create` | `WebhookService.create` for the caller (five webhooks a bot; the same `requestId` returns the current address and any secret LilBot made again) |
 | `lilbot_webhooks_list` | `webhooks.list` for the caller (latest five runs, results cut to 500 characters and fenced as outside data; never addresses or secrets) |
 | `lilbot_webhook_pause`, `_resume`, `_delete` | `webhooks.pause`, `.resume`, `.delete`, only the caller's own webhooks |
 | `lilbot_webhook_new_address` | `WebhookService.newAddress`: the old address stops working at once |
 
 Not offered, by decision: deleting a bot, removing a computer, forgetting another bot's private facts, changing a bot's
-permission mode, registering computers. The one delete a bot has is of its own webhooks (Oscar's decision on #12).
-Routines, library, skills, computers, `create_bot`, `search_conversations` and
-memory writes stay on the engine plug-ins until #113 moves them; `ask_bot` and `list_bots` ended with adapter 0.10.0, their
-work done by `lilbot_delegate` and `lilbot_bots_list`.
+permission mode, registering computers. The deletes a bot has are of its own webhooks (Oscar's decision on #12) and its own routines (it always could: `delete_routine`).
+Library, skills, computers, `search_conversations` and memory writes stay on the engine plug-ins until #113 moves them;
+`ask_bot` and `list_bots` ended with adapter 0.10.0 (their work done by `lilbot_delegate` and `lilbot_bots_list`), and
+`create_bot` and the five routine tools with adapter 0.11.0 (`lilbot_bot_create`, `lilbot_routine`, `lilbot_routines_list`).
 
 MCP requests carry no session (checked live: two sessions of one bot send identical requests, `_meta` holds only a
 progress token). A tool that needs the calling conversation takes a `requestId` and resolves it from the engine's

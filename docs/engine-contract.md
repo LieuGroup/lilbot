@@ -83,7 +83,7 @@ These stay in the engine's folder because they hook the engine's own turn loop. 
 | Hard-stop guard | Runs the engine's own dangerous-command check before `computer_exec` and refuses a hit. A guard for full-access bots, not a security boundary | `/engine/computers/submit` |
 
 Until their families move to the system server ([#113](https://github.com/LieuGroup/lilbot/issues/113)), the engine also
-carries the bot tools for memory, routines, library, skills, computers, `create_bot` and `search_conversations`. A second
+carries the bot tools for memory, library, skills, computers and `search_conversations`. A second
 engine gets those from the system server instead of writing them again.
 
 ## 6. Safety

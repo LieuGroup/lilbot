@@ -92,7 +92,7 @@ folder is gone uses `profile purge-identity` to finish gateway identity settleme
   become its private facts (a new bot starts as a copy of the main bot, so its notes are not imported). It takes
   effect from the bot's next session. `removeMemory` undoes it.
 - Hermes keeps a plug-in's code loaded per folder until the gateway restarts, so each version has its own folder and
-  provider name (`lilbot-memory-v0-10-0`), loaded fresh on the bot's next session. Hermes' own background memory review
+  provider name (`lilbot-memory-v0-11-0`), loaded fresh on the bot's next session. Hermes' own background memory review
   runs only with its built-in memory tool, which a connected bot no longer has.
 - `sync_turn` hands every finished turn of a real conversation to `/engine/memory/turn` on a thread (not scheduled
   runs or sub-agents).
@@ -155,7 +155,9 @@ manifest on `MessageCompletePayload` or `TranscriptMessage`.
 ## Routines
 
 Each run gets its own hidden `yolo` session in the bot's folder. Hermes' `cron.manage` was rejected: mirroring
-schedules would add a second source of truth and tie recovery to an engine.
+schedules would add a second source of truth and tie recovery to an engine. Bots schedule through `lilbot_routine`; Hermes'
+own `cronjob` tool stays on, so the adapter's system-prompt rules tell the bot to use `lilbot_routine` and never Hermes cron
+(`check:routines` names no tool, to prove the bot finds it).
 
 ## Delegation control (`hermes-run-control.ts`, `hermes-tool-calls.ts`)
 

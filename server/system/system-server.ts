@@ -9,13 +9,14 @@ import { delegationTools } from './tool-delegation'
 import { groupTools } from './tool-groups'
 import { memoryTools } from './tool-memory'
 import { rosterTools } from './tool-roster'
+import { routineTools } from './tool-routines'
 import { settingsTools } from './tool-settings'
 import { webhookTools } from './tool-webhooks'
 import { workTools } from './tool-work'
 
 /** For an engine that shows an MCP server's instructions to the model (Hermes does not; the note carries the same pointers). */
 const INSTRUCTIONS =
-  "LilBot's own tools. They act as you, the calling bot. lilbot_about gives live facts about your system; lilbot_guide explains how each part works and the rules for changing LilBot. Nothing here deletes bots, computers or other bots' private facts: Oscar does that himself. You may delete your own webhooks."
+  "LilBot's own tools. They act as you, the calling bot. lilbot_about gives live facts about your system; lilbot_guide explains how each part works and the rules for changing LilBot. Nothing here deletes bots, computers or other bots' private facts: Oscar does that himself. You may delete your own webhooks and routines."
 
 export function createSystemServer(deps: SystemDeps & { engineToken: string; port: number }) {
   const tools = [
@@ -27,6 +28,7 @@ export function createSystemServer(deps: SystemDeps & { engineToken: string; por
     ...delegationTools(deps),
     ...groupTools(deps),
     ...workTools(deps),
+    ...routineTools(deps),
     ...webhookTools(deps)
   ]
   const version = toolsVersion(tools)

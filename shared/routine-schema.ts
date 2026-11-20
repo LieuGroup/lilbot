@@ -24,6 +24,11 @@ export const RoutineCreate = z.object({
   createdBy: z.enum(['oscar', 'bot'])
 })
 export type RoutineCreate = z.infer<typeof RoutineCreate>
+/** The bot tool's one input: `action` picks the step; create takes the `RoutineCreate` fields, the others an `id`. */
+export const RoutineActionInput = RoutineCreate.partial().extend({
+  action: z.enum(['create', 'pause', 'resume', 'delete']),
+  id: z.string().min(1).optional()
+})
 export interface RoutineRun {
   id: string
   routineId: string
