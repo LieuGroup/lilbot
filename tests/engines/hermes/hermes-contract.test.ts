@@ -65,7 +65,7 @@ const methods: Record<string, Uses> = {
   'profiles.create': { table: 'methods', sends: ['name', 'description', 'soul', 'no_alias', 'clone_from', 'model', 'provider'], reads: [] },
   'profiles.configure': { table: 'methods', sends: ['name', 'description', 'soul', 'model', 'provider'], reads: ['ok', 'confirm_required', 'confirm_message'] },
   'approval.pending': { table: 'methods', sends: ['session_id'], reads: ['approvals'] },
-  'plugins.manage': { table: 'methods', sends: ['action', 'name', 'enable'], reads: ['ok'] },
+  'plugins.manage': { table: 'methods', sends: ['action', 'name', 'enable'], reads: ['ok', 'unchanged'] },
   'config.get': { table: 'methods', sends: ['key'], reads: ['value'] },
   'config.set': { table: 'methods', sends: ['key', 'value'], reads: ['value'] },
   // LilBot's own MCP connections (T3 Code through LilBot's bridge): `hermes-connections.ts`.

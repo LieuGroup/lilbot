@@ -18,6 +18,26 @@ apply everywhere (never fork or patch Hermes, read only declared contract fields
   profile in the background; the bot's next open takes it (about 0.15-0.4 s instead of 1.1-1.8 s). A spare holds no
   session. At most four profiles keep one, each for ten idle minutes; deleting a bot closes its spare.
 
+## Start-up preparation
+
+- Per profile the steps are permissions, the computers plug-in, the skills plug-in and the MCP connection. Each costs
+  `hermes` CLI spawns and plug-in admissions (about 20 s per bot when everything is applied), so a start applies only
+  what changed. Bots are prepared independently: the primary first, the rest five at a time (`bots/runtime-readiness.ts`).
+- `hermes-applied.ts` keeps `lilbot-applied.json` in the profile folder: a hash per step of what it applied (adapter
+  code, settings, connections) plus the hash of the profile's `config.yaml` at the end of the last LilBot change. A step
+  is skipped only when its hash matches and `config.yaml` is byte-for-byte unchanged, so an outside edit applies
+  everything again. Every LilBot write to `config.yaml` (memory setup, identity) runs through `applied()` so the record
+  stays valid, and steps of one profile take turns. A kill in the middle of a change leaves the record stale and the
+  next start repeats the steps. Permissions are not recorded: `approvals.mode` is checked on every start and chat.
+- Plug-in changes (`hermes-plugins.ts`) take turns across bots: Hermes admits them under one install lock that looks
+  at every profile, and answers 5026 "plugin configuration changed while preparing publication; retry" when any
+  profile's plug-in configuration changed meanwhile (another LilBot process on the same Hermes home does this too).
+  A refused change is repeated up to three times. Enabling uses one `plugins.manage` toggle on; only when the plug-in
+  was already enabled does it toggle off and on again, to make the gateway load newly copied code. `config set` calls
+  and attaches stay parallel across profiles.
+- A profile with no record (first start after this shipped, or a new profile) runs every step once.
+  `live-checks/startup-latency-check.ts` keeps its 90 s bound for five fresh, never-prepared bots.
+
 ## Permissions
 
 Full access is the persistent per-profile `approvals.mode: off`, so background runs inherit it. Chat and review

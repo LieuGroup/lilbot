@@ -1,11 +1,11 @@
 /** Resolves LilBot ids to runtime ids. The database always wins over an engine's copy. */
 import type { BotCreateInput, BotUpdateInput } from '../../shared/bot-schema'
 import { LilBotError } from '../../shared/protocol'
-import { backgroundFailure } from '../background'
 import type { BotEngine, McpConnection, RuntimeState } from '../engines/bot-engine'
-import { memoryRefusal } from '../memory/memory-safety'
-import { files } from '../skills/skill-files'
 import type { BotRecord, BotStore } from './bot-store'
+import { importBots } from './runtime-import'
+import { Readiness } from './runtime-readiness'
+import { prepareTools, refreshConnections } from './runtime-tools'
 
 export class BotRuntimes {
   private importing?: Promise<void>
@@ -17,48 +17,63 @@ export class BotRuntimes {
     private skills?: import('../skills/skills-service').SkillsService,
     private connection?: import('../engines/bot-engine').MemoryConnection,
     /** LilBot-owned MCP connections every bot gets (`server/connections/`). */
-    private connections?: (botId: string) => McpConnection[]
-  ) {}
+    private connections?: (botId: string) => McpConnection[],
+    options: { changed?: () => void; retryDelays?: readonly number[]; headStartMs?: number } = {}
+  ) {
+    this.readiness = new Readiness(
+      bot => this.prepareAndState(bot),
+      id => (this.store.exists(id) ? this.store.get(id) : undefined),
+      { settled: options.changed, delays: options.retryDelays, headStartMs: options.headStartMs }
+    )
+  }
+
+  private readiness: Readiness
 
   private loading?: Promise<void>
   load(): Promise<void> {
-    if (!this.loading) {
-      this.loading = (async () => {
-        if (!this.store.imported(this.engine.id)) {
-          const bots = await this.engine.importBots()
-          this.store.import(
-            this.engine.id,
-            bots.map(bot => ({ ...bot, engineId: this.engine.id, engineBotId: bot.id }))
-          )
-        }
-      })().catch(error => {
-        this.loading = undefined
-        throw error
-      })
-    }
+    this.loading ??= importBots(this.store, this.engine).catch(error => {
+      this.loading = undefined
+      throw error
+    })
     return this.loading
   }
 
-  initialize(): Promise<void> {
-    if (!this.importing) {
-      this.importing = (async () => {
-        await this.load()
-        for (const bot of this.store.list().filter(bot => bot.engineId === this.engine.id)) {
-          try {
-            if (!this.store.exists(bot.id)) continue
-            await this.prepare(bot)
-            await this.state(bot)
-          } catch (error) {
-            this.states.set(bot.id, null)
-            if (!(error instanceof LilBotError) || !['bot_not_found', 'runtime_unavailable', 'engine_unavailable', 'engine_timeout'].includes(error.code)) throw error
-          }
-        }
-      })().catch(error => {
-        this.importing = undefined
-        throw error
-      })
-    }
+  /** Prepares every bot, the one `first` names ahead of the rest. Resolves when each has settled, ready or
+   *  unavailable and retrying; only the one-time import can reject. */
+  initialize(first?: (bots: BotRecord[]) => string | undefined): Promise<void> {
+    this.importing ??= (async () => {
+      await this.load()
+      const bots = this.store.list().filter(bot => bot.engineId === this.engine.id)
+      await this.readiness.all(bots, first?.(bots))
+    })().catch(error => {
+      this.importing = undefined
+      throw error
+    })
     return this.importing
+  }
+
+  /** One bot prepared before use, ahead of the rest of the roster, then its identity and tools checked again.
+   *  Rejects when its preparation fails. */
+  async use(bot: BotRecord): Promise<RuntimeState> {
+    await this.readiness.ensure(bot)
+    return this.state(bot)
+  }
+
+  /** A deleted bot: stop preparing it and wait for a preparation already running. */
+  release(botId: string) {
+    this.states.delete(botId)
+    this.prepared.delete(botId)
+    return this.readiness.release(botId)
+  }
+
+  private async prepareAndState(bot: BotRecord) {
+    try {
+      await this.prepare(bot)
+      await this.state(bot)
+    } catch (error) {
+      this.states.set(bot.id, null)
+      throw error
+    }
   }
 
   async require(id: string): Promise<BotRecord> {
@@ -90,30 +105,7 @@ export class BotRuntimes {
   async state(bot: BotRecord): Promise<RuntimeState> {
     this.validateMode(bot)
     try {
-      if (this.connection) {
-        try {
-          await this.engine.configureComputers?.(bot.engineBotId, { ...this.connection, botId: bot.id })
-        } catch (error) {
-          const detail = error instanceof Error ? error.message : 'Unknown configuration error'
-          const safeDetail = memoryRefusal(detail) ? 'Configuration error contained sensitive data; details withheld' : detail.slice(0, 500)
-          console.error(`[computers] could not configure bot ${bot.id}; continuing without computer tools (${safeDetail})`)
-        }
-      }
-      if (this.skills && this.connection) {
-        if (!this.skills.importedBot(bot.id)) {
-          for (const path of this.engine.userSkillPaths?.(bot.engineBotId) ?? []) this.skills.import(path, files(path))
-          this.skills.markBotImported(bot.id)
-        }
-        await this.engine.configureSkills?.(bot.engineBotId, {
-          root: this.skills.root,
-          ...this.connection,
-          botId: bot.id,
-          disabled: this.skills.disabled(bot.id),
-          names: this.skills.list(bot.id).map(s => s.name)
-        })
-      }
-      const connections = this.connections?.(bot.id)
-      if (connections?.length) await this.engineFor(bot).prepareConnections?.(bot.engineBotId, connections)
+      await prepareTools(this.engine, bot, { skills: this.skills, connection: this.connection, connections: this.connections })
       const state = await this.engineFor(bot).applyIdentity(bot.engineBotId, bot)
       this.states.set(bot.id, state)
       return state
@@ -123,19 +115,14 @@ export class BotRuntimes {
     }
   }
 
-  /** Gives every current bot its connections again, for example after the shared T3 sign-in changed. */
+  /** Gives every available bot its connections again, for example after the shared T3 sign-in changed. */
   async refreshConnections(): Promise<void> {
-    if (!this.connections) return
-    let failed = false
-    for (const bot of this.store.list().filter(bot => bot.engineId === this.engine.id && this.states.get(bot.id))) {
-      try {
-        await this.engine.prepareConnections?.(bot.engineBotId, this.connections(bot.id))
-      } catch {
-        backgroundFailure('bot connections')
-        failed = true
-      }
-    }
-    if (failed) throw new Error('Connection refresh incomplete')
+    if (this.connections)
+      await refreshConnections(
+        this.engine,
+        this.store.list().filter(bot => bot.engineId === this.engine.id && this.states.get(bot.id)),
+        this.connections
+      )
   }
 
   snapshot(bot: BotRecord): RuntimeState | null {
@@ -151,11 +138,10 @@ export class BotRuntimes {
     await this.initialize()
     const bot = this.store.list().find(bot => bot.engineId === this.engine.id && bot.engineBotId === nativeId)
     if (!bot) return
+    this.readiness.invalidate(bot.id)
+    this.prepared.delete(bot.id)
     if (!available) this.states.set(bot.id, null)
-    else {
-      await this.state(bot)
-      await this.prepare(bot)
-    }
+    else await this.readiness.ensure(bot)
   }
 
   pending(bot: BotRecord): boolean {

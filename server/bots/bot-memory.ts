@@ -1,5 +1,6 @@
 /** Memory setup belongs to the bot service, with stable ids on the app side of the binding. */
 import { LilBotError } from '../../shared/protocol'
+import { backgroundFailure } from '../background'
 import type { MemoryConnection } from '../engines/bot-engine'
 import type { MemoryService } from '../memory/memory-service'
 import type { BotRuntimes } from './bot-runtimes'
@@ -43,8 +44,12 @@ export class BotMemory {
     for (const bot of this.runtimes.store.list()) {
       const state = this.runtimes.snapshot(bot)
       if (!state || state.memoryConnected) continue
-      await this.connect(bot.id)
-      connected.push(bot.id)
+      try {
+        await this.connect(bot.id)
+        connected.push(bot.id)
+      } catch {
+        backgroundFailure('memory connection')
+      }
     }
     return connected
   }

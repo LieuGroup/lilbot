@@ -49,7 +49,7 @@ export class BotService {
   ) {
     this.history = options.history
     this.skills = options.skills
-    this.runtimes = new BotRuntimes(store, engine, options.skills, options.memoryConnection, options.connections)
+    this.runtimes = new BotRuntimes(store, engine, options.skills, options.memoryConnection, options.connections, { changed: options.changed })
     this.conversations = new BotConversations(this.runtimes, prefs, workspaces, options.history)
     this.creation = new BotCreation(this, store)
     this.changed = options.changed ?? (() => {})
@@ -108,7 +108,7 @@ export class BotService {
   }
 
   prepareRuntimes() {
-    return this.runtimes.initialize().finally(this.changed)
+    return this.runtimes.initialize(bots => this.primaryId(bots)).finally(this.changed)
   }
 
   async listBots(): Promise<Bot[]> {
@@ -253,7 +253,7 @@ export class BotService {
   }
   async runRoutine(botId: string, prompt: string, options: import('../engines/bot-engine').RoutineOptions) {
     const bot = await this.requireBot(botId)
-    await this.runtimes.state(bot)
+    await this.runtimes.use(bot)
     const result = await this.runtimes.engineFor(bot).runRoutine(bot.engineBotId, prompt, { ...options, workspace: await this.workspaces.ensure(botId) })
     // Deletion may have completed while the engine was running; do not restore its activity.
     await this.requireBot(botId)
@@ -286,8 +286,7 @@ export class BotService {
   async reviewMemory(botId: string, prompt: string, options: import('../engines/bot-engine').ReviewOptions): Promise<void> {
     const bot = await this.requireBot(botId)
     try {
-      await this.runtimes.initialize()
-      await this.runtimes.state(bot)
+      await this.runtimes.use(bot)
       return await this.runtimes.engineFor(bot).reviewMemory(bot.engineBotId, prompt, options)
     } catch (error) {
       // The app still owns this bot. A lost runtime must not discard its waiting turns.

@@ -11,6 +11,7 @@ for (const files of ['archive', 'delete'] as const) {
       const f = fakeService()
       try {
         await f.service.openChat('b1', undefined, () => {})
+        const changesBefore = f.changes()
         await writeFile(join(f.root, 'b1', 'note'), 'hello')
         const own = f.memory.write({ botId: 'b1', kind: 'journal', text: 'A private note.', author: 'user' })
         const shared = f.memory.write({ botId: 'b1', kind: 'profile', text: 'A shared note.', author: 'bot' })
@@ -32,7 +33,7 @@ for (const files of ['archive', 'delete'] as const) {
         expect(panel.facts.some(x => x.id === shared.id)).toBe(true)
         expect(panel.forgotten.some(x => x.id === own.id)).toBe(privateMemories === 'forget')
         expect(f.store.deleted('b1')?.bot.name).toBe('Bot One')
-        expect(f.changes()).toBe(1)
+        expect(f.changes() - changesBefore).toBe(1)
         expect(f.memoryChanges()).toBe(1)
         await f.service.deleteBot({ botId: 'b1' })
         if (privateMemories === 'forget') {

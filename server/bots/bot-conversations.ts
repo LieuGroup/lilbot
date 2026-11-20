@@ -17,8 +17,7 @@ export class BotConversations {
   // null starts a new main session; undefined resumes or creates the main session.
   async open(botId: string, chatId: string | null | undefined, onEvent: (event: ChatEvent) => void, requireExisting = false): Promise<OpenChat> {
     const bot = await this.runtimes.require(botId)
-    await this.runtimes.initialize()
-    await this.runtimes.state(bot)
+    await this.runtimes.use(bot)
     const workspace = await this.workspaces.ensure(botId)
     const main = this.prefs.mainChat(botId)
     const fresh = chatId === null
