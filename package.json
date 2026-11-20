@@ -15,6 +15,7 @@
     "check:restart": "bun live-checks/restart-check.ts",
     "check:threads": "bun live-checks/threads-check.ts",
     "check:delegation": "bun live-checks/delegation-check.ts",
+    "check:work": "bun live-checks/work-check.ts",
     "build:helper": "bun scripts/build-helper.ts",
     "build:helper-downloads": "bun scripts/build-helper-downloads.ts",
     "check:add-computer": "bun live-checks/add-computer-check.ts",

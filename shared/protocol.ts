@@ -10,6 +10,7 @@ import { DeviceId, DeviceName } from './device-schema'
 import { LibraryListInput, type LibraryPage, type WorkspaceEntry } from './library-schema'
 import { type MemoryFact, MemoryWriteInput } from './memory-schema'
 import type { Routine } from './routine-schema'
+import { type WorkResults, workMethods } from './work-schema'
 
 const botId = z.string().min(1)
 const chatId = z.string().min(1)
@@ -23,6 +24,7 @@ export const methods = {
   'threads.list': z.object({ botId }),
   'threads.open': z.object({ botId, threadId: z.string().min(1) }),
   'threads.cancel': z.object({ botId, threadId: z.string().min(1) }),
+  ...workMethods,
   'computers.list': z.object({}),
   'computers.installCode': z.object({ name: z.string().trim().min(1).max(100) }),
   'computers.remove': z.object({ computer: z.string().min(1) }),
@@ -102,7 +104,7 @@ export const methods = {
 export type Method = keyof typeof methods
 export type Params<M extends Method> = z.input<(typeof methods)[M]>
 
-export interface Results {
+export interface Results extends WorkResults {
   'attachments.limits': { maxFileBytes: number; maxFilesPerMessage: number }
   'attachments.prepare': import('./attachment-schema').Attachment[]
   'attachments.status': import('./attachment-schema').Attachment[]
@@ -179,6 +181,7 @@ export type EventFrame =
   | { event: 'library.changed'; botId: string }
   | { event: 'skills.changed' }
   | { event: 'threads.changed' }
+  | { event: 'work.changed' }
   | { event: 'history.changed'; botId: string }
   /** A connection's state changed (for example T3 Code refused LilBot's sign-in). */
   | { event: 'connections.changed' }

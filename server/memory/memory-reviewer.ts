@@ -21,6 +21,19 @@ export interface ReviewSettings {
 
 export const defaultReviewSettings: ReviewSettings = { enabled: true, turns: 10, quietMs: 120_000, minTurns: 3 }
 
+/** LILBOT_REVIEW=off disables the review; LILBOT_REVIEW_MODEL is "provider::model" (without it a review runs on the
+ *  bot's own model, which costs more). */
+export function reviewSettingsFrom(env: Record<string, string | undefined>): ReviewSettings {
+  const [provider, model] = (env.LILBOT_REVIEW_MODEL ?? '').split('::')
+  return {
+    ...defaultReviewSettings,
+    enabled: env.LILBOT_REVIEW !== 'off',
+    turns: Number(env.LILBOT_REVIEW_TURNS ?? defaultReviewSettings.turns),
+    quietMs: Number(env.LILBOT_REVIEW_QUIET_SECONDS ?? defaultReviewSettings.quietMs / 1000) * 1000,
+    model: provider && model ? { provider, model } : undefined
+  }
+}
+
 /** At most this many turns go into one review; more wait for the next. */
 const TURNS_PER_REVIEW = 40
 /** After a failed review, the bot's turns wait this long before another try. */

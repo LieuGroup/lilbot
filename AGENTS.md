@@ -43,6 +43,7 @@ server/            The LilBot server (runs on the leader).
   history/           Conversation records, import checkpoints, paging and bot-scoped search.
   threads/           Bot-to-bot exchanges: delegation, files, control, transcripts and durable deliveries.
   routines/          App-owned schedules, run history and scheduler.
+  work/              The work board: items with "done" definitions, evidence and results, Oscar's answers, its skill.
   library/           Delivered workspace files, metadata, safe reads and folder listings.
   attachments/       Incoming chat files, streaming uploads and durable message associations.
   skills/            The shared skills library, per-bot switches and each engine's "Include this engine's skills" switch.
@@ -95,7 +96,8 @@ continuous main conversation per bot on every device, the three-column shell (ro
 Activity, Library, Memory and Setup tabs), bot menu, delete confirmation, Settings, chat attachments, LilBot's own
 memory with a Memory panel and after-chat review, every bot knowing its system (the note) and operating the app through
 LilBot's own MCP tools, delegation between bots (several tasks at once, files, status, stop, redirect, wait), and the
-backends for routines, threads, library, skills, computers and coding through T3 Code. Next: the Routines and Library screens, the nightly
+backends for routines, threads, library, skills, computers, the work board and coding through T3 Code. Next: the Routines, Library and
+work board screens, check levels (#142), the nightly
 memory tidy-up and editing abilities. Webhooks and reports are not built. Desktop (Tauri) and iOS (Expo) come after the
 web app.
 
@@ -321,9 +323,9 @@ What a bot is and who owns each part.
     refusal is not retried by later edits. The engine's confirmation token comes back only in undeclared fields of
     `session.mutate`'s result (checked live, #79), so LilBot never confirms; picking the model does not override the
     guard. The first message after a switch has no prompt cache.
-- `server/database/database.ts` owns the schema as an ordered list of migration steps: add a step, never edit a
-  shipped one. Each store file owns the SQL of its tables. Default file `~/.local/share/lilbot/lilbot.db`
-  (`LILBOT_DATA_DIR`). SQLite connections wait up to five seconds for short locks.
+- `server/database/migrations.ts` owns the schema as an ordered list of migration steps (`database.ts` opens the file
+  and applies them): add a step, never edit a shipped one. Each store file owns the SQL of its tables. Default file
+  `~/.local/share/lilbot/lilbot.db` (`LILBOT_DATA_DIR`). SQLite connections wait up to five seconds for short locks.
 - Workspaces: `~/lilbot/workspaces/<bot id>` (`LILBOT_WORKSPACES_DIR`), created on first use and passed to the engine
   as the working directory of new chats. A resumed chat keeps the folder it was made with.
 - Pushes: `bots.changed` goes to every browser when a bot, preference or section changes, or the engine reports that
@@ -357,8 +359,8 @@ forget) are kept with `bots.deleteDefaults.get/set`. The primary bot and the eng
   choice.
 - Kept: shared facts; private facts unless forgotten (`memory.list` still shows a tombstone's facts for attribution
   and restoration); library and attachment metadata (the bot loses access); thread records with the names captured
-  at creation; skills it wrote, with their authorship; the log of changes bots made through the system server (with the
-  name the bot had).
+  at creation; work items with the owner's name (unfinished ones are dropped: "The bot was deleted."); skills it wrote,
+  with their authorship; the log of changes bots made through the system server (with the name the bot had).
 
 ## Web app
 
@@ -477,7 +479,7 @@ Visual specs (sizes, copy, Paper frames): [docs/screens.md](docs/screens.md).
 
 - Any bot may hand work to any other, never itself. One `lilbot_delegate` call names several bots, one task each; each
   task is its own exchange and the call's tasks share a `batchId`. `exchangeId` continues the same work. Each exchange
-  has a nullable `parentId` for #141's work items, unused for now (`thread_links`).
+  has a nullable `parentId` (`thread_links`): the delegating bot's work item it was handed out under (see Work).
 - The receiver works in its own hidden session with its own instructions, memory, skills, workspace and full access;
   follow-ups reuse it. The delegating bot returns at once; the answer is queued as a hidden input into the exact
   originating session, even if Oscar has since started a new chat. Nested delegation resumes the parent exchange, which
@@ -515,6 +517,48 @@ Visual specs (sizes, copy, Paper frames): [docs/screens.md](docs/screens.md).
   transport failures and restarts (the routine runner's receipt machinery); a terminal unknown receipt is never
   resubmitted with a new identity. A stop recorded while LilBot was down is applied when the delivery is picked up.
 
+## Work
+
+`server/work/` owns the work board (`shared/work-schema.ts`): every real piece of bot work is an item Oscar can see, with
+who asked, who owns it, how "done" is defined, the evidence and the result. What must always happen is built in; what
+takes judgement is the `lilbot-work` skill (`server/work/work-skill/SKILL.md`, installed into the skills library at
+startup and restored if it differs, like `t3-coding`).
+
+- An item: id, title, owner (name captured at opening), who asked (`oscar`, `bot`, `routine`, `webhook` or `self`),
+  origin (`conversation`, `exchange`, `group`, `routine_run`, `webhook_run`), the "done" definition, check level (0-3,
+  default 1; stored now, #142 enforces it), status (`open`, `working`, `needs_oscar`, `done`, `failed`, `dropped`),
+  evidence, result, times and an optional parent. Statuses and kinds are checked in code, not SQL, so #142 can add states
+  without a table rebuild. `work_events` keeps every change with where it came from.
+- Who asked and the origin come from LilBot's records of the calling session (`app-work.ts`, `workSessions`): an
+  exchange's hidden session is the exchange, asked by the delegating bot; a routine run's session is the run, asked by
+  the routine; anything else is a conversation, asked by Oscar unless the bot says `self`. Webhook runs join when #151
+  lands (one resolver line); groups with #133.
+- Rules: opening with a definition (or at level 0) starts the work; `working` needs the definition; `done` needs it, at least one evidence entry and a result, unless the item was
+  opened at level 0. The level is set at opening only (so it cannot be lowered to skip the check). Only the owner reports
+  on its item; the caller is the key's bot. `needs_oscar` carries exactly one question; a second while one waits is
+  refused. `failed` needs a result, `dropped` a reason. Final items take nothing more. Nothing is deleted.
+- Evidence: what it proves plus exactly one pointer: a Library item of the owner (checked), a url, a command with its
+  output, or a number with its source and time. All work text passes `memoryRefusal` (no secrets, hidden characters or
+  instructions); output is capped at 4,000 characters.
+- `needs_oscar` uses the activity service like a waiting session (`work:<item id>`): the bot shows waiting and turns
+  unread unless Oscar is viewing; leaving it ends the waiting state. The live line is in memory; unread survives restarts.
+- Delegation: `lilbot_delegate` inside an item (`itemId`, else the caller's only unfinished item in that session) sets
+  the exchange's `parentId` and opens the receiver's child item with the exchange's id, asked by the delegating bot, no
+  definition yet, in the same transaction. The receiver's prompt names it; its first open from that session fills it in.
+  A stopped exchange drops its child item ("The exchange was stopped by ..."). A routine or webhook run that reports on
+  an existing item is linked to it (`links`, from the event log).
+- An item opened in a conversation leaves a `tool` line there (`workItemId`, `toolId: work:<id>`) in LilBot's history.
+- Bot tools (System MCP): `lilbot_work` (no itemId: open; with itemId: definition, evidence and status in one call;
+  request ids make retries safe) and `lilbot_work_list` (mine, every bot's, or one in full).
+- Oscar: `work.list` (bot, status, updated between `from` and `to`), `work.open`, `work.drop` (with his reason),
+  `work.answer`, `work.brief` (needs him, failed and done since a time, the last day by default) and the push
+  `work.changed`. An answer is saved, the item returns to `working` (or `open` if it never started), and the answer is
+  delivered once through `work_answers`: a hidden turn with a stable run id in the bot's main conversation for work from
+  a conversation, otherwise in the session the work came from. Transport failures retry after 30 seconds. Screens:
+  `needs-ui`.
+- The note has two static lines on when to open an item: before any work beyond a reply, however small (changing
+  something, handed over, scheduled or from outside), not for answering a question.
+
 ## Restart recovery
 
 Restarting LilBot only leaves Hermes turns and T3 tasks running; nothing is resubmitted.
@@ -523,7 +567,8 @@ Restarting LilBot only leaves Hermes turns and T3 tasks running; nothing is resu
   reconciles the durable transcript, including tool work and the final answer.
 - Routines recover the same persisted run and admission receipt. Threads recover their outbox and return the answer to
   the original caller session, never a replacement exchange; a steered redirect is checked against the recovered
-  transcript, and a stop is applied again.
+  transcript, and a stop is applied again. Oscar's answers on the work board still waiting are delivered with the same
+  run id.
 - The T3 bridge reloads its sign-in from the data directory. Stable per-bot request ids let an uncertain launch find
   the original T3 task, and its thread id allows later waits and reads. A bridge call in flight during downtime
   fails; the bot retries it after reconnecting.
@@ -960,6 +1005,9 @@ profiles, isolated directories, cleanup in `finally`. Most cost a few model call
   it on to a third from its hidden session; the engine API's legacy `threads/ask` still answers idempotently, with its limits.
 - `bun run check:delegation`: a temporary lead hands two tasks to two helpers in one call, one with a file; then it
   reads their status, redirects one mid-command and stops the other; the first answer returns once, with a file.
+- `bun run check:work`: a temporary bot asked for a small real task opens an item, defines done, adds evidence and
+  finishes it (seen in `work.list`); done without evidence is refused, by the bot's attempt and a direct call with its
+  key; a task it hands to a second bot inside an item becomes that bot's child item, which the helper finishes.
 - `bun run check:routines`: create from chat, a real file-writing run, open history, pause, restart, resume, delete.
 - `bun run check:restart`: SIGKILLs only its own second server mid-turn; chat, routine and thread side-effect counters
   must stay at one. Confirms its profiles are gone with `hermes profile list`.

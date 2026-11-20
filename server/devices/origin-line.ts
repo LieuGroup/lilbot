@@ -16,3 +16,4 @@ export function deviceLine(deviceName: string, computer?: LinkedComputer): strin
 export const unknownDeviceLine = '[LilBot origin: sent from a device LilBot does not recognise, which is not a connected computer.]'
 export const routineLine = '[LilBot origin: a scheduled routine run, not a message from a device.]'
 export const botLine = "[LilBot origin: another bot's message, not a message from a device.]"
+export const boardLine = "[LilBot origin: Oscar's answer on the work board, not a message from a device.]"

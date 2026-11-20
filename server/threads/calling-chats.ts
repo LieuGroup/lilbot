@@ -3,13 +3,16 @@
  *  reported by the socket that submitted them, almost at once; anything else is the bot's main conversation. */
 
 const KEEP_MS = 120_000
+/** The tools that need to know their calling conversation. Engines may prefix the name with the server's. */
+const CALLS = ['lilbot_delegate', 'lilbot_work']
+const traced = (name: unknown) => typeof name === 'string' && CALLS.some(call => name.endsWith(call))
 
 /** Tool search can wrap the call: `tool_call({ name, arguments })`, with the arguments as an object or JSON text. */
 function requestIdOf(tool: string, args: unknown): string | null {
   const record = (value: unknown) => (value && typeof value === 'object' ? (value as Record<string, unknown>) : {})
   let inner = record(args)
-  if (!tool.endsWith('lilbot_delegate')) {
-    if (typeof inner.name !== 'string' || !inner.name.endsWith('lilbot_delegate')) return null
+  if (!traced(tool)) {
+    if (!traced(inner.name)) return null
     try {
       inner = record(typeof inner.arguments === 'string' ? JSON.parse(inner.arguments) : inner.arguments)
     } catch {

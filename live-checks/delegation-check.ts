@@ -104,7 +104,7 @@ try {
     'the lead to take control'
   )
   assert.ok(String(control[0].data.text).toLowerCase().includes('working'), 'the lead read both as working')
-  const tools = (db.query('SELECT tool FROM system_changes WHERE bot_id=? ORDER BY id').all(lead.id) as { tool: string }[]).map(r => r.tool)
+  const tools = (db.query("SELECT tool FROM system_changes WHERE bot_id=? AND tool NOT LIKE 'lilbot_work%' ORDER BY id").all(lead.id) as { tool: string }[]).map(r => r.tool)
   assert.deepEqual(tools, ['lilbot_delegate', 'lilbot_delegation_redirect', 'lilbot_delegation_cancel', 'lilbot_delegation_wait'])
   const redirect = db.query('SELECT kind, status FROM thread_deliveries WHERE id=?').get(`${lead.id}:live-redirect`) as any
   assert.equal(redirect.kind, 'redirect')

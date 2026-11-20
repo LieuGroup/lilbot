@@ -8,11 +8,12 @@ import type { Workspaces } from './bots/workspaces'
 import type { BotEngine } from './engines/bot-engine'
 import type { HistoryService } from './history/history-service'
 import { threadEvents } from './http/thread-events'
-import { CallingChats } from './threads/calling-chats'
+import type { CallingChats } from './threads/calling-chats'
 import { DelegationControl } from './threads/delegation-control'
 import { type DelegationHost, DelegationService } from './threads/delegation-service'
 import { ThreadService } from './threads/thread-service'
 import type { ThreadStore } from './threads/thread-store'
+import type { WorkLinks } from './work/work-links'
 
 interface ThreadDeps {
   engine: BotEngine
@@ -23,10 +24,12 @@ interface ThreadDeps {
   history: HistoryService
   activity: ActivityService
   threadStore: ThreadStore
+  calls: CallingChats
+  work: WorkLinks
   publish: (frame: EventFrame) => void
 }
 
-export function createThreads({ engine, store, prefs, bots, workspaces, history, activity, threadStore, publish }: ThreadDeps) {
+export function createThreads({ engine, store, prefs, bots, workspaces, history, activity, threadStore, calls, work, publish }: ThreadDeps) {
   const native = (botId: string) => store.get(botId).engineBotId
   const host: DelegationHost = {
     requireBot: id => bots.requireBot(id),
@@ -39,23 +42,24 @@ export function createThreads({ engine, store, prefs, bots, workspaces, history,
   const threads = new ThreadService(
     threadStore,
     host,
-    () =>
+    () => {
       threadEvents(threadStore, store, prefs, publish, (botId, chatId, item, at) => {
         if (store.exists(botId)) history.store.reference(botId, chatId, item, at)
-      }),
+      })
+      work.settleExchanges(id => threadStore.get(id).stoppedBy?.name ?? null)
+    },
     (d, working) => {
       for (const botId of [d.sender, d.target])
         if (store.exists(botId)) activity.observe({ botId, chatId: `thread:${d.id}`, key: `${d.id}:${working}:${Date.now()}`, status: working ? 'working' : 'finished' })
     },
     () => publish({ event: 'threads.changed' })
   )
-  const calls = new CallingChats(botId => prefs.mainChat(botId))
   engine.onToolCall?.(call => {
     const bot = store.list().find(b => b.engineId === engine.id && b.engineBotId === call.engineBotId)
     if (!bot) return
     calls.saw(bot.id, call.chatId, call.tool, call.args)
     threads.runner.sawTool(call.chatId, toolActivity(call.tool))
   })
-  const delegation = { hand: new DelegationService(threads, host, (botId, requestId) => calls.find(botId, requestId)), control: new DelegationControl(threads, host) }
+  const delegation = { hand: new DelegationService(threads, host, (botId, requestId) => calls.find(botId, requestId), work), control: new DelegationControl(threads, host) }
   return { threads, delegation }
 }

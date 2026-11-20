@@ -1,5 +1,6 @@
 /** Real thread services over an in-memory database and a temporary workspaces folder, with an engine whose runs
  *  stay open until the test finishes them, so status, stop and redirect can be seen mid-run. */
+import type { Database } from 'bun:sqlite'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -7,7 +8,7 @@ import { Workspaces } from '../../server/bots/workspaces'
 import { openDatabase } from '../../server/database/database'
 import type { RoutineOptions } from '../../server/engines/bot-engine'
 import { DelegationControl } from '../../server/threads/delegation-control'
-import { DelegationService } from '../../server/threads/delegation-service'
+import { DelegationService, type DelegationWork } from '../../server/threads/delegation-service'
 import { ThreadService } from '../../server/threads/thread-service'
 import { ThreadStore } from '../../server/threads/thread-store'
 import type { ChatItem } from '../../shared/chat-schema'
@@ -27,11 +28,12 @@ export function removeFixtureFolders() {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 }
 
-export function delegationFixture() {
+/** `database` and `work` join it to a work board; `changed` hears every exchange change. */
+export function delegationFixture(options: { database?: Database; work?: DelegationWork; changed?: () => void } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'lilbot-delegation-'))
   roots.push(root)
   const workspaces = new Workspaces(root)
-  const store = new ThreadStore(openDatabase(':memory:'))
+  const store = new ThreadStore(options.database ?? openDatabase(':memory:'))
   const bots = ['a', 'b', 'c', 'd'].map(id => ({ id, name: id.toUpperCase() }))
   const runs: Run[] = []
   const stops: string[] = []
@@ -65,8 +67,8 @@ export function delegationFixture() {
       return 'steered' as const
     }
   }
-  const threads = new ThreadService(store, host)
-  const hand = new DelegationService(threads, host, async botId => `${botId}-main`)
+  const threads = new ThreadService(store, host, options.changed)
+  const hand = new DelegationService(threads, host, async botId => `${botId}-main`, options.work)
   const control = new DelegationControl(threads, host)
   const delegation = {
     delegate: hand.delegate.bind(hand),

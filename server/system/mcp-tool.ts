@@ -25,8 +25,24 @@ const define =
 export const readTool = define(true)
 export const actionTool = define(false)
 
+/** Limits the server checks anyway (`input` parses every call): in the schema they only cost tokens on every turn. */
+const CHECKED_ONLY = new Set(['$schema', 'additionalProperties', 'minLength', 'maxLength', 'minItems', 'maxItems', 'format'])
+
+function lean(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(lean)
+  if (!node || typeof node !== 'object') return node
+  return Object.fromEntries(
+    Object.entries(node).flatMap(([key, value]) =>
+      key === 'properties'
+        ? [[key, Object.fromEntries(Object.entries(value as object).map(([name, property]) => [name, lean(property)]))]]
+        : CHECKED_ONLY.has(key)
+          ? []
+          : [[key, lean(value)]]
+    )
+  )
+}
+
 /** The tool's argument schema as MCP wants it, without the parts that only cost tokens. */
 export function inputSchema(input: z.ZodType): Record<string, unknown> {
-  const { $schema, additionalProperties, ...schema } = z.toJSONSchema(input, { io: 'input', target: 'draft-7' }) as Record<string, unknown>
-  return schema
+  return lean(z.toJSONSchema(input, { io: 'input', target: 'draft-7' })) as Record<string, unknown>
 }

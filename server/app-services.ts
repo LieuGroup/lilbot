@@ -4,6 +4,7 @@ import type { EventFrame } from '../shared/protocol'
 import { ActivityService } from './activity/activity-service'
 import { ActivityStore } from './activity/activity-store'
 import { createThreads } from './app-threads'
+import { createWork } from './app-work'
 import { AttachmentService } from './attachments/attachment-service'
 import { AttachmentStore } from './attachments/attachment-store'
 import { backgroundTask } from './background'
@@ -27,7 +28,7 @@ import { HistoryStore } from './history/history-store'
 import { createEngineApi, engineToken } from './http/engine-api'
 import { LibraryService } from './library/library-service'
 import { LibraryStore } from './library/library-store'
-import { defaultReviewSettings, MemoryReviewer } from './memory/memory-reviewer'
+import { MemoryReviewer, reviewSettingsFrom } from './memory/memory-reviewer'
 import { MemoryService } from './memory/memory-service'
 import { MemoryStore } from './memory/memory-store'
 import { ReviewQueue } from './memory/review-queue'
@@ -38,6 +39,7 @@ import { SkillsService } from './skills/skills-service'
 import { SystemChanges } from './system/system-changes'
 import { systemNote } from './system/system-note-facts'
 import { createSystemServer } from './system/system-server'
+import { CallingChats } from './threads/calling-chats'
 import { ThreadStore } from './threads/thread-store'
 
 /** Construct services and their background tasks independently of the HTTP listeners. */
@@ -76,8 +78,9 @@ export function createAppServices(
   const devices = createDevices(database, computers, publish)
   const reviewQueue = new ReviewQueue(database)
   const routineStore = new RoutineStore(database)
+  const libraryStore = new LibraryStore(database)
   const library = new LibraryService(
-    new LibraryStore(database),
+    libraryStore,
     id => workspaces.pathFor(id),
     id => store.exists(id),
     botId => publish({ event: 'library.changed', botId })
@@ -118,6 +121,7 @@ export function createAppServices(
       computers.forgetBot(botId)
       activity.forgetBot(botId)
       reviewQueue.forgetBot(botId)
+      links.forgetBot(botId)
     },
     changed: botsChanged,
     memoryChanged,
@@ -125,7 +129,9 @@ export function createAppServices(
     connections: botId => [t3Connection(`http://127.0.0.1:${PORT}`, token, botId, t3Grants.generation()), system.connection(botId)],
     systemNote: systemNote(facts)
   })
-  const { threads, delegation } = createThreads({ engine, store, prefs, bots, workspaces, history, activity, threadStore, publish })
+  const calls = new CallingChats(botId => prefs.mainChat(botId))
+  const { work, board, links, answers } = createWork({ database, store, prefs, bots, threadStore, routineStore, libraryStore, activity, history: history.store, calls, publish })
+  const { threads, delegation } = createThreads({ engine, store, prefs, bots, workspaces, history, activity, threadStore, calls, work: links, publish })
   const system = createSystemServer({
     ...facts,
     bots,
@@ -133,6 +139,7 @@ export function createAppServices(
     memory,
     memoryChanged,
     delegation,
+    work,
     changes: new SystemChanges(database),
     dataDir: DATA_DIR,
     engineToken: token,
@@ -159,26 +166,13 @@ export function createAppServices(
         : defaultRoutineSettings.minIntervalSeconds
   })
   repeat('threads', 1000, () => threads.tick())
+  repeat('work answers', 1000, () => answers.tick())
   const scheduler = new RoutineScheduler(routines, event => {
     if (store.exists(event.botId)) activity.observe(event)
   })
   repeat('routines', 1000, () => scheduler.tick())
-  // The after-chat memory review. LILBOT_REVIEW=off disables it; LILBOT_REVIEW_MODEL is
-  // "provider::model" (without it a review runs on the bot's own model, which costs more).
-  const [reviewProvider, reviewModel] = (process.env.LILBOT_REVIEW_MODEL ?? '').split('::')
-  const reviewer = new MemoryReviewer(
-    reviewQueue,
-    bots,
-    {
-      ...defaultReviewSettings,
-      enabled: process.env.LILBOT_REVIEW !== 'off',
-      turns: Number(process.env.LILBOT_REVIEW_TURNS ?? defaultReviewSettings.turns),
-      quietMs: Number(process.env.LILBOT_REVIEW_QUIET_SECONDS ?? defaultReviewSettings.quietMs / 1000) * 1000,
-      model: reviewProvider && reviewModel ? { provider: reviewProvider, model: reviewModel } : undefined
-    },
-    Date.now,
-    id => store.exists(id)
-  )
+  // The after-chat memory review.
+  const reviewer = new MemoryReviewer(reviewQueue, bots, reviewSettingsFrom(process.env), Date.now, id => store.exists(id))
   repeat('memory reviewer', 20_000, () => reviewer.tick())
 
   const engineApi = createEngineApi(memory, token, PORT, {
@@ -195,5 +189,6 @@ export function createAppServices(
     adapterVersion: MEMORY_ADAPTER_VERSION,
     reviewer
   })
-  return { bots, store, skills, threadStore, library, computers, devices, attachments, t3Grants, t3Bridge, systemMcp: system.handler, engineApi, activity, routines, threads }
+  const systemMcp = system.handler
+  return { bots, store, skills, threadStore, library, computers, devices, attachments, t3Grants, t3Bridge, systemMcp, engineApi, activity, routines, threads, board }
 }
