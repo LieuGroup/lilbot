@@ -147,11 +147,8 @@ test('dropping a parent drops its children with the same reason, stops each dele
   ])
   expect(notices[0].text).toContain('Oscar stopped the task you handed to "B"')
   expect(notices[0].text).toContain('"Plan changed"')
-  // The delegating bot is told in the work board’s own outbox, and the secondary item’s owner in its exchange session; the exchanges' own items have no row.
-  expect(f.w.database.query('SELECT bot_id, chat_id, status FROM work_answers ORDER BY rowid').all()).toEqual([
-    { bot_id: 'a', chat_id: null, status: 'stopping' },
-    { bot_id: 'b', chat_id: runB.chatId, status: 'pending' }
-  ])
+  // The delegating bot is told in the work board’s own outbox; nothing is said in the sessions of the exchanges this drop stops.
+  expect(f.w.database.query('SELECT bot_id, chat_id, status FROM work_answers ORDER BY rowid').all()).toEqual([{ bot_id: 'a', chat_id: null, status: 'stopping' }])
   // What the stopped turns still say is kept but never delivered.
   for (const r of f.d.runs.filter(r => r.botId !== 'a')) r.finish('Too late', [], 'stopped')
   await f.d.settle()
@@ -194,4 +191,32 @@ test('the words LilBot adds around Oscar’s answer are never mistaken for an un
   await f.d.settle()
   expect(f.d.runs.filter(r => r.botId === 'b').map(r => r.prompt)).toEqual([expect.any(String), unsafe])
   expect(f.d.store.get(id)).toMatchObject({ status: 'working', state: 'open' })
+})
+
+test('a secondary item dropped on its own, while its exchange goes on, is told in the exchange’s session without ending the turn', async () => {
+  const f = joined()
+  const { id, run } = await handedOver(f)
+  const tidy = await f.w.work.act('b', { requestId: 'b2', title: 'Tidy up', done: 'no temp files' })
+  await f.board.drop(tidy.id, 'Skip it')
+  expect(f.d.store.get(id).status).toBe('working')
+  expect(f.d.stops).toEqual([])
+  expect(f.w.database.query('SELECT bot_id, chat_id, status FROM work_answers').all()).toEqual([{ bot_id: 'b', chat_id: run.chatId, status: 'pending' }])
+})
+
+test('a restart between the drop’s commit and the interrupt still ends the receiver’s turn, once, and nothing it says is delivered', async () => {
+  const f = joined()
+  const { id, run } = await handedOver(f)
+  f.d.threads.dropped(id, 'Not wanted') // the process dies before the returned interrupt runs
+  expect(f.d.stops).toEqual([])
+  const restarted = delegationFixture({ database: f.w.database })
+  await restarted.settle()
+  await restarted.settle()
+  expect(restarted.stops).toEqual([run.chatId])
+  expect(f.d.store.get(id)).toMatchObject({ status: 'cancelled', stoppedBy: { kind: 'oscar' } })
+  expect(restarted.runs.filter(r => r.botId === 'b')).toEqual([])
+  expect(f.w.database.query("SELECT status FROM thread_deliveries WHERE threadId = ? AND kind = 'request'").all(id)).toEqual([{ status: 'done' }])
+  expect(deliveries(f, 'answer')).toEqual([])
+  const again = delegationFixture({ database: f.w.database })
+  await again.settle()
+  expect(again.stops).toEqual([])
 })

@@ -36,15 +36,20 @@ export class WorkBoard {
 
   /** Drops the item and every unfinished item below it, with Oscar's reason, and stops the work. An item that is an exchange's own
    *  (work handed over) stops the exchange, which tells the delegating bot; any other owner is told in its session, after its
-   *  running turn ends if it was working on the item. Both are saved with the drop, so a restart repeats nothing. */
+   *  running turn ends if it was working on the item (not in an exchange's session when the drop stops that exchange). Both are
+   *  saved with the drop, so a restart repeats nothing. */
   async drop(itemId: string, reason: string) {
     refuseUnsafe([reason])
     const { saved, ends } = this.work.store.db.transaction(() => {
+      const items = this.tree(itemId)
+      const handedOver = new Set(items.filter(item => item.origin.kind === 'exchange' && item.origin.id === item.id).map(item => item.id))
       const ends: (() => Promise<void>)[] = []
-      const saved = this.tree(itemId).map(item => {
+      const saved = items.map(item => {
         const report = this.work.report(item, { move: { status: 'dropped', reason } }, {}, OSCAR)
-        if (item.origin.kind === 'exchange' && item.origin.id === item.id) ends.push(this.exchanges.dropped(item.id, reason))
-        else if (item.chatId) this.answers.queue(`drop-${item.id}`, item, dropPrompt(item, reason), item.status === 'working' && item.origin.kind !== 'exchange')
+        if (handedOver.has(item.id)) ends.push(this.exchanges.dropped(item.id, reason))
+        // Nothing is said in the session of an exchange this drop stops.
+        else if (item.chatId && !handedOver.has(item.origin.id))
+          this.answers.queue(`drop-${item.id}`, item, dropPrompt(item, reason), item.status === 'working' && item.origin.kind !== 'exchange')
         return report
       })
       return { saved, ends }

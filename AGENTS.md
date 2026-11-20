@@ -578,8 +578,9 @@ startup and restored if it differs, like `t3-coding`).
   owner is told in the session the item belongs to through `work_answers` (`drop-<item id>`: stop, report nothing
   further, say so). If it was `working`, the row first waits as `stopping` until the running turn of that session has
   been ended (once), so the bot reads the notice and not its own last words. A secondary item opened inside an
-  exchange's session is only told: ending that turn would end the exchange. A dropped handed-over parent gives its
-  delegating bot two notices: its own and the exchange's "Oscar stopped".
+  exchange's session is only told, with no interrupt (ending that turn would end the exchange), and not at all when the
+  same drop stops that exchange. A dropped handed-over parent gives its delegating bot two notices: its own and the
+  exchange's "Oscar stopped".
 - The note has two static lines on when to open an item: before any work beyond a reply, however small (changing
   something, handed over, scheduled or from outside), not for answering a question.
 
