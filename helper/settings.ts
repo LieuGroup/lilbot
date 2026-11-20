@@ -23,3 +23,8 @@ export const settingsHash = (settings: HelperSettings) => createHash('sha256').u
 export const bakedSettings: HelperSettings | null = typeof LILBOT_HELPER_SETTINGS === 'string' ? HelperSettings.parse(JSON.parse(LILBOT_HELPER_SETTINGS)) : null
 /** The page hands over only the random part; the fingerprint comes from the build. */
 export const SHORT_CODE = /^[A-Za-z0-9_-]{32}$/
+
+/** A downloaded build belongs to one LilBot: its command-line install registers only at the baked door. */
+export function assertBakedDoor(url: string, baked: HelperSettings | null) {
+  if (baked && new URL(url).origin !== new URL(baked.door).origin) throw new Error('This helper only registers with its own LilBot.')
+}

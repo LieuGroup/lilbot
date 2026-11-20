@@ -37,8 +37,9 @@ Detail for `server/computers/`, `helper/` and the `lilbot-computers-v1` plug-in.
 - Helpers sign method, path, computer id, timestamp and a one-use nonce (60 s window).
 - Revocation aborts work only through a signed `revoked` frame. Unsigned close codes never abort work; server restarts
   preserve remote commands. Revoked public keys stay as tombstones: a reconnect authenticates and receives proof plus
-  a signed revoke. The helper aborts work, removes its service and its identity file and exits on a verified revoke,
-  also after offline removal, so it can be added again. Reconnect backoff resets only after verified server proof.
+  a signed revoke. The helper aborts work, deletes its identity file first, then removes its service (launchd: boot out
+  by label, then delete the plist; systemd: disable, delete the unit, reload, stop; every step best effort) and exits on
+  a verified revoke, also after offline removal, so it can be added again. Reconnect backoff resets only after verified server proof.
 - A competing connection suspends dispatch while both receive a three-second challenge. A responsive newcomer
   replaces an unresponsive incumbent; two responsive peers are closed and `keyConflict` blocks dispatch until the
   owner removes and re-registers the computer.
@@ -92,10 +93,11 @@ Detail for `server/computers/`, `helper/` and the `lilbot-computers-v1` plug-in.
 
 - Native: `bun run build:helper`. Cross-compile: `bun scripts/build-helper.ts bun-darwin-arm64
   dist/lilbot-helper-macos-arm64` (x64 also supported).
-- Install: `./lilbot-helper install <https-origin>` with the install code on stdin. macOS uses launchd, Linux systemd
+- Install: `./lilbot-helper install <https-origin>` with the install code on stdin. A downloaded (baked) build refuses
+  any origin other than its own door. macOS uses launchd, Linux systemd
   user units. Config and journal: `~/.config/lilbot-helper` (`LILBOT_HELPER_CONFIG_DIR` overrides).
 - Updating stops the service, checks SHA-256, writes and chmods a sibling temporary file, renames it atomically, then
-  starts the service. `./lilbot-helper reset` stops and uninstalls the service and removes the local identity for
+  starts the service. `./lilbot-helper reset` removes the local identity, then uninstalls the service, for
   re-registration with a fresh code, keeping execution receipts.
 
 ## Adding a computer from its browser
@@ -150,6 +152,8 @@ builds and signing.
   read-only path), checks its SHA-256, removes the copy's quarantine mark and loads the launchd agent. macOS shows a
   "Background Items Added" notice.
 - Opened again on a registered Mac, the app replaces the installed binary and restarts the service: the update path.
+  A `lilbot-helper://` link on a registered Mac does nothing but say it is connected: any page or local program can
+  open one, so only opening the app updates.
   A later version can compare `hello`'s `version` with the offered build.
 - Linux: `lilbot-helper-linux-<arch>.tar.gz` (binary and `.sha256`). Unpack and run `./lilbot-helper` in a terminal:
   the same setup with the terminal as its window and a systemd user unit at the end.
@@ -166,9 +170,10 @@ builds and signing.
      Developer ID Application identity in the keychain), `LILBOT_NOTARY_KEY_PATH` (App Store Connect API key `.p8`),
      `LILBOT_NOTARY_KEY_ID`, `LILBOT_NOTARY_ISSUER_ID`.
   3. `bun scripts/sign-macos-helper.ts --settings <helper-settings.json> --out <dir>`. It builds both helpers with the
-     settings baked in, signs them with the hardened runtime and Bun's JIT entitlements, compiles and signs the
+     settings baked in, signs them with the hardened runtime and only Bun's JIT entitlements (`allow-jit`, `allow-unsigned-executable-memory`), compiles and signs the
      launcher, signs and verifies the app, starts the helper (`version`), notarises with `notarytool --wait`, staples,
-     re-zips, checks Gatekeeper and writes the zip and its sidecar. It prints no identity, key or team.
+     re-zips, checks Gatekeeper and writes the zip and its sidecar. It prints no identity, key or team. `--extra-entitlements` also allows dyld environment variables and disables
+     library validation: use it only if the helper fails to start without them.
   4. Copy `LilBot-Helper-macOS.zip` and `LilBot-Helper-macOS.zip.json` into the server's `<data>/helper-downloads/`.
 - `--unsigned` skips the Developer ID and notarisation (ad-hoc signature). macOS 15 and later then refuses the first
   open; System Settings > Privacy & Security > "Open Anyway" (then confirm) opens it. Right-click > Open no longer

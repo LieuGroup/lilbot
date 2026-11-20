@@ -6,6 +6,20 @@ import { configDir } from './identity'
 
 const label = 'info.lilbot.helper'
 const xml = (s: string) => s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')
+export type UninstallStep = { args: string[]; required?: boolean } | { remove: string }
+
+/** Everything is best effort and the step that stops the running helper comes last, so a failure cannot leave a
+ *  half-removed service restarting a helper that has no identity (the helper may be the process being stopped). */
+export function uninstallPlan(mac: boolean, uid: number, path: string): UninstallStep[] {
+  if (mac) return [{ args: ['launchctl', 'bootout', `gui/${uid}/${label}`] }, { remove: path }]
+  return [
+    { args: ['systemctl', '--user', 'disable', 'lilbot-helper.service'] },
+    { remove: path },
+    { args: ['systemctl', '--user', 'daemon-reload'] },
+    { args: ['systemctl', '--user', 'stop', 'lilbot-helper.service'] }
+  ]
+}
+
 export async function service(action: 'install' | 'uninstall') {
   const binary = join(configDir, 'lilbot-helper')
   const mac = process.platform === 'darwin'
@@ -17,10 +31,10 @@ export async function service(action: 'install' | 'uninstall') {
     if ((await child.exited) !== 0 && required) throw new Error('Service manager refused the operation.')
   }
   if (action === 'uninstall') {
-    await rm(path, { force: true })
-    if (mac) await command(['launchctl', 'bootout', `gui/${process.getuid!()}`, path], false)
-    else await command(['systemctl', '--user', 'disable', '--now', 'lilbot-helper.service'], false)
-    if (!mac) await command(['systemctl', '--user', 'daemon-reload'])
+    for (const step of uninstallPlan(mac, process.getuid!(), path)) {
+      if ('remove' in step) await rm(step.remove, { force: true })
+      else await command(step.args, false)
+    }
     return
   }
   await mkdir(directory, { recursive: true })
