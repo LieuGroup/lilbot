@@ -30,7 +30,12 @@ const groupOf = (requestId: string) => until(`group ${requestId}`, () => q('SELE
 const once = async (groupId: string) => {
   const { messages } = q('SELECT data FROM threads WHERE id=?', groupId).map(r => JSON.parse(r.data))[0]
   assert.equal(new Set(messages.map((m: any) => m.id)).size, messages.length, 'a message was recorded twice')
-  await until('the outcome to settle', () => q("SELECT id FROM thread_deliveries WHERE id=? AND status='done'", `group:${groupId}:end`).length, n => n === 1, 60_000)
+  await until(
+    'the outcome to settle',
+    () => q("SELECT id FROM thread_deliveries WHERE id=? AND status='done'", `group:${groupId}:end`).length,
+    n => n === 1,
+    60_000
+  )
 }
 try {
   await server.start()
