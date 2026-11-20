@@ -19,6 +19,12 @@ test('roster tools call the functions the screens call, with the screen’s inpu
   expect(row.sections).toEqual([section])
   expect(row.bots.find((bot: any) => bot.id === other.id)).toMatchObject({ pinned: true, hidden: true, sectionId: section.id })
   expect(row.bots.find((bot: any) => bot.id === other.id).avatar).toBeUndefined()
+  // The pin time is the screen's: set by pinning, kept on a repeat, cleared by unpinning.
+  const pinnedAt = (await f.service.listBots()).find(bot => bot.id === other.id)?.prefs.pinnedAt
+  expect(pinnedAt).toBeNumber()
+  expect(row.bots.find((bot: any) => bot.id === other.id).pinnedAt).toBe(pinnedAt)
+  expect((await f.call('b1', 'lilbot_roster_set', { botId: other.id, pinned: true })).data.pinnedAt).toBe(pinnedAt)
+  expect((await f.call('b1', 'lilbot_roster_set', { botId: other.id, pinned: false })).data).toMatchObject({ pinned: false, pinnedAt: null })
   expect((await f.call('b1', 'lilbot_roster_set', { botId: other.id, sectionId: 'missing' })).error).toContain('does not exist')
   expect((await f.call('b1', 'lilbot_roster_set', { botId: 'missing', pinned: true })).error).toContain('does not exist')
 })

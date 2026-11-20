@@ -119,7 +119,9 @@ try {
     events.slice(before).some(frame => frame.event === 'bots.changed'),
     'the roster push arrived'
   )
-  assert.equal((await call('bots.list')).find((bot: any) => bot.id === b.id).prefs.pinned, true, 'the other bot is pinned in the roster')
+  const pinnedPrefs = (await call('bots.list')).find((bot: any) => bot.id === b.id).prefs
+  assert.equal(pinnedPrefs.pinned, true, 'the other bot is pinned in the roster')
+  assert.equal(typeof pinnedPrefs.pinnedAt, 'number', 'pinning through the tool records the pin time, as the screen does')
   const row = db.query('SELECT bot_id, bot_name, tool, target, fields FROM system_changes').all() as any[]
   assert.deepEqual(row, [{ bot_id: a.id, bot_name: 'System A', tool: 'lilbot_roster_set', target: b.id, fields: 'pinned' }], 'the change is logged against the bot that made it')
   console.log('ok: pinned another bot through lilbot_roster_set, bots.changed arrived, the change is logged against System A')
