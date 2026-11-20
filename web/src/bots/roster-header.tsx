@@ -1,11 +1,13 @@
 import { Link } from '@tanstack/react-router'
-import { PlusIcon, SearchIcon, XIcon } from 'lucide-react'
+import { PanelLeftIcon, PlusIcon, SearchIcon, XIcon } from 'lucide-react'
 
 import { Button } from '@/ui/button'
 import { iconButton } from '@/ui/icon-button'
 import { Input } from '@/ui/input'
+import { setCollapsed } from './roster-view'
 
-/** The app icon and name, then search and new bot. Search turns the name into a filter box. */
+/** The app icon and name, then collapse (wide screens only), search and new bot. Search turns the
+ *  name into a filter box. */
 export function RosterHeader({ query, onQuery }: { query: string | null; onQuery: (query: string | null) => void }) {
   return (
     <div className="flex h-[calc(52px+env(safe-area-inset-top))] flex-none items-center justify-between gap-2 pt-[env(safe-area-inset-top)] pr-2.5 pl-4">
@@ -27,6 +29,16 @@ export function RosterHeader({ query, onQuery }: { query: string | null; onQuery
         />
       )}
       <div className="flex flex-none items-center">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className={iconButton({ className: 'hidden md:inline-flex' })}
+          aria-label="Collapse roster"
+          title="Collapse roster"
+          onClick={() => setCollapsed(true)}
+        >
+          <PanelLeftIcon />
+        </Button>
         <Button
           variant="ghost"
           size="icon-sm"

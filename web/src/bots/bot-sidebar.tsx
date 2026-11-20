@@ -1,36 +1,46 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense } from 'react'
 
 import { DeployNotice } from '../deploy/deploy-notice'
-import { useSettings } from '../settings/settings-store'
-import { loadBotMenu, useBotMenu } from './bot-menu-target'
+import { loadBotMenu } from './bot-menu-target'
 import { useBotStore } from './bot-store'
 import { useDetailsTab, useOpenBotId } from './details-tabs'
 import { RosterFooter } from './roster-footer'
 import { RosterCollapsedGroup, RosterSection } from './roster-group'
 import { rosterGroups, searchBots } from './roster-groups'
 import { RosterHeader } from './roster-header'
+import { RosterOverlays } from './roster-overlays'
 import { RosterRow } from './roster-row'
+import { RosterTiles } from './roster-tiles'
+import { loadRail, setQuery, useRailShown, useRosterView } from './roster-view'
 
-// The menu, its dialogs and Settings load on first use; hovering the roster fetches the menu.
-const BotMenuHost = lazy(() => loadBotMenu().then(module => ({ default: module.BotMenuHost })))
-const SettingsDialog = lazy(() => import('../settings/settings-dialog').then(module => ({ default: module.SettingsDialog })))
+const RosterRail = lazy(() => loadRail().then(module => ({ default: module.RosterRail })))
 
-/** The roster: primary bot first, then the user's sections, then the collapsed "Unassigned" and
- *  "Hidden" groups. With no sections yet, every bot is listed plainly. */
+/** The roster: the primary and pinned bots as tiles, then the user's sections, then the collapsed
+ *  "Unassigned" and "Hidden" groups. With no sections yet, the other bots are listed plainly.
+ *  On a wide screen it can collapse to the rail. */
 export function BotSidebar() {
+  const rail = useRailShown()
+  if (rail)
+    return (
+      <Suspense fallback={<div className="h-full w-16 bg-background" />}>
+        <RosterRail />
+      </Suspense>
+    )
+  return <OpenRoster />
+}
+
+function OpenRoster() {
   const { bots, sections, loaded, connected, error, deploymentNotice } = useBotStore()
-  const [query, setQuery] = useState<string | null>(null)
+  const query = useRosterView(state => state.query)
   const openId = useOpenBotId()
   const tab = useDetailsTab()
   const groups = rosterGroups(bots, sections)
   const row = (bot: (typeof bots)[number]) => <RosterRow key={bot.id} bot={bot} active={bot.id === openId} tab={tab} />
   const holdsOpen = (list: typeof bots) => list.some(bot => bot.id === openId)
   const sectioned = groups.sections.length > 0
-  const menuUsed = useBotMenu(state => state.used)
-  const settingsUsed = useSettings(state => state.used)
 
   return (
-    <nav aria-label="Bots" className="flex h-full flex-col bg-background" onPointerEnter={() => void loadBotMenu()}>
+    <nav aria-label="Bots" className="flex h-full w-full flex-col bg-background md:w-[272px]" onPointerEnter={() => void loadBotMenu()}>
       <RosterHeader query={query} onQuery={setQuery} />
       <div className="flex-1 overflow-y-auto px-2 pt-1 pb-2">
         {!loaded && <p className="px-2 py-3 text-[13px] text-muted-foreground">{error || (connected ? 'Loading bots...' : 'Connecting...')}</p>}
@@ -41,7 +51,7 @@ export function BotSidebar() {
           </ul>
         ) : (
           <ul className="flex flex-col gap-0.5">
-            {groups.top.map(row)}
+            <RosterTiles bots={groups.tiles} openId={openId} tab={tab} />
             {groups.sections.map(group => (
               <RosterSection key={group.section.id} name={group.section.name}>
                 {group.bots.map(row)}
@@ -64,10 +74,7 @@ export function BotSidebar() {
       </div>
       <DeployNotice notice={deploymentNotice} />
       <RosterFooter connected={connected} />
-      <Suspense>
-        {menuUsed && <BotMenuHost />}
-        {settingsUsed && <SettingsDialog />}
-      </Suspense>
+      <RosterOverlays />
     </nav>
   )
 }

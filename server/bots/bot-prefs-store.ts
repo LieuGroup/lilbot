@@ -13,6 +13,7 @@ interface PrefsRow {
   avatar_face_color: string | null
   section_id: string | null
   pinned: number
+  pinned_at: number | null
   hidden: number
   main_chat_id: string | null
 }
@@ -20,7 +21,14 @@ interface PrefsRow {
 function prefsFrom(botId: string, row: PrefsRow | null): BotPrefs {
   // A stored avatar that is no longer in the lists (they changed) falls back like a missing one.
   const stored = Avatar.safeParse({ shape: row?.avatar_shape, color: row?.avatar_color, faceColor: row?.avatar_face_color ?? undefined })
-  return { avatar: stored.success ? stored.data : defaultAvatar(botId), sectionId: row?.section_id ?? null, pinned: row?.pinned === 1, hidden: row?.hidden === 1 }
+  const pinned = row?.pinned === 1
+  return {
+    avatar: stored.success ? stored.data : defaultAvatar(botId),
+    sectionId: row?.section_id ?? null,
+    pinned,
+    pinnedAt: pinned ? (row?.pinned_at ?? 0) : null,
+    hidden: row?.hidden === 1
+  }
 }
 
 export class BotPrefsStore {
@@ -45,18 +53,22 @@ export class BotPrefsStore {
     return new Map(botIds.map(botId => [botId, prefsFrom(botId, rows.get(botId) ?? null)]))
   }
 
-  setPrefs(botId: string, patch: Partial<BotPrefs>): BotPrefs {
+  /** Pinning records when, so every device orders pinned bots the same way; pinning a pinned
+   *  bot again keeps its time, and unpinning clears it. */
+  setPrefs(botId: string, patch: Partial<Omit<BotPrefs, 'pinnedAt'>>): BotPrefs {
     if (patch.sectionId && !this.db.query('SELECT 1 FROM sections WHERE id = ?').get(patch.sectionId)) {
       throw new LilBotError('section_not_found', 'That section does not exist.')
     }
-    const next = { ...this.prefs(botId), ...patch }
+    const current = this.prefs(botId)
+    const next = { ...current, ...patch }
+    next.pinnedAt = next.pinned ? (current.pinnedAt ?? Date.now()) : null
     this.db
       .query(
-        `INSERT INTO bot_prefs (bot_id, avatar_shape, avatar_color, avatar_face_color, section_id, pinned, hidden) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO bot_prefs (bot_id, avatar_shape, avatar_color, avatar_face_color, section_id, pinned, pinned_at, hidden) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (bot_id) DO UPDATE SET avatar_shape = excluded.avatar_shape, avatar_color = excluded.avatar_color, avatar_face_color = excluded.avatar_face_color,
-           section_id = excluded.section_id, pinned = excluded.pinned, hidden = excluded.hidden`
+           section_id = excluded.section_id, pinned = excluded.pinned, pinned_at = excluded.pinned_at, hidden = excluded.hidden`
       )
-      .run(botId, next.avatar.shape, next.avatar.color, next.avatar.faceColor, next.sectionId, next.pinned ? 1 : 0, next.hidden ? 1 : 0)
+      .run(botId, next.avatar.shape, next.avatar.color, next.avatar.faceColor, next.sectionId, next.pinned ? 1 : 0, next.pinnedAt, next.hidden ? 1 : 0)
     return next
   }
 

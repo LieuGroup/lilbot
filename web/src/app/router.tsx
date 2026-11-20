@@ -18,7 +18,7 @@ function AppShell() {
   const atHome = useRouterState({ select: state => state.location.pathname === '/' || state.location.pathname === '/bots' })
   return (
     <div className="flex h-dvh bg-background">
-      <aside className={`${atHome ? 'flex w-full' : 'hidden'} flex-none flex-col md:flex md:w-[272px] md:border-r md:border-hairline`}>
+      <aside className={`${atHome ? 'flex w-full' : 'hidden'} flex-none flex-col md:flex md:w-auto md:border-r md:border-hairline`}>
         <BotSidebar />
       </aside>
       <section className={`${atHome ? 'hidden' : 'flex'} min-w-0 flex-1 flex-col bg-card md:flex`}>

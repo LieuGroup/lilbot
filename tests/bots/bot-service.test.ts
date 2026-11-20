@@ -21,7 +21,7 @@ describe('a bot is the app identity plus the user’s preferences plus its works
         isPrimary: false,
         runnable: false,
         runtimePending: true,
-        prefs: { avatar: defaultAvatar('b1'), sectionId: null, pinned: false, hidden: false },
+        prefs: { avatar: defaultAvatar('b1'), sectionId: null, pinned: false, pinnedAt: null, hidden: false },
         workspace: join(root, 'b1')
       }
     ])

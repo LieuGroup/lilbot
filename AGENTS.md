@@ -330,13 +330,18 @@ forget) are kept with `bots.deleteDefaults.get/set`. The primary bot and the eng
 Visual specs (sizes, copy, Paper frames): [docs/screens.md](docs/screens.md).
 
 - Shell: on a wide screen three columns: roster, conversation, details panel. The roster search filters names and
-  functions, hidden bots included. The primary bot sits on top with a star, then the user's sections, then collapsed
-  "Unassigned" and "Hidden" groups (with no sections, bots are listed plainly). Pinned bots go first in their group;
-  the group holding the open bot stays open; open groups are remembered per browser.
-- Bot menu (`bots/bot-menu-rules.ts` decides the items): opened from a row's "more" button or a right-click. The
+  functions, hidden bots included. On top, tiles: the primary bot with a star, then pinned bots in pin order
+  (`pinnedAt` from `bots.list`, the same on every device); a pinned bot leaves its section, and a hidden one stays in
+  Hidden. Then the user's sections, then collapsed "Unassigned" and "Hidden" groups (with no sections, bots are listed
+  plainly). The group holding the open bot stays open; open groups are remembered per browser. Grouping is
+  `bots/roster-groups.ts`.
+- Rail: on a wide screen the roster collapses to a 64px rail of avatars in the same order (closed groups left out),
+  remembered per browser (`bots/roster-view.ts`); the rail is a lazy chunk. Phones never show it.
+- Bot menu (`bots/bot-menu-rules.ts` decides the items): opened from a row's or tile's "more" button or a right-click
+  on a row, tile or rail avatar. The
   primary bot's menu has only Mark as read/unread, Name and avatar and "Change primary bot" (a submenu of the other
-  bots; only the mark moves): it always sits on top, so pin, section and hide would change nothing, and it cannot be
-  deleted. The engine's default bot has no Delete.
+  bots; only the mark moves): it is always the first tile, so pin, section and hide would change nothing, and it cannot
+  be deleted. The engine's default bot has no Delete.
 - Delete dialog: starts from `bots.deleteDefaults.get`, read on every open; "Change defaults" closes it and opens
   Settings on Bots; deleting the open bot returns to the app's start.
 - Details panel: each tab is the route `/bots/$botId/$tab`; `/bots/$botId` is a layout route, so the chat column stays

@@ -142,7 +142,13 @@ const migrations: string[] = [
   // Engine sessions the operator removed from LilBot's copy; every history writer skips them forever.
   `CREATE TABLE IF NOT EXISTS history_exclusions(bot TEXT NOT NULL,session TEXT NOT NULL,reason TEXT NOT NULL,at INTEGER NOT NULL,PRIMARY KEY(bot,session));`,
   // Which bot changed what through LilBot's own MCP server (`server/system/`).
-  `CREATE TABLE IF NOT EXISTS system_changes(id INTEGER PRIMARY KEY AUTOINCREMENT,at INTEGER NOT NULL,bot_id TEXT NOT NULL,bot_name TEXT NOT NULL,tool TEXT NOT NULL,target TEXT NOT NULL,fields TEXT NOT NULL);`
+  `CREATE TABLE IF NOT EXISTS system_changes(id INTEGER PRIMARY KEY AUTOINCREMENT,at INTEGER NOT NULL,bot_id TEXT NOT NULL,bot_name TEXT NOT NULL,tool TEXT NOT NULL,target TEXT NOT NULL,fields TEXT NOT NULL);`,
+  // When each bot was pinned. Bots pinned before this get the migration time, a millisecond apart in name order.
+  `ALTER TABLE bot_prefs ADD COLUMN pinned_at INTEGER;
+   UPDATE bot_prefs SET pinned_at = CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER) + ranked.position
+   FROM (SELECT p.bot_id, ROW_NUMBER() OVER (ORDER BY COALESCE(b.name, p.bot_id) COLLATE NOCASE, p.bot_id) - 1 AS position
+         FROM bot_prefs p LEFT JOIN bots b ON b.id = p.bot_id WHERE p.pinned = 1) AS ranked
+   WHERE bot_prefs.bot_id = ranked.bot_id;`
 ]
 
 /** `path` may be ':memory:' for tests. Applies any migration steps the file has not seen. */

@@ -1,7 +1,8 @@
 import { cn } from 'cn'
-import { type ReactNode, useState } from 'react'
+import type { ReactNode } from 'react'
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/ui/collapsible'
+import { type ClosedGroup, setGroupOpen, useRosterView } from './roster-view'
 
 const labelRow = 'flex h-[30px] flex-none items-center px-2 pt-2 text-xs text-muted-foreground'
 
@@ -15,14 +16,6 @@ export function RosterSection({ name, children }: { name: string; children: Reac
   )
 }
 
-function storedOpen(key: string): boolean {
-  try {
-    return localStorage.getItem(key) === 'open'
-  } catch {
-    return false
-  }
-}
-
 /** "Unassigned" and "Hidden": collapsed to a label and a count until opened. The group that
  *  holds the open bot stays open, so the selected row is always visible. */
 export function RosterCollapsedGroup({
@@ -33,26 +26,17 @@ export function RosterCollapsedGroup({
   tight,
   children
 }: {
-  id: string
+  id: ClosedGroup
   name: string
   count: number
   holdsActive: boolean
   tight?: boolean
   children: ReactNode
 }) {
-  const key = `lilbot.roster-open.${id}`
-  const [open, setOpen] = useState(() => storedOpen(key))
-  const toggle = (next: boolean) => {
-    setOpen(next)
-    try {
-      localStorage.setItem(key, next ? 'open' : 'closed')
-    } catch {
-      // Not remembered in a private window; it stays as chosen until reload.
-    }
-  }
+  const open = useRosterView(state => state.open[id])
   return (
     <li>
-      <Collapsible open={open || holdsActive} onOpenChange={toggle}>
+      <Collapsible open={open || holdsActive} onOpenChange={next => setGroupOpen(id, next)}>
         <CollapsibleTrigger
           className={cn(labelRow, 'w-full justify-between rounded-md outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50', tight && 'h-[26px] pt-1')}
         >

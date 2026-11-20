@@ -1,18 +1,18 @@
-import { Link } from '@tanstack/react-router'
 import { cn } from 'cn'
 import { EllipsisIcon, StarIcon } from 'lucide-react'
 
 import { BotBadge } from '@/ui/bot-badge'
 import { Button } from '@/ui/button'
 import type { Bot } from '../../../shared/bot-schema'
-import { openBotMenu, pointAnchor } from './bot-menu-target'
+import { BotLink, menuOnContext } from './bot-link'
+import { openBotMenu } from './bot-menu-target'
 import type { DetailsTab } from './details-tabs'
 import { rowState } from './row-state'
 import { StatusIcon } from './status-icon'
 
 /** One bot in the roster: avatar, name, one line of live state or preview, and a 16px trailing
  *  slot for the unread dot (the "more" button takes its place on hover). The "more" button and
- *  a right-click open the bot menu. Opening another bot keeps the details tab that is open. */
+ *  a right-click open the bot menu. */
 export function RosterRow({ bot, active, tab }: { bot: Bot; active: boolean; tab?: DetailsTab }) {
   const state = rowState(bot)
   const quiet = state.tone === 'idle' && !state.unread && !bot.isPrimary
@@ -45,22 +45,10 @@ export function RosterRow({ bot, active, tab }: { bot: Bot; active: boolean; tab
   )
 
   return (
-    <li
-      className="group relative"
-      onContextMenu={event => {
-        event.preventDefault()
-        openBotMenu(bot.id, pointAnchor(event.clientX, event.clientY))
-      }}
-    >
-      {tab ? (
-        <Link to="/bots/$botId/$tab" params={{ botId: bot.id, tab }} aria-current={active ? 'page' : undefined} className={row}>
-          {content}
-        </Link>
-      ) : (
-        <Link to="/bots/$botId" params={{ botId: bot.id }} aria-current={active ? 'page' : undefined} className={row}>
-          {content}
-        </Link>
-      )}
+    <li className="group relative" onContextMenu={menuOnContext(bot.id)}>
+      <BotLink botId={bot.id} active={active} tab={tab} className={row}>
+        {content}
+      </BotLink>
       <Button
         variant="ghost"
         aria-label={`More for ${bot.name}`}
