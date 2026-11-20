@@ -1,6 +1,6 @@
 /** The rules every report on a work item passes, whoever makes it. Pure: no database, no engine. */
 import { LilBotError } from '../../shared/protocol'
-import type { WorkKind } from '../../shared/work-check-schema'
+import { KIND_NAMES, type WorkKind } from '../../shared/work-check-schema'
 import { type EvidenceInput, type EvidencePointer, FINAL_WORK, type WorkStatus } from '../../shared/work-schema'
 import { memoryRefusal } from '../memory/memory-safety'
 import type { ItemChange, StoredItem } from './work-store'
@@ -68,9 +68,9 @@ export function transition(item: StoredItem, move: Move, done: string, evidenceC
   return change
 }
 
-const KINDS = 'reply, note, file, computer, code, deploy, outside, spending or figure'
+const KINDS = KIND_NAMES.join(', ')
 export const belowDefault = (kind: WorkKind, least: number) =>
-  new LilBotError('work_level', `A ${kind} item is checked at level ${least} or higher for you (Oscar's default); give a level of at least ${least}.`)
+  new LilBotError('work_level', `A ${kind} item is checked at level ${least} or higher (the kind's default for you); give a level of at least ${least}.`)
 export const noKind = () => new LilBotError('work_no_kind', `Say what kind of work this is (kind: ${KINDS}).`)
 
 /** The kind and level a report sets. A kind is given once: at opening, or later on an item LilBot opened without one. The
