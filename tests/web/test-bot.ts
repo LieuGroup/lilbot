@@ -26,6 +26,6 @@ export function testBot(id: string, options: Options = {}): Bot {
     runtimePending: options.runtimePending,
     workspace: '',
     activity: options.activity ? { status: 'idle', text: '', machine: 'leader', unread: false, ...options.activity } : undefined,
-    prefs: { avatar: defaultAvatar(id), sectionId: null, pinned: false, hidden: false, ...options.prefs }
+    prefs: { avatar: defaultAvatar(id), sectionId: null, pinned: false, pinnedAt: null, hidden: false, ...options.prefs }
   }
 }

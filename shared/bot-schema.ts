@@ -31,6 +31,8 @@ export const BotPrefs = z.object({
   /** The sidebar section the bot sits in, or null for none. */
   sectionId: z.string().nullable(),
   pinned: z.boolean(),
+  /** When the bot was pinned (ms since epoch), so pinned bots keep that order; null when not pinned. */
+  pinnedAt: z.number().nullable(),
   hidden: z.boolean()
 })
 export type BotPrefs = z.infer<typeof BotPrefs>

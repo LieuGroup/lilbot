@@ -15,7 +15,7 @@ const EditInput = BotUpdateInput.pick({ name: true, function: true, instructions
 
 export function botTools({ bots, activity }: SystemDeps): McpTool[] {
   return [
-    readTool('lilbot_bots_list', 'Every bot with its roster state (primary, pinned, hidden, section, unread), and the sections.', z.object({}), async () => ({
+    readTool('lilbot_bots_list', 'Every bot with its roster state (primary, pinned and pinnedAt, hidden, section, unread), and the sections.', z.object({}), async () => ({
       bots: (await bots.listBots()).map(({ id, name, function: fn, isPrimary, prefs: { avatar, ...prefs }, ...bot }) => ({
         id,
         name,

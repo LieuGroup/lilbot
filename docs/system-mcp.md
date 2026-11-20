@@ -70,7 +70,7 @@ Every tool acts as the calling bot and calls the function the screen uses. Reads
 | `lilbot_bot_edit` | `bots.update` for name, function, instructions, model (not the permission mode); bot text gets the creation-time `memoryRefusal` check |
 | `lilbot_primary_set` | `bots.setPrimary` |
 | `lilbot_models_list` | `models.list` |
-| `lilbot_roster_set` | `bots.setPrefs` (pinned, hidden, section) |
+| `lilbot_roster_set` | `bots.setPrefs` (pinned, which also sets or clears `pinnedAt`; hidden; section) |
 | `lilbot_section_create` | `sections.create` |
 | `lilbot_unread_set` | `activity.setUnread` (`bots/bot-unread.ts`, shared with the screen) |
 | `lilbot_memory_list`, `_pause`, `_restore` | `memory.list`, `memory.pause`, `memory.restore` |

@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { activitySince, formatElapsed } from '../../web/src/activity/activity-since'
-import { rosterGroups, searchBots } from '../../web/src/bots/roster-groups'
+import { railGroups, rosterGroups, searchBots } from '../../web/src/bots/roster-groups'
 import { rowState } from '../../web/src/bots/row-state'
 import { testBot as bot } from './test-bot'
 
@@ -10,30 +10,48 @@ const sections = [
   { id: 's3', name: 'Empty' }
 ]
 
-test('the roster groups bots: primary on top, sections in order, then unassigned and hidden', () => {
+test('the roster groups bots: primary and pinned tiles on top, sections in order, then unassigned and hidden', () => {
   const bots = [
     bot('loose'),
     bot('eng', { prefs: { sectionId: 's2' } }),
     bot('main', { isPrimary: true, prefs: { sectionId: 's1', hidden: true } }),
     bot('prod', { prefs: { sectionId: 's1' } }),
-    bot('pinned', { prefs: { sectionId: 's1', pinned: true } }),
+    bot('pinned-late', { prefs: { sectionId: 's1', pinned: true, pinnedAt: 300 } }),
+    bot('pinned-early', { prefs: { pinned: true, pinnedAt: 100 } }),
     bot('gone-section', { prefs: { sectionId: 'deleted' } }),
-    bot('secret', { prefs: { sectionId: 's2', hidden: true } })
+    bot('secret', { prefs: { sectionId: 's2', hidden: true } }),
+    bot('pinned-secret', { prefs: { pinned: true, pinnedAt: 50, hidden: true } })
   ]
   const groups = rosterGroups(bots, sections)
-  expect(groups.top.map(bot => bot.id)).toEqual(['main'])
+  expect(groups.tiles.map(bot => bot.id)).toEqual(['main', 'pinned-early', 'pinned-late'])
   expect(groups.sections.map(group => [group.section.name, group.bots.map(bot => bot.id)])).toEqual([
-    ['Product', ['pinned', 'prod']],
+    ['Product', ['prod']],
     ['Engineer', ['eng']]
   ])
   expect(groups.unassigned.map(bot => bot.id)).toEqual(['loose', 'gone-section'])
-  expect(groups.hidden.map(bot => bot.id)).toEqual(['secret'])
+  expect(groups.hidden.map(bot => bot.id)).toEqual(['secret', 'pinned-secret'])
+})
+
+test('pinned tiles keep pin order; bots pinned at the same time go by name', () => {
+  const bots = [bot('Zed', { prefs: { pinned: true, pinnedAt: 5 } }), bot('amy', { prefs: { pinned: true, pinnedAt: 5 } }), bot('first', { prefs: { pinned: true, pinnedAt: 1 } })]
+  expect(rosterGroups(bots, []).tiles.map(bot => bot.id)).toEqual(['first', 'amy', 'Zed'])
 })
 
 test('grouping leaves the bot list in its order', () => {
-  const bots = [bot('a'), bot('b', { isPrimary: true }), bot('c', { prefs: { pinned: true } })]
+  const bots = [bot('a'), bot('b', { isPrimary: true }), bot('c', { prefs: { pinned: true, pinnedAt: 1 } })]
   rosterGroups(bots, [])
   expect(bots.map(bot => bot.id)).toEqual(['a', 'b', 'c'])
+})
+
+test('the rail keeps the roster order and leaves out groups that are closed there', () => {
+  const ids = (lists: ReturnType<typeof railGroups>) => lists.map(list => list.map(bot => bot.id))
+  const bots = [bot('main', { isPrimary: true }), bot('prod', { prefs: { sectionId: 's1' } }), bot('loose'), bot('secret', { prefs: { hidden: true } })]
+  const groups = rosterGroups(bots, sections)
+  expect(ids(railGroups(groups, () => false))).toEqual([['main'], ['prod']])
+  expect(ids(railGroups(groups, group => group === 'hidden'))).toEqual([['main'], ['prod'], ['secret']])
+  expect(ids(railGroups(groups, group => group === 'unassigned'))).toEqual([['main'], ['prod'], ['loose']])
+  // With no sections, unassigned bots are a plain list in the roster, so they are in the rail too.
+  expect(ids(railGroups(rosterGroups(bots, []), () => false))).toEqual([['main'], ['prod', 'loose']])
 })
 
 test('search matches every word in the name or function, hidden bots included', () => {

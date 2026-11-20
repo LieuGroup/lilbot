@@ -1,3 +1,4 @@
+import type { Database } from 'bun:sqlite'
 import { expect, test } from 'bun:test'
 import { BotRuntimes } from '../../server/bots/bot-runtimes'
 import { BotStore } from '../../server/bots/bot-store'
@@ -133,15 +134,24 @@ test('identity migration preserves populated primary, prefs, main chat, facts, q
     old.exec("INSERT INTO bot_activity VALUES ('b1', 1); INSERT INTO activity_cursors VALUES ('b1', 'chat-legacy', 'epoch:12')")
     const tables = ['bot_prefs', 'primary_bot', 'memory_facts', 'review_turns', 'sections', 'bot_activity', 'activity_cursors']
     old.exec('UPDATE bot_prefs SET avatar_face_color = NULL')
-    const before = tables.map(table => old.query(`SELECT * FROM ${table}`).all())
+    // The upgrade gives already pinned bots a new pin time; every other value must survive as it was.
+    const rows = (db: Database) =>
+      tables.map(table =>
+        db
+          .query(`SELECT * FROM ${table}`)
+          .all()
+          .map(row => ({ ...(row as object), pinned_at: undefined }))
+      )
+    const before = rows(old)
     old.exec(
-      'DROP TABLE library_items; DROP TABLE computer_payloads; DROP TABLE computer_requests; DROP TABLE computer_bytes; DROP TABLE computer_nonces; DROP TABLE computer_codes; DROP TABLE computers; DROP TABLE thread_chats; DROP TABLE thread_deliveries; DROP TABLE threads; ALTER TABLE bot_prefs DROP COLUMN avatar_face_color; DROP TABLE skills; DROP TABLE skill_off; DROP TABLE skill_imports; DROP TABLE routine_chats; DROP TABLE routine_runs; DROP TABLE routines; DROP TABLE bot_creations; DROP TABLE bot_delete_defaults; DROP TABLE bots; DROP TABLE bot_imports; DROP TABLE IF EXISTS history_search; DROP TABLE IF EXISTS history_items; DROP TABLE IF EXISTS history_sessions; DROP TABLE IF EXISTS history_events; DROP TABLE IF EXISTS history_imports; DROP TABLE IF EXISTS attachment_messages; DROP TABLE IF EXISTS attachments; PRAGMA user_version = 5'
+      'DROP TABLE library_items; DROP TABLE computer_payloads; DROP TABLE computer_requests; DROP TABLE computer_bytes; DROP TABLE computer_nonces; DROP TABLE computer_codes; DROP TABLE computers; DROP TABLE thread_chats; DROP TABLE thread_deliveries; DROP TABLE threads; ALTER TABLE bot_prefs DROP COLUMN pinned_at; ALTER TABLE bot_prefs DROP COLUMN avatar_face_color; DROP TABLE skills; DROP TABLE skill_off; DROP TABLE skill_imports; DROP TABLE routine_chats; DROP TABLE routine_runs; DROP TABLE routines; DROP TABLE bot_creations; DROP TABLE bot_delete_defaults; DROP TABLE bots; DROP TABLE bot_imports; DROP TABLE IF EXISTS history_search; DROP TABLE IF EXISTS history_items; DROP TABLE IF EXISTS history_sessions; DROP TABLE IF EXISTS history_events; DROP TABLE IF EXISTS history_imports; DROP TABLE IF EXISTS attachment_messages; DROP TABLE IF EXISTS attachments; PRAGMA user_version = 5'
     )
     old.close()
     const db = openDatabase(path)
     const store = new BotStore(db)
     await new BotRuntimes(store, fakeEngine().engine).initialize()
-    expect(tables.map(table => db.query(`SELECT * FROM ${table}`).all())).toEqual(before)
+    expect(rows(db)).toEqual(before)
+    expect(new BotPrefsStore(db).prefs('b1').pinnedAt).toBeNumber()
     expect(store.get('b1').id).toBe('b1')
     db.close()
   } finally {

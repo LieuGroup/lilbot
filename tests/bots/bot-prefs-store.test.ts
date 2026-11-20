@@ -11,7 +11,7 @@ const store = () => new BotPrefsStore(openDatabase(':memory:'))
 describe('bot preferences', () => {
   test('a bot nobody touched has stable defaults derived from its id', () => {
     const prefs = store().prefs('researcher')
-    expect(prefs).toEqual({ avatar: defaultAvatar('researcher'), sectionId: null, pinned: false, hidden: false })
+    expect(prefs).toEqual({ avatar: defaultAvatar('researcher'), sectionId: null, pinned: false, pinnedAt: null, hidden: false })
     expect(defaultAvatar('researcher')).toEqual(defaultAvatar('researcher'))
   })
 
@@ -20,6 +20,19 @@ describe('bot preferences', () => {
     prefs.setPrefs('b1', { pinned: true })
     prefs.setPrefs('b1', { avatar: { shape: 'star', color: 'blue', faceColor: 'ink' } })
     expect(prefs.prefs('b1')).toMatchObject({ pinned: true, hidden: false, avatar: { shape: 'star', color: 'blue', faceColor: 'ink' } })
+  })
+
+  test('pinning records when; pinning again keeps that time and unpinning clears it', () => {
+    const prefs = store()
+    const before = Date.now()
+    const pinnedAt = prefs.setPrefs('b1', { pinned: true }).pinnedAt
+    expect(pinnedAt).toBeGreaterThanOrEqual(before)
+    prefs.setPrefs('b1', { pinned: true, hidden: true })
+    prefs.setPrefs('b1', { avatar: { shape: 'star', color: 'blue', faceColor: 'ink' } })
+    expect(prefs.prefs('b1').pinnedAt).toBe(pinnedAt)
+    expect(prefs.prefsFor(['b1']).get('b1')?.pinnedAt).toBe(pinnedAt)
+    expect(prefs.setPrefs('b1', { pinned: false }).pinnedAt).toBeNull()
+    expect(prefs.prefs('b1')).toMatchObject({ pinned: false, pinnedAt: null })
   })
 
   test('prefsFor answers for every requested bot, stored or not', () => {
@@ -96,7 +109,7 @@ test('the primary migration upgrades an existing database without losing prefere
     const db = openDatabase(path)
     new BotPrefsStore(db).setPrefs('b1', { pinned: true })
     db.exec(
-      'DROP TABLE computer_payloads; DROP TABLE computer_requests; DROP TABLE computer_bytes; DROP TABLE computer_nonces; DROP TABLE computer_codes; DROP TABLE computers; DROP TABLE thread_chats; DROP TABLE thread_deliveries; DROP TABLE threads; ALTER TABLE bot_prefs DROP COLUMN avatar_face_color; DROP TABLE library_items; DROP TABLE skills; DROP TABLE skill_off; DROP TABLE skill_imports; DROP TABLE routine_chats; DROP TABLE routine_runs; DROP TABLE routines; DROP TABLE bot_creations; DROP TABLE bot_delete_defaults; DROP TABLE bots; DROP TABLE bot_imports; DROP TABLE primary_bot; DROP TABLE bot_activity; DROP TABLE activity_cursors; DROP TABLE IF EXISTS history_search; DROP TABLE IF EXISTS history_items; DROP TABLE IF EXISTS history_sessions; DROP TABLE IF EXISTS history_events; DROP TABLE IF EXISTS history_imports; DROP TABLE IF EXISTS attachment_messages; DROP TABLE IF EXISTS attachments; PRAGMA user_version = 3'
+      'DROP TABLE computer_payloads; DROP TABLE computer_requests; DROP TABLE computer_bytes; DROP TABLE computer_nonces; DROP TABLE computer_codes; DROP TABLE computers; DROP TABLE thread_chats; DROP TABLE thread_deliveries; DROP TABLE threads; ALTER TABLE bot_prefs DROP COLUMN pinned_at; ALTER TABLE bot_prefs DROP COLUMN avatar_face_color; DROP TABLE library_items; DROP TABLE skills; DROP TABLE skill_off; DROP TABLE skill_imports; DROP TABLE routine_chats; DROP TABLE routine_runs; DROP TABLE routines; DROP TABLE bot_creations; DROP TABLE bot_delete_defaults; DROP TABLE bots; DROP TABLE bot_imports; DROP TABLE primary_bot; DROP TABLE bot_activity; DROP TABLE activity_cursors; DROP TABLE IF EXISTS history_search; DROP TABLE IF EXISTS history_items; DROP TABLE IF EXISTS history_sessions; DROP TABLE IF EXISTS history_events; DROP TABLE IF EXISTS history_imports; DROP TABLE IF EXISTS attachment_messages; DROP TABLE IF EXISTS attachments; PRAGMA user_version = 3'
     )
     db.close()
     const upgraded = openDatabase(path)
@@ -105,7 +118,7 @@ test('the primary migration upgrades an existing database without losing prefere
     expect(prefs.prefs('b1').pinned).toBe(true)
     prefs.setPrimaryBot('b1')
     expect(prefs.primaryBot()).toBe('b1')
-    expect((upgraded.query('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(21)
+    expect((upgraded.query('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(22)
     upgraded.close()
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -118,12 +131,12 @@ test('upgrading the shipped creation schema preserves markers before adding dele
   try {
     const db = openDatabase(path)
     db.exec(
-      "INSERT INTO bot_creations VALUES ('created-before-upgrade'); DROP TABLE computer_payloads; DROP TABLE computer_requests; DROP TABLE computer_bytes; DROP TABLE computer_nonces; DROP TABLE computer_codes; DROP TABLE computers; DROP TABLE thread_chats; DROP TABLE thread_deliveries; DROP TABLE threads; ALTER TABLE bot_prefs DROP COLUMN avatar_face_color; DROP TABLE library_items; DROP TABLE skills; DROP TABLE skill_off; DROP TABLE skill_imports; DROP TABLE routine_chats; DROP TABLE routine_runs; DROP TABLE routines; ALTER TABLE bots DROP COLUMN permission_mode; DROP TABLE bot_delete_defaults; ALTER TABLE bots DROP COLUMN deletion; DROP TABLE IF EXISTS history_search; DROP TABLE IF EXISTS history_items; DROP TABLE IF EXISTS history_sessions; DROP TABLE IF EXISTS history_events; DROP TABLE IF EXISTS history_imports; DROP TABLE IF EXISTS attachment_messages; DROP TABLE IF EXISTS attachments; PRAGMA user_version = 7"
+      "INSERT INTO bot_creations VALUES ('created-before-upgrade'); DROP TABLE computer_payloads; DROP TABLE computer_requests; DROP TABLE computer_bytes; DROP TABLE computer_nonces; DROP TABLE computer_codes; DROP TABLE computers; DROP TABLE thread_chats; DROP TABLE thread_deliveries; DROP TABLE threads; ALTER TABLE bot_prefs DROP COLUMN pinned_at; ALTER TABLE bot_prefs DROP COLUMN avatar_face_color; DROP TABLE library_items; DROP TABLE skills; DROP TABLE skill_off; DROP TABLE skill_imports; DROP TABLE routine_chats; DROP TABLE routine_runs; DROP TABLE routines; ALTER TABLE bots DROP COLUMN permission_mode; DROP TABLE bot_delete_defaults; ALTER TABLE bots DROP COLUMN deletion; DROP TABLE IF EXISTS history_search; DROP TABLE IF EXISTS history_items; DROP TABLE IF EXISTS history_sessions; DROP TABLE IF EXISTS history_events; DROP TABLE IF EXISTS history_imports; DROP TABLE IF EXISTS attachment_messages; DROP TABLE IF EXISTS attachments; PRAGMA user_version = 7"
     )
     db.close()
     const upgraded = openDatabase(path)
     expect(upgraded.query('SELECT bot_id FROM bot_creations').all()).toEqual([{ bot_id: 'created-before-upgrade' }])
-    expect((upgraded.query('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(21)
+    expect((upgraded.query('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(22)
     expect(new BotPrefsStore(upgraded).primaryBot()).toBeNull()
     upgraded.close()
   } finally {
@@ -141,4 +154,28 @@ test('old avatars read with an ink face without rewriting the stored row', () =>
   prefs.setPrefs('legacy', { avatar: { shape: 'drop', color: 'bone', faceColor: 'pink' } })
   expect(prefs.prefs('legacy').avatar).toEqual({ shape: 'drop', color: 'bone', faceColor: 'pink' })
   db.close()
+})
+
+test('bots pinned before pin times existed get the upgrade time, in name order', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'lilbot-pinned-at-'))
+  const path = join(dir, 'lilbot.db')
+  try {
+    const db = openDatabase(path)
+    db.exec(
+      `INSERT INTO bots (id, name, function, instructions, engine_id, engine_bot_id) VALUES ('b-zed', 'zed', '', '', 'e', 'z'), ('b-amy', 'Amy', '', '', 'e', 'a'), ('b-max', 'max', '', '', 'e', 'm');
+       ALTER TABLE bot_prefs DROP COLUMN pinned_at; PRAGMA user_version = 21;
+       INSERT INTO bot_prefs (bot_id, pinned) VALUES ('b-zed', 1), ('b-amy', 1), ('b-max', 0), ('no-identity', 1);`
+    )
+    db.close()
+    const before = Date.now()
+    const upgraded = openDatabase(path)
+    const all = new BotPrefsStore(upgraded).prefsFor(['b-zed', 'b-amy', 'b-max', 'no-identity'])
+    const times = ['b-amy', 'no-identity', 'b-zed'].map(id => all.get(id)?.pinnedAt ?? 0)
+    expect(times[0]).toBeGreaterThanOrEqual(before)
+    expect(times).toEqual([times[0], times[0] + 1, times[0] + 2])
+    expect(all.get('b-max')?.pinnedAt).toBeNull()
+    upgraded.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })
