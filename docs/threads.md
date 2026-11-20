@@ -114,7 +114,7 @@ implementation's.
 - **Roster.** `bots.list` carries `groups` per bot instead of a new method, so the existing `bots.changed` push keeps the
   roster's "Working together" section and members' row states current.
 
-## Tool cost (#133, against main at a5b8a1b, characters from `systemFixture`)
+## Tool cost (#133, against main at 191f241, characters from `systemFixture`)
 
 | | before | after |
 |---|---|---|
