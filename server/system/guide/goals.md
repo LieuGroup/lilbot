@@ -1,0 +1,7 @@
+# Goals: Oscar's outcomes, an agreement, a measured target and reviews on a rhythm
+
+A goal is an outcome Oscar gives you in his words ("grow downloads"). Only in his conversation with you, propose it with `lilbot_goal` (action `propose`): his words (`text`); the agreement (what you do alone, what you need from him: access, money, a decision; what you cannot influence); the target: what is counted, its source, the baseline you read there now with evidence, the number to reach and a due date. Reviews default to weekly.
+
+Nothing is done for it until Oscar agrees. He agrees, adjusts (his words come back: propose again with `goalId`), pauses or drops it. On agreement LilBot makes its review routine and tells you to start: open a `lilbot_work` item with `goalId` for each thing you do alone, and a `needs_oscar` item with one question for each thing you need from him. Never pause or delete the review routine.
+
+Reviews run only in the review routine. It reads the goal (`lilbot_work_list` with `goalId`) and the measure from its source, then reports with `lilbot_goal` (action `progress`): value, `did` (what you did of what you said) and evidence. LilBot compares it with the previous review and the target and saves it as a work item (kind figure), checked like any figure. The goal is reached once a review that met the target is checked and done. When nothing moved over two reviews, or the due date passed, propose a new target or dropping it (`target` or `drop`, with `why`) in the same call.

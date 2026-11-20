@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createWork } from '../../server/app-work'
 import { Workspaces } from '../../server/bots/workspaces'
+import { GoalStore } from '../../server/goals/goal-store'
 import { HistoryStore } from '../../server/history/history-store'
 import { LibraryStore } from '../../server/library/library-store'
 import { RoutineStore } from '../../server/routines/routine-store'
@@ -26,6 +27,7 @@ function wired() {
     routineStore: new RoutineStore(fake.database),
     webhookStore: new WebhookStore(fake.database),
     rootOf: (_bot, chat) => chat,
+    goalStore: new GoalStore(fake.database),
     libraryStore: new LibraryStore(fake.database),
     workspaces: new Workspaces(fake.root),
     history,

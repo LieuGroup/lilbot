@@ -11,6 +11,8 @@ import type { SessionRoot } from './bots/hidden-chats'
 import type { Workspaces } from './bots/workspaces'
 import { boardLine } from './devices/origin-line'
 import type { BotEngine } from './engines/bot-engine'
+import { requireAgreed } from './goals/goal-rules'
+import type { GoalStore } from './goals/goal-store'
 import type { HistoryStore } from './history/history-store'
 import type { LibraryStore } from './library/library-store'
 import type { RoutineStore } from './routines/routine-store'
@@ -33,6 +35,7 @@ interface WorkDeps {
   routineStore: RoutineStore
   webhookStore: WebhookStore
   rootOf: SessionRoot
+  goalStore: GoalStore
   libraryStore: LibraryStore
   workspaces: Workspaces
   activity: ActivityService
@@ -101,6 +104,7 @@ export function createWork({
   routineStore,
   webhookStore,
   rootOf,
+  goalStore,
   libraryStore,
   workspaces,
   activity,
@@ -114,6 +118,7 @@ export function createWork({
     callingChat: (botId, requestId) => calls.find(botId, requestId),
     session: workSessions(threadStore, routineStore, webhookStore, rootOf),
     libraryTitle: (botId, itemId) => libraryStore.get(botId, itemId)?.title ?? null,
+    checkGoal: (botId, goalId) => requireAgreed(goalStore.get(goalId), botId),
     waiting: (botId, itemId, key, on) => {
       if (store.exists(botId)) activity.observe({ botId, chatId: `work:${itemId}`, key, status: on ? 'waiting' : 'finished' })
     },

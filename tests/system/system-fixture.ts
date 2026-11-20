@@ -2,6 +2,7 @@
 import { Workspaces } from '../../server/bots/workspaces'
 import type { ComputerService } from '../../server/computers/computer-service'
 import { connectionKey } from '../../server/connections/connection-keys'
+import { GoalService } from '../../server/goals/goal-service'
 import { RoutineService } from '../../server/routines/routine-service'
 import { RoutineStore } from '../../server/routines/routine-store'
 import { SystemChanges } from '../../server/system/system-changes'
@@ -49,6 +50,12 @@ export function systemFixture() {
   )
   const work = workFixture({ database: fake.database, requireBot: id => fake.service.requireBot(id) })
   const threads = new ThreadService(new ThreadStore(fake.database), host, undefined, undefined, undefined, groupHostFor(fake.root, work.links).host)
+  const goals = new GoalService(
+    work.goalStore,
+    work.work,
+    { waiting: () => {}, tell: (id, goal, prompt) => work.answers.notify(id, goal.id, goal.botId, prompt), changed: () => {} },
+    60
+  )
   const server = createSystemServer({
     store: fake.store,
     workspaces,
@@ -62,6 +69,7 @@ export function systemFixture() {
     delegation: { hand: new DelegationService(threads, host, async botId => `${botId}-main`, work.links), control: new DelegationControl(threads, host), groups: threads.groups! },
     work: work.work,
     routines,
+    goals,
     webhooks,
     changes,
     dataDir: fake.root,
@@ -85,7 +93,7 @@ export function systemFixture() {
     const text: string = result.content[0].text
     return result.isError ? { error: text } : { data: JSON.parse(text) }
   }
-  return { ...fake, ...server, state, changes, threads, work, routines, webhooks, rosterPushes: fake.changes, request, as, rpc, call }
+  return { ...fake, ...server, state, changes, threads, work, goals, routines, webhooks, rosterPushes: fake.changes, request, as, rpc, call }
 }
 
 /** A second bot in the roster. */

@@ -41,23 +41,28 @@ export class WorkBoard {
    *  saved with the drop, so a restart repeats nothing. */
   async drop(itemId: string, reason: string) {
     refuseUnsafe([reason])
-    const { saved, ends } = this.work.store.db.transaction(() => {
-      const items = this.tree(itemId)
-      const handedOver = new Set(items.filter(item => item.origin.kind === 'exchange' && item.origin.id === item.id).map(item => item.id))
-      const ends: (() => Promise<void>)[] = []
-      const saved = items.map(item => {
-        const report = this.work.report(item, { move: { status: 'dropped', reason } }, {}, OSCAR)
-        if (handedOver.has(item.id)) ends.push(this.exchanges.dropped(item.id, reason))
-        // Nothing is said in the session of an exchange this drop stops.
-        else if (item.chatId && !handedOver.has(item.origin.id))
-          this.answers.queue(`drop-${item.id}`, item, dropPrompt(item, reason), item.status === 'working' && item.origin.kind !== 'exchange')
-        return report
-      })
-      return { saved, ends }
-    })()
-    for (const one of saved) this.work.after(one)
-    await Promise.all(ends.map(end => end().catch(() => backgroundFailure('work drop'))))
+    await this.work.store.db.transaction(() => this.dropping(itemId, reason))()()
     return this.work.view(itemId)
+  }
+
+  /** The drop inside the caller's transaction (a goal's drop runs it for each of its items); the returned function, called once
+   *  it is committed, pushes the change and ends the exchanges' turns. */
+  dropping(itemId: string, reason: string) {
+    const items = this.tree(itemId)
+    const handedOver = new Set(items.filter(item => item.origin.kind === 'exchange' && item.origin.id === item.id).map(item => item.id))
+    const ends: (() => Promise<void>)[] = []
+    const saved = items.map(item => {
+      const report = this.work.report(item, { move: { status: 'dropped', reason } }, {}, OSCAR)
+      if (handedOver.has(item.id)) ends.push(this.exchanges.dropped(item.id, reason))
+      // Nothing is said in the session of an exchange this drop stops.
+      else if (item.chatId && !handedOver.has(item.origin.id))
+        this.answers.queue(`drop-${item.id}`, item, dropPrompt(item, reason), item.status === 'working' && item.origin.kind !== 'exchange')
+      return report
+    })
+    return async () => {
+      for (const one of saved) this.work.after(one)
+      await Promise.all(ends.map(end => end().catch(() => backgroundFailure('work drop'))))
+    }
   }
 
   /** The item and, below it, every unfinished item. */

@@ -71,6 +71,7 @@ export class WorkLinks {
       origin,
       chatId: null,
       parentId,
+      goalId: null,
       at
     })
     if (created) this.store.log(work.id, { at, by: 'lilbot', kind: 'opened', status: 'open', text: work.task.slice(0, 2000), via: null })

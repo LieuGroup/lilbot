@@ -6,6 +6,7 @@ import { type Bot, BotCreateInput, type BotDetail, BotPrefsInput, BotUpdateInput
 import type { ChatEvent, ChatSnapshot } from './chat-schema'
 import { AddThisSystem } from './computer-add-schema'
 import { DeviceId, DeviceName } from './device-schema'
+import { type GoalResults, goalMethods } from './goal-schema'
 import { LibraryListInput, type LibraryPage, type WorkspaceEntry } from './library-schema'
 import { type MemoryFact, MemoryWriteInput } from './memory-schema'
 import type { Routine } from './routine-schema'
@@ -25,6 +26,7 @@ export const methods = {
   'threads.open': z.object({ botId, threadId: z.string().min(1) }),
   'threads.cancel': z.object({ botId, threadId: z.string().min(1) }),
   ...workMethods,
+  ...goalMethods,
   'computers.list': z.object({}),
   'computers.installCode': z.object({ name: z.string().trim().min(1).max(100) }),
   'computers.remove': z.object({ computer: z.string().min(1) }),
@@ -104,7 +106,7 @@ export const methods = {
 export type Method = keyof typeof methods
 export type Params<M extends Method> = z.input<(typeof methods)[M]>
 
-export interface Results extends WorkResults, WebhookResults {
+export interface Results extends WorkResults, GoalResults, WebhookResults {
   'attachments.limits': { maxFileBytes: number; maxFilesPerMessage: number }
   'attachments.prepare': import('./attachment-schema').Attachment[]
   'attachments.status': import('./attachment-schema').Attachment[]
@@ -169,19 +171,17 @@ export interface Results extends WorkResults, WebhookResults {
 export const RequestFrame = z.object({ id: z.number(), method: z.string(), params: z.unknown() })
 export type ResponseFrame = { id: number; ok: true; result: unknown } | { id: number; ok: false; error: { code: string; message: string } }
 
-/** What the server sends without being asked. `bots.changed` means: fetch the bot list again
- *  (a bot, its preferences or the sections changed, here or on another device). `memory.changed`
- *  means a fact was saved or forgotten, by a bot or in the app. */
+/** What the server sends without being asked. `bots.changed` means: fetch the bot list again (a bot, its preferences or the
+ *  sections changed, here or on another device). `memory.changed`: a fact was saved or forgotten, by a bot or in the app. */
 export type EventFrame =
   | { event: 'chat'; chatId: string; data: ChatEvent }
   | { event: 'bots.changed' }
   | { event: 'memory.changed' }
-  | { event: 'routines.changed' }
-  | { event: 'webhooks.changed' }
+  | { event: 'routines.changed' | 'webhooks.changed' }
   | { event: 'library.changed'; botId: string }
   | { event: 'skills.changed' }
   | { event: 'threads.changed' }
-  | { event: 'work.changed' }
+  | { event: 'work.changed' | 'goals.changed' }
   | { event: 'history.changed'; botId: string }
   /** A connection's state changed (for example T3 Code refused LilBot's sign-in). */
   | { event: 'connections.changed' }

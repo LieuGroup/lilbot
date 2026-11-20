@@ -1,4 +1,4 @@
-/** What Oscar tells a bot from the board (his answers, an item he dropped or sent back) and LilBot's check notices, on its
+/** What Oscar tells a bot from the board (his answers, an item he dropped or sent back, his goal decisions) and LilBot's check notices, on its
  *  way: saved first, then delivered as a hidden turn with a stable run id, so a retry after a transport failure or a
  *  restart reaches the same engine admission instead of a second turn. All SQL for `work_answers` is here. */
 import type { Database } from 'bun:sqlite'
@@ -30,10 +30,16 @@ export class WorkAnswers {
   /** Work from a conversation continues in the bot's main conversation; other work in the session it came from. `stop`: the row
    *  waits as `stopping` until the turn the session is running has been ended (once), so the bot reads this and not its own last words. */
   queue(id: string, item: StoredItem, prompt: string, stop = false) {
-    const chatId = item.origin.kind === 'conversation' ? null : item.chatId
+    this.add(id, item.id, item.ownerId, item.origin.kind === 'conversation' ? null : item.chatId, prompt, stop)
+  }
+  /** A notice about something other than one item (a goal), in the bot's main conversation. */
+  notify(id: string, about: string, botId: string, prompt: string) {
+    this.add(id, about, botId, null, prompt, false)
+  }
+  private add(id: string, about: string, botId: string, chatId: string | null, prompt: string, stop: boolean) {
     this.db
       .query('INSERT OR IGNORE INTO work_answers(id, item_id, bot_id, chat_id, text, status) VALUES (?,?,?,?,?,?)')
-      .run(id, item.id, item.ownerId, chatId, prompt, stop ? 'stopping' : 'pending')
+      .run(id, about, botId, chatId, prompt, stop ? 'stopping' : 'pending')
   }
 
   tick() {

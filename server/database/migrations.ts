@@ -1,8 +1,8 @@
+import { GOAL_TABLES } from './goal-tables'
 import { GROUP_TABLES } from './group-tables'
 import { WEBHOOK_TABLES } from './webhook-tables'
 
-/** LilBot's schema: every step it has shipped, in order; `database.ts` applies the steps a file has not seen. Never edit a
- *  step that has shipped: add a new one. */
+/** LilBot's schema: every step it has shipped, in order; `database.ts` applies the steps a file has not seen. Never edit a shipped step: add one. */
 export const migrations: string[] = [
   `CREATE TABLE sections (
      id TEXT PRIMARY KEY,
@@ -151,9 +151,8 @@ export const migrations: string[] = [
   // "Add this computer" attempts: which computer registered with the attempt's install code.
   `CREATE TABLE IF NOT EXISTS computer_attempts(id TEXT PRIMARY KEY,code_id TEXT NOT NULL UNIQUE,expires_at INTEGER NOT NULL,computer_id TEXT);
    CREATE INDEX IF NOT EXISTS computer_attempt_expiry ON computer_attempts(expires_at);`,
-  // "My computer" (#115): the main computer (one row at most), devices, the device an add attempt started on, and the
-  // origin of plain chat messages until the history importer has matched them to their rows. Every statement is
-  // repeatable, like the older steps whose tests start from an upgraded file.
+  // "My computer" (#115): the main computer (one row at most), devices, the device an add attempt started on, and the origin of plain chat
+  // messages until the history importer has matched them to their rows. Every statement is repeatable, like the older steps whose tests start from an upgraded file.
   `CREATE TABLE IF NOT EXISTS main_computer(only INTEGER PRIMARY KEY CHECK(only = 1), computer_id TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS computer_attempt_devices(code_id TEXT PRIMARY KEY, device_id TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS devices(id TEXT PRIMARY KEY, name TEXT NOT NULL, computer_id TEXT, created_at INTEGER NOT NULL, last_seen INTEGER NOT NULL);
@@ -185,7 +184,7 @@ export const migrations: string[] = [
    CREATE TABLE IF NOT EXISTS work_evidence(id TEXT PRIMARY KEY, item_id TEXT NOT NULL, proves TEXT NOT NULL, pointer TEXT NOT NULL, by_id TEXT NOT NULL, at INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS work_evidence_item ON work_evidence(item_id);
    CREATE TABLE IF NOT EXISTS work_events(id INTEGER PRIMARY KEY AUTOINCREMENT, item_id TEXT NOT NULL, at INTEGER NOT NULL, by_kind TEXT NOT NULL, kind TEXT NOT NULL, status TEXT, text TEXT, via_kind TEXT, via_id TEXT); CREATE INDEX IF NOT EXISTS work_events_item ON work_events(item_id, id);
    CREATE TABLE IF NOT EXISTS work_answers(id TEXT PRIMARY KEY, item_id TEXT NOT NULL, bot_id TEXT NOT NULL, chat_id TEXT, text TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending');`,
-  // Webhooks (#12), in its own file, like temporary groups (#133) after check levels.
+  // Webhooks (#12), in its own file, like temporary groups (#133) and goals (#143) after check levels.
   WEBHOOK_TABLES,
   // Check levels (#142): each item's kind and its kind's default level, the checks of finished items, the hidden sessions
   // of checking bots, and Oscar's default levels per kind (bot_id '' for every bot).
@@ -196,5 +195,6 @@ export const migrations: string[] = [
    CREATE INDEX IF NOT EXISTS work_checks_open ON work_checks(state) WHERE state = 'checking';
    CREATE TABLE IF NOT EXISTS work_check_chats(chat_id TEXT PRIMARY KEY, check_id TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS work_levels(kind TEXT NOT NULL, bot_id TEXT NOT NULL, level INTEGER NOT NULL, PRIMARY KEY(kind, bot_id));`,
-  GROUP_TABLES
+  GROUP_TABLES,
+  GOAL_TABLES
 ]

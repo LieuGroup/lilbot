@@ -108,6 +108,20 @@ says it replaces the engine's cron: Hermes' own `cronjob` tool is not deferred, 
 listing line and the adapter's one-line rule. `check:routines` names no tool, and the bot still schedules through
 `lilbot_routine` (rows in `system_changes`) for both an Oscar request and its own idea.
 
+### Goals' cost (#143, against main at bb6944a, characters from `systemFixture`)
+
+| | before | after |
+|---|---|---|
+| listing lines Hermes shows every turn | 3,679 (35 tools) | 3,829 (+150: the `lilbot_goal` line, and "or goals" in `lilbot_work_list`'s) |
+| the note | 1,516 | 1,516 (unchanged) |
+| full `tools/list` | 16,578 | 20,188 (+3,610: `lilbot_goal`'s schema 2,831 and description 422, `goalId` on `lilbot_work`, `goals` and `goalId` on `lilbot_work_list`, the `goals` guide topic) |
+
+Per turn that is one listing line, about 40 tokens. Goals are read through `lilbot_work_list` (a read tool, so no change-log
+row) instead of a second goal tool, which would have added another listing line; proposing, changing and reviewing share
+`lilbot_goal`'s `action`. Its schema (two evidence entries and a routine schedule) is read only when a bot looks the tool
+up, about 800 tokens then. How to propose and review is the guide topic `goals`, not a skill, whose catalogue line would
+cost every turn; the note is unchanged.
+
 ## The server
 
 - `POST /engine/lilbot/mcp` on the private listener (`main.ts`, beside the T3 bridge). Streamable HTTP answered as plain
@@ -150,7 +164,8 @@ Every tool acts as the calling bot and calls the function the screen uses. Reads
 | `lilbot_delegation_attach` | the receiver's files for its answer |
 | `lilbot_group` | temporary groups (#133): `start`, `say`, `attach`, `close`, `status` in one tool; `GroupService`, the same records as `threads.list`, `threads.open` and `threads.cancel` (`docs/threads.md`) |
 | `lilbot_work` | the work board: without itemId opens an item (`WorkService.act`), with itemId reports on the caller's own item: definition, evidence, status in one call; with `verdict`, the check LilBot asked the caller to do |
-| `lilbot_work_list` | the caller's items, every bot's, or one in full: the same records as `work.list` and `work.open` |
+| `lilbot_work_list` | the caller's items, every bot's, or one in full: the same records as `work.list` and `work.open`; with `goals` or `goalId`, goals (`goals.list`, `goals.open`) |
+| `lilbot_goal` | goals (#143): `propose` a goal from Oscar's words in his conversation, a new version or a change (`GoalService.act`); `progress`, a review, saved as a work item through `WorkService.act` |
 | `lilbot_routine` | `routines.*` for the caller's own routines: `action` create (`RoutineService.create`; request-id idempotency, five of its own, five-minute minimum), pause, resume or delete (`id`) |
 | `lilbot_routines_list` | `routines.list` for the caller: latest five runs each, results cut to 500 characters |
 | `lilbot_webhook_create` | `WebhookService.create` for the caller (five webhooks a bot; the same `requestId` returns the current address and any secret LilBot made again) |
@@ -166,7 +181,7 @@ Library, skills, computers, `search_conversations` and memory writes stay on the
 
 MCP requests carry no session (checked live: two sessions of one bot send identical requests, `_meta` holds only a
 progress token). A tool that needs the calling conversation takes a `requestId` and resolves it from the engine's
-`tool.start` reports (`server/threads/calling-chats.ts`, which traces `lilbot_delegate`, `lilbot_work` and `lilbot_group`).
+`tool.start` reports (`server/threads/calling-chats.ts`, which traces `lilbot_delegate`, `lilbot_work`, `lilbot_group` and `lilbot_goal`).
 
 Judgment calls: a memory tool may name another bot's panel (as Oscar can on the screens), but only a fact in that
 panel can be named, by the short id a bot sees; the default is the calling bot's own. Another bot's private facts can

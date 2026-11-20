@@ -132,3 +132,17 @@ test('devices sit on computers and neutral engine contracts: no HTTP, bots, syst
   expect(lines.length).toBeGreaterThan(0)
   expect(lines.filter(line => !line.endsWith('-> server/devices/origin-line'))).toEqual([])
 })
+
+test('goals sit on the work board and routines: no HTTP, bots, system, threads or engines; nothing below imports them', () => {
+  expect([
+    ...crossings('server/goals', 'server/http'),
+    ...crossings('server/goals', 'server/bots'),
+    ...crossings('server/goals', 'server/system'),
+    ...crossings('server/goals', 'server/threads'),
+    ...crossings('server/goals', 'server/engines'),
+    ...crossings('server/work', 'server/goals'),
+    ...crossings('server/routines', 'server/goals'),
+    ...crossings('server/threads', 'server/goals'),
+    ...crossings('server/bots', 'server/goals')
+  ]).toEqual([])
+})
