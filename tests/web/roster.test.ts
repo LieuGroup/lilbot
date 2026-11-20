@@ -23,7 +23,8 @@ test('the roster groups bots: primary and pinned tiles on top, sections in order
     bot('pinned-secret', { prefs: { pinned: true, pinnedAt: 50, hidden: true } })
   ]
   const groups = rosterGroups(bots, sections)
-  expect(groups.tiles.map(bot => bot.id)).toEqual(['main', 'pinned-early', 'pinned-late'])
+  expect(groups.top.map(bot => bot.id)).toEqual(['main', 'pinned-early', 'pinned-late'])
+  expect(groups.tiled).toBe(true)
   expect(groups.sections.map(group => [group.section.name, group.bots.map(bot => bot.id)])).toEqual([
     ['Product', ['prod']],
     ['Engineer', ['eng']]
@@ -34,7 +35,17 @@ test('the roster groups bots: primary and pinned tiles on top, sections in order
 
 test('pinned tiles keep pin order; bots pinned at the same time go by name', () => {
   const bots = [bot('Zed', { prefs: { pinned: true, pinnedAt: 5 } }), bot('amy', { prefs: { pinned: true, pinnedAt: 5 } }), bot('first', { prefs: { pinned: true, pinnedAt: 1 } })]
-  expect(rosterGroups(bots, []).tiles.map(bot => bot.id)).toEqual(['first', 'amy', 'Zed'])
+  expect(rosterGroups(bots, []).top.map(bot => bot.id)).toEqual(['first', 'amy', 'Zed'])
+})
+
+test('with nothing pinned there are no tiles: the primary is the first row', () => {
+  const main = bot('main', { isPrimary: true })
+  const alone = rosterGroups([bot('loose'), main], [])
+  expect(alone.top).toEqual([main])
+  expect(alone.tiled).toBe(false)
+  // A pinned bot that is hidden stays in Hidden, so it makes no tiles either.
+  expect(rosterGroups([main, bot('secret', { prefs: { pinned: true, pinnedAt: 1, hidden: true } })], []).tiled).toBe(false)
+  expect(rosterGroups([main, bot('pinned', { prefs: { pinned: true, pinnedAt: 1 } })], []).tiled).toBe(true)
 })
 
 test('grouping leaves the bot list in its order', () => {
@@ -52,6 +63,9 @@ test('the rail keeps the roster order and leaves out groups that are closed ther
   expect(ids(railGroups(groups, group => group === 'unassigned'))).toEqual([['main'], ['prod'], ['loose']])
   // With no sections, unassigned bots are a plain list in the roster, so they are in the rail too.
   expect(ids(railGroups(rosterGroups(bots, []), () => false))).toEqual([['main'], ['prod', 'loose']])
+  // The primary leads the rail whether or not anything is pinned.
+  const pinned = rosterGroups([...bots, bot('pin', { prefs: { pinned: true, pinnedAt: 1 } })], sections)
+  expect(ids(railGroups(pinned, () => false))).toEqual([['main', 'pin'], ['prod']])
 })
 
 test('search matches every word in the name or function, hidden bots included', () => {

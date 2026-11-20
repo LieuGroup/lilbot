@@ -339,10 +339,11 @@ forget) are kept with `bots.deleteDefaults.get/set`. The primary bot and the eng
 Visual specs (sizes, copy, Paper frames): [docs/screens.md](docs/screens.md).
 
 - Shell: on a wide screen three columns: roster, conversation, details panel. The roster search filters names and
-  functions, hidden bots included. On top, tiles: the primary bot with a star, then pinned bots in pin order
-  (`pinnedAt` from `bots.list`, the same on every device); a pinned bot leaves its section, and a hidden one stays in
-  Hidden. Then the user's sections, then collapsed "Unassigned" and "Hidden" groups (with no sections, bots are listed
-  plainly). The group holding the open bot stays open; open groups are remembered per browser. Grouping is
+  functions, hidden bots included. On top, tiles, only once a bot is pinned: the primary bot with a star, then pinned
+  bots in pin order (`pinnedAt` from `bots.list`, the same on every device), sharing the width at most three to a line;
+  a pinned bot leaves its section, and a hidden one stays in Hidden. With nothing pinned, the primary is an ordinary
+  first row. Then the user's sections, then collapsed "Unassigned" and "Hidden" groups (with no sections, bots are
+  listed plainly). The group holding the open bot stays open; open groups are remembered per browser. Grouping is
   `bots/roster-groups.ts`.
 - Rail: on a wide screen the roster collapses to a 64px rail of avatars in the same order (closed groups left out),
   remembered per browser (`bots/roster-view.ts`); the rail is a lazy chunk. Phones never show it.

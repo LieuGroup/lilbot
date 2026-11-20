@@ -15,9 +15,9 @@ import { loadRail, setQuery, useRailShown, useRosterView } from './roster-view'
 
 const RosterRail = lazy(() => loadRail().then(module => ({ default: module.RosterRail })))
 
-/** The roster: the primary and pinned bots as tiles, then the user's sections, then the collapsed
- *  "Unassigned" and "Hidden" groups. With no sections yet, the other bots are listed plainly.
- *  On a wide screen it can collapse to the rail. */
+/** The roster: the primary and pinned bots as tiles (alone, the primary is an ordinary row), then
+ *  the user's sections, then the collapsed "Unassigned" and "Hidden" groups. With no sections yet,
+ *  the other bots are listed plainly. On a wide screen it can collapse to the rail. */
 export function BotSidebar() {
   const rail = useRailShown()
   if (rail)
@@ -51,7 +51,7 @@ function OpenRoster() {
           </ul>
         ) : (
           <ul className="flex flex-col gap-0.5">
-            <RosterTiles bots={groups.tiles} openId={openId} tab={tab} />
+            {groups.tiled ? <RosterTiles bots={groups.top} openId={openId} tab={tab} /> : groups.top.map(row)}
             {groups.sections.map(group => (
               <RosterSection key={group.section.id} name={group.section.name}>
                 {group.bots.map(row)}
