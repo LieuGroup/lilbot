@@ -6,6 +6,8 @@ import { checkPublicPort, isTunnelRequest, plainServerError } from './http/liste
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { WebSocketHandler } from 'bun'
+import { AddThisComputer } from './computers/add-this-computer'
+import { HelperDownloads, helperSettings } from './computers/helper-downloads'
 import { T3_BRIDGE_PATH } from './connections/t3-connection'
 import { deployNotice } from './deploy/deploy-notice'
 import { runningCommit } from './deploy/health'
@@ -81,6 +83,8 @@ bots.watchActivity(event => {
   if (!threadStore.isInternal(event.chatId)) activity.observe(event)
 }, activity.cursor)
 const DIST = join(import.meta.dir, '..', 'dist')
+const downloads = new HelperDownloads(join(DATA_DIR, 'helper-downloads'), helperSettings(process.env, PORT, ACCESS?.host, computers.auth.serverKey.fingerprint))
+const addThis = new AddThisComputer(computers, downloads)
 
 const ALLOWED_HOSTS = allowedHosts(PORT, process.env.LILBOT_ALLOWED_HOSTS)
 
@@ -100,7 +104,8 @@ const websocket: WebSocketHandler<SocketData> = {
       () => ({ t3: t3Grants.status() }),
       computers,
       () => deployNotice(DATA_DIR),
-      attachments
+      attachments,
+      addThis
     )
   },
   message(socket, message) {
@@ -111,7 +116,7 @@ const websocket: WebSocketHandler<SocketData> = {
   }
 }
 
-const browserRoutes = appRoutes(library, DIST, ALLOWED_HOSTS, 'hermes', attachments)
+const browserRoutes = appRoutes(library, DIST, ALLOWED_HOSTS, 'hermes', attachments, downloads)
 const server = Bun.serve<SocketData>({
   development: false,
   error: plainServerError,
@@ -139,7 +144,7 @@ const server = Bun.serve<SocketData>({
   },
   websocket
 })
-const accessServer = ACCESS ? startAccessDoor(ACCESS, appRoutes(library, DIST, new Set([ACCESS.host]), 'hermes', attachments), websocket) : undefined
+const accessServer = ACCESS ? startAccessDoor(ACCESS, appRoutes(library, DIST, new Set([ACCESS.host]), 'hermes', attachments, downloads), websocket) : undefined
 
 try {
   skills.provide('t3-coding', files(join(import.meta.dir, 'connections', 't3-coding-skill')))

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { chmod, copyFile, mkdir, rename, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { configDir } from './identity'
 
 const label = 'info.lilbot.helper'
@@ -48,8 +48,11 @@ export async function service(action: 'install' | 'uninstall') {
   }
 }
 
+/** Inside the macOS app the checksum sits in Resources, because Contents/MacOS holds only code. */
+const checksumFile = (source: string) =>
+  /\.app\/Contents\/MacOS\/[^/]+$/.test(source) ? join(dirname(dirname(source)), 'Resources', `${basename(source)}.sha256`) : `${source}.sha256`
 export async function installBinary(source: string, target: string) {
-  const checksum = (await Bun.file(`${source}.sha256`).text()).trim().split(/\s+/)[0]
+  const checksum = (await Bun.file(checksumFile(source)).text()).trim().split(/\s+/)[0]
   const digest = (bytes: ArrayBuffer) => createHash('sha256').update(Buffer.from(bytes)).digest('hex')
   if (!/^[a-f0-9]{64}$/.test(checksum) || digest(await Bun.file(source).arrayBuffer()) !== checksum) throw new Error('Helper checksum mismatch.')
   const temporary = `${target}.${crypto.randomUUID()}.tmp`
@@ -57,6 +60,8 @@ export async function installBinary(source: string, target: string) {
     await copyFile(source, temporary)
     if (digest(await Bun.file(temporary).arrayBuffer()) !== checksum) throw new Error('Helper checksum mismatch.')
     await chmod(temporary, 0o700)
+    // The user opened the downloaded app; launchd must not stop at the copy's quarantine mark.
+    if (process.platform === 'darwin') await Bun.spawn(['/usr/bin/xattr', '-d', 'com.apple.quarantine', temporary], { stdout: 'ignore', stderr: 'ignore' }).exited
     await rename(temporary, target)
   } finally {
     await rm(temporary, { force: true })

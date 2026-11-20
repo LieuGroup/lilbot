@@ -148,7 +148,10 @@ const migrations: string[] = [
    UPDATE bot_prefs SET pinned_at = CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER) + ranked.position
    FROM (SELECT p.bot_id, ROW_NUMBER() OVER (ORDER BY COALESCE(b.name, p.bot_id) COLLATE NOCASE, p.bot_id) - 1 AS position
          FROM bot_prefs p LEFT JOIN bots b ON b.id = p.bot_id WHERE p.pinned = 1) AS ranked
-   WHERE bot_prefs.bot_id = ranked.bot_id;`
+   WHERE bot_prefs.bot_id = ranked.bot_id;`,
+  // "Add this computer" attempts: which computer registered with the attempt's install code.
+  `CREATE TABLE IF NOT EXISTS computer_attempts(id TEXT PRIMARY KEY,code_id TEXT NOT NULL UNIQUE,expires_at INTEGER NOT NULL,computer_id TEXT);
+   CREATE INDEX IF NOT EXISTS computer_attempt_expiry ON computer_attempts(expires_at);`
 ]
 
 /** `path` may be ':memory:' for tests. Applies any migration steps the file has not seen. */

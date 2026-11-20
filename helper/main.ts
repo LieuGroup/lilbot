@@ -4,9 +4,13 @@ import { join } from 'node:path'
 import { configDir, loadIdentity, register } from './identity'
 import { run } from './runner'
 import { service } from './service'
+import { bakedSettings, HELPER_VERSION } from './settings'
+import { link, setup } from './setup'
+import { setupWindow } from './setup-window'
 
 try {
-  const action = process.argv[2]
+  // Opening a downloaded helper (no arguments) starts its setup.
+  const action = process.argv[2] ?? (bakedSettings ? 'setup' : undefined)
   if (action === 'register' || action === 'install') {
     if (!existsSync(join(configDir, 'identity.json'))) {
       const url = process.argv[3]
@@ -16,6 +20,12 @@ try {
     }
     if (action === 'install') await service('install')
     console.log(action === 'install' ? 'LilBot helper installed.' : 'LilBot helper registered.')
+  } else if ((action === 'setup' || action === 'link') && bakedSettings) {
+    if (action === 'setup') await setup(bakedSettings, setupWindow())
+    else await link(bakedSettings, (await Bun.stdin.text()).trim(), setupWindow())
+    process.exit(0)
+  } else if (action === 'version') {
+    console.log(HELPER_VERSION)
   } else if (action === 'uninstall') {
     await service('uninstall')
     console.log('Service removed. Remove the computer in LilBot to revoke its key; local identity is retained.')
@@ -28,7 +38,7 @@ try {
     process.on('SIGTERM', () => controller.abort())
     process.on('SIGINT', () => controller.abort())
     await run(loadIdentity(), controller.signal)
-  } else throw new Error('Usage: lilbot-helper install|register|run|uninstall|reset')
+  } else throw new Error('Usage: lilbot-helper install|register|run|uninstall|reset|version')
 } catch {
   // No request, credential, shell output, or exception payload is logged.
   console.error('LilBot helper failed. Check the server address, install code, configuration and service manager.')

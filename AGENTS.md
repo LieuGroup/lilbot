@@ -210,9 +210,9 @@ error pages and answer errors with a plain 500.
   - `LILBOT_ACCESS_TEST_CERTS_URL` exists only for `check:access` (HTTP on `127.0.0.1`, all three isolation
     directories, exactly `LILBOT_BOT_IDS=isolation-access-check`). Never set it in deployment.
 - Never add the helper or Access hostname to `LILBOT_ALLOWED_HOSTS`, and never point a tunnel at the private port.
-- File downloads (library, attachments) apply the socket's Host/Origin checks, refuse cross-site fetches and send
-  attachment disposition, no-sniff, sandbox and no-store headers. They exist on the private and Access listeners,
-  never on the helper door.
+- File downloads (library, attachments, helper installers) apply the socket's Host/Origin checks, refuse cross-site
+  fetches and send attachment disposition, no-sniff, sandbox and no-store headers. They exist on the private and Access
+  listeners, never on the helper door.
 - **Engine API** (`server/http/engine-api.ts`, `/engine/*` on the private listener): for engine plug-ins on this
   machine. Loopback only, no browsers, token from `<data>/engine-token`. A plug-in acts as one bot through the
   bot-bound capability in its profile settings: the server takes the caller from that capability, ignores bot ids in
@@ -584,11 +584,11 @@ shared with the standalone `helper/` client. Protocol, limits, build and tests: 
 - The leader is always `leader` and runs operations locally through the same bounded runner. Every bot can use every
   computer; the authenticated bot owns its requests, never an id from the body. All computer operations require
   `full-access`.
-- Browser methods `computers.list`, `computers.installCode`, `computers.remove` and the `computers.changed` push exist.
-  Settings > Computers (`web/src/computers/`, [docs/screens.md](docs/screens.md)) lists machines live (leader first,
-  online/offline/key-conflict dots), removes after confirmation and mints a one-time command in "Add by command line";
-  the code lives only in that dialog's state. "Add this computer" from the browser waits for #60. Helpers connect only
-  through the helper door.
+- Browser methods `computers.list`, `computers.installCode`, `computers.remove`, `computers.addThis.*` and the
+  `computers.changed` push exist. Settings > Computers (`web/src/computers/`, [docs/screens.md](docs/screens.md)) lists
+  machines live (leader first, online/offline/key-conflict dots), removes after confirmation and mints a one-time
+  command in "Add by command line"; the code lives only in that dialog's state. "Add this computer" from the browser
+  still shows "Coming soon" until its screen uses `computers.addThis.*`. Helpers connect only through the helper door.
 - LilBot creates `computer-server-key.pem` (0600) in its data directory; the install code pins its fingerprint. Back
   it up with the database and preserve it on redeploy. Key replacement needs re-registration with a new install code.
   Every frame is signed; helpers need TLS except on loopback. Revocation takes effect only through a signed revoke.
@@ -597,6 +597,40 @@ shared with the standalone `helper/` client. Protocol, limits, build and tests: 
   share the OS user's authority. Machine output is untrusted data.
 - Deliver the helper binary and its `.sha256` from a trusted channel; the sidecar detects corruption, not tampering.
 - A failure to configure the computers plug-in is logged without making the bot unavailable.
+
+### Adding a computer from its browser
+
+Oscar opens LilBot on the machine, chooses "Add this computer", downloads the installer, opens it, and the computer
+appears. No terminal on macOS. The command-line install (`computers.installCode`) stays for headless machines.
+Protocol, browser behaviour, building and signing: [docs/computers.md](docs/computers.md#adding-a-computer-from-its-browser).
+
+- `computers.installCode` also returns `helperUrl`, the helper door origin, when `LILBOT_HELPER_URL` is set; the
+  command-line dialog can use it instead of a fixed hostname.
+- `computers.addThis.start({ name, system })` mints an ordinary install code (single use, 10 minutes) for an attempt
+  and returns the downloads for that system, or `supported: false` (`system`: not macOS or Linux; `unavailable`: no
+  installer built for this LilBot). `computers.addThis.status({ attemptId })` answers waiting, registered, connected or
+  expired, with the computer once one registered with that attempt's code (migration 23 links them).
+- Downloads are served from `<data>/helper-downloads` at `/api/computers/download/<file>` on the private app and the
+  Access listener with the socket's Host/Origin checks and no cross-site fetches; never on the helper door. A build is
+  offered only while its sidecar's settings hash matches the server's current settings.
+- An installer is the same file for every machine and carries no secret. It does carry this LilBot's public
+  settings, baked in at build time and written by the server to `helper-settings.json`: the helper door origin
+  (`LILBOT_HELPER_URL`, required for the feature), the exact page origins allowed to hand over (the non-loopback
+  `LILBOT_ALLOWED_HOSTS` names and the Access name over HTTPS; loopback pages only in development) and the server key
+  fingerprint. The helper never registers anywhere else, so a page or local process cannot point it at another server.
+  Changing those settings means rebuilding the downloads.
+- Hand-over of the code, first that works: (1) the opened helper listens on `127.0.0.1:47613` for 10 minutes and
+  accepts one code, only from an allowed Origin with the loopback Host, only from a socket owned by the same OS user;
+  (2) a `lilbot-helper://register#<code>` link handled by the macOS app; (3) the same short line pasted into the
+  installer's window. The page holds the short code (no fingerprint); it never goes into a logged URL, argv or a log.
+  A port already taken by something else disables (1). Registration itself is unchanged: HMAC and the helper's fresh
+  key proof through the helper door.
+- Opening a downloaded helper again on a registered machine replaces the installed binary and restarts the service:
+  the update path.
+- The macOS app is built, signed with a Developer ID Application identity, notarised and stapled on a Mac by
+  `scripts/sign-macos-helper.ts`. Identity and notary key (path, key id, issuer id) come from that Mac's environment
+  or a local file outside the repo; never put them, the team id or an email in the repo, issues or PRs. An unsigned
+  (ad-hoc) app still works after Privacy & Security > Open Anyway.
 
 ## Skills
 
@@ -776,6 +810,9 @@ profiles, isolated directories, cleanup in `finally`. Most cost a few model call
   byte-identical image reopening.
 - `bun run check:skills`: skill use, per-bot exclusion and authored writes.
 - `bun run check:computers`, `bun run check:access`: see [docs/computers.md](docs/computers.md) and Listeners.
+- `bun run check:add-computer`: on a dev server, builds the Linux downloads, downloads one, opens the helper under a
+  throwaway HOME with a stub service manager, refuses a wrong origin, hands the code over on loopback and sees the
+  computer online. `bun run build:helper-downloads [data dir]`: build the Linux downloads for a server.
 - `bun run check:deploy`: temporary clone, release root, data and systemd units; see [docs/deploy.md](docs/deploy.md).
 - `bun run check:system`: on the dev server, a temporary bot whose instructions never mention LilBot answers what it runs
   in, which version and how it would change LilBot, then pins another bot and creates one through its `lilbot_*` tools;
