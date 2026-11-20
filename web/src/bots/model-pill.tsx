@@ -1,5 +1,5 @@
 import { cn } from 'cn'
-import { ChevronDownIcon, LoaderCircleIcon } from 'lucide-react'
+import { ChevronDownIcon, InfoIcon, LoaderCircleIcon } from 'lucide-react'
 import { lazy, Suspense, useRef } from 'react'
 
 import { InputGroupButton } from '@/ui/input-group'
@@ -9,17 +9,19 @@ import { useModelProviders } from './model-list'
 import { loadModelMenu, openModelMenu, useModelPicker } from './model-picker-target'
 
 const ModelMenu = lazy(() => loadModelMenu().then(module => ({ default: module.ModelMenu })))
+const NO_BOT = { model: null, reasoningEffort: null }
 
-/** The bot's model in the composer (Paper "14 Model picker"). It stays usable while the bot works;
+/** The bot's model and reasoning effort in the composer (Paper "14 Model picker"). It stays usable while the bot works;
  *  the menu it opens loads on first hover, focus or click. */
 export function ModelPill({ botId, disabled }: { botId: string; disabled: boolean }) {
-  const model = useBotStore(state => state.bots.find(bot => bot.id === botId)?.model ?? null)
+  const bot = useBotStore(state => state.bots.find(candidate => candidate.id === botId)) ?? NO_BOT
   const providers = useModelProviders()
-  const saving = useModelPicker(state => (state.saving?.botId === botId ? state.saving.model : null))
+  const saving = useModelPicker(state => (state.saving?.botId === botId ? state.saving.change : null))
   const open = useModelPicker(state => state.open)
   const used = useModelPicker(state => state.used)
   const pill = useRef<HTMLButtonElement>(null)
-  const view = modelPillView(model, providers, saving)
+  const view = modelPillView(bot, providers, saving)
+  const label = view.effort ? `${view.label} · ${view.effort}` : view.label
 
   return (
     <>
@@ -29,7 +31,7 @@ export function ModelPill({ botId, disabled }: { botId: string; disabled: boolea
         aria-haspopup="menu"
         aria-expanded={open}
         aria-busy={view.saving}
-        aria-label={`Model: ${view.label}`}
+        aria-label={`Model: ${label}${view.differs ? ', the engine sends another level' : ''}`}
         disabled={disabled}
         onPointerEnter={() => void loadModelMenu()}
         onFocus={() => void loadModelMenu()}
@@ -40,7 +42,8 @@ export function ModelPill({ botId, disabled }: { botId: string; disabled: boolea
         )}
       >
         {view.saving && <LoaderCircleIcon className="size-3! animate-spin" strokeWidth={2} />}
-        <span className="truncate">{view.label}</span>
+        <span className="truncate">{label}</span>
+        {view.differs && <InfoIcon className="size-[13px]!" strokeWidth={1.75} />}
         <ChevronDownIcon className="size-[13px]!" strokeWidth={2} />
       </InputGroupButton>
       {used && (

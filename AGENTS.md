@@ -317,8 +317,9 @@ What a bot is and who owns each part.
   - The engine can hold a conversation's switch back (a conversation of 100,000+ tokens, an expensive model, a data
     policy) until its own confirmation: `bots.update` then answers `confirm_required` after saving (the same edit's
     effort still applies), the choice stays saved for new conversations and the conversation keeps its model. That
-    refusal is not retried by later edits. The engine's confirmation token is not declared in its contract,
-    so LilBot does not use it. The first message after a switch has no prompt cache.
+    refusal is not retried by later edits. The engine's confirmation token comes back only in undeclared fields of
+    `session.mutate`'s result (checked live, #79), so LilBot never confirms; picking the model does not override the
+    guard. The first message after a switch has no prompt cache.
 - `server/database/database.ts` owns the schema as an ordered list of migration steps: add a step, never edit a
   shipped one. Each store file owns the SQL of its tables. Default file `~/.local/share/lilbot/lilbot.db`
   (`LILBOT_DATA_DIR`). SQLite connections wait up to five seconds for short locks.
@@ -386,14 +387,20 @@ Visual specs (sizes, copy, Paper frames): [docs/screens.md](docs/screens.md).
 - Avatars: ten vector cover shapes and twelve colours for cover and face. Shape and cover default from the bot's id;
   a missing face colour reads as ink without rewriting the row. Create and the bot menu's "Name and avatar"
   (`bots/edit-avatar-dialog.tsx`) use the same three picker rows.
-- Model picker: a pill in the composer after the attach button shows the bot's model id (`bots/model-pill.tsx`); it
-  opens the Model Selector menu upward (`bots/model-menu.tsx`, a lazy chunk): "Find a model" (Base UI's menu filter),
-  models grouped by provider with a tick on the current one (`ModelChoices`, shared with Setup's field). Choosing saves
-  at once with `bots.update`, also while the bot works; the pill shows a spinner meanwhile, a refusal puts the saved
-  model back and shows a red note in the composer. The saved model reads "Choose a model" in red only once `models.list`
-  has loaded without it. The engine's list is fetched once per connection (`bots/model-list.ts`). A model change
-  reaches the next session (the menu says so) until #80 applies it from the next message; #80 adds the effort row
-  between the models and that line. Setup shows the same value and reloads when it changes.
+- Model picker: a pill in the composer after the attach button shows "model · Effort", or the model alone for a model
+  the engine says does not reason (`bots/model-pill.tsx`); it opens the Model Selector menu upward (`bots/model-menu.tsx`,
+  a lazy chunk): "Find a model" (Base UI's menu filter), models grouped by provider with a tick on the current one
+  (`ModelChoices`, shared with Setup's field), then a "Reasoning effort" row with a submenu (`bots/effort-choices.tsx`:
+  Default, Off, Minimal to Max for every reasoning model; "Off" hidden when `canDisableReasoning` is false, marked "if the
+  model allows" when null), and "Changes <bot>'s model and effort, from the next message." Choosing saves at once with
+  `bots.update`, also while the bot works; the pill shows a spinner meanwhile, a refusal puts the saved value back with a
+  red note in the composer. When the engine sends another level than the one chosen (`effectiveReasoningEffort`) the pill
+  shows an info mark and the row reads "<chosen>, sent as <sent>"; never for Off against Default, which the engine reports
+  alike (`bots/reasoning-effort.ts`). A switch the engine holds back (`confirm_required`) keeps the saved choice and shows a
+  plain note: "This long conversation keeps its model until New session; new conversations use the new one." The saved
+  model reads "Choose a model" in red only once `models.list` has loaded without it. The engine's list is fetched once per
+  connection (`bots/model-list.ts`). Setup shows the same model and effort (with "Sent as ..." under it) and reloads when
+  they change.
 
 ### Conversation scroll (AI Elements' Message Scroller)
 

@@ -7,6 +7,8 @@ import type { BotPrefsStore } from './bot-prefs-store'
 import type { BotRecord } from './bot-store'
 
 const MODELS_FRESH_MS = 60_000
+/** The engine's switch guard is confirmed only with a token its contract does not declare, so LilBot never confirms it. */
+const KEPT_MODEL = 'This long conversation keeps its model until New session; new conversations use the new one.'
 const sameModel = (a: BotModel | null | undefined, b: BotModel | null | undefined) => a?.provider === b?.provider && a?.model === b?.model
 
 export class SessionSettings {
@@ -62,13 +64,13 @@ export class SessionSettings {
         if (result) this.noteEffective(bot.id, result.effort)
       } catch (error) {
         // A switch the engine holds back is an answer, not a failure to retry: the choice stays saved and the level still applies.
-        if (error instanceof LilBotError && error.code === 'confirm_required') {
-          if (change.model && change.reasoningEffort !== undefined)
-            await this.engine
-              .updateSession(bot.engineBotId, chatId, { reasoningEffort: change.reasoningEffort })
-              .then(result => result && this.noteEffective(bot.id, result.effort))
-        } else this.unapplied.add(bot.id)
-        throw error
+        if (!(error instanceof LilBotError && error.code === 'confirm_required')) {
+          this.unapplied.add(bot.id)
+          throw error
+        }
+        if (change.model && change.reasoningEffort !== undefined)
+          await this.engine.updateSession(bot.engineBotId, chatId, { reasoningEffort: change.reasoningEffort }).then(result => result && this.noteEffective(bot.id, result.effort))
+        throw new LilBotError('confirm_required', KEPT_MODEL)
       }
     }
     const turn = (this.edits.get(bot.id) ?? Promise.resolve()).catch(() => {}).then(run)

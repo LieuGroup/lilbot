@@ -30,6 +30,7 @@ export async function applyIdentity(socket: Socket, id: string, identity: Runtim
   }
   if (Object.keys(changes).length === 1) return
   const result = await socket.request('profiles.configure', changes)
-  if (result.confirm_required) throw new LilBotError('confirm_required', String(result.confirm_message ?? 'Hermes needs a confirmation for this change.'))
+  // Not `confirm_required`, which tells clients the choice is saved and only the open conversation kept its model.
+  if (result.confirm_required) throw new LilBotError('profile_confirm_required', String(result.confirm_message ?? 'Hermes needs a confirmation for this change.'))
   if (result.ok !== true) throw new LilBotError('update_failed', 'Hermes did not apply the change.')
 }

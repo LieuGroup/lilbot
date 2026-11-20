@@ -5,15 +5,19 @@ import { FormField } from '@/ui/form-field'
 import { Input } from '@/ui/input'
 import { Notice } from '@/ui/notice'
 import { Textarea } from '@/ui/textarea'
-import type { BotModel } from '../../../shared/bot-schema'
+import type { BotModel, ReasoningEffort } from '../../../shared/bot-schema'
+import { EffortSelector } from './effort-choices'
 import { useModelProviders } from './model-list'
 import { ModelSelector } from './model-selector'
+import { capabilityOf, effortLabel, reasons, sentDiffers } from './reasoning-effort'
 
 export interface BotFormValues {
   name: string
   function: string
   instructions: string
   model: BotModel | null
+  /** Only for a saved bot (Setup); a new bot starts on the engine's default. */
+  reasoningEffort?: ReasoningEffort | null
 }
 
 interface BotFormProps {
@@ -22,12 +26,17 @@ interface BotFormProps {
   submitLabel: string
   /** Shown as the first model choice when no model is picked, e.g. "Same as the main bot". */
   noModelLabel?: string
+  /** The level the engine reports it sends for the saved effort (Setup). */
+  sentEffort?: string | null
   onSubmit: (values: BotFormValues) => Promise<void>
 }
 
-export function BotForm({ initial, submitLabel, noModelLabel, onSubmit, children }: BotFormProps) {
+export function BotForm({ initial, submitLabel, noModelLabel, sentEffort, onSubmit, children }: BotFormProps) {
   const [values, setValues] = useState(initial)
-  const providers = useModelProviders() ?? []
+  const listed = useModelProviders()
+  const providers = listed ?? []
+  const capability = capabilityOf(listed, values.model)
+  const effort = values.reasoningEffort
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
@@ -78,6 +87,15 @@ export function BotForm({ initial, submitLabel, noModelLabel, onSubmit, children
       <FormField label="Model" htmlFor={`${id}-model`}>
         <ModelSelector id={`${id}-model`} providers={providers} value={values.model} noModelLabel={noModelLabel} onChange={model => set({ model })} />
       </FormField>
+      {effort !== undefined && reasons(capability) && (
+        <FormField
+          label="Reasoning effort"
+          hint={effort === initial.reasoningEffort && sentDiffers(effort, sentEffort) ? `Sent as ${effortLabel(sentEffort ?? 'none')}.` : undefined}
+          htmlFor={`${id}-effort`}
+        >
+          <EffortSelector id={`${id}-effort`} value={effort} canDisable={capability?.canDisableReasoning} onChange={level => set({ reasoningEffort: level })} />
+        </FormField>
+      )}
 
       {error && <Notice tone="error">{error}</Notice>}
       {saved && <Notice tone="ok">Saved.</Notice>}
