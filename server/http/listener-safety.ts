@@ -49,3 +49,20 @@ export function byteBudget(capacity = 52_000_000, perSecond = 2_000_000) {
     return true
   }
 }
+/** The body, or null once it is over `limit` bytes, by its Content-Length or while it streams. */
+export async function readLimited(request: Request, limit: number): Promise<Uint8Array | null> {
+  if (Number(request.headers.get('content-length') ?? 0) > limit) return null
+  if (!request.body) return new Uint8Array()
+  const reader = request.body.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for (let next = await reader.read(); !next.done; next = await reader.read()) {
+    size += next.value.byteLength
+    if (size > limit) {
+      await reader.cancel()
+      return null
+    }
+    chunks.push(next.value)
+  }
+  return Buffer.concat(chunks)
+}

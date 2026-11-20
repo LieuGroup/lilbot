@@ -44,6 +44,8 @@ export interface RoutineOptions {
   baseline?: (length: number) => number
   onChat: (chatId: string) => void
   origin?: TurnOrigin
+  /** Start the run's session with only these toolsets (webhook runs, `server/webhooks/webhook-access.ts`). */
+  toolsets?: string[]
 }
 
 export interface ChatOptions {
@@ -165,6 +167,9 @@ export interface BotEngine {
     prompt: string,
     options: RoutineOptions & ChatOptions
   ): Promise<{ status: 'completed' | 'failed' | 'stopped'; text: string; items?: import('../../shared/chat-schema').ChatItem[] }>
+  /** The session a compressed conversation began as, when the engine continues a long session under a new id (the chat
+   *  itself when it is not such a continuation); null when it cannot tell. Engines that never do this leave it out. */
+  compressionRoot?(botId: string, chatId: string): string | null
   /** Told when bots or their chats changed outside this server. Returns the function that stops it. */
   onBotsChanged(listener: () => void): () => void
   /** Every tool call the engine sees start. MCP requests carry no session, so this is how LilBot's own MCP server

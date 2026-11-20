@@ -1,12 +1,23 @@
-/** Dedicated loopback listener; no static files, engine endpoints, proxy, or browser socket. */
+/** Dedicated loopback listener; no static files, engine endpoints, proxy, or browser socket. Routes: the helper's
+ *  register (8 KiB bodies) and connect, and webhook deliveries (`webhook-route.ts`). */
 
 import { verifyHelperFrame } from '../../helper/frame-auth'
 import { HelperFrame } from '../../shared/computer-schema'
 import { Registration } from '../computers/computer-auth'
 import type { ComputerService } from '../computers/computer-service'
-import { addressGroup, byteBudget, connectionBudget, plainServerError } from './listener-safety'
+import { HOOK_PATH } from '../webhooks/webhook-address'
+import { WEBHOOK_LIMITS } from '../webhooks/webhook-limits'
+import { addressGroup, byteBudget, connectionBudget, plainServerError, readLimited } from './listener-safety'
+import type { HookAnswer } from './webhook-route'
 
-export function startPublicDoor(computers: ComputerService, port: number, onClose: (code: number) => void = () => {}) {
+const HELPER_BODY_BYTES = 8192
+
+export function startPublicDoor(
+  computers: ComputerService,
+  port: number,
+  options: { onClose?: (code: number) => void; hooks?: (request: Request, token: string, address: string) => Promise<HookAnswer> } = {}
+) {
+  const { onClose = () => {}, hooks } = options
   const allowed = connectionBudget()
   const perComputer = connectionBudget(6)
   const signed = connectionBudget(6, true)
@@ -25,13 +36,18 @@ export function startPublicDoor(computers: ComputerService, port: number, onClos
     error: plainServerError,
     hostname: '127.0.0.1',
     port,
-    maxRequestBodySize: 8192,
+    maxRequestBodySize: WEBHOOK_LIMITS.bodyBytes,
     async fetch(request, server) {
       try {
         const url = new URL(request.url)
         const headers = { 'Cache-Control': 'no-store' }
         if (url.search || request.headers.has('origin')) return new Response('Forbidden', { status: 403, headers })
         const address = request.headers.get('cf-connecting-ip') ?? server.requestIP(request)?.address ?? 'unknown'
+        const hook = hooks && HOOK_PATH.exec(url.pathname)
+        if (hook) {
+          const [status, text] = (await hooks(request, hook[1], address)) ?? [404, 'Not found']
+          return new Response(text, { status, headers })
+        }
         const connecting = url.pathname === '/helper/connect' && request.method === 'GET'
         const claimed = request.headers.get('x-lilbot-computer') ?? ''
         // Unknown identities cannot allocate budgets. Valid signatures never spend an
@@ -41,8 +57,10 @@ export function startPublicDoor(computers: ComputerService, port: number, onClos
         if (id && !signed(id)) return new Response('Too many requests', { status: 429, headers })
         if (!id && (!allowed(address) || (connecting && !perComputer(`${claimed}:${addressGroup(address)}`)))) return new Response('Too many requests', { status: 429, headers })
         if (url.pathname === '/helper/register' && request.method === 'POST') {
+          const body = await readLimited(request, HELPER_BODY_BYTES)
+          if (!body) return new Response('Payload too large', { status: 413, headers })
           try {
-            const input = Registration.parse(await request.json())
+            const input = Registration.parse(JSON.parse(new TextDecoder().decode(body)))
             return Response.json(computers.auth.register(input), { headers })
           } catch {
             return new Response('Registration refused', { status: 403, headers })

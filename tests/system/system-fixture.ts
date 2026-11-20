@@ -9,6 +9,8 @@ import { DelegationControl } from '../../server/threads/delegation-control'
 import { DelegationService } from '../../server/threads/delegation-service'
 import { ThreadService } from '../../server/threads/thread-service'
 import { ThreadStore } from '../../server/threads/thread-store'
+import { WebhookService } from '../../server/webhooks/webhook-service'
+import { WebhookStore } from '../../server/webhooks/webhook-store'
 import type { T3ConnectionStatus } from '../../shared/connections-schema'
 import { fakeService } from '../helpers/fake-engine'
 import { workFixture } from '../work/work-fixture'
@@ -21,6 +23,7 @@ export function systemFixture() {
   const fake = fakeService()
   const state = { memoryPushes: 0, t3: { state: 'connected', expiresAt: Date.now() + 86_400_000 } as T3ConnectionStatus }
   const changes = new SystemChanges(fake.database)
+  const webhooks = new WebhookService(new WebhookStore(fake.database), fake.service, TOKEN, 'https://door.example')
   const computers = {
     list: () => [
       { id: 'leader', name: 'leader-box', os: 'linux', online: true, lastSeen: 1700000000000, keyConflict: false, main: false },
@@ -48,6 +51,7 @@ export function systemFixture() {
     memoryChanged: () => state.memoryPushes++,
     delegation: { hand: new DelegationService(threads, host, async botId => `${botId}-main`, work.links), control: new DelegationControl(threads, host) },
     work: work.work,
+    webhooks,
     changes,
     dataDir: fake.root,
     engineToken: TOKEN,
@@ -70,7 +74,7 @@ export function systemFixture() {
     const text: string = result.content[0].text
     return result.isError ? { error: text } : { data: JSON.parse(text) }
   }
-  return { ...fake, ...server, state, changes, threads, work, rosterPushes: fake.changes, request, as, rpc, call }
+  return { ...fake, ...server, state, changes, threads, work, webhooks, rosterPushes: fake.changes, request, as, rpc, call }
 }
 
 /** A second bot in the roster. */

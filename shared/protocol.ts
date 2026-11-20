@@ -11,12 +11,14 @@ import { LibraryListInput, type LibraryPage, type WorkspaceEntry } from './libra
 import { type MemoryFact, MemoryWriteInput } from './memory-schema'
 import type { Routine } from './routine-schema'
 import { type WorkResults, workMethods } from './work-schema'
+import { type WebhookResults, webhookMethods } from './webhook-schema'
 
 const botId = z.string().min(1)
 const chatId = z.string().min(1)
 
 /** Each method's params schema (checked on the server) and result type (trusted by the browser). */
 export const methods = {
+  ...webhookMethods,
   'attachments.limits': z.object({}),
   'attachments.prepare': z.object({ botId, files: z.array(AttachmentFile).max(100) }),
   'attachments.status': z.object({ botId, ids: z.array(z.string().uuid()).max(100) }),
@@ -104,7 +106,7 @@ export const methods = {
 export type Method = keyof typeof methods
 export type Params<M extends Method> = z.input<(typeof methods)[M]>
 
-export interface Results extends WorkResults {
+export interface Results extends WorkResults, WebhookResults {
   'attachments.limits': { maxFileBytes: number; maxFilesPerMessage: number }
   'attachments.prepare': import('./attachment-schema').Attachment[]
   'attachments.status': import('./attachment-schema').Attachment[]
@@ -178,6 +180,7 @@ export type EventFrame =
   | { event: 'bots.changed' }
   | { event: 'memory.changed' }
   | { event: 'routines.changed' }
+  | { event: 'webhooks.changed' }
   | { event: 'library.changed'; botId: string }
   | { event: 'skills.changed' }
   | { event: 'threads.changed' }

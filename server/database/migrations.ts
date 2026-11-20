@@ -1,5 +1,7 @@
 /** LilBot's schema: every step it has shipped, in order. `database.ts` applies the steps a file has not seen. */
 
+import { WEBHOOK_TABLES } from './webhook-tables'
+
 /** Schema changes, in order. Never edit a step that has shipped: add a new one. */
 export const migrations: string[] = [
   `CREATE TABLE sections (
@@ -182,5 +184,7 @@ export const migrations: string[] = [
    CREATE INDEX IF NOT EXISTS work_items_updated ON work_items(updated_at DESC); CREATE INDEX IF NOT EXISTS work_items_owner ON work_items(owner_id, status); CREATE INDEX IF NOT EXISTS work_items_parent ON work_items(parent_id) WHERE parent_id IS NOT NULL;
    CREATE TABLE IF NOT EXISTS work_evidence(id TEXT PRIMARY KEY, item_id TEXT NOT NULL, proves TEXT NOT NULL, pointer TEXT NOT NULL, by_id TEXT NOT NULL, at INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS work_evidence_item ON work_evidence(item_id);
    CREATE TABLE IF NOT EXISTS work_events(id INTEGER PRIMARY KEY AUTOINCREMENT, item_id TEXT NOT NULL, at INTEGER NOT NULL, by_kind TEXT NOT NULL, kind TEXT NOT NULL, status TEXT, text TEXT, via_kind TEXT, via_id TEXT); CREATE INDEX IF NOT EXISTS work_events_item ON work_events(item_id, id);
-   CREATE TABLE IF NOT EXISTS work_answers(id TEXT PRIMARY KEY, item_id TEXT NOT NULL, bot_id TEXT NOT NULL, chat_id TEXT, text TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending');`
+   CREATE TABLE IF NOT EXISTS work_answers(id TEXT PRIMARY KEY, item_id TEXT NOT NULL, bot_id TEXT NOT NULL, chat_id TEXT, text TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending');`,
+  // Webhooks (#12), in its own file.
+  WEBHOOK_TABLES
 ]

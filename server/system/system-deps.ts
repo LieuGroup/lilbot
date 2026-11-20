@@ -9,6 +9,7 @@ import type { MemoryService } from '../memory/memory-service'
 import type { DelegationControl } from '../threads/delegation-control'
 import type { DelegationService } from '../threads/delegation-service'
 import type { WorkService } from '../work/work-service'
+import type { WebhookService } from '../webhooks/webhook-service'
 import type { SystemChanges } from './system-changes'
 
 /** What the note and `lilbot_about` read. Everything is synchronous so the note can be built whenever an engine applies a bot. */
@@ -28,6 +29,7 @@ export interface SystemDeps extends SystemFacts {
   memoryChanged: () => void
   delegation: { hand: DelegationService; control: DelegationControl }
   work: WorkService
+  webhooks: WebhookService
   changes: SystemChanges
   dataDir: string
 }

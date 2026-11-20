@@ -57,7 +57,8 @@ test('an engine does not depend on what sits above it', () => {
     ...crossings('server/engines', 'server/threads'),
     ...crossings('server/engines', 'server/attachments'),
     ...crossings('server/engines', 'server/devices'),
-    ...crossings('server/engines', 'server/system')
+    ...crossings('server/engines', 'server/system'),
+    ...crossings('server/engines', 'server/webhooks')
   ]).toEqual([])
 })
 
@@ -72,6 +73,10 @@ test('the database folder is the bottom: it imports nothing else from the server
 
 test('routines do not depend on HTTP or a concrete engine', () => {
   expect([...crossings('server/routines', 'server/http'), ...crossings('server/routines', 'server/engines/hermes')]).toEqual([])
+})
+
+test('webhooks do not depend on HTTP, the system server or a concrete engine', () => {
+  expect([...crossings('server/webhooks', 'server/http'), ...crossings('server/webhooks', 'server/system'), ...crossings('server/webhooks', 'server/engines/hermes')]).toEqual([])
 })
 
 test('threads depend only on neutral engine contracts and lower services', () => {

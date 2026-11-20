@@ -22,7 +22,7 @@ test('library migration preserves shipped routines and their run aliases', () =>
     )
     db.close()
     db = openDatabase(path)
-    expect(db.query('PRAGMA user_version').get()).toEqual({ user_version: 28 })
+    expect(db.query('PRAGMA user_version').get()).toEqual({ user_version: 29 })
     expect(new RoutineStore(db).runForChat('b1', 'stored')).toBe(run.id)
     expect(db.query('SELECT * FROM library_items').all()).toEqual([])
   } finally {

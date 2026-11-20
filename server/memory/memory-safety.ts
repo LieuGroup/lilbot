@@ -2,35 +2,81 @@
  *  that carries instructions for the model, or a secret, would do harm for as long as it lives.
  *  The same idea as Hermes' scan of its own memory files. */
 
+const SLASH = String.raw`(?:\\{0,16}\/|%(?:25){0,3}2F|&#0{0,4}47;|&#x0{0,4}2f;|&sol;|\uFF0F|\u2215)`
+/** A webhook's address, which is its secret (`server/webhooks/webhook-address.ts`), in the common encodings: escaped,
+ *  percent-encoded (also twice), HTML-entity and fullwidth slashes, whitespace after `/hook/`, and the first 64
+ *  characters of a longer run. Every quantifier is bounded, so scanning stays linear. */
+export const WEBHOOK_ADDRESS = new RegExp(String.raw`${SLASH}hook${SLASH}(?:\\[nrt]|\s){0,4}[A-Za-z0-9_-]{64}`, 'gi')
+
+/** The Scotland, England and Wales flags: an emoji tag sequence is ordinary text, a stray tag character is not. */
+const FLAGS = /\u{1F3F4}[\u{E0020}-\u{E007E}]{1,16}\u{E007F}/gu
+const HIDING = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF\u{E0000}-\u{E007F}]/u
+/** Every format character but the soft hyphen: refused in outside data (`outsideReason`) only. */
+const FORMAT = /[^\P{Cf}\u00AD]/u
+/** Where a run of token characters starts (never inside one), so finding a JWT stays linear. */
+const TOKEN_RUNS = /(?<![A-Za-z0-9_-])([A-Za-z0-9_-]{13,})\.[A-Za-z0-9_-]{10,}\./g
+
+/** A JWT, also inside a longer token run (`x-eyJ…`): the first `eyJ` of a run leaves the most characters after it. */
+function hasJwt(text: string) {
+  for (const [, head] of text.matchAll(TOKEN_RUNS)) {
+    const at = head.indexOf('eyJ')
+    if (at >= 0 && head.length - at - 3 >= 10) return true
+  }
+  return false
+}
+
 interface Rule {
-  pattern: RegExp
+  test: (text: string) => boolean
   reason: string
 }
+const matches = (pattern: RegExp, reason: string): Rule => ({ test: text => pattern.test(text), reason })
 
 const rules: Rule[] = [
   // Text addressed to the model instead of describing the user or the work.
-  {
-    pattern: /\b(ignore|disregard|forget|override)\b[^.\n]{0,40}\b(previous|prior|above|earlier|all|your)\b[^.\n]{0,30}\b(instructions?|rules?|prompts?|guidelines?)\b/i,
-    reason: 'it reads as an instruction to override your rules'
-  },
-  { pattern: /\b(system prompt|developer message|hidden instructions?)\b/i, reason: 'it refers to the system prompt' },
-  { pattern: /\byou are now\b|\bfrom now on you (are|must|will)\b|\bact as (an?|the) (unrestricted|jailbroken|different)\b/i, reason: 'it tries to redefine who you are' },
-  { pattern: /\bdo not (tell|inform|mention|reveal)[^.\n]{0,30}\b(user|owner|oscar)\b/i, reason: 'it asks to hide something from the user' },
+  matches(
+    /\b(ignore|disregard|forget|override)\b[^.\n]{0,40}\b(previous|prior|above|earlier|all|your)\b[^.\n]{0,30}\b(instructions?|rules?|prompts?|guidelines?)\b/i,
+    'it reads as an instruction to override your rules'
+  ),
+  matches(/\b(system prompt|developer message|hidden instructions?)\b/i, 'it refers to the system prompt'),
+  matches(/\byou are now\b|\bfrom now on you (are|must|will)\b|\bact as (an?|the) (unrestricted|jailbroken|different)\b/i, 'it tries to redefine who you are'),
+  matches(/\bdo not (tell|inform|mention|reveal)[^.\n]{0,30}\b(user|owner|oscar)\b/i, 'it asks to hide something from the user'),
   // Secrets.
-  { pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----/, reason: 'it contains a private key' },
-  {
-    pattern: /\b(sk|pk|rk)-[A-Za-z0-9_-]{20,}|\bAKIA[0-9A-Z]{16}\b|\bgh[pousr]_[A-Za-z0-9]{30,}|\bxox[abprs]-[A-Za-z0-9-]{10,}|\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\./,
-    reason: 'it contains what looks like an access key or token'
-  },
-  { pattern: /\b(pass(word|wd|phrase)?|secret|api[_ -]?key|token)\b\s*(is|=|:)\s*\S{6,}/i, reason: 'it contains what looks like a password or key' },
+  matches(/-----BEGIN [A-Z ]*PRIVATE KEY-----/, 'it contains a private key'),
+  matches(/\b(sk|pk|rk)-[A-Za-z0-9_-]{20,}|\bAKIA[0-9A-Z]{16}\b|\bgh[pousr]_[A-Za-z0-9]{30,}|\bxox[abprs]-[A-Za-z0-9-]{10,}/, 'it contains what looks like an access key or token'),
+  { test: hasJwt, reason: 'it contains what looks like an access key or token' },
+  matches(/\b(pass(word|wd|phrase)?|secret|api[_ -]?key|token)\b\s*(is|=|:)\s*\S{6,}/i, 'it contains what looks like a password or key'),
+  matches(new RegExp(WEBHOOK_ADDRESS.source, 'i'), 'it contains a webhook address'),
   // Sending data out, or running fetched code.
-  { pattern: /\b(curl|wget)\b[^\n]{0,80}\|\s*(ba|z)?sh\b/i, reason: 'it contains a command that runs downloaded code' },
-  // Characters that hide or reorder text.
-  { pattern: /[​-‏‪-‮⁠-⁤﻿]/, reason: 'it contains invisible characters' }
+  matches(/\b(curl|wget)\b[^\n]{0,80}\|\s*(ba|z)?sh\b/i, 'it contains a command that runs downloaded code'),
+  // Characters that hide or reorder text (zero-width, bidi controls and isolates, the byte-order mark, stray tags).
+  { test: text => HIDING.test(text.replace(FLAGS, '')), reason: 'it contains invisible characters' }
 ]
+
+/** What makes this text unsafe (instructions for the model, a secret, hidden characters), or null when it is fine. */
+export const unsafeReason = (text: string): string | null => rules.find(rule => rule.test(text))?.reason ?? null
+
+/** The stricter check for outside data (webhook payloads): also every other format character. */
+export const outsideReason = (text: string): string | null => unsafeReason(text) ?? (FORMAT.test(text.replace(FLAGS, '')) ? 'it contains invisible characters' : null)
 
 /** Why this text may not be stored, or null when it is fine. */
 export function memoryRefusal(text: string): string | null {
-  const hit = rules.find(rule => rule.pattern.test(text))
-  return hit ? `That was not saved: ${hit.reason}. Save plain facts about the user or the work, never instructions or secrets.` : null
+  const reason = unsafeReason(text)
+  return reason ? `That was not saved: ${reason}. Save plain facts about the user or the work, never instructions or secrets.` : null
 }
+
+const unit = (code: number) => `\\u${code.toString(16).padStart(4, '0')}`
+const units = (char: string) => (char.length === 1 ? unit(char.charCodeAt(0)) : unit(char.charCodeAt(0)) + unit(char.charCodeAt(1)))
+/** JSON text with `<`, `>` and format characters written as `\u` escapes (UTF-16 units, so tag characters become
+ *  surrogate pairs). In JSON they only occur inside strings, so the meaning is unchanged; the model never sees them raw. */
+export const escapeJson = (json: string) =>
+  json
+    .replaceAll('<', '\\u003c')
+    .replaceAll('>', '\\u003e')
+    .replaceAll('\u00AD', '\\u00ad')
+    .replace(/\p{Cf}/gu, units)
+
+/** Serialised JSON as a named fence the data cannot close and cannot hide text in. */
+export const fenceJson = (name: string, json: string) => `<${name}>\n${escapeJson(json)}\n</${name}>`
+
+/** Untrusted data as a named fence of JSON. */
+export const fenced = (name: string, data: unknown) => fenceJson(name, JSON.stringify(data))

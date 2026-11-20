@@ -47,6 +47,8 @@ export interface EngineApiOptions {
   adapterVersion?: string
   /** Receives finished turns and knows which chats are reviews. Without it there is no review. */
   reviewer?: MemoryReviewer
+  /** Routine, thread and webhook sessions and their compression children: never reviewed, before or after compressing. */
+  hiddenChat?: (botId: string, chatId: string) => boolean
 }
 
 export function createEngineApi(memory: MemoryService, token: string, port: number, options: EngineApiOptions) {
@@ -92,8 +94,7 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
         const capability = request.headers.get('x-lilbot-bot-capability') ?? ''
         const caller = (await options.bots?.listBots())?.find(bot => matchesCapability(token, bot.id, capability))
         if (!caller || !options.bots || !options.botExists(caller.id)) return json(403, { error: 'Unknown bot credential.' })
-        if (pathname.startsWith('/engine/history/'))
-          return json(200, await historyApi(caller.id, pathname.slice('/engine/history/'.length), await request.json(), options.history, options.bots, options.reviewer))
+        if (pathname.startsWith('/engine/history/')) return json(200, await historyApi(caller.id, pathname.slice('/engine/history/'.length), await request.json(), options))
         if (pathname.startsWith('/engine/threads/')) {
           if (!options.threads) return json(503, { error: 'Threads unavailable.' })
           const body = await request.json()
@@ -178,8 +179,7 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
           return json(200, { forgotten: forBot(fact, body.botId) })
         }
         case '/engine/memory/turn':
-          if (!options.routines?.store.isRoutineChat(body.chatId) && !options.threads?.store.isInternal(body.chatId))
-            options.reviewer?.record(body.botId, body.chatId, body.user, body.assistant)
+          if (!options.hiddenChat?.(body.botId, body.chatId)) options.reviewer?.record(body.botId, body.chatId, body.user, body.assistant)
           return json(200, { ok: true })
       }
     } catch (error) {

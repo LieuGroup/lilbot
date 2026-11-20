@@ -42,9 +42,12 @@ conversations, reaches LilBot through MCP, and keeps a thin adapter for the few 
 
 ## 3. Hidden runs
 
-- [ ] `runRoutine` runs a prompt in a new hidden full-access session in the bot's folder (routines and thread
-  deliveries) with a durable `runId`: the same id recovers the same admission, and an unknown outcome is reported as
-  failed, never repeated. Its sessions are excluded from activity unread, history and the after-chat review.
+- [ ] `runRoutine` runs a prompt in a new hidden full-access session in the bot's folder (routines, thread deliveries
+  and webhook runs) with a durable `runId`: the same id recovers the same admission, and an unknown outcome is reported
+  as failed, never repeated. Its sessions are excluded from activity unread, history and both memory reviews. Given
+  `toolsets`, the session starts with only those (`server/webhooks/webhook-access.ts`).
+- [ ] An engine that continues a long session under a new id after compressing it implements `compressionRoot`
+  (the session the lineage began as; read-only), so a continued hidden run stays hidden (`server/bots/hidden-chats.ts`).
 - [ ] `reviewMemory` runs a hidden session of the same bot with only its memory tools and resolves when it ends.
 - [ ] `stopRun` and `steerRun` interrupt or add text to a hidden or visible running turn (delegation control);
   `steerRun` answers `not_running` on an idle session.

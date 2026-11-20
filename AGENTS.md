@@ -43,6 +43,7 @@ server/            The LilBot server (runs on the leader).
   history/           Conversation records, import checkpoints, paging and bot-scoped search.
   threads/           Bot-to-bot exchanges: delegation, files, control, transcripts and durable deliveries.
   routines/          App-owned schedules, run history and scheduler.
+  webhooks/          Outside events: secret addresses, sender signatures, accepted deliveries and their runs.
   work/              The work board: items with "done" definitions, evidence and results, Oscar's answers, its skill.
   library/           Delivered workspace files, metadata, safe reads and folder listings.
   attachments/       Incoming chat files, streaming uploads and durable message associations.
@@ -79,8 +80,8 @@ docs/              Area detail linked from this file.
 
 Rules that keep it this way:
 
-- A request flows downward only: `http/` -> `bots/`, `memory/`, `routines/`, `threads/`, `attachments/` or
-  `library/` -> `engines/` and `database/`. Nothing lower may import from something higher.
+- A request flows downward only: `http/` -> `bots/`, `memory/`, `routines/`, `threads/`, `webhooks/`, `attachments/`
+  or `library/` -> `engines/` and `database/`. Nothing lower may import from something higher.
 - Nothing outside `server/engines/hermes/` knows about Hermes, except `main.ts`, which picks the engine. A second
   engine is a second folder under `server/engines/`.
 - A new feature gets its own folder name, used on every side (`server/<feature>/`, `web/src/<feature>/`,
@@ -96,9 +97,9 @@ continuous main conversation per bot on every device, the three-column shell (ro
 Activity, Library, Memory and Setup tabs), bot menu, delete confirmation, Settings, chat attachments, LilBot's own
 memory with a Memory panel and after-chat review, every bot knowing its system (the note) and operating the app through
 LilBot's own MCP tools, delegation between bots (several tasks at once, files, status, stop, redirect, wait), and the
-backends for routines, threads, library, skills, computers, the work board and coding through T3 Code. Next: the Routines, Library and
-work board screens, check levels (#142), the nightly
-memory tidy-up and editing abilities. Webhooks and reports are not built. Desktop (Tauri) and iOS (Expo) come after the
+backends for routines, webhooks, threads, library, skills, computers, the work board and coding through T3 Code. Next:
+the Routines, Webhooks (#138), Library and work board screens, check levels (#142), the nightly memory tidy-up and
+editing abilities. Reports are not built. Desktop (Tauri) and iOS (Expo) come after the
 web app.
 
 ## Safety: production and development
@@ -141,8 +142,9 @@ Staff, profile `default`) is Oscar's live bot.
 
 Never print, log or commit, and never put in a bot's instructions or memory: the Hermes attach ticket, anything under
 `~/.hermes` that holds credentials, `<data>/engine-token`, `t3-grant.json`, `computer-server-key.pem`,
-`~/.cloudflared/cert.pem`, the tunnel credentials, the Access drop-in and Oscar's email. Copies of data use private
-directories and files (0700/0600).
+`~/.cloudflared/cert.pem`, the tunnel credentials, the Access drop-in, Oscar's email, webhook addresses and webhook
+signing secrets. The database holds signing secrets (an address is computed from the engine token and a nonce, never stored), so
+copies of data use private directories and files (0700/0600).
 
 ### Hermes
 
@@ -207,8 +209,9 @@ error pages and answer errors with a plain 500.
   `LILBOT_ALLOWED_HOSTS` (set in the service, not in code) plus same origin. It refuses `cf-connecting-ip`, `cf-ray`
   and Cloudflare `cdn-loop` headers before routing, even with a valid Host.
 - **Helper door** (off by default; `LILBOT_PUBLIC_ENABLED=1`, `LILBOT_PUBLIC_PORT`, production 3372, must differ from
-  the private port): only POST `/helper/register` and GET `/helper/connect` (WebSocket), 8 KiB bodies. No webhook,
-  app, browser socket or engine endpoint. Behind Cloudflare the client address is `cf-connecting-ip`.
+  the private port): only POST `/helper/register` (8 KiB bodies), GET `/helper/connect` (WebSocket) and POST
+  `/hook/<address>` (webhook deliveries, 256 KiB bodies; see Webhooks). No app, browser socket or engine endpoint.
+  Behind Cloudflare the client address is `cf-connecting-ip`.
 - **Access listener** (off by default): `LILBOT_ACCESS_ENABLED=1` and all of `LILBOT_ACCESS_PORT` (3373, distinct
   from the other two), `LILBOT_ACCESS_HOST` (hostname, no scheme or port), `LILBOT_ACCESS_TEAM`
   (`<team>.cloudflareaccess.com`, no scheme), `LILBOT_ACCESS_AUD` and `LILBOT_ACCESS_EMAIL` (service environment
@@ -353,8 +356,9 @@ forget) are kept with `bots.deleteDefaults.get/set`. The primary bot and the eng
 - A tombstoned bot's capability is refused at once, even while teardown retries; creation retries cannot revive it;
   late activity and memory calls are ignored or refused; uploads, attachment reads and library access stop at once.
   Tombstones stay out of the roster.
-- Removed: conversation record and journal (whatever the choices), routines and their run history (a tombstoned bot
-  cannot dispatch), skill off switches; its active computer requests are cancelled.
+- Removed: conversation record and journal (whatever the choices), routines and webhooks with their run history (a
+  tombstoned bot cannot dispatch, and its webhook addresses answer 404 at once), skill off switches; its active
+  computer requests are cancelled.
 - Files: archived to `<workspaces>/.archive/<bot id>` without following links, or deleted; attachments follow the same
   choice.
 - Kept: shared facts; private facts unless forgotten (`memory.list` still shows a tombstone's facts for attribution
@@ -453,7 +457,12 @@ Visual specs (sizes, copy, Paper frames): [docs/screens.md](docs/screens.md).
   one engine session from LilBot's copy and keeps importers, journal and replay from restoring it (Hermes untouched;
   the main session is refused). It previews without `--yes` and reads `LILBOT_DATA_DIR`.
 - Attachment metadata and thread references are merged at the HTTP edge; a thread's private transcript is never
-  indexed. Routine runs and hidden thread and review sessions are excluded.
+  indexed. Routine and webhook runs and hidden thread and review sessions are excluded, and so is a session the engine
+  continued one of them in after compressing: Hermes writes that child without the hidden mark, so
+  `bots/hidden-chats.ts` follows `BotEngine.compressionRoot` (read-only, from the profile's session metadata, roots
+  remembered) and the overflow catalogue drops a lineage with any hidden or tool session in it. The same check keeps
+  those sessions out of activity observation and both memory reviews. When the lineage cannot be read the session
+  counts as hidden (it fails closed, logged once a minute as `[hidden-chats]`) and is asked about again next time.
 - `chat.open`/`chat.new` keep their snapshot shape: `items` holds the latest 100 records without session dividers (for
   old clients); additive `history` holds the page (`shared/history-schema.ts`). The active session id remains
   `snapshot.chatId`; a new session keeps earlier history.
@@ -565,7 +574,7 @@ Restarting LilBot only leaves Hermes turns and T3 tasks running; nothing is resu
 
 - The browser reconnects and opens the persisted main conversation. Hermes says whether the turn still runs; LilBot
   reconciles the durable transcript, including tool work and the final answer.
-- Routines recover the same persisted run and admission receipt. Threads recover their outbox and return the answer to
+- Routines and webhook runs recover the same persisted run and admission receipt. Threads recover their outbox and return the answer to
   the original caller session, never a replacement exchange; a steered redirect is checked against the recovered
   transcript, and a stop is applied again. Oscar's answers on the work board still waiting are delivered with the same
   run id.
@@ -692,7 +701,7 @@ and how to add a tool: [docs/system-mcp.md](docs/system-mcp.md).
   refused. Tools are prefixed `lilbot_`.
 - Each tool calls the service function the screen uses, so rules, checks and `bots.changed` pushes are identical, and each
   change is logged with the calling bot. There are no destructive tools: deleting a bot, removing a computer and
-  forgetting another bot's private facts are Oscar's to do.
+  forgetting another bot's private facts are Oscar's to do. The one exception is a bot deleting its own webhooks.
 - A release that changes a tool reconnects every bot once; an unchanged restart applies nothing. Tests fail when the tool
   list or a guide (`server/system/guide/*.md`, shipped with each release) drifts.
 
@@ -839,7 +848,9 @@ Oscar.
 - Saving rules (in the plug-in's instructions): save only what is grounded in the conversation, never infer traits, a
   one-off request is not a standing preference, one fact goes in once, and never save secrets, what can be looked up,
   task progress or "tool X is broken". `memory-safety.ts` refuses facts carrying model instructions, secrets or
-  invisible characters, from bots and from the user.
+  invisible characters (zero-width, bidi controls, the byte-order mark, stray tag characters), from bots and from the
+  user. Soft hyphens, flag emoji (tag sequences) and other format characters stay ordinary text there and in bot-to-bot
+  messages; only webhook payloads refuse every format character but the soft hyphen. Every rule scans in linear time.
 - Plug-in versions: the current one is in `memory-adapter/plugin.yaml`. To ship a change, bump `version` there and
   `VERSION` in `__init__.py`: each version installs into its own folder and loads on the bot's next session; start-up
   reinstalls older adapters only for bound, non-deleted profiles. LilBot warns when a bot still calls with an older
@@ -853,7 +864,9 @@ Oscar.
 A bot saves what it notices during a chat; LilBot's review catches what it missed (Hermes' own review does not run
 for connected bots).
 
-- Finished turns of real conversations (not scheduled runs or sub-agents) queue in `review-queue.ts` until reviewed.
+- Finished turns of real conversations (not routine or webhook runs, bot threads, their compression children or
+  sub-agents) queue in `review-queue.ts` until reviewed; the save before compressing skips the same sessions
+  (`saved: false`, which the adapter logs as a warning).
 - `memory-reviewer.ts` reviews a bot once 10 turns wait, or once 3 wait and the chat has been quiet for 2 minutes.
   `LILBOT_REVIEW=off`, `LILBOT_REVIEW_TURNS` and `LILBOT_REVIEW_QUIET_SECONDS` change that. Each tick drops queued
   turns of unknown or deleted bots (also below the threshold or with reviews off); owned bots with missing runtimes
@@ -893,6 +906,71 @@ independent.
   `openRun` (a tracked chat snapshot, main chat preserved), push `routines.changed`. Panel: `needs-ui`.
 - A short-interval test override needs all of `LILBOT_DATA_DIR`, `LILBOT_BOT_IDS` and
   `LILBOT_ROUTINE_TEST_INTERVAL_SECONDS`; never on the live server.
+
+## Webhooks
+
+`server/webhooks/` owns webhooks, accepted deliveries and their runs (`shared/webhook-schema.ts`, #12). A webhook
+belongs to one bot: a description of what to do when events arrive, the calling service's name (`source`), an optional
+signature scheme, and an address. Any sender may call one (Oscar, 2026-11-20).
+
+- The route: `POST /hook/<address>` on the helper door only (`http/webhook-route.ts`), never the private app or the
+  Access listener. The tunnel's ingress rule for it is in [docs/cloudflare.md](docs/cloudflare.md); applying it is
+  the orchestrator's, after a security review.
+- The address is the secret: 64 base64url characters, the webhook id and an HMAC of it and a random per-webhook nonce
+  under the engine token (`webhook-address.ts`). It is never stored or logged; it is computed when shown and checked
+  with `timingSafeEqual` (one MAC is computed even for an unknown id). A new address draws a new nonce, so even the
+  engine token does not give the next one; deletion ends it. The bot gets it from `lilbot_webhook_create` (repeating
+  the same `requestId` returns the current address, and a signing secret LilBot made, again: that is how a lost reply
+  is recovered) and `lilbot_webhook_new_address`; those tool results stay in its transcript, so the history copy
+  holds them too. The list never has it; the screen copies it with `webhooks.address`.
+- Signatures (`webhook-signature.ts`, over the raw body): `github` (`X-Hub-Signature-256`; LilBot makes the secret
+  when none is given), `stripe` (`Stripe-Signature`, the secret Stripe gives, five minutes of timestamp tolerance) or
+  `hmac-sha256` in a named header (hex or base64, optional `sha256=`). With a scheme set, unsigned or wrongly signed
+  deliveries get 401 and leave nothing; refusals are logged by webhook id, at most one line a minute per webhook.
+- Order at the door: path shape, per-client-address budget (120 a minute, `cf-connecting-ip`; a full table lets new
+  addresses through), address check, paused (409, at once), body cap (256 KiB, by Content-Length or as it streams,
+  413), signature, per-webhook budget (60 a minute, spent only after verification), repeat (202 "Already received"),
+  waiting cap (100, 429), and only then decoding and the safety check, then 202. Unknown, malformed or deleted
+  addresses, other methods and a deleted bot's webhooks get the same 404 as any other path. Limits: `webhook-limits.ts`.
+- Repeats (`webhook-delivery.ts`), remembered for seven days: by the sender's delivery id (`X-GitHub-Delivery`,
+  `webhook-id`, `X-Delivery-Id`, `X-Event-Id`, `Idempotency-Key`; for Stripe only the event id in its signed body) and,
+  for every signed scheme, by the SHA-256 of the signed body, since id headers are not signed and a body may have no
+  id. Unsigned webhooks dedupe by header only (identical alerts from them are legitimate).
+- What the bot is shown (`webhook-payload.ts`, `webhook-decode.ts`): each event becomes one JSON string at receive
+  time: JSON decoded and a form body's fields decoded, both refused past 64 levels of nesting (counted in one pass
+  before parsing: writing a deeper value back blocks the server for over a second); at most 8 headers such as
+  `x-github-event`, 200 characters each; every webhook address blanked (escaped, percent-encoded once or twice,
+  HTML-entity and fullwidth slashes, whitespace after `/hook/`, the first 64 of a longer run, and any 16-character
+  piece of the webhook's own address, so a split one cannot be rebuilt; shorter pieces spread over fields, and other
+  forms, are not blanked); cut to 24,000 characters inside the fence, headers included. Two scans must pass
+  (`outsideReason`, the shared rules plus every format character but the soft hyphen, flag emoji allowed): one over
+  every decoded string and key with whitespace and control characters collapsed and compatibility forms folded
+  (NFKC), as a model reads them, and one over the stored string itself. The run's `<webhook-events>` fence joins the
+  stored strings unchanged (`fenceJson`: `<`, `>` and every format character become `\u` escapes). Withheld events keep
+  no payload; a run of only withheld events records a failed run and never wakes the bot. Preparing any body up to the
+  cap takes tens of milliseconds (`tests/webhooks/webhook-limits.test.ts` times it). The rules are a heuristic:
+  paraphrase passes, which is why what a run may do matters.
+- Runs: a burst ends after 5 seconds without a new event or once its first event waited a minute. A run takes the
+  oldest waiting events up to 48,000 characters (about 12,000 to 16,000 tokens; a typical GitHub `pull_request` event
+  is 21,700) and 20 events; the rest wait. A webhook never overlaps itself, runs at most once a minute and 20 times an
+  hour, and at most two webhook runs go at once across bots. Runs reuse the routines' machinery: persisted before
+  dispatch, `RoutineScheduler`, `BotEngine.runRoutine` (hidden session, run id `webhook-<id>`, receipts, retry after 30
+  seconds), activity and unread, sessions in `webhook_chats`.
+- What a run may do is chosen in one place, `webhook-access.ts`: today every toolset with full access, like a routine
+  run. Narrowing it is Oscar's decision (#12 security review, finding 3): set `toolsets` there (the engine starts the
+  run's session with only those) and the prompt's sentence beside it. Its single caller is deliberate. A narrowed list
+  leaves out `memory`: with it Hermes offers the memory tools, and a run could write shared facts past both reviews.
+- Kept: the stored event string only until its run settles, but the run's own engine transcript (opened by
+  `webhooks.openRun`) and its result keep what the bot saw and said.
+- Bot tools (LilBot's MCP server, the caller's own webhooks only): `lilbot_webhook_create` (request-id idempotency;
+  at most five webhooks a bot, whoever asked, since `createdBy` is the bot's word), `lilbot_webhooks_list` (each run's
+  result fenced as outside data: a model wrote it after reading the events),
+  `lilbot_webhook_pause`, `lilbot_webhook_resume`, `lilbot_webhook_delete`, `lilbot_webhook_new_address`. Nothing is in
+  the Hermes plug-ins.
+- Browser methods: `webhooks.list` (newest 50 runs with their event counts), `pause`, `resume`, `delete`, `openRun`
+  (a tracked chat snapshot), `address` (Copy), push `webhooks.changed`. Screens: #138.
+- Without `LILBOT_PUBLIC_ENABLED=1` and `LILBOT_HELPER_URL`, creating a webhook is refused (no outside service could
+  reach it).
 
 ## Known gaps
 
@@ -1009,6 +1087,9 @@ profiles, isolated directories, cleanup in `finally`. Most cost a few model call
   finishes it (seen in `work.list`); done without evidence is refused, by the bot's attempt and a direct call with its
   key; a task it hands to a second bot inside an item becomes that bot's child item, which the helper finishes.
 - `bun run check:routines`: create from chat, a real file-writing run, open history, pause, restart, resume, delete.
+- `bun run check:webhooks`: a dev server with its own helper door on loopback and a temporary bot whose webhook is made
+  through its MCP tool: a signed event wakes it and the result is recorded and opens; a repeat, an unsigned and a
+  wrongly signed event do nothing; a burst of three is one run; pause refuses, resume accepts, delete ends the address.
 - `bun run check:restart`: SIGKILLs only its own second server mid-turn; chat, routine and thread side-effect counters
   must stay at one. Confirms its profiles are gone with `hermes profile list`.
 - `bun run check:attachments`: a generated PNG, a text file, oversize refusal, the live metadata event, reload and

@@ -14,9 +14,15 @@ export interface RoutineSettings {
   minIntervalSeconds: number
   selfCreatedCap: number
 }
-export const defaultRoutineSettings: RoutineSettings = { minIntervalSeconds: 300, selfCreatedCap: 5 }
+const defaultRoutineSettings: RoutineSettings = { minIntervalSeconds: 300, selfCreatedCap: 5 }
+/** Only isolated servers with their own data folder and explicit profile allowlist may shorten the minimum interval. */
+export function routineSettings(env: Record<string, string | undefined>): RoutineSettings {
+  const test = env.LILBOT_DATA_DIR && env.LILBOT_BOT_IDS && env.LILBOT_ROUTINE_TEST_INTERVAL_SECONDS
+  return { ...defaultRoutineSettings, minIntervalSeconds: test ? Math.max(1, Number(test)) : defaultRoutineSettings.minIntervalSeconds }
+}
 
 export class RoutineService {
+  readonly kind = 'routine'
   constructor(
     readonly store: RoutineStore,
     private host: RoutineHost,
