@@ -1,3 +1,5 @@
+import { startServer, deleteProfile } from './check-process'
+import { devPort } from '../scripts/dev-paths'
 import { devScratch } from '../scripts/dev-paths'
 /** Process and socket harness for restart-check. Never connects to the live LilBot service. */
 import { Database } from 'bun:sqlite'
@@ -46,29 +48,23 @@ export class RestartServer {
 
   static async create() {
     const root = devScratch('lilbot-restart')
-    const probe = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response('') })
-    const port = probe.port!
-    probe.stop(true)
+    const port = devPort()
     assert.notEqual(port, 3370)
     return new RestartServer(root, port)
   }
 
   async start() {
-    this.process = Bun.spawn(['bun', 'server/main.ts'], {
-      env: {
-        ...process.env,
-        LILBOT_HOST: '127.0.0.1',
-        LILBOT_PORT: String(this.port),
-        LILBOT_PUBLIC_ENABLED: '0',
-        LILBOT_DATA_DIR: this.root,
-        LILBOT_WORKSPACES_DIR: join(this.root, 'workspaces'),
-        LILBOT_SKILLS_DIR: join(this.root, 'skills'),
-        LILBOT_BOT_IDS: [...this.natives].join(',') || 'isolation-no-existing-profile',
-        LILBOT_SKIP_MEMORY_SETUP: '1',
-        LILBOT_REVIEW: 'off'
-      },
-      stdout: 'ignore',
-      stderr: 'inherit'
+    this.process = startServer({
+      ...process.env,
+      LILBOT_HOST: '127.0.0.1',
+      LILBOT_PORT: String(this.port),
+      LILBOT_PUBLIC_ENABLED: '0',
+      LILBOT_DATA_DIR: this.root,
+      LILBOT_WORKSPACES_DIR: join(this.root, 'workspaces'),
+      LILBOT_SKILLS_DIR: join(this.root, 'skills'),
+      LILBOT_BOT_IDS: [...this.natives].join(',') || 'isolation-no-existing-profile',
+      LILBOT_SKIP_MEMORY_SETUP: '1',
+      LILBOT_REVIEW: 'off'
     })
     await waitFor(
       'server health',
@@ -160,7 +156,7 @@ export class RestartServer {
     this.db?.close()
     let failed = false
     for (const id of this.natives) {
-      const child = Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', id, '-y'], { env: process.env, stdout: 'ignore', stderr: 'inherit' })
+      const child = deleteProfile(id)
       const timer = setTimeout(() => child.kill('SIGKILL'), 60_000)
       try {
         if (await child.exited) failed = true

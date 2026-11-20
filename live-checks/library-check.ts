@@ -1,13 +1,14 @@
 import { devScratch } from '../scripts/dev-env'
+import { checkClient } from './check-client'
+import { startServer, deleteProfile } from './check-process'
+import { devPort } from '../scripts/dev-paths'
 /** Real protocol and download check, isolated from the live service and all existing bots. */
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { HermesEngine } from '../server/engines/hermes/hermes-engine'
 
 const scratch = devScratch('lilbot-library-live')
-const reservation = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response('') })
-const port = reservation.port!
-reservation.stop(true)
+const port = devPort()
 const engine = new HermesEngine([])
 let nativeId = ''
 let child: ReturnType<typeof Bun.spawn> | undefined
@@ -22,19 +23,15 @@ try {
     function: 'Temporary library check',
     instructions: 'Follow the user exactly. Use terminal to create files, then give_file to deliver only what is requested.'
   })
-  child = Bun.spawn(['bun', 'server/main.ts'], {
-    env: {
-      ...process.env,
-      LILBOT_PORT: String(port),
-      LILBOT_DATA_DIR: scratch,
-      LILBOT_SKILLS_DIR: join(scratch, 'skills'),
-      LILBOT_WORKSPACES_DIR: join(scratch, 'workspaces'),
-      LILBOT_BOT_IDS: nativeId,
-      LILBOT_SKIP_MEMORY_SETUP: '1',
-      LILBOT_REVIEW: 'off'
-    },
-    stdout: 'ignore',
-    stderr: 'inherit'
+  child = startServer({
+    ...process.env,
+    LILBOT_PORT: String(port),
+    LILBOT_DATA_DIR: scratch,
+    LILBOT_SKILLS_DIR: join(scratch, 'skills'),
+    LILBOT_WORKSPACES_DIR: join(scratch, 'workspaces'),
+    LILBOT_BOT_IDS: nativeId,
+    LILBOT_SKIP_MEMORY_SETUP: '1',
+    LILBOT_REVIEW: 'off'
   })
   for (let i = 0; i < 100; i++) {
     if (
@@ -45,31 +42,14 @@ try {
       break
     await Bun.sleep(100)
   }
-  socket = new WebSocket(`ws://127.0.0.1:${port}/ws`)
-  await new Promise<void>((resolve, reject) => {
-    socket!.onopen = () => resolve()
-    socket!.onerror = reject
-  })
-  let nextId = 0
-  const pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void }>()
   let pushed = false
   let finish: (value: any) => void = () => {}
-  socket.onmessage = event => {
-    const frame = JSON.parse(String(event.data))
+  const client = await checkClient(port, frame => {
     if (frame.event === 'library.changed') pushed = true
     if (frame.event === 'chat' && frame.data.type === 'turn.finished') finish(frame.data)
-    const waiter = pending.get(frame.id)
-    if (waiter) {
-      pending.delete(frame.id)
-      frame.ok ? waiter.resolve(frame.result) : waiter.reject(new Error(frame.error.message))
-    }
-  }
-  const call = (method: string, params: unknown) =>
-    new Promise<any>((resolve, reject) => {
-      const id = ++nextId
-      pending.set(id, { resolve, reject })
-      socket!.send(JSON.stringify({ id, method, params }))
-    })
+  })
+  socket = client.socket
+  const call = client.call
   const bots = await call('bots.list', {})
   if (bots.length !== 1) throw new Error('Isolation failed')
   const botId = bots[0].id
@@ -100,7 +80,7 @@ try {
   child?.kill()
   if (child) await child.exited
   if (nativeId) {
-    const cleanup = Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', nativeId, '-y'], { env: process.env, stdout: 'ignore', stderr: 'inherit' })
+    const cleanup = deleteProfile(nativeId)
     if ((await cleanup.exited) !== 0) {
       console.error(`Cleanup failed for ${nativeId}`)
       process.exitCode = 1

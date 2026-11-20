@@ -1,4 +1,5 @@
 import { devScratch } from '../scripts/dev-env'
+import { deleteProfile } from './check-process'
 /** Live check of the memory system against the running Hermes, on a temporary bot that is deleted
  *  afterwards: `bun run check:memory`. It starts its own small LilBot memory endpoint with a
  *  throwaway database, connects the temporary bot to it, and checks that a fact told in one
@@ -105,7 +106,7 @@ async function systemPromptOf(profile: string): Promise<string> {
 }
 
 async function deleteBot(id: string) {
-  const child = Bun.spawn([process.env.LILBOT_HERMES_BIN ?? 'hermes', 'profile', 'delete', id, '-y'], { env: process.env, stdout: 'ignore', stderr: 'pipe' })
+  const child = deleteProfile(id, 'pipe')
   const [stderr, code] = await Promise.all([new Response(child.stderr).text(), child.exited])
   if (code !== 0) throw new Error(`hermes profile delete ${id} exited ${code}: ${stderr.trim().slice(0, 200)}`)
 }
