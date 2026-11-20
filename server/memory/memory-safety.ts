@@ -12,9 +12,9 @@ export const WEBHOOK_ADDRESS = new RegExp(String.raw`${SLASH}hook${SLASH}(?:\\[n
 const FLAGS = /\u{1F3F4}\u{E0067}\u{E0062}(?:\u{E0065}\u{E006E}\u{E0067}|\u{E0073}\u{E0063}\u{E0074}|\u{E0077}\u{E006C}\u{E0073})\u{E007F}/gu
 const HIDING = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF\u{E0000}-\u{E007F}]/u
 /** DEL and the C1 controls draw nothing, and neither do variation selectors 17 and up (the first sixteen stay: emoji use
- *  VS16), so a model can read text there that a person cannot. Exported for `scripts/count-hidden-characters.ts`. */
-export const CONTROLS = /[\u007F-\u009F]/u
-export const HIGH_VARIATION_SELECTORS = /[\u{E0100}-\u{E01EF}]/u
+ *  VS16), so a model can read text there that a person cannot. */
+const CONTROLS = /[\u007F-\u009F]/u
+const HIGH_VARIATION_SELECTORS = /[\u{E0100}-\u{E01EF}]/u
 /** Every format character but the soft hyphen: refused in outside data (`outsideReason`) only. */
 const FORMAT = /[^\P{Cf}\u00AD]/u
 /** A run of token characters (starting where one starts, never inside one) followed by `.`, a second run and `.`. The
