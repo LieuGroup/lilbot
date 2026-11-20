@@ -108,6 +108,9 @@ implementation's.
   learned in a chat). The longest of three versions that memory accepts is saved; a refusal never blocks the end.
 - **Work after the end** (`settle`) is marked done in `thread_groups.settled` and retried from the tick (30 seconds
   after a failure) until the folder is archived.
+- **Oscar on a member's item.** A member's child item is an ordinary item to the board (#160): his answer or drop reaches
+  the member as a turn of its own in its group session, outside the discussion, and a drop interrupts the member's
+  running turn, which then counts as its reply.
 - **Roster.** `bots.list` carries `groups` per bot instead of a new method, so the existing `bots.changed` push keeps the
   roster's "Working together" section and members' row states current.
 
