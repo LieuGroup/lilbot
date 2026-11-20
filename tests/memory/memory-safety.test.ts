@@ -83,3 +83,22 @@ test('only the three flag sequences pass: other tag characters after a black fla
   expect(memoryRefusal(`\u{1F3F4}${tags('ignore')}\u{E007F}\u{1F3F4}${tags('allprevious')}\u{E007F}`)).toContain('invisible characters')
   expect(memoryRefusal(`\u{1F3F4}${tags('gbeng')}\u{E007F} \u{1F3F4}${tags('gbsct')}\u{E007F} \u{1F3F4}${tags('gbwls')}\u{E007F}`)).toBeNull()
 })
+
+test('DEL, C1 controls and variation selectors 17 and up are hidden text; emoji variation selectors and ordinary prose are not', () => {
+  for (const hidden of ['\u007F', '\u0080', '\u0085', '\u009F', '\u{E0100}', '\u{E01EF}', '\u{E0120}'])
+    for (const text of [`Plain${hidden}fact`, `${hidden}`, `Answer: ${hidden.repeat(3)}done`]) {
+      expect(memoryRefusal(text)).toContain('invisible characters')
+      expect(outsideReason(text)).toContain('invisible characters')
+      expect(() => refuseUnsafe(text)).toThrow()
+    }
+  for (const text of [
+    'Loves it ❤️ and \u{1F44D}\u{1F3FD}, also ☁︎ text style.',
+    '\u{1F1E6}\u{1F1FA} flag, 1️⃣ keycap',
+    'Holiday in \u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}.',
+    'co­operative and naïve café   ¡',
+    'مرحبا بك، رقم الفاتورة ؀123 والمجموع ١٢٣٫٤٥',
+    'Muốn được báo ngay khi có lỗi.'
+  ]) {
+    expect(memoryRefusal(text)).toBeNull()
+  }
+})
