@@ -20,7 +20,7 @@ function filesLine(from: string, files: FileRow[]) {
 export function workPrompt(d: Delivery, thread: BotThread, sender: string, files: FileRow[], redirects: Delivery[]) {
   const head = d.kind === 'redirect' ? 'Redirect' : 'Message request'
   const later = redirects.map(r => `\nRedirect from ${JSON.stringify(sender)}, sent after the request above; it changes the task:\n${fence(r.text)}`).join('')
-  return `${head} from bot ${JSON.stringify(sender)} in exchange ${thread.id}. ${UNTRUSTED}\n${fence(d.text)}${later}${filesLine(sender, files)}\nDo the requested work and answer in your final response. LilBot sends it back automatically. To send files back with your answer, call lilbot_delegation_attach with exchange ${thread.id} before you finish. You may hand work on with lilbot_delegate or ask_bot; do not poll or wait for an answer.`
+  return `${head} from bot ${JSON.stringify(sender)} in exchange ${thread.id}. ${UNTRUSTED}\n${fence(d.text)}${later}${filesLine(sender, files)}\nDo the requested work and answer in your final response. LilBot sends it back automatically. To send files back with your answer, call lilbot_delegation_attach with exchange ${thread.id} before you finish. You may hand work on with lilbot_delegate; do not poll or wait for an answer.`
 }
 
 export function answerPrompt(thread: BotThread, sender: string, text: string, files: FileRow[], allIn: string | null) {

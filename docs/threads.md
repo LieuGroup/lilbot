@@ -9,7 +9,7 @@ Rules and the short version are in `AGENTS.md` under "Threads". Code: `server/th
 |---|---|
 | `thread-store.ts` | `threads` (JSON transcript and status), `thread_links` (batch, parent), `thread_deliveries` (the outbox) |
 | `thread-runner.ts` | the outbox: runs each delivery in its bot's hidden session, keeps status, records answers |
-| `thread-service.ts` | `ask_bot`, reading (bots and Oscar), stopping |
+| `thread-service.ts` | `ask` (the engine API's legacy `threads/ask`, kept for sessions on adapter 0.9.x), reading (bots and Oscar), stopping |
 | `delegation-service.ts` | the MCP tools: delegate in batches with files, status, redirect, wait, attach |
 | `exchange-files.ts`, `thread-files.ts` | copying files safely; `thread_files` records them |
 | `thread-waits.ts` | "tell me when all are in" |

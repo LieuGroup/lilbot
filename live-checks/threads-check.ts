@@ -25,6 +25,8 @@ let server = startServer(env)
 let socket: WebSocket | undefined
 let db: Database | undefined
 const natives: string[] = []
+const HELPER =
+  'You are a helper in a live check. When another bot asks for a calculation, use terminal to calculate it, then answer concisely. Use lilbot_delegate only when a task tells you to hand work on. When Oscar talks directly to you, answer him directly without involving any other bot.'
 const events: any[] = []
 let call!: Awaited<ReturnType<typeof checkClient>>['call']
 async function waitFor<T>(read: () => Promise<T>, matches: (v: T) => boolean, timeout = 240_000): Promise<T> {
@@ -61,17 +63,14 @@ try {
   }
   const a = await create(
     'Thread A',
-    'You are the asking bot in a live check. Follow Oscar precisely. Use ask_bot when asked, return immediately with a brief acknowledgement, never poll or wait. When the answer arrives as a later turn, report its exact result to Oscar. Do not ask another question just to acknowledge a result.'
+    'You are the asking bot in a live check. Follow Oscar precisely. Use lilbot_delegate when asked, return immediately with a brief acknowledgement, never poll or wait. When the answer arrives as a later turn, report its exact result to Oscar. Do not hand over more work just to acknowledge a result.'
   )
-  const b = await create(
-    'Thread B',
-    'You are a helper in a live check. When another bot asks for a calculation, use terminal to calculate it, then answer concisely. Do not use ask_bot unless explicitly requested. When Oscar talks directly to you, answer him directly without involving any other bot.'
-  )
+  const b = await create('Thread B', HELPER)
   console.log('ok: two temporary bots created')
   const main = await call('chat.open', { botId: a.id })
   await call('chat.send', {
     chatId: main.chatId,
-    text: `Use ask_bot to ask Thread B (id ${b.id}) to calculate 19 * 23 with its terminal tool. Use requestId=live-one. Do not calculate it yourself. Once its asynchronous answer arrives, tell me the result with marker ANSWER_FROM_B.`
+    text: `Use lilbot_delegate to hand Thread B (id ${b.id}) the task "Calculate 19 * 23 with your terminal tool". Use requestId=live-one. Do not calculate it yourself. Once its asynchronous answer arrives, tell me the result with marker ANSWER_FROM_B.`
   })
   const threads = await waitFor(
     () => call('threads.list', { botId: a.id }),
@@ -96,6 +95,7 @@ try {
   }
   assert.ok(events.some(f => f.event === 'threads.changed'))
   const token = (await readFile(join(root, 'engine-token'), 'utf8')).trim()
+  // Sessions that loaded plug-in 0.9.x still call the engine API's ask; it shares the exchanges and limits with lilbot_delegate.
   const ask = async (caller: string, body: unknown) => {
     const response = await fetch(`http://127.0.0.1:${port}/engine/threads/ask`, {
       method: 'POST',
@@ -104,7 +104,8 @@ try {
     })
     return { status: response.status, body: (await response.json()) as any }
   }
-  const retry = await ask(a.id, { to: b.id, requestId: 'live-one', chatId: main.chatId, text: 'Same delivery' })
+  // lilbot_delegate stores its first task under `<requestId>:0`.
+  const retry = await ask(a.id, { to: b.id, requestId: 'live-one:0', chatId: main.chatId, text: 'Same delivery' })
   assert.equal(retry.body.threadId, thread.id)
   assert.equal((await call('threads.open', { botId: a.id, threadId: thread.id })).messages.length, 2)
   assert.equal((await ask(a.id, { to: a.id, requestId: 'self', chatId: main.chatId, text: 'test' })).status, 422)
@@ -129,20 +130,42 @@ try {
   assert.equal((await call('threads.list', { botId: a.id })).length, 1)
   const internal = db.query('SELECT chat_id FROM thread_chats').all() as { chat_id: string }[]
   for (const row of internal) assert.equal((db.query('SELECT count(*) AS n FROM review_turns WHERE chat_id=?').get(row.chat_id) as any).n, 0)
-  console.log('ok: core flow, limits and direct chat; restarting isolated server')
+  console.log('ok: core flow, limits and direct chat')
+  // A receiver hands work on from its hidden session with the same tool, and the answer comes back up the chain.
+  const c = await create('Thread C', HELPER)
+  const nestedFrom = events.length
+  await call('chat.send', {
+    chatId: main.chatId,
+    text: `Use lilbot_delegate with requestId=live-two to hand Thread B (id ${b.id}) this task: "Use lilbot_delegate with requestId=live-nested to hand Thread C (id ${c.id}) the task 'Calculate 7 * 6 with your terminal tool', and answer with C's result once it arrives." When the answer arrives, tell me the result with marker NESTED_FROM_B.`
+  })
+  await waitFor(
+    async () => events.slice(nestedFrom),
+    frames =>
+      frames.some(f => f.event === 'chat' && f.chatId === main.chatId && f.data.type === 'turn.finished' && f.data.text.includes('NESTED_FROM_B') && f.data.text.includes('42'))
+  )
+  const nested = (await call('threads.list', { botId: c.id }))[0]
+  assert.deepEqual(
+    nested.participants.map((p: any) => p.id),
+    [b.id, c.id],
+    'B handed the work to C'
+  )
+  assert.equal((await call('threads.list', { botId: a.id })).length, 2, 'A sees its own two exchanges, not B’s with C')
+  console.log('ok: a receiver handed work on with lilbot_delegate and the answer came back up the chain; restarting isolated server')
   socket?.close()
   server.kill()
   await server.exited
   env.LILBOT_BOT_IDS = natives.join(',')
   server = startServer(env)
   await connect()
-  assert.equal((await ask(a.id, { to: b.id, requestId: 'live-one', chatId: main.chatId, text: 'Same delivery after restart' })).body.threadId, thread.id)
+  assert.equal((await ask(a.id, { to: b.id, requestId: 'live-one:0', chatId: main.chatId, text: 'Same delivery after restart' })).body.threadId, thread.id)
   assert.equal((await call('threads.open', { botId: a.id, threadId: thread.id })).messages.length, 2)
   console.log('ok: retry after restart remains idempotent; deleting helper')
   await call('bots.delete', { botId: b.id })
   natives.splice(1, 1) // App deletion already removed this native profile.
   assert.equal((await call('threads.open', { botId: a.id, threadId: thread.id })).participants[1].name, 'Thread B')
-  console.log('ok: asynchronous ask/answer, both main references, same authored transcript including tools, independent direct chat, idempotency, limits and review exclusion')
+  console.log(
+    'ok: asynchronous delegate/answer, both main references, same authored transcript including tools, independent direct chat, nested hand-over, idempotency, limits and review exclusion'
+  )
 } finally {
   socket?.close()
   server.kill()

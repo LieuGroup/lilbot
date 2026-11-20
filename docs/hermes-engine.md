@@ -92,7 +92,7 @@ folder is gone uses `profile purge-identity` to finish gateway identity settleme
   become its private facts (a new bot starts as a copy of the main bot, so its notes are not imported). It takes
   effect from the bot's next session. `removeMemory` undoes it.
 - Hermes keeps a plug-in's code loaded per folder until the gateway restarts, so each version has its own folder and
-  provider name (`lilbot-memory-v0-9-1`), loaded fresh on the bot's next session. Hermes' own background memory review
+  provider name (`lilbot-memory-v0-10-0`), loaded fresh on the bot's next session. Hermes' own background memory review
   runs only with its built-in memory tool, which a connected bot no longer has.
 - `sync_turn` hands every finished turn of a real conversation to `/engine/memory/turn` on a thread (not scheduled
   runs or sub-agents).
@@ -136,8 +136,9 @@ manifest on `MessageCompletePayload` or `TranscriptMessage`.
 - Hermes does not show an MCP server's `instructions` to the model. The "about your system" note therefore travels in the
   profile's `soul` (the instructions LilBot applies): `applyIdentity` compares and writes `soul` as before, now with
   `withNote(instructions, note)`, and a profile import strips it again.
-- Tool Search (`tools.tool_search`) can defer MCP tools behind `tool_search`/`tool_describe`/`tool_call` once they pass 5%
-  of the context window; 19 tools are well under that.
+- Tool Search (`tools.tool_search`) is already on: every MCP tool is deferred behind `tool_search`/`tool_describe`/`tool_call`
+  and the model sees a listing line per tool (numbers: "Tokens per turn" in [system-mcp.md](system-mcp.md)). A call can
+  arrive wrapped as `tool_call({ name, arguments })`.
 
 ## Skills plug-in (`skills-adapter/`)
 

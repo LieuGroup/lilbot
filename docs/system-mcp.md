@@ -29,18 +29,29 @@ app. Rules and the short version are in `AGENTS.md` under "System". Code: `serve
   turn (stamped into the stored message, so it is repeated in the history) and skips it on trivial prompts, which is
   wrong for a static note and costs tokens every turn. The instructions are the system prompt, built once per session.
 
-## Tokens per turn (dev bot, `cliproxyapi anthropic/claude-sonnet-5-5`, fresh session, same prompt twice)
+## Tokens per turn (dev bot, `cliproxyapi anthropic/claude-sonnet-5-5`, fresh session, same prompt twice, 2026-11-20, main at a9b6d85)
 
-| | tokens sent |
+Measured on one temporary bot by removing one part at a time (`contextTokens` of the turn):
+
+| part | tokens sent |
 |---|---|
-| before (main at fa444d0) | 20,168 |
-| the 18 tools, no note | 21,000 (+832, about 46 per tool) |
-| tools and note | 21,358 to 21,372 (+1,190 to +1,204 in total, about 6%) |
-| 24 tools (the delegation six added, #132) and note, `check:system`'s first question | 21,853 (the six are 3.2k characters of tool list, about 480 tokens) |
+| everything below removed: Hermes, the note, the computers and skills plug-ins | 17,760 to 17,766 |
+| + T3 connection, signed out (1 tool) | +48 |
+| + the 24 `lilbot_*` tools | +1,084 (about 45 a tool) |
+| + memory adapter 0.9.1 (12 tools, rules, memory block) | +2,956 |
+| a whole bot, adapter 0.9.1 | 21,854 |
+| memory adapter 0.10.0 (10 tools) | +2,593 |
+| a whole bot, adapter 0.10.0 | 21,485 |
 
-The note is 867 characters; the tool list is the larger part. Hermes reported an 85% cache hit on the turn. Hermes can
-defer MCP tools behind its own `tool_search` bridge (`tools.tool_search`, on when the deferrable tools pass
-`threshold_pct` of the context window, 5% by default); at this size the tools stay eager.
+The note is 867 characters. Hermes reported an 85% cache hit on the turn.
+
+Hermes (0.23.1) defers every MCP tool, and every tool a plug-in registers with `register_tool` (the computers plug-in),
+behind `tool_search`, `tool_describe` and `tool_call` whenever one exists: the model sees one listing line per tool
+(name and first sentence, about 45 tokens), not its schema, and fetches the schema when it needs the tool. `threshold_pct`
+only limits the listing (5% of the context or 4,000 tokens; past that it falls back to names only). Tools a memory
+provider returns from `get_tool_schemas` are not in Hermes' registry and stay eager at about 0.43 tokens a character of
+compact schema: the adapter's twelve tools cost about 2,300 tokens, the rest of its 2,956 is the rules and the memory
+block. There is no per-tool switch; `tools.tool_search.enabled: off` makes the whole profile eager, built-ins included.
 
 ## The server
 
@@ -49,7 +60,7 @@ defer MCP tools behind its own `tool_search` bridge (`tools.tool_search`, on whe
   the Access listener or the helper door (their `/engine/*` refusal covers it; `tests/http/access-door.test.ts`).
 - One key per bot per purpose: `connectionKey(engineToken, "lilbot-system", botId)`. The server accepts only keys of
   current bots (`store.list()`), so a deleted bot is refused. The T3 bridge's key (purpose `t3-bridge`) is unchanged and
-  does not work here. Future bot tools (memory, routines, threads, library, skills, computers: #113) join this server
+  does not work here. Future bot tools (memory, routines, library, skills, computers, `create_bot`: #113) join this server
   with the same key.
 - Arguments are checked by zod schemas built from `shared/`; keys a schema does not name are dropped, so no argument
   can claim another identity. The caller id only ever comes from the key. `inputSchema` is generated from the same
@@ -84,8 +95,9 @@ Every tool acts as the calling bot and calls the function the screen uses. Reads
 | `lilbot_delegation_attach` | the receiver's files for its answer |
 
 Not offered, by decision: deleting a bot, removing a computer, forgetting another bot's private facts, changing a bot's
-permission mode, registering computers. Routines, `ask_bot`/`list_bots`, library, skills, computers and memory writes
-stay on the engine plug-ins until #113 moves them.
+permission mode, registering computers. Routines, library, skills, computers, `create_bot`, `search_conversations` and
+memory writes stay on the engine plug-ins until #113 moves them; `ask_bot` and `list_bots` ended with adapter 0.10.0, their
+work done by `lilbot_delegate` and `lilbot_bots_list`.
 
 MCP requests carry no session (checked live: two sessions of one bot send identical requests, `_meta` holds only a
 progress token). A tool that needs the calling conversation takes a `requestId` and resolves it from the engine's

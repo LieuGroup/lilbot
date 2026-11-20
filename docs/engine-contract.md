@@ -1,0 +1,98 @@
+# Engine contract
+
+What an engine must provide to run LilBot's bots, as a checklist for a second engine. Hermes is the first
+(`server/engines/hermes/`, mapping in [hermes-engine.md](hermes-engine.md)); nothing outside an engine's folder knows its
+name except `main.ts`, which picks it. The code contract is `BotEngine` in `server/engines/bot-engine.ts`; this page adds
+what lives outside that interface.
+
+LilBot owns identity, instructions, memory, skills, routines, history, files and the bot tools. An engine runs a bot's
+conversations, reaches LilBot through MCP, and keeps a thin adapter for the few things MCP cannot do.
+
+## 1. Runtimes: one per bot
+
+- [ ] `createRuntime` makes a runtime from a LilBot identity and returns its native id (never shown as a bot id);
+  `deleteRuntime` removes it and its conversations, safe to repeat; `importBots` lists existing runtimes for the one-time
+  import into a new database.
+- [ ] `applyIdentity` applies LilBot's authoritative name-independent settings if they drifted: instructions (the string
+  LilBot passes already ends with the system note, section 4), model, reasoning effort and permission mode. A missing
+  runtime throws `bot_not_found`. LilBot wins on mismatch.
+- [ ] `supportedPermissionModes` includes `full-access`; the bot is applied with it on creation, once at start-up, on
+  mode changes, and before chats, reviews and routine runs. No approval cards: an engine must not wait for a person.
+- [ ] `validateModel` refuses an unavailable model before anything is saved; `listModels` returns providers, models and
+  per-model capabilities (`reasoning`, `canDisableReasoning`, `null` when unknown).
+- [ ] Start-up only touches the bindings LilBot passes (native ids); never discover its own set of runtimes.
+
+## 2. Sessions and streaming
+
+- [ ] `openChat(botId, chatId|null, options, onEvent)`: a new session or a stored one; a stored one that no longer exists
+  is replaced and the snapshot says which was opened. One continuous main conversation per bot, one active session.
+- [ ] Events (`shared/chat-schema.ts`): `turn.started`, `text.delta`, `activity`, `tool.started` / `tool.finished`,
+  `turn.finished` (with `contextTokens`), `user.message`, `title`, `error`, `closed`. Reconnecting or restarting LilBot
+  must recover a turn that still runs: the engine says whether it runs and returns the durable transcript.
+- [ ] `OpenChat.send(text, { hidden, inputId, apiText, attachments, origin })`: `inputId` makes a retry idempotent;
+  `apiText` is what the model sees when it differs from the stored text; `origin.line` is told to the model for this turn
+  only, outside the stored text. `stop()` ends the running turn, `close()` releases the socket.
+- [ ] A resumed session keeps the model and effort it has. `updateSession` applies a model or effort edit from the next
+  message, also while a turn runs, and answers `confirm_required` (changing nothing) when the engine holds a switch back.
+- [ ] Every session LilBot creates starts with the bot's reasoning effort (chats, routine runs, thread runs).
+- [ ] Attachments: images as the engine's own image input where it has one, other files as quoted workspace references.
+  `imageSupport` is `supported | unsupported | unknown`, never a guess from model names.
+- [ ] Optional: `watchActivity` (live status and replay per bot), `conversations` (read-only transcript source for the
+  history importer), `onBotsChanged`.
+
+## 3. Hidden runs
+
+- [ ] `runRoutine` runs a prompt in a new hidden full-access session in the bot's folder (routines and thread
+  deliveries) with a durable `runId`: the same id recovers the same admission, and an unknown outcome is reported as
+  failed, never repeated. Its sessions are excluded from activity unread, history and the after-chat review.
+- [ ] `reviewMemory` runs a hidden session of the same bot with only its memory tools and resolves when it ends.
+- [ ] `stopRun` and `steerRun` interrupt or add text to a hidden or visible running turn (delegation control);
+  `steerRun` answers `not_running` on an idle session.
+- [ ] `onToolCall` reports every tool start the engine sees, with the declared arguments, from any chat including
+  hidden ones. MCP requests carry no session, so this is how LilBot's MCP server tells which conversation called it.
+
+## 4. Reaching LilBot: an MCP client
+
+- [ ] An MCP client for Streamable HTTP with a URL and a bearer token per server, a per-call timeout, and a tool
+  allowlist (`McpConnection`). `prepareConnections` makes the connections available from the runtime's next session and
+  is safe to repeat.
+- [ ] The tool list is refreshed when the URL changes: LilBot puts a hash of the tool definitions in the query string, so
+  a release that changes a tool reconnects every bot once and an unchanged restart changes nothing. The engine must not
+  keep a stale list.
+- [ ] Two connections today: `lilbot_system` (LilBot's own tools, [system-mcp.md](system-mcp.md)) and `lilbot_t3` (T3 Code
+  through LilBot's bridge). A bot's key is valid for that bot only; a deleted bot's key is refused.
+- [ ] The system note (about 200 words) is delivered as the bot's instructions, the one engine-neutral system-prompt path.
+  An engine need not show MCP `instructions`, and must not repeat the note on every turn.
+- [ ] If the engine defers or searches tools, say so here: Hermes' Tool Search defers every MCP tool behind
+  `tool_search` / `tool_describe` / `tool_call`, so a call can arrive as `tool_call({ name, arguments })`
+  (`server/threads/calling-chats.ts` reads both shapes).
+
+## 5. The thin adapter: what MCP cannot do
+
+These stay in the engine's folder because they hook the engine's own turn loop. Each talks to the engine API
+(`/engine/*`, loopback only, token plus per-bot capability; `server/http/engine-api.ts`) and holds no data.
+
+| Hook | Does | LilBot side |
+|---|---|---|
+| Memory block per turn | Supplies the facts a bot needs most, once per turn, fenced as recalled memory and not as user input; static rules go in the system prompt so caching holds | `/engine/memory/context` |
+| After-chat review hand-off | Sends each finished turn of a real conversation (not routines, threads, reviews or sub-agents), without blocking the turn | `/engine/memory/turn` |
+| Save-before-compress | Offers the conversation's user and assistant text (last 100,000 characters) to a memory-only review before the engine compresses; best effort | `/engine/history/save` |
+| Hard-stop guard | Runs the engine's own dangerous-command check before `computer_exec` and refuses a hit. A guard for full-access bots, not a security boundary | `/engine/computers/submit` |
+
+Until their families move to the system server ([#113](https://github.com/LieuGroup/lilbot/issues/113)), the engine also
+carries the bot tools for memory, routines, library, skills, computers, `create_bot` and `search_conversations`. A second
+engine gets those from the system server instead of writing them again.
+
+## 6. Safety
+
+- [ ] An engine in development creates and binds only `dev-` runtimes and checks the attach receipt's home before
+  connecting; production ignores `dev-` runtimes (`server/environment.ts`).
+- [ ] Nothing is patched in the engine program: configure it or build on its API. Wire fields LilBot uses are listed in
+  the engine's contract test (Hermes: `tests/engines/hermes/hermes-contract.test.ts`).
+
+## 7. Done means
+
+An engine is ready when the unit and contract tests pass and these checks pass against it on the development setup
+(`bun run dev:setup` equivalent for the engine): `check:live` (chat, stop, resume), `check:reasoning`,
+`check:memory`, `check:history`, `check:system`, `check:threads`, `check:delegation`, `check:routines`, `check:skills`,
+`check:computers`, `check:attachments` and `check:restart`.
