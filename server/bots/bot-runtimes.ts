@@ -6,6 +6,7 @@ import type { BotRecord, BotStore } from './bot-store'
 import { importBots } from './runtime-import'
 import { Readiness } from './runtime-readiness'
 import { prepareTools, refreshConnections } from './runtime-tools'
+import { withNote } from './system-note'
 
 export class BotRuntimes {
   private importing?: Promise<void>
@@ -18,8 +19,9 @@ export class BotRuntimes {
     private connection?: import('../engines/bot-engine').MemoryConnection,
     /** LilBot-owned MCP connections every bot gets (`server/connections/`). */
     private connections?: (botId: string) => McpConnection[],
-    options: { changed?: () => void; retryDelays?: readonly number[]; headStartMs?: number } = {}
+    options: { changed?: () => void; retryDelays?: readonly number[]; headStartMs?: number; systemNote?: (bot: BotRecord) => string } = {}
   ) {
+    this.systemNote = options.systemNote
     this.readiness = new Readiness(
       bot => this.prepareAndState(bot),
       id => (this.store.exists(id) ? this.store.get(id) : undefined),
@@ -28,6 +30,7 @@ export class BotRuntimes {
   }
 
   private readiness: Readiness
+  private systemNote?: (bot: BotRecord) => string
 
   private loading?: Promise<void>
   load(): Promise<void> {
@@ -106,7 +109,9 @@ export class BotRuntimes {
     this.validateMode(bot)
     try {
       await prepareTools(this.engine, bot, { skills: this.skills, connection: this.connection, connections: this.connections })
-      const state = await this.engineFor(bot).applyIdentity(bot.engineBotId, bot)
+      // The engine runs the bot's instructions followed by the note about its system; LilBot's copy stays the user's text.
+      const identity = this.systemNote ? { ...bot, instructions: withNote(bot.instructions, this.systemNote(bot)) } : bot
+      const state = await this.engineFor(bot).applyIdentity(bot.engineBotId, identity)
       this.states.set(bot.id, state)
       return state
     } catch (error) {

@@ -23,6 +23,7 @@
     "check:routines": "bun live-checks/routines-check.ts",
     "check:memory": "bun live-checks/memory-check.ts",
     "check:coding": "bun live-checks/coding-check.ts",
+    "check:system": "bun live-checks/system-check.ts",
     "t3:sign-in": "bun server/connections/t3-sign-in-cli.ts",
     "deploy": "bun server/deploy/deploy-cli.ts",
     "check:deploy": "bun live-checks/deploy-check.ts",

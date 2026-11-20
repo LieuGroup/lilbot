@@ -88,7 +88,7 @@ test('skills migration upgrades shipped Library schema without losing deliveries
     const before = ['library_items', 'routines', 'routine_runs', 'routine_chats'].map(table => db.query(`SELECT * FROM ${table}`).all())
     db.close()
     db = openDatabase(path)
-    expect(db.query('PRAGMA user_version').get()).toEqual({ user_version: 20 })
+    expect(db.query('PRAGMA user_version').get()).toEqual({ user_version: 21 })
     expect(['library_items', 'routines', 'routine_runs', 'routine_chats'].map(table => db.query(`SELECT * FROM ${table}`).all())).toEqual(before)
     expect(db.query('SELECT * FROM skill_off').all()).toEqual([])
   } finally {

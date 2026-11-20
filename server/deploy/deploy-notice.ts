@@ -12,3 +12,20 @@ export function deployNotice(dataDir: string): string | undefined {
     return undefined
   }
 }
+
+/** The latest deployment as the watchdog last recorded it (what `bun run deploy --status` prints), without paths or logs. */
+export function deployStatus(dataDir: string) {
+  try {
+    const job = JSON.parse(readFileSync(join(dataDir, 'deploy', 'job.json'), 'utf8')) as Deployment
+    return {
+      status: job.status,
+      commit: job.commit.slice(0, 12),
+      previous: job.previous?.slice(0, 12),
+      startedAt: job.startedAt,
+      finishedAt: job.finishedAt,
+      message: job.message?.slice(0, 500)
+    }
+  } catch {
+    return undefined
+  }
+}

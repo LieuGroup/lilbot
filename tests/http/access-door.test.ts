@@ -34,7 +34,7 @@ test('Access serves browser routes only after authentication, host and origin ch
     expect(await file.text()).toBe('delivered file')
     expect(file.headers.get('content-disposition')).toBe('attachment')
     expect(file.headers.get('content-security-policy')).toContain('sandbox')
-    for (const path of ['/engine', '/engine/', '/engine/memory', '/engine/t3/mcp', '/helper', '/helper/', '/helper/register', '/helper/connect']) {
+    for (const path of ['/engine', '/engine/', '/engine/memory', '/engine/t3/mcp', '/engine/lilbot/mcp', '/helper', '/helper/', '/helper/register', '/helper/connect']) {
       expect((await get(path)).status).toBe(403)
     }
     expect((await get('/', { host: 'evil.example' })).status).toBe(403)

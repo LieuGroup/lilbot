@@ -7,10 +7,9 @@ import { fakeService } from '../helpers/fake-engine'
 
 const input = { requestId: 'one', name: 'Engineer', function: 'Keeps TypeScript projects tidy.', instructions: 'Help Oscar maintain TypeScript projects.' }
 
-test('only the primary creates; concurrent and later retries return the same bot and greeting', async () => {
+test('any bot creates, not only the primary; concurrent and later retries return the same bot and greeting', async () => {
   const { service, prefs, store, log } = fakeService()
-  await expect(service.createFromBot('b1', input)).rejects.toThrow('Only the primary')
-  prefs.setPrimaryBot('b1')
+  expect(prefs.primaryBot()).toBeNull()
   await service.updateBot({ botId: 'b1', model: { provider: 'test', model: 'chosen' } })
   const [first, second] = await Promise.all([service.createFromBot('b1', input), service.createFromBot('b1', input)])
   expect(first).toEqual(second)
@@ -38,11 +37,14 @@ test('endpoint resolves credential owner and ignores model-supplied bot ids and 
       '/engine/bots/create'
     )
   }
-  expect((await call(other.id, { botId: 'b1' })).status).toBe(422)
+  // A bot that is not the primary may create too; the id a request makes belongs to its caller, whatever body ids say.
+  const fromOther = await call(other.id, { botId: 'b1' })
+  expect(fromOther.status).toBe(200)
   const response = await call('b1', { botId: other.id, model: { provider: 'evil', model: 'evil' } })
   expect(response.status).toBe(200)
   const result = await response.json()
   expect((await service.getBot(result.id)).model).toBeNull()
+  expect((await fromOther.json()).id).not.toBe(result.id)
 })
 
 test('secrets in generated instructions are refused before creation', async () => {

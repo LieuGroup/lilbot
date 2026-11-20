@@ -55,7 +55,8 @@ test('an engine does not depend on what sits above it', () => {
     ...crossings('server/engines', 'server/memory'),
     ...crossings('server/engines', 'server/routines'),
     ...crossings('server/engines', 'server/threads'),
-    ...crossings('server/engines', 'server/attachments')
+    ...crossings('server/engines', 'server/attachments'),
+    ...crossings('server/engines', 'server/system')
   ]).toEqual([])
 })
 
@@ -87,4 +88,13 @@ test('attachments do not depend on HTTP or a concrete engine', () => {
 
 test('history depends on neutral engine contracts and storage, not HTTP or bot orchestration', () => {
   expect([...crossings('server/history', 'server/http'), ...crossings('server/history', 'server/bots'), ...crossings('server/history', 'server/engines/hermes')]).toEqual([])
+})
+
+test('the system server and the note work for every engine: no HTTP layer, no concrete engine, and bots never import it', () => {
+  expect([
+    ...crossings('server/system', 'server/http'),
+    ...crossings('server/system', 'server/engines/hermes'),
+    ...crossings('server/bots', 'server/system'),
+    ...crossings('server/memory', 'server/system')
+  ]).toEqual([])
 })

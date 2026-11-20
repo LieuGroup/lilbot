@@ -140,7 +140,9 @@ const migrations: string[] = [
   // Revisit old transcripts once to backfill tool rows omitted by the row_id-only importer.
   `UPDATE history_sessions SET cursor=NULL,complete=0;`,
   // Engine sessions the operator removed from LilBot's copy; every history writer skips them forever.
-  `CREATE TABLE IF NOT EXISTS history_exclusions(bot TEXT NOT NULL,session TEXT NOT NULL,reason TEXT NOT NULL,at INTEGER NOT NULL,PRIMARY KEY(bot,session));`
+  `CREATE TABLE IF NOT EXISTS history_exclusions(bot TEXT NOT NULL,session TEXT NOT NULL,reason TEXT NOT NULL,at INTEGER NOT NULL,PRIMARY KEY(bot,session));`,
+  // Which bot changed what through LilBot's own MCP server (`server/system/`).
+  `CREATE TABLE IF NOT EXISTS system_changes(id INTEGER PRIMARY KEY AUTOINCREMENT,at INTEGER NOT NULL,bot_id TEXT NOT NULL,bot_name TEXT NOT NULL,tool TEXT NOT NULL,target TEXT NOT NULL,fields TEXT NOT NULL);`
 ]
 
 /** `path` may be ':memory:' for tests. Applies any migration steps the file has not seen. */

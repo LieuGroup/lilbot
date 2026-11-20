@@ -66,7 +66,7 @@ folder is gone uses `profile purge-identity` to finish gateway identity settleme
   become its private facts (a new bot starts as a copy of the main bot, so its notes are not imported). It takes
   effect from the bot's next session. `removeMemory` undoes it.
 - Hermes keeps a plug-in's code loaded per folder until the gateway restarts, so each version has its own folder and
-  provider name (`lilbot-memory-v0-9-0`), loaded fresh on the bot's next session. Hermes' own background memory review
+  provider name (`lilbot-memory-v0-9-1`), loaded fresh on the bot's next session. Hermes' own background memory review
   runs only with its built-in memory tool, which a connected bot no longer has.
 - `sync_turn` hands every finished turn of a real conversation to `/engine/memory/turn` on a thread (not scheduled
   runs or sub-agents).
@@ -101,6 +101,17 @@ manifest on `MessageCompletePayload` or `TranscriptMessage`.
   seconds and re-prepares every bot (remove, `reload.mcp`, add, `reload.mcp`).
 - If an unrelated inherited server fails that reload, preparation succeeds only when `mcp.servers.status` confirms
   every requested LilBot connection is connected.
+
+## LilBot system connection (`lilbot_system`)
+
+- A second profile MCP server beside `lilbot_t3`, applied by the same `prepareConnections`; both are hashed together into
+  the `connections` step of `lilbot-applied.json`, so adding the connection runs the step once per profile and an
+  unchanged restart skips it. Its URL carries `?tools=<hash of the tool definitions>` (see `docs/system-mcp.md`).
+- Hermes does not show an MCP server's `instructions` to the model. The "about your system" note therefore travels in the
+  profile's `soul` (the instructions LilBot applies): `applyIdentity` compares and writes `soul` as before, now with
+  `withNote(instructions, note)`, and a profile import strips it again.
+- Tool Search (`tools.tool_search`) can defer MCP tools behind `tool_search`/`tool_describe`/`tool_call` once they pass 5%
+  of the context window; 19 tools are well under that.
 
 ## Skills plug-in (`skills-adapter/`)
 

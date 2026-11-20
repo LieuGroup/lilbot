@@ -38,7 +38,8 @@ server/            The LilBot server (runs on the leader).
   library/           Delivered workspace files, metadata, safe reads and folder listings.
   attachments/       Incoming chat files, streaming uploads and durable message associations.
   skills/            The shared skills library and per-bot switches.
-  connections/       LilBot-owned connections given to every bot: T3 Code for coding (bridge, sign-in, skill).
+  connections/       LilBot-owned connection to T3 Code for coding (bridge, sign-in, skill) and the keys and replies MCP endpoints share.
+  system/            LilBot's own MCP server through which bots operate the app, and the note every bot gets about its system.
   computers/         Computer identities, key registration and durable command requests.
   database/          LilBot's own SQLite file and its schema steps.
   deploy/            Verified restart, database copies, rollback watchdog and notices.
@@ -81,7 +82,8 @@ Rules that keep it this way:
 Built: roster, create bot, Setup panel (abilities read-only), chat with live tool rows, stop and new session, one
 continuous main conversation per bot on every device, the three-column shell (roster, conversation, details panel with
 Activity, Library, Memory and Setup tabs), bot menu, delete confirmation, Settings, chat attachments, LilBot's own
-memory with a Memory panel and after-chat review, a primary bot that can create bots, and the backends for routines,
+memory with a Memory panel and after-chat review, every bot knowing its system (the note) and operating the app through
+LilBot's own MCP tools, and the backends for routines,
 threads, library, skills, computers and coding through T3 Code. Next: the Routines and Library screens, the nightly
 memory tidy-up and editing abilities. Webhooks and reports are not built. Desktop (Tauri) and iOS (Expo) come after the
 web app.
@@ -138,6 +140,8 @@ directories and files (0700/0600).
   undeclared extras; never rely on them). Every method, parameter and field LilBot uses is listed in
   `tests/engines/hermes/hermes-contract.test.ts`: add to it when you use a new one. It is Hermes' internal API: after
   every Hermes update run `bun run verify` and `bun run check:live`.
+- Put nothing new into Hermes plug-ins. A new bot-facing tool goes on LilBot's own MCP server (`server/system/`), with the
+  same service function the screen uses, so a second engine gets it for free; the plug-ins keep only what MCP cannot do.
 - How LilBot maps onto Hermes (connections, plug-ins, importer, MCP): [docs/hermes-engine.md](docs/hermes-engine.md).
 
 ## Stack
@@ -213,7 +217,7 @@ error pages and answer errors with a plain 500.
   bot-bound capability in its profile settings: the server takes the caller from that capability, ignores bot ids in
   request bodies, and refuses unknown and deleted bots, including the bot behind a creation capability. Every bot
   tool (memory, `create_bot`, routines, threads, library, skills, computers, conversation search) goes through it;
-  the T3 bridge uses its own per-bot key (see Coding).
+  the T3 bridge and LilBot's own MCP server use their own per-bot keys (see Coding and System).
 - **Cloudflare:** both public names run through LilBot's own `lilbot-connect` tunnel. `~/.cloudflared/cert.pem` lets
   agents manage LilBot's own DNS names and tunnels; touch only LilBot's own tunnels and names, the account holds
   others. Hostnames, ingress, outside checks and rollback: [docs/cloudflare.md](docs/cloudflare.md).
@@ -226,7 +230,7 @@ What a bot is and who owns each part.
 |---|---|---|
 | Identity (name, function), instructions, model, permission mode, engine binding | LilBot | `bots` table in LilBot's database |
 | Skills and per-bot skill switches | LilBot | shared skills library and SQLite |
-| Tools and MCP connectors | the engine, except LilBot's T3 Code connection | Hermes profile; the T3 connection is defined in `server/connections/` |
+| Tools and MCP connectors | the engine, except LilBot's own two connections: T3 Code and the system server | Hermes profile; defined in `server/connections/` and `server/system/` |
 | Workspace: one folder per bot on the shared computer | the bot | `~/lilbot/workspaces/<bot id>`, the working directory of its chats |
 | Conversation: continuous history, with one active session | LilBot record; engine working context | SQLite history items and session dividers; Hermes keeps model context |
 | Memory | LilBot | facts in LilBot's database; the engine reads and writes them through an adapter |
@@ -246,11 +250,10 @@ What a bot is and who owns each part.
   moves the mark. The roster puts it first; app entry opens its conversation. Bots answer whoever gave them the work:
   Oscar in that chat, another bot in their shared thread. Nothing routes to the primary automatically; extra
   knowledge for the primary is not decided.
-- The primary bot creates bots when asked (`create_bot`): LilBot checks the caller is the current primary and ignores
-  caller ids and models in the arguments. The primary writes the instructions and function; the new bot inherits its
-  model. Request ids prevent duplicate creation, including concurrent retries and server restarts. The bot appears at
+- Any bot creates bots when asked (`create_bot`, `lilbot_bot_create`): LilBot ignores caller ids and models in the
+  arguments. The caller writes the instructions and function; the new bot inherits its model. Request ids prevent duplicate creation, including concurrent retries and server restarts. The bot appears at
   once; a hidden first prompt starts its main conversation with its own greeting and task suggestions, which normal
-  activity observation marks unread. The primary returns a link. The app's create form stays available.
+  activity observation marks unread. The caller returns a link. The app's create form stays available.
 - "Workspace" means exactly one folder per bot on the shared computer, not a level above bots. All bots share one
   machine (the leader); other machines are execution environments (see Computers).
 - Long conversations are the engine's job: Hermes compresses the conversation at 50% of the model's context (silently,
@@ -319,7 +322,8 @@ forget) are kept with `bots.deleteDefaults.get/set`. The primary bot and the eng
   choice.
 - Kept: shared facts; private facts unless forgotten (`memory.list` still shows a tombstone's facts for attribution
   and restoration); library and attachment metadata (the bot loses access); thread records with the names captured
-  at creation; skills it wrote, with their authorship.
+  at creation; skills it wrote, with their authorship; the log of changes bots made through the system server (with the
+  name the bot had).
 
 ## Web app
 
@@ -523,9 +527,9 @@ caller-supplied one.
 Coding goes to T3 Code, Oscar's coding backend, through its MCP tools. LilBot builds no coding engine, worktree or
 pull-request handling. Running commands, reading files and using apps stay ordinary bot work.
 
-- One LilBot-owned connection (`server/connections/t3-connection.ts`) is given to every bot by every engine
-  (`BotEngine.prepareConnections`, on creation, startup and before use). It is the one exception to "tools and MCP
-  connectors stay with the engine".
+- The T3 connection (`server/connections/t3-connection.ts`) is given to every bot by every engine
+  (`BotEngine.prepareConnections`, on creation, startup and before use). With the system server it is an exception to
+  "tools and MCP connectors stay with the engine".
 - The bridge (`t3-bridge.ts`, `/engine/t3/mcp`) forwards Streamable HTTP MCP to T3 Code (`LILBOT_T3_MCP_URL`). Callers
   present a per-bot key (`HMAC(engine token, "t3-bridge:<bot id>")`); deleted bots are refused. It narrows the tool
   list to `T3_TOOLS` (no project deletion, themes, schedules or machine linking) and prefixes each `clientRequestId`
@@ -546,6 +550,25 @@ pull-request handling. Running commands, reading files and using apps stay ordin
 - `check:coding` runs its real task in the project root of a throwaway repo (T3's MCP has no worktree removal) and
   revokes its own sign-in at the end. T3 recovery has a unit test with a simulated upstream; the live grant is never
   copied into tests.
+
+## System: the note and LilBot's own MCP server
+
+Every bot knows it lives in LilBot and can operate the app, not only a special developer bot. Tool list, measurements
+and how to add a tool: [docs/system-mcp.md](docs/system-mcp.md).
+
+- The note (`bots/system-note.ts`, about 150 words) is added after the user's instructions whenever an engine applies a
+  bot. The stored and shown instructions never include it. It is the engine-neutral system-prompt path: Hermes does not
+  show MCP `instructions`, and its per-turn memory block repeats in every turn. Keep volatile facts out of it (any change
+  rewrites every bot's instructions); `lilbot_about` gives the live ones.
+- The server (`server/system/`, `/engine/lilbot/mcp`) is on the private listener only, never the Access listener or the
+  helper door. It is the second LilBot-owned connection, given to every bot through `BotEngine.prepareConnections` with
+  the bot's own key. The caller is always the key's bot: arguments cannot name another identity and deleted bots are
+  refused. Tools are prefixed `lilbot_`.
+- Each tool calls the service function the screen uses, so rules, checks and `bots.changed` pushes are identical, and each
+  change is logged with the calling bot. There are no destructive tools: deleting a bot, removing a computer and
+  forgetting another bot's private facts are Oscar's to do.
+- A release that changes a tool reconnects every bot once; an unchanged restart applies nothing. Tests fail when the tool
+  list or a guide (`server/system/guide/*.md`, shipped with each release) drifts.
 
 ## Computers
 
@@ -745,6 +768,9 @@ profiles, isolated directories, cleanup in `finally`. Most cost a few model call
 - `bun run check:skills`: skill use, per-bot exclusion and authored writes.
 - `bun run check:computers`, `bun run check:access`: see [docs/computers.md](docs/computers.md) and Listeners.
 - `bun run check:deploy`: temporary clone, release root, data and systemd units; see [docs/deploy.md](docs/deploy.md).
+- `bun run check:system`: on the dev server, a temporary bot whose instructions never mention LilBot answers what it runs
+  in, which version and how it would change LilBot, then pins another bot and creates one through its `lilbot_*` tools;
+  checks the roster push, the change log and that an unchanged restart applies nothing.
 - `bun run check:coding -- --code-file <file>` (or the code on stdin): needs a fresh pairing code; signs in, checks the
   signed-out, expired and refused messages, a repeated launch and a real task, then archives its threads, removes its
   project and profile and revokes its sign-in.

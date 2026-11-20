@@ -11,7 +11,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { BotStore } from '../server/bots/bot-store'
-import { bridgeKey, T3_BRIDGE_PATH, T3_DEFAULT_MCP_URL } from '../server/connections/t3-connection'
+import { T3_BRIDGE_PATH, T3_DEFAULT_MCP_URL, t3Connection } from '../server/connections/t3-connection'
 import { T3Grants } from '../server/connections/t3-grant'
 import { signInToT3 } from '../server/connections/t3-sign-in'
 import { openDatabase } from '../server/database/database'
@@ -82,7 +82,7 @@ try {
   const db = openDatabase(join(scratch, 'lilbot.db'))
   const nativeId = new BotStore(db).get(bot.id).engineBotId
   db.close()
-  const key = bridgeKey(readFileSync(join(scratch, 'engine-token'), 'utf8').trim(), bot.id)
+  const key = t3Connection('', readFileSync(join(scratch, 'engine-token'), 'utf8').trim(), bot.id).bearerToken
   const bridgeUrl = `http://127.0.0.1:${port}${T3_BRIDGE_PATH}`
 
   console.log('Without a sign-in')

@@ -1,7 +1,7 @@
 /** The one LilBot-owned connection every bot gets: T3 Code's MCP tools for coding work, reached
  *  through LilBot's bridge so every engine shares LilBot's single T3 sign-in. */
-import { createHmac, timingSafeEqual } from 'node:crypto'
 import type { McpConnection } from '../engines/bot-engine'
+import { connectionKey } from './connection-keys'
 
 /** Engines name the tools after this (Hermes: `mcp__lilbot_t3__t3_thread_launch`). */
 export const T3_CONNECTION = 'lilbot_t3'
@@ -41,16 +41,8 @@ export const T3_TOOLS = [
   'read_pull_request_guide'
 ] as const
 
-/** A bot's bridge credential: bound to its LilBot id, useless anywhere but LilBot's loopback bridge. */
-export const bridgeKey = (engineToken: string, botId: string) => createHmac('sha256', engineToken).update(`t3-bridge:${botId}`).digest('hex')
-
-export function bridgeCaller(engineToken: string, botIds: string[], authorization: string): string | undefined {
-  const given = Buffer.from(authorization.replace(/^Bearer\s+/i, ''))
-  return botIds.find(id => {
-    const expected = Buffer.from(bridgeKey(engineToken, id))
-    return expected.length === given.length && timingSafeEqual(expected, given)
-  })
-}
+/** Names the bridge's per-bot key (`connection-keys.ts`); keys issued under it stay valid across releases. */
+export const T3_KEY_PURPOSE = 't3-bridge'
 
 /** `signIn` names the shared sign-in's state. Engines keep an MCP server's tool list until its settings
  *  change, so a new or lost sign-in changes the URL and every engine reconnects to the bridge. */
@@ -58,7 +50,7 @@ export function t3Connection(lilbotUrl: string, engineToken: string, botId: stri
   return {
     name: T3_CONNECTION,
     url: `${lilbotUrl}${T3_BRIDGE_PATH}?signin=${encodeURIComponent(signIn)}`,
-    bearerToken: bridgeKey(engineToken, botId),
+    bearerToken: connectionKey(engineToken, T3_KEY_PURPOSE, botId),
     timeoutSeconds: T3_TIMEOUT_SECONDS,
     tools: [...T3_TOOLS, T3_STATUS_TOOL]
   }
