@@ -138,7 +138,9 @@ const migrations: string[] = [
      INSERT INTO history_search(history_search,rowid,text) VALUES('delete',old.rowid,old.text);
      INSERT INTO history_search(rowid,text) VALUES(new.rowid,new.text); END;`,
   // Revisit old transcripts once to backfill tool rows omitted by the row_id-only importer.
-  `UPDATE history_sessions SET cursor=NULL,complete=0;`
+  `UPDATE history_sessions SET cursor=NULL,complete=0;`,
+  // Engine sessions the operator removed from LilBot's copy; every history writer skips them forever.
+  `CREATE TABLE IF NOT EXISTS history_exclusions(bot TEXT NOT NULL,session TEXT NOT NULL,reason TEXT NOT NULL,at INTEGER NOT NULL,PRIMARY KEY(bot,session));`
 ]
 
 /** `path` may be ':memory:' for tests. Applies any migration steps the file has not seen. */

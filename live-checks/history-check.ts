@@ -107,6 +107,32 @@ try {
     p => p.import.complete
   )
   assert.deepEqual((await server.call('chat.open', { botId: bot.id })).history.items, repaired, 'Re-import duplicated or changed rows')
+  // Exclude the older session: the operator command, then a restart and a forced re-import must not bring it back.
+  assert.ok(server.root.includes('/lilbot-dev/runs/'), 'The command must only target a dev run folder')
+  const exclude = (...extra: string[]) =>
+    Bun.spawnSync(['bun', 'server/history/history-exclude-cli.ts', '--bot', bot.id, '--session', first.chatId, '--reason', 'live check', ...extra], {
+      env: { ...process.env, LILBOT_DATA_DIR: server.root }
+    })
+  assert.match(exclude().stdout.toString(), /Dry run/)
+  assert.match(exclude('--yes').stdout.toString(), /Excluded/)
+  await server.crash()
+  db.exec('UPDATE history_sessions SET cursor=NULL,complete=0;')
+  await server.start()
+  await server.connect()
+  const remaining = await waitFor(
+    'import after exclusion',
+    () => server.call('chat.history', { botId: bot.id }),
+    p => p.import.complete
+  )
+  assert.ok(remaining.items.length > 0 && remaining.items.every((r: any) => r.sessionId !== first.chatId), 'Excluded session came back in chat.history')
+  assert.equal(
+    (await server.call('chat.open', { botId: bot.id })).history.items.some((r: any) => r.sessionId === first.chatId),
+    false
+  )
+  assert.equal((db.query('SELECT count(*) AS n FROM history_items WHERE session=?').get(first.chatId) as { n: number }).n, 0)
+  assert.equal((db.query('SELECT count(*) AS n FROM history_sessions WHERE id=?').get(first.chatId) as { n: number }).n, 0)
+  assert.equal((await server.call('chat.history', { botId: bot.id })).start !== null, true)
+  console.log('ok: excluded session stays out after restart and forced re-import')
   db.close()
   console.log('ok: dev server killed mid-import; resumed with no loss or duplicates')
   const reopened = await server.call('chat.open', { botId: bot.id })

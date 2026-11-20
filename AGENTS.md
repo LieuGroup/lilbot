@@ -380,6 +380,11 @@ Visual specs (sizes, copy, Paper frames): [docs/screens.md](docs/screens.md).
   pages upsert; tool results are keyed by their persisted tool call id. It is an append-only record: rewinds and resets
   never erase copied rows. Migration 19 rewinds import checkpoints once to backfill tool lines into existing copies,
   keeping every stored row.
+- `bun run history:exclude -- --bot <id> --session <id> --reason "<text>" [--yes]` (operator only, no app protocol)
+  removes one engine session from LilBot's copy for good: rows, search entries, journal, divider. The exclusion
+  (`history_exclusions`) is checked by every history writer, so imports, rewinds and replay never restore it; Hermes is
+  untouched and the bot's main session is refused. It previews without `--yes`, is idempotent, reads
+  `LILBOT_DATA_DIR`, and refuses a database that has not run the migration.
 - Attachment metadata and thread references are merged at the HTTP edge; a thread's private transcript is never
   indexed. Routine runs and hidden thread and review sessions are excluded.
 - `chat.open`/`chat.new` keep their snapshot shape: `items` holds the latest 100 records without session dividers (for

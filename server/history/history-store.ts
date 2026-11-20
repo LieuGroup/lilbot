@@ -20,7 +20,11 @@ export interface HistoryRow {
 /** SQLite owns stable display rows and an event journal written before forwarding each live event. */
 export class HistoryStore {
   constructor(readonly db: Database) {}
+  excluded(bot: string, session: string) {
+    return !!this.db.query('SELECT 1 FROM history_exclusions WHERE bot=? AND session=?').get(bot, session)
+  }
   session(bot: string, id: string, at: number) {
+    if (this.excluded(bot, id)) return
     this.db.query('INSERT INTO history_sessions(bot,id,at) VALUES(?,?,?) ON CONFLICT(bot,id) DO UPDATE SET at=min(at,excluded.at)').run(bot, id, at)
   }
   sessions(bot: string) {
@@ -30,17 +34,22 @@ export class HistoryStore {
     this.db.query('INSERT OR IGNORE INTO history_imports VALUES(?)').run(bot)
   }
   write(bot: string, session: string, rows: HistoryRow[], cursor?: string | null, complete = false) {
-    this.db.transaction(() => {
-      const insert = this.db.query(`INSERT INTO history_items(bot,session,id,at,position,item,text) VALUES(?,?,?,?,?,?,?)
+    this.db
+      .transaction(() => {
+        // Checked under the write lock, so an exclusion committed meanwhile is never undone by a late page.
+        if (this.excluded(bot, session)) return
+        const insert = this.db.query(`INSERT INTO history_items(bot,session,id,at,position,item,text) VALUES(?,?,?,?,?,?,?)
         ON CONFLICT(bot,id) DO UPDATE SET item=excluded.item,text=excluded.text`)
-      for (const row of rows) {
-        const text = 'text' in row.item ? row.item.text : ''
-        insert.run(bot, session, row.id, row.at, row.order, JSON.stringify(row.item), text)
-      }
-      if (cursor !== undefined) this.db.query('UPDATE history_sessions SET cursor=?,complete=? WHERE bot=? AND id=?').run(cursor, +complete, bot, session)
-    })()
+        for (const row of rows) {
+          const text = 'text' in row.item ? row.item.text : ''
+          insert.run(bot, session, row.id, row.at, row.order, JSON.stringify(row.item), text)
+        }
+        if (cursor !== undefined) this.db.query('UPDATE history_sessions SET cursor=?,complete=? WHERE bot=? AND id=?').run(cursor, +complete, bot, session)
+      })
+      .immediate()
   }
   event(bot: string, session: string, event: ChatEvent, key: string = crypto.randomUUID()) {
+    if (this.excluded(bot, session)) return
     this.db.query('INSERT OR IGNORE INTO history_events(bot,session,at,event,key) VALUES(?,?,?,?,?)').run(bot, session, Date.now(), JSON.stringify(event), key)
   }
   progress(bot: string): HistoryPage['import'] {
@@ -100,6 +109,7 @@ export class HistoryStore {
     this.write(bot, session, [{ id: item.toolId, at, order: 0, item }])
   }
   divider(bot: string, session: string, at: number) {
+    if (this.excluded(bot, session)) return
     this.db
       .query(`INSERT OR IGNORE INTO history_items(bot,session,id,at,position,item,text) VALUES(?,?,?,?, -1,?, '')`)
       .run(bot, session, `session:${session}`, at, JSON.stringify({ kind: 'session', text: 'New session' }))
@@ -118,7 +128,8 @@ export class HistoryStore {
   }
   forget(bot: string) {
     this.db.transaction(() => {
-      for (const table of ['history_items', 'history_sessions', 'history_events', 'history_imports']) this.db.query(`DELETE FROM ${table} WHERE bot=?`).run(bot)
+      for (const table of ['history_items', 'history_sessions', 'history_events', 'history_imports', 'history_exclusions'])
+        this.db.query(`DELETE FROM ${table} WHERE bot=?`).run(bot)
     })()
   }
 }
