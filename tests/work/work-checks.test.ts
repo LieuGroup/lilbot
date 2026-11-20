@@ -92,6 +92,8 @@ test('not verified goes back to its owner once, with what the checker saw; a sec
   const oscar = await check(f, item.id, 'not_verified')
   expect(oscar).toMatchObject({ status: 'needs_oscar', question: expect.stringContaining('Two checks did not verify'), check: { state: 'checking', by: { kind: 'oscar' } } })
   expect(f.state.waits.at(-1)).toMatchObject({ botId: 'a', itemId: item.id, on: true })
+  const retried = { requestId: `v-${item.id}:check:2`, itemId: item.id, verdict: 'not_verified' as const, result: 'I read version 6', evidence: [saw] }
+  expect((await f.work.act('c', retried)).checks).toHaveLength(3)
   expect(() => f.board.answer(item.id, 'Fine')).toThrow('pass it or send it back')
   const passed = f.board.pass(item.id, 'Looked myself')
   expect(passed).toMatchObject({ status: 'done', check: { state: 'passed', by: { kind: 'oscar' }, text: 'Looked myself' } })

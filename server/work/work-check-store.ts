@@ -62,6 +62,11 @@ export class WorkCheckStore {
     const row = this.db.query('SELECT * FROM work_checks WHERE item_id = ? AND request_id = ?').get(itemId, requestId) as Row | null
     return row ? stored(row) : null
   }
+  /** The check this bot already gave this verdict request for, if any: a retried verdict. */
+  byVerdict(itemId: string, botId: string, requestId: string): StoredCheck | null {
+    const row = this.db.query('SELECT * FROM work_checks WHERE item_id = ? AND checker_id = ? AND verdict_request = ?').get(itemId, botId, requestId) as Row | null
+    return row ? stored(row) : null
+  }
   /** The item's check under way, by a bot or waiting for Oscar. */
   open(itemId: string): StoredCheck | null {
     const check = this.latest(itemId)

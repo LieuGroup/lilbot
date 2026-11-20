@@ -34,8 +34,7 @@ export class WorkChecks {
     if (!itemId || !verdict) throw new LilBotError('work_verdict', 'Give your verdict with the itemId LilBot asked you to check.')
     const chatId = await this.work.host.callingChat(callerId, input.requestId)
     const saved = this.store.db.transaction(() => {
-      const latest = this.checks.latest(itemId)
-      if (latest?.verdictRequest === input.requestId && latest.by.id === callerId) return null
+      if (this.checks.byVerdict(itemId, callerId, input.requestId)) return null
       const item = this.store.get(itemId)
       const check = this.checks.open(itemId)
       if (item?.status !== 'checking' || check?.by.id !== callerId)
