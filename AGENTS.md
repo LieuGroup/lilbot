@@ -10,9 +10,17 @@ leader. Hermes is the engine: LilBot never runs a model or an agent loop, it is 
 
 North stars: Anthropic's "Building always-on agents" (inbox, timers, memory, permissions, outbox) and DeepSeek
 Harness's "Super-agent" post (router and workers, event-driven, watchdog). Use what Hermes already provides for these
-before writing our own. Grok Bot is a reference, not a spec ([docs/grok-bot-reference.md](docs/grok-bot-reference.md)):
-copy structure and behaviour, never its artwork, names or text. nightly-labs' OpenBot is noncommercial-licensed:
-ideas only, never its code.
+before writing our own.
+
+UI references (Oscar, 2026-11-19): screens follow nightly-labs' OpenBot's layout and behaviour until he says otherwise;
+OpenMausBot and Grok Bot ([docs/grok-bot-reference.md](docs/grok-bot-reference.md)) are secondary. Everything is redrawn
+in LilBot's own tokens, type scale and components, and Oscar approves each Paper design.
+
+- nightly-labs OpenBot is PolyForm Noncommercial: work from the running app and screenshots only, never its source,
+  assets, icons, artwork or wording.
+- OpenMausBot is Apache 2.0 except `enterprise/`; its name, mascot and artwork are trademarks. Copying its code needs
+  attribution and Oscar's OK, which he has not given.
+- Grok Bot: copy structure and behaviour, never its artwork, names or text.
 
 ## Project map
 
@@ -754,30 +762,47 @@ independent.
 ## Issues and labels
 
 Work is tracked as GitHub issues on this repo, split across threads: a discussion thread files backend issues, an
-orchestrator builds them, and a separate UI thread prototypes screens. The discussion thread does not talk about
-layout, so the labels say whether a screen still has to be designed.
+orchestrator builds them, and a separate UI thread designs screens. The discussion thread does not talk about layout,
+so the labels say whether a screen still has to be designed.
 
-- One issue per agreed decision. A part of an issue marked "proposed, not confirmed by Oscar" is checked with him in
-  that issue before anyone relies on it.
+- One issue per agreed decision.
 - `backend`: server, data and engine work. The issue describes the data and the API, never the layout.
-- `ui`: screens. Designed in the UI prototype thread.
-- `spike`: investigate and report before building.
+- `ui`: screens, designed by the UI thread.
+- `spike`: investigate and report in the issue; nothing ships.
 - `needs-ui`: a note that this feature has a screen nobody has designed yet.
+- The discussion thread messages the UI thread directly when it marks an issue `needs-ui`. The message gives the issue
+  number, what the screen must show and do, and where the data is documented, never the layout. It also messages the
+  orchestrator each time it files or materially changes a backend issue. The labels stay the record and the
+  fallback.
 
-How `needs-ui` works:
+Issues are actioned automatically (Oscar, 2026-11-20); nobody has to say "go".
 
-- It is a note, not a blocker. A `backend` issue with `needs-ui` is built and closed as normal, without waiting for a
-  prototype.
-- Closing the issue does not remove the label. Whoever builds or closes a backend issue leaves `needs-ui` on it.
-- Only the UI thread removes it. It finds the screens waiting for a prototype by listing the label across open and
-  closed issues: `gh issue list --label needs-ui --state all`.
-- For each one, the UI thread prototypes the screen, opens a `ui` issue that links to the backend issue, and then
-  removes `needs-ui` from the backend issue.
-- A backend issue must not stay open only because its screen is missing. If its backend part is done and merged,
-  close it once the prototype exists and the `ui` issue that will build the screen has been created and linked. The
-  remaining work lives in the `ui` issue.
-- So `needs-ui` on an issue, open or closed, means "no prototype yet". No `needs-ui` means "no screen, or a linked
-  `ui` issue exists".
+- The orchestrator starts the next open issue whenever a slot is free. It runs at most three builders at once, because
+  they share the development gateway; a spike that needs no dev server may run as a fourth. An hourly scheduled task
+  wakes it to check.
+- Order: the discussion thread's explicit queue, then bugs and regressions Oscar reported, then the open milestone,
+  then the rest, oldest first. "Depends on" notes are respected. Before delegating, and again before merging, re-read
+  the issue's latest comments: a later "on hold" or rewrite overrides an earlier confirmation.
+- A `ui` issue is buildable once its Paper design is approved.
+- Parts marked "proposed, not confirmed by Oscar":
+  - an implementation detail goes ahead, and the report says what was chosen;
+  - a part that changes what Oscar experiences, costs money, deletes or exposes something, or touches his accounts is
+    asked through the discussion thread first, while the rest is built.
+- Never automatic, always Oscar's call: paid plans or credits, destructive actions on his data, opening anything new to
+  the internet, using his Apple or Cloudflare accounts beyond what he approved, and approving a design.
+- Skipped, with a note in the issue: draft PR #4 (the ACP spike, never merged) and anything marked as waiting on
+  Oscar.
+- Every merge is reported to the discussion thread.
+
+How screens get designed:
+
+- The UI thread designs the screen on Paper and shows Oscar. Only after he approves does it open the `ui` build issue,
+  linked to the backend issue, and remove `needs-ui`. No other thread approves a design.
+- `needs-ui` never blocks building or closing a backend issue. Whoever builds or closes one leaves the label on.
+- A backend issue does not stay open only because its screen is missing. Once its backend part is merged, it is
+  closed when the approved design's `ui` issue exists and is linked.
+- So `needs-ui`, open or closed, means "no approved design yet". `gh issue list --label needs-ui --state all` lists
+  them.
 
 Cleaning up after a merge:
 
