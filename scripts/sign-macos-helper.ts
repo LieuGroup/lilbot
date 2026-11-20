@@ -2,12 +2,14 @@
  *  `helper-settings.json` is given. Writes `LilBot-Helper-macOS.zip` and its sidecar into `--out`; copy both
  *  into that server's `<data>/helper-downloads/`.
  *
- *    bun scripts/sign-macos-helper.ts --settings helper-settings.json --out <dir> [--unsigned]
+ *    bun scripts/sign-macos-helper.ts --settings helper-settings.json --out <dir> [--unsigned] [--extra-entitlements]
  *
  *  Signing identity and notary key come from this Mac only, never the repo: environment variables
  *  LILBOT_SIGN_IDENTITY, LILBOT_NOTARY_KEY_PATH, LILBOT_NOTARY_KEY_ID, LILBOT_NOTARY_ISSUER_ID, or the same keys in
  *  ~/.config/lilbot-signing/signing.json (LILBOT_SIGNING_CONFIG overrides the path). Nothing secret is printed.
- *  `--unsigned` makes an ad-hoc signed app, which macOS opens only after "Open Anyway". */
+ *  `--unsigned` makes an ad-hoc signed app, which macOS opens only after "Open Anyway".
+ *  The hardened runtime gets only the JIT entitlements Bun needs. `--extra-entitlements` also allows dyld
+ *  environment variables and disables library validation: use it only if the helper fails to start without them. */
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -22,12 +24,15 @@ const ARCHES = [
   ['arm64', 'arm64'],
   ['x64', 'x86_64']
 ] as const
-// Bun's documented hardened-runtime entitlements for compiled executables (it needs its JIT).
-const ENTITLEMENTS = ['allow-jit', 'allow-unsigned-executable-memory', 'disable-executable-page-protection', 'allow-dyld-environment-variables', 'disable-library-validation']
+// What a compiled Bun executable needs for its JIT. The wider two weaken the hardened runtime.
+const JIT_ENTITLEMENTS = ['allow-jit', 'allow-unsigned-executable-memory']
+const EXTRA_ENTITLEMENTS = ['allow-dyld-environment-variables', 'disable-library-validation']
 
-const { values } = parseArgs({ options: { settings: { type: 'string' }, out: { type: 'string' }, unsigned: { type: 'boolean', default: false } } })
+const { values } = parseArgs({
+  options: { settings: { type: 'string' }, out: { type: 'string' }, unsigned: { type: 'boolean', default: false }, 'extra-entitlements': { type: 'boolean', default: false } }
+})
 if (process.platform !== 'darwin') throw new Error('Run this on a Mac.')
-if (!values.settings || !values.out) throw new Error('Usage: --settings <helper-settings.json> --out <dir> [--unsigned]')
+if (!values.settings || !values.out) throw new Error('Usage: --settings <helper-settings.json> --out <dir> [--unsigned] [--extra-entitlements]')
 const settings = HelperSettings.parse(JSON.parse(readFileSync(values.settings, 'utf8')))
 const signed = !values.unsigned
 
@@ -85,7 +90,7 @@ try {
   const entitlements = join(work, 'entitlements.plist')
   writeFileSync(
     entitlements,
-    `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict>${ENTITLEMENTS.map(key => `<key>com.apple.security.cs.${key}</key><true/>`).join('')}</dict></plist>\n`
+    `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict>${[...JIT_ENTITLEMENTS, ...(values['extra-entitlements'] ? EXTRA_ENTITLEMENTS : [])].map(key => `<key>com.apple.security.cs.${key}</key><true/>`).join('')}</dict></plist>\n`
   )
 
   // One Bun binary per architecture (no lipo: a fat Bun executable is unproven); the universal launcher picks.

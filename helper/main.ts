@@ -1,10 +1,11 @@
 /** Compiled entry point. Install codes are read from stdin, never argv or logs. */
-import { existsSync, rmSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { configDir, loadIdentity, register } from './identity'
+import { retire } from './retire'
 import { run } from './runner'
 import { service } from './service'
-import { bakedSettings, HELPER_VERSION } from './settings'
+import { assertBakedDoor, bakedSettings, HELPER_VERSION } from './settings'
 import { link, setup } from './setup'
 import { setupWindow } from './setup-window'
 
@@ -15,6 +16,7 @@ try {
     if (!existsSync(join(configDir, 'identity.json'))) {
       const url = process.argv[3]
       if (!url) throw new Error('Usage: lilbot-helper install|register https://helper-origin (install code on stdin)')
+      assertBakedDoor(url, bakedSettings)
       const code = (await Bun.stdin.text()).trim()
       await register(url, code)
     }
@@ -30,8 +32,7 @@ try {
     await service('uninstall')
     console.log('Service removed. Remove the computer in LilBot to revoke its key; local identity is retained.')
   } else if (action === 'reset') {
-    await service('uninstall')
-    rmSync(join(configDir, 'identity.json'), { force: true })
+    await retire()
     console.log('Local identity removed. Register again with a fresh install code. Execution receipts retained.')
   } else if (action === 'run') {
     const controller = new AbortController()

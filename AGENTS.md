@@ -626,7 +626,8 @@ Protocol, browser behaviour, building and signing: [docs/computers.md](docs/comp
   A port already taken by something else disables (1). Registration itself is unchanged: HMAC and the helper's fresh
   key proof through the helper door.
 - Opening a downloaded helper again on a registered machine replaces the installed binary and restarts the service:
-  the update path.
+  the update path. Only opening the app updates: a `lilbot-helper://` link on a registered machine does nothing, since any
+  page or local program can open one. Baked builds register only at their own door.
 - The macOS app is built, signed with a Developer ID Application identity, notarised and stapled on a Mac by
   `scripts/sign-macos-helper.ts`. Identity and notary key (path, key id, issuer id) come from that Mac's environment
   or a local file outside the repo; never put them, the team id or an email in the repo, issues or PRs. An unsigned

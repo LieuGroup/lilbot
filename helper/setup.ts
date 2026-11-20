@@ -12,9 +12,17 @@ const ATTEMPT_MS = 10 * 60_000
 const identityFile = () => join(configDir, 'identity.json')
 const CONNECTED = 'This computer is connected to LilBot. You can close this window.'
 
-async function finish(window: SetupWindow) {
+/** What `link` touches outside the window; replaced in tests so nothing real is registered or installed. */
+export interface LinkPorts {
+  registered(): boolean
+  register(door: string, code: string): Promise<void>
+  install(): Promise<void>
+}
+const realPorts: LinkPorts = { registered: () => existsSync(identityFile()), register, install: () => service('install') }
+
+async function finish(window: SetupWindow, install: () => Promise<void> = realPorts.install) {
   try {
-    await service('install')
+    await install()
     await window.show(CONNECTED)
   } catch {
     await window.show('This computer is registered, but its background service did not start. Open the LilBot helper again.')
@@ -71,10 +79,12 @@ export async function setup(settings: HelperSettings, window: SetupWindow) {
   else if (!done && Date.now() >= until) await window.show('This attempt ran out and nothing was added. Start again in LilBot.')
 }
 
-/** `lilbot-helper://register#<code>`: the URL arrives on stdin from the macOS launcher. */
-export async function link(settings: HelperSettings, url: string, window: SetupWindow) {
+/** `lilbot-helper://register#<code>`: the URL arrives on stdin from the macOS launcher. Any web page or local
+ *  program can open such a link, so on a registered computer it changes nothing: only opening the app updates. */
+export async function link(settings: HelperSettings, url: string, window: SetupWindow, ports: LinkPorts = realPorts) {
   const code = new URL(url).hash.slice(1)
   if (!SHORT_CODE.test(code)) throw new Error('Not a LilBot helper link.')
-  if (!existsSync(identityFile())) await register(settings.door, `${code}.${settings.fingerprint}`)
-  await finish(window)
+  if (ports.registered()) return window.show(CONNECTED)
+  await ports.register(settings.door, `${code}.${settings.fingerprint}`)
+  await finish(window, ports.install)
 }

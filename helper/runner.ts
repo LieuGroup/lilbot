@@ -1,5 +1,5 @@
 import { Database } from 'bun:sqlite'
-import { chmodSync, rmSync } from 'node:fs'
+import { chmodSync } from 'node:fs'
 import { join } from 'node:path'
 import { type ComputerOperation, type ComputerResult, HelperWork } from '../shared/computer-schema'
 import { helperFrame } from './frame-auth'
@@ -8,8 +8,8 @@ import { acknowledge, canAdmit, finish, prepareJournal, pruneJournal } from './j
 import { operate } from './operations'
 import { outbound } from './outbound'
 import { boundResult } from './result-bounds'
+import { retire } from './retire'
 import { verifyFrame, verifyServer } from './server-trust'
-import { service } from './service'
 
 export async function run(identity: Identity, signal: AbortSignal) {
   const lock = new Database(join(configDir, 'runner.lock'))
@@ -173,9 +173,7 @@ export async function run(identity: Identity, signal: AbortSignal) {
     }
     while (active.size) await Bun.sleep(50)
     if (revoked) {
-      await service('uninstall')
-      // The key is a tombstone now; without it, opening the helper again registers this computer afresh.
-      rmSync(join(configDir, 'identity.json'), { force: true })
+      await retire()
     }
   } finally {
     signal.removeEventListener('abort', stop)

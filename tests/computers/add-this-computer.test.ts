@@ -40,8 +40,12 @@ function fixture() {
     rmSync(root, { recursive: true, force: true })
   })
   const build = (file: string, os: string, arch: string, hash = settingsHash(settings)) => {
-    writeFileSync(join(dir, file), `installer ${file}`)
-    writeFileSync(join(dir, `${file}.json`), JSON.stringify({ os, arch, sha256: 'a'.repeat(64), size: 10, signed: true, link: os === 'macos', version: '1', settings: hash }))
+    const content = `installer ${file}`
+    writeFileSync(join(dir, file), content)
+    writeFileSync(
+      join(dir, `${file}.json`),
+      JSON.stringify({ os, arch, sha256: 'a'.repeat(64), size: content.length, signed: true, link: os === 'macos', version: '1', settings: hash })
+    )
   }
   return { db, service, settings, dir, downloads, build, add: new AddThisComputer(service, downloads), root }
 }
