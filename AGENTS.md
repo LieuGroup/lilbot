@@ -55,7 +55,7 @@ web/src/           The web app.
   attachments/       files in the composer and in sent messages, the drop area
   activity/, library/, memory/   their details tabs (Library is a placeholder)
   routines/, threads/, skills/   data clients for panels not built yet
-  computers/         the Settings > Computers page (list, remove, add by command line)
+  computers/         the Settings > Computers page (list, remove, add this computer, add by command line)
   deploy/            last deployment failure notice
   settings/          the Settings dialog
   ui/                shadcn/ui parts (ours to edit) and our own small shared parts built from them
@@ -587,8 +587,9 @@ shared with the standalone `helper/` client. Protocol, limits, build and tests: 
 - Browser methods `computers.list`, `computers.installCode`, `computers.remove`, `computers.addThis.*` and the
   `computers.changed` push exist. Settings > Computers (`web/src/computers/`, [docs/screens.md](docs/screens.md)) lists
   machines live (leader first, online/offline/key-conflict dots), removes after confirmation and mints a one-time
-  command in "Add by command line"; the code lives only in that dialog's state. "Add this computer" from the browser
-  still shows "Coming soon" until its screen uses `computers.addThis.*`. Helpers connect only through the helper door.
+  command in "Add by command line"; the code lives only in that dialog's state. "Add this computer" is a three-step
+  dialog on `computers.addThis.*` (download, open the installer, connected) whose code lives only in its state and shows
+  only in the not-detected state. Helpers connect only through the helper door.
 - LilBot creates `computer-server-key.pem` (0600) in its data directory; the install code pins its fingerprint. Back
   it up with the database and preserve it on redeploy. Key replacement needs re-registration with a new install code.
   Every frame is signed; helpers need TLS except on loopback. Revocation takes effect only through a signed revoke.
@@ -605,7 +606,7 @@ appears. No terminal on macOS. The command-line install (`computers.installCode`
 Protocol, browser behaviour, building and signing: [docs/computers.md](docs/computers.md#adding-a-computer-from-its-browser).
 
 - `computers.installCode` also returns `helperUrl`, the helper door origin, when `LILBOT_HELPER_URL` is set; the
-  command-line dialog can use it instead of a fixed hostname.
+  command-line dialog builds its command from it (no hostname in the web code) and says so when it is missing.
 - `computers.addThis.start({ name, system })` mints an ordinary install code (single use, 10 minutes) for an attempt
   and returns the downloads for that system, or `supported: false` (`system`: not macOS or Linux; `unavailable`: no
   installer built for this LilBot). `computers.addThis.status({ attemptId })` answers waiting, registered, connected or
