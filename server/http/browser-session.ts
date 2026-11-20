@@ -47,7 +47,10 @@ export class BrowserSession {
     'threads.list': ({ botId }) => this.threads!.list(botId),
     'threads.open': ({ botId, threadId }) => this.threads!.open(botId, threadId),
     'computers.list': async () => requireService(this.computers, 'Computers unavailable.').list(),
-    'computers.installCode': async ({ name }) => requireService(this.computers, 'Computers unavailable.').auth.code(name),
+    'computers.installCode': async ({ name }) => ({
+      ...requireService(this.computers, 'Computers unavailable.').auth.code(name),
+      helperUrl: this.addThis?.helperUrl
+    }),
     'computers.remove': async ({ computer }) => requireService(this.computers, 'Computers unavailable.').remove(computer),
     'computers.addThis.start': async ({ name, system }) => requireService(this.addThis, 'Computers unavailable.').start(name, system),
     'computers.addThis.status': async ({ attemptId }) => requireService(this.addThis, 'Computers unavailable.').status(attemptId),

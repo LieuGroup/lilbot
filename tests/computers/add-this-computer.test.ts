@@ -75,6 +75,7 @@ test('settings bake only LilBot page origins over HTTPS; loopback pages only in 
 
 test('an attempt offers the matching build, and learns which computer registered with its code', () => {
   const f = fixture()
+  expect(f.add.helperUrl).toBe('https://door.example')
   expect(f.add.start('Phone', { os: 'ios', arch: 'arm64' })).toEqual({ supported: false, reason: 'system' })
   expect(f.add.start('Mac', { os: 'macos', arch: 'unknown' })).toEqual({ supported: false, reason: 'unavailable' })
   f.build('LilBot-Helper-macOS.zip', 'macos', 'universal')

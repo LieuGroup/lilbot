@@ -92,7 +92,8 @@ export interface Results {
   'threads.list': import('./thread-schema').BotThread[]
   'threads.open': import('./thread-schema').BotThread
   'computers.list': import('./computer-schema').Computer[]
-  'computers.installCode': { code: string; expiresAt: number }
+  /** `helperUrl`: the helper door origin for the command, when the server has `LILBOT_HELPER_URL`. */
+  'computers.installCode': { code: string; expiresAt: number; helperUrl?: string }
   'computers.remove': { ok: true }
   'computers.addThis.start': import('./computer-add-schema').AddThisStart
   'computers.addThis.status': import('./computer-add-schema').AddThisStatus

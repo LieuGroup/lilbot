@@ -604,10 +604,12 @@ Oscar opens LilBot on the machine, chooses "Add this computer", downloads the in
 appears. No terminal on macOS. The command-line install (`computers.installCode`) stays for headless machines.
 Protocol, browser behaviour, building and signing: [docs/computers.md](docs/computers.md#adding-a-computer-from-its-browser).
 
+- `computers.installCode` also returns `helperUrl`, the helper door origin, when `LILBOT_HELPER_URL` is set; the
+  command-line dialog can use it instead of a fixed hostname.
 - `computers.addThis.start({ name, system })` mints an ordinary install code (single use, 10 minutes) for an attempt
   and returns the downloads for that system, or `supported: false` (`system`: not macOS or Linux; `unavailable`: no
   installer built for this LilBot). `computers.addThis.status({ attemptId })` answers waiting, registered, connected or
-  expired, with the computer once one registered with that attempt's code (migration 22 links them).
+  expired, with the computer once one registered with that attempt's code (migration 23 links them).
 - Downloads are served from `<data>/helper-downloads` at `/api/computers/download/<file>` on the private app and the
   Access listener with the socket's Host/Origin checks and no cross-site fetches; never on the helper door. A build is
   offered only while its sidecar's settings hash matches the server's current settings.

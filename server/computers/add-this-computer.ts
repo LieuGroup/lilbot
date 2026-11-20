@@ -14,6 +14,11 @@ export class AddThisComputer {
     private downloads: HelperDownloads
   ) {}
 
+  /** The helper door origin, also for the command-line install. */
+  get helperUrl() {
+    return this.downloads.settings?.door
+  }
+
   start(name: string, system: AddThisSystem): AddThisStart {
     if (system.os !== 'macos' && system.os !== 'linux') return { supported: false, reason: 'system' }
     const settings = this.downloads.settings
