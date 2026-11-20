@@ -26,10 +26,11 @@ const reports = async (botId: string) => {
   return (chat.items as any[]).filter(i => i.kind === 'assistant' && i.text.includes('GROUP_REPORT')).map(i => i.text as string)
 }
 const groupOf = (requestId: string) => until(`group ${requestId}`, () => q('SELECT thread_id FROM thread_groups WHERE request_id=?', requestId)[0]?.thread_id as string, Boolean)
-const once = (groupId: string) => {
+/** No message twice, and the outcome went out once: its delivery settles when the engine's receipt is final, a moment after the turn. */
+const once = async (groupId: string) => {
   const { messages } = q('SELECT data FROM threads WHERE id=?', groupId).map(r => JSON.parse(r.data))[0]
   assert.equal(new Set(messages.map((m: any) => m.id)).size, messages.length, 'a message was recorded twice')
-  assert.equal(q("SELECT id FROM thread_deliveries WHERE id=? AND status='done'", `group:${groupId}:end`).length, 1, 'the outcome went out once')
+  await until('the outcome to settle', () => q("SELECT id FROM thread_deliveries WHERE id=? AND status='done'", `group:${groupId}:end`).length, n => n === 1, 60_000)
 }
 try {
   await server.start()
@@ -116,7 +117,7 @@ try {
     r => r.length === 1
   )
   assert.ok(first[0].includes(WORD))
-  once(g1)
+  await once(g1)
   assert.ok(
     (await server.call('bots.list')).every((b: any) => !b.groups),
     'the roster drops the group'
@@ -148,7 +149,7 @@ try {
     r => r.length === 2
   )
   assert.equal(q("SELECT id FROM thread_deliveries WHERE threadId=? AND kind='round'", g2).length, 0)
-  once(g2)
+  await once(g2)
   console.log(`ok: Oscar stopped a group; both members stopped and the lead was told: ${told[1].slice(0, 120)}`)
 
   await server.call('chat.send', {
@@ -170,7 +171,7 @@ try {
     () => reports(lead.id),
     r => r.length === 3
   )
-  once(g3)
+  await once(g3)
   const listed = await server.call('threads.list', { botId: scout.id })
   assert.deepEqual(
     listed

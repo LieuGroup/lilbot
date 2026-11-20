@@ -55,7 +55,7 @@ block. The six webhook tools (#12) add six listing lines, about 270 tokens. Ther
 
 ### Temporary groups' cost (#133)
 
-One listing line (+162 characters, about 40 tokens a turn) and +1,290 characters of full `tools/list`; the note is
+One listing line (+162 characters, about 40 tokens a turn) and +1,299 characters of full `tools/list`; the note is
 unchanged. Measurements in `docs/threads.md`.
 
 ### The work board's cost (#141, against main at 3ae7cc0, characters from `systemFixture`)

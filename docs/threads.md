@@ -116,7 +116,7 @@ implementation's.
 | | before | after |
 |---|---|---|
 | listing lines Hermes shows every turn (name and first sentence) | 3,284 (32 tools) | 3,446 (+162: `lilbot_group`) |
-| full `tools/list`, fetched only by `tool_describe` or an eager engine | 12,720 | 14,010 (+1,290) |
+| full `tools/list`, fetched only by `tool_describe` or an eager engine | 12,720 | 14,019 (+1,299) |
 | the note | unchanged | unchanged |
 
 Per turn that is one listing line, about 40 tokens at #154's 45 a tool. `lilbot_group`'s schema is 864 characters, read

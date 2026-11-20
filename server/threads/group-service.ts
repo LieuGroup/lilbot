@@ -2,11 +2,11 @@
  *  point, says each next point (to all or to named members) and closes it with an outcome; a member attaches files to
  *  its reply; anyone in the group reads its status. Rounds run through the outbox (`group-rounds.ts`), endings through
  *  `group-end.ts`. The caller is always the key's bot. */
-import { basename } from 'node:path'
 import { LilBotError } from '../../shared/protocol'
-import { type BotThread, type ExchangeFile, GroupInput } from '../../shared/thread-schema'
-import { type CopiedFile, checkFiles, copyFile, removeCopy, stageFiles } from './exchange-files'
+import { type BotThread, GroupInput } from '../../shared/thread-schema'
+import { checkFiles, stageFiles } from './exchange-files'
 import type { GroupEnding, GroupHost } from './group-end'
+import { keepFiles, withCopies } from './group-files'
 import { groupFolder, makeGroupFolder } from './group-folder'
 import { openRound } from './group-open'
 import { type GroupStore, memberItemId } from './group-store'
@@ -73,7 +73,7 @@ export class GroupService {
     const id = crypto.randomUUID()
     const folder = groupFolder(this.host.root, id)
     await makeGroupFolder(this.host.root, id)
-    await this.withCopies(folder, root, input.files ?? [], copies =>
+    await withCopies(folder, root, input.files ?? [], copies =>
       this.store.db.transaction(() => {
         if (this.groups.byRequest(caller.id, requestId)) return false
         const at = Date.now()
@@ -125,18 +125,6 @@ export class GroupService {
     return [...new Set(ids as string[])]
   }
 
-  /** Copies the caller's files into the group folder before `record` runs; copies it did not record are removed. */
-  private async withCopies(folder: string, root: string, files: string[], record: (copies: CopiedFile[]) => boolean) {
-    const copies: CopiedFile[] = []
-    let recorded = false
-    try {
-      for (const file of files) copies.push(await copyFile(root, file, folder, []))
-      recorded = record(copies)
-    } finally {
-      if (!recorded) for (const c of copies) await removeCopy(folder, c.copy).catch(() => {})
-    }
-  }
-
   private async say(caller: Bot, thread: BotThread, input: GroupInput) {
     const requestId = need(input.requestId, 'a requestId')
     const g = thread.group!
@@ -152,7 +140,7 @@ export class GroupService {
     const root = await this.folder(caller.id)
     await checkFiles(root, input.files ?? [])
     const source = this.groups.row(thread.id)!.source_chat
-    await this.withCopies(g.folder, root, input.files ?? [], copies =>
+    await withCopies(g.folder, root, input.files ?? [], copies =>
       this.store.db.transaction(() => {
         const now = this.store.get(thread.id)
         if (now.group!.end || now.group!.rounds.some(r => r.requestId === requestId) || busy()) return false
@@ -176,29 +164,10 @@ export class GroupService {
     if (thread.group!.end) return botStatus(this.threads.view(thread))
     const outcome = need(input.text, 'the outcome (text)')
     refuseUnsafe(outcome)
-    const kept = await this.keep(caller, thread, input.keep ?? [])
+    const source = this.groups.row(thread.id)!.source_chat
+    const kept = await keepFiles(this.threads.files, thread, await this.folder(caller.id), input.keep ?? [], (path, title) => this.host.give(caller.id, path, title, source))
     if (this.store.db.transaction(() => this.ending.end(thread.id, 'closed', outcome, { kept }))()) await this.ending.settle(thread.id, true)
     return botStatus(this.threads.view(this.store.get(thread.id)))
-  }
-
-  /** Files from the group folder worth keeping: copied into the leader's folder and given to its Library. */
-  private async keep(caller: Bot, thread: BotThread, keep: string[]) {
-    const all = [...this.threads.files.byMessage(thread.id).values()].flat().filter(f => f.path)
-    const picked = keep.map(k => {
-      const matches = all.filter(f => f.path === basename(k) || f.name === basename(k))
-      if (matches.length !== 1)
-        throw new LilBotError('invalid_file', `${JSON.stringify(k.slice(0, 200))} is not one file in the group folder: use a name lilbot_group status lists.`)
-      return matches[0]
-    })
-    const root = await this.folder(caller.id)
-    const source = this.groups.row(thread.id)!.source_chat
-    const kept: ExchangeFile[] = []
-    for (const f of picked) {
-      const copy = await copyFile(thread.group!.folder, f.path!, root, ['groups', thread.id])
-      await this.host.give(caller.id, copy.copy, f.name, source)
-      kept.push({ name: f.name, size: copy.size, fromId: f.fromId, path: copy.copy })
-    }
-    return kept
   }
 
   /** Oscar stops a group: every bot in it stops at once, and the leader is told in its own conversation. */
