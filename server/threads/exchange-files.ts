@@ -6,6 +6,7 @@ import { open, unlink } from 'node:fs/promises'
 import { basename, isAbsolute, normalize, relative } from 'node:path'
 import { LilBotError } from '../../shared/protocol'
 import { MAX_BYTES, MAX_FILES, openFolder, writeAttachment } from '../attachments/attachment-files'
+import type { ThreadFiles } from './thread-files'
 
 export interface CopiedFile {
   name: string
@@ -84,5 +85,21 @@ export async function removeCopy(root: string, copy: string) {
     await unlink(`/proc/self/fd/${folder.fd}/${name}`)
   } finally {
     await folder.close()
+  }
+}
+
+/** Files a receiver attached to a reply, copied into the recipient's folder as the answer goes out. One that vanished
+ *  or became a link since it was attached is left without a copy: listed as not delivered. */
+export async function sendFiles(files: ThreadFiles, folder: (botId: string) => Promise<string>, messageId: string, from: string, to: string) {
+  const rows = files.forMessage(messageId).filter(f => !f.copy)
+  if (!rows.length) return
+  const [fromRoot, toRoot] = [await folder(from), await folder(to)]
+  for (const row of rows) {
+    try {
+      const copy = await copyFile(fromRoot, row.source, toRoot, row.thread_id)
+      files.copied(row.id, copy.copy, copy.sha256)
+    } catch (error) {
+      if (!(error instanceof LilBotError)) throw error
+    }
   }
 }

@@ -943,9 +943,8 @@ profiles, isolated directories, cleanup in `finally`. Most cost a few model call
 - `bun run check:history`: continuous history, paging and search, tool lines after reload and new session, backfill of
   tool rows into a copy that lost them; kills only its own server mid-import, repeats the import without duplicates; forced compression.
 - `bun run check:threads`: two temporary bots ask each other.
-- `bun run check:delegation`: a temporary lead hands two tasks to two helpers in one call, one with a file; the check,
-  with the lead's own MCP key, reads status, redirects one mid-command and stops the other; the answer returns once
-  with a file.
+- `bun run check:delegation`: a temporary lead hands two tasks to two helpers in one call, one with a file; then it
+  reads their status, redirects one mid-command and stops the other; the first answer returns once, with a file.
 - `bun run check:routines`: create from chat, a real file-writing run, open history, pause, restart, resume, delete.
 - `bun run check:restart`: SIGKILLs only its own second server mid-turn; chat, routine and thread side-effect counters
   must stay at one. Confirms its profiles are gone with `hermes profile list`.

@@ -89,6 +89,33 @@ test('a redirect taken by the turn is not repeated, and one sent before the task
   expect(f.store.pendingWork(exchanges[0].exchangeId)).toEqual([])
 })
 
+test('a redirect steered into a turn resumed by a nested answer settles with that turn', async () => {
+  const f = delegationFixture()
+  const finishAll = (botId: string) => f.runs.filter(r => r.botId === botId).forEach(r => r.finish(`From ${botId}`))
+  const { exchanges } = await f.delegation.delegate('a', { requestId: 'r', tasks: [{ to: 'b', task: 'Ask C, then report' }] })
+  const id = exchanges[0].exchangeId
+  await f.settle()
+  await f.threads.ask('b', { to: 'c', requestId: 'nested', chatId: f.runs[0].chatId, text: 'Help B' })
+  f.runs[0].finish('Asked C')
+  await f.settle()
+  await f.settle()
+  finishAll('a')
+  finishAll('c')
+  await f.settle()
+  await f.settle()
+  const resumed = f.runs.filter(r => r.botId === 'b')[1]
+  expect(resumed.chatId).toBe(f.runs[0].chatId)
+  expect((await f.delegation.redirect('a', { requestId: 'late', exchangeId: id, message: 'Also say thanks' })).applied).toBe('now')
+  resumed.finish('Done with C')
+  await f.settle()
+  expect(f.store.delivery('a:late')?.status).toBe('pending')
+  expect((await f.delegation.status('a', { exchangeIds: [id] })).exchanges[0].status).toBe('waiting')
+  finishAll('a')
+  await f.settle()
+  await f.settle()
+  expect(f.runs.filter(r => r.botId === 'b').at(-1)?.prompt).toContain('Redirect from bot "A"')
+})
+
 test('wait returns at once, and the last answer tells the bot that all are in', async () => {
   const f = delegationFixture()
   const { exchanges } = await f.delegation.delegate('a', two)

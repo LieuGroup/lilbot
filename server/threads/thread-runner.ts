@@ -6,7 +6,7 @@ import { backgroundFailure } from '../background'
 import { botLine } from '../devices/origin-line'
 import type { RoutineOptions } from '../engines/bot-engine'
 import { memoryRefusal } from '../memory/memory-safety'
-import { copyFile } from './exchange-files'
+import { sendFiles } from './exchange-files'
 import type { ThreadFiles } from './thread-files'
 import { THREAD_LIMITS } from './thread-limits'
 import { answerPrompt, replyText, workPrompt } from './thread-prompts'
@@ -144,12 +144,13 @@ export class ThreadRunner {
     const items = result.items?.filter(i => i.kind !== 'user') ?? [{ kind: 'assistant' as const, text: result.text }]
     if (result.status !== 'completed') items.push({ kind: 'assistant', text: `Thread work ${result.status}: ${result.text}` })
     // A redirect steered into this turn that the turn never took runs as the receiver's next turn instead.
-    for (const r of this.store.steered(d.threadId))
+    const work = this.store.workThread(d)
+    for (const r of work ? this.store.steered(work) : [])
       if (r.target === d.target) this.store.setStatus(r.id, result.items?.some(i => i.kind === 'user' && i.text.includes(r.id)) ? 'done' : 'pending')
     const response = this.responseFor(d)
     const replyId = `${d.id}:reply`
     const withheld = !!response && this.store.get(response.threadId).status === 'cancelled'
-    if (response && !withheld) await this.sendFiles(replyId, d.target, response.target)
+    if (response && !withheld && this.host.folder) await sendFiles(this.files, this.host.folder, replyId, d.target, response.target)
     const settled = [d, ...redirects].map(r => r.id)
     this.store.db.transaction(() => {
       if (this.store.delivery(d.id)?.status === 'done') return
@@ -170,22 +171,6 @@ export class ThreadRunner {
       for (const id of settled) this.store.setStatus(id, 'done')
     })()
     this.retryAt.delete(d.id)
-  }
-
-  /** Files the receiver attached to this reply, copied into the recipient's folder as the answer goes out. */
-  private async sendFiles(messageId: string, from: string, to: string) {
-    const rows = this.files.forMessage(messageId).filter(f => !f.copy)
-    if (!rows.length || !this.host.folder) return
-    const [fromRoot, toRoot] = [await this.host.folder(from), await this.host.folder(to)]
-    for (const row of rows) {
-      try {
-        const copy = await copyFile(fromRoot, row.source, toRoot, row.thread_id)
-        this.files.copied(row.id, copy.copy, copy.sha256)
-      } catch (error) {
-        // A file that disappeared or became a link since it was attached is listed as not delivered.
-        if (!(error instanceof LilBotError)) throw error
-      }
-    }
   }
 
   private fail(d: Delivery) {

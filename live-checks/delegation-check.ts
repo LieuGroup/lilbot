@@ -3,16 +3,14 @@ import { devPort } from '../scripts/dev-paths'
 import { checkClient } from './check-client'
 import { deleteProfile, startServer } from './check-process'
 /** `bun run check:delegation`: on an isolated dev server a temporary lead bot hands two tasks to two temporary helpers
- *  in one `lilbot_delegate` call, one with a file. The check then uses the lead's own MCP key, as the bot would, to
- *  read their status, redirect one mid-command (steer) and stop the other (interrupt); the first answer comes back with
- *  a file into the lead's conversation, nothing twice. Costs a handful of model calls; cleanup runs in `finally`. */
+ *  in one `lilbot_delegate` call, one with a file. While both work, the lead reads their status, redirects one
+ *  mid-command (steer) and stops the other (interrupt); the first answer comes back with a file into the lead's
+ *  conversation, nothing twice. Costs a handful of model calls; cleanup runs in `finally`. */
 import { Database } from 'bun:sqlite'
 import assert from 'node:assert/strict'
 import { readFileSync, writeFileSync } from 'node:fs'
-import { mkdir, readFile, rm } from 'node:fs/promises'
+import { mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { connectionKey } from '../server/connections/connection-keys'
-import { SYSTEM_KEY_PURPOSE } from '../server/system/system-connection'
 
 const root = devScratch('lilbot-delegation')
 const port = devPort()
@@ -40,19 +38,6 @@ async function until<T>(read: () => Promise<T> | T, ok: (value: T) => boolean, w
   }
   throw new Error(`Timed out waiting for ${what}`)
 }
-/** One tool call on LilBot's MCP server with the bot's own key, exactly as its engine makes it. */
-async function tool(botId: string, name: string, args: unknown) {
-  const token = (await readFile(join(root, 'engine-token'), 'utf8')).trim()
-  const response = await fetch(`http://127.0.0.1:${port}/engine/lilbot/mcp`, {
-    method: 'POST',
-    headers: { authorization: `Bearer ${connectionKey(token, SYSTEM_KEY_PURPOSE, botId)}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } })
-  })
-  const { result } = (await response.json()) as any
-  assert.ok(!result.isError, result.content[0].text)
-  return JSON.parse(result.content[0].text)
-}
-
 try {
   await until(
     () =>
@@ -86,7 +71,7 @@ try {
   const main = await call('chat.open', { botId: lead.id })
   await call('chat.send', {
     chatId: main.chatId,
-    text: `Call lilbot_delegate once, with requestId live-batch and two tasks. Task 1 to "Delegation Reader", with files ["brief.txt"]: "First run \`sleep 40\` in your terminal. Then read the attached file and answer with the secret word in it." Task 2 to "Delegation Sleeper": "Run \`sleep 600\` in your terminal, then answer DONE." Then just say HANDED_OVER.`
+    text: `Call lilbot_delegate once, with requestId live-batch and two tasks. Task 1 to "Delegation Reader", with files ["brief.txt"]: "First run \`sleep 120\` in your terminal. Then read the attached file and answer with the secret word in it." Task 2 to "Delegation Sleeper": "Run \`sleep 600\` in your terminal, then answer DONE." Then just say HANDED_OVER.`
   })
   const handed = await until(
     () => db!.query("SELECT * FROM thread_deliveries WHERE sender=? AND kind='request'").all(lead.id) as any[],
@@ -105,24 +90,29 @@ try {
   assert.ok(readFileSync(join(workspaces, b.id, sent.path), 'utf8').includes(WORD), 'the reader got its own copy')
   console.log('ok: one call, two exchanges in one batch, the brief copied into the reader’s folder')
 
-  const working = (id: string) => (status: any) => status.exchanges.some((e: any) => e.exchangeId === id && e.status === 'working' && e.activity)
-  const status = await until(
-    () => tool(lead.id, 'lilbot_delegation_status', { batchId: threadB.batchId }),
-    s => working(toB)(s) && working(toC)(s),
-    'both to be working'
-  )
-  console.log(`ok: status ${JSON.stringify(status.exchanges.map((e: any) => [e.to, e.status, e.activity, e.runSeconds]))}`)
-  const redirect = await tool(lead.id, 'lilbot_delegation_redirect', {
-    requestId: 'live-redirect',
-    exchangeId: toB,
-    message: 'Also write the word into answer.txt in your folder and attach it with lilbot_delegation_attach before you answer.'
+  // What the screens read: both at work, each with its activity line.
+  const working = (id: string) => call('threads.open', { botId: lead.id, threadId: id }).then((t: any) => t.status === 'working' && !!t.activity)
+  await until(async () => (await working(toB)) && (await working(toC)), Boolean, 'both to be working')
+  const sentControl = events.length
+  await call('chat.send', {
+    chatId: main.chatId,
+    text: `The Reader's exchange is ${toB}, the Sleeper's is ${toC}, the batch is ${threadB.batchId}. In this order: call lilbot_delegation_status for the batch; call lilbot_delegation_redirect on the Reader's exchange with requestId live-redirect and message "Also write the word into answer.txt in your folder and attach it with lilbot_delegation_attach before you answer."; call lilbot_delegation_cancel on the Sleeper's exchange; call lilbot_delegation_wait for the batch. Then reply CONTROL_DONE and the statuses the status call showed.`
   })
-  assert.equal(redirect.applied, 'now')
-  const stopped = await tool(lead.id, 'lilbot_delegation_cancel', { exchangeId: toC })
+  const control = await until(
+    () => events.slice(sentControl).filter(f => f.event === 'chat' && f.chatId === main.chatId && f.data.type === 'turn.finished' && String(f.data.text).includes('CONTROL_DONE')),
+    finished => finished.length > 0,
+    'the lead to take control'
+  )
+  assert.ok(String(control[0].data.text).toLowerCase().includes('working'), 'the lead read both as working')
+  const tools = (db.query('SELECT tool FROM system_changes WHERE bot_id=? ORDER BY id').all(lead.id) as { tool: string }[]).map(r => r.tool)
+  assert.deepEqual(tools, ['lilbot_delegate', 'lilbot_delegation_redirect', 'lilbot_delegation_cancel', 'lilbot_delegation_wait'])
+  const redirect = db.query('SELECT kind, status FROM thread_deliveries WHERE id=?').get(`${lead.id}:live-redirect`) as any
+  assert.equal(redirect.kind, 'redirect')
+  assert.equal(redirect.status, 'steered', 'the redirect reached the reader mid-command')
+  const stopped = await call('threads.open', { botId: lead.id, threadId: toC })
   assert.equal(stopped.status, 'cancelled')
-  assert.equal(stopped.stoppedBy, 'Delegation Lead')
-  assert.equal((await tool(lead.id, 'lilbot_delegation_wait', { batchId: threadB.batchId })).allIn, false)
-  console.log('ok: redirected the reader mid-command, stopped the sleeper, waiting for the batch')
+  assert.deepEqual([stopped.stoppedBy.kind, stopped.stoppedBy.name], ['bot', 'Delegation Lead'])
+  console.log(`ok: the lead read status, redirected the reader mid-command, stopped the sleeper and waits for the batch: ${String(control[0].data.text).slice(0, 160)}`)
 
   const reported = await until(
     () => events.filter(f => f.event === 'chat' && f.chatId === main.chatId && f.data.type === 'turn.finished' && String(f.data.text).includes('LEAD_REPORT')),
