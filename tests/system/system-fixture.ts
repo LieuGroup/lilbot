@@ -13,6 +13,7 @@ import { WebhookService } from '../../server/webhooks/webhook-service'
 import { WebhookStore } from '../../server/webhooks/webhook-store'
 import type { T3ConnectionStatus } from '../../shared/connections-schema'
 import { fakeService } from '../helpers/fake-engine'
+import { groupHostFor } from '../threads/delegation-fixture'
 import { workFixture } from '../work/work-fixture'
 
 const TOKEN = 'engine-token-for-tests'
@@ -37,8 +38,8 @@ export function systemFixture() {
     runRoutine: fake.service.runRoutine.bind(fake.service),
     folder: (id: string) => workspaces.ensure(id)
   }
-  const threads = new ThreadService(new ThreadStore(fake.database), host)
   const work = workFixture({ database: fake.database, requireBot: id => fake.service.requireBot(id) })
+  const threads = new ThreadService(new ThreadStore(fake.database), host, undefined, undefined, undefined, groupHostFor(fake.root, work.links).host)
   const server = createSystemServer({
     store: fake.store,
     workspaces,
@@ -49,7 +50,7 @@ export function systemFixture() {
     activity: fake.activity,
     memory: fake.memory,
     memoryChanged: () => state.memoryPushes++,
-    delegation: { hand: new DelegationService(threads, host, async botId => `${botId}-main`, work.links), control: new DelegationControl(threads, host) },
+    delegation: { hand: new DelegationService(threads, host, async botId => `${botId}-main`, work.links), control: new DelegationControl(threads, host), groups: threads.groups! },
     work: work.work,
     webhooks,
     changes,

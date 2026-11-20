@@ -8,6 +8,7 @@ import type { ComputerService } from '../computers/computer-service'
 import type { MemoryService } from '../memory/memory-service'
 import type { DelegationControl } from '../threads/delegation-control'
 import type { DelegationService } from '../threads/delegation-service'
+import type { GroupService } from '../threads/group-service'
 import type { WebhookService } from '../webhooks/webhook-service'
 import type { WorkService } from '../work/work-service'
 import type { SystemChanges } from './system-changes'
@@ -27,7 +28,8 @@ export interface SystemDeps extends SystemFacts {
   activity: ActivityService
   memory: MemoryService
   memoryChanged: () => void
-  delegation: { hand: DelegationService; control: DelegationControl }
+  /** Handing work to one bot, and working together in temporary groups. */
+  delegation: { hand: DelegationService; control: DelegationControl; groups: GroupService }
   work: WorkService
   webhooks: WebhookService
   changes: SystemChanges

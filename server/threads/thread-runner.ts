@@ -7,6 +7,7 @@ import { botLine } from '../devices/origin-line'
 import type { RoutineOptions } from '../engines/bot-engine'
 import { memoryRefusal } from '../memory/memory-safety'
 import { sendFiles } from './exchange-files'
+import type { GroupRounds } from './group-rounds'
 import type { ThreadFiles } from './thread-files'
 import { THREAD_LIMITS } from './thread-limits'
 import { answerPrompt, replyText, workPrompt } from './thread-prompts'
@@ -22,6 +23,8 @@ export interface RunnerHost {
   stopRun?(botId: string, chatId: string): Promise<boolean>
 }
 const TERMINAL = ['bot_not_found', 'unsafe_message', 'thread_limit']
+/** Kinds whose text is LilBot's own prompt, any bot text in it already checked and fenced. */
+const PREPARED = ['notice', 'oscar', 'point', 'round']
 
 export class ThreadRunner {
   private running = new Map<string, Delivery>()
@@ -35,32 +38,40 @@ export class ThreadRunner {
     private changed: () => void,
     private activity: (d: Delivery, working: boolean) => void,
     /** A light push: an exchange's status or activity line changed. */
-    private touched: () => void
+    private touched: () => void,
+    private groups?: GroupRounds
   ) {}
 
-  /** The delivery running now in this exchange's receiver session, if any. */
-  runningFor(threadId: string) {
-    return [...this.running.values()].find(d => this.store.workThread(d) === threadId)
+  /** The deliveries running now in this exchange's (or group's) sessions. */
+  runningIn(threadId: string) {
+    return [...this.running.values()].filter(d => this.store.workThread(d) === threadId)
   }
-  activityOf(threadId: string) {
-    return this.lines.get(threadId) ?? null
+  runningFor(threadId: string) {
+    return this.runningIn(threadId)[0]
+  }
+  /** What the bot running this delivery is doing right now. */
+  lineOf(d: Delivery | undefined) {
+    return (d && this.lines.get(d.id)) ?? null
   }
   /** A tool call seen in a chat: in a running exchange it becomes the receiver's activity line. */
   sawTool(chatId: string, line: string) {
     const d = [...this.running.values()].find(d => d.chatId === chatId)
-    const work = d && this.store.workThread(d)
-    if (!work || this.lines.get(work) === line) return
-    this.lines.set(work, line)
+    if (!d || this.lines.get(d.id) === line) return
+    this.lines.set(d.id, line)
     this.touched()
   }
 
   tick() {
     const pending = this.store.pending()
+    // In order within a thread, and within a group per member so members reply in parallel; nested threads move independently.
+    const lanes = pending.map(d => {
+      const group = this.groups?.groupOf(d)
+      return group ? `${group}\n${d.target}` : d.threadId
+    })
     for (const [index, d] of pending.entries()) {
       if (this.running.size >= THREAD_LIMITS.concurrent) break
       if (this.running.has(d.id) || (this.retryAt.get(d.id) ?? 0) > Date.now()) continue
-      // Preserve order within a thread, while nested threads can make progress independently.
-      if (pending.slice(0, index).some(other => other.threadId === d.threadId)) continue
+      if (lanes.slice(0, index).includes(lanes[index])) continue
       this.running.set(d.id, d)
       void Promise.resolve()
         .then(() => {
@@ -69,7 +80,7 @@ export class ThreadRunner {
         })
         .catch(error => {
           if (error instanceof LilBotError && error.code === 'thread_cancelled') this.store.setStatus(d.id, 'done')
-          else if (error instanceof LilBotError && TERMINAL.includes(error.code)) this.fail(d)
+          else if (error instanceof LilBotError && TERMINAL.includes(error.code)) return this.groups?.owns(d.threadId) ? this.groups.failed(d) : this.fail(d)
           else {
             this.retryAt.set(d.id, Date.now() + 30_000)
             backgroundFailure('thread delivery')
@@ -77,8 +88,7 @@ export class ThreadRunner {
         })
         .finally(() => {
           this.running.delete(d.id)
-          const work = this.store.workThread(d)
-          if (work) this.lines.delete(work)
+          this.lines.delete(d.id)
           this.activity(d, false)
           this.changed()
         })
@@ -90,7 +100,8 @@ export class ThreadRunner {
     await this.host.requireBot(d.sender)
     await this.host.requireBot(d.target)
     const work = this.store.workThread(d)
-    const stopped = () => !!work && this.store.get(work).status === 'cancelled'
+    const group = this.groups?.groupOf(d)
+    const stopped = () => !!work && (group ? this.groups!.ended(group) : this.store.get(work).status === 'cancelled')
     const stillOn = () => {
       if (stopped()) throw new LilBotError('thread_cancelled', 'The exchange was stopped.')
     }
@@ -99,21 +110,20 @@ export class ThreadRunner {
     stillOn()
     const thread = this.store.get(d.threadId)
     const sender = thread.participants.find(p => p.id === d.sender)?.name ?? 'a bot'
-    if (d.kind !== 'notice' && d.kind !== 'oscar') {
+    if (!PREPARED.includes(d.kind)) {
       if (d.text.length > THREAD_LIMITS.text) throw new LilBotError('unsafe_message', 'The answer exceeds the thread text limit.')
       if (memoryRefusal(d.text)) throw new LilBotError('unsafe_message', 'Unsafe bot message withheld.')
     }
     const redirects = d.kind === 'request' ? this.store.redirectsAfter(d) : []
     const files = this.files.forMessage(d.id)
-    const prompt =
-      d.kind === 'notice' || d.kind === 'oscar'
-        ? d.text
-        : d.kind === 'answer'
-          ? answerPrompt(thread, sender, d.text, files, this.waits.foldedInto(d.id))
-          : workPrompt(d, thread, sender, files, redirects)
-    const toWork = isWork(d.kind)
+    const prompt = PREPARED.includes(d.kind)
+      ? d.text
+      : d.kind === 'answer'
+        ? answerPrompt(thread, sender, d.text, files, this.waits.foldedInto(d.id))
+        : workPrompt(d, thread, sender, files, redirects)
+    const toWork = d.kind !== 'answer' && d.kind !== 'notice'
     const internal = toWork || !!this.store.context(d.target, d.sourceChat)
-    if (work) this.store.update(work, t => t.status !== 'working' && Object.assign(t, { status: 'working', startedAt: Date.now(), endedAt: null }))
+    if (work && !group) this.store.update(work, t => t.status !== 'working' && Object.assign(t, { status: 'working', startedAt: Date.now(), endedAt: null }))
     this.touched()
     const result = await this.host.runRoutine(d.target, prompt, {
       runId: `thread-${d.id}`,
@@ -143,6 +153,8 @@ export class ThreadRunner {
   private async finish(d: Delivery, redirects: Delivery[], result: RunResult) {
     const items = result.items?.filter(i => i.kind !== 'user') ?? [{ kind: 'assistant' as const, text: result.text }]
     if (result.status !== 'completed') items.push({ kind: 'assistant', text: `Thread work ${result.status}: ${result.text}` })
+    const group = this.groups?.groupOf(d)
+    if (group) return this.groups!.record(d, group, items).then(() => this.retryAt.delete(d.id))
     // A redirect steered into this turn that the turn never took runs as the receiver's next turn instead.
     const work = this.store.workThread(d)
     for (const r of work ? this.store.steered(work) : [])

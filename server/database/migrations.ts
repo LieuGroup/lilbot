@@ -1,8 +1,8 @@
-/** LilBot's schema: every step it has shipped, in order. `database.ts` applies the steps a file has not seen. */
-
+import { GROUP_TABLES } from './group-tables'
 import { WEBHOOK_TABLES } from './webhook-tables'
 
-/** Schema changes, in order. Never edit a step that has shipped: add a new one. */
+/** LilBot's schema: every step it has shipped, in order; `database.ts` applies the steps a file has not seen. Never edit a
+ *  step that has shipped: add a new one. */
 export const migrations: string[] = [
   `CREATE TABLE sections (
      id TEXT PRIMARY KEY,
@@ -185,7 +185,7 @@ export const migrations: string[] = [
    CREATE TABLE IF NOT EXISTS work_evidence(id TEXT PRIMARY KEY, item_id TEXT NOT NULL, proves TEXT NOT NULL, pointer TEXT NOT NULL, by_id TEXT NOT NULL, at INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS work_evidence_item ON work_evidence(item_id);
    CREATE TABLE IF NOT EXISTS work_events(id INTEGER PRIMARY KEY AUTOINCREMENT, item_id TEXT NOT NULL, at INTEGER NOT NULL, by_kind TEXT NOT NULL, kind TEXT NOT NULL, status TEXT, text TEXT, via_kind TEXT, via_id TEXT); CREATE INDEX IF NOT EXISTS work_events_item ON work_events(item_id, id);
    CREATE TABLE IF NOT EXISTS work_answers(id TEXT PRIMARY KEY, item_id TEXT NOT NULL, bot_id TEXT NOT NULL, chat_id TEXT, text TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending');`,
-  // Webhooks (#12), in its own file.
+  // Webhooks (#12), in its own file, like temporary groups (#133) after check levels.
   WEBHOOK_TABLES,
   // Check levels (#142): each item's kind and its kind's default level, the checks of finished items, the hidden sessions
   // of checking bots, and Oscar's default levels per kind (bot_id '' for every bot).
@@ -195,5 +195,6 @@ export const migrations: string[] = [
      state TEXT NOT NULL, text TEXT, note TEXT, request_id TEXT, verdict_request TEXT, created_at INTEGER NOT NULL, settled_at INTEGER, UNIQUE(item_id, round));
    CREATE INDEX IF NOT EXISTS work_checks_open ON work_checks(state) WHERE state = 'checking';
    CREATE TABLE IF NOT EXISTS work_check_chats(chat_id TEXT PRIMARY KEY, check_id TEXT NOT NULL);
-   CREATE TABLE IF NOT EXISTS work_levels(kind TEXT NOT NULL, bot_id TEXT NOT NULL, level INTEGER NOT NULL, PRIMARY KEY(kind, bot_id));`
+   CREATE TABLE IF NOT EXISTS work_levels(kind TEXT NOT NULL, bot_id TEXT NOT NULL, level INTEGER NOT NULL, PRIMARY KEY(kind, bot_id));`,
+  GROUP_TABLES
 ]

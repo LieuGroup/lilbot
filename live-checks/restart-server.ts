@@ -1,7 +1,7 @@
 import { startServer, deleteProfile } from './check-process'
 import { devPort } from '../scripts/dev-paths'
 import { devScratch } from '../scripts/dev-paths'
-/** Process and socket harness for restart-check. Never connects to the live LilBot service. */
+/** Process and socket harness for restart-check and groups-check. Never connects to the live LilBot service. */
 import { Database } from 'bun:sqlite'
 import assert from 'node:assert/strict'
 import { rm, writeFile } from 'node:fs/promises'
@@ -35,7 +35,9 @@ export async function reopenChat<T>(open: () => Promise<T>, timeout = 90_000): P
 export class RestartServer {
   private constructor(
     readonly root: string,
-    readonly port: number
+    readonly port: number,
+    /** Test-only settings for this server, such as a lower group round limit. */
+    private extra: Record<string, string>
   ) {}
   private process?: ReturnType<typeof Bun.spawn>
   private socket?: WebSocket
@@ -46,16 +48,17 @@ export class RestartServer {
   readonly natives = new Set<string>()
   readonly gates: string[] = []
 
-  static async create() {
-    const root = devScratch('lilbot-restart')
+  static async create(name = 'lilbot-restart', extra: Record<string, string> = {}) {
+    const root = devScratch(name)
     const port = devPort()
     assert.notEqual(port, 3370)
-    return new RestartServer(root, port)
+    return new RestartServer(root, port, extra)
   }
 
   async start() {
     this.process = startServer({
       ...process.env,
+      ...this.extra,
       LILBOT_HOST: '127.0.0.1',
       LILBOT_PORT: String(this.port),
       LILBOT_PUBLIC_ENABLED: '0',

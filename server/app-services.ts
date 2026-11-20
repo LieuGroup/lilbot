@@ -146,7 +146,8 @@ export function createAppServices(
   const calls = new CallingChats(botId => prefs.mainChat(botId))
   const runs = { threadStore, routineStore, webhookStore, rootOf }
   const { work, links, answers, checks } = createWork({ database, engine, store, prefs, bots, ...runs, libraryStore, workspaces, activity, history: history.store, calls, publish })
-  const { threads, delegation } = createThreads({ engine, store, prefs, bots, workspaces, history, activity, threadStore, calls, work: links, publish })
+  const threadDeps = { engine, store, prefs, bots, workspaces, history, activity, threadStore, calls, work: links, memory, library, root: WORKSPACES_DIR, rootOf, publish }
+  const { threads, delegation } = createThreads({ ...threadDeps, botsChanged, memoryChanged })
   const board = new WorkBoard(work, answers, threads)
   const webhooks = new WebhookService(webhookStore, bots, token, HOOK_ORIGIN, () => publish({ event: 'webhooks.changed' }))
   const changes = new SystemChanges(database)

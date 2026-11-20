@@ -4,7 +4,7 @@
 
 const KEEP_MS = 120_000
 /** The tools that need to know their calling conversation. Engines may prefix the name with the server's. */
-const CALLS = ['lilbot_delegate', 'lilbot_work']
+const CALLS = ['lilbot_delegate', 'lilbot_work', 'lilbot_group']
 const traced = (name: unknown) => typeof name === 'string' && CALLS.some(call => name.endsWith(call))
 
 /** Tool search can wrap the call: `tool_call({ name, arguments })`, with the arguments as an object or JSON text. */

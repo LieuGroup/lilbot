@@ -1,6 +1,7 @@
 /** How other work hangs on the board: work handed to another bot inside an item becomes that bot's child item, a
  *  stopped exchange drops it, and a deleted bot's unfinished items are dropped. Nothing is ever removed. */
 import { LilBotError } from '../../shared/protocol'
+import type { WorkOrigin } from '../../shared/work-schema'
 import type { WorkAnswers } from './work-answers'
 import { isFinal, titleOf } from './work-rules'
 import type { WorkService } from './work-service'
@@ -28,35 +29,51 @@ export class WorkLinks {
       return itemId
     }
     const ids = new Set(this.store.unfinishedIn(callerId, chatId))
-    const session = this.work.host.session(callerId, chatId).origin
-    const own = session.kind === 'exchange' ? this.store.get(session.id) : null
-    if (own?.ownerId === callerId && !isFinal(own.status)) ids.add(own.id)
+    const own = this.store.prepared(callerId, this.work.host.session(callerId, chatId).origin)
+    if (own && !isFinal(own.status)) ids.add(own.id)
     return ids.size === 1 ? [...ids][0] : null
   }
 
   /** The receiver's own item for an exchange handed out under `parentId`, with the exchange's id. Its receiver writes
    *  the "done" definition. Runs inside the exchange's own transaction; a repeat adds nothing. */
   child(parentId: string, exchange: { id: string; owner: Bot; asker: Bot; task: string }) {
+    this.prepare(parentId, exchange, { kind: 'exchange', id: exchange.id })
+    this.work.host.changed()
+  }
+
+  /** Each member's own item for its part in a group started under `parentId`, asked by the leader; the member writes
+   *  the "done" definition. Runs inside the group's own transaction. */
+  groupChildren(parentId: string, items: { id: string; owner: Bot; asker: Bot; task: string; groupId: string }[]) {
+    for (const item of items) this.prepare(parentId, item, { kind: 'group', id: item.groupId })
+    this.work.host.changed()
+  }
+
+  /** Members' unfinished items for a group that has ended are dropped, saying how it ended. */
+  groupEnded(groupId: string, reason: string) {
+    for (const item of this.store.unfinished({ originKind: 'group' })) if (item.origin.id === groupId) this.dropAs(item.id, reason)
+  }
+
+  /** An item LilBot opens for work another bot asked for; a repeat adds nothing. */
+  private prepare(parentId: string, work: { id: string; owner: Bot; asker: Bot; task: string }, origin: WorkOrigin) {
     const at = this.now()
     const created = this.store.create({
-      id: exchange.id,
-      ownerId: exchange.owner.id,
-      ownerName: exchange.owner.name,
+      id: work.id,
+      ownerId: work.owner.id,
+      ownerName: work.owner.name,
       requestId: null,
-      title: titleOf(exchange.task),
+      title: titleOf(work.task),
       done: '',
       kind: null,
       checkLevel: 1,
       defaultLevel: null,
       status: 'open',
-      askedBy: { kind: 'bot', id: exchange.asker.id, name: exchange.asker.name },
-      origin: { kind: 'exchange', id: exchange.id },
+      askedBy: { kind: 'bot', id: work.asker.id, name: work.asker.name },
+      origin,
       chatId: null,
       parentId,
       at
     })
-    if (created) this.store.log(exchange.id, { at, by: 'lilbot', kind: 'opened', status: 'open', text: exchange.task.slice(0, 2000), via: null })
-    this.work.host.changed()
+    if (created) this.store.log(work.id, { at, by: 'lilbot', kind: 'opened', status: 'open', text: work.task.slice(0, 2000), via: null })
   }
 
   /** Items from exchanges that were stopped are dropped, saying who stopped them. */

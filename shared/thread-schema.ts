@@ -36,6 +36,23 @@ export type DelegateInput = z.infer<typeof DelegateInput>
 export const RedirectInput = z.object({ requestId: z.string().min(1).max(100), exchangeId, message: text })
 export const AttachInput = z.object({ exchangeId, files: files.min(1) })
 
+const names = z.array(z.string().min(1).max(100))
+/** The one tool of a temporary group (`server/threads/group-service.ts`). The leader starts, says the next point and closes;
+ *  a member attaches files to its reply; anyone in the group reads its status. */
+export const GroupInput = z.object({
+  action: z.enum(['start', 'say', 'attach', 'close', 'status']),
+  requestId: z.string().min(1).max(100).optional().describe('Needed to start, say and close; reuse only when retrying'),
+  groupId: z.string().min(1).max(100).optional(),
+  purpose: z.string().trim().min(1).max(300).optional(),
+  members: names.min(2).max(4).optional().describe('Other bots: ids or exact names'),
+  text: text.optional().describe('start and say: the point. close: the outcome'),
+  to: names.min(1).max(4).optional().describe('Members the point is for; everyone when left out'),
+  files: files.optional(),
+  keep: files.optional().describe('close: files from the group folder worth keeping; they go to your folder and Library'),
+  itemId: z.string().min(1).max(100).optional().describe('Your work item this is part of')
+})
+export type GroupInput = z.infer<typeof GroupInput>
+
 /** waiting: accepted, not started yet. working: the receiver is on it. The rest are final until a follow-up. */
 type ExchangeStatus = 'waiting' | 'working' | 'finished' | 'failed' | 'cancelled'
 export interface ExchangeFile {
@@ -43,7 +60,7 @@ export interface ExchangeFile {
   name: string
   size: number
   fromId: string
-  /** Where the recipient finds its copy, relative to its own folder; null while not delivered. */
+  /** Where the recipient finds its copy, relative to its own folder (in a group: to the group's folder); null while not delivered. */
   path: string | null
 }
 export interface ThreadMessage {
@@ -59,6 +76,38 @@ export interface ThreadMessage {
   files?: ExchangeFile[]
   /** Arrived after the exchange was stopped: kept here, never delivered. */
   withheld?: true
+  /** In a group: the leader's point that opens this round. */
+  round?: number
+}
+/** How a group ended: closed by its leader, stopped by Oscar, or by itself (round, message or time limit, gone quiet,
+ *  its leader unreachable). */
+export type GroupEnd = 'closed' | 'stopped' | 'rounds' | 'messages' | 'time' | 'quiet' | 'failed'
+/** One member's place in the group now: addressed and waiting, at work, replied to the current round, or not addressed. */
+export interface GroupMember {
+  id: string
+  state: 'waiting' | 'working' | 'replied' | 'idle'
+  activity: string | null
+}
+/** A temporary group: the thread's first participant leads, the rest are members. */
+export interface ThreadGroup {
+  purpose: string
+  /** Rounds the group may run before it ends by itself (the round limit). */
+  roundCap: number
+  /** Each round: the members its point is for and, in a view, who has replied. */
+  rounds: { n: number; to: string[]; at: number; requestId: string; replied?: string[] }[]
+  /** Bot turns spent in the group so far. */
+  turns: number
+  /** Last movement (a point, a reply); going quiet counts from here. */
+  lastAt: number
+  end: { how: GroupEnd; at: number; outcome: string } | null
+  /** Files the leader kept on close: copied into its own folder (path relative to it) and its Library. */
+  kept: ExchangeFile[]
+  /** The temporary shared folder: files passed in the group are copied here. */
+  folder: string
+  /** How many messages each bot has been shown, so each prompt carries only what is new to it. */
+  seen: Record<string, number>
+  /** In a view: every participant, the leader first. */
+  members?: GroupMember[]
 }
 export interface BotThread {
   id: string
@@ -77,4 +126,6 @@ export interface BotThread {
   startedAt: number | null
   endedAt: number | null
   stoppedBy: { kind: 'bot' | 'oscar'; id: string | null; name: string; at: number } | null
+  /** Present when the thread is a temporary group rather than an exchange between two bots. */
+  group?: ThreadGroup
 }

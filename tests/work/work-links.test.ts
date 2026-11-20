@@ -136,3 +136,26 @@ test('a run continued after compression still counts as the run; an unreadable l
   w.state.chats.set('a', 'a-unreadable')
   await expect(w.work.act('a', { requestId: 'c-3', title: 'Something', kind: 'file', done: 'something done' })).rejects.toThrow('cannot tell where this session came from')
 })
+
+test('a group started inside an item gives each member its own child item, asked by the leader; the group’s end drops the unfinished', async () => {
+  const { w, d } = joined()
+  const parent = await w.open('a')
+  const { groupId } = (await d.groups.act('a', { action: 'start', requestId: 'g', purpose: 'Review the plan\nin detail', members: ['b', 'c'], text: 'Check it.' })) as any
+  expect((await d.threads.open('a', groupId)).parentId).toBe(parent.id)
+  const children = w.work.view(parent.id).children
+  expect(children.map(c => [c.id, c.ownerId, c.title, c.origin.kind])).toEqual([
+    [`${groupId}:b`, 'b', 'Review the plan', 'group'],
+    [`${groupId}:c`, 'c', 'Review the plan', 'group']
+  ])
+  expect(children[0].askedBy).toEqual({ kind: 'bot', id: 'a', name: 'A' })
+  await d.settle()
+  const run = d.runs.find(r => r.botId === 'b')!
+  expect(run.prompt).toContain(`your work item ${groupId}:b`)
+  w.state.chats.set('b', run.chatId)
+  const opened = await w.work.act('b', { requestId: 'b1', title: 'My review', kind: 'note', done: 'Three notes on the plan' })
+  expect(opened).toMatchObject({ id: `${groupId}:b`, status: 'working', origin: { kind: 'group', id: groupId } })
+  await w.work.act('b', { requestId: 'b2', itemId: `${groupId}:b`, status: 'done', result: 'Reviewed', evidence: [proof] })
+  await d.threads.cancel(groupId, { kind: 'oscar', id: null, name: 'Oscar' })
+  expect(w.work.view(`${groupId}:b`).status).toBe('done')
+  expect(w.work.view(`${groupId}:c`)).toMatchObject({ status: 'dropped', dropReason: 'The group was stopped by Oscar.' })
+})

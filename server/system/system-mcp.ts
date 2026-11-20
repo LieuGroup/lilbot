@@ -38,7 +38,7 @@ export function createSystemMcp(options: SystemMcpOptions) {
     name: tool.name,
     description: tool.description,
     inputSchema: inputSchema(tool.input),
-    annotations: { readOnlyHint: tool.readOnly }
+    annotations: { readOnlyHint: tool.readOnly === true }
   }))
 
   async function call(caller: { id: string; name: string }, message: JsonRpc) {
@@ -47,7 +47,7 @@ export function createSystemMcp(options: SystemMcpOptions) {
     try {
       const args = tool.input.parse(message.params?.arguments ?? {}) as Record<string, unknown>
       const result = await tool.run(caller.id, args)
-      if (!tool.readOnly) {
+      if (!(typeof tool.readOnly === 'function' ? tool.readOnly(args) : tool.readOnly)) {
         const target = [(result as { id?: unknown } | undefined)?.id, args.botId, args.factId].find(value => typeof value === 'string') ?? ''
         const fields = Object.keys(args).filter(key => !['botId', 'factId', 'requestId'].includes(key))
         options.changes.record({ at: Date.now(), botId: caller.id, botName: caller.name, tool: tool.name, target: String(target), fields: fields.join(', ') })

@@ -108,14 +108,13 @@ export class WorkService {
     return this.view(saved.item.id)
   }
 
-  /** The item an open call names. A retry finds the first one; the item LilBot opened for an exchange (no definition
-   *  yet) is the one its receiver opens, and gives its kind. `fresh`: opened by this call. */
+  /** The item an open call names. A retry finds the first one; the item LilBot opened for an exchange or a group
+   *  member's part (no definition yet) is the one its bot opens, and gives its kind. `fresh`: opened by this call. */
   private open(caller: { id: string; name: string }, input: WorkInput, chatId: string | null, session: SessionOrigin | null) {
     const prior = this.store.byRequest(caller.id, input.requestId)
     if (prior) return { id: prior.id, created: false, fresh: false }
     if (!chatId || !session) throw new LilBotError('no_conversation', 'LilBot could not tell which conversation this came from. Try again.')
-    const exchange = session.origin.kind === 'exchange' ? this.store.get(session.origin.id) : null
-    const ours = exchange?.ownerId === caller.id ? exchange : null
+    const ours = this.store.prepared(caller.id, session.origin)
     if (ours && !isFinal(ours.status) && !ours.done) return { id: ours.id, created: false, fresh: true }
     if (!input.title) throw new LilBotError('work_no_title', 'Give a title to open an item, or an itemId to report on one.')
     if (!input.kind) throw noKind()
