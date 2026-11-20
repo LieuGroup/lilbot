@@ -61,12 +61,13 @@ export class HistoryService {
           // Discovery may insert an earlier session after an app open.
           if (sessions[0]) this.store.db.query('DELETE FROM history_items WHERE bot=? AND id=?').run(bot.id, `session:${sessions[0].id}`)
           const dirty = this.dirty.get(bot.id)
-          const changed = dirty?.values().next().value
+          const changed = [...(dirty ?? [])].find(id => sessions.some(s => s.id === id))
           const session = sessions.find(s => s.id === changed) ?? sessions.find(s => !s.complete) ?? sessions[value.turn++ % sessions.length]
           if (!session || !this.allowed(bot.id, session.id)) continue
           const page = await value.source.read(session.id, session.cursor)
           if (!this.allowed(bot.id, session.id)) continue
-          this.store.write(bot.id, session.id, this.project(bot.id, session.id, page.rows), page.cursor, page.empty)
+          // New turns after a finished import are catching up, not a new import: the start marker must stay.
+          this.store.write(bot.id, session.id, this.project(bot.id, session.id, page.rows), page.cursor, page.empty || !!session.complete)
           if (page.rows.length || !session.complete) this.changed(bot.id)
           if (page.empty) dirty?.delete(session.id)
         } catch {
@@ -90,7 +91,7 @@ export class HistoryService {
     this.store.write(bot.id, snapshot.chatId, this.project(bot.id, snapshot.chatId, page.rows))
   }
   record(bot: string, session: string, event: ChatEvent, key?: string) {
-    if (!this.allowed(bot, session)) return
+    if (!this.allowed(bot, session) || this.store.excluded(bot, session)) return
     this.store.event(bot, session, event, key)
     if (event.type === 'turn.finished') {
       const dirty = this.dirty.get(bot) ?? new Set<string>()

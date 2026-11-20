@@ -91,3 +91,36 @@ test('observer replay is journalled once and equal-time references survive pagin
     db.close()
   }
 })
+
+test('a finished import stays complete while new turns are read', async () => {
+  const db = openDatabase(':memory:')
+  let more = false
+  const source: ConversationSource = {
+    list: async () => [{ id: 'old', at: 1 }],
+    read: async (_id, cursor) => ({ rows: cursor && more ? [row(2)] : cursor ? [] : [row(1)], cursor: 'checkpoint', reset: false, empty: !!cursor && !more }),
+    close() {}
+  }
+  const store = new HistoryStore(db)
+  const service = new HistoryService(
+    store,
+    { conversations: async () => source } as unknown as BotEngine,
+    async () => [{ id: 'a', engineBotId: 'native' }],
+    () => true
+  )
+  try {
+    await service.tick()
+    await service.tick()
+    expect(store.progress('a').complete).toBe(true)
+    more = true
+    service.record('a', 'old', { type: 'turn.finished' } as never)
+    await service.tick()
+    expect(store.progress('a')).toMatchObject({ complete: true, items: 2 })
+    expect(store.page('a').start).toEqual({ at: 1 })
+    more = false
+    await service.tick()
+    expect(store.progress('a').complete).toBe(true)
+    service.close()
+  } finally {
+    db.close()
+  }
+})
