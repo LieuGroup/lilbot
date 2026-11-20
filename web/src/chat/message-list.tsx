@@ -1,14 +1,12 @@
 import { ArrowDownIcon, SparklesIcon } from 'lucide-react'
-import { startTransition, useCallback, useEffect, useRef, useState } from 'react'
+import { startTransition, useEffect, useRef, useState } from 'react'
 
-import { Bubble, BubbleContent } from '@/ui/bubble'
-import { Message, MessageContent } from '@/ui/message'
 import { MessageScroller, MessageScrollerButton, MessageScrollerContent, MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport } from '@/ui/message-scroller'
 import { Trace, TraceIcon, TraceLine, TraceTitle } from '@/ui/trace'
 import type { Avatar } from '../../../shared/avatar'
-import { SentAttachments } from '../attachments/message-attachments'
 import { LoadingEarlier } from '../history/history-marks'
 import { useOlderHistory } from '../history/use-older-history'
+import { ChatItem } from './chat-item'
 import type { ChatView } from './chat-state'
 import { MessageRows } from './message-rows'
 
@@ -17,7 +15,6 @@ interface MessageListProps {
   botName: string
   avatar?: Avatar
   chat: ChatView
-  activity: string
   emptyHint: string
 }
 
@@ -37,13 +34,13 @@ function useDrawFrom(first: number, count: number) {
 /** The Chat pattern. A conversation opens at its end. A message you send moves up and the reply
  *  grows below it; the list follows the reply only while you stay at the end, never while you
  *  read back. Scrolling up within a screen of the top loads the next earlier part. */
-export function MessageList({ botId, botName, avatar, chat, activity, emptyHint }: MessageListProps) {
+export function MessageList({ botId, botName, avatar, chat, emptyHint }: MessageListProps) {
   const { items, queued, first } = chat
+  const activity = chat.running ? chat.activity : ''
   const drawFrom = useDrawFrom(first, items.length)
   const viewport = useRef<HTMLDivElement>(null)
   const nearTop = useRef(false)
-  const isNearTop = useCallback(() => nearTop.current, [])
-  const older = useOlderHistory(botId, isNearTop)
+  const older = useOlderHistory(botId, nearTop)
 
   // Scrolled within a screen of the top, or everything fits: fetch the next earlier part once all
   // rows are drawn. The position is read once the reader has scrolled, never while the list opens.
@@ -68,18 +65,7 @@ export function MessageList({ botId, botName, avatar, chat, activity, emptyHint 
             {/* Sent while the bot was busy: waits here until its turn starts. */}
             {queued.map((message, index) => (
               <MessageScrollerItem key={`queued-${index}`} messageId={`queued-${index}`}>
-                <Message align="end" title="Waiting for the bot to finish">
-                  <MessageContent className="gap-1.5">
-                    {message.attachments && message.attachments.length > 0 && <SentAttachments files={message.attachments} />}
-                    {message.text && (
-                      <Bubble align="end" variant="outline" className="max-w-[min(480px,85%)]">
-                        <BubbleContent className="rounded-[18px] border-dashed border-foreground/20! bg-card! px-3.5 py-2 text-[15px]/6 whitespace-pre-wrap text-muted-foreground">
-                          {message.text}
-                        </BubbleContent>
-                      </Bubble>
-                    )}
-                  </MessageContent>
-                </Message>
+                <ChatItem item={message} botId={botId} queued />
               </MessageScrollerItem>
             ))}
             {/* The bot's one-line status ("Thinking...", "Using terminal..."), shimmering while it works. */}

@@ -11,20 +11,25 @@ import type { MessageItem } from './chat-state'
 
 /** One transcript item drawn with the AI Elements patterns: Message and Bubble for turns, a Tool
  *  trace line for tool use. Memoised: a streamed chunk changes only the last item, so earlier
- *  replies are not parsed or drawn again. */
-export const ChatItem = memo(function ChatItem({ item, botId }: { item: MessageItem; botId: string }) {
+ *  replies are not parsed or drawn again. `queued` draws a user message still waiting for the
+ *  bot's current turn to end as a dashed, muted bubble. */
+export const ChatItem = memo(function ChatItem({ item, botId, queued = false }: { item: MessageItem; botId: string; queued?: boolean }) {
   switch (item.kind) {
     case 'user':
       return (
-        <Message align="end">
+        <Message align="end" title={queued ? 'Waiting for the bot to finish' : undefined}>
           <MessageContent className="gap-1.5">
             {item.attachments && item.attachments.length > 0 && <SentAttachments files={item.attachments} />}
             {item.text && (
               <Bubble align="end" variant="outline" className="max-w-[min(480px,85%)]">
-                <BubbleContent className="rounded-[18px] border-transparent! px-3.5 py-2 text-[15px]/6 whitespace-pre-wrap">{item.text}</BubbleContent>
+                <BubbleContent
+                  className={`rounded-[18px] ${queued ? 'border-dashed border-foreground/20! bg-card!' : 'border-transparent!'} px-3.5 py-2 text-[15px]/6 whitespace-pre-wrap${queued ? ' text-muted-foreground' : ''}`}
+                >
+                  {item.text}
+                </BubbleContent>
               </Bubble>
             )}
-            <ImageNote botId={botId} images={item.images} />
+            {!queued && <ImageNote botId={botId} images={item.images} />}
           </MessageContent>
         </Message>
       )

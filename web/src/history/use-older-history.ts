@@ -8,7 +8,7 @@ import { canLoadOlder, olderRequest, withOlder } from './history-view'
 /** While importing, the earliest part is read again at most this often. */
 const REREAD_MS = 3000
 
-export function useOlderHistory(botId: string, nearTop: () => boolean) {
+export function useOlderHistory(botId: string, nearTop: { current: boolean }) {
   const [loading, setLoading] = useState(false)
   const busy = useRef(false)
   const lastReread = useRef(0)
@@ -36,7 +36,7 @@ export function useOlderHistory(botId: string, nearTop: () => boolean) {
   useEffect(
     () =>
       lilbot.onHistoryChanged(changed => {
-        if (changed === botId && nearTop()) load()
+        if (changed === botId && nearTop.current) load()
       }),
     [botId, load, nearTop]
   )

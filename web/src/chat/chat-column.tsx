@@ -60,15 +60,7 @@ export function ChatColumn({ botId }: { botId: string }) {
       />
       {/* A new scroller per bot, so each opens at its latest message; a new session stays in it. */}
       <div className="relative flex min-h-0 flex-1 flex-col">
-        <MessageList
-          key={chat.load > 0 ? botId : `${botId}:opening`}
-          botId={botId}
-          botName={name}
-          avatar={bot?.prefs.avatar}
-          chat={chat}
-          activity={chat.running ? chat.activity : ''}
-          emptyHint={hint}
-        />
+        <MessageList key={chat.load > 0 ? botId : `${botId}:opening`} botId={botId} botName={name} avatar={bot?.prefs.avatar} chat={chat} emptyHint={hint} />
         {drop.dragging && <DropOverlay limits={staged.limits} />}
       </div>
       <Composer

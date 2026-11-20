@@ -9,7 +9,6 @@
     "server/computers/computer-store.ts": 219,
     "server/engines/hermes/memory-adapter/__init__.py": 269,
     "tests/computers/adversarial.test.ts": 203,
-    "tests/computers/computers.test.ts": 224,
-    "tests/web/chat-state.test.ts": 287
+    "tests/computers/computers.test.ts": 224
   }
 }
