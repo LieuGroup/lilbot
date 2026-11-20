@@ -31,6 +31,7 @@ export async function runRoutine(botId: string, prompt: string, options: Routine
     const submitted = await socket.request('prompt.submit', {
       session_id: session.session_id,
       text: prompt,
+      ...(options.origin ? { api_text: `${prompt}\n\n${options.origin.line}` } : {}),
       input_id: `routine-${options.runId}`,
       queued: !!options.chatId,
       ...(options.hiddenInput ? { display_kind: 'hidden' } : {})

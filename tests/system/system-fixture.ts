@@ -16,7 +16,12 @@ export function systemFixture() {
   const fake = fakeService()
   const state = { memoryPushes: 0, t3: { state: 'connected', expiresAt: Date.now() + 86_400_000 } as T3ConnectionStatus }
   const changes = new SystemChanges(fake.database)
-  const computers = { list: () => [{ id: 'leader', name: 'leader-box', os: 'linux', online: true, lastSeen: 1700000000000, keyConflict: false }] } as unknown as ComputerService
+  const computers = {
+    list: () => [
+      { id: 'leader', name: 'leader-box', os: 'linux', online: true, lastSeen: 1700000000000, keyConflict: false, main: false },
+      { id: 'mac', name: 'MacBook', os: 'darwin', online: false, lastSeen: 1700000000000, keyConflict: false, main: true }
+    ]
+  } as unknown as ComputerService
   const server = createSystemServer({
     store: fake.store,
     workspaces: new Workspaces(fake.root),

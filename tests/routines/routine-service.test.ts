@@ -116,6 +116,25 @@ test('failed transport retries same durable run after restart; no new execution 
   }
 })
 
+test('a routine run tells the engine it has no origin device', async () => {
+  const f = setup()
+  try {
+    await f.routines.create('b1', input)
+    const origins: unknown[] = []
+    f.engine.runRoutine = async (_id, _prompt, options) => {
+      origins.push(options.origin)
+      options.onChat('chat')
+      return { status: 'completed', text: 'Done' }
+    }
+    f.setTime(300_000)
+    new RoutineScheduler(f.routines, () => {}, f.now).tick()
+    await flush()
+    expect(origins).toEqual([{ line: '[LilBot origin: a scheduled routine run, not a message from a device.]' }])
+  } finally {
+    f.clean()
+  }
+})
+
 test('another bot cannot manage or open a run; unknown bots cannot create', async () => {
   const f = setup()
   try {

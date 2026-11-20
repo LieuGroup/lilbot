@@ -41,7 +41,8 @@ export class BotConversations {
           messageId: options?.inputId ?? crypto.randomUUID(),
           text,
           attachments: [],
-          images: { support: 'unknown', imageCount: 0 }
+          images: { support: 'unknown', imageCount: 0 },
+          ...(options?.origin?.device ? { origin: options.origin.device } : {})
         })
       return send(text, options)
     }

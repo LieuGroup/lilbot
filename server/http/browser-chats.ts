@@ -96,7 +96,7 @@ export class BrowserChats {
   mergeHistory(botId: string, page: import('../../shared/history-schema').HistoryPage) {
     for (const row of page.items)
       if (row.item.kind !== 'session' && this.attachments) {
-        row.item = this.attachments.merge({ botId, chatId: row.sessionId, title: '', workspace: '', running: false, items: [row.item] }).items[0]
+        row.item = this.attachments.mergeItem(botId, row.sessionId, row.item)
       }
     return page
   }

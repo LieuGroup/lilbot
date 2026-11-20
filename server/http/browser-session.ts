@@ -7,6 +7,7 @@ import { type AttachmentService, attachmentLimits } from '../attachments/attachm
 import type { BotService } from '../bots/bot-service'
 import { setUnread } from '../bots/bot-unread'
 import type { AddThisComputer } from '../computers/add-this-computer'
+import type { DeviceService } from '../devices/device-service'
 import type { LibraryService } from '../library/library-service'
 import type { RoutineService } from '../routines/routine-service'
 import { type AfterResponse, BrowserChats } from './browser-chats'
@@ -34,7 +35,8 @@ export class BrowserSession {
     private computers?: import('../computers/computer-service').ComputerService,
     private deploymentNotice?: () => string | undefined,
     private attachments?: AttachmentService,
-    private addThis?: AddThisComputer
+    private addThis?: AddThisComputer,
+    private devices?: DeviceService
   ) {
     this.chats = new BrowserChats(bots, sendFrame, activity, threads, attachments)
   }
@@ -52,7 +54,11 @@ export class BrowserSession {
       helperUrl: this.addThis?.helperUrl
     }),
     'computers.remove': async ({ computer }) => requireService(this.computers, 'Computers unavailable.').remove(computer),
-    'computers.addThis.start': async ({ name, system }) => requireService(this.addThis, 'Computers unavailable.').start(name, system),
+    'computers.setMain': async ({ computer }) => requireService(this.devices, 'Devices are unavailable.').main.set(computer),
+    'devices.current': async ({ deviceId, name }) => requireService(this.devices, 'Devices are unavailable.').current(deviceId, name),
+    'devices.rename': async ({ deviceId, name }) => requireService(this.devices, 'Devices are unavailable.').rename(deviceId, name),
+    'devices.linkComputer': async ({ deviceId, computer }) => requireService(this.devices, 'Devices are unavailable.').linkComputer(deviceId, computer),
+    'computers.addThis.start': async ({ name, system, deviceId }) => requireService(this.addThis, 'Computers unavailable.').start(name, system, deviceId),
     'computers.addThis.status': async ({ attemptId }) => requireService(this.addThis, 'Computers unavailable.').status(attemptId),
     'skills.list': ({ botId }) => this.bots.listSkills(botId),
     'skills.read': ({ botId, name }) => this.bots.readSkill(botId, name),
@@ -103,10 +109,13 @@ export class BrowserSession {
     'chat.history': async ({ botId, cursor, limit }) => this.chats.mergeHistory(botId, await this.bots.historyPage(botId, cursor, limit)),
     'chat.open': ({ botId, chatId }, afterResponse) => this.chats.track(afterResponse, onEvent => this.bots.openChat(botId, chatId, onEvent)),
     'chat.new': ({ botId }, afterResponse) => this.chats.track(afterResponse, onEvent => this.bots.newChat(botId, onEvent)),
-    'chat.send': async ({ chatId, text, attachmentIds, messageId }) => {
+    'chat.send': async ({ chatId, text, attachmentIds, messageId, deviceId }) => {
+      const chat = this.chats.get(chatId)
+      const origin = this.devices?.origin(deviceId)
       if (attachmentIds?.length)
-        return { ok: true, message: await requireService(this.attachments, 'Attachments are unavailable.').send(this.chats.get(chatId), text, attachmentIds, messageId!) }
-      await this.chats.get(chatId).send(text)
+        return { ok: true, message: await requireService(this.attachments, 'Attachments are unavailable.').send(chat, text, attachmentIds, messageId!, origin) }
+      if (this.devices && origin) await this.devices.send(chat, text, messageId ?? crypto.randomUUID(), origin)
+      else await chat.send(text)
       return { ok: true }
     },
     'chat.stop': async ({ chatId }) => {

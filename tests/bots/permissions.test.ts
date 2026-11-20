@@ -99,7 +99,7 @@ test('shipped deletion schema upgrades without changing tombstones or deletion d
     expect(restored.list()).toEqual([])
     expect(restored.deleted('deleted')).toMatchObject({ bot: { name: 'Remembered', permissionMode: 'full-access' }, choices })
     expect(restored.deleteDefaults()).toEqual(choices)
-    expect(upgraded.query('PRAGMA user_version').get()).toEqual({ user_version: 23 })
+    expect(upgraded.query('PRAGMA user_version').get()).toEqual({ user_version: 24 })
     upgraded.close()
   } finally {
     rmSync(root, { recursive: true, force: true })

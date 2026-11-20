@@ -71,12 +71,14 @@ export async function openChat(spares: SpareSockets, botId: string, chatId: stri
         items: itemsFromRows(session.display_messages)
       },
       send: async (text, options) => {
+        // The origin line is model-only (`api_text`), so the stored transcript keeps exactly what Oscar wrote.
+        const modelText = options?.origin ? `${options.apiText ?? text}\n\n${options.origin.line}` : options?.apiText
         await socket.request('prompt.submit', {
           session_id: sessionId,
           text,
           input_id: options?.inputId ?? crypto.randomUUID(),
           ...(options?.hidden ? { display_kind: 'hidden' } : {}),
-          ...(options?.attachments?.length ? await prepareAttachments(socket, sessionId, options.apiText ?? text, options.attachments) : {})
+          ...(options?.attachments?.length ? await prepareAttachments(socket, sessionId, modelText ?? text, options.attachments) : modelText ? { api_text: modelText } : {})
         })
       },
       stop: async () => {

@@ -27,7 +27,7 @@ const summary = (topic: string) =>
 export function aboutTools({ bots, workspaces, computers, t3, commit, dataDir, changes }: SystemDeps): McpTool[] {
   const guideTopics = topics()
   const computerRows = () =>
-    computers.list().map(computer => ({ id: computer.id, name: computer.name, os: computer.os, online: computer.online, lastSeen: iso(computer.lastSeen) }))
+    computers.list().map(computer => ({ id: computer.id, name: computer.name, os: computer.os, online: computer.online, main: computer.main, lastSeen: iso(computer.lastSeen) }))
   return [
     readTool(
       'lilbot_about',
@@ -40,7 +40,7 @@ export function aboutTools({ bots, workspaces, computers, t3, commit, dataDir, c
         return {
           you: { id: me.id, name: me.name, function: me.function, model: me.model, folder: workspaces.pathFor(me.id), primary: me.isPrimary },
           bots: all.filter(bot => bot.id !== caller).map(bot => ({ id: bot.id, name: bot.name, function: bot.function, primary: bot.isPrimary })),
-          computers: computerRows().map(({ id, name, online }) => ({ id, name, online })),
+          computers: computerRows().map(({ id, name, online, main }) => ({ id, name, online, main })),
           codingThroughT3: codingState(t3()),
           release: commit.slice(0, 12),
           deploy: { latest: deployStatus(dataDir), lastFailure: deployNotice(dataDir) ?? null },

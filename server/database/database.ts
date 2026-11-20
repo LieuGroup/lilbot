@@ -151,7 +151,16 @@ const migrations: string[] = [
    WHERE bot_prefs.bot_id = ranked.bot_id;`,
   // "Add this computer" attempts: which computer registered with the attempt's install code.
   `CREATE TABLE IF NOT EXISTS computer_attempts(id TEXT PRIMARY KEY,code_id TEXT NOT NULL UNIQUE,expires_at INTEGER NOT NULL,computer_id TEXT);
-   CREATE INDEX IF NOT EXISTS computer_attempt_expiry ON computer_attempts(expires_at);`
+   CREATE INDEX IF NOT EXISTS computer_attempt_expiry ON computer_attempts(expires_at);`,
+  // "My computer" (#115): the main computer (one row at most), devices, the device an add attempt started on, and the
+  // origin of plain chat messages until the history importer has matched them to their rows. Every statement is
+  // repeatable, like the older steps whose tests start from an upgraded file.
+  `CREATE TABLE IF NOT EXISTS main_computer(only INTEGER PRIMARY KEY CHECK(only = 1), computer_id TEXT NOT NULL);
+   CREATE TABLE IF NOT EXISTS computer_attempt_devices(code_id TEXT PRIMARY KEY, device_id TEXT NOT NULL);
+   CREATE TABLE IF NOT EXISTS devices(id TEXT PRIMARY KEY, name TEXT NOT NULL, computer_id TEXT, created_at INTEGER NOT NULL, last_seen INTEGER NOT NULL);
+   CREATE TABLE IF NOT EXISTS message_origins(id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, text TEXT NOT NULL, device_id TEXT NOT NULL, device_name TEXT NOT NULL, at INTEGER NOT NULL, row_id TEXT);
+   CREATE INDEX IF NOT EXISTS message_origins_pending ON message_origins(bot_id, at) WHERE row_id IS NULL;
+   CREATE UNIQUE INDEX IF NOT EXISTS message_origins_row ON message_origins(bot_id, row_id) WHERE row_id IS NOT NULL;`
 ]
 
 /** `path` may be ':memory:' for tests. Applies any migration steps the file has not seen. */

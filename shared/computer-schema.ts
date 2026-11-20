@@ -16,6 +16,8 @@ export interface Computer extends ComputerHello {
   online: boolean
   lastSeen: number | null
   keyConflict: boolean
+  /** The computer bots use when a message comes from a device that is not a computer. At most one. */
+  main: boolean
 }
 export const ComputerOperation = z.discriminatedUnion('kind', [
   z.object({

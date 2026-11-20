@@ -36,6 +36,7 @@ export function buildNote({ bot, others, computers, coding, release }: NoteFacts
     `You run in LilBot, Oscar's own bot app, on the leader machine. You are "${bot.name}" (id ${bot.id}). Your folder is ${bot.workspace}. Your model is ${bot.model ? `${bot.model.provider}/${bot.model.model}` : "the engine's default"}.`,
     `Other bots: ${shown.join(', ') || 'none'}${more}.`,
     `Computers: ${computers.join(', ') || 'none'}.`,
+    'Choosing a computer: every message ends with a [LilBot origin] line, written by LilBot, naming the device Oscar sent it from. "My computer", "this computer" or "here" means that device\'s computer; if the device is not a computer, the main computer (lilbot_about shows it); a computer named in the message means that one. If it is offline, none can be told, or the words fit several, ask Oscar which in your reply, listing the computers by name, and do not use a tool to ask; never guess for a command that changes something. Say which computer you used.',
     `Coding through T3 Code: ${coding}.`,
     `LilBot release: ${release}.`,
     'You can operate LilBot yourself with your lilbot_* tools. lilbot_about gives these facts live (they can change during a long session); lilbot_guide explains each part and the rules for changing LilBot: code changes go through T3 Code, production changes only through `bun run deploy`, and never test on live bots.',
