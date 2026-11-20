@@ -41,6 +41,8 @@ export class BrowserSession {
     this.chats = new BrowserChats(bots, sendFrame, activity, threads, attachments)
   }
 
+  private skills = () => requireService(this.bots.skills, 'Skills are unavailable.')
+
   private handlers: Handlers = {
     'attachments.limits': async () => attachmentLimits,
     'attachments.prepare': async ({ botId, files }) => requireService(this.attachments, 'Attachments are unavailable.').prepare(botId, files),
@@ -64,9 +66,11 @@ export class BrowserSession {
     'devices.linkComputer': async ({ deviceId, computer }) => requireService(this.devices, 'Devices are unavailable.').linkComputer(deviceId, computer),
     'computers.addThis.start': async ({ name, system, deviceId }) => requireService(this.addThis, 'Computers unavailable.').start(name, system, deviceId),
     'computers.addThis.status': async ({ attemptId }) => requireService(this.addThis, 'Computers unavailable.').status(attemptId),
-    'skills.list': ({ botId }) => this.bots.listSkills(botId),
-    'skills.read': ({ botId, name }) => this.bots.readSkill(botId, name),
-    'skills.setEnabled': ({ botId, name, enabled }) => this.bots.setSkill(botId, name, enabled),
+    'skills.list': ({ botId }) => this.skills().list(botId),
+    'skills.read': ({ botId, name }) => this.skills().read(botId, name),
+    'skills.setEnabled': ({ botId, name, enabled }) => this.skills().setEnabled(botId, name, enabled),
+    'skills.engines': async () => this.skills().engines(),
+    'skills.setEngine': async ({ engineId, included }) => this.skills().setEngine(engineId, included),
     'routines.list': ({ botId }) => requireService(this.routines, 'Routines are unavailable.').list(botId),
     'routines.pause': ({ botId, id }) => requireService(this.routines, 'Routines are unavailable.').pause(botId, id, true),
     'routines.resume': ({ botId, id }) => requireService(this.routines, 'Routines are unavailable.').pause(botId, id, false),

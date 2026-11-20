@@ -14,6 +14,7 @@ import { BotMemory } from './bot-memory'
 import type { BotPrefsStore } from './bot-prefs-store'
 import { BotRuntimes } from './bot-runtimes'
 import { SessionSettings } from './bot-session-settings'
+import { BotSkills } from './bot-skills'
 import type { BotRecord, BotStore } from './bot-store'
 import type { Workspaces } from './workspaces'
 
@@ -35,7 +36,9 @@ export interface BotServiceOptions {
 export class BotService {
   private history?: import('../history/history-service').HistoryService
   private conversations: BotConversations
-  private skills?: import('../skills/skills-service').SkillsService
+  private library?: import('../skills/skills-service').SkillsService
+  /** What the skills screens do; absent when there is no skills library. */
+  skills?: BotSkills
   private deletion: BotDeletion
   private runtimes: BotRuntimes
   private changed: () => void
@@ -54,9 +57,10 @@ export class BotService {
     options: BotServiceOptions = {}
   ) {
     this.history = options.history
-    this.skills = options.skills
+    this.library = options.skills
     this.runtimes = new BotRuntimes(store, engine, options.skills, options.memoryConnection, options.connections, { changed: options.changed, systemNote: options.systemNote })
     this.changed = options.changed ?? (() => {})
+    if (options.skills) this.skills = new BotSkills(options.skills, this.runtimes, engine, this.changed)
     this.sessions = new SessionSettings(engine, prefs, this.changed)
     this.background = new BackgroundRuns(this.runtimes, workspaces, this.sessions)
     this.conversations = new BotConversations(this.runtimes, prefs, workspaces, this.sessions, options.history)
@@ -68,7 +72,7 @@ export class BotService {
       workspaces,
       memory,
       botId => {
-        this.skills?.forgetBot(botId)
+        this.library?.forgetBot(botId)
         this.sessions.forget(botId)
         options.cleanupBot?.(botId)
       },
@@ -138,7 +142,7 @@ export class BotService {
   async getBot(botId: string): Promise<BotDetail> {
     const bot = await this.requireBot(botId)
     const state = this.runtimes.snapshot(bot)
-    const skills = this.skills?.list(botId) ?? []
+    const skills = this.library?.list(botId).filter(s => !s.excluded) ?? []
     return {
       ...this.identity(bot),
       instructions: bot.instructions,
@@ -302,21 +306,6 @@ export class BotService {
     return { ok: true }
   }
 
-  async listSkills(botId: string) {
-    await this.requireBot(botId)
-    return this.skills?.list(botId) ?? []
-  }
-  async readSkill(botId: string, name: string) {
-    await this.requireBot(botId)
-    return this.skills!.read(name)
-  }
-  async setSkill(botId: string, name: string, enabled: boolean) {
-    const bot = await this.requireBot(botId)
-    this.skills!.setEnabled(botId, name, enabled)
-    await this.runtimes.state(bot)
-    this.changed()
-    return { ok: true as const }
-  }
   requireBot(botId: string): Promise<BotRecord> {
     return this.runtimes.require(botId)
   }

@@ -5,6 +5,7 @@ import type { z } from 'zod'
 import { LilBotError } from '../../shared/protocol'
 import { type Skill, SkillName, type SkillWrite } from '../../shared/skills-schema'
 import { digest, files, metadata, safeText, treeDigest } from './skill-files'
+import { originOf } from './skill-origin'
 
 export class SkillsService {
   constructor(
@@ -30,21 +31,50 @@ export class SkillsService {
         this.db.query('INSERT INTO skills VALUES (?,?,?,?)').run(entry.name, meta.description, 'oscar', Date.now())
       }
     }
-    return (this.db.query('SELECT * FROM skills ORDER BY name').all() as { name: string; description: string; author: string; updated_at: number }[]).map(s => ({
-      name: s.name,
-      description: s.description,
-      author: s.author,
-      updatedAt: s.updated_at,
-      enabled: !this.db.query('SELECT 1 FROM skill_off WHERE bot_id=? AND name=?').get(botId, s.name)
-    }))
+    const off = new Set((this.db.query('SELECT name FROM skill_off WHERE bot_id=?').all(botId) as { name: string }[]).map(row => row.name))
+    const engines = new Map((this.db.query('SELECT name, engine_id FROM skill_origins').all() as { name: string; engine_id: string }[]).map(row => [row.name, row.engine_id]))
+    const on = new Set((this.db.query('SELECT engine_id FROM engine_skills WHERE included=1').all() as { engine_id: string }[]).map(row => row.engine_id))
+    return (this.db.query('SELECT * FROM skills ORDER BY name').all() as { name: string; description: string; author: string; updated_at: number }[]).map(s => {
+      const origin = originOf(s.author, engines.get(s.name))
+      return {
+        name: s.name,
+        description: s.description,
+        author: s.author,
+        updatedAt: s.updated_at,
+        enabled: !off.has(s.name),
+        origin,
+        excluded: origin.kind === 'engine' && !on.has(origin.engineId)
+      }
+    })
+  }
+  /** What bots are offered: not switched off for this bot and not excluded by its engine's switch. */
+  offered(botId: string): Skill[] {
+    return this.list(botId).filter(s => s.enabled && !s.excluded)
   }
   read(name: string) {
     return files(this.path(name))
   }
+  /** The names this bot is not offered. */
   disabled(botId: string) {
     return this.list(botId)
-      .filter(s => !s.enabled)
+      .filter(s => !s.enabled || s.excluded)
       .map(s => s.name)
+  }
+  /** An engine added after this was built has no row and starts off. */
+  engineIncluded(engineId: string) {
+    return Boolean((this.db.query('SELECT included FROM engine_skills WHERE engine_id=?').get(engineId) as { included: number } | null)?.included)
+  }
+  /** Nothing is deleted and no per-bot switch is touched, so switching back on restores the library exactly. */
+  setEngineIncluded(engineId: string, included: boolean) {
+    this.db.query('INSERT INTO engine_skills VALUES (?,?) ON CONFLICT(engine_id) DO UPDATE SET included=excluded.included').run(engineId, included ? 1 : 0)
+    this.changed()
+  }
+  /** Engines with a switch or imported skills; the caller adds the one that runs. */
+  engineIds() {
+    return (this.db.query('SELECT engine_id FROM engine_skills UNION SELECT engine_id FROM skill_origins').all() as { engine_id: string }[]).map(row => row.engine_id)
+  }
+  importedFrom(engineId: string) {
+    return (this.db.query('SELECT COUNT(*) AS n FROM skill_origins WHERE engine_id=?').get(engineId) as { n: number }).n
   }
   setEnabled(botId: string, name: string, enabled: boolean) {
     this.read(name)
@@ -86,7 +116,7 @@ export class SkillsService {
       .run(name, meta.description, author, Date.now())
     this.changed()
   }
-  import(source: string, data: Record<string, string>) {
+  import(engineId: string, source: string, data: Record<string, string>) {
     const prior = this.db.query('SELECT name FROM skill_imports WHERE source=?').get(source)
     if (prior) return
     const original = metadata(data['SKILL.md'] ?? '').name
@@ -105,6 +135,8 @@ export class SkillsService {
       this.db.query('INSERT INTO skills VALUES (?,?,?,?)').run(name, meta.description, 'imported', Date.now())
     }
     this.db.query('INSERT INTO skill_imports VALUES (?,?)').run(source, name)
+    // A skill this import wrote belongs to the engine; an identical copy merged into one that already existed keeps its own origin.
+    if (this.db.query("SELECT 1 FROM skills WHERE name=? AND author='imported'").get(name)) this.db.query('INSERT OR IGNORE INTO skill_origins VALUES (?,?)').run(name, engineId)
   }
   /** Installs a skill LilBot itself ships, restoring it when the library copy differs. */
   provide(name: string, data: Record<string, string>) {

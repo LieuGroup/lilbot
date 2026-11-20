@@ -39,6 +39,8 @@ export const methods = {
   'skills.list': z.object({ botId }),
   'skills.read': z.object({ botId, name: z.string() }),
   'skills.setEnabled': z.object({ botId, name: z.string(), enabled: z.boolean() }),
+  'skills.engines': z.object({}),
+  'skills.setEngine': z.object({ engineId: z.string(), included: z.boolean() }),
   'routines.list': z.object({ botId }),
   'routines.pause': z.object({ botId, id: z.string().min(1) }),
   'routines.resume': z.object({ botId, id: z.string().min(1) }),
@@ -122,6 +124,8 @@ export interface Results {
   'skills.list': import('./skills-schema').Skill[]
   'skills.read': Record<string, string>
   'skills.setEnabled': { ok: true }
+  'skills.engines': import('./skills-schema').SkillEngine[]
+  'skills.setEngine': { ok: true }
   'routines.list': Routine[]
   'routines.pause': { ok: true }
   'routines.resume': { ok: true }

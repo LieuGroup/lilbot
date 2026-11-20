@@ -46,13 +46,23 @@ export class BotRuntimes {
   initialize(first?: (bots: BotRecord[]) => string | undefined): Promise<void> {
     this.importing ??= (async () => {
       await this.load()
-      const bots = this.store.list().filter(bot => bot.engineId === this.engine.id)
+      const bots = this.bound()
       await this.readiness.all(bots, first?.(bots))
     })().catch(error => {
       this.importing = undefined
       throw error
     })
     return this.importing
+  }
+
+  /** Every bot bound to this engine that has not been deleted. */
+  bound = () => this.store.list().filter(bot => bot.engineId === this.engine.id)
+
+  /** A changed skills switch: each bound bot prepares its tools again, with the usual retries. */
+  reapplySkills(): Promise<void> {
+    const bots = this.bound()
+    for (const bot of bots) this.readiness.invalidate(bot.id)
+    return this.readiness.all(bots)
   }
 
   /** One bot prepared before use, ahead of the rest of the roster, then its identity and tools checked again.
@@ -122,12 +132,8 @@ export class BotRuntimes {
 
   /** Gives every available bot its connections again, for example after the shared T3 sign-in changed. */
   async refreshConnections(): Promise<void> {
-    if (this.connections)
-      await refreshConnections(
-        this.engine,
-        this.store.list().filter(bot => bot.engineId === this.engine.id && this.states.get(bot.id)),
-        this.connections
-      )
+    const available = this.bound().filter(bot => this.states.get(bot.id))
+    if (this.connections) await refreshConnections(this.engine, available, this.connections)
   }
 
   snapshot(bot: BotRecord): RuntimeState | null {

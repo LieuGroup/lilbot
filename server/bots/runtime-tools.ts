@@ -24,8 +24,10 @@ export async function prepareTools(engine: BotEngine, bot: BotRecord, { skills, 
     }
   }
   if (skills && connection) {
-    if (!skills.importedBot(bot.id)) {
-      for (const path of engine.userSkillPaths?.(bot.engineBotId) ?? []) skills.import(path, files(path))
+    // An engine whose switch is off is not imported from; the bot is marked only after an import, so switching on imports it.
+    const includeEngineSkills = skills.engineIncluded(engine.id)
+    if (includeEngineSkills && !skills.importedBot(bot.id)) {
+      for (const path of engine.userSkillPaths?.(bot.engineBotId) ?? []) skills.import(engine.id, path, files(path))
       skills.markBotImported(bot.id)
     }
     await engine.configureSkills?.(bot.engineBotId, {
@@ -33,7 +35,8 @@ export async function prepareTools(engine: BotEngine, bot: BotRecord, { skills, 
       ...connection,
       botId: bot.id,
       disabled: skills.disabled(bot.id),
-      names: skills.list(bot.id).map(s => s.name)
+      names: skills.list(bot.id).map(s => s.name),
+      includeEngineSkills
     })
   }
   const given = connections?.(bot.id)
