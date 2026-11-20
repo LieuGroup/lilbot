@@ -1,5 +1,5 @@
 import { ArrowUpIcon, PlusIcon } from 'lucide-react'
-import { type ClipboardEvent, type FormEvent, type KeyboardEvent, useRef, useState } from 'react'
+import { type ClipboardEvent, type FormEvent, type KeyboardEvent, type ReactNode, useRef, useState } from 'react'
 
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from '@/ui/input-group'
 import type { Attachment } from '../../../shared/attachment-schema'
@@ -14,17 +14,23 @@ interface ComposerProps {
   botName: string
   /** Files waiting to go with the next message (plus button, paste, or a drop on the conversation). */
   staged: StagedAttachments
+  /** The bot's model pill, after the attach button. */
+  model: ReactNode
+  /** A short red note above the box, such as a refused model change. */
+  note?: ReactNode
   onSend: (text: string, attachments: Attachment[]) => void
   onStop: () => void
 }
 
-/** The Prompt Input pattern: plain props in, plain callbacks out. One round ink button: stop while
+/** The Prompt Input pattern: plain props in, plain callbacks out. The text on top, then a row of
+ *  attach, the model pill and one round ink button: stop while
  *  the bot works and the box is empty, send otherwise (a message sent while it works waits its turn).
  *  Send waits until every staged file has uploaded; refused files are left behind. */
-export function Composer({ disabled, disabledHint, running, botName, staged, onSend, onStop }: ComposerProps) {
+export function Composer({ disabled, disabledHint, running, botName, staged, model, note, onSend, onStop }: ComposerProps) {
   const [text, setText] = useState('')
   const form = useRef<HTMLFormElement>(null)
   const picker = useRef<HTMLInputElement>(null)
+  const hasFiles = staged.files.length > 0 || staged.leftOut > 0
   const hasContent = text.trim().length > 0 || staged.ready.length > 0
   const stopping = running && !text.trim() && staged.ready.length === 0 && !staged.busy
   const canSend = !disabled && !staged.busy && hasContent
@@ -69,16 +75,26 @@ export function Composer({ disabled, disabledHint, running, botName, staged, onS
             event.target.value = ''
           }}
         />
-        <InputGroup className="flex-row! flex-wrap items-end gap-x-2 gap-y-2.5 rounded-[22px] border-0 bg-card py-2 pr-2 pl-2.5 shadow-xs ring-1 shadow-foreground/5 ring-foreground/12 has-disabled:bg-card has-disabled:opacity-100 has-[[data-slot=input-group-control]:focus-visible]:ring-foreground/20 dark:bg-card dark:has-disabled:bg-card">
-          {(staged.files.length > 0 || staged.leftOut > 0) && (
-            <InputGroupAddon align="block-start" className="p-0">
-              <ComposerAttachments staged={staged} />
+        <InputGroup className="h-auto flex-col items-stretch gap-1.5 rounded-[22px] border-0 bg-card pt-3 pr-2 pb-2 pl-3.5 shadow-xs ring-1 shadow-foreground/5 ring-foreground/12 has-disabled:bg-card has-disabled:opacity-100 has-[[data-slot=input-group-control]:focus-visible]:ring-foreground/20 dark:bg-card dark:has-disabled:bg-card">
+          {(hasFiles || note) && (
+            <InputGroupAddon align="block-start" className="flex-col gap-1.5 p-0">
+              {hasFiles && <ComposerAttachments staged={staged} />}
+              {note}
             </InputGroupAddon>
           )}
-          <InputGroupAddon className="p-0 has-[>button]:ml-0">
+          <InputGroupTextarea
+            value={text}
+            aria-label="Message"
+            placeholder={disabled ? disabledHint : `Message ${botName}`}
+            className="max-h-52 min-h-6 w-full p-0 text-base placeholder:text-foreground/50 md:text-[15px]/6"
+            onChange={event => setText(event.target.value)}
+            onKeyDown={onKeyDown}
+            onPaste={onPaste}
+          />
+          <div className="flex min-w-0 items-center gap-1">
             <InputGroupButton
               size="icon-sm"
-              className="size-7 rounded-full text-foreground"
+              className="size-7 flex-none rounded-full text-muted-foreground"
               aria-label="Attach files"
               title="Attach files"
               disabled={disabled}
@@ -86,21 +102,12 @@ export function Composer({ disabled, disabledHint, running, botName, staged, onS
             >
               <PlusIcon strokeWidth={1.75} />
             </InputGroupButton>
-          </InputGroupAddon>
-          <InputGroupTextarea
-            value={text}
-            aria-label="Message"
-            placeholder={disabled ? disabledHint : `Message ${botName}`}
-            className="max-h-52 min-h-7 min-w-0 basis-0 px-0 py-0.5 text-base placeholder:text-foreground/50 md:text-[15px]/6"
-            onChange={event => setText(event.target.value)}
-            onKeyDown={onKeyDown}
-            onPaste={onPaste}
-          />
-          <InputGroupAddon align="inline-end" className="p-0 has-[>button]:mr-0">
+            {model}
+            <span className="flex-1" />
             {stopping ? (
               <InputGroupButton
                 size="icon-sm"
-                className="size-7 rounded-full bg-foreground text-background hover:bg-foreground/80 hover:text-background"
+                className="size-7 flex-none rounded-full bg-foreground text-background hover:bg-foreground/80 hover:text-background"
                 aria-label="Stop"
                 onClick={onStop}
               >
@@ -110,7 +117,7 @@ export function Composer({ disabled, disabledHint, running, botName, staged, onS
               <InputGroupButton
                 type="submit"
                 size="icon-sm"
-                className="size-7 rounded-full bg-foreground text-background hover:bg-foreground/80 hover:text-background disabled:bg-foreground/20"
+                className="size-7 flex-none rounded-full bg-foreground text-background hover:bg-foreground/80 hover:text-background disabled:bg-foreground/20"
                 aria-label={staged.busy ? 'Send (waiting for uploads)' : running ? 'Send after this turn' : 'Send'}
                 title={staged.busy ? 'Waiting for the files to upload' : undefined}
                 disabled={!canSend}
@@ -118,7 +125,7 @@ export function Composer({ disabled, disabledHint, running, botName, staged, onS
                 <ArrowUpIcon strokeWidth={2} />
               </InputGroupButton>
             )}
-          </InputGroupAddon>
+          </div>
         </InputGroup>
       </form>
     </footer>

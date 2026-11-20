@@ -1,18 +1,30 @@
 import { ChevronDownIcon } from 'lucide-react'
-import { Fragment } from 'react'
 import { Button } from '@/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger
-} from '@/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '@/ui/dropdown-menu'
 import type { BotModel, ModelProvider } from '../../../shared/bot-schema'
-import { modelFromKey, modelGroups, modelKey, modelLabel } from './model-choice'
+import { type ModelGroup, modelFromKey, modelGroups, modelKey, modelLabel } from './model-choice'
+
+// Paper "14 Model picker": the tick sits before the current model, other names are indented to line up with it.
+const row =
+  'pr-2 pl-8 data-checked:bg-foreground/6 data-checked:font-medium [&>[data-slot=dropdown-menu-radio-item-indicator]]:right-auto [&>[data-slot=dropdown-menu-radio-item-indicator]]:left-2 [&_svg]:size-3.5! [&_svg]:stroke-[2.5]!'
+
+/** The models grouped under their provider's name, with a tick on the current one. Choosing one closes the menu. */
+export function ModelChoices({ groups, value, onChange }: { groups: ModelGroup[]; value: BotModel | null; onChange: (model: BotModel | null) => void }) {
+  return (
+    <DropdownMenuRadioGroup value={modelKey(value)} onValueChange={key => onChange(modelFromKey(key))}>
+      {groups.map(group => (
+        <DropdownMenuGroup key={group.label ?? 'top'}>
+          {group.label && <DropdownMenuLabel className="pt-2 pb-0.5">{group.label}</DropdownMenuLabel>}
+          {group.options.map(option => (
+            <DropdownMenuRadioItem key={option.key} value={option.key} label={option.label} closeOnClick className={row}>
+              <span className="truncate">{option.label}</span>
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuGroup>
+      ))}
+    </DropdownMenuRadioGroup>
+  )
+}
 
 interface ModelSelectorProps {
   id?: string
@@ -23,7 +35,7 @@ interface ModelSelectorProps {
   onChange: (model: BotModel | null) => void
 }
 
-/** The Model Selector pattern, model menu only: the engine has no effort setting per bot. */
+/** The Model Selector pattern as a form field (Setup and New bot); the composer's pill opens the same choices. */
 export function ModelSelector({ id, providers, value, noModelLabel, onChange }: ModelSelectorProps) {
   const groups = modelGroups(providers, value, noModelLabel)
   return (
@@ -33,21 +45,7 @@ export function ModelSelector({ id, providers, value, noModelLabel, onChange }: 
         <ChevronDownIcon className="text-muted-foreground" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="max-h-[min(24rem,var(--available-height))] w-(--anchor-width)">
-        <DropdownMenuRadioGroup value={modelKey(value)} onValueChange={key => onChange(modelFromKey(key))}>
-          {groups.map((group, index) => (
-            <Fragment key={group.label ?? 'top'}>
-              {index > 0 && <DropdownMenuSeparator className="my-1" />}
-              <DropdownMenuGroup>
-                {group.label && <DropdownMenuLabel>{group.label}</DropdownMenuLabel>}
-                {group.options.map(option => (
-                  <DropdownMenuRadioItem key={option.key} value={option.key} closeOnClick>
-                    <span className="truncate">{option.label}</span>
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuGroup>
-            </Fragment>
-          ))}
-        </DropdownMenuRadioGroup>
+        <ModelChoices groups={groups} value={value} onChange={onChange} />
       </DropdownMenuContent>
     </DropdownMenu>
   )

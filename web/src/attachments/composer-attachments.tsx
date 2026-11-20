@@ -1,7 +1,7 @@
-import { CircleAlertIcon, FileIcon, LoaderCircleIcon, XIcon } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { FileIcon, LoaderCircleIcon, XIcon } from 'lucide-react'
 
 import { Attachment, AttachmentAction, AttachmentActions, AttachmentContent, AttachmentDescription, AttachmentMedia, AttachmentTitle } from '@/ui/attachment'
+import { ComposerNote } from '@/ui/composer-note'
 import { formatBytes, leftOutText, refusalText } from './attachment-rules'
 import type { StagedAttachments, StagedFile } from './use-staged-attachments'
 
@@ -19,15 +19,15 @@ export function ComposerAttachments({ staged }: { staged: StagedAttachments }) {
         </div>
       )}
       {refused.map(file => (
-        <RefusedRow key={file.key} label={`Remove ${file.name}`} onDismiss={() => staged.remove(file.key)}>
+        <ComposerNote key={file.key} label={`Remove ${file.name}`} onDismiss={() => staged.remove(file.key)}>
           <AttachmentTitle className="text-[13px]/[18px]">{file.name}</AttachmentTitle>
           <AttachmentDescription className="mt-0 text-xs/4 text-destructive!">{refusalText({ size: file.size, reason: file.reason }, staged.limits)}</AttachmentDescription>
-        </RefusedRow>
+        </ComposerNote>
       ))}
       {staged.leftOut > 0 && staged.limits && (
-        <RefusedRow label="Dismiss" onDismiss={staged.dismissLeftOut}>
+        <ComposerNote label="Dismiss" onDismiss={staged.dismissLeftOut}>
           <p className="text-[13px]/[18px] text-destructive">{leftOutText(staged.leftOut, staged.limits)}</p>
-        </RefusedRow>
+        </ComposerNote>
       )}
     </div>
   )
@@ -76,19 +76,5 @@ function RemoveButton({ file, onRemove }: { file: StagedFile; onRemove: (key: st
         <XIcon strokeWidth={3} />
       </AttachmentAction>
     </AttachmentActions>
-  )
-}
-
-function RefusedRow({ label, onDismiss, children }: { label: string; onDismiss: () => void; children: ReactNode }) {
-  return (
-    <Attachment state="error" role="alert" className="w-full min-w-0 gap-2 border-0 bg-transparent px-2.5! py-2! ring-1 ring-destructive/35 ring-inset">
-      <CircleAlertIcon className="size-4 flex-none text-destructive" strokeWidth={1.75} />
-      <AttachmentContent>{children}</AttachmentContent>
-      <AttachmentActions>
-        <AttachmentAction aria-label={label} title="Dismiss" onClick={onDismiss} className="size-6 text-muted-foreground">
-          <XIcon className="size-3.5!" strokeWidth={1.75} />
-        </AttachmentAction>
-      </AttachmentActions>
-    </Attachment>
   )
 }

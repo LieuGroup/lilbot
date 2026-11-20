@@ -6,6 +6,7 @@ import type { Ability, BotDetail } from '../../../shared/bot-schema'
 import { lilbot, messageOf } from '../app/lilbot-socket'
 import { BotForm } from './bot-form'
 import { useBotStore } from './bot-store'
+import { modelKey } from './model-choice'
 import { PrimaryBotAction } from './primary-bot-action'
 
 const kindLabels: Record<Ability['kind'], string> = { toolset: 'Toolsets', skill: 'Skills', connector: 'Connectors' }
@@ -44,8 +45,10 @@ function AbilitySummary({ abilities }: { abilities: Ability[] }) {
 export function BotSetupPanel({ botId }: { botId: string }) {
   const connected = useBotStore(state => state.connected)
   const upsert = useBotStore(state => state.upsert)
-  // A rename from the bot menu reloads the form, so saving it cannot bring the old name back.
+  // A rename from the bot menu or a model change from the composer reloads the form, so saving it
+  // cannot bring the old name or model back.
   const name = useBotStore(state => state.bots.find(bot => bot.id === botId)?.name)
+  const model = useBotStore(state => modelKey(state.bots.find(bot => bot.id === botId)?.model ?? null))
   const [loaded, setBot] = useState<BotDetail | null>(null)
   const [error, setError] = useState('')
   const bot = loaded?.id === botId ? loaded : null
@@ -61,7 +64,7 @@ export function BotSetupPanel({ botId }: { botId: string }) {
     return () => {
       cancelled = true
     }
-  }, [botId, connected, name])
+  }, [botId, connected, name, model])
 
   return (
     <Panel>
@@ -71,7 +74,7 @@ export function BotSetupPanel({ botId }: { botId: string }) {
         <>
           <PrimaryBotAction botId={botId} />
           <BotForm
-            key={`${bot.id}:${bot.name}`}
+            key={`${bot.id}:${bot.name}:${modelKey(bot.model)}`}
             initial={{ name: bot.name, function: bot.function, instructions: bot.instructions, model: bot.model }}
             submitLabel="Save changes"
             onSubmit={async values => {
