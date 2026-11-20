@@ -3,7 +3,7 @@ import type { BotModel, ModelProvider } from '../../../shared/bot-schema'
 
 const SEPARATOR = '::'
 
-export interface ModelOption {
+interface ModelOption {
   key: string
   label: string
 }

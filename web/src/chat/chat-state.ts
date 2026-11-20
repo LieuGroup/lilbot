@@ -5,7 +5,7 @@ import type { HistoryPage } from '../../../shared/history-schema'
 import { reuseItems, withLatest } from '../history/history-view'
 
 /** Where a new session began, inside the one continuous conversation. */
-export type SessionMark = { kind: 'session'; text: string }
+type SessionMark = { kind: 'session'; text: string }
 /** `streaming` marks the assistant message that is still being written. Items from the saved
  *  history carry its row `id` and time `at`. */
 export type ViewItem = (ChatItem | SessionMark) & { streaming?: boolean; id?: string; at?: number }

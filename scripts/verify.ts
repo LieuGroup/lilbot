@@ -10,8 +10,11 @@ const before = await cleanHead(cwd).catch(() => undefined)
 for (const args of [
   ['bunx', '--no-install', 'biome', 'check', '.'],
   ['bunx', '--no-install', 'tsc', '--noEmit'],
+  ['bunx', '--no-install', 'knip'],
+  ['bun', 'scripts/check-size.ts'],
   ['bun', 'test', 'tests'],
-  ['bun', 'run', 'build']
+  ['bun', 'run', 'build'],
+  ['bun', 'scripts/growth-report.ts']
 ]) {
   const child = Bun.spawn(args, { stdio: ['inherit', 'inherit', 'inherit'] })
   if (await child.exited) process.exit(1)

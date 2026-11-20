@@ -3,7 +3,7 @@ import type { ChatEvent, ChatItem } from '../../shared/chat-schema'
 import type { HistoryItem, HistoryPage } from '../../shared/history-schema'
 import { LilBotError } from '../../shared/protocol'
 
-export interface HistorySession {
+interface HistorySession {
   bot: string
   id: string
   at: number
