@@ -13,6 +13,7 @@ import { matchesCapability } from '../bots/bot-capability'
 import { BotCreationInput } from '../bots/bot-creation'
 import type { BotService } from '../bots/bot-service'
 import type { LibraryService } from '../library/library-service'
+import { endOfDay } from '../memory/memory-expiry'
 import type { MemoryReviewer } from '../memory/memory-reviewer'
 import type { MemoryService } from '../memory/memory-service'
 import type { RoutineService } from '../routines/routine-service'
@@ -169,8 +170,7 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
             author: 'bot',
             via: review ? 'review' : 'chat',
             sourceChatId: body.chatId,
-            // Shown through the whole named day.
-            expiresAt: body.expires ? Date.parse(`${body.expires}T23:59:59Z`) : undefined
+            expiresAt: body.expires ? endOfDay(body.expires) : undefined
           })
           onMemoryChanged()
           const notice = memory.overflowNotice(body.botId)

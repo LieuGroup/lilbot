@@ -26,6 +26,8 @@ export interface BotServiceOptions {
   memoryConnection?: MemoryConnection
   /** LilBot-owned MCP connections given to every bot, by LilBot id. */
   connections?: (botId: string) => McpConnection[]
+  /** The "about your system" note added to the instructions an engine runs (`system-note.ts`). */
+  systemNote?: (bot: BotRecord) => string
 }
 
 export class BotService {
@@ -49,7 +51,7 @@ export class BotService {
   ) {
     this.history = options.history
     this.skills = options.skills
-    this.runtimes = new BotRuntimes(store, engine, options.skills, options.memoryConnection, options.connections, { changed: options.changed })
+    this.runtimes = new BotRuntimes(store, engine, options.skills, options.memoryConnection, options.connections, { changed: options.changed, systemNote: options.systemNote })
     this.conversations = new BotConversations(this.runtimes, prefs, workspaces, options.history)
     this.creation = new BotCreation(this, store)
     this.changed = options.changed ?? (() => {})
@@ -274,9 +276,7 @@ export class BotService {
   }
 
   async createFromBot(callerId: string, input: import('./bot-creation').BotCreationInput) {
-    const caller = await this.requireBot(callerId)
-    if (callerId !== this.primaryId(this.runtimes.store.list())) throw new LilBotError('forbidden', 'Only the primary bot can create bots.')
-    return this.creation.create(caller, input)
+    return this.creation.create(await this.requireBot(callerId), input)
   }
 
   private primaryId(bots: BotRecord[]): string | undefined {

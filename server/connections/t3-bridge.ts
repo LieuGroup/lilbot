@@ -2,8 +2,10 @@
  *  It forwards Streamable HTTP MCP to T3 Code with LilBot's one sign-in, which never leaves this
  *  process. T3 Code still owns projects, threads, worktrees and pull requests. */
 
-import { filterToolList, type JsonRpc, rpcError, rpcResult, scopedRequestId, signedOutReply, toolError } from './t3-bridge-replies'
-import { bridgeCaller, T3_STATUS_TOOL, T3_TOOLS } from './t3-connection'
+import { connectionCaller } from './connection-keys'
+import { type JsonRpc, rpcError, rpcResult, toolError } from './mcp-json-rpc'
+import { filterToolList, scopedRequestId, signedOutReply } from './t3-bridge-replies'
+import { T3_KEY_PURPOSE, T3_STATUS_TOOL, T3_TOOLS } from './t3-connection'
 import { signInMessage, type T3Grants } from './t3-grant'
 
 export interface T3BridgeOptions {
@@ -50,7 +52,7 @@ export function createT3Bridge(options: T3BridgeOptions) {
   return async (request: Request): Promise<Response> => {
     // Only engine processes on this machine: loopback Host, never a browser, and a bot's own key.
     if (request.headers.has('origin') || !loopback.has(request.headers.get('host')?.toLowerCase() ?? '')) return Response.json({ error: 'Not allowed.' }, { status: 403 })
-    const botId = bridgeCaller(options.engineToken, options.botIds(), request.headers.get('authorization') ?? '')
+    const botId = connectionCaller(options.engineToken, T3_KEY_PURPOSE, options.botIds(), request.headers.get('authorization') ?? '')
     if (!botId) return Response.json({ error: 'Unknown bot credential.' }, { status: 403 })
 
     if (request.method !== 'POST') {

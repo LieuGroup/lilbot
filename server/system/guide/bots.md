@@ -1,0 +1,13 @@
+# Bots: identity, roster, primary bot, creating and editing
+
+A bot is its name, a one-line function, instructions, a model and a folder on the leader. Instructions are what make bots different; every bot has the same skills and tools by default. The note about your system is added to your instructions when a session starts, never saved into them.
+
+Roster: Oscar pins bots, groups them in sections, hides them and marks them read or unread. These are his choices, not the bot's. `lilbot_bots_list` shows them; `lilbot_roster_set`, `lilbot_section_create` and `lilbot_unread_set` change them.
+
+The primary bot sits first and is opened on entry; `lilbot_primary_set` moves the mark and nothing else.
+
+Any bot may create a bot with `lilbot_bot_create`: write its instructions and a short function from Oscar's description. It inherits your model and greets Oscar. Reuse the same requestId when retrying, a new one for each new bot. Reply with the link.
+
+`lilbot_bot_edit` changes name, function, instructions or model of yourself or another bot; check models with `lilbot_models_list`. A changed bot picks the edit up in its next session. Edit another bot only when Oscar asked, and say what you changed.
+
+Deleting a bot is Oscar's to do from the bot menu; there is no tool for it.

@@ -5,6 +5,7 @@ import { type EventFrame, LilBotError, type Method, methods, RequestFrame, type 
 import type { ActivityService } from '../activity/activity-service'
 import { type AttachmentService, attachmentLimits } from '../attachments/attachment-service'
 import type { BotService } from '../bots/bot-service'
+import { setUnread } from '../bots/bot-unread'
 import type { LibraryService } from '../library/library-service'
 import type { RoutineService } from '../routines/routine-service'
 import { type AfterResponse, BrowserChats } from './browser-chats'
@@ -63,11 +64,7 @@ export class BrowserSession {
     'bots.deleteDefaults.get': async () => this.bots.deleteDefaults(),
     'bots.deleteDefaults.set': async input => this.bots.setDeleteDefaults(input),
     'bots.list': async () => (await this.bots.listBots()).map(bot => (this.activity ? { ...bot, activity: this.activity.state(bot.id) } : bot)),
-    'activity.setUnread': async ({ botId, unread }) => {
-      await this.bots.getBot(botId)
-      this.activity?.setUnread(botId, unread)
-      return { ok: true }
-    },
+    'activity.setUnread': ({ botId, unread }) => setUnread(this.bots, this.activity, botId, unread),
     'bots.get': ({ botId }) => this.bots.getBot(botId),
     'bots.create': input => this.bots.createBot(input),
     'bots.update': input => this.bots.updateBot(input),

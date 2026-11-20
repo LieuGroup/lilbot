@@ -2,8 +2,9 @@ import { expect, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { connectionKey } from '../../server/connections/connection-keys'
 import { createT3Bridge } from '../../server/connections/t3-bridge'
-import { bridgeKey } from '../../server/connections/t3-connection'
+import { T3_KEY_PURPOSE } from '../../server/connections/t3-connection'
 import { T3Grants } from '../../server/connections/t3-grant'
 
 /** The upstream task outlives the bridge. Recreate all bridge state, including the grant reader,
@@ -40,7 +41,7 @@ test('a lost T3 launch response survives bridge restart without starting another
     const response = await bridge(
       new Request('http://127.0.0.1:3998/engine/t3/mcp', {
         method: 'POST',
-        headers: { host: '127.0.0.1:3998', authorization: `Bearer ${bridgeKey(token, 'bot')}` },
+        headers: { host: '127.0.0.1:3998', authorization: `Bearer ${connectionKey(token, T3_KEY_PURPOSE, 'bot')}` },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } })
       })
     )

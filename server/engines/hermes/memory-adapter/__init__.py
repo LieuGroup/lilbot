@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 NAME = Path(__file__).resolve().parent.name
 SETTINGS_FILE = "lilbot-memory.json"
 # Keep equal to plugin.yaml. LilBot warns when a bot still calls with an older one.
-VERSION = "0.9.0"
+VERSION = "0.9.1"
 DEFAULT_URL = "http://127.0.0.1:3370"
 DEFAULT_TOKEN_FILE = "~/.local/share/lilbot/engine-token"
 TIMEOUT_SECONDS = 5
@@ -222,7 +222,7 @@ class LilBotMemoryProvider(MemoryProvider):
             "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "title": {"type": "string"}}, "required": ["path", "title"]}
         }, {
             "name": "create_bot",
-            "description": "Create a bot when Oscar asks. Only the primary bot is allowed. Write its instructions and short function from his description; it inherits your model and greets him. No confirmation needed. Reply with the returned Markdown link. Reuse requestId on retries, use a new unique requestId for each new request.",
+            "description": "Create a bot when Oscar asks. Any bot may. Write its instructions and short function from his description; it inherits your model and greets him. No confirmation needed. Reply with the returned Markdown link. Reuse requestId on retries, use a new unique requestId for each new request.",
             "parameters": {"type": "object", "properties": {key: {"type": "string"} for key in ["requestId", "name", "function", "instructions"]}, "required": ["requestId", "name", "function", "instructions"]}
         }]
 

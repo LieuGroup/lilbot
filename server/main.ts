@@ -19,6 +19,7 @@ import { BrowserSession } from './http/browser-session'
 import { startPublicDoor } from './http/public-door'
 import { allowedHosts } from './http/socket-guard'
 import { files } from './skills/skill-files'
+import { SYSTEM_PATH } from './system/system-connection'
 
 assertServerEnvironment(process.env)
 const COMMIT = runningCommit(join(import.meta.dir, '..'))
@@ -47,11 +48,12 @@ function botsChanged() {
 }
 
 const engine = new HermesEngine(process.env.LILBOT_BOT_IDS?.split(',').filter(Boolean))
-const { bots, store, skills, threadStore, library, computers, attachments, t3Grants, t3Bridge, engineApi, activity, routines, threads } = createAppServices(engine, {
+const { bots, store, skills, threadStore, library, computers, attachments, t3Grants, t3Bridge, systemMcp, engineApi, activity, routines, threads } = createAppServices(engine, {
   DATA_DIR,
   WORKSPACES_DIR,
   PORT,
   MEMORY_ADAPTER_VERSION,
+  COMMIT,
   publish: frame => publish(EVERYONE, JSON.stringify(frame)),
   botsChanged
 })
@@ -122,6 +124,11 @@ const server = Bun.serve<SocketData>({
       if (url.pathname === T3_BRIDGE_PATH) {
         server.timeout(request, 0)
         return t3Bridge(request)
+      }
+      if (url.pathname === SYSTEM_PATH) {
+        // Creating a bot waits for its greeting: no idle timeout.
+        server.timeout(request, 0)
+        return systemMcp(request)
       }
       if (url.pathname.startsWith('/engine/')) return engineApi(request, url.pathname)
       if (url.pathname === '/api/health') return Response.json({ ok: true, engine: 'hermes', commit: COMMIT, pid: process.pid })

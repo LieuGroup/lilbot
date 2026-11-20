@@ -1,16 +1,13 @@
 import { z } from 'zod'
 import { type MemoryFact, MemoryKind, MemoryScope } from '../../shared/memory-schema'
+import { expiryDay } from '../memory/memory-expiry'
 import { shortId } from '../memory/memory-service'
 
 const botId = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/)
 
 /** The chat the call comes from, as the engine names it. */
 const chatId = z.string().min(1).max(200).optional()
-/** A date like 2026-12-31: the fact is shown until the end of that day (UTC). */
-const expires = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a date like 2026-12-31.')
-  .optional()
+const expires = expiryDay.optional()
 
 export const memoryRoutes = {
   '/engine/memory/context': z.object({ botId, chatId }),

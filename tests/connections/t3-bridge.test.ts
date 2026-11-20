@@ -2,9 +2,10 @@ import { afterAll, beforeEach, expect, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { connectionKey } from '../../server/connections/connection-keys'
 import { createT3Bridge } from '../../server/connections/t3-bridge'
 import { scopedRequestId } from '../../server/connections/t3-bridge-replies'
-import { bridgeKey, T3_STATUS_TOOL } from '../../server/connections/t3-connection'
+import { T3_KEY_PURPOSE, T3_STATUS_TOOL } from '../../server/connections/t3-connection'
 import { T3Grants } from '../../server/connections/t3-grant'
 
 const TOKEN = 'engine-token-for-tests'
@@ -36,7 +37,7 @@ function post(message: unknown, bot = 'bot-a', headers: Record<string, string> =
   return bridge(
     new Request(`http://127.0.0.1:${PORT}/engine/t3/mcp`, {
       method: 'POST',
-      headers: { host: `127.0.0.1:${PORT}`, authorization: `Bearer ${bridgeKey(TOKEN, bot)}`, 'content-type': 'application/json', ...headers },
+      headers: { host: `127.0.0.1:${PORT}`, authorization: `Bearer ${connectionKey(TOKEN, T3_KEY_PURPOSE, bot)}`, 'content-type': 'application/json', ...headers },
       body: JSON.stringify(message)
     })
   )

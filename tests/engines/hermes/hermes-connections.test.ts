@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import { t3Connection } from '../../../server/connections/t3-connection'
 import { connectionPreparer, prepareConnections, serverConfig } from '../../../server/engines/hermes/hermes-connections'
+import { systemConnection } from '../../../server/system/system-connection'
 
 const connection = t3Connection('http://127.0.0.1:3370', 'token', 'bot-a')
 
@@ -81,4 +82,23 @@ test('unrelated inherited MCP failure does not break a proven connected bridge',
     return {}
   }
   await expect(prepareConnections(fake as any, [connection])).rejects.toThrow('mcp servers unavailable')
+})
+
+test('the system connection is added beside T3 without disturbing it, and the pair is applied once per set', async () => {
+  const system = systemConnection('http://127.0.0.1:3370', 'token', 'bot-a', ['lilbot_about'], 'v1')
+  const t3 = serverConfig(connection)
+  const fake = socket([{ name: 'lilbot_t3', url: t3.url, enabled: true, tools: t3.tools }])
+  expect(await prepareConnections(fake, [connection, system])).toBe(true)
+  expect(fake.calls.map(call => `${call.method}:${call.params?.name ?? ''}`)).toEqual(['mcp.servers.list:', 'mcp.servers.add:lilbot_system', 'reload.mcp:'])
+  expect(fake.calls[1].params.bearer_token).toBe(system.bearerToken)
+  expect(fake.calls[1].params.config.url).toBe('http://127.0.0.1:3370/engine/lilbot/mcp?tools=v1')
+  // A changed tool list is a new URL, so the server is replaced and Hermes fetches the new tools.
+  const next = systemConnection('http://127.0.0.1:3370', 'token', 'bot-a', ['lilbot_about'], 'v2')
+  const config = serverConfig(system)
+  const replaced = socket([
+    { name: 'lilbot_t3', url: t3.url, enabled: true, tools: t3.tools },
+    { name: 'lilbot_system', url: config.url, enabled: true, tools: config.tools }
+  ])
+  expect(await prepareConnections(replaced, [connection, next])).toBe(true)
+  expect(replaced.calls.filter(call => call.method === 'mcp.servers.remove').map(call => call.params.name)).toEqual(['lilbot_system'])
 })

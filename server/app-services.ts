@@ -16,6 +16,7 @@ import { loadServerKey } from './computers/server-key'
 import { createT3Bridge } from './connections/t3-bridge'
 import { T3_DEFAULT_MCP_URL, t3Connection } from './connections/t3-connection'
 import { T3Grants } from './connections/t3-grant'
+import { watchT3SignIn } from './connections/t3-watch'
 import { openDatabase } from './database/database'
 import { deployNotice } from './deploy/deploy-notice'
 import type { BotEngine } from './engines/bot-engine'
@@ -33,6 +34,9 @@ import { RoutineScheduler } from './routines/routine-scheduler'
 import { defaultRoutineSettings, RoutineService } from './routines/routine-service'
 import { RoutineStore } from './routines/routine-store'
 import { SkillsService } from './skills/skills-service'
+import { SystemChanges } from './system/system-changes'
+import { systemNote } from './system/system-note-facts'
+import { createSystemServer } from './system/system-server'
 import { ThreadService } from './threads/thread-service'
 import { ThreadStore } from './threads/thread-store'
 
@@ -44,11 +48,13 @@ export function createAppServices(
     WORKSPACES_DIR: string
     PORT: number
     MEMORY_ADAPTER_VERSION: string
+    /** The running release. */
+    COMMIT: string
     publish: (frame: EventFrame) => void
     botsChanged: () => void
   }
 ) {
-  const { DATA_DIR, WORKSPACES_DIR, PORT, MEMORY_ADAPTER_VERSION, publish, botsChanged } = settings
+  const { DATA_DIR, WORKSPACES_DIR, PORT, MEMORY_ADAPTER_VERSION, COMMIT, publish, botsChanged } = settings
   const repeat = (name: string, interval: number, run: () => unknown | Promise<unknown>) => setInterval(backgroundTask(name, run), interval)
   const workspaces = new Workspaces(WORKSPACES_DIR)
   const database = openDatabase(join(DATA_DIR, 'lilbot.db'))
@@ -90,6 +96,7 @@ export function createAppServices(
   // Every bot gets the shared T3 sign-in and the t3-coding skill.
   const t3Grants = new T3Grants(join(DATA_DIR, 't3-grant.json'), () => publish({ event: 'connections.changed' }))
   const prefs = new BotPrefsStore(database)
+  const facts = { store, workspaces, computers, t3: () => t3Grants.status(), commit: COMMIT }
   const history = new HistoryService(
     new HistoryStore(database),
     engine,
@@ -115,19 +122,14 @@ export function createAppServices(
     changed: botsChanged,
     memoryChanged,
     memoryConnection: { url: `http://127.0.0.1:${PORT}`, tokenFile: join(DATA_DIR, 'engine-token') },
-    connections: botId => [t3Connection(`http://127.0.0.1:${PORT}`, token, botId, t3Grants.generation())]
+    connections: botId => [t3Connection(`http://127.0.0.1:${PORT}`, token, botId, t3Grants.generation()), system.connection(botId)],
+    systemNote: systemNote(facts)
   })
-  // A sign-in from `bun run t3:sign-in`, an expiry or a revocation changes which tools bots should see.
-  let t3Generation = t3Grants.generation()
-  setInterval(
-    backgroundTask('connections watcher', async () => {
-      const next = t3Grants.generation()
-      if (next === t3Generation) return
-      publish({ event: 'connections.changed' })
-      await bots.refreshConnections()
-      t3Generation = next
-    }),
-    5_000
+  const system = createSystemServer({ ...facts, bots, activity, memory, memoryChanged, changes: new SystemChanges(database), dataDir: DATA_DIR, engineToken: token, port: PORT })
+  watchT3SignIn(
+    t3Grants,
+    () => publish({ event: 'connections.changed' }),
+    () => bots.refreshConnections()
   )
   const t3Bridge = createT3Bridge({
     upstream: process.env.LILBOT_T3_MCP_URL ?? T3_DEFAULT_MCP_URL,
@@ -193,5 +195,5 @@ export function createAppServices(
     adapterVersion: MEMORY_ADAPTER_VERSION,
     reviewer
   })
-  return { bots, store, skills, threadStore, library, computers, attachments, t3Grants, t3Bridge, engineApi, activity, routines, threads }
+  return { bots, store, skills, threadStore, library, computers, attachments, t3Grants, t3Bridge, systemMcp: system.handler, engineApi, activity, routines, threads }
 }

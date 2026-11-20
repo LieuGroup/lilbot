@@ -1,14 +1,9 @@
 /** MCP answers the bridge gives itself: while LilBot is signed out, and for refused tool calls. */
 import { createHash } from 'node:crypto'
+import { type JsonRpc, rpcError, rpcResult, toolError } from './mcp-json-rpc'
 import { T3_STATUS_TOOL } from './t3-connection'
 
-export type JsonRpc = { jsonrpc?: string; id?: string | number | null; method?: string; params?: any }
-
 const SERVER_INFO = { name: 'LilBot T3 Code bridge', version: '1.0.0' }
-
-export const rpcResult = (id: JsonRpc['id'], result: unknown) => Response.json({ jsonrpc: '2.0', id: id ?? null, result })
-export const rpcError = (id: JsonRpc['id'], code: number, message: string) => Response.json({ jsonrpc: '2.0', id: id ?? null, error: { code, message } })
-export const toolError = (id: JsonRpc['id'], text: string) => rpcResult(id, { content: [{ type: 'text', text }], isError: true })
 
 /** Answers a request without T3 Code: the bot sees one tool that explains how to renew the sign-in. */
 export function signedOutReply(message: JsonRpc, explanation: string): Response {
