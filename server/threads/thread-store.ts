@@ -1,9 +1,10 @@
 import type { Database } from 'bun:sqlite'
-import type { ChatItem } from '../../shared/chat-schema'
 import { LilBotError } from '../../shared/protocol'
-import type { BotThread, ThreadAsk, ThreadMessage } from '../../shared/thread-schema'
+import type { BotThread, ThreadMessage } from '../../shared/thread-schema'
 import { THREAD_LIMITS } from './thread-limits'
 
+/** request: work for the receiver. redirect: a change of course for it. answer: a reply back. notice: LilBot's own word. */
+type DeliveryKind = 'request' | 'redirect' | 'answer' | 'notice'
 export interface Delivery {
   id: string
   threadId: string
@@ -11,24 +12,57 @@ export interface Delivery {
   target: string
   sourceChat: string
   text: string
-  kind: 'request' | 'answer'
+  kind: DeliveryKind
   base: number | null
-  status: string
+  /** pending until it has run; steered when it reached a running turn directly. */
+  status: 'pending' | 'steered' | 'done'
+  chatId: string | null
 }
+export interface Accept {
+  requestId: string
+  text: string
+  chatId: string
+  threadId?: string
+  /** The id a new thread gets, so files can be copied before it exists. */
+  newId?: string
+  batchId?: string | null
+  kind?: 'request' | 'redirect'
+}
+type Bot = { id: string; name: string }
+export const FINAL = ['finished', 'failed', 'cancelled'] as const
+
 export class ThreadStore {
   constructor(readonly db: Database) {}
   get(id: string): BotThread {
-    const row = this.db.query('SELECT data FROM threads WHERE id=?').get(id) as { data: string } | null
+    const row = this.db.query('SELECT data, batch_id, parent_id FROM threads LEFT JOIN thread_links ON thread_id=id WHERE id=?').get(id) as {
+      data: string
+      batch_id: string | null
+      parent_id: string | null
+    } | null
     if (!row) throw new LilBotError('thread_missing', 'Thread not found.')
-    return JSON.parse(row.data)
+    const stored = JSON.parse(row.data)
+    // Threads from before delegation carry no status: they ran once, to an answer or a failure.
+    const status = stored.state === 'failed' ? 'failed' : 'finished'
+    return { status, startedAt: null, endedAt: null, stoppedBy: null, ...stored, batchId: row.batch_id, parentId: row.parent_id, activity: null }
   }
-  save(thread: BotThread) {
-    this.db.query('INSERT OR REPLACE INTO threads(id,data) VALUES(?,?)').run(thread.id, JSON.stringify(thread))
+  save({ batchId, parentId, activity, ...thread }: BotThread) {
+    this.db.query('INSERT INTO threads(id,data) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data').run(thread.id, JSON.stringify(thread))
+  }
+  update(id: string, change: (thread: BotThread) => void) {
+    return this.db.transaction(() => {
+      const thread = this.get(id)
+      change(thread)
+      this.save(thread)
+      return thread
+    })()
   }
   list(botId: string): BotThread[] {
-    return (this.db.query('SELECT data FROM threads ORDER BY rowid DESC').all() as { data: string }[])
-      .map(r => JSON.parse(r.data))
-      .filter(t => t.participants.some((p: { id: string }) => p.id === botId))
+    return (this.db.query('SELECT id, data FROM threads ORDER BY rowid DESC').all() as { id: string; data: string }[])
+      .filter(r => (JSON.parse(r.data).participants as Bot[]).some(p => p.id === botId))
+      .map(r => this.get(r.id))
+  }
+  batch(batchId: string): string[] {
+    return (this.db.query('SELECT thread_id FROM thread_links WHERE batch_id=? ORDER BY rowid').all(batchId) as { thread_id: string }[]).map(r => r.thread_id)
   }
   context(botId: string, chatId: string) {
     return this.db.query('SELECT thread_id FROM thread_chats WHERE bot_id=? AND chat_id=?').get(botId, chatId) as { thread_id: string } | null
@@ -42,7 +76,12 @@ export class ThreadStore {
   delivery(id: string): Delivery | null {
     return this.db.query('SELECT * FROM thread_deliveries WHERE id=?').get(id) as Delivery | null
   }
-  accept(caller: { id: string; name: string }, target: { id: string; name: string }, input: ThreadAsk) {
+  /** The thread whose receiver works when this delivery runs: its own for work, the asking context for an answer. */
+  workThread(d: Delivery): string | null {
+    if (d.kind === 'request' || d.kind === 'redirect') return d.threadId
+    return d.kind === 'answer' ? (this.context(d.target, d.sourceChat)?.thread_id ?? null) : null
+  }
+  accept(caller: Bot, target: Bot, input: Accept, record?: (id: string, thread: BotThread) => void) {
     return this.db.transaction(() => {
       const id = `${caller.id}:${input.requestId}`
       const prior = this.delivery(id)
@@ -50,40 +89,88 @@ export class ThreadStore {
       if (caller.id === target.id) throw new LilBotError('thread_self', 'You cannot ask yourself.')
       const parent = this.context(caller.id, input.chatId)
       const depth = parent ? this.get(parent.thread_id).depth + 1 : 1
-      const thread = input.threadId
+      const thread: BotThread = input.threadId
         ? this.get(input.threadId)
         : {
-            id: crypto.randomUUID(),
+            id: input.newId ?? crypto.randomUUID(),
             participants: [caller, target].map(({ id, name }) => ({ id, name })),
             createdAt: Date.now(),
             depth,
-            state: 'open' as const,
-            messages: []
+            state: 'open',
+            messages: [],
+            batchId: input.batchId ?? null,
+            parentId: null,
+            status: 'waiting',
+            activity: null,
+            startedAt: null,
+            endedAt: null,
+            stoppedBy: null
           }
       if (!thread.participants.some(p => p.id === caller.id) || !thread.participants.some(p => p.id === target.id))
         throw new LilBotError('thread_forbidden', 'Only the two participants can use this thread.')
       if ((!input.threadId && depth > THREAD_LIMITS.depth) || thread.depth > THREAD_LIMITS.depth)
         throw new LilBotError('thread_depth', 'Maximum thread depth reached. Report back to whoever asked you.')
+      if (!input.threadId && this.open(caller.id) >= THREAD_LIMITS.openPerBot)
+        throw new LilBotError('thread_limit', `You already have ${THREAD_LIMITS.openPerBot} delegations under way. Wait for answers or stop one first.`)
       // Pending requests reserve their answer; continuations reserve through append below.
-      const pending = (this.db.query("SELECT count(*) AS n FROM thread_deliveries WHERE threadId=? AND kind='request' AND status!='done'").get(thread.id) as { n: number }).n
+      const pending = (
+        this.db.query("SELECT count(*) AS n FROM thread_deliveries WHERE threadId=? AND kind IN ('request','redirect') AND status!='done'").get(thread.id) as { n: number }
+      ).n
       if (thread.state !== 'open' || thread.messages.length + pending + 2 > THREAD_LIMITS.messages)
         throw new LilBotError('thread_limit', 'Thread message limit reached. Report back to whoever asked you.')
-      thread.messages.push({ id, authorId: caller.id, authorName: caller.name, createdAt: Date.now(), items: [{ kind: 'assistant', text: input.text }] })
+      const kind = input.kind ?? 'request'
+      thread.messages.push({
+        id,
+        authorId: caller.id,
+        authorName: caller.name,
+        createdAt: Date.now(),
+        items: [{ kind: 'assistant', text: input.text }],
+        ...(kind === 'redirect' ? { redirect: true } : {})
+      })
+      if (thread.status !== 'working') Object.assign(thread, { status: 'waiting', endedAt: null })
       this.save(thread)
+      if (!input.threadId) this.db.query('INSERT OR IGNORE INTO thread_links(thread_id,batch_id) VALUES(?,?)').run(thread.id, input.batchId ?? null)
       this.db
         .query('INSERT INTO thread_deliveries(id,threadId,sender,target,sourceChat,text,kind) VALUES(?,?,?,?,?,?,?)')
-        .run(id, thread.id, caller.id, target.id, input.chatId, input.text, 'request')
+        .run(id, thread.id, caller.id, target.id, input.chatId, input.text, kind)
+      record?.(id, thread)
       return this.delivery(id)!
     })()
+  }
+  /** Exchanges this bot started that still have work queued or under way. */
+  open(botId: string) {
+    return (
+      this.db.query("SELECT count(DISTINCT threadId) AS n FROM thread_deliveries WHERE sender=? AND kind IN ('request','redirect') AND status!='done'").get(botId) as { n: number }
+    ).n
   }
   origin(threadId: string, target: string): Delivery | null {
     return this.db.query("SELECT * FROM thread_deliveries WHERE threadId=? AND target=? AND kind='request' ORDER BY rowid DESC LIMIT 1").get(threadId, target) as Delivery | null
   }
   pending(): Delivery[] {
-    return this.db.query("SELECT * FROM thread_deliveries WHERE status!='done' ORDER BY rowid").all() as Delivery[]
+    return this.db.query("SELECT * FROM thread_deliveries WHERE status='pending' ORDER BY rowid").all() as Delivery[]
+  }
+  /** Redirects queued behind a request that has not started: they join its first turn. */
+  redirectsAfter(d: Delivery): Delivery[] {
+    return this.db
+      .query(
+        "SELECT * FROM thread_deliveries WHERE threadId=? AND target=? AND kind='redirect' AND status='pending' AND rowid>(SELECT rowid FROM thread_deliveries WHERE id=?) ORDER BY rowid"
+      )
+      .all(d.threadId, d.target, d.id) as Delivery[]
+  }
+  /** Work queued or under way in this thread: requests and redirects not yet done. */
+  pendingWork(threadId: string): string[] {
+    return (this.db.query("SELECT id FROM thread_deliveries WHERE threadId=? AND kind IN ('request','redirect') AND status!='done'").all(threadId) as { id: string }[]).map(
+      r => r.id
+    )
+  }
+  steered(threadId: string): Delivery[] {
+    return this.db.query("SELECT * FROM thread_deliveries WHERE threadId=? AND status='steered' ORDER BY rowid").all(threadId) as Delivery[]
+  }
+  setStatus(id: string, status: Delivery['status'], chatId?: string) {
+    this.db.query('UPDATE thread_deliveries SET status=?, chatId=coalesce(?,chatId) WHERE id=?').run(status, chatId ?? null, id)
   }
   attach(d: Delivery, botId: string, chatId: string, internal: boolean) {
-    const context = d.kind === 'answer' ? this.context(botId, d.sourceChat)?.thread_id : d.threadId
+    const context = d.kind === 'answer' || d.kind === 'notice' ? this.context(botId, d.sourceChat)?.thread_id : d.threadId
     if (internal && context) this.db.query('INSERT OR IGNORE INTO thread_chats(chat_id,bot_id,thread_id) VALUES(?,?,?)').run(chatId, botId, context)
     this.db.query('UPDATE thread_deliveries SET chatId=? WHERE id=?').run(chatId, d.id)
   }
@@ -91,34 +178,17 @@ export class ThreadStore {
     this.db.query('UPDATE thread_deliveries SET base=coalesce(base,?) WHERE id=?').run(length, id)
     return this.delivery(id)!.base!
   }
-  finish(d: Delivery, items: ChatItem[], response?: { target: string; sourceChat: string; threadId: string }) {
-    this.db.transaction(() => {
-      if (this.delivery(d.id)?.status === 'done') return
-      if (response) {
-        const thread = this.get(response.threadId)
-        if (thread.messages.length < THREAD_LIMITS.messages) {
-          const author = thread.participants.find(p => p.id === d.target)!
-          const message: ThreadMessage = { id: `${d.id}:reply`, authorId: author.id, authorName: author.name, createdAt: Date.now(), items }
-          thread.messages.push(message)
-          if (thread.messages.length >= THREAD_LIMITS.messages) thread.state = 'limited'
-          this.save(thread)
-          const text =
-            items
-              .filter(i => i.kind === 'assistant')
-              .map(i => i.text)
-              .join('\n\n') || 'The bot finished without an answer.'
-          this.db
-            .query('INSERT OR IGNORE INTO thread_deliveries(id,threadId,sender,target,sourceChat,text,kind) VALUES(?,?,?,?,?,?,?)')
-            .run(message.id, thread.id, d.target, response.target, response.sourceChat, text, 'answer')
-        }
-      }
-      this.db.query("UPDATE thread_deliveries SET status='done' WHERE id=?").run(d.id)
-    })()
+  /** Appends a message within the thread's limit; false when the thread is full. */
+  append(thread: BotThread, message: ThreadMessage) {
+    if (thread.messages.length >= THREAD_LIMITS.messages) return false
+    thread.messages.push(message)
+    if (thread.messages.length >= THREAD_LIMITS.messages) thread.state = 'limited'
+    return true
   }
-  fail(d: Delivery) {
-    const thread = this.get(d.threadId)
-    thread.state = 'failed'
-    this.save(thread)
-    this.db.query("UPDATE thread_deliveries SET status='done' WHERE id=?").run(d.id)
+  /** Queues `text` from `sender` into `target`'s chat, unless that delivery already exists. */
+  enqueue(id: string, threadId: string, sender: string, target: string, sourceChat: string, text: string, kind: 'answer' | 'notice') {
+    this.db
+      .query('INSERT OR IGNORE INTO thread_deliveries(id,threadId,sender,target,sourceChat,text,kind) VALUES(?,?,?,?,?,?,?)')
+      .run(id, threadId, sender, target, sourceChat, text, kind)
   }
 }

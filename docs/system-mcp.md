@@ -36,6 +36,7 @@ app. Rules and the short version are in `AGENTS.md` under "System". Code: `serve
 | before (main at fa444d0) | 20,168 |
 | the 18 tools, no note | 21,000 (+832, about 46 per tool) |
 | tools and note | 21,358 to 21,372 (+1,190 to +1,204 in total, about 6%) |
+| 24 tools (the delegation six added, #132) and note, `check:system`'s first question | 21,853 (the six are 3.2k characters of tool list, about 480 tokens) |
 
 The note is 867 characters; the tool list is the larger part. Hermes reported an 85% cache hit on the turn. Hermes can
 defer MCP tools behind its own `tool_search` bridge (`tools.tool_search`, on when the deferrable tools pass
@@ -78,10 +79,17 @@ Every tool acts as the calling bot and calls the function the screen uses. Reads
 | `lilbot_memory_list`, `_pause`, `_restore` | `memory.list`, `memory.pause`, `memory.restore` |
 | `lilbot_memory_expiry` | `MemoryService.setExpiry` (no screen yet; same `memory.changed` push) |
 | `lilbot_delete_defaults_get`, `_set` | `bots.deleteDefaults.get` and `.set` |
+| `lilbot_delegate` | hand one task to each named bot, with files; one exchange each, one batch (`docs/threads.md`) |
+| `lilbot_delegation_status`, `_cancel`, `_redirect`, `_wait` | the delegating bot's control; cancel is the same `ThreadService.cancel` as `threads.cancel` |
+| `lilbot_delegation_attach` | the receiver's files for its answer |
 
 Not offered, by decision: deleting a bot, removing a computer, forgetting another bot's private facts, changing a bot's
-permission mode, registering computers. Routines, threads, library, skills, computers and memory writes stay on the
-engine plug-ins until #113 moves them.
+permission mode, registering computers. Routines, `ask_bot`/`list_bots`, library, skills, computers and memory writes
+stay on the engine plug-ins until #113 moves them.
+
+MCP requests carry no session (checked live: two sessions of one bot send identical requests, `_meta` holds only a
+progress token). A tool that needs the calling conversation takes a `requestId` and resolves it from the engine's
+`tool.start` reports (`server/threads/calling-chats.ts`).
 
 Judgment calls: a memory tool may name another bot's panel (as Oscar can on the screens), but only a fact in that
 panel can be named, by the short id a bot sees; the default is the calling bot's own. Another bot's private facts can

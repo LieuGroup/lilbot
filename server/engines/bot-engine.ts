@@ -78,6 +78,13 @@ export interface SessionChange {
 }
 
 export type RuntimeBinding = { id: string; engineBotId: string }
+/** A tool call an engine saw start in one of its chats, with the call's arguments. */
+export interface ToolCallSeen {
+  engineBotId: string
+  chatId: string
+  tool: string
+  args: unknown
+}
 export type ActivityCursor = (botId: string, chatId: string) => string | undefined
 
 export interface ConversationSource {
@@ -144,6 +151,13 @@ export interface BotEngine {
   ): Promise<{ status: 'completed' | 'failed' | 'stopped'; text: string; items?: import('../../shared/chat-schema').ChatItem[] }>
   /** Told when bots or their chats changed outside this server. Returns the function that stops it. */
   onBotsChanged(listener: () => void): () => void
+  /** Every tool call the engine sees start. MCP requests carry no session, so this is how LilBot's own MCP server
+   *  tells which conversation called it, and what a hidden run is doing. Returns the function that stops it. */
+  onToolCall?(listener: (call: ToolCallSeen) => void): () => void
+  /** Stop the running turn of a chat. False when nothing was running. */
+  stopRun?(engineBotId: string, chatId: string): Promise<boolean>
+  /** Give a running turn more text at its next step without stopping it. */
+  steerRun?(engineBotId: string, chatId: string, text: string): Promise<'steered' | 'not_running'>
 }
 
 export interface EngineAttachment {

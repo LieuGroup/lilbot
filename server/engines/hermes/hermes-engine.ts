@@ -14,14 +14,16 @@ import { deleteRuntime } from './hermes-delete'
 import { allowedProfile, requireProfileEnvironment } from './hermes-environment'
 import { conversations } from './hermes-history'
 import { reviewMemory } from './hermes-memory-review'
-import { installMemory, legacyNotes, memoryConnection, memoryCurrent, memoryInstalled } from './hermes-memory-setup'
+import { installMemory, legacyNotes, memoryInstalled, refreshMemoryAdapters } from './hermes-memory-setup'
 import { ensureFullAccess } from './hermes-permissions'
 import { runRoutine } from './hermes-routines'
+import { steerRun, stopRun } from './hermes-run-control'
 import { applyIdentity, createRuntime } from './hermes-runtime'
 import { updateSession } from './hermes-session-settings'
 import { configureSkills, userSkillPaths } from './hermes-skills'
 import { HermesSocket, managementConnection } from './hermes-socket'
 import { SpareSockets } from './hermes-spare-sockets'
+import { onToolCall } from './hermes-tool-calls'
 
 const PROFILE_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/
 export class HermesEngine implements BotEngine {
@@ -109,22 +111,18 @@ export class HermesEngine implements BotEngine {
     }
   }
 
-  async refreshMemory(botIds: string[]): Promise<string[]> {
-    const updated: string[] = []
-    for (const id of botIds) {
-      if (!allowedProfile(id) || (this.botIds && !this.botIds.includes(id))) continue
-      if (!memoryInstalled(id) || memoryCurrent(id)) continue
-      try {
-        const connection = await memoryConnection(id)
-        if (!connection) continue
-        await applied(id, null, '', () => installMemory(id, connection))
-        updated.push(id)
-      } catch {
-        // One profile that cannot be upgraded must not stop the others; it is tried on the next start.
-        console.error('[memory] could not update the memory adapter for a bot')
-      }
-    }
-    return updated
+  refreshMemory(botIds: string[]): Promise<string[]> {
+    return refreshMemoryAdapters(botIds.filter(id => allowedProfile(id) && (!this.botIds || this.botIds.includes(id))))
+  }
+
+  onToolCall = onToolCall
+  async stopRun(id: string, chatId: string) {
+    await this.requireBot(id)
+    return stopRun(id, chatId)
+  }
+  async steerRun(id: string, chatId: string, text: string) {
+    await this.requireBot(id)
+    return steerRun(id, chatId, text)
   }
 
   async reviewMemory(botId: string, prompt: string, options: ReviewOptions): Promise<void> {

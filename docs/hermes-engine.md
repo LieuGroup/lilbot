@@ -152,6 +152,14 @@ manifest on `MessageCompletePayload` or `TranscriptMessage`.
 Each run gets its own hidden `yolo` session in the bot's folder. Hermes' `cron.manage` was rejected: mirroring
 schedules would add a second source of truth and tie recovery to an engine.
 
+## Delegation control (`hermes-run-control.ts`, `hermes-tool-calls.ts`)
+
+- `stopRun` and `steerRun` open a fresh socket, `session.resume` the hidden session (`omit_messages`) for its live id and
+  `execution_generation`, then call `session.interrupt` or `session.steer`; a stale generation is looked up once more.
+  Idle sessions answer "not running". Findings: [docs/threads.md](threads.md#engine-findings-dev-gateway-2026-11-20).
+- `onToolCall` reports every `tool.start` (name and declared `args`) seen on LilBot's own sockets: open chats, the
+  routine runner's socket (the only place a hidden session's events appear) and the activity observer's replay.
+
 ## Computers plug-in (`computers-adapter/`, `lilbot-computers-v1`)
 
 Independent of the memory adapter. `computer_exec` calls Hermes' own `detect_hardline_command` before submitting.

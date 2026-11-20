@@ -21,7 +21,13 @@ const EXPECTED_TOOLS = [
   'lilbot_memory_restore',
   'lilbot_memory_expiry',
   'lilbot_delete_defaults_get',
-  'lilbot_delete_defaults_set'
+  'lilbot_delete_defaults_set',
+  'lilbot_delegate',
+  'lilbot_delegation_status',
+  'lilbot_delegation_cancel',
+  'lilbot_delegation_redirect',
+  'lilbot_delegation_wait',
+  'lilbot_delegation_attach'
 ]
 
 test('only engine processes on this machine with a current bot’s own system key get in', async () => {

@@ -162,7 +162,15 @@ const migrations: string[] = [
    CREATE INDEX IF NOT EXISTS message_origins_pending ON message_origins(bot_id, at) WHERE row_id IS NULL;
    CREATE UNIQUE INDEX IF NOT EXISTS message_origins_row ON message_origins(bot_id, row_id) WHERE row_id IS NOT NULL;`,
   // The user's reasoning effort per bot; null follows the engine's default.
-  `ALTER TABLE bots ADD COLUMN reasoning_effort TEXT;`
+  `ALTER TABLE bots ADD COLUMN reasoning_effort TEXT;`,
+  // Delegation (#132): the batch a task came from and a parent work item (#141, unused yet), files passed with a
+  // message (a copy is null until it reaches its recipient) and groups a bot waits on. Every statement is repeatable.
+  `CREATE TABLE IF NOT EXISTS thread_links(thread_id TEXT PRIMARY KEY, batch_id TEXT, parent_id TEXT);
+   CREATE INDEX IF NOT EXISTS thread_links_batch ON thread_links(batch_id) WHERE batch_id IS NOT NULL;
+   CREATE INDEX IF NOT EXISTS thread_links_parent ON thread_links(parent_id) WHERE parent_id IS NOT NULL;
+   CREATE TABLE IF NOT EXISTS thread_files(id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, message_id TEXT NOT NULL, sender TEXT NOT NULL, name TEXT NOT NULL, size INTEGER NOT NULL, sha256 TEXT, source TEXT NOT NULL, copy TEXT, at INTEGER NOT NULL);
+   CREATE INDEX IF NOT EXISTS thread_files_thread ON thread_files(thread_id);
+   CREATE TABLE IF NOT EXISTS thread_waits(id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, chat_id TEXT NOT NULL, thread_ids TEXT NOT NULL, delivery_id TEXT, done INTEGER NOT NULL DEFAULT 0);`
 ]
 
 /** `path` may be ':memory:' for tests. Applies any migration steps the file has not seen. */

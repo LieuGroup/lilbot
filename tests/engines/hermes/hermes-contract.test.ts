@@ -61,6 +61,8 @@ const methods: Record<string, Uses> = {
   'image.attach_bytes': { table: 'x-canonical-methods', sends: ['session_id', 'content_base64'], reads: ['attached', 'path', 'mime'] },
   'prompt.receipt': { table: 'x-canonical-methods', sends: ['session_id', 'admission_id'], reads: ['status', 'outcome'] },
   'session.interrupt': { table: 'x-canonical-methods', sends: ['session_id', 'execution_generation'], reads: [] },
+  // Redirecting a delegated task: `hermes-run-control.ts`.
+  'session.steer': { table: 'x-canonical-methods', sends: ['session_id', 'execution_generation', 'text'], reads: ['status'] },
   'profiles.list': { table: 'methods', sends: ['include_sessions'], reads: ['profiles'] },
   'profiles.describe': { table: 'methods', sends: ['name'], reads: ['name', 'description', 'soul', 'model', 'skills', 'toolsets', 'mcp_servers'] },
   'profiles.create': { table: 'methods', sends: ['name', 'description', 'soul', 'no_alias', 'clone_from', 'model', 'provider'], reads: [] },
@@ -85,7 +87,7 @@ const events: Record<string, string[]> = {
   'message.interim': ['text'],
   'thinking.delta': ['text'],
   'message.delta': ['text'],
-  'tool.start': ['tool_id', 'name', 'context'],
+  'tool.start': ['tool_id', 'name', 'context', 'args'],
   'tool.complete': ['tool_id', 'result'],
   'message.complete': ['status', 'text', 'usage'],
   'session.title': ['title'],

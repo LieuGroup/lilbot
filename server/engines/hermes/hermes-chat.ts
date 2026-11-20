@@ -8,6 +8,7 @@ import { ensureFullAccess } from './hermes-permissions'
 import { wireEffort } from './hermes-session-settings'
 import { type HermesEvent, HermesSocket } from './hermes-socket'
 import type { SpareSockets } from './hermes-spare-sockets'
+import { reportToolCall } from './hermes-tool-calls'
 
 const CLIENT = { name: 'lilbot', version: '0.2.0' }
 
@@ -34,6 +35,7 @@ export async function openChat(spares: SpareSockets, botId: string, chatId: stri
     if (event.executionGeneration !== undefined) generation = event.executionGeneration
     // A change picked during a turn takes effect when the turn ends and is announced here.
     if (event.type === 'session.info') reportEffort(wireEffort(event.payload))
+    reportToolCall(profile, event.sessionId ?? sessionId, event.type, event.payload)
     const mapped = chatEventFrom(event)
     if (mapped) onEvent(mapped)
   }

@@ -48,6 +48,10 @@ export class BrowserSession {
     'deploy.status': async () => ({ notice: this.deploymentNotice?.() }),
     'threads.list': ({ botId }) => this.threads!.list(botId),
     'threads.open': ({ botId, threadId }) => this.threads!.open(botId, threadId),
+    'threads.cancel': async ({ botId, threadId }) => {
+      await this.threads!.open(botId, threadId)
+      return this.threads!.cancel(threadId, { kind: 'oscar', id: null, name: 'Oscar' })
+    },
     'computers.list': async () => requireService(this.computers, 'Computers unavailable.').list(),
     'computers.installCode': async ({ name }) => ({
       ...requireService(this.computers, 'Computers unavailable.').auth.code(name),

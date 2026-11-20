@@ -22,6 +22,7 @@ export const methods = {
   'deploy.status': z.object({}),
   'threads.list': z.object({ botId }),
   'threads.open': z.object({ botId, threadId: z.string().min(1) }),
+  'threads.cancel': z.object({ botId, threadId: z.string().min(1) }),
   'computers.list': z.object({}),
   'computers.installCode': z.object({ name: z.string().trim().min(1).max(100) }),
   'computers.remove': z.object({ computer: z.string().min(1) }),
@@ -106,6 +107,8 @@ export interface Results {
   'deploy.status': import('./deploy-schema').DeploymentStatus
   'threads.list': import('./thread-schema').BotThread[]
   'threads.open': import('./thread-schema').BotThread
+  /** Oscar stops an exchange under way; recorded as stopped by Oscar. */
+  'threads.cancel': import('./thread-schema').BotThread
   'computers.list': import('./computer-schema').Computer[]
   /** `helperUrl`: the helper door origin for the command, when the server has `LILBOT_HELPER_URL`. */
   'computers.installCode': { code: string; expiresAt: number; helperUrl?: string }

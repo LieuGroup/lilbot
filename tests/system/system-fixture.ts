@@ -5,6 +5,10 @@ import { connectionKey } from '../../server/connections/connection-keys'
 import { SystemChanges } from '../../server/system/system-changes'
 import { SYSTEM_KEY_PURPOSE } from '../../server/system/system-connection'
 import { createSystemServer } from '../../server/system/system-server'
+import { DelegationControl } from '../../server/threads/delegation-control'
+import { DelegationService } from '../../server/threads/delegation-service'
+import { ThreadService } from '../../server/threads/thread-service'
+import { ThreadStore } from '../../server/threads/thread-store'
 import type { T3ConnectionStatus } from '../../shared/connections-schema'
 import { fakeService } from '../helpers/fake-engine'
 
@@ -22,9 +26,17 @@ export function systemFixture() {
       { id: 'mac', name: 'MacBook', os: 'darwin', online: false, lastSeen: 1700000000000, keyConflict: false, main: true }
     ]
   } as unknown as ComputerService
+  const workspaces = new Workspaces(fake.root)
+  const host = {
+    requireBot: (id: string) => fake.service.requireBot(id),
+    listBots: () => fake.service.listBots(),
+    runRoutine: fake.service.runRoutine.bind(fake.service),
+    folder: (id: string) => workspaces.ensure(id)
+  }
+  const threads = new ThreadService(new ThreadStore(fake.database), host)
   const server = createSystemServer({
     store: fake.store,
-    workspaces: new Workspaces(fake.root),
+    workspaces,
     computers,
     t3: () => state.t3,
     commit: COMMIT,
@@ -32,6 +44,7 @@ export function systemFixture() {
     activity: fake.activity,
     memory: fake.memory,
     memoryChanged: () => state.memoryPushes++,
+    delegation: { hand: new DelegationService(threads, host, async botId => `${botId}-main`), control: new DelegationControl(threads, host) },
     changes,
     dataDir: fake.root,
     engineToken: TOKEN,
@@ -54,7 +67,7 @@ export function systemFixture() {
     const text: string = result.content[0].text
     return result.isError ? { error: text } : { data: JSON.parse(text) }
   }
-  return { ...fake, ...server, state, changes, rosterPushes: fake.changes, request, as, rpc, call }
+  return { ...fake, ...server, state, changes, threads, rosterPushes: fake.changes, request, as, rpc, call }
 }
 
 /** A second bot in the roster. */

@@ -135,8 +135,7 @@ test('new runtime aliases on a nested continuation retain the parent thread asso
   const { threadId: parent } = await ask()
   store.attach(store.delivery('a:1')!, 'b', 'parent-stored', true)
   const { threadId: child } = await ask('b', 'c', 'nested', 'parent-stored')
-  const request = store.delivery('b:nested')!
-  store.finish(request, [{ kind: 'assistant', text: 'done' }], { target: 'b', sourceChat: 'parent-stored', threadId: child })
+  store.enqueue('b:nested:reply', child, 'c', 'b', 'parent-stored', 'done', 'answer')
   store.attach(store.delivery('b:nested:reply')!, 'b', 'new-runtime-alias', true)
   expect(store.context('b', 'new-runtime-alias')?.thread_id).toBe(parent)
 })
