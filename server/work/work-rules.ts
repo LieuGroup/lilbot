@@ -1,5 +1,6 @@
 /** The rules every report on a work item passes, whoever makes it. Pure: no database, no engine. */
 import { LilBotError } from '../../shared/protocol'
+import { KIND_NAMES, type WorkKind } from '../../shared/work-check-schema'
 import { type EvidenceInput, type EvidencePointer, FINAL_WORK, type WorkStatus } from '../../shared/work-schema'
 import { memoryRefusal } from '../memory/memory-safety'
 import type { ItemChange, StoredItem } from './work-store'
@@ -49,6 +50,7 @@ export function transition(item: StoredItem, move: Move, done: string, evidenceC
   const checked = item.checkLevel > 0
   const { status } = move
   if (status === 'open') throw new LilBotError('work_status', 'An item cannot go back to open.')
+  if ((status === 'working' || status === 'done') && !item.kind) throw new LilBotError('work_no_kind', `Say what kind of work this is first (kind: ${KINDS}).`)
   if ((status === 'working' || status === 'done') && checked && !done)
     throw new LilBotError('work_no_definition', 'Write the "done" definition (done) first: how you and Oscar will know this is done.')
   if (status === 'done' && checked && evidenceCount === 0)
@@ -63,6 +65,28 @@ export function transition(item: StoredItem, move: Move, done: string, evidenceC
   if (move.result && (status === 'done' || status === 'failed')) change.result = move.result
   if (status === 'dropped') change.dropReason = move.reason
   if (isFinal(status)) change.finishedAt = now
+  return change
+}
+
+const KINDS = KIND_NAMES.join(', ')
+export const belowDefault = (kind: WorkKind, least: number) =>
+  new LilBotError('work_level', `A ${kind} item is checked at level ${least} or higher (the kind's default for you); give a level of at least ${least}.`)
+export const noKind = () => new LilBotError('work_no_kind', `Say what kind of work this is (kind: ${KINDS}).`)
+
+/** The kind and level a report sets. A kind is given once: at opening, or later on an item LilBot opened without one. The
+ *  level starts at the kind's default for the bot (`least`) and may be raised, never lowered. */
+export function levelChange(item: Pick<StoredItem, 'kind' | 'checkLevel'>, input: { kind?: WorkKind; level?: number }, least: (kind: WorkKind) => number): ItemChange {
+  if (input.kind && item.kind && input.kind !== item.kind) throw new LilBotError('work_kind', 'The kind of work is set once. Open a new item for other work.')
+  if (input.level !== undefined && input.level < item.checkLevel) throw new LilBotError('work_level', 'The check level can be raised, never lowered.')
+  const change: ItemChange = {}
+  let level = Math.max(item.checkLevel, input.level ?? 0)
+  if (input.kind && !item.kind) {
+    const base = least(input.kind)
+    if (input.level !== undefined && input.level < base) throw belowDefault(input.kind, base)
+    Object.assign(change, { kind: input.kind, defaultLevel: base })
+    level = Math.max(level, base)
+  }
+  if (level !== item.checkLevel) change.checkLevel = level
   return change
 }
 

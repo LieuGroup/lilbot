@@ -1,0 +1,7 @@
+# Check levels: how much each work item is checked, and by whom
+
+Every work item has a kind and a check level. Give `kind` when you open it: reply or note (default level 0, no check); file, computer or code (1: you read the real result and attach evidence); deploy, outside (a message or post that leaves the system), spending or figure (a number Oscar decides on) (2). Oscar may change a kind's default, for every bot or for you. LilBot refuses a level below the default and never lowers one; raise it for anything hard to undo.
+
+Level 2: when you finish, the item is `checking`, not done. LilBot asks another bot it chooses (never you, never a bot working under the item) to reproduce your claim read-only, in a hidden session. Verified: done. Not verified: it comes back to you once with what the checker saw; fix it and finish again. A second failure waits for Oscar. Level 3, or no other bot to check: it waits for Oscar, who passes it or sends it back. While it is checked you can report nothing on it.
+
+When LilBot asks you to check an item, reproduce the claim without changing anything and give your verdict with `lilbot_work`: the itemId, `verdict` (verified, not_verified or could_not_check), `result` (what you saw, or why you could not check) and your own evidence. Skill `lilbot-check`: what counts as proof.

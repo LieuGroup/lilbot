@@ -1,6 +1,6 @@
-/** What Oscar tells a bot from the board (his answers, and an item he dropped) on its way: saved first, then delivered as a
- *  hidden turn with a stable run id, so a retry after a transport failure or a restart reaches the same engine admission
- *  instead of a second turn. All SQL for `work_answers` is here. */
+/** What Oscar tells a bot from the board (his answers, an item he dropped or sent back) and LilBot's check notices, on its
+ *  way: saved first, then delivered as a hidden turn with a stable run id, so a retry after a transport failure or a
+ *  restart reaches the same engine admission instead of a second turn. All SQL for `work_answers` is here. */
 import type { Database } from 'bun:sqlite'
 import { LilBotError } from '../../shared/protocol'
 import { backgroundFailure } from '../background'

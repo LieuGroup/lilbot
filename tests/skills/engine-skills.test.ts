@@ -100,7 +100,9 @@ test('migration: an install with bots keeps its engine on and its imports attrib
     new BotStore(db).import('hermes', [{ ...detail, engineId: 'hermes', engineBotId: 'b1' }])
     db.exec(`INSERT INTO skills VALUES ('imported-one','d','imported',1), ('improved','d','bot-a',1), ('mine','d','oscar',1), ('shipped','d','lilbot',1);
       INSERT INTO skill_imports VALUES ('/p/imported-one','imported-one'), ('/p/improved','improved'), ('/p/mine','mine'), ('bot:b1','')`)
-    db.exec('DROP TABLE engine_skills; DROP TABLE skill_origins; PRAGMA user_version = 26')
+    db.exec(
+      'DROP TABLE engine_skills; DROP TABLE skill_origins; ALTER TABLE work_items DROP COLUMN kind; ALTER TABLE work_items DROP COLUMN default_level; PRAGMA user_version = 26'
+    )
     db.close()
     db = openDatabase(path)
     expect(db.query('SELECT * FROM engine_skills').all()).toEqual([{ engine_id: 'hermes', included: 1 }])

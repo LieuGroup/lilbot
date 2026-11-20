@@ -1,6 +1,8 @@
 /** All SQL for work items, their evidence and their change log. Rows are never deleted. */
 import type { Database } from 'bun:sqlite'
+import type { WorkKind } from '../../shared/work-check-schema'
 import type { Evidence, WorkAsker, WorkEvent, WorkOrigin, WorkStatus, WorkSummary } from '../../shared/work-schema'
+import { checkOf, LATEST_CHECK } from './work-check-store'
 
 type Row = {
   id: string
@@ -8,7 +10,9 @@ type Row = {
   owner_name: string
   title: string
   done: string
+  kind: WorkKind | null
   check_level: number
+  default_level: number | null
   status: WorkStatus
   asked_kind: WorkAsker['kind']
   asked_id: string | null
@@ -25,15 +29,16 @@ type Row = {
   started_at: number | null
   finished_at: number | null
   evidence_count: number
+  last_check: string | null
 }
 /** An item as stored: its summary, its text and the session it was opened in. */
 export type StoredItem = WorkSummary & { done: string; result: string; dropReason: string | null; chatId: string | null }
-export type NewItem = Pick<StoredItem, 'id' | 'ownerId' | 'ownerName' | 'title' | 'done' | 'checkLevel' | 'status' | 'askedBy' | 'origin' | 'chatId' | 'parentId'> & {
+export type NewItem = Omit<StoredItem, 'question' | 'result' | 'dropReason' | 'evidenceCount' | 'check' | 'createdAt' | 'updatedAt' | 'startedAt' | 'finishedAt'> & {
   requestId: string | null
   at: number
 }
 /** What a change may set. */
-export type ItemChange = Partial<Pick<StoredItem, 'title' | 'done' | 'checkLevel' | 'status' | 'question' | 'result' | 'dropReason' | 'startedAt' | 'finishedAt' | 'chatId'>>
+export type ItemChange = Partial<Omit<StoredItem, 'id' | 'ownerId' | 'ownerName' | 'askedBy' | 'origin' | 'parentId' | 'evidenceCount' | 'check' | 'createdAt' | 'updatedAt'>>
 export interface ListFilter {
   ownerId?: string
   status?: WorkStatus[]
@@ -42,11 +47,13 @@ export interface ListFilter {
   limit: number
 }
 
-const SELECT = 'SELECT w.*, (SELECT count(*) FROM work_evidence e WHERE e.item_id = w.id) AS evidence_count FROM work_items w'
+const SELECT = `SELECT w.*, (SELECT count(*) FROM work_evidence e WHERE e.item_id = w.id) AS evidence_count, ${LATEST_CHECK} AS last_check FROM work_items w`
 const COLUMNS: Record<keyof ItemChange, string> = {
   title: 'title',
   done: 'done',
+  kind: 'kind',
   checkLevel: 'check_level',
+  defaultLevel: 'default_level',
   status: 'status',
   question: 'question',
   result: 'result',
@@ -65,7 +72,10 @@ function item(row: Row): StoredItem {
     askedBy: { kind: row.asked_kind, id: row.asked_id, name: row.asked_name },
     origin: { kind: row.origin_kind, id: row.origin_id },
     parentId: row.parent_id,
+    kind: row.kind,
     checkLevel: row.check_level,
+    defaultLevel: row.default_level,
+    check: row.last_check ? checkOf(JSON.parse(row.last_check)) : null,
     status: row.status,
     question: row.status === 'needs_oscar' ? row.question : null,
     evidenceCount: row.evidence_count,
@@ -95,9 +105,25 @@ export class WorkStore {
   /** False when an item with this id exists already. */
   create(n: NewItem): boolean {
     const { askedBy: asked, origin } = n
-    const values = [n.id, n.ownerId, n.ownerName, n.requestId, n.title, n.done, n.checkLevel, n.status, asked.kind, asked.id, asked.name, origin.kind, origin.id]
-    const sql = `INSERT OR IGNORE INTO work_items(id, owner_id, owner_name, request_id, title, done, check_level, status, asked_kind, asked_id, asked_name,
-      origin_kind, origin_id, chat_id, parent_id, created_at, updated_at, started_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    const values = [
+      n.id,
+      n.ownerId,
+      n.ownerName,
+      n.requestId,
+      n.title,
+      n.done,
+      n.kind,
+      n.checkLevel,
+      n.defaultLevel,
+      n.status,
+      asked.kind,
+      asked.id,
+      asked.name,
+      origin.kind,
+      origin.id
+    ]
+    const sql = `INSERT OR IGNORE INTO work_items(id, owner_id, owner_name, request_id, title, done, kind, check_level, default_level, status, asked_kind, asked_id, asked_name,
+      origin_kind, origin_id, chat_id, parent_id, created_at, updated_at, started_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     return this.db.query(sql).run(...values, n.chatId, n.parentId, n.at, n.at, n.status === 'working' ? n.at : null).changes > 0
   }
   update(id: string, change: ItemChange, at: number) {
@@ -134,14 +160,8 @@ export class WorkStore {
   }
 
   evidence(itemId: string): Evidence[] {
-    const rows = this.db.query('SELECT id, proves, pointer, by_id, at FROM work_evidence WHERE item_id = ? ORDER BY at, rowid').all(itemId) as {
-      id: string
-      proves: string
-      pointer: string
-      by_id: string
-      at: number
-    }[]
-    return rows.map(row => ({ id: row.id, proves: row.proves, pointer: JSON.parse(row.pointer), byId: row.by_id, at: row.at }))
+    const rows = this.db.query('SELECT id, proves, pointer, by_id AS byId, at FROM work_evidence WHERE item_id = ? ORDER BY at, rowid').all(itemId)
+    return (rows as (Omit<Evidence, 'pointer'> & { pointer: string })[]).map(row => ({ ...row, pointer: JSON.parse(row.pointer) }))
   }
   /** Repeating an entry's id adds nothing, so a retried call is safe. False when it was there already. */
   addEvidence(itemId: string, entry: Evidence): boolean {
@@ -153,23 +173,9 @@ export class WorkStore {
   }
 
   events(itemId: string): WorkEvent[] {
-    const rows = this.db.query('SELECT * FROM work_events WHERE item_id = ? ORDER BY id').all(itemId) as {
-      at: number
-      by_kind: WorkEvent['by']
-      kind: WorkEvent['kind']
-      status: WorkStatus | null
-      text: string | null
-      via_kind: WorkOrigin['kind'] | null
-      via_id: string | null
-    }[]
-    return rows.map(row => ({
-      at: row.at,
-      by: row.by_kind,
-      kind: row.kind,
-      status: row.status,
-      text: row.text,
-      via: row.via_kind && row.via_id ? { kind: row.via_kind, id: row.via_id } : null
-    }))
+    const rows = this.db.query('SELECT at, by_kind AS by, kind, status, text, via_kind, via_id FROM work_events WHERE item_id = ? ORDER BY id').all(itemId)
+    type EventRow = Omit<WorkEvent, 'via'> & { via_kind: WorkOrigin['kind'] | null; via_id: string | null }
+    return (rows as EventRow[]).map(({ via_kind, via_id, ...event }) => ({ ...event, via: via_kind && via_id ? { kind: via_kind, id: via_id } : null }))
   }
   /** Returns the event's number, unique and stable. */
   log(itemId: string, event: WorkEvent): number {

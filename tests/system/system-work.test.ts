@@ -3,7 +3,7 @@ import { addBot, systemFixture } from './system-fixture'
 
 test('a bot runs its board through its own key: open, refused done, evidence and done in one call, logged against the item', async () => {
   const f = systemFixture()
-  const opened = await f.call('b1', 'lilbot_work', { requestId: 'r1', title: 'Write hello.txt', done: 'hello.txt in my folder says hi', botId: 'someone-else' })
+  const opened = await f.call('b1', 'lilbot_work', { requestId: 'r1', title: 'Write hello.txt', kind: 'file', done: 'hello.txt in my folder says hi', botId: 'someone-else' })
   const item = opened.data
   expect(item).toMatchObject({ ownerId: 'b1', status: 'working', askedBy: { kind: 'oscar' }, origin: { kind: 'conversation', id: 'b1-main' } })
   const refused = await f.call('b1', 'lilbot_work', { requestId: 'r2', itemId: item.id, status: 'done', result: 'Written' })
@@ -30,7 +30,7 @@ test('a bot runs its board through its own key: open, refused done, evidence and
 test('lilbot_delegate with an itemId hangs the handed-out task under it as the other bot’s item', async () => {
   const f = systemFixture()
   const other = await addBot(f, 'Helper')
-  const parent = (await f.call('b1', 'lilbot_work', { requestId: 'p', title: 'Ship the report', done: 'report.md checked by Helper' })).data
+  const parent = (await f.call('b1', 'lilbot_work', { requestId: 'p', title: 'Ship the report', kind: 'file', done: 'report.md checked by Helper' })).data
   const handed = (await f.call('b1', 'lilbot_delegate', { requestId: 'd', itemId: parent.id, tasks: [{ to: 'Helper', task: 'Check report.md' }] })).data
   expect(handed.itemId).toBe(parent.id)
   const child = (await f.call('b1', 'lilbot_work_list', { itemId: parent.id })).data.children[0]

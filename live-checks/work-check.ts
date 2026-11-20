@@ -80,7 +80,11 @@ try {
   const main = await call('chat.open', { botId: lead.id })
 
   // 1. A small real task: the bot opens an item, defines done, adds evidence and finishes it.
-  const first = await ask(main.chatId, `Create a file named proof.txt in your folder containing the word ${WORD}, and make sure it is there. Then reply FILE_DONE.`, 'FILE_DONE')
+  const first = await ask(
+    main.chatId,
+    `Create a file named proof.txt in your folder containing the word ${WORD}, and make sure it is there (a work item of kind file). Then reply FILE_DONE.`,
+    'FILE_DONE'
+  )
   assert.ok(readFileSync(join(workspaces, lead.id, 'proof.txt'), 'utf8').includes(WORD), 'the file was written')
   const [item] = await call('work.list', { botId: lead.id })
   assert.ok(item, `the bot opened a work item on its own; it replied: ${first.text.slice(0, 300)}`)
@@ -99,7 +103,7 @@ try {
   // 2. Done without evidence is refused: by the bot's own attempt, and by a direct call with its key.
   const refusalTurn = await ask(
     main.chatId,
-    'Open a new work item titled "Refusal test" with a done definition, then immediately try to mark it done (with a result) without adding any evidence. Do not add evidence. Reply REFUSAL_REPORT and what LilBot answered.',
+    'Open a new work item titled "Refusal test" of kind file with a done definition, then immediately try to mark it done (with a result) without adding any evidence. Do not add evidence. Reply REFUSAL_REPORT and what LilBot answered.',
     'REFUSAL_REPORT'
   )
   const refusalItem = (await call('work.list', { botId: lead.id })).find((i: any) => i.title.includes('Refusal test'))

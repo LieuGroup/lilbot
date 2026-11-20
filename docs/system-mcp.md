@@ -68,6 +68,18 @@ a refusal says which): that took about 950 characters off the 24 older tools' sc
 to about half the two new tools. A tool's first sentence is all the model sees until it looks the tool up: make it say
 what the tool is for.
 
+### Check levels' cost (#142, against main at 9c193f5, characters from `systemFixture`)
+
+| | before | after |
+|---|---|---|
+| listing lines Hermes shows every turn | 3,284 (32 tools) | 3,290 (+6: `kind, ` in `lilbot_work`'s first sentence; no new tool) |
+| the note | unchanged | unchanged |
+| full `tools/list` | 12,720 | 13,410 (+690: `lilbot_work`'s `kind` and `verdict`, its longer `level` and description, the `checks` guide topic) |
+
+Per turn that is about 2 tokens. `lilbot_work`'s schema grows from 1,060 to 1,602 characters and its description from 307
+to 435, read only when a bot looks the tool up (about 290 tokens more then). A checker's verdict goes through
+`lilbot_work` instead of a new tool, which would have added a listing line (about 45 tokens) to every turn of every bot.
+
 ## The server
 
 - `POST /engine/lilbot/mcp` on the private listener (`main.ts`, beside the T3 bridge). Streamable HTTP answered as plain
@@ -108,7 +120,7 @@ Every tool acts as the calling bot and calls the function the screen uses. Reads
 | `lilbot_delegate` | hand one task to each named bot, with files; one exchange each, one batch (`docs/threads.md`) |
 | `lilbot_delegation_status`, `_cancel`, `_redirect`, `_wait` | the delegating bot's control; cancel is the same `ThreadService.cancel` as `threads.cancel` |
 | `lilbot_delegation_attach` | the receiver's files for its answer |
-| `lilbot_work` | the work board: without itemId opens an item (`WorkService.act`), with itemId reports on the caller's own item: definition, evidence, status in one call |
+| `lilbot_work` | the work board: without itemId opens an item (`WorkService.act`), with itemId reports on the caller's own item: definition, evidence, status in one call; with `verdict`, the check LilBot asked the caller to do |
 | `lilbot_work_list` | the caller's items, every bot's, or one in full: the same records as `work.list` and `work.open` |
 | `lilbot_webhook_create` | `WebhookService.create` for the caller (five webhooks a bot; the same `requestId` returns the current address and any secret LilBot made again) |
 | `lilbot_webhooks_list` | `webhooks.list` for the caller (latest five runs, results cut to 500 characters and fenced as outside data; never addresses or secrets) |

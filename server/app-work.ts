@@ -1,5 +1,5 @@
-/** Builds the work board's service and connects it to the bots, exchanges, routine runs, activity, history and browsers; Oscar's side
- *  (`WorkBoard`) is built after the exchanges, which it stops and answers through. */
+/** Builds the work board's service and its checks and connects them to the bots, exchanges, routine runs, activity, history
+ *  and browsers; Oscar's side (`WorkBoard`) is built after the exchanges, which it stops and answers through. */
 import type { Database } from 'bun:sqlite'
 import type { ChatItem } from '../shared/chat-schema'
 import { type EventFrame, LilBotError } from '../shared/protocol'
@@ -8,6 +8,7 @@ import type { BotPrefsStore } from './bots/bot-prefs-store'
 import type { BotService } from './bots/bot-service'
 import type { BotStore } from './bots/bot-store'
 import type { SessionRoot } from './bots/hidden-chats'
+import type { Workspaces } from './bots/workspaces'
 import { boardLine } from './devices/origin-line'
 import type { BotEngine } from './engines/bot-engine'
 import type { HistoryStore } from './history/history-store'
@@ -17,6 +18,7 @@ import type { CallingChats } from './threads/calling-chats'
 import type { ThreadStore } from './threads/thread-store'
 import type { WebhookStore } from './webhooks/webhook-store'
 import { WorkAnswers } from './work/work-answers'
+import { WorkCheckRunner } from './work/work-check-runner'
 import { WorkLinks } from './work/work-links'
 import { type SessionOrigin, WorkService } from './work/work-service'
 import { type StoredItem, WorkStore } from './work/work-store'
@@ -32,6 +34,7 @@ interface WorkDeps {
   webhookStore: WebhookStore
   rootOf: SessionRoot
   libraryStore: LibraryStore
+  workspaces: Workspaces
   activity: ActivityService
   history: Pick<HistoryStore, 'reference'>
   calls: CallingChats
@@ -85,9 +88,26 @@ export function workSessions(threadStore: ThreadStore, routineStore: RoutineStor
   }
 }
 
-export function createWork({ database, engine, store, prefs, bots, threadStore, routineStore, webhookStore, rootOf, libraryStore, activity, history, calls, publish }: WorkDeps) {
+export function createWork({
+  database,
+  engine,
+  store,
+  prefs,
+  bots,
+  threadStore,
+  routineStore,
+  webhookStore,
+  rootOf,
+  libraryStore,
+  workspaces,
+  activity,
+  history,
+  calls,
+  publish
+}: WorkDeps) {
   const work = new WorkService(new WorkStore(database), {
     requireBot: id => bots.requireBot(id),
+    checkers: async () => (await bots.listBots()).filter(bot => bot.runnable || bot.runtimePending).map(({ id, name }) => ({ id, name })),
     callingChat: (botId, requestId) => calls.find(botId, requestId),
     session: workSessions(threadStore, routineStore, webhookStore, rootOf),
     libraryTitle: (botId, itemId) => libraryStore.get(botId, itemId)?.title ?? null,
@@ -97,6 +117,7 @@ export function createWork({ database, engine, store, prefs, bots, threadStore, 
     line: item => {
       if (item.chatId && store.exists(item.ownerId)) history.reference(item.ownerId, item.chatId, workLine(item), item.createdAt)
     },
+    tell: (id, item, prompt) => answers.queue(id, item, prompt),
     changed: () => publish({ event: 'work.changed' })
   })
   /** The session a bot's answer or notice goes to: the one it came from, else its main conversation. */
@@ -109,5 +130,13 @@ export function createWork({ database, engine, store, prefs, bots, threadStore, 
       if (session && store.exists(botId)) await engine.stopRun?.(store.get(botId).engineBotId, session)
     }
   )
-  return { work, answers, links: new WorkLinks(work, answers) }
+  const checks = new WorkCheckRunner(
+    work,
+    (botId, prompt, runId, onChat) => bots.runRoutine(botId, prompt, { runId, hiddenInput: true, onChat, origin: { line: boardLine } }),
+    (botId, checkId, working) => {
+      if (store.exists(botId)) activity.observe({ botId, chatId: `check:${checkId}`, key: `${checkId}:${working}:${Date.now()}`, status: working ? 'working' : 'finished' })
+    },
+    botId => workspaces.pathFor(botId)
+  )
+  return { work, answers, checks, links: new WorkLinks(work, answers) }
 }

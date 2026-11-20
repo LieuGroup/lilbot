@@ -8,6 +8,7 @@ import { ThreadStore } from '../../server/threads/thread-store'
 import { WebhookStore } from '../../server/webhooks/webhook-store'
 import { WorkAnswers } from '../../server/work/work-answers'
 import { WorkBoard } from '../../server/work/work-board'
+import { WorkCheckRunner } from '../../server/work/work-check-runner'
 import { WorkLinks } from '../../server/work/work-links'
 import { WorkService } from '../../server/work/work-service'
 import { type StoredItem, WorkStore } from '../../server/work/work-store'
@@ -34,7 +35,12 @@ export function workFixture(options: { database?: Database; requireBot?: (id: st
     library: new Map<string, string>(),
     waits: [] as { botId: string; itemId: string; key: string; on: boolean }[],
     lines: [] as StoredItem[],
-    pushes: 0
+    pushes: 0,
+    /** The bots that could check an item now. */
+    checkers: BOTS,
+    /** Check runs started: the checking bot, its prompt and run id. `finish` settles the next one. */
+    runs: [] as { botId: string; prompt: string; runId: string }[],
+    activity: [] as [string, boolean][]
   }
   const threadStore = new ThreadStore(database)
   const routineStore = new RoutineStore(database)
@@ -47,11 +53,13 @@ export function workFixture(options: { database?: Database; requireBot?: (id: st
         if (!bot) throw new LilBotError('bot_not_found', 'That bot does not exist.')
         return bot
       }),
+    checkers: async () => state.checkers,
     callingChat: async botId => (state.chats.has(botId) ? state.chats.get(botId)! : `${botId}-main`),
     session: workSessions(threadStore, routineStore, webhookStore, (_bot, chat) => (state.roots.has(chat) ? state.roots.get(chat)! : chat)),
     libraryTitle: (botId, itemId) => state.library.get(`${botId}:${itemId}`) ?? null,
     waiting: (botId, itemId, key, on) => state.waits.push({ botId, itemId, key, on }),
     line: item => state.lines.push(item),
+    tell: (id, item, prompt) => answers.queue(id, item, prompt),
     changed: () => state.pushes++
   })
   const delivered: { botId: string; prompt: string; runId: string; chatId: string | null }[] = []
@@ -72,9 +80,20 @@ export function workFixture(options: { database?: Database; requireBot?: (id: st
     }
   )
   const links = new WorkLinks(work, answers)
+  const run = { result: Promise.resolve({ status: 'completed' }) as Promise<{ status: string }> }
+  const checkRuns = new WorkCheckRunner(
+    work,
+    async (botId, prompt, runId, onChat) => {
+      state.runs.push({ botId, prompt, runId })
+      onChat(`${runId}-session`)
+      return run.result
+    },
+    (botId, _checkId, working) => state.activity.push([botId, working]),
+    botId => `/workspaces/${botId}`
+  )
   /** Opens an item for `botId` with a definition, as a bot would. */
   const open = (botId: string, extra: Record<string, unknown> = {}) =>
-    work.act(botId, { requestId: crypto.randomUUID(), title: 'Write the report', done: 'report.md lists every month', ...extra })
+    work.act(botId, { requestId: crypto.randomUUID(), title: 'Write the report', kind: 'file', done: 'report.md lists every month', ...extra })
   return {
     database,
     state,
@@ -86,6 +105,8 @@ export function workFixture(options: { database?: Database; requireBot?: (id: st
     deliver,
     board: new WorkBoard(work, answers, noExchanges),
     links,
+    checkRuns,
+    run,
     threadStore,
     routineStore,
     webhookStore,

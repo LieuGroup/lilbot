@@ -17,8 +17,8 @@ test('dropping a parent drops its children with the same reason, stops each dele
   await f.d.settle()
   const runB = f.d.runs.find(r => r.botId === 'b')!
   f.w.state.chats.set('b', runB.chatId)
-  await f.w.work.act('b', { requestId: 'b1', title: 'B’s job', done: 'b.txt exists' })
-  const tidy = await f.w.work.act('b', { requestId: 'b2', title: 'Tidy up', done: 'no temp files' })
+  await f.w.work.act('b', { requestId: 'b1', title: 'B’s job', kind: 'file', done: 'b.txt exists' })
+  const tidy = await f.w.work.act('b', { requestId: 'b2', title: 'Tidy up', kind: 'file', done: 'no temp files' })
   expect(tidy.parentId).toBe(exchanges[0].exchangeId)
 
   const dropped = await f.board.drop(parent.id, 'Plan changed')
@@ -67,7 +67,7 @@ test('dropping an item whose exchange has already answered tells the delegating 
 test('a secondary item dropped on its own, while its exchange goes on, is told in the exchange’s session without ending the turn', async () => {
   const f = joined()
   const { id, run } = await handedOver(f)
-  const tidy = await f.w.work.act('b', { requestId: 'b2', title: 'Tidy up', done: 'no temp files' })
+  const tidy = await f.w.work.act('b', { requestId: 'b2', title: 'Tidy up', kind: 'file', done: 'no temp files' })
   await f.board.drop(tidy.id, 'Skip it')
   expect(f.d.store.get(id).status).toBe('working')
   expect(f.d.stops).toEqual([])

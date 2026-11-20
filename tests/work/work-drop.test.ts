@@ -78,7 +78,7 @@ test('an item that is open or waiting on Oscar is told without ending a turn; on
   const [run] = f.routineStore.claimDue(Date.now() + 1_000_000)
   f.routineStore.attach(run.id, 'c-run-session', Date.now())
   f.state.chats.set('c', 'c-run-session')
-  const fromRun = await f.work.act('c', { requestId: 'run', title: 'Sales check', done: 'a number read', asked: 'self' })
+  const fromRun = await f.work.act('c', { requestId: 'run', title: 'Sales check', kind: 'file', done: 'a number read', asked: 'self' })
   expect(routine.id).toBe(run.routineId)
   await f.board.drop(fromRun.id, 'Skip today')
   await flush(f)

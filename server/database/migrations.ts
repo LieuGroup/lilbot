@@ -186,5 +186,14 @@ export const migrations: string[] = [
    CREATE TABLE IF NOT EXISTS work_events(id INTEGER PRIMARY KEY AUTOINCREMENT, item_id TEXT NOT NULL, at INTEGER NOT NULL, by_kind TEXT NOT NULL, kind TEXT NOT NULL, status TEXT, text TEXT, via_kind TEXT, via_id TEXT); CREATE INDEX IF NOT EXISTS work_events_item ON work_events(item_id, id);
    CREATE TABLE IF NOT EXISTS work_answers(id TEXT PRIMARY KEY, item_id TEXT NOT NULL, bot_id TEXT NOT NULL, chat_id TEXT, text TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending');`,
   // Webhooks (#12), in its own file.
-  WEBHOOK_TABLES
+  WEBHOOK_TABLES,
+  // Check levels (#142): each item's kind and its kind's default level, the checks of finished items, the hidden sessions
+  // of checking bots, and Oscar's default levels per kind (bot_id '' for every bot).
+  `ALTER TABLE work_items ADD COLUMN kind TEXT;
+   ALTER TABLE work_items ADD COLUMN default_level INTEGER;
+   CREATE TABLE IF NOT EXISTS work_checks(id TEXT PRIMARY KEY, item_id TEXT NOT NULL, round INTEGER NOT NULL, checker_kind TEXT NOT NULL, checker_id TEXT, checker_name TEXT NOT NULL,
+     state TEXT NOT NULL, text TEXT, note TEXT, request_id TEXT, verdict_request TEXT, created_at INTEGER NOT NULL, settled_at INTEGER, UNIQUE(item_id, round));
+   CREATE INDEX IF NOT EXISTS work_checks_open ON work_checks(state) WHERE state = 'checking';
+   CREATE TABLE IF NOT EXISTS work_check_chats(chat_id TEXT PRIMARY KEY, check_id TEXT NOT NULL);
+   CREATE TABLE IF NOT EXISTS work_levels(kind TEXT NOT NULL, bot_id TEXT NOT NULL, level INTEGER NOT NULL, PRIMARY KEY(kind, bot_id));`
 ]

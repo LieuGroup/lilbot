@@ -157,7 +157,8 @@ const accessServer = ACCESS ? startAccessDoor(ACCESS, appRoutes(library, DIST, n
 // LilBot's own skills, restored at every start if they differ.
 for (const [name, folder] of [
   ['t3-coding', join(import.meta.dir, 'connections', 't3-coding-skill')],
-  ['lilbot-work', join(import.meta.dir, 'work', 'work-skill')]
+  ['lilbot-work', join(import.meta.dir, 'work', 'work-skill')],
+  ['lilbot-check', join(import.meta.dir, 'work', 'check-skill')]
 ]) {
   try {
     skills.provide(name, files(folder))

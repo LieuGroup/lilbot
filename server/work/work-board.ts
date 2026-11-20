@@ -1,5 +1,6 @@
 /** Oscar's side of the board: the list, an item, the daily brief, dropping an item and answering a question. */
 import { LilBotError } from '../../shared/protocol'
+import type { WorkKind } from '../../shared/work-check-schema'
 import { type WorkBrief, WorkListInput } from '../../shared/work-schema'
 import { backgroundFailure } from '../background'
 import { answerPrompt, dropPrompt, type WorkAnswers } from './work-answers'
@@ -73,6 +74,7 @@ export class WorkBoard {
     const saved = this.work.store.db.transaction(() => {
       const item = this.item(itemId)
       if (item.status !== 'needs_oscar') throw new LilBotError('work_not_asked', 'This item is not waiting for an answer.')
+      if (this.work.checks.open(item.id)) throw new LilBotError('work_check', 'This item waits for your check: pass it or send it back.')
       const event = this.work.store.log(item.id, { at: this.now(), by: 'oscar', kind: 'answered', status: null, text: answer, via: null })
       const id = `answer-${event}`
       const prompt = answerPrompt(item, answer)
@@ -95,11 +97,43 @@ export class WorkBoard {
     }
   }
 
+  /** Oscar passes an item that waits for his check: it is done. */
+  pass(itemId: string, note?: string) {
+    return this.check(itemId, 'passed', note ?? null)
+  }
+  /** Oscar sends it back: its owner is told what to fix, in a new turn, and finishes it again. */
+  sendBack(itemId: string, reason: string) {
+    return this.check(itemId, 'sent_back', reason)
+  }
+
+  /** The default check levels; `botId` sets one for that bot only. */
+  levels() {
+    return this.work.levels.view()
+  }
+  async setLevel({ kind, botId, level }: { kind: WorkKind; botId?: string; level: number | null }) {
+    if (botId) await this.work.host.requireBot(botId)
+    this.work.levels.set(kind, botId, level)
+    this.work.host.changed()
+    return this.work.levels.view()
+  }
+
   /** What needs Oscar (all of it), and what failed or was done since `since` (the last day by default). */
   brief(since = this.now() - DAY_MS): WorkBrief {
     const list = (status: 'needs_oscar' | 'failed' | 'done', from?: number) => this.work.store.list({ status: [status], from, limit: 200 })
     const done = list('done', since)
     return { since, needsOscar: list('needs_oscar'), failed: list('failed', since), done: { count: done.length, items: done } }
+  }
+
+  private check(itemId: string, state: 'passed' | 'sent_back', text: string | null) {
+    refuseUnsafe([text ?? undefined])
+    const saved = this.work.store.db.transaction(() => {
+      const item = this.item(itemId)
+      const check = this.work.checks.open(itemId)
+      if (item.status !== 'needs_oscar' || check?.by.kind !== 'oscar') throw new LilBotError('work_not_waiting', 'This item is not waiting for your check.')
+      return this.work.checking.settle(item, check, state, text, OSCAR)
+    })()
+    this.work.after(saved)
+    return this.work.view(itemId)
   }
 
   private item(itemId: string) {
