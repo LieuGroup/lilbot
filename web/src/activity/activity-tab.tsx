@@ -6,6 +6,7 @@ import { useNow } from '../app/use-now'
 import { useBotStore } from '../bots/bot-store'
 import { rowState } from '../bots/row-state'
 import { StatusIcon } from '../bots/status-icon'
+import { WithOtherBots } from '../threads/with-other-bots'
 import { formatElapsed } from './activity-since'
 
 function Card({ title, children }: { title: string; children: ReactNode }) {
@@ -17,7 +18,7 @@ function Card({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
-/** The Activity tab: what the bot is doing now, its routines, and its folder. */
+/** The Activity tab: what the bot is doing now, its work with other bots, its routines, and its folder. */
 export function ActivityTab({ botId }: { botId: string }) {
   const bot = useBotStore(state => state.bots.find(candidate => candidate.id === botId))
   const since = useBotStore(state => state.since[botId])
@@ -50,6 +51,7 @@ export function ActivityTab({ botId }: { botId: string }) {
           </div>
         </div>
       </Card>
+      <WithOtherBots botId={botId} />
       {/* Placeholder: the Routines card is designed under #10. */}
       <Card title="Routines">
         <p className="px-3 py-2.5 text-[13px]/[18px] text-muted-foreground">Scheduled work for {bot.name} will show here.</p>

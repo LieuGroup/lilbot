@@ -10,7 +10,8 @@ export interface RowState {
   unread: boolean
 }
 
-/** Working shows the server's activity text ("Running commands"); the other states have fixed
+/** Working shows the server's activity text ("Running commands"), and whom it works for while it
+ *  is on a task another bot handed it ("For FillLight Bot · Working"); the other states have fixed
  *  words, so the row reads the same whatever the engine calls them. Finished and failed settle
  *  back to idle on the server after eight seconds. */
 export function rowState(bot: Bot): RowState {
@@ -18,7 +19,7 @@ export function rowState(bot: Bot): RowState {
   const unread = activity?.unread ?? false
   switch (activity?.status) {
     case 'working':
-      return { tone: 'working', text: activity.text || 'Working', unread }
+      return { tone: 'working', text: `${bot.workingFor ? `For ${bot.workingFor.name} · ` : ''}${activity.text || 'Working'}`, unread }
     case 'waiting':
       return { tone: 'waiting', text: 'Waiting for you', unread }
     case 'finished':

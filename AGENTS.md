@@ -66,7 +66,8 @@ web/src/           The web app.
   history/           the conversation's earlier parts: paging, day lines, session dividers, its start
   attachments/       files in the composer and in sent messages, the drop area
   activity/, library/, memory/   their details tabs (Library is a placeholder)
-  routines/, threads/, skills/   data clients for panels not built yet
+  threads/           work between bots: the line in a conversation, the opened exchange, stop, "With other bots"
+  routines/, skills/ data clients for panels not built yet
   computers/         the Settings > Computers page (list, remove, add this computer, add by command line)
   devices/           this browser's device id and name, and the "This device" block on the Computers page
   deploy/            last deployment failure notice
@@ -98,7 +99,8 @@ continuous main conversation per bot on every device, the three-column shell (ro
 Activity, Library, Memory and Setup tabs), bot menu, delete confirmation, Settings, chat attachments, LilBot's own
 memory with a Memory panel and after-chat review, every bot knowing its system (the note) and operating the app through
 LilBot's own MCP tools, delegation between bots (several tasks at once, files, status, stop, redirect, wait), temporary
-groups of bots (rounds, a shared folder, an outcome; #133), and the
+groups of bots (rounds, a shared folder, an outcome; #133), the screens for asked threads and handed-over work (#65,
+#135: the line or card in a conversation, the opened exchange, stop, "With other bots"), and the
 backends for routines, webhooks, threads, library, skills, computers, the work board with its check levels, goals and
 coding through T3 Code. Next: the Routines, Webhooks (#138), Library, work board and goal screens, the check levels' track record and
 spot checks (#142), the nightly memory tidy-up and editing abilities. Reports are not built. Desktop (Tauri) and iOS (Expo) come after the
@@ -229,7 +231,7 @@ error pages and answer errors with a plain 500.
   - `LILBOT_ACCESS_TEST_CERTS_URL` exists only for `check:access` (HTTP on `127.0.0.1`, all three isolation
     directories, exactly `LILBOT_BOT_IDS=isolation-access-check`). Never set it in deployment.
 - Never add the helper or Access hostname to `LILBOT_ALLOWED_HOSTS`, and never point a tunnel at the private port.
-- File downloads (library, attachments, helper installers) apply the socket's Host/Origin checks, refuse cross-site
+- File downloads (library, attachments, files passed between bots, helper installers) apply the socket's Host/Origin checks, refuse cross-site
   fetches and send attachment disposition, no-sniff, sandbox and no-store headers. They exist on the private and Access
   listeners, never on the helper door.
 - **Engine API** (`server/http/engine-api.ts`, `/engine/*` on the private listener): for engine plug-ins on this
@@ -412,6 +414,24 @@ Visual specs (sizes, copy, Paper frames): [docs/screens.md](docs/screens.md).
   connection (`bots/model-list.ts`). Setup shows the same model and effort (with "Sent as ..." under it) and reloads when
   they change.
 
+### Work between bots (`web/src/threads/`, #65, #135)
+
+Visual specs: "Work between bots" in [docs/screens.md](docs/screens.md).
+
+- A `tool` item with `threadId` draws as a bordered line from the bot's `threads.list` (`threads/thread-store.ts`, read
+  for the bots on screen and again half a second after `threads.changed`); an exchange not read yet, or a group, keeps
+  the plain tool line. With a `batchId` it is a handed-over task, without one an asked thread; the delegating side is
+  the first participant. Tasks of one batch share one card at the first line; the other lines draw nothing and their
+  rows hide. Wording lives in `threads/thread-lines.ts` only.
+- The line, the opened view and the stop dialog are lazy chunks; the chat's first load carries only the `ChatItem`
+  switch and `?thread=` handling.
+- Opening sets `?thread=<id>` on `/bots/$botId` (tab links and the panel's auto-open keep it with `search: true`). The
+  view covers the conversation column while the conversation stays mounted, `invisible` and inert: its connection
+  and scroll position are unchanged. On a phone, opening from the details panel goes to the conversation first.
+  "Back to chat" drops the parameter; each bot button opens that bot's chat.
+- Stop (a running task's line and its view) asks first, then calls `threads.cancel`; asked threads have no Stop.
+- Oscar never writes in an exchange: no composer.
+
 ### Conversation scroll (AI Elements' Message Scroller)
 
 - It opens at its latest message (also after a reload or resume). A sent message moves up and the reply grows below
@@ -514,9 +534,16 @@ Visual specs (sizes, copy, Paper frames): [docs/screens.md](docs/screens.md).
   answer's files are copied when the answer goes out, so a withheld answer's files never move.
 - Oscar reads exchanges (`threads.list`, `threads.open`, `threads.changed`) and can stop one (`threads.cancel`,
   recorded as stopped by Oscar; the delegating bot is told). He never writes into them. Both participants read the
-  same persisted transcript, including the other bot's tool rows and files per message.
+  same persisted transcript, including the other bot's tool rows and files per message. A delivered copy downloads
+  from `/api/threads/<bot id>/<thread id>/<message id>/<n>` (`ThreadService.file`): the bot must be a participant,
+  the copy is read from the recipient's folder without following links and checked against the hash taken when it
+  was copied; files in groups are not served there yet.
+- `bots.list` gives a bot working on a task another bot handed it `workingFor` (exchange id and the delegating bot's
+  name), from the deliveries running now (`thread-roster.ts`, with the running groups); the roster row reads "For
+  <bot> · <activity>".
 - Main conversations get one `tool` reference with `threadId` per exchange (in snapshots and idempotent `thread` chat
-  events), merged at the HTTP edge, never written as fake user messages. Opening them is #135's UI.
+  events), merged at the HTTP edge, never written as fake user messages. The screens are in "Work between bots"
+  under Web app.
 - Hidden session aliases are persisted before submission and excluded from after-chat reviews, also after restart.
   Thread activity sets working/finished on both bots without unread; only the asking bot's visible answer to Oscar can
   mark it unread. Status and activity changes push a plain `threads.changed`; the per-bot chat lines are rebuilt only

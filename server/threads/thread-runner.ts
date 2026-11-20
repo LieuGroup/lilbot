@@ -27,7 +27,7 @@ const TERMINAL = ['bot_not_found', 'unsafe_message', 'thread_limit']
 const PREPARED = ['notice', 'oscar', 'point', 'round']
 
 export class ThreadRunner {
-  private running = new Map<string, Delivery>()
+  readonly running = new Map<string, Delivery>()
   private retryAt = new Map<string, number>()
   private lines = new Map<string, string>()
   constructor(

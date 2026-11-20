@@ -4,10 +4,12 @@ import type { Server } from 'bun'
 import type { AttachmentService } from '../attachments/attachment-service'
 import { DOWNLOAD_PATH, type HelperDownloads } from '../computers/helper-downloads'
 import type { LibraryService } from '../library/library-service'
+import type { ThreadService } from '../threads/thread-service'
 import { attachmentRoute } from './attachment-routes'
 import type { BrowserSession } from './browser-session'
 import { socketAllowed } from './socket-guard'
 import { staticFile } from './static-files'
+import { threadFileRoute } from './thread-file-route'
 
 export interface SocketData {
   session?: BrowserSession
@@ -19,13 +21,15 @@ export function appRoutes(
   hosts: Set<string>,
   engineName: string,
   attachments?: AttachmentService,
-  downloads?: HelperDownloads
+  downloads?: HelperDownloads,
+  threads?: Pick<ThreadService, 'file'>
 ) {
   return async (request: Request, server: Server<SocketData>): Promise<Response | undefined> => {
     const url = new URL(request.url)
     if (url.pathname.startsWith(DOWNLOAD_PATH))
       return downloads ? helperDownload(request, hosts, downloads, url.pathname.slice(DOWNLOAD_PATH.length)) : new Response('Not found', { status: 404 })
     if (url.pathname.startsWith('/api/attachments/')) return attachments ? attachmentRoute(request, hosts, attachments) : new Response('Not found', { status: 404 })
+    if (url.pathname.startsWith('/api/threads/')) return threads ? threadFileRoute(request, hosts, threads) : new Response('Not found', { status: 404 })
     if (url.pathname === '/ws') {
       if (!socketAllowed(request, hosts)) return new Response('Forbidden', { status: 403 })
       if (server.upgrade(request, { data: {} })) return undefined

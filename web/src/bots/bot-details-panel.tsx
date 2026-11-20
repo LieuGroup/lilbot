@@ -30,6 +30,7 @@ export function BotDetailsPanel() {
       <Link
         to="/bots/$botId"
         params={{ botId }}
+        search
         onClick={() => rememberDetailsOpen(false)}
         aria-label="Back to the chat"
         className={iconButton({ className: 'absolute top-[calc(12px+env(safe-area-inset-top))] left-3 md:hidden' })}
@@ -46,6 +47,7 @@ export function BotDetailsPanel() {
             key={item.id}
             to="/bots/$botId/$tab"
             params={{ botId, tab: item.id }}
+            search
             className="rounded-full px-2.5 py-1 text-[13px]/[18px] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
             activeProps={{ className: 'bg-foreground/6 font-medium text-foreground', 'aria-current': 'page' }}
           >

@@ -3,15 +3,17 @@
  *  LilBot's MCP server are `delegation-service.ts`. Given a group host, it also runs temporary groups (`group-service.ts`). */
 import { LilBotError } from '../../shared/protocol'
 import { type BotThread, ThreadAsk } from '../../shared/thread-schema'
+import { readAttachment } from '../attachments/attachment-files'
 import { backgroundFailure } from '../background'
 import { GroupEnding, type GroupHost } from './group-end'
 import { GroupRounds } from './group-rounds'
 import { GroupService } from './group-service'
 import { GroupStore } from './group-store'
-import { groupView, rosterGroups } from './group-view'
+import { groupView } from './group-view'
 import { ThreadFiles } from './thread-files'
 import { GROUP_LIMITS, type GroupLimits } from './thread-limits'
 import { noticePrompt, refuseUnsafe } from './thread-prompts'
+import { botRoster } from './thread-roster'
 import { type RunnerHost, ThreadRunner } from './thread-runner'
 import { type Delivery, FINAL, type ThreadStore } from './thread-store'
 import { ThreadWaits } from './thread-waits'
@@ -61,9 +63,9 @@ export class ThreadService {
     this.runner.tick()
     this.groups?.ending.tick()
   }
-  /** Running groups by bot, for the roster. */
+  /** Running groups and the task each bot works on now, by bot, for the roster. */
   roster() {
-    return this.groupStore ? rosterGroups(this.store, this.groupStore) : new Map()
+    return botRoster(this.store, this.groupStore, this.runner.running.values())
   }
   /** The stored exchange with its files per message and the receiver's live activity line. */
   view(thread: BotThread): BotThread {
@@ -84,6 +86,17 @@ export class ThreadService {
     const thread = this.store.get(id)
     if (!thread.participants.some(p => p.id === botId)) throw new LilBotError('thread_forbidden', 'This bot is not a participant.')
     return this.view(thread)
+  }
+  /** A file passed in an exchange, as delivered: read from the recipient's copy without following links and checked against
+   *  the hash taken when it was copied. Files in groups are not served here. */
+  async file(botId: string, threadId: string, messageId: string, index: number) {
+    const thread = await this.open(botId, threadId)
+    const row = this.files.forMessage(messageId)[index]
+    if (thread.group || !row || row.thread_id !== threadId || !row.copy || !row.sha256 || !this.host.folder) throw new LilBotError('file_missing', 'That file was not delivered.')
+    const to = await this.host.requireBot(thread.participants.find(p => p.id !== row.sender)!.id)
+    const parts = row.copy.split('/')
+    const stored = parts.pop()!
+    return { name: row.name, ...(await readAttachment(await this.host.folder(to.id), stored, row.sha256, parts)) }
   }
   /** Resolves `to` (an id or a unique name) among current bots. */
   async target(to: string) {
