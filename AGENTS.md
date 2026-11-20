@@ -163,6 +163,8 @@ behaviour he can check in the app. Keep an eye on speed and memory; measure befo
     `/6` pressed). Accent blue (`primary`) is only for the unread dot and the working spinner; switches and primary
     buttons are ink (`bg-foreground`). They are defined once in `app/styles.css` with LilBot's palette; dark mode
     follows the device (`prefers-color-scheme`). Bot replies use the `prose-chat` utility defined there.
+  - Font: Inter, bundled in `app/fonts/` (three subsets, about 48 kB for English text, loaded by the browser as
+    needed), so the app looks the same on every device; the device's own font shows while it loads.
   - Type scale, closed: 12 meta and section labels, 13 previews and menus, 14 names, 15 chat text, 16 panel and
     dialog titles. Weights 400, 500, 600. Icons 16px at stroke 1.75 in 28px buttons (`ui/icon-button.ts`).
   - Bundle budget: the chat's first load stays about 220 kB of JavaScript and 17 kB of styles (gzip -9, counting every
