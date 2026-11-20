@@ -55,6 +55,7 @@ web/src/           The web app.
   attachments/       files in the composer and in sent messages, the drop area
   activity/, library/, memory/   their details tabs (Library is a placeholder)
   routines/, threads/, skills/   data clients for panels not built yet
+  computers/         the Settings > Computers page (list, remove, add by command line)
   deploy/            last deployment failure notice
   settings/          the Settings dialog
   ui/                shadcn/ui parts (ours to edit) and our own small shared parts built from them
@@ -578,8 +579,11 @@ shared with the standalone `helper/` client. Protocol, limits, build and tests: 
 - The leader is always `leader` and runs operations locally through the same bounded runner. Every bot can use every
   computer; the authenticated bot owns its requests, never an id from the body. All computer operations require
   `full-access`.
-- Browser methods `computers.list`, `computers.installCode`, `computers.remove` and the `computers.changed` push exist;
-  no UI yet (`needs-ui`). Helpers connect only through the helper door.
+- Browser methods `computers.list`, `computers.installCode`, `computers.remove` and the `computers.changed` push exist.
+  Settings > Computers (`web/src/computers/`, [docs/screens.md](docs/screens.md)) lists machines live (leader first,
+  online/offline/key-conflict dots), removes after confirmation and mints a one-time command in "Add by command line";
+  the code lives only in that dialog's state. "Add this computer" from the browser waits for #60. Helpers connect only
+  through the helper door.
 - LilBot creates `computer-server-key.pem` (0600) in its data directory; the install code pins its fingerprint. Back
   it up with the database and preserve it on redeploy. Key replacement needs re-registration with a new install code.
   Every frame is signed; helpers need TLS except on loopback. Revocation takes effect only through a signed revoke.

@@ -35,8 +35,24 @@ in the dialog. Sentences are `bots/delete-copy.ts`.
 
 ## Settings (`settings/settings-dialog.tsx`, Paper "04 Settings")
 
-720×480 dialog with General, Bots and Memory on the left. Only Bots has settings: "When a bot is deleted", the same two
-choices as the delete dialog, saved at once with `bots.deleteDefaults.set`.
+720×480 dialog with General, Bots, Memory and Computers on the left. Bots: "When a bot is deleted", the same two
+choices as the delete dialog, saved at once with `bots.deleteDefaults.set`. General and Memory are placeholders.
+
+## Computers (`web/src/computers/`, Paper "12 Computers", lazy page of Settings)
+
+- Title row: "Computers" and the ink "Add this computer" button. Until the browser flow (#60) exists the button opens a
+  "Coming soon" note.
+- One card (`bg-background`, 12 radius, hairline dividers), one row per machine, the leader first: 8px dot (`success`
+  online, `foreground/20` offline, `destructive` key conflict), name 13/500, a 12px line (`computer-rows.ts`: "Linux ·
+  where LilBot runs · online", "macOS · offline · last seen 2 hours ago", the red key-conflict sentence) and Remove
+  (not on the leader), which asks "Remove <name>?" first. The list reads `computers.list` again on every
+  `computers.changed`; the page's 30-second tick keeps "last seen" counting.
+- Under the card: "Every bot can use every computer here. Offline machines pick up queued work when they wake." At the
+  bottom, the link "Add a machine without a screen…".
+- Add by command line (`command-line-dialog.tsx`, 432px): a name field and "Create command"; the code is minted only
+  then (`computers.installCode`), shown inside `printf '%s' '<code>' | ./lilbot-helper install <helper door>`
+  (`install-command.ts`) with Copy and "Valid for m:ss more". When it runs out the page drops the code and says so. The
+  code is never logged, stored or kept after the dialog closes.
 
 ## Details panel (`bots/bot-details-panel.tsx`)
 

@@ -81,6 +81,11 @@ class LilBotSocket {
     return this.onPush('memory.changed', () => listener())
   }
 
+  /** Told when a computer was added, removed, or went online or offline. */
+  onComputersChanged(listener: () => void) {
+    return this.onPush('computers.changed', () => listener())
+  }
+
   /** Told when the history import brought in more of a bot's conversation. */
   onHistoryChanged(listener: (botId: string) => void) {
     return this.onPush('history.changed', frame => listener(frame.botId))

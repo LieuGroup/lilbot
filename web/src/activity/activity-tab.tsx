@@ -1,7 +1,8 @@
 import { CopyIcon, FolderIcon } from 'lucide-react'
-import { type ReactNode, useEffect, useState } from 'react'
+import { type ReactNode, useState } from 'react'
 
 import { Button } from '@/ui/button'
+import { useNow } from '../app/use-now'
 import { useBotStore } from '../bots/bot-store'
 import { rowState } from '../bots/row-state'
 import { StatusIcon } from '../bots/status-icon'
@@ -14,16 +15,6 @@ function Card({ title, children }: { title: string; children: ReactNode }) {
       <div className="flex flex-col rounded-lg bg-card ring-1 ring-hairline">{children}</div>
     </section>
   )
-}
-
-/** Re-render once in a while so "4 min" keeps counting. */
-function useNow(everyMs: number) {
-  const [now, setNow] = useState(Date.now)
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), everyMs)
-    return () => clearInterval(timer)
-  }, [everyMs])
-  return now
 }
 
 /** The Activity tab: what the bot is doing now, its routines, and its folder. */

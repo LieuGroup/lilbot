@@ -1,7 +1,7 @@
 import { Dialog as DialogPrimitive } from '@base-ui/react/dialog'
 import { cn } from 'cn'
 import { XIcon } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { Dialog, DialogContent, DialogTitle } from '@/ui/dialog'
 import { iconButton } from '@/ui/icon-button'
 import { Notice } from '@/ui/notice'
@@ -40,8 +40,11 @@ function BotsPage() {
   )
 }
 
-/** Settings: a list of pages on the left, the chosen page on the right. Only Bots has
- *  settings so far; General and Memory are placeholders for what comes next. */
+const ComputersPage = lazy(() => import('../computers/computers-page'))
+const AddComputerButton = lazy(() => import('../computers/add-computer-button'))
+
+/** Settings: a list of pages on the left, the chosen page on the right. Bots and
+ *  Computers have settings; General and Memory are placeholders for what comes next. */
 export function SettingsDialog() {
   const { open, page } = useSettings()
   const title = SETTINGS_PAGES.find(entry => entry.id === page)?.label
@@ -80,11 +83,24 @@ export function SettingsDialog() {
         <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-6 py-5">
           <div className="flex items-center justify-between">
             <DialogTitle className="text-base/[22px] font-semibold tracking-[-0.01em]">{title}</DialogTitle>
-            <DialogPrimitive.Close aria-label="Close" className={iconButton({ className: '-my-1.5 -mr-1.5' })}>
-              <XIcon />
-            </DialogPrimitive.Close>
+            <div className="flex items-center gap-2">
+              {page === 'computers' && (
+                <Suspense>
+                  <AddComputerButton />
+                </Suspense>
+              )}
+              <DialogPrimitive.Close aria-label="Close" className={iconButton({ className: '-my-1.5 -mr-1.5' })}>
+                <XIcon />
+              </DialogPrimitive.Close>
+            </div>
           </div>
-          {page === 'bots' ? <BotsPage /> : <p className="text-[13px] text-muted-foreground">Nothing to set here yet.</p>}
+          {page === 'bots' && <BotsPage />}
+          {page === 'computers' && (
+            <Suspense>
+              <ComputersPage />
+            </Suspense>
+          )}
+          {(page === 'general' || page === 'memory') && <p className="text-[13px] text-muted-foreground">Nothing to set here yet.</p>}
         </div>
       </DialogContent>
     </Dialog>
