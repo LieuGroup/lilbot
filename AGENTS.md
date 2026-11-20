@@ -607,6 +607,7 @@ skill (`server/work/check-skill/`, installed like `lilbot-work`).
   from that check session. `verified`: done. `not_verified`: back to `working`, the owner told once through
   `work_answers` with what the checker saw (fenced); a second failure waits for Oscar. `could_not_check`, a run that ends
   without a verdict, or a checker that is gone: waits for Oscar. While a check is open the owner can report nothing.
+  These notices (and Oscar's send-back) reach a handed-over item's owner in its own session, not through the exchange.
 - Oscar's checks: level 3, no other bot ("No second bot was available", a note on the check), a second failure or a
   check that could not be done put the item in `needs_oscar` with an open Oscar check. `work.pass` (optional note): done.
   `work.sendBack` (reason): back to `working`, the owner told. `work.answer` refuses these. Dropping an item closes its
