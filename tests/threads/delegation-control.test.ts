@@ -91,7 +91,9 @@ test('a redirect taken by the turn is not repeated, and one sent before the task
 
 test('a redirect steered into a turn resumed by a nested answer settles with that turn', async () => {
   const f = delegationFixture()
-  const finishAll = (botId: string) => f.runs.filter(r => r.botId === botId).forEach(r => r.finish(`From ${botId}`))
+  const finishAll = (botId: string) => {
+    for (const r of f.runs.filter(r => r.botId === botId)) r.finish(`From ${botId}`)
+  }
   const { exchanges } = await f.delegation.delegate('a', { requestId: 'r', tasks: [{ to: 'b', task: 'Ask C, then report' }] })
   const id = exchanges[0].exchangeId
   await f.settle()
