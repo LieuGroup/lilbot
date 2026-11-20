@@ -42,17 +42,20 @@ function json(text: string): unknown {
  *  Null when anything in it is nested past the limit. */
 export function decodedBody(text: string, contentType: string | null): { body: unknown } | null {
   if (/^application\/x-www-form-urlencoded\b/i.test(contentType ?? '')) {
-    const fields = [...new URLSearchParams(text)].map(([key, value]) => [key, json(value) ?? value] as const)
+    // Only a single field is tried as JSON (GitHub's form is `payload=`): many `=[` fields would each fail to parse.
+    const pairs = [...new URLSearchParams(text)]
+    const fields = pairs.length === 1 ? pairs.map(([key, value]) => [key, json(value) ?? value] as const) : pairs
     return fields.some(([, value]) => value === DEEP) ? null : { body: Object.fromEntries(fields) }
   }
   const body = json(text) ?? text
   return body === DEEP ? null : { body }
 }
 
-/** Every string and key in a decoded body, whitespace and control characters collapsed to one space, so the rules see
- *  the words a model reads (in serialised JSON a tab is `\t` and joins the next word). Depth is within the limit. */
+/** Every string and key in a decoded body, whitespace collapsed to one space, so the rules see the words a model reads
+ *  (in serialised JSON a tab is `\t` and joins the next word); other control characters are left for `folded`. Depth is
+ *  within the limit. */
 export function strings(value: unknown, out: string[] = []): string[] {
-  if (typeof value === 'string') out.push(value.replace(/[\s\p{Cc}]+/gu, ' '))
+  if (typeof value === 'string') out.push(value.replace(/\s+/g, ' '))
   else if (Array.isArray(value)) for (const item of value) strings(item, out)
   else if (value && typeof value === 'object')
     for (const [key, item] of Object.entries(value)) {
@@ -71,24 +74,14 @@ export function blank(text: string, token: string) {
   return out
 }
 
-const PIECE_CHARS = 256
-/** NFKD in pieces of 256 characters, never splitting a surrogate pair: normalising reorders a run of combining marks in
- *  quadratic time, so a piece costs at most its own square and a 256 KiB run takes milliseconds, not half a minute. */
-function decomposed(text: string) {
-  const pieces: string[] = []
-  for (let at = 0; at < text.length; ) {
-    let end = Math.min(at + PIECE_CHARS, text.length)
-    const last = text.charCodeAt(end - 1)
-    if (end < text.length && last >= 0xd800 && last <= 0xdbff) end++
-    pieces.push(text.slice(at, end).normalize('NFKD'))
-    at = end
-  }
-  return pieces.join('')
+/** Text as the rules should see it, twice: once with control characters as spaces (between words), once with them
+ *  removed (between letters). Compatibility forms are folded (fullwidth, ligatures, half-width marks) and default-ignorable
+ *  characters and every mark are removed, so none of them splits a word past the scan. Marks go before the one NFKD
+ *  pass: reordering a long run of them is quadratic, and once they are gone nothing NFKD produces can form such a run. */
+export function folded(text: string): string[] {
+  const base = text
+    .replace(/\p{M}/gu, '')
+    .normalize('NFKD')
+    .replace(/[\p{Default_Ignorable_Code_Point}\p{M}]/gu, '')
+  return [' ', ''].map(control => base.replace(/[^\P{Cc}\n]/gu, control).replace(/[^\S\n]+/g, ' '))
 }
-
-/** Text as the rules should see it: compatibility forms folded (fullwidth, ligatures, half-width marks), then
- *  default-ignorable characters and combining marks removed, so neither can split a word past the scan. */
-export const folded = (text: string) =>
-  decomposed(text)
-    .replace(/[\p{Default_Ignorable_Code_Point}\p{Mn}]/gu, '')
-    .replace(/[^\S\n]+/g, ' ')

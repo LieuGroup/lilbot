@@ -26,10 +26,8 @@ test('preparing any body up to the cap stays far below a second: deep, wide, lon
     [JSON.stringify({ t: TOKEN.repeat(4_000) }), {}],
     ['a=1&'.repeat(SIZE / 4), { 'content-type': 'application/x-www-form-urlencoded' }],
     ['a&'.repeat(SIZE / 2), { 'content-type': 'application/x-www-form-urlencoded' }],
-    // Combining marks: normalising a long run is quadratic (a 256 KiB run once blocked the server for 28 s).
-    [JSON.stringify({ comment: `a${'\u0345'.repeat(SIZE / 8)}${'\u0334'.repeat(SIZE / 8)}` }), {}],
-    [`a${'\u0315\u0316'.repeat(SIZE / 4)}`, { 'content-type': 'text/plain' }],
-    [`${'\u0345'.repeat(30)}\uFF9E`.repeat(SIZE / 62), { 'content-type': 'text/plain' }]
+    ['=[&'.repeat(SIZE / 3), { 'content-type': 'application/x-www-form-urlencoded' }],
+    [JSON.stringify({ t: '\u0081'.repeat(SIZE / 2 - 20) }), {}]
   ]
   for (const [body, headers] of shapes) {
     const started = performance.now()
@@ -39,6 +37,35 @@ test('preparing any body up to the cap stays far below a second: deep, wide, lon
   }
   expect(view(`${'['.repeat(MAX_DEPTH + 1)}${']'.repeat(MAX_DEPTH + 1)}`).refusal).toContain('nested more than')
   expect(view(`${'['.repeat(MAX_DEPTH)}${']'.repeat(MAX_DEPTH)}`).refusal).toBeNull()
+})
+
+// Normalising reorders a run of combining marks in quadratic time: a 256 KiB run once blocked the server for 28 s, and
+// characters that decompose into two marks (U+0344, U+0F73) still cost 250 ms in 256-character pieces.
+const MARKS: [string, Record<string, string>][] = [
+  [JSON.stringify({ comment: `a${'\u0345'.repeat(SIZE / 8)}${'\u0334'.repeat(SIZE / 8)}` }), {}],
+  [`a${'\u0315\u0316'.repeat(SIZE / 4)}`, { 'content-type': 'text/plain' }],
+  [`${'\u0345'.repeat(30)}\uFF9E`.repeat(SIZE / 62), { 'content-type': 'text/plain' }],
+  [`${'\u0344'.repeat(128)}${'\u0F73'.repeat(128)}`.repeat(409), { 'content-type': 'text/plain' }],
+  [JSON.stringify({ t: `${'\u0F75'.repeat(128)}${'\u0F81'.repeat(128)}`.repeat(200) }), {}]
+]
+
+test('combining marks, also those that decompose into two, are folded in linear time', () => {
+  for (const [body, headers] of MARKS) {
+    const started = performance.now()
+    view(body, headers)
+    expect(performance.now() - started).toBeLessThan(100)
+  }
+})
+
+test('a minute of the worst deliveries at once, through receive, holds the server for well under two seconds', async () => {
+  const f = await runFixture()
+  try {
+    const started = performance.now()
+    for (let i = 0; i < 60; i++) expect(f.send(`${i} ${MARKS[3][0]}`, MARKS[3][1])).toBe('accepted')
+    expect(performance.now() - started).toBeLessThan(1_500)
+  } finally {
+    f.clean()
+  }
 })
 
 test('headers count inside the event cap: many long event headers cannot push an event or a run past its share', () => {

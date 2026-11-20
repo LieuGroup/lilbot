@@ -1,11 +1,12 @@
 /** Builds the work board and connects it to the bots, exchanges, routine runs, activity, history and browsers. */
 import type { Database } from 'bun:sqlite'
 import type { ChatItem } from '../shared/chat-schema'
-import type { EventFrame } from '../shared/protocol'
+import { type EventFrame, LilBotError } from '../shared/protocol'
 import type { ActivityService } from './activity/activity-service'
 import type { BotPrefsStore } from './bots/bot-prefs-store'
 import type { BotService } from './bots/bot-service'
 import type { BotStore } from './bots/bot-store'
+import type { SessionRoot } from './bots/hidden-chats'
 import { boardLine } from './devices/origin-line'
 import type { HistoryStore } from './history/history-store'
 import type { LibraryStore } from './library/library-store'
@@ -27,6 +28,7 @@ interface WorkDeps {
   threadStore: ThreadStore
   routineStore: RoutineStore
   webhookStore: WebhookStore
+  rootOf: SessionRoot
   libraryStore: LibraryStore
   activity: ActivityService
   history: Pick<HistoryStore, 'reference'>
@@ -53,9 +55,11 @@ function routineName(routines: RoutineStore, botId: string, routineId: string) {
   }
 }
 
-/** Where a bot's session came from: an exchange's hidden session, a routine or webhook run's session, or else a conversation. */
-export function workSessions(threadStore: ThreadStore, routineStore: RoutineStore, webhookStore: WebhookStore) {
-  return (botId: string, chatId: string): SessionOrigin => {
+/** Where a bot's session came from: an exchange's hidden session, a routine or webhook run's session, or else a
+ *  conversation. A session the engine continued after compressing one of them counts as that one; when the lineage
+ *  cannot be read the work is refused for now rather than credited to Oscar. */
+export function workSessions(threadStore: ThreadStore, routineStore: RoutineStore, webhookStore: WebhookStore, rootOf: SessionRoot) {
+  const known = (botId: string, chatId: string): SessionOrigin | null => {
     const exchange = threadStore.context(botId, chatId)?.thread_id
     if (exchange) {
       const asker = threadStore.get(exchange).participants[0]
@@ -68,15 +72,22 @@ export function workSessions(threadStore: ThreadStore, routineStore: RoutineStor
     }
     const hook = webhookStore.runForChat(botId, chatId)
     if (hook) return { origin: { kind: 'webhook_run', id: hook.runId }, askedBy: { kind: 'webhook', id: hook.webhookId, name: hook.task.slice(0, 100) } }
-    return { origin: { kind: 'conversation', id: chatId }, askedBy: null }
+    return null
+  }
+  return (botId: string, chatId: string): SessionOrigin => {
+    const direct = known(botId, chatId)
+    if (direct) return direct
+    const root = rootOf(botId, chatId)
+    if (root === null) throw new LilBotError('session_unknown', 'LilBot cannot tell where this session came from just now. Try again in a moment.')
+    return (root !== chatId && known(botId, root)) || { origin: { kind: 'conversation', id: chatId }, askedBy: null }
   }
 }
 
-export function createWork({ database, store, prefs, bots, threadStore, routineStore, webhookStore, libraryStore, activity, history, calls, publish }: WorkDeps) {
+export function createWork({ database, store, prefs, bots, threadStore, routineStore, webhookStore, rootOf, libraryStore, activity, history, calls, publish }: WorkDeps) {
   const work = new WorkService(new WorkStore(database), {
     requireBot: id => bots.requireBot(id),
     callingChat: (botId, requestId) => calls.find(botId, requestId),
-    session: workSessions(threadStore, routineStore, webhookStore),
+    session: workSessions(threadStore, routineStore, webhookStore, rootOf),
     libraryTitle: (botId, itemId) => libraryStore.get(botId, itemId)?.title ?? null,
     waiting: (botId, itemId, key, on) => {
       if (store.exists(botId)) activity.observe({ botId, chatId: `work:${itemId}`, key, status: on ? 'waiting' : 'finished' })

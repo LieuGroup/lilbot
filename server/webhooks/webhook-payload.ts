@@ -44,7 +44,9 @@ export function eventView(raw: Uint8Array, headers: Headers, deliveryId: string 
   const text = new TextDecoder().decode(raw)
   const decoded = decodedBody(text, headers.get('content-type'))
   if (!decoded) return refused(`it is nested more than ${MAX_DEPTH} levels deep`)
-  const words = outsideReason(folded(blank(strings([decoded.body, kept]).join('\n'), token)))
+  const words = folded(blank(strings([decoded.body, kept]).join('\n'), token))
+    .map(outsideReason)
+    .find(Boolean)
   if (words) return refused(words)
   const view = { receivedAt: new Date(receivedAt).toISOString(), deliveryId, headers: kept }
   const bodyJson = JSON.stringify(decoded.body)

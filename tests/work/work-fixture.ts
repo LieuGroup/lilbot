@@ -21,6 +21,8 @@ export function workFixture(options: { database?: Database; requireBot?: (id: st
   const state = {
     /** The session each bot's next call comes from; by default its main conversation. */
     chats: new Map<string, string | null>(),
+    /** Compression continuations: a session id to the one it began as (null: the lineage cannot be read). */
+    roots: new Map<string, string | null>(),
     library: new Map<string, string>(),
     waits: [] as { botId: string; itemId: string; key: string; on: boolean }[],
     lines: [] as StoredItem[],
@@ -38,7 +40,7 @@ export function workFixture(options: { database?: Database; requireBot?: (id: st
         return bot
       }),
     callingChat: async botId => (state.chats.has(botId) ? state.chats.get(botId)! : `${botId}-main`),
-    session: workSessions(threadStore, routineStore, webhookStore),
+    session: workSessions(threadStore, routineStore, webhookStore, (_bot, chat) => (state.roots.has(chat) ? state.roots.get(chat)! : chat)),
     libraryTitle: (botId, itemId) => state.library.get(`${botId}:${itemId}`) ?? null,
     waiting: (botId, itemId, key, on) => state.waits.push({ botId, itemId, key, on }),
     line: item => state.lines.push(item),

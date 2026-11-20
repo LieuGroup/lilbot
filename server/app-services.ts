@@ -12,7 +12,7 @@ import { backgroundTask } from './background'
 import { BotPrefsStore } from './bots/bot-prefs-store'
 import { BotService } from './bots/bot-service'
 import { BotStore } from './bots/bot-store'
-import { hiddenChats } from './bots/hidden-chats'
+import { hiddenChats, sessionRoots } from './bots/hidden-chats'
 import { Workspaces } from './bots/workspaces'
 import { ComputerService } from './computers/computer-service'
 import { ComputerStore } from './computers/computer-store'
@@ -86,7 +86,8 @@ export function createAppServices(
   const routineStore = new RoutineStore(database)
   const libraryStore = new LibraryStore(database)
   const webhookStore = new WebhookStore(database)
-  const hiddenChat = hiddenChats(engine, store, chat => routineStore.isRoutineChat(chat) || threadStore.isInternal(chat) || webhookStore.isWebhookChat(chat))
+  const rootOf = sessionRoots(engine, store)
+  const hiddenChat = hiddenChats(rootOf, chat => routineStore.isRoutineChat(chat) || threadStore.isInternal(chat) || webhookStore.isWebhookChat(chat))
   const library = new LibraryService(
     libraryStore,
     id => workspaces.pathFor(id),
@@ -139,7 +140,7 @@ export function createAppServices(
     systemNote: systemNote(facts)
   })
   const calls = new CallingChats(botId => prefs.mainChat(botId))
-  const runs = { threadStore, routineStore, webhookStore }
+  const runs = { threadStore, routineStore, webhookStore, rootOf }
   const { work, board, links, answers } = createWork({ database, store, prefs, bots, ...runs, libraryStore, activity, history: history.store, calls, publish })
   const { threads, delegation } = createThreads({ engine, store, prefs, bots, workspaces, history, activity, threadStore, calls, work: links, publish })
   const webhooks = new WebhookService(webhookStore, bots, token, HOOK_ORIGIN, () => publish({ event: 'webhooks.changed' }))

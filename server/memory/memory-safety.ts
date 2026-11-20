@@ -67,15 +67,16 @@ export function memoryRefusal(text: string): string | null {
 
 const unit = (code: number) => `\\u${code.toString(16).padStart(4, '0')}`
 const units = (char: string) => (char.length === 1 ? unit(char.charCodeAt(0)) : unit(char.charCodeAt(0)) + unit(char.charCodeAt(1)))
-/** JSON text with `<`, `>`, format characters and every other default-ignorable character (variation selectors,
- *  Hangul fillers, the combining grapheme joiner) written as `\u` escapes (UTF-16 units, so tag characters and the
+/** JSON text with `<`, `>`, control characters (`JSON.stringify` leaves DEL and C1 raw), format characters and every
+ *  other default-ignorable character (variation selectors, Hangul fillers, the combining grapheme joiner) written as `\u`
+ *  escapes (UTF-16 units, so tag characters and the
  *  supplementary variation selectors become surrogate pairs). In JSON they only occur inside strings, so the meaning is unchanged; the model never sees them raw. */
 export const escapeJson = (json: string) =>
   json
     .replaceAll('<', '\\u003c')
     .replaceAll('>', '\\u003e')
     .replaceAll('\u00AD', '\\u00ad')
-    .replace(/[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu, units)
+    .replace(/[\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}]/gu, units)
 
 /** Serialised JSON as a named fence the data cannot close and cannot hide text in. */
 export const fenceJson = (name: string, json: string) => `<${name}>\n${escapeJson(json)}\n</${name}>`

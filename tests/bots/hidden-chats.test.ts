@@ -1,7 +1,7 @@
 import { expect, spyOn, test } from 'bun:test'
 import { rmSync } from 'node:fs'
 import { botCapability } from '../../server/bots/bot-capability'
-import { hiddenChats } from '../../server/bots/hidden-chats'
+import { hiddenChats, sessionRoots } from '../../server/bots/hidden-chats'
 import type { BotEngine } from '../../server/engines/bot-engine'
 import type { HistoryService } from '../../server/history/history-service'
 import { createEngineApi } from '../../server/http/engine-api'
@@ -24,16 +24,16 @@ test("a compression child of LilBot's own session is hidden too; roots are remem
       }
     } as unknown as BotEngine
     const warn = spyOn(console, 'warn').mockImplementation(() => {})
-    const hidden = hiddenChats(engine, f.store, chat => chat === 'run')
+    const hidden = hiddenChats(sessionRoots(engine, f.store), chat => chat === 'run')
     expect(['run', 'child', 'grandchild', 'main', 'flaky', 'flaky'].map(chat => hidden('b1', chat))).toEqual([true, true, true, false, true, true])
-    expect(warn.mock.calls.map(call => call[0])).toEqual(['[hidden-chats] could not read a session lineage; treating the session as hidden'])
+    expect(warn.mock.calls.map(call => call[0])).toEqual(['[session-lineage] could not read a session lineage; it counts as hidden and is not attributed'])
     warn.mockRestore()
     expect(hidden('b1', 'child')).toBe(true)
     expect(hidden('unknown-bot', 'child')).toBe(false)
     broken = false
     expect(hidden('b1', 'flaky')).toBe(false)
     expect(reads).toEqual(['child', 'grandchild', 'main', 'flaky', 'flaky', 'flaky'])
-    expect(hiddenChats({} as BotEngine, f.store, () => false)('b1', 'chat')).toBe(false)
+    expect(hiddenChats(sessionRoots({} as BotEngine, f.store), () => false)('b1', 'chat')).toBe(false)
   } finally {
     f.database.close()
     rmSync(f.root, { recursive: true, force: true })
@@ -49,7 +49,7 @@ test('neither memory review runs for a hidden session or its compression child: 
       history: {} as HistoryService,
       botExists: () => true,
       reviewer: new MemoryReviewer(f.queue, f.engine),
-      hiddenChat: hiddenChats(engine, f.store, chat => chat === 'run')
+      hiddenChat: hiddenChats(sessionRoots(engine, f.store), chat => chat === 'run')
     })
     const call = (path: string, body: object) =>
       api(

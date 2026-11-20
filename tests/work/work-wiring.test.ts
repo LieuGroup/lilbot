@@ -23,6 +23,7 @@ function wired() {
     threadStore: new ThreadStore(fake.database),
     routineStore: new RoutineStore(fake.database),
     webhookStore: new WebhookStore(fake.database),
+    rootOf: (_bot, chat) => chat,
     libraryStore: new LibraryStore(fake.database),
     history,
     calls,

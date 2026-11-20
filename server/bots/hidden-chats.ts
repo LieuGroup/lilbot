@@ -1,34 +1,44 @@
-/** Sessions LilBot runs itself (routine and webhook runs, bot threads) are never history, never activity of their
- *  own and never reviewed for memory. An engine may continue such a session under a new id after compressing it, so
- *  the check follows the compression lineage back to where it began. A root never changes, so it is remembered. When
- *  the engine cannot read the lineage the session counts as hidden (it fails closed) and is asked about again later. */
+/** An engine may continue a long session under a new id after compressing it. Anything LilBot knows about the session
+ *  (a routine or webhook run, a bot thread) still holds for the continuation, so lookups follow the compression
+ *  lineage back to where it began. A root never changes, so it is remembered. */
 import type { BotEngine } from '../engines/bot-engine'
 import type { BotStore } from './bot-store'
 
 const REMEMBERED = 5000
 const WARN_EVERY_MS = 60_000
 
-export function hiddenChats(engine: BotEngine, store: BotStore, own: (chatId: string) => boolean) {
+/** The session a chat's lineage began as: the chat itself when it is not a continuation (or the engine never continues
+ *  one), null when the engine cannot read the lineage just now; that is asked again next time, never remembered. */
+export type SessionRoot = (botId: string, chatId: string) => string | null
+
+export function sessionRoots(engine: BotEngine, store: BotStore): SessionRoot {
   const roots = new Map<string, string>()
   let warnedAt = 0
+  return (botId, chatId) => {
+    const key = `${botId}\n${chatId}`
+    const known = roots.get(key)
+    if (known !== undefined) return known
+    if (!engine.compressionRoot || !store.exists(botId)) return chatId
+    const found = engine.compressionRoot(store.get(botId).engineBotId, chatId)
+    if (found === null) {
+      if (Date.now() - warnedAt > WARN_EVERY_MS) {
+        warnedAt = Date.now()
+        console.warn('[session-lineage] could not read a session lineage; it counts as hidden and is not attributed')
+      }
+      return null
+    }
+    if (roots.size >= REMEMBERED) roots.clear()
+    roots.set(key, found)
+    return found
+  }
+}
+
+/** Sessions LilBot runs itself are never history, never activity of their own and never reviewed for memory, nor are
+ *  their continuations. An unreadable lineage counts as hidden (it fails closed). */
+export function hiddenChats(rootOf: SessionRoot, own: (chatId: string) => boolean) {
   return (botId: string, chatId: string) => {
     if (own(chatId)) return true
-    const key = `${botId}\n${chatId}`
-    let root = roots.get(key)
-    if (root === undefined) {
-      if (!engine.compressionRoot || !store.exists(botId)) return false
-      const found = engine.compressionRoot(store.get(botId).engineBotId, chatId)
-      if (found === null) {
-        if (Date.now() - warnedAt > WARN_EVERY_MS) {
-          warnedAt = Date.now()
-          console.warn('[hidden-chats] could not read a session lineage; treating the session as hidden')
-        }
-        return true
-      }
-      if (roots.size >= REMEMBERED) roots.clear()
-      roots.set(key, found)
-      root = found
-    }
-    return root !== chatId && own(root)
+    const root = rootOf(botId, chatId)
+    return root === null || (root !== chatId && own(root))
   }
 }
