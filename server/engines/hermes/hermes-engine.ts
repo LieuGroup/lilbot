@@ -20,7 +20,7 @@ import { runRoutine } from './hermes-routines'
 import { steerRun, stopRun } from './hermes-run-control'
 import { applyIdentity, createRuntime } from './hermes-runtime'
 import { updateSession } from './hermes-session-settings'
-import { configureSkills, userSkillPaths } from './hermes-skills'
+import { ALWAYS_ON_SKILLS, bundledSkillNames, configureSkills, skillsFingerprint, userSkillPaths } from './hermes-skills'
 import { HermesSocket, managementConnection } from './hermes-socket'
 import { SpareSockets } from './hermes-spare-sockets'
 import { onToolCall } from './hermes-tool-calls'
@@ -151,16 +151,15 @@ export class HermesEngine implements BotEngine {
   }
 
   private skillSettings = new Map<string, string>()
-  userSkillPaths = (id: string) => {
-    requireProfileEnvironment(id)
-    return userSkillPaths(id)
-  }
+  readonly alwaysOnSkills = ALWAYS_ON_SKILLS
+  userSkillPaths = userSkillPaths
+  bundledSkills = bundledSkillNames
   async configureSkills(id: string, settings: Parameters<typeof configureSkills>[1]) {
     await this.requireBot(id)
     const key = JSON.stringify(settings)
     if (this.skillSettings.get(id) === key) return
     const activate = !this.skillSettings.has(id)
-    await applied(id, 'skills', hashOf(adapterHash('skills-adapter'), settings, userSkillPaths(id)), () => configureSkills(id, settings, activate))
+    await applied(id, 'skills', hashOf(adapterHash('skills-adapter'), ...skillsFingerprint(id, settings)), () => configureSkills(id, settings, activate))
     this.skillSettings.set(id, key)
   }
   validateModel = async (model: BotModel) => requireListedModel(await this.listModels(), model)

@@ -114,14 +114,10 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
         if (pathname.startsWith('/engine/skills/')) {
           if (!options.skills) return json(404, { error: 'Skills unavailable.' })
           const body = (await request.json()) as Record<string, unknown>
-          if (pathname.endsWith('/list'))
-            return json(
-              200,
-              options.skills.list(caller.id).filter(s => s.enabled)
-            )
+          if (pathname.endsWith('/list')) return json(200, options.skills.offered(caller.id))
           if (pathname.endsWith('/read')) {
             const name = String(body.name)
-            if (!options.skills.list(caller.id).some(s => s.name === name && s.enabled)) return json(403, { error: 'Skill disabled or missing.' })
+            if (!options.skills.offered(caller.id).some(s => s.name === name)) return json(403, { error: 'Skill disabled or missing.' })
             return json(200, { content: options.skills.read(name)[String(body.file_path ?? 'SKILL.md')] })
           }
           if (pathname.endsWith('/write')) return json(200, options.skills.write(SkillWrite.parse(body), caller.id))

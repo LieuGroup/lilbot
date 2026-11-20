@@ -47,10 +47,10 @@ test('skill preparation uses only bound live bots and Setup reports saved off sw
     })
     await bots.prepareRuntimes()
     expect(configured).toEqual(['native-a'])
-    await bots.setSkill('a', 'sample', false)
+    await bots.skills!.setEnabled('a', 'sample', false)
     expect((await bots.getBot('a')).abilities).toEqual([{ kind: 'skill', id: 'sample', label: 'sample', enabled: false }])
-    expect(await bots.listSkills('a')).toHaveLength(1)
-    await expect(bots.setSkill('unknown', 'sample', false)).rejects.toThrow()
+    expect(await bots.skills!.list('a')).toHaveLength(1)
+    await expect(bots.skills!.setEnabled('unknown', 'sample', false)).rejects.toThrow()
   } finally {
     db.close()
     rmSync(root, { recursive: true, force: true })

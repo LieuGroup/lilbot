@@ -2,6 +2,8 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { cp, mkdir, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import type { SkillSettings } from '../bot-engine'
+import { requireProfileEnvironment } from './hermes-environment'
 import { configurePlugin, hermesCli } from './hermes-plugins'
 
 export function skillHome(id: string) {
@@ -9,17 +11,35 @@ export function skillHome(id: string) {
   const root = process.env.HERMES_HOME ?? join(homedir(), '.hermes')
   return id === 'default' ? root : join(root, 'profiles', id)
 }
-/** The installed manifest records shipped skills by name:hash. Never copy those. */
-export function userSkillPaths(id: string) {
-  const root = join(skillHome(id), 'skills')
-  const manifest = join(root, '.bundled_manifest')
-  const shipped = new Set(
+/** Hermes refuses to disable these (`ESSENTIAL_SKILLS` in agent/skill_utils.py); `check:skills` confirms they stay offered. */
+export const ALWAYS_ON_SKILLS = [{ name: 'hermes-agent', reason: 'Part of the engine, cannot be switched off.' }] as const
+
+/** The installed manifest records the skills Hermes ships, by name:hash. */
+function shippedSkills(id: string) {
+  const manifest = join(skillHome(id), 'skills', '.bundled_manifest')
+  return new Set(
     existsSync(manifest)
       ? readFileSync(manifest, 'utf8')
           .split('\n')
           .map(line => line.split(':')[0])
       : []
   )
+}
+/** The skills Hermes offers by itself that its `skills.disabled` list can hide. */
+export function bundledSkillNames(id: string) {
+  requireProfileEnvironment(id)
+  return [...shippedSkills(id)].filter(name => name && !ALWAYS_ON_SKILLS.some(skill => skill.name === name))
+}
+/** What decides whether the profile's skill configuration is applied again. With the engine's skills included it is what it was
+ *  before the switch existed, so a release that adds the switch leaves every profile alone. */
+export function skillsFingerprint(id: string, { includeEngineSkills, ...settings }: SkillSettings) {
+  return includeEngineSkills ? [settings, userSkillPaths(id)] : [settings, userSkillPaths(id), bundledSkillNames(id)]
+}
+/** Never copy the skills Hermes ships. */
+export function userSkillPaths(id: string) {
+  requireProfileEnvironment(id)
+  const root = join(skillHome(id), 'skills')
+  const shipped = shippedSkills(id)
   const result: string[] = []
   function walk(path: string) {
     if (!existsSync(path)) return
@@ -36,7 +56,7 @@ export function userSkillPaths(id: string) {
   walk(root)
   return result
 }
-export async function configureSkills(id: string, settings: { root: string; url: string; tokenFile: string; botId: string; disabled: string[]; names: string[] }, activate = true) {
+export async function configureSkills(id: string, settings: SkillSettings, activate = true) {
   const home = skillHome(id)
   const plugin = 'lilbot-skills-v1'
   await mkdir(join(home, 'plugins'), { recursive: true })
@@ -52,7 +72,8 @@ export async function configureSkills(id: string, settings: { root: string; url:
         ...settings.names,
         ...userSkillPaths(id)
           .map(path => /^name:\s*["']?([^\r\n"']+)/m.exec(readFileSync(join(path, 'SKILL.md'), 'utf8'))?.[1]?.trim())
-          .filter(Boolean)
+          .filter(Boolean),
+        ...(settings.includeEngineSkills ? [] : bundledSkillNames(id))
       ])
     ]
   }

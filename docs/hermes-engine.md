@@ -146,6 +146,10 @@ manifest on `MessageCompletePayload` or `TranscriptMessage`.
 - `.bundled_manifest` identifies shipped skills, which stay with Hermes. Hermes searches profile-local skills before
   external/create directories, so LilBot suppresses the stale user entries in Hermes' manifest and supplies its own
   catalogue. `skills.create_dir` and `skills.external_dirs` point to the library.
+- With the engine's "Include this engine's skills" switch off, `skills.disabled` also lists the manifest's names, except
+  `hermes-agent` (Hermes' `ESSENTIAL_SKILLS` cannot be disabled; `ALWAYS_ON_SKILLS` in `hermes-skills.ts` mirrors it, and
+  `check:skills` confirms it stays offered). The apply fingerprint is unchanged while the switch is on, so a release that
+  adds the switch does not touch existing profiles.
 
 ## Routines
 

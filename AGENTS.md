@@ -45,7 +45,7 @@ server/            The LilBot server (runs on the leader).
   routines/          App-owned schedules, run history and scheduler.
   library/           Delivered workspace files, metadata, safe reads and folder listings.
   attachments/       Incoming chat files, streaming uploads and durable message associations.
-  skills/            The shared skills library and per-bot switches.
+  skills/            The shared skills library, per-bot switches and each engine's "Include this engine's skills" switch.
   connections/       LilBot-owned connection to T3 Code for coding (bridge, sign-in, skill) and the keys and replies MCP endpoints share.
   system/            LilBot's own MCP server through which bots operate the app, and the note every bot gets about its system.
   computers/         Computer identities, key registration and durable command requests.
@@ -759,6 +759,18 @@ and per-bot off switches in SQLite. All skills default on; Setup shows the same 
   an app-owned copy.
 - Removing duplicate profile skill folders is a future, separate change made after checking import results and
   backups.
+- One "Include this engine's skills" switch per engine (#140), global for all bots (`engine_skills`); per-bot
+  differences stay with the per-skill switch. It covers the skills imported from that engine's profiles (origin kept in
+  `skill_origins`, set when an import writes the skill, so a bot's later edit does not move it) and the skills the
+  engine offers by itself. Off: excluded, so no bot is offered them; nothing is deleted and no per-bot switch is touched,
+  so switching on restores them exactly. Hermes hides its bundled skills through the profile's `skills.disabled`,
+  except `hermes-agent`, which Hermes refuses to disable: `BotEngine.alwaysOnSkills` reports it with the reason.
+- Defaults: an engine that already has bots when the migration runs is on (Oscar's Hermes, so nothing changes); an
+  engine added later, or a new LilBot, is off, and start-up imports nothing from it until it is switched on. Turning a
+  switch applies it to every bound, non-deleted bot in the background (the start-up flight, with its retries).
+- `skills.list` gives each skill's `origin` (LilBot, an engine, a bot, Oscar) and `excluded`; `enabled` stays the bot's
+  own switch. `skills.engines` lists engines with their state, counts and always-on skills; `skills.setEngine` sets it,
+  with the `skills.changed` push. Oscar's setting: no bot tool. Screen: `needs-ui`.
 
 ## Memory
 
@@ -950,7 +962,8 @@ profiles, isolated directories, cleanup in `finally`. Most cost a few model call
   must stay at one. Confirms its profiles are gone with `hermes profile list`.
 - `bun run check:attachments`: a generated PNG, a text file, oversize refusal, the live metadata event, reload and
   byte-identical image reopening.
-- `bun run check:skills`: skill use, per-bot exclusion and authored writes.
+- `bun run check:skills`: skill use, per-bot exclusion and authored writes, then the Hermes engine switch off and on against
+  the bot's real system prompt (Hermes builds it on a session's first turn, so each read runs one trivial turn).
 - `bun run check:computers`, `bun run check:access`: see [docs/computers.md](docs/computers.md) and Listeners.
 - `bun run check:add-computer`: on a dev server, builds the Linux downloads, downloads one, opens the helper under a
   throwaway HOME with a stub service manager, refuses a wrong origin, hands the code over on loopback and sees the

@@ -97,6 +97,18 @@ export interface ConversationSource {
   close(): void
 }
 
+/** What LilBot gives a runtime for skills. `disabled` are the library names this bot is not offered and `names` the whole library;
+ *  with `includeEngineSkills` false the engine also hides the skills it offers by itself. */
+export interface SkillSettings {
+  root: string
+  url: string
+  tokenFile: string
+  botId: string
+  disabled: string[]
+  names: string[]
+  includeEngineSkills: boolean
+}
+
 export interface BotEngine {
   conversations?(nativeId: string): Promise<ConversationSource>
   /** Observe existing bound runtimes; emit and persist cursors using the LilBot id. */
@@ -122,8 +134,12 @@ export interface BotEngine {
   /** Make LilBot's MCP connections available to this runtime from its next session. Safe to repeat. */
   prepareConnections?(engineBotId: string, connections: McpConnection[]): Promise<void>
   userSkillPaths?(id: string): string[]
+  /** Skills the engine offers by itself in this runtime, without the ones in `alwaysOnSkills`: the engine's own switch can hide these. */
+  bundledSkills?(id: string): string[]
+  /** Engine skills nobody can hide, with the reason to show. */
+  readonly alwaysOnSkills?: readonly { name: string; reason: string }[]
   configureComputers?(id: string, settings: { url: string; tokenFile: string; botId: string }): Promise<void>
-  configureSkills?(id: string, settings: { root: string; url: string; tokenFile: string; botId: string; disabled: string[]; names: string[] }): Promise<void>
+  configureSkills?(id: string, settings: SkillSettings): Promise<void>
   /** Refuse an unavailable model before an identity edit is saved. Must not apply the old identity. */
   validateModel(model: BotModel): Promise<void>
   listModels(): Promise<ModelProvider[]>

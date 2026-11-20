@@ -170,7 +170,14 @@ const migrations: string[] = [
    CREATE INDEX IF NOT EXISTS thread_links_parent ON thread_links(parent_id) WHERE parent_id IS NOT NULL;
    CREATE TABLE IF NOT EXISTS thread_files(id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, message_id TEXT NOT NULL, sender TEXT NOT NULL, name TEXT NOT NULL, size INTEGER NOT NULL, sha256 TEXT, source TEXT NOT NULL, copy TEXT, at INTEGER NOT NULL);
    CREATE INDEX IF NOT EXISTS thread_files_thread ON thread_files(thread_id);
-   CREATE TABLE IF NOT EXISTS thread_waits(id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, chat_id TEXT NOT NULL, thread_ids TEXT NOT NULL, delivery_id TEXT, done INTEGER NOT NULL DEFAULT 0);`
+   CREATE TABLE IF NOT EXISTS thread_waits(id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, chat_id TEXT NOT NULL, thread_ids TEXT NOT NULL, delivery_id TEXT, done INTEGER NOT NULL DEFAULT 0);`,
+  // "Include this engine's skills" (#140): a switch per engine and the engine each imported skill came from. An engine that already has bots
+  // is on (nothing changes for an existing install); one added later has no row and starts off. Origins are filled only when one engine exists.
+  `CREATE TABLE IF NOT EXISTS engine_skills(engine_id TEXT PRIMARY KEY, included INTEGER NOT NULL);
+   INSERT OR IGNORE INTO engine_skills SELECT DISTINCT engine_id, 1 FROM bots;
+   CREATE TABLE IF NOT EXISTS skill_origins(name TEXT PRIMARY KEY, engine_id TEXT NOT NULL);
+   INSERT OR IGNORE INTO skill_origins SELECT i.name, (SELECT MIN(engine_id) FROM bots) FROM skill_imports i
+     WHERE i.name <> '' AND (SELECT COUNT(DISTINCT engine_id) FROM bots) = 1 AND i.name IN (SELECT name FROM skills WHERE author NOT IN ('oscar', 'lilbot'));`
 ]
 
 /** `path` may be ':memory:' for tests. Applies any migration steps the file has not seen. */
