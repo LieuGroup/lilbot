@@ -6,12 +6,14 @@ import type { MemoryFact, MemoryWriteInput } from '../../shared/memory-schema'
 import { LilBotError } from '../../shared/protocol'
 import type { ActivityCursor, BotEngine, McpConnection, MemoryConnection } from '../engines/bot-engine'
 import type { MemoryService } from '../memory/memory-service'
+import { BackgroundRuns } from './bot-background-runs'
 import { BotConversations } from './bot-conversations'
 import { BotCreation } from './bot-creation'
 import { BotDeletion } from './bot-deletion'
 import { BotMemory } from './bot-memory'
 import type { BotPrefsStore } from './bot-prefs-store'
 import { BotRuntimes } from './bot-runtimes'
+import { SessionSettings } from './bot-session-settings'
 import type { BotRecord, BotStore } from './bot-store'
 import type { Workspaces } from './workspaces'
 
@@ -40,6 +42,8 @@ export class BotService {
   private memoryChanged: () => void
   private creation: BotCreation
   private botMemory: BotMemory
+  private sessions: SessionSettings
+  private background: BackgroundRuns
 
   constructor(
     private engine: BotEngine,
@@ -52,9 +56,11 @@ export class BotService {
     this.history = options.history
     this.skills = options.skills
     this.runtimes = new BotRuntimes(store, engine, options.skills, options.memoryConnection, options.connections, { changed: options.changed, systemNote: options.systemNote })
-    this.conversations = new BotConversations(this.runtimes, prefs, workspaces, options.history)
-    this.creation = new BotCreation(this, store)
     this.changed = options.changed ?? (() => {})
+    this.sessions = new SessionSettings(engine, prefs, this.changed)
+    this.background = new BackgroundRuns(this.runtimes, workspaces, this.sessions)
+    this.conversations = new BotConversations(this.runtimes, prefs, workspaces, this.sessions, options.history)
+    this.creation = new BotCreation(this, store)
     this.memoryChanged = options.memoryChanged ?? (() => {})
     this.deletion = new BotDeletion(
       this.runtimes,
@@ -63,6 +69,7 @@ export class BotService {
       memory,
       botId => {
         this.skills?.forgetBot(botId)
+        this.sessions.forget(botId)
         options.cleanupBot?.(botId)
       },
       () => {
@@ -159,8 +166,11 @@ export class BotService {
   }
 
   async updateBot(input: BotUpdateInput): Promise<BotDetail> {
+    const previous = await this.requireBot(input.botId)
     try {
       await this.runtimes.update(input)
+      // Saved first; the open conversation follows from its next message.
+      await this.sessions.apply(this.runtimes.store.get(input.botId), previous, input)
     } finally {
       this.changed()
     }
@@ -254,9 +264,7 @@ export class BotService {
     return this.prefs.mainChat(botId) === chatId
   }
   async runRoutine(botId: string, prompt: string, options: import('../engines/bot-engine').RoutineOptions) {
-    const bot = await this.requireBot(botId)
-    await this.runtimes.use(bot)
-    const result = await this.runtimes.engineFor(bot).runRoutine(bot.engineBotId, prompt, { ...options, workspace: await this.workspaces.ensure(botId) })
+    const result = await this.background.routine(await this.requireBot(botId), prompt, options)
     // Deletion may have completed while the engine was running; do not restore its activity.
     await this.requireBot(botId)
     return result
@@ -267,8 +275,8 @@ export class BotService {
   }
 
   private identity(bot: BotRecord) {
-    const { id, name, function: fn, model, isDefault, permissionMode } = bot
-    return { id, name, function: fn, model, isDefault, permissionMode }
+    const { id, name, function: fn, model, reasoningEffort, isDefault, permissionMode } = bot
+    return { id, name, function: fn, model, reasoningEffort, effectiveReasoningEffort: this.sessions.effectiveFor(id), isDefault, permissionMode }
   }
 
   private own(identity: BotRecord): Pick<Bot, 'isPrimary' | 'prefs' | 'workspace'> {
@@ -284,15 +292,7 @@ export class BotService {
   }
 
   async reviewMemory(botId: string, prompt: string, options: import('../engines/bot-engine').ReviewOptions): Promise<void> {
-    const bot = await this.requireBot(botId)
-    try {
-      await this.runtimes.use(bot)
-      return await this.runtimes.engineFor(bot).reviewMemory(bot.engineBotId, prompt, options)
-    } catch (error) {
-      // The app still owns this bot. A lost runtime must not discard its waiting turns.
-      if (error instanceof LilBotError && error.code === 'bot_not_found') throw new LilBotError('runtime_unavailable', 'This bot’s runtime is missing.')
-      throw error
-    }
+    return this.background.review(await this.requireBot(botId), prompt, options)
   }
 
   async setPrimary(botId: string): Promise<{ ok: true }> {

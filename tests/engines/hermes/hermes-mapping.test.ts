@@ -63,7 +63,15 @@ describe('bots', () => {
     const base = { name: 'researcher', description: 'Finds sources', is_default: false, skill_count: 3 }
     expect(botFromProfile({ ...base, display_name: 'Hermes Name', ui_meta: { lilbot: { name: 'My Researcher' } } }).name).toBe('My Researcher')
     expect(botFromProfile({ ...base, display_name: 'Hermes Name' }).name).toBe('Hermes Name')
-    expect(botFromProfile(base)).toEqual({ id: 'researcher', name: 'researcher', function: 'Finds sources', model: null, permissionMode: 'full-access', isDefault: false })
+    expect(botFromProfile(base)).toEqual({
+      id: 'researcher',
+      name: 'researcher',
+      function: 'Finds sources',
+      model: null,
+      reasoningEffort: null,
+      permissionMode: 'full-access',
+      isDefault: false
+    })
   })
 
   test('skills, toolsets and MCP servers become one neutral list of abilities', () => {
@@ -89,7 +97,32 @@ describe('bots', () => {
         { slug: 'c', name: 'C', authenticated: true, models: [] }
       ]
     })
-    expect(providers).toEqual([{ provider: 'a', name: 'A', models: ['m1', 'm2'] }])
+    expect(providers.map(provider => provider.provider)).toEqual(['a'])
+  })
+
+  test('each model carries what the engine says about thinking; one it does not mention is taken to think', () => {
+    const [provider] = providersFromModelOptions({
+      providers: [
+        {
+          slug: 'a',
+          name: 'A',
+          authenticated: true,
+          models: ['thinks', 'plain', 'off-switch', 'unlisted'],
+          capabilities: {
+            thinks: { fast: false, reasoning: true },
+            plain: { fast: false, reasoning: false },
+            'off-switch': { fast: false, reasoning: true, can_disable_reasoning: false }
+          }
+        }
+      ]
+    })
+    expect(provider.models).toEqual(['thinks', 'plain', 'off-switch', 'unlisted'])
+    expect(provider.capabilities).toEqual([
+      { id: 'thinks', reasoning: true, canDisableReasoning: null },
+      { id: 'plain', reasoning: false, canDisableReasoning: null },
+      { id: 'off-switch', reasoning: true, canDisableReasoning: false },
+      { id: 'unlisted', reasoning: true, canDisableReasoning: null }
+    ])
   })
 })
 

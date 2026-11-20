@@ -10,6 +10,7 @@ type Row = {
   function: string
   instructions: string
   model: string | null
+  reasoning_effort: BotIdentity['reasoningEffort']
   permission_mode: BotIdentity['permissionMode']
   is_default: number
   engine_id: string
@@ -21,6 +22,7 @@ const fromRow = (row: Row): BotRecord => ({
   function: row.function,
   instructions: row.instructions,
   model: row.model ? JSON.parse(row.model) : null,
+  reasoningEffort: row.reasoning_effort,
   isDefault: Boolean(row.is_default),
   permissionMode: row.permission_mode,
   engineId: row.engine_id,
@@ -74,10 +76,22 @@ export class BotStore {
 
   save(bot: BotRecord) {
     this.db
-      .query(`INSERT INTO bots (id, name, function, instructions, model, is_default, engine_id, engine_bot_id, permission_mode)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET
-      name=excluded.name, function=excluded.function, instructions=excluded.instructions, model=excluded.model, is_default=excluded.is_default, permission_mode=excluded.permission_mode`)
-      .run(bot.id, bot.name, bot.function, bot.instructions, bot.model ? JSON.stringify(bot.model) : null, Number(bot.isDefault), bot.engineId, bot.engineBotId, bot.permissionMode)
+      .query(`INSERT INTO bots (id, name, function, instructions, model, reasoning_effort, is_default, engine_id, engine_bot_id, permission_mode)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET
+      name=excluded.name, function=excluded.function, instructions=excluded.instructions, model=excluded.model, reasoning_effort=excluded.reasoning_effort,
+      is_default=excluded.is_default, permission_mode=excluded.permission_mode`)
+      .run(
+        bot.id,
+        bot.name,
+        bot.function,
+        bot.instructions,
+        bot.model ? JSON.stringify(bot.model) : null,
+        bot.reasoningEffort,
+        Number(bot.isDefault),
+        bot.engineId,
+        bot.engineBotId,
+        bot.permissionMode
+      )
   }
 
   creationDone(id: string): boolean {

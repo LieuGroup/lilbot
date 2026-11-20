@@ -11,7 +11,7 @@ import type { SystemDeps } from './system-deps'
 /** `botId` names another bot; left out it means the calling bot. */
 const target = { botId: z.string().min(1).optional() }
 const model = (bot: { model: { provider: string; model: string } | null }) => (bot.model ? `${bot.model.provider}/${bot.model.model}` : null)
-const EditInput = BotUpdateInput.pick({ name: true, function: true, instructions: true, model: true }).extend(target)
+const EditInput = BotUpdateInput.pick({ name: true, function: true, instructions: true, model: true, reasoningEffort: true }).extend(target)
 
 export function botTools({ bots, activity }: SystemDeps): McpTool[] {
   return [
@@ -21,19 +21,22 @@ export function botTools({ bots, activity }: SystemDeps): McpTool[] {
         name,
         function: fn,
         model: model(bot),
+        reasoningEffort: bot.reasoningEffort,
         primary: isPrimary,
         ...prefs,
         unread: activity.state(id).unread
       })),
       sections: bots.listSections()
     })),
-    readTool('lilbot_bot_read', "A bot's setup: instructions, model and abilities. Defaults to you.", z.object(target), async (caller, { botId }) => {
+    readTool('lilbot_bot_read', "A bot's setup: instructions, model, reasoning effort and abilities. Defaults to you.", z.object(target), async (caller, { botId }) => {
       const bot = await bots.getBot(botId ?? caller)
       return {
         id: bot.id,
         name: bot.name,
         function: bot.function,
         model: model(bot),
+        reasoningEffort: bot.reasoningEffort,
+        effectiveReasoningEffort: bot.effectiveReasoningEffort,
         primary: bot.isPrimary,
         instructions: bot.instructions,
         memoryConnected: bot.memoryConnected,
@@ -48,14 +51,14 @@ export function botTools({ bots, activity }: SystemDeps): McpTool[] {
     ),
     actionTool(
       'lilbot_bot_edit',
-      "Change a bot's name, function, instructions or model (yours by default). Only the fields you give change.",
+      "Change a bot's name, function, instructions, model or reasoning effort (yours by default). Only the fields you give change. Effort is none, minimal, low, medium, high, xhigh or max; null goes back to the default.",
       EditInput,
       async (caller, { botId, ...patch }) => {
-        if (!Object.keys(patch).length) throw new LilBotError('nothing_to_change', 'Give at least one of name, function, instructions, model.')
+        if (!Object.keys(patch).length) throw new LilBotError('nothing_to_change', 'Give at least one of name, function, instructions, model, reasoningEffort.')
         const refusal = memoryRefusal([patch.name, patch.function, patch.instructions].filter(Boolean).join('\n'))
         if (refusal) throw new LilBotError('invalid_instructions', refusal)
         const bot = await bots.updateBot({ botId: botId ?? caller, ...patch })
-        return { id: bot.id, name: bot.name, function: bot.function, model: model(bot) }
+        return { id: bot.id, name: bot.name, function: bot.function, model: model(bot), reasoningEffort: bot.reasoningEffort }
       }
     ),
     actionTool('lilbot_primary_set', "Make a bot the user's primary bot (listed first, opened on entry).", z.object({ botId: z.string().min(1) }), (_caller, { botId }) =>

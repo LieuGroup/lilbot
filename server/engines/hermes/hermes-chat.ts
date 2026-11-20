@@ -5,6 +5,7 @@ import { prepareAttachments } from './hermes-attachments'
 import { DEFAULT_PROFILE } from './hermes-bot-mapping'
 import { chatEventFrom, itemsFromRows, sessionLostEvents } from './hermes-chat-mapping'
 import { ensureFullAccess } from './hermes-permissions'
+import { wireEffort } from './hermes-session-settings'
 import { type HermesEvent, HermesSocket } from './hermes-socket'
 import type { SpareSockets } from './hermes-spare-sockets'
 
@@ -14,6 +15,9 @@ export async function openChat(spares: SpareSockets, botId: string, chatId: stri
   let sessionId = ''
   let generation: number | null = null
   let closed = false
+  const reportEffort = (effort: string | null | undefined) => {
+    if (effort !== undefined) options.onEffort?.(effort)
+  }
 
   // Hermes binds a session to the profile its connection was attached with (checked live:
   // another profile's session is refused with profile_mismatch), so each chat has its own.
@@ -28,6 +32,8 @@ export async function openChat(spares: SpareSockets, botId: string, chatId: stri
       return
     }
     if (event.executionGeneration !== undefined) generation = event.executionGeneration
+    // A change picked during a turn takes effect when the turn ends and is announced here.
+    if (event.type === 'session.info') reportEffort(wireEffort(event.payload))
     const mapped = chatEventFrom(event)
     if (mapped) onEvent(mapped)
   }
@@ -54,8 +60,16 @@ export async function openChat(spares: SpareSockets, botId: string, chatId: stri
         })
     }
     // A new chat starts in the bot's own folder. A resumed chat keeps the folder it was made with.
-    session ??= await socket.request('session.create', { source: 'gui', request_id: crypto.randomUUID(), client: CLIENT, cwd: options.workspace, cwd_explicit: true })
+    session ??= await socket.request('session.create', {
+      source: 'gui',
+      request_id: crypto.randomUUID(),
+      client: CLIENT,
+      cwd: options.workspace,
+      cwd_explicit: true,
+      ...(options.reasoningEffort ? { reasoning: options.reasoningEffort } : {})
+    })
     sessionId = session.session_id
+    reportEffort(wireEffort(session.info))
     if (typeof session.execution_generation === 'number') generation = session.execution_generation
     spares.refill(profile)
 

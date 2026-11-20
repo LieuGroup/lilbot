@@ -3,7 +3,7 @@ import { HermesEngine } from '../../../server/engines/hermes/hermes-engine'
 
 test('model validation requires both provider and model in the available inventory', async () => {
   const engine = new HermesEngine()
-  engine.listModels = async () => [{ provider: 'available', name: 'Available', models: ['known'] }]
+  engine.listModels = async () => [{ provider: 'available', name: 'Available', models: ['known'], capabilities: [] }]
   await engine.validateModel({ provider: 'available', model: 'known' })
   await expect(engine.validateModel({ provider: 'available', model: 'unknown' })).rejects.toThrow('not available')
   await expect(engine.validateModel({ provider: 'unknown', model: 'known' })).rejects.toThrow('not available')

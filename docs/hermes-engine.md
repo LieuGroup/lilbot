@@ -38,6 +38,32 @@ apply everywhere (never fork or patch Hermes, read only declared contract fields
 - A profile with no record (first start after this shipped, or a new profile) runs every step once.
   `live-checks/startup-latency-check.ts` keeps its 90 s bound for five fresh, never-prepared bots.
 
+## Model and reasoning effort
+
+The wire is Hermes' canonical `session.create` (`reasoning`) and `session.mutate` (operations `model` with payload
+`{model, provider, reasoning?}` and `reasoning` with `{effort}`, null returning to the profile's level); every method and
+field LilBot uses is in `tests/engines/hermes/hermes-contract.test.ts`. A profile cannot hold an effort
+(`profiles.configure` has no field for it), so LilBot keeps it and sends it per session.
+
+- `hermes-session-settings.ts` (`BotEngine.updateSession`) opens its own short connection, resumes the main
+  conversation for its revision and generation, mutates, and reads the session's `reasoning_effort_wire` back. It makes
+  no change when the conversation no longer exists, and retries a `revision_conflict` once from a fresh read.
+  A model with a level is one committed step; a model with the default level is two (the reset needs the new
+  generation), read again between them. Hermes reports the level it sends as an empty string for none.
+- Observed live on the dev gateway: `session.mutate` works from a second connection while the chat's own is open;
+  a model pick during a turn answers `status: deferred` and Hermes applies it when the turn ends (the chat's connection
+  then gets a `session.info` event carrying the new level, which is how `effectiveReasoningEffort` follows); the next turn is
+  answered by the new model and keeps the conversation. Its first reply has no prompt cache (0% cache hits, then 50%).
+- A level is passed through unchanged on the dev provider for every model tried (all seven reported as sent); `none` is sent as no level.
+- Hermes' selection guards run on a model pick (cost, data policy, and a conversation of at least
+  `model.switch_context_confirm_tokens`, default 100,000). A flagged pick is refused with a reply that has no `revision`,
+  nothing written, and a `confirm` token (not declared in the contract); LilBot reads the missing `revision` as the refusal and
+  answers `confirm_required`. A pick under the threshold to a smaller window is accepted, and the next turn compacts
+  first ("Pre-API compression", summarised by the auxiliary model), which runs the memory plug-in's `on_pre_compress`
+  (the review of the conversation) on the bot's new model.
+- A session that is resumed keeps the model and effort it has (thread follow-ups, routine answers); only new sessions
+  take the bot's current ones.
+
 ## Permissions
 
 Full access is the persistent per-profile `approvals.mode: off`, so background runs inherit it. Chat and review

@@ -17,6 +17,7 @@ try {
   nativeId = await engine.createRuntime({
     id: crypto.randomUUID(),
     model: null,
+    reasoningEffort: null,
     permissionMode: 'full-access',
     isDefault: false,
     name: 'Library live check',

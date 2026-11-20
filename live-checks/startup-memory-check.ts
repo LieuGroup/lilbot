@@ -22,6 +22,7 @@ const identity = {
   function: 'Temporary startup isolation check',
   instructions: 'Reply briefly.',
   model: null,
+  reasoningEffort: null,
   permissionMode: 'full-access' as const,
   isDefault: false
 }

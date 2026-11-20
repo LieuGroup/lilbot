@@ -24,6 +24,8 @@
     "check:live": "bun live-checks/chat-check.ts",
     "check:routines": "bun live-checks/routines-check.ts",
     "check:memory": "bun live-checks/memory-check.ts",
+    "check:reasoning": "bun live-checks/reasoning-check.ts",
+    "check:model-switch": "bun live-checks/model-switch-check.ts",
     "check:coding": "bun live-checks/coding-check.ts",
     "check:system": "bun live-checks/system-check.ts",
     "check:my-computer": "bun live-checks/my-computer-check.ts",

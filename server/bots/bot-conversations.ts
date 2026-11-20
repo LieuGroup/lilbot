@@ -3,6 +3,7 @@ import type { OpenChat } from '../engines/bot-engine'
 import type { HistoryService } from '../history/history-service'
 import type { BotPrefsStore } from './bot-prefs-store'
 import type { BotRuntimes } from './bot-runtimes'
+import type { SessionSettings } from './bot-session-settings'
 import type { Workspaces } from './workspaces'
 
 /** Main-session selection and the history journal share one chat lifecycle. */
@@ -11,6 +12,7 @@ export class BotConversations {
     private runtimes: BotRuntimes,
     private prefs: BotPrefsStore,
     private workspaces: Workspaces,
+    private sessions: SessionSettings,
     private history?: HistoryService
   ) {}
 
@@ -29,7 +31,15 @@ export class BotConversations {
       else pending.push(event)
       onEvent(event)
     }
-    const options = fresh ? { workspace } : { workspace, requireExisting, omitMessages: useHistory }
+    // What the engine says it sends belongs to the bot only while this is its main conversation.
+    let isMain = false
+    let reported: string | null | undefined
+    const onEffort = (effort: string | null) => {
+      reported = effort
+      if (isMain) this.sessions.noteEffective(botId, effort)
+    }
+    const reasoningEffort = await this.sessions.forNewSession(bot)
+    const options = fresh ? { workspace, reasoningEffort, onEffort } : { workspace, requireExisting, omitMessages: useHistory, reasoningEffort, onEffort }
     const chat = await this.runtimes.engineFor(bot).openChat(bot.engineBotId, fresh ? null : (chatId ?? main), options, event)
     id = chat.snapshot.chatId
     if (useHistory) for (const e of pending) this.history?.record(botId, id, e)
@@ -48,6 +58,8 @@ export class BotConversations {
     }
     chat.snapshot.botId = botId
     if (fresh || (!chatId && chat.snapshot.chatId !== main)) this.prefs.setMainChat(botId, chat.snapshot.chatId)
+    isMain = chat.snapshot.chatId === this.prefs.mainChat(botId)
+    if (isMain && reported !== undefined) this.sessions.noteEffective(botId, reported)
     if (this.history && useHistory) {
       try {
         await this.history.latest(bot, chat.snapshot)

@@ -69,7 +69,7 @@ Every tool acts as the calling bot and calls the function the screen uses. Reads
 | `lilbot_status(area)` | `connections.status` (t3), `computers.list`, `deploy.status` |
 | `lilbot_bots_list`, `lilbot_bot_read` | `bots.list` with `sections.list`, `bots.get` |
 | `lilbot_bot_create` | `create_bot`: `BotService.createFromBot` (any bot; request-id idempotency; model inherited) |
-| `lilbot_bot_edit` | `bots.update` for name, function, instructions, model (not the permission mode); bot text gets the creation-time `memoryRefusal` check |
+| `lilbot_bot_edit` | `bots.update` for name, function, instructions, model, reasoning effort (not the permission mode); bot text gets the creation-time `memoryRefusal` check |
 | `lilbot_primary_set` | `bots.setPrimary` |
 | `lilbot_models_list` | `models.list` |
 | `lilbot_roster_set` | `bots.setPrefs` (pinned, which also sets or clears `pinnedAt`; hidden; section) |

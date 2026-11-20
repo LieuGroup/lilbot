@@ -1,6 +1,6 @@
 /** Engines run identities supplied by LilBot. Native runtime ids never become public bot ids. */
 import type { ActivityEvent } from '../../shared/activity-schema'
-import type { BotIdentity, BotModel, BotSetup, ModelProvider, PermissionMode } from '../../shared/bot-schema'
+import type { BotIdentity, BotModel, BotSetup, ModelProvider, PermissionMode, ReasoningEffort } from '../../shared/bot-schema'
 import type { ChatEvent, ChatSnapshot } from '../../shared/chat-schema'
 import type { MessageOrigin } from '../../shared/device-schema'
 
@@ -49,6 +49,10 @@ export interface RoutineOptions {
 export interface ChatOptions {
   /** The bot's folder; the chat works there. */
   workspace: string
+  /** Given to a session the engine creates; a resumed session keeps its own. */
+  reasoningEffort?: ReasoningEffort
+  /** Told what the engine says it really sends for this chat: when it opens, and whenever that changes. Null: none. */
+  onEffort?: (effort: string | null) => void
   /** Explicit history must not silently become a new conversation. */
   omitMessages?: boolean
   requireExisting?: boolean
@@ -64,6 +68,13 @@ export interface McpConnection {
   timeoutSeconds: number
   /** The tools the engine should offer; the bridge enforces the same list. */
   tools: readonly string[]
+}
+
+/** An edit to a stored conversation, applied from its next message. A turn that is running finishes first. */
+export interface SessionChange {
+  model?: BotModel
+  /** A level to send, or null to go back to the engine's default; absent leaves it alone. */
+  reasoningEffort?: ReasoningEffort | null
 }
 
 export type RuntimeBinding = { id: string; engineBotId: string }
@@ -109,6 +120,10 @@ export interface BotEngine {
   /** Refuse an unavailable model before an identity edit is saved. Must not apply the old identity. */
   validateModel(model: BotModel): Promise<void>
   listModels(): Promise<ModelProvider[]>
+  /** Switch a stored conversation to the model and effort from its next message, also while it is working. Resolves with the
+   *  level the engine now says it sends (null: none), or null when the conversation no longer exists. Throws
+   *  `confirm_required` when the engine wants a confirmation first and changed nothing. */
+  updateSession(botId: string, chatId: string, change: SessionChange): Promise<{ effort: string | null } | null>
   /** Open a new chat (`chatId` null) or continue a stored one. A stored chat that no longer exists
    *  is replaced by a new one; the snapshot says which chat was opened. Events arrive until `close()`. */
   openChat(botId: string, chatId: string | null, options: ChatOptions, onEvent: (event: ChatEvent) => void): Promise<OpenChat>
