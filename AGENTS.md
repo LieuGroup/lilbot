@@ -324,8 +324,8 @@ What a bot is and who owns each part.
     `session.mutate`'s result (checked live, #79), so LilBot never confirms; picking the model does not override the
     guard. The first message after a switch has no prompt cache.
 - `server/database/migrations.ts` owns the schema as an ordered list of migration steps (`database.ts` opens the file
-  and applies them): add a step, never edit a shipped one. Each store file owns the SQL of its tables. Default file `~/.local/share/lilbot/lilbot.db`
-  (`LILBOT_DATA_DIR`). SQLite connections wait up to five seconds for short locks.
+  and applies them): add a step, never edit a shipped one. Each store file owns the SQL of its tables. Default file
+  `~/.local/share/lilbot/lilbot.db` (`LILBOT_DATA_DIR`). SQLite connections wait up to five seconds for short locks.
 - Workspaces: `~/lilbot/workspaces/<bot id>` (`LILBOT_WORKSPACES_DIR`), created on first use and passed to the engine
   as the working directory of new chats. A resumed chat keeps the folder it was made with.
 - Pushes: `bots.changed` goes to every browser when a bot, preference or section changes, or the engine reports that
@@ -533,7 +533,7 @@ startup and restored if it differs, like `t3-coding`).
   exchange's hidden session is the exchange, asked by the delegating bot; a routine run's session is the run, asked by
   the routine; anything else is a conversation, asked by Oscar unless the bot says `self`. Webhook runs join when #151
   lands (one resolver line); groups with #133.
-- Rules: `working` needs the definition; `done` needs it, at least one evidence entry and a result, unless the item was
+- Rules: opening with a definition (or at level 0) starts the work; `working` needs the definition; `done` needs it, at least one evidence entry and a result, unless the item was
   opened at level 0. The level is set at opening only (so it cannot be lowered to skip the check). Only the owner reports
   on its item; the caller is the key's bot. `needs_oscar` carries exactly one question; a second while one waits is
   refused. `failed` needs a result, `dropped` a reason. Final items take nothing more. Nothing is deleted.
@@ -556,8 +556,9 @@ startup and restored if it differs, like `t3-coding`).
   delivered once through `work_answers`: a hidden turn with a stable run id in the bot's main conversation for work from
   a conversation, otherwise in the session the work came from. Transport failures retry after 30 seconds. Screens:
   `needs-ui`.
-- The note has two static lines on when to open an item: work that takes more than a reply (handed over, scheduled,
-  triggered from outside, or changing something), not answering a question.
+- The note has two static lines on when to open an item: before any work beyond a reply, however small (changing
+  something, handed over, scheduled or from outside), not for answering a question. The first live run with a softer
+  wording saw a bot skip the item for a one-file task.
 
 ## Restart recovery
 
