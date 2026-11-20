@@ -46,6 +46,7 @@ import { ThreadStore } from './threads/thread-store'
 import { WebhookService } from './webhooks/webhook-service'
 import { WebhookStore } from './webhooks/webhook-store'
 import { WorkBoard } from './work/work-board'
+import { WorkCheckStore } from './work/work-check-store'
 
 /** Construct services and their background tasks independently of the HTTP listeners. */
 export function createAppServices(
@@ -88,7 +89,9 @@ export function createAppServices(
   const libraryStore = new LibraryStore(database)
   const webhookStore = new WebhookStore(database)
   const rootOf = sessionRoots(engine, store)
-  const hiddenChat = hiddenChats(rootOf, chat => routineStore.isRoutineChat(chat) || threadStore.isInternal(chat) || webhookStore.isWebhookChat(chat))
+  const checkStore = new WorkCheckStore(database)
+  const ownChat = (chat: string) => routineStore.isRoutineChat(chat) || threadStore.isInternal(chat) || webhookStore.isWebhookChat(chat) || checkStore.isCheckChat(chat)
+  const hiddenChat = hiddenChats(rootOf, ownChat)
   const library = new LibraryService(
     libraryStore,
     id => workspaces.pathFor(id),
@@ -142,7 +145,7 @@ export function createAppServices(
   })
   const calls = new CallingChats(botId => prefs.mainChat(botId))
   const runs = { threadStore, routineStore, webhookStore, rootOf }
-  const { work, links, answers } = createWork({ database, engine, store, prefs, bots, ...runs, libraryStore, activity, history: history.store, calls, publish })
+  const { work, links, answers, checks } = createWork({ database, engine, store, prefs, bots, ...runs, libraryStore, workspaces, activity, history: history.store, calls, publish })
   const { threads, delegation } = createThreads({ engine, store, prefs, bots, workspaces, history, activity, threadStore, calls, work: links, publish })
   const board = new WorkBoard(work, answers, threads)
   const webhooks = new WebhookService(webhookStore, bots, token, HOOK_ORIGIN, () => publish({ event: 'webhooks.changed' }))
@@ -163,6 +166,7 @@ export function createAppServices(
   const routines = new RoutineService(routineStore, bots, () => publish({ event: 'routines.changed' }), routineSettings(process.env))
   repeat('threads', 1000, () => threads.tick())
   repeat('work answers', 1000, () => answers.tick())
+  repeat('work checks', 1000, () => checks.tick())
   const observeRun = (event: ActivityEvent) => {
     if (store.exists(event.botId)) activity.observe(event)
   }

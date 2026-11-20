@@ -45,7 +45,9 @@ export class WorkLinks {
       requestId: null,
       title: titleOf(exchange.task),
       done: '',
+      kind: null,
       checkLevel: 1,
+      defaultLevel: null,
       status: 'open',
       askedBy: { kind: 'bot', id: exchange.asker.id, name: exchange.asker.name },
       origin: { kind: 'exchange', id: exchange.id },
@@ -65,10 +67,12 @@ export class WorkLinks {
     }
   }
 
-  /** A deleted bot's unfinished items are dropped and its answers still on their way are not sent. */
+  /** A deleted bot's unfinished items are dropped, its answers still on their way are not sent and Oscar's levels for it
+   *  are removed. A check it was doing ends when its run finds the bot gone. */
   forgetBot(botId: string) {
     for (const item of this.store.unfinished({ ownerId: botId })) this.dropAs(item.id, 'The bot was deleted.')
     this.answers.forgetBot(botId)
+    this.work.levels.forgetBot(botId)
   }
 
   private dropAs(itemId: string, reason: string) {

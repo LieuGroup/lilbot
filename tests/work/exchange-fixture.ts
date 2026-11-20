@@ -20,6 +20,6 @@ export async function handedOver(f: Fixtures) {
   await f.d.settle()
   const run = f.d.runs.find(r => r.botId === 'b')!
   f.w.state.chats.set('b', run.chatId)
-  await f.w.work.act('b', { requestId: 'b1', title: 'Hello file', done: 'hello.txt says hi' })
+  await f.w.work.act('b', { requestId: 'b1', title: 'Hello file', kind: 'file', done: 'hello.txt says hi' })
   return { parent, id, run }
 }

@@ -62,6 +62,10 @@ export class BrowserSession {
     'work.open': async ({ itemId }) => requireService(this.work, 'The work board is unavailable.').open(itemId),
     'work.drop': async ({ itemId, reason }) => requireService(this.work, 'The work board is unavailable.').drop(itemId, reason),
     'work.answer': async ({ itemId, answer }) => requireService(this.work, 'The work board is unavailable.').answer(itemId, answer),
+    'work.pass': async ({ itemId, note }) => requireService(this.work, 'The work board is unavailable.').pass(itemId, note),
+    'work.sendBack': async ({ itemId, reason }) => requireService(this.work, 'The work board is unavailable.').sendBack(itemId, reason),
+    'work.levels.get': async () => requireService(this.work, 'The work board is unavailable.').levels(),
+    'work.levels.set': async input => requireService(this.work, 'The work board is unavailable.').setLevel(input),
     'work.brief': async ({ since }) => requireService(this.work, 'The work board is unavailable.').brief(since),
     'computers.list': async () => requireService(this.computers, 'Computers unavailable.').list(),
     'computers.installCode': async ({ name }) => ({

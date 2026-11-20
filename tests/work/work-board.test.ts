@@ -64,7 +64,7 @@ test('Oscar answers the one question: saved, the item goes back to work, and the
 
 test('an item asked about before it started goes back to open, and an answer to an exchange’s item returns to that session', async () => {
   const f = workFixture()
-  const bare = await f.work.act('a', { requestId: 'q', title: 'Plan the trip', status: 'needs_oscar', question: 'Which city?' })
+  const bare = await f.work.act('a', { requestId: 'q', title: 'Plan the trip', kind: 'file', status: 'needs_oscar', question: 'Which city?' })
   expect(f.board.answer(bare.id, 'Hanoi').status).toBe('open')
   f.database.query("UPDATE work_items SET origin_kind = 'exchange', status = 'needs_oscar', chat_id = 'a-hidden' WHERE id = ?").run(bare.id)
   f.board.answer(bare.id, 'Da Nang')

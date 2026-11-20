@@ -22,7 +22,9 @@ test('upgrade rewinds completed copies once, repairs missing tools and resumes i
     store.session('bot', 'session', 1)
     store.write('bot', 'session', [rows[0], rows[2]], 'tail', true)
     store.discovered('bot')
-    db.exec('ALTER TABLE bot_prefs DROP COLUMN pinned_at; ALTER TABLE bots DROP COLUMN reasoning_effort; PRAGMA user_version=18')
+    db.exec(
+      'ALTER TABLE bot_prefs DROP COLUMN pinned_at; ALTER TABLE bots DROP COLUMN reasoning_effort; ALTER TABLE work_items DROP COLUMN kind; ALTER TABLE work_items DROP COLUMN default_level; PRAGMA user_version=18'
+    )
     db.close()
     db = openDatabase(path)
     store = new HistoryStore(db)

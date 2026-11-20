@@ -17,4 +17,4 @@ export const unknownDeviceLine = '[LilBot origin: sent from a device LilBot does
 export const routineLine = '[LilBot origin: a scheduled routine run, not a message from a device.]'
 export const webhookLine = '[LilBot origin: a webhook event from an outside service, not a message from a device.]'
 export const botLine = "[LilBot origin: another bot's message, not a message from a device.]"
-export const boardLine = "[LilBot origin: Oscar's answer on the work board, not a message from a device.]"
+export const boardLine = "[LilBot origin: the work board (Oscar's answer or a check LilBot runs), not a message from a device.]"

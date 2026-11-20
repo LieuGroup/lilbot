@@ -97,9 +97,9 @@ continuous main conversation per bot on every device, the three-column shell (ro
 Activity, Library, Memory and Setup tabs), bot menu, delete confirmation, Settings, chat attachments, LilBot's own
 memory with a Memory panel and after-chat review, every bot knowing its system (the note) and operating the app through
 LilBot's own MCP tools, delegation between bots (several tasks at once, files, status, stop, redirect, wait), and the
-backends for routines, webhooks, threads, library, skills, computers, the work board and coding through T3 Code. Next:
-the Routines, Webhooks (#138), Library and work board screens, check levels (#142), the nightly memory tidy-up and
-editing abilities. Reports are not built. Desktop (Tauri) and iOS (Expo) come after the
+backends for routines, webhooks, threads, library, skills, computers, the work board with its check levels and coding
+through T3 Code. Next: the Routines, Webhooks (#138), Library and work board screens, the check levels' track record and
+spot checks (#142), the nightly memory tidy-up and editing abilities. Reports are not built. Desktop (Tauri) and iOS (Expo) come after the
 web app.
 
 ## Safety: production and development
@@ -534,18 +534,18 @@ takes judgement is the `lilbot-work` skill (`server/work/work-skill/SKILL.md`, i
 startup and restored if it differs, like `t3-coding`).
 
 - An item: id, title, owner (name captured at opening), who asked (`oscar`, `bot`, `routine`, `webhook` or `self`),
-  origin (`conversation`, `exchange`, `group`, `routine_run`, `webhook_run`), the "done" definition, check level (0-3,
-  default 1; stored now, #142 enforces it), status (`open`, `working`, `needs_oscar`, `done`, `failed`, `dropped`),
-  evidence, result, times and an optional parent. Statuses and kinds are checked in code, not SQL, so #142 can add states
-  without a table rebuild. `work_events` keeps every change with where it came from.
+  origin (`conversation`, `exchange`, `group`, `routine_run`, `webhook_run`), the "done" definition, kind of work, check
+  level (0-3) and the kind's default when it got its kind, status (`open`, `working`, `checking`, `needs_oscar`, `done`,
+  `failed`, `dropped`), evidence, result, its checks, times and an optional parent. Statuses and kinds are checked in
+  code, not SQL. `work_events` keeps every change with where it came from.
 - Who asked and the origin come from LilBot's records of the calling session (`app-work.ts`, `workSessions`): an
   exchange's hidden session is the exchange, asked by the delegating bot; a routine or webhook run's session is the run,
   asked by the routine or webhook (named by its task); anything else is a conversation, asked by Oscar unless the bot
   says `self`. A session the engine continued after compressing one of those counts as it (`bots/hidden-chats.ts`,
   `sessionRoots`, the lookup the hidden-session check uses); while its lineage cannot be read the work call is refused
   rather than credited to Oscar. Groups join with #133.
-- Rules: opening with a definition (or at level 0) starts the work; `working` needs the definition; `done` needs it, at least one evidence entry and a result, unless the item was
-  opened at level 0. The level is set at opening only (so it cannot be lowered to skip the check). Only the owner reports
+- Rules: opening needs a kind; with a definition (or at level 0) it starts the work; `working` needs the definition and a
+  kind; `done` needs them, at least one evidence entry and a result, unless the item is at level 0. Only the owner reports
   on its item; the caller is the key's bot. `needs_oscar` carries exactly one question; a second while one waits is
   refused. `failed` needs a result, `dropped` a reason. Final items take nothing more. Nothing is deleted.
 - Evidence: what it proves plus exactly one pointer: a Library item of the owner (checked), a url, a command with its
@@ -581,6 +581,38 @@ startup and restored if it differs, like `t3-coding`).
   exchange's session is only told, with no interrupt (ending that turn would end the exchange), and not at all when the
   same drop stops that exchange. A dropped handed-over parent gives its delegating bot two notices: its own and the
   exchange's "Oscar stopped".
+
+### Check levels (#142)
+
+0 no check; 1 the owner reads the real result and attaches evidence; 2 a second bot reproduces the claim; 3 Oscar checks.
+What must happen is built in (`work-check-*.ts`, `work-checks.ts`, `work-levels.ts`); how to check is the `lilbot-check`
+skill (`server/work/check-skill/`, installed like `lilbot-work`).
+
+- Kinds (`shared/work-check-schema.ts`) and built-in levels: `reply`, `note` 0; `file`, `computer`, `code` 1; `deploy`,
+  `outside` (a message or post that leaves the system), `spending`, `figure` (a number Oscar decides on) 2. Oscar sets a
+  default per kind and per kind for one bot (`work.levels.get`, `work.levels.set`, null removes his; `work_levels`, bot
+  id '' for every bot); the bot's wins. "Hard to undo" is not a kind: the skill tells bots to raise the level for it.
+- The bot gives the kind at opening (an exchange's item: when the receiver first reports); LilBot refuses a level below
+  the effective default and any lowering; raising is allowed until it finishes. An item from before kinds has none: it
+  cannot move to `working` or `done` until its bot gives one, which can raise its level to that kind's default.
+- Level 2: the owner's `done` (same checks as level 1) moves the item to `checking`, not done; LilBot picks the checker
+  in the same transaction (`work_checks`): never the owner or the owner of any item under it, never a choice of the
+  owner's (there is no argument for it); among the rest, one that has not checked this item, then the fewest checks, then
+  by id. Candidates are bots that are ready or being prepared.
+- The check runs as a new hidden session of the checker (`work-check-runner.ts`, run id `check-<check id>`, both session
+  ids saved before the prompt in `work_check_chats`, so it is excluded from history, activity and both memory reviews).
+  The prompt gives the done definition, claim and the owner's evidence in a `work-claim` JSON fence, and the owner's
+  folder. Read-only is by instruction only (full access, like routines). Retries and restarts reuse the run id.
+- The verdict comes only through `lilbot_work` (`verdict`, `result`, the checker's own evidence) from the assigned bot,
+  from that check session. `verified`: done. `not_verified`: back to `working`, the owner told once through
+  `work_answers` with what the checker saw (fenced); a second failure waits for Oscar. `could_not_check`, a run that ends
+  without a verdict, or a checker that is gone: waits for Oscar. While a check is open the owner can report nothing.
+- Oscar's checks: level 3, no other bot ("No second bot was available", a note on the check), a second failure or a
+  check that could not be done put the item in `needs_oscar` with an open Oscar check. `work.pass` (optional note): done.
+  `work.sendBack` (reason): back to `working`, the owner told. `work.answer` refuses these. Dropping an item closes its
+  open check.
+- A level 2 or 3 item is done only as `verified` (a bot) or `passed` (Oscar): every summary carries its latest `check`,
+  and an item carries all of them. Track record and spot checks are not built (proposal on #142).
 - The note has two static lines on when to open an item: before any work beyond a reply, however small (changing
   something, handed over, scheduled or from outside), not for answering a question.
 
@@ -1115,6 +1147,10 @@ profiles, isolated directories, cleanup in `finally`. Most cost a few model call
   drops an item mid-work: its turn ends, the bot is told once and says so. Dropping a parent drops the child and stops its
   exchange as Oscar. Oscar answers the child's question: the helper continues in the exchange and the lead gets the outcome
   once in its own conversation; the lead reads the question and answer with `lilbot_work_list`.
+- `bun run check:checks`: with one temporary bot, an item below its kind's default is refused and a level 2 item waits for
+  Oscar; with a second, a true claim the owner makes itself comes back verified by the other bot, and a false one comes
+  back not verified with what the checker saw, returns to the owner, then waits for Oscar. The owner cannot skip or answer
+  its own check.
 - `bun run check:routines`: create from chat, a real file-writing run, open history, pause, restart, resume, delete.
 - `bun run check:webhooks`: a dev server with its own helper door on loopback and a temporary bot whose webhook is made
   through its MCP tool: a signed event wakes it and the result is recorded and opens; a repeat, an unsigned and a
