@@ -63,7 +63,7 @@ function ended(thread: BotThread, now: number): LineState | null {
   return null
 }
 
-const redirected = (thread: BotThread) => thread.status === 'working' && thread.messages.at(-1)?.redirect === true
+const redirected = (thread: BotThread) => running(thread) && thread.redirecting === true
 
 /** The 12px line under a line's title in a conversation. */
 export function lineState(thread: BotThread, botId: string, now: number): LineState {
@@ -77,8 +77,8 @@ export function lineState(thread: BotThread, botId: string, now: number): LineSt
     return plain(`Answered · ${plural(thread.messages.length, 'message')}`)
   }
   if (thread.status === 'failed' || thread.state === 'failed') return { ...plain(`Failed · ${to.name} could not be reached`), failed: true }
-  if (thread.status === 'waiting') return plain('Waiting to start')
   if (redirected(thread)) return plain('Redirected · picks it up at its next step', 'working')
+  if (thread.status === 'waiting') return plain('Waiting to start')
   if (thread.status === 'working') return plain(joined(thread.activity || 'Working', runTime(thread, now), filesLine(thread, botId)), 'working')
   return plain(joined('Finished', runTime(thread, now), filesLine(thread, botId)), 'finished')
 }

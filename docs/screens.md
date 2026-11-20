@@ -127,8 +127,8 @@ half a second after `threads.changed`). Bot and file names are plain text everyw
   - Asked: "Asked <bot>" / "<bot> asked this bot"; "<bot> is working on it", "Answered · N messages", "Could not be
     delivered" (red), "Stopped at the N-message limit".
   - Handed over (it has a `batchId`): "<bot> · <task>" / "From <bot> · <task>" (task: the request's first line, cut);
-    "Waiting to start", "<activity> · <run time> · N files sent", "Redirected · picks it up at its next step" (while
-    the last message is the redirect), "Finished · <run time> · N files back", "Failed · <bot> could not be reached"
+    "Waiting to start", "<activity> · <run time> · N files sent", "Redirected · picks it up at its next step" (while a
+    redirect waits for the receiver's next step: `redirecting` on the view), "Finished · <run time> · N files back", "Failed · <bot> could not be reached"
     (red; the server keeps no reason), "Stopped by you · after <run time>", "Stopped by <bot>" (stopped: muted title).
     The receiver's line says "N files received, N sent back".
   - Tasks of one call share one card: a header "Handed out N tasks" / "M of N finished" (12px muted, padding 8/12),

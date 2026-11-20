@@ -44,8 +44,11 @@ test('a handed-over task says who, which task and every state, from the delegati
   expect(lineState(thread({ status: 'waiting', startedAt: null }), 'lead', now)).toEqual({ icon: null, text: 'Waiting to start', failed: false, stopped: false })
   expect(lineState(thread(), 'lead', now)).toMatchObject({ icon: 'working', text: 'Running commands · 4 min · 1 file sent' })
   expect(lineState(thread({ activity: null, messages: [message('lead', 'Fix it', T0)] }), 'lead', now).text).toBe('Working · 4 min')
-  const redirected = thread({ messages: [...thread().messages, message('lead', 'Also find why', T0 + MIN, { redirect: true })] })
+  const redirect = message('lead', 'Also find why', T0 + MIN, { redirect: true })
+  const redirected = thread({ redirecting: true, messages: [...thread().messages, redirect] })
   expect(lineState(redirected, 'lead', now)).toMatchObject({ icon: 'working', text: 'Redirected · picks it up at its next step' })
+  // Once the redirect reached the running turn the line shows the work again.
+  expect(lineState({ ...redirected, redirecting: undefined }, 'lead', now).text).toBe('Running commands · 4 min · 1 file sent')
   const reply = message('eng', 'Done', T0 + 6 * MIN, { files: [file('eng')] })
   const finished = thread({ status: 'finished', activity: null, endedAt: T0 + 6 * MIN, messages: [...thread().messages, reply] })
   expect(lineState(finished, 'lead', now + 60 * MIN)).toMatchObject({ icon: 'finished', text: 'Finished · 6 min · 1 file back' })

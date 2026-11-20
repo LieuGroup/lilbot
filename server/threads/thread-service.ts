@@ -73,6 +73,7 @@ export class ThreadService {
     return {
       ...thread,
       activity: thread.status === 'working' && !thread.group ? this.runner.lineOf(this.runner.runningFor(thread.id)) : null,
+      ...((thread.status === 'working' || thread.status === 'waiting') && this.store.redirectWaiting(thread.id) ? { redirecting: true as const } : {}),
       messages: thread.messages.map(m => (files.has(m.id) ? { ...m, files: files.get(m.id) } : m)),
       ...(thread.group && this.groupStore ? { group: groupView(thread, this.groupStore, this.runner) } : {})
     }

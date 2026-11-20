@@ -537,7 +537,8 @@ Visual specs: "Work between bots" in [docs/screens.md](docs/screens.md).
   same persisted transcript, including the other bot's tool rows and files per message. A delivered copy downloads
   from `/api/threads/<bot id>/<thread id>/<message id>/<n>` (`ThreadService.file`): the bot must be a participant,
   the copy is read from the recipient's folder without following links and checked against the hash taken when it
-  was copied; files in groups are not served there yet.
+  was copied; files in groups are not served there yet. A running exchange's view has `redirecting` while a redirect
+  did not reach the running turn and waits for the receiver's next step.
 - `bots.list` gives a bot working on a task another bot handed it `workingFor` (exchange id and the delegating bot's
   name), from the deliveries running now (`thread-roster.ts`, with the running groups); the roster row reads "For
   <bot> · <activity>".
