@@ -100,6 +100,20 @@ test('the system server and the note work for every engine: no HTTP layer, no co
   ]).toEqual([])
 })
 
+test('the work board is engine-neutral and below the bots: no HTTP, bots, system, threads, routines or concrete engine; nothing below imports it', () => {
+  expect([
+    ...crossings('server/work', 'server/http'),
+    ...crossings('server/work', 'server/bots'),
+    ...crossings('server/work', 'server/system'),
+    ...crossings('server/work', 'server/threads'),
+    ...crossings('server/work', 'server/routines'),
+    ...crossings('server/work', 'server/engines'),
+    ...crossings('server/threads', 'server/work'),
+    ...crossings('server/routines', 'server/work'),
+    ...crossings('server/bots', 'server/work')
+  ]).toEqual([])
+})
+
 test('devices sit on computers and neutral engine contracts: no HTTP, bots, system or concrete engine; computers and bots never import them; routines and threads take only the pure origin lines', () => {
   expect([
     ...crossings('server/devices', 'server/http'),

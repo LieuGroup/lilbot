@@ -50,9 +50,8 @@ function botsChanged() {
 }
 
 const engine = new HermesEngine(process.env.LILBOT_BOT_IDS?.split(',').filter(Boolean))
-const { bots, store, skills, threadStore, library, computers, devices, attachments, t3Grants, t3Bridge, systemMcp, engineApi, activity, routines, threads } = createAppServices(
-  engine,
-  {
+const { bots, store, skills, threadStore, library, computers, devices, attachments, t3Grants, t3Bridge, systemMcp, engineApi, activity, routines, threads, board } =
+  createAppServices(engine, {
     DATA_DIR,
     WORKSPACES_DIR,
     PORT,
@@ -60,8 +59,7 @@ const { bots, store, skills, threadStore, library, computers, devices, attachmen
     COMMIT,
     publish: frame => publish(EVERYONE, JSON.stringify(frame)),
     botsChanged
-  }
-)
+  })
 
 // Every bot uses LilBot's memory: bots on an older adapter are updated, and a bot that is not
 // connected yet is connected. Both take effect from the bot's next session.
@@ -109,7 +107,8 @@ const websocket: WebSocketHandler<SocketData> = {
       () => deployNotice(DATA_DIR),
       attachments,
       addThis,
-      devices
+      devices,
+      board
     )
   },
   message(socket, message) {
@@ -150,10 +149,16 @@ const server = Bun.serve<SocketData>({
 })
 const accessServer = ACCESS ? startAccessDoor(ACCESS, appRoutes(library, DIST, new Set([ACCESS.host]), 'hermes', attachments, downloads), websocket) : undefined
 
-try {
-  skills.provide('t3-coding', files(join(import.meta.dir, 'connections', 't3-coding-skill')))
-} catch (error) {
-  console.error('[skills] could not install the t3-coding skill:', error instanceof Error ? error.message : error)
+// LilBot's own skills, restored at every start if they differ.
+for (const [name, folder] of [
+  ['t3-coding', join(import.meta.dir, 'connections', 't3-coding-skill')],
+  ['lilbot-work', join(import.meta.dir, 'work', 'work-skill')]
+]) {
+  try {
+    skills.provide(name, files(folder))
+  } catch (error) {
+    console.error(`[skills] could not install the ${name} skill:`, error instanceof Error ? error.message : error)
+  }
 }
 
 console.log(`LilBot listening on http://${server.hostname}:${server.port} (engine: Hermes)`)

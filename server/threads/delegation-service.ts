@@ -11,13 +11,22 @@ export interface DelegationHost extends ThreadHost {
   folder(botId: string): Promise<string>
   steerRun?(botId: string, chatId: string, text: string): Promise<'steered' | 'not_running'>
 }
+type Bot = { id: string; name: string }
+/** The work board (#141), so work handed out inside an item hangs under it as the receiver's own item. */
+export interface DelegationWork {
+  /** The caller's item this delegation from `chatId` belongs to, or null; refuses an item that is not the caller's. */
+  parentFor(callerId: string, chatId: string, itemId?: string): string | null
+  /** Runs inside the new exchange's transaction. */
+  child(parentId: string, exchange: { id: string; owner: Bot; asker: Bot; task: string }): void
+}
 
 export class DelegationService {
   constructor(
     private threads: ThreadService,
     private host: DelegationHost,
     /** The caller's conversation that made this call, where answers return. */
-    private callingChat: (botId: string, requestId: string) => Promise<string | null>
+    private callingChat: (botId: string, requestId: string) => Promise<string | null>,
+    private work?: DelegationWork
   ) {}
   private get store() {
     return this.threads.store
@@ -51,22 +60,27 @@ export class DelegationService {
       )
     const root = await this.host.folder(callerId)
     for (const t of fresh) await checkFiles(root, t.files ?? [])
+    const parentId = chatId ? (this.work?.parentFor(callerId, chatId, input.itemId) ?? null) : null
     const batchId = crypto.randomUUID()
     const exchanges = []
     for (const [i, task] of input.tasks.entries()) {
       const prior = this.store.delivery(`${callerId}:${ids[i]}`)
-      const delivery = prior ?? (await this.hand(caller, targets[i], { ...task, requestId: ids[i], chatId: chatId!, batchId, root }))
+      const delivery = prior ?? (await this.hand(caller, targets[i], { ...task, requestId: ids[i], chatId: chatId!, batchId, parentId, root }))
       const thread = this.store.get(delivery.threadId)
       exchanges.push({ exchangeId: thread.id, to: targets[i].name, status: thread.status, batchId: thread.batchId })
     }
     if (fresh.length) this.threads.changed()
-    return { exchanges, note: 'Each answer arrives later as a new turn in this conversation. Do not poll; use lilbot_delegation_wait to hear when all are in.' }
+    return {
+      exchanges,
+      ...(parentId ? { itemId: parentId } : {}),
+      note: 'Each answer arrives later as a new turn in this conversation. Do not poll; use lilbot_delegation_wait to hear when all are in.'
+    }
   }
 
   private async hand(
     caller: { id: string; name: string },
     target: { id: string; name: string },
-    t: { requestId: string; task: string; files?: string[]; exchangeId?: string; chatId: string; batchId: string; root: string }
+    t: { requestId: string; task: string; files?: string[]; exchangeId?: string; chatId: string; batchId: string; parentId: string | null; root: string }
   ) {
     const newId = t.exchangeId ?? crypto.randomUUID()
     const toRoot = await this.host.folder(target.id)
@@ -77,9 +91,10 @@ export class DelegationService {
       return this.store.accept(
         caller,
         target,
-        { requestId: t.requestId, text: t.task, chatId: t.chatId, threadId: t.exchangeId, newId, batchId: t.batchId },
+        { requestId: t.requestId, text: t.task, chatId: t.chatId, threadId: t.exchangeId, newId, batchId: t.batchId, parentId: t.exchangeId ? null : t.parentId },
         (messageId, thread) => {
           recorded = true
+          if (!t.exchangeId && t.parentId) this.work?.child(t.parentId, { id: thread.id, owner: target, asker: caller, task: t.task })
           for (const [n, c] of copies.entries())
             this.threads.files.add({
               id: `${messageId}:${n}`,

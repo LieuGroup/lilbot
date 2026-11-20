@@ -6,11 +6,11 @@ app. Rules and the short version are in `AGENTS.md` under "System". Code: `serve
 
 ## The note
 
-- Written by LilBot, about 200 words: the bot's name, id, folder and model; that it runs in LilBot on the leader; the
+- Written by LilBot, about 250 words: the bot's name, id, folder and model; that it runs in LilBot on the leader; the
   other bots (up to eight, then a count); the computers; the standing rules for choosing a computer (static text
   that adds no online state and no main mark: the per-message origin line and `lilbot_about` give those); whether coding
-  through T3 Code works; the running release; and two lines pointing at `lilbot_about` and `lilbot_guide` with the rules
-  for changing LilBot.
+  through T3 Code works; two static lines on when to open a work item (#141); the running release; and two lines
+  pointing at `lilbot_about` and `lilbot_guide` with the rules for changing LilBot.
 - Delivered through the one engine-neutral system-prompt path: `BotRuntimes.state()` hands every engine
   `withNote(instructions, note)` as the bot's instructions. LilBot's database and the Setup panel keep the user's own
   text; `importBots` strips a note an engine still holds (`withoutNote`).
@@ -53,6 +53,8 @@ provider returns from `get_tool_schemas` are not in Hermes' registry and stay ea
 compact schema: the adapter's twelve tools cost about 2,300 tokens, the rest of its 2,956 is the rules and the memory
 block. There is no per-tool switch; `tools.tool_search.enabled: off` makes the whole profile eager, built-ins included.
 
+WORK_MEASUREMENT_PLACEHOLDER
+
 ## The server
 
 - `POST /engine/lilbot/mcp` on the private listener (`main.ts`, beside the T3 bridge). Streamable HTTP answered as plain
@@ -93,6 +95,8 @@ Every tool acts as the calling bot and calls the function the screen uses. Reads
 | `lilbot_delegate` | hand one task to each named bot, with files; one exchange each, one batch (`docs/threads.md`) |
 | `lilbot_delegation_status`, `_cancel`, `_redirect`, `_wait` | the delegating bot's control; cancel is the same `ThreadService.cancel` as `threads.cancel` |
 | `lilbot_delegation_attach` | the receiver's files for its answer |
+| `lilbot_work` | the work board: without itemId opens an item (`WorkService.act`), with itemId reports on the caller's own item: definition, evidence, status in one call |
+| `lilbot_work_list` | the caller's items, every bot's, or one in full: the same records as `work.list` and `work.open` |
 
 Not offered, by decision: deleting a bot, removing a computer, forgetting another bot's private facts, changing a bot's
 permission mode, registering computers. Routines, library, skills, computers, `create_bot`, `search_conversations` and
@@ -101,7 +105,7 @@ work done by `lilbot_delegate` and `lilbot_bots_list`.
 
 MCP requests carry no session (checked live: two sessions of one bot send identical requests, `_meta` holds only a
 progress token). A tool that needs the calling conversation takes a `requestId` and resolves it from the engine's
-`tool.start` reports (`server/threads/calling-chats.ts`).
+`tool.start` reports (`server/threads/calling-chats.ts`, which traces `lilbot_delegate` and `lilbot_work`).
 
 Judgment calls: a memory tool may name another bot's panel (as Oscar can on the screens), but only a fact in that
 panel can be named, by the short id a bot sees; the default is the calling bot's own. Another bot's private facts can
@@ -123,4 +127,6 @@ specifics (how the connection is applied, what is skipped on restart) are in `do
 
 Add it to a `server/system/tool-*.ts` file with `readTool` or `actionTool`, reusing the schema from `shared/` and the
 service function the screen calls; add a line to the guide topic it belongs to; add it to the list in
-`tests/system/system-mcp.test.ts`. Keep the description to one sentence: every tool costs tokens in every turn.
+`tests/system/system-mcp.test.ts`. Keep the description to one sentence: every tool costs tokens in every turn. Prefer
+one tool whose fields cover several steps (as `lilbot_work` does) over a tool per step, keep `.describe()` for fields
+whose name does not say enough, and measure the `tools/list` characters before and after.

@@ -24,7 +24,7 @@ const facts = (others: NoteFacts['others'] = [{ name: 'Writer', function: 'Draft
   release: 'abcdef012345'
 })
 
-test('the note states who the bot is, where it runs and points at the two tools, in about 200 words', () => {
+test('the note states who the bot is, where it runs and points at the two tools, in about 250 words', () => {
   const note = buildNote(facts())
   for (const part of [
     '"Bot One"',
@@ -43,12 +43,15 @@ test('the note states who the bot is, where it runs and points at the two tools,
     'Say which computer you used',
     'lilbot_about',
     'lilbot_guide',
-    'bun run deploy'
+    'bun run deploy',
+    'before any work beyond a reply, however small',
+    'open an item with lilbot_work. Not for answering a question',
+    '"done" definition before starting'
   ]) {
     expect(note).toContain(part)
   }
   expect(words(note)).toBeGreaterThan(90)
-  expect(words(note)).toBeLessThan(210)
+  expect(words(note)).toBeLessThan(260)
   expect(buildNote({ ...facts([]), bot: { ...facts().bot, model: null } })).toContain("the engine's default")
 })
 
@@ -56,7 +59,7 @@ test('a long roster stays short: a few bots are named and the rest counted', () 
   const many = Array.from({ length: 40 }, (_, i) => ({ name: `Bot number ${i}`, function: 'x'.repeat(300) }))
   const note = buildNote(facts(many))
   expect(note).toContain('and 32 more')
-  expect(words(note)).toBeLessThan(260)
+  expect(words(note)).toBeLessThan(310)
   expect(note).not.toContain('x'.repeat(60))
 })
 

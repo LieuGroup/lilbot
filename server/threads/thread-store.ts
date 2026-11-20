@@ -26,6 +26,8 @@ export interface Accept {
   /** The id a new thread gets, so files can be copied before it exists. */
   newId?: string
   batchId?: string | null
+  /** The delegating bot's work item a new exchange is handed out under. */
+  parentId?: string | null
   kind?: 'request' | 'redirect'
 }
 type Bot = { id: string; name: string }
@@ -99,7 +101,7 @@ export class ThreadStore {
             state: 'open',
             messages: [],
             batchId: input.batchId ?? null,
-            parentId: null,
+            parentId: input.parentId ?? null,
             status: 'waiting',
             activity: null,
             startedAt: null,
@@ -129,7 +131,8 @@ export class ThreadStore {
       })
       if (thread.status !== 'working') Object.assign(thread, { status: 'waiting', endedAt: null })
       this.save(thread)
-      if (!input.threadId) this.db.query('INSERT OR IGNORE INTO thread_links(thread_id,batch_id) VALUES(?,?)').run(thread.id, input.batchId ?? null)
+      if (!input.threadId)
+        this.db.query('INSERT OR IGNORE INTO thread_links(thread_id,batch_id,parent_id) VALUES(?,?,?)').run(thread.id, input.batchId ?? null, input.parentId ?? null)
       this.db
         .query('INSERT INTO thread_deliveries(id,threadId,sender,target,sourceChat,text,kind) VALUES(?,?,?,?,?,?,?)')
         .run(id, thread.id, caller.id, target.id, input.chatId, input.text, kind)

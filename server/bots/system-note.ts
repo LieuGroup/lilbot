@@ -3,7 +3,7 @@
  *  in LilBot's database never change; engines apply `withNote(instructions, note)`.
  *
  *  It is written once per session by every engine, so it holds only what changes rarely and points at the
- *  `lilbot_about` tool for the rest. Keep it about 150 words and keep volatile facts (a computer going
+ *  `lilbot_about` tool for the rest. Keep it about 250 words and keep volatile facts (a computer going
  *  online, a bot's activity) out of it: any change here rewrites the instructions of every bot. */
 import type { BotModel } from '../../shared/bot-schema'
 
@@ -38,6 +38,8 @@ export function buildNote({ bot, others, computers, coding, release }: NoteFacts
     `Computers: ${computers.join(', ') || 'none'}.`,
     'Choosing a computer: every message ends with a [LilBot origin] line, written by LilBot, naming the device Oscar sent it from. "My computer", "this computer" or "here" means that device\'s computer; if the device is not a computer, the main computer (lilbot_about shows it); a computer named in the message means that one. If it is offline, none can be told, or the words fit several, ask Oscar which in your reply, listing the computers by name, and do not use a tool to ask; never guess for a command that changes something. Say which computer you used.',
     `Coding through T3 Code: ${coding}.`,
+    'Work board: before any work beyond a reply, however small (changing a file, setting or message; handed over, scheduled or from outside), open an item with lilbot_work. Not for answering a question.',
+    'Write its "done" definition before starting, add evidence read from the real result, then finish it (skill lilbot-work).',
     `LilBot release: ${release}.`,
     'You can operate LilBot yourself with your lilbot_* tools. lilbot_about gives these facts live (they can change during a long session); lilbot_guide explains each part and the rules for changing LilBot: code changes go through T3 Code, production changes only through `bun run deploy`, and never test on live bots.',
     CLOSE

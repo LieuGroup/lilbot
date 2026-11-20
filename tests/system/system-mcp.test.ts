@@ -27,7 +27,9 @@ const EXPECTED_TOOLS = [
   'lilbot_delegation_cancel',
   'lilbot_delegation_redirect',
   'lilbot_delegation_wait',
-  'lilbot_delegation_attach'
+  'lilbot_delegation_attach',
+  'lilbot_work',
+  'lilbot_work_list'
 ]
 
 test('only engine processes on this machine with a current bot’s own system key get in', async () => {

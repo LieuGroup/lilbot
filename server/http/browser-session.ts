@@ -10,6 +10,7 @@ import type { AddThisComputer } from '../computers/add-this-computer'
 import type { DeviceService } from '../devices/device-service'
 import type { LibraryService } from '../library/library-service'
 import type { RoutineService } from '../routines/routine-service'
+import type { WorkBoard } from '../work/work-board'
 import { type AfterResponse, BrowserChats } from './browser-chats'
 
 function requireService<T>(service: T | undefined, message: string): T {
@@ -36,7 +37,8 @@ export class BrowserSession {
     private deploymentNotice?: () => string | undefined,
     private attachments?: AttachmentService,
     private addThis?: AddThisComputer,
-    private devices?: DeviceService
+    private devices?: DeviceService,
+    private work?: WorkBoard
   ) {
     this.chats = new BrowserChats(bots, sendFrame, activity, threads, attachments)
   }
@@ -54,6 +56,11 @@ export class BrowserSession {
       await this.threads!.open(botId, threadId)
       return this.threads!.cancel(threadId, { kind: 'oscar', id: null, name: 'Oscar' })
     },
+    'work.list': async input => requireService(this.work, 'The work board is unavailable.').list(input),
+    'work.open': async ({ itemId }) => requireService(this.work, 'The work board is unavailable.').open(itemId),
+    'work.drop': async ({ itemId, reason }) => requireService(this.work, 'The work board is unavailable.').drop(itemId, reason),
+    'work.answer': async ({ itemId, answer }) => requireService(this.work, 'The work board is unavailable.').answer(itemId, answer),
+    'work.brief': async ({ since }) => requireService(this.work, 'The work board is unavailable.').brief(since),
     'computers.list': async () => requireService(this.computers, 'Computers unavailable.').list(),
     'computers.installCode': async ({ name }) => ({
       ...requireService(this.computers, 'Computers unavailable.').auth.code(name),

@@ -19,6 +19,7 @@ export type ThreadAsk = z.infer<typeof ThreadAsk>
 /** One call hands one task to each named bot; each task is its own exchange, all of them one batch. */
 export const DelegateInput = z.object({
   requestId: z.string().min(1).max(100),
+  itemId: z.string().min(1).max(100).optional().describe('Your work item this is part of'),
   tasks: z
     .array(
       z.object({
@@ -66,7 +67,7 @@ export interface BotThread {
   messages: ThreadMessage[]
   /** Tasks handed out by one call share it. */
   batchId: string | null
-  /** The work item this exchange belongs to (#141); always null for now. */
+  /** The delegating bot's work item this exchange was handed out under; the receiver's own item has the exchange's id. */
   parentId: string | null
   status: ExchangeStatus
   /** What the receiver is doing right now, while it works. */

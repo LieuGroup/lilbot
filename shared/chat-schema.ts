@@ -20,6 +20,8 @@ export const ChatItem = z.discriminatedUnion('kind', [
     name: z.string(),
     detail: z.string(),
     threadId: z.string().optional(),
+    /** The work item this line links to, in the conversation it was opened from. */
+    workItemId: z.string().optional(),
     result: z.string().optional(),
     running: z.boolean(),
     failed: z.boolean().optional()

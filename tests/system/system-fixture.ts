@@ -11,6 +11,7 @@ import { ThreadService } from '../../server/threads/thread-service'
 import { ThreadStore } from '../../server/threads/thread-store'
 import type { T3ConnectionStatus } from '../../shared/connections-schema'
 import { fakeService } from '../helpers/fake-engine'
+import { workFixture } from '../work/work-fixture'
 
 const TOKEN = 'engine-token-for-tests'
 const PORT = 3997
@@ -34,6 +35,7 @@ export function systemFixture() {
     folder: (id: string) => workspaces.ensure(id)
   }
   const threads = new ThreadService(new ThreadStore(fake.database), host)
+  const work = workFixture({ database: fake.database, requireBot: id => fake.service.requireBot(id) })
   const server = createSystemServer({
     store: fake.store,
     workspaces,
@@ -44,7 +46,8 @@ export function systemFixture() {
     activity: fake.activity,
     memory: fake.memory,
     memoryChanged: () => state.memoryPushes++,
-    delegation: { hand: new DelegationService(threads, host, async botId => `${botId}-main`), control: new DelegationControl(threads, host) },
+    delegation: { hand: new DelegationService(threads, host, async botId => `${botId}-main`, work.links), control: new DelegationControl(threads, host) },
+    work: work.work,
     changes,
     dataDir: fake.root,
     engineToken: TOKEN,
@@ -67,7 +70,7 @@ export function systemFixture() {
     const text: string = result.content[0].text
     return result.isError ? { error: text } : { data: JSON.parse(text) }
   }
-  return { ...fake, ...server, state, changes, threads, rosterPushes: fake.changes, request, as, rpc, call }
+  return { ...fake, ...server, state, changes, threads, work, rosterPushes: fake.changes, request, as, rpc, call }
 }
 
 /** A second bot in the roster. */

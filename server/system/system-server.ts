@@ -9,13 +9,14 @@ import { delegationTools } from './tool-delegation'
 import { memoryTools } from './tool-memory'
 import { rosterTools } from './tool-roster'
 import { settingsTools } from './tool-settings'
+import { workTools } from './tool-work'
 
 /** For an engine that shows an MCP server's instructions to the model (Hermes does not; the note carries the same pointers). */
 const INSTRUCTIONS =
   "LilBot's own tools. They act as you, the calling bot. lilbot_about gives live facts about your system; lilbot_guide explains how each part works and the rules for changing LilBot. Nothing here deletes bots, computers or other bots' private facts: Oscar does that himself."
 
 export function createSystemServer(deps: SystemDeps & { engineToken: string; port: number }) {
-  const tools = [...aboutTools(deps), ...botTools(deps), ...rosterTools(deps), ...memoryTools(deps), ...settingsTools(deps), ...delegationTools(deps)]
+  const tools = [...aboutTools(deps), ...botTools(deps), ...rosterTools(deps), ...memoryTools(deps), ...settingsTools(deps), ...delegationTools(deps), ...workTools(deps)]
   const version = toolsVersion(tools)
   const names = tools.map(tool => tool.name)
   const url = `http://127.0.0.1:${deps.port}`
