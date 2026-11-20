@@ -9,7 +9,6 @@ export interface ExclusionPreview {
 }
 
 const SAMPLE_CHARS = 60
-const SAMPLE_ROWS = 5
 
 function assertExcludable(db: Database, bot: string, session: string) {
   const main = db.query('SELECT main_chat_id FROM bot_prefs WHERE bot_id=?').get(bot) as { main_chat_id: string | null } | null
@@ -33,9 +32,9 @@ export function previewExclusion(db: Database, bot: string, session: string): Ex
   const samples = (
     db
       .query(
-        `SELECT json_extract(item,'$.kind') kind,text FROM history_items WHERE bot=? AND session=? AND json_extract(item,'$.kind') IN ('user','assistant') ORDER BY at,position,id LIMIT ?`
+        `SELECT json_extract(item,'$.kind') kind,text FROM history_items WHERE bot=? AND session=? AND json_extract(item,'$.kind') IN ('user','assistant') ORDER BY at,position,id`
       )
-      .all(bot, session, SAMPLE_ROWS) as { kind: string; text: string }[]
+      .all(bot, session) as { kind: string; text: string }[]
   ).map(row => ({ kind: row.kind, text: row.text.replace(/\s+/g, ' ').slice(0, SAMPLE_CHARS) }))
   return { already, kinds, events, samples }
 }

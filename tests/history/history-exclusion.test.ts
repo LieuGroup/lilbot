@@ -117,3 +117,20 @@ test('the main session is refused, an unknown session is refused, and a repeat i
     db.close()
   }
 })
+
+test('a writer that raced the exclusion leaves no visible session or incomplete progress', () => {
+  const { db, store } = seeded()
+  try {
+    db.query("INSERT INTO history_exclusions(bot,session,reason,at) VALUES('a','ghost','race',1)").run()
+    store.session('a', 'ghost', 1)
+    store.divider('a', 'ghost', 1)
+    store.event('a', 'ghost', { type: 'turn.finished' } as never, 'k')
+    expect(store.sessions('a').map(s => s.id)).toEqual(['old', 'mid', 'new'])
+    expect(db.query("SELECT count(*) n FROM history_sessions WHERE id='ghost'").get()).toEqual({ n: 0 })
+    db.query("INSERT INTO history_sessions(bot,id,at) VALUES('a','ghost',1)").run() // a stray row from an older writer
+    expect(store.sessions('a').map(s => s.id)).toEqual(['old', 'mid', 'new'])
+    expect(store.progress('a')).toMatchObject({ sessions: 3, completed: 3, complete: true })
+  } finally {
+    db.close()
+  }
+})

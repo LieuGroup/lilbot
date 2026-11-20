@@ -17,6 +17,9 @@ export interface HistoryRow {
   item: ChatItem
 }
 
+/** SQL guard: the row is inserted or counted only while its session is not excluded, atomically with the statement. */
+const notExcluded = (bot: string, session: string) => `NOT EXISTS (SELECT 1 FROM history_exclusions x WHERE x.bot=${bot} AND x.session=${session})`
+
 /** SQLite owns stable display rows and an event journal written before forwarding each live event. */
 export class HistoryStore {
   constructor(readonly db: Database) {}
@@ -24,11 +27,12 @@ export class HistoryStore {
     return !!this.db.query('SELECT 1 FROM history_exclusions WHERE bot=? AND session=?').get(bot, session)
   }
   session(bot: string, id: string, at: number) {
-    if (this.excluded(bot, id)) return
-    this.db.query('INSERT INTO history_sessions(bot,id,at) VALUES(?,?,?) ON CONFLICT(bot,id) DO UPDATE SET at=min(at,excluded.at)').run(bot, id, at)
+    this.db
+      .query(`INSERT INTO history_sessions(bot,id,at) SELECT ?1,?2,?3 WHERE ${notExcluded('?1', '?2')} ON CONFLICT(bot,id) DO UPDATE SET at=min(at,excluded.at)`)
+      .run(bot, id, at)
   }
   sessions(bot: string) {
-    return this.db.query('SELECT * FROM history_sessions WHERE bot=? ORDER BY at,id').all(bot) as HistorySession[]
+    return this.db.query(`SELECT * FROM history_sessions s WHERE bot=? AND ${notExcluded('s.bot', 's.id')} ORDER BY at,id`).all(bot) as HistorySession[]
   }
   discovered(bot: string) {
     this.db.query('INSERT OR IGNORE INTO history_imports VALUES(?)').run(bot)
@@ -49,11 +53,15 @@ export class HistoryStore {
       .immediate()
   }
   event(bot: string, session: string, event: ChatEvent, key: string = crypto.randomUUID()) {
-    if (this.excluded(bot, session)) return
-    this.db.query('INSERT OR IGNORE INTO history_events(bot,session,at,event,key) VALUES(?,?,?,?,?)').run(bot, session, Date.now(), JSON.stringify(event), key)
+    this.db
+      .query(`INSERT OR IGNORE INTO history_events(bot,session,at,event,key) SELECT ?1,?2,?3,?4,?5 WHERE ${notExcluded('?1', '?2')}`)
+      .run(bot, session, Date.now(), JSON.stringify(event), key)
   }
   progress(bot: string): HistoryPage['import'] {
-    const p = this.db.query('SELECT count(*) sessions,coalesce(sum(complete),0) completed FROM history_sessions WHERE bot=?').get(bot) as { sessions: number; completed: number }
+    const p = this.db.query(`SELECT count(*) sessions,coalesce(sum(complete),0) completed FROM history_sessions s WHERE bot=? AND ${notExcluded('s.bot', 's.id')}`).get(bot) as {
+      sessions: number
+      completed: number
+    }
     const { items } = this.db.query('SELECT count(*) items FROM history_items WHERE bot=?').get(bot) as { items: number }
     return { ...p, items, complete: !!this.db.query('SELECT 1 FROM history_imports WHERE bot=?').get(bot) && p.sessions === p.completed }
   }
@@ -109,9 +117,8 @@ export class HistoryStore {
     this.write(bot, session, [{ id: item.toolId, at, order: 0, item }])
   }
   divider(bot: string, session: string, at: number) {
-    if (this.excluded(bot, session)) return
     this.db
-      .query(`INSERT OR IGNORE INTO history_items(bot,session,id,at,position,item,text) VALUES(?,?,?,?, -1,?, '')`)
+      .query(`INSERT OR IGNORE INTO history_items(bot,session,id,at,position,item,text) SELECT ?1,?2,?3,?4,-1,?5,'' WHERE ${notExcluded('?1', '?2')}`)
       .run(bot, session, `session:${session}`, at, JSON.stringify({ kind: 'session', text: 'New session' }))
   }
   search(bot: string, query: string, limit = 20) {

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { openDatabase } from '../../server/database/database'
@@ -35,11 +35,19 @@ test('the operator command previews, applies only with --yes, and repeats as a n
   }
 })
 
-test('the command refuses a database without the exclusion table and never creates one', () => {
+test('the command never creates a database, and refuses one that has not run the migration', () => {
   const dir = mkdtempSync(join(tmpdir(), 'history-exclude-'))
   try {
-    expect(run(dir).code).toBe(1)
-    expect(run(dir).out).toContain('No LilBot database')
+    const missing = run(dir, '--yes')
+    expect(missing.code).toBe(1)
+    expect(missing.out).toContain('No LilBot database')
+    expect(existsSync(join(dir, 'lilbot.db'))).toBe(false)
+    const db = openDatabase(join(dir, 'lilbot.db'))
+    db.exec('DROP TABLE history_exclusions')
+    db.close()
+    const old = run(dir, '--yes')
+    expect(old.code).toBe(1)
+    expect(old.out).toContain('deploy the version that adds it first')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
