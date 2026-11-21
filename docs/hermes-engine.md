@@ -110,9 +110,16 @@ folder is gone uses `profile purge-identity` to finish gateway identity settleme
 - `session.mutate` `compress` (a compaction asked for from outside a turn, #167) is refused with
   `compression_checkpoint_required` whenever the flag is on, before any provider is asked
   (`gateway/session_mutation_compress.py`); v2 does not change that. Checked live in `check:history`.
-- Rolling back to a release before adapter 0.13.0 reinstalls the v1 adapter but leaves the flag on, so those bots would
-  never compact: after such a rollback run `hermes -p <profile> config set compression.checkpoint_required false` for
-  each connected bot (see `docs/deploy.md`).
+- A save that finds LilBot gone (refused or cut off before an answer) is sent again every 3 seconds for 90 seconds, well
+  within the 300 seconds or more Hermes waits for a compaction; one that timed out while LilBot was saving is not.
+- The adapter appends each save's outcome to `lilbot-memory-saves.jsonl` in the profile (session, time, finished; no text;
+  trimmed to its newest 500 lines past 200 KB). `hermes-memory-saves.ts` reads it so a failed turn (`message.complete`
+  status `error`, live or replayed) or its stored closing row (`display_kind` `failed_turn`) while the session's latest
+  save had failed maps to LilBot's own `memory_save` failure instead of Hermes' text. Hermes' `error_surface` cannot tell
+  this failure apart (it is a local runtime error like any other), so the record is what decides.
+- The rules text and the tool schemas live beside the adapter (`rules.md`, `tools.json`) and ship in its folder.
+- The deploy watchdog clears the flag for a rollback and the next start-up of a release with #148 sets it again (see
+  `docs/deploy.md`).
 
 ## History import
 

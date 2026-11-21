@@ -82,7 +82,7 @@ These stay in the engine's folder because they hook the engine's own turn loop. 
 |---|---|---|
 | Memory block per turn | Supplies the facts a bot needs most, once per turn, fenced as recalled memory and not as user input; static rules go in the system prompt so caching holds | `/engine/memory/context` |
 | After-chat review hand-off | Sends each finished turn of a real conversation (not routines, threads, reviews or sub-agents), without blocking the turn | `/engine/memory/turn` |
-| Save-before-compress | Hands over every user and assistant message before the engine compresses, and lets the engine compress only once LilBot answers `saved` (or `skipped` for LilBot's own sessions); any other answer keeps the conversation as it is | `/engine/history/save` |
+| Save-before-compress | Hands over every user and assistant message before the engine compresses, and lets the engine compress only once LilBot answers `saved` (or `skipped` for LilBot's own sessions); any other answer keeps the conversation as it is. Waits out a LilBot restart, and lets LilBot tell a turn that stopped for want of the save (`failure: memory_save`) from any other failed turn | `/engine/history/save` |
 | Hard-stop guard | Runs the engine's own dangerous-command check before `computer_exec` and refuses a hit. A guard for full-access bots, not a security boundary | `/engine/computers/submit` |
 
 Until their families move to the system server ([#113](https://github.com/LieuGroup/lilbot/issues/113)), the engine also
