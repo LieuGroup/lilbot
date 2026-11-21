@@ -589,10 +589,11 @@ Visual specs: "Work between bots" in [docs/screens.md](docs/screens.md).
   pre-pass, take the save or do not shorten. A compaction asked for from outside a turn (`session.mutate` compress) is
   always refused then (#167).
 - When the save cannot finish (LilBot down or restarting, a review failing), the turn that needed the compaction fails
-  after a few seconds with Hermes' generic text ("Something went wrong and I couldn't finish this reply. Use /retry …",
-  stored as "This turn did not complete …"; the model does not run). The conversation keeps its session and nothing is
-  reset; later turns answer from the whole conversation while it still fits the model's window, and the first message
-  after LilBot is back shortens it with the save. Measured in `check:checkpoint`.
+  after about 6 seconds with Hermes' generic text ("Something went wrong and I couldn't finish this reply. Use /retry …",
+  stored as "This turn did not complete …"; the model does not run). The next turn answers once (Hermes has no fresh
+  token count after a failed turn, so it skips compaction), then every turn fails the same way until the save can run.
+  The session is kept and nothing is reset; the first message after LilBot is back shortens the conversation with the
+  save. Measured in `check:checkpoint` (LilBot down; a failing review takes the same path in Hermes).
 - `bun live-checks/history-benchmark.ts` uses a synthetic 5,000-row dev copy, never production data.
 
 ## Threads

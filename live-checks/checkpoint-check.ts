@@ -131,10 +131,10 @@ try {
     const line = `${((performance.now() - begun) / 1000).toFixed(1)} s, context ${answer.context} tokens, reply ${JSON.stringify(answer.text.slice(0, 400))}`
     return { ...answer, line, session: session.session_id }
   }
-  // Grow the conversation until a turn needs compaction, which the engine then refuses; then one more turn.
+  // Grow the conversation until a turn needs compaction, which the engine then refuses; then three more turns.
   const turns = [await direct(pasted(5))]
   for (const text of [pasted(6), pasted(7)]) if (!logsSince(crashed, 'context compression started').length) turns.push(await direct(text))
-  turns.push(await direct('Still there? Reply with just YES.'))
+  for (const word of ['YES', 'SURE', 'FINE']) turns.push(await direct(`Still there? Reply with just ${word}.`))
   for (const [n, t] of turns.entries()) say(`turn ${n + 1} while LilBot was down: ${t.line}`)
   console.log(logsSince(crashed, 'compression|checkpoint|BLOCKED|cooldown|deferred').join('\n'))
   assert.ok(logsSince(crashed, 'context compression started').length, 'no compaction was attempted while LilBot was down')

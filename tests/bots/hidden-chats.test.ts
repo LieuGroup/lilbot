@@ -70,8 +70,8 @@ test('neither memory review runs for a hidden session or its compression child; 
     expect(unreadable.status).toBe(422)
     expect(f.log.filter(line => line.startsWith('review:'))).toEqual([])
     expect(await (await save('main', 'Oscar likes tea.')).json()).toEqual({ saved: true, passes: 1 })
-    expect(await (await call('/engine/history/save', { chatId: 'main', text: 'An older adapter.' })).json()).toEqual({ saved: true, passes: 1 })
-    expect(f.log.filter(line => line.startsWith('review:'))).toHaveLength(2)
+    expect((await call('/engine/history/save', { chatId: 'main', text: 'An adapter before 0.13.0.' })).status).toBe(400)
+    expect(f.log.filter(line => line.startsWith('review:'))).toHaveLength(1)
     warn.mockRestore()
   } finally {
     f.activity.close()
