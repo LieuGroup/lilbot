@@ -10,7 +10,7 @@ export function workTools({ work, goals }: SystemDeps): McpTool[] {
   return [
     actionTool(
       'lilbot_work',
-      'Open a work item for work beyond a reply (no itemId; title, kind, done), or report on your own item (itemId): done definition, evidence of the real result and status in one call. Status needs_oscar takes one question; done or failed a result; dropped a reason. Done needs a definition and evidence unless level 0; at level 2 a bot LilBot picks checks it first, at 3 Oscar. When LilBot asks you to check an item, give your verdict here.',
+      'Open a work item, report status/evidence, or give a check verdict. Open (no itemId): title, kind, done. Report (itemId): done, evidence, status (needs_oscar: question; done/failed: result; dropped: reason). Done needs done+evidence unless level 0. Checker: pass verdict.',
       WorkInput,
       async (caller, input) => fenceRunText(await work.act(caller, input))
     ),

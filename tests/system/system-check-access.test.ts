@@ -19,6 +19,18 @@ test('a check session only reads and gives its verdict: every change, and readin
   expect((await f.call('b1', 'lilbot_memory_list')).error).toContain(IN_CHECK)
   expect((await f.call('b1', 'lilbot_give_file', { path: 'a.txt', title: 'A', requestId: 'r1' })).error).toContain(IN_CHECK)
   expect((await f.call('b1', 'lilbot_delegate', { requestId: 'r2', tasks: [{ to: 'b2', task: 'x' }] })).error).toContain(IN_CHECK)
+  expect((await f.call('b1', 'lilbot_delegation', { action: 'status' })).data.exchanges).toEqual([])
+  for (const args of [
+    { action: 'cancel', exchangeId: 'e1' },
+    { action: 'redirect', requestId: 'r4', exchangeId: 'e1', message: 'stop' },
+    { action: 'wait', batchId: 'b' },
+    { action: 'attach', exchangeId: 'e1', files: ['a.txt'] },
+    {}
+  ]) {
+    expect((await f.call('b1', 'lilbot_delegation', args)).error).toContain(IN_CHECK)
+  }
+  expect((await f.call('b1', 'lilbot_webhook', { action: 'pause', id: 'h1' })).error).toContain(IN_CHECK)
+  expect((await f.call('b1', 'lilbot_webhook_message', { requestId: 'm1', text: 'hi' })).error).toContain(IN_CHECK)
   expect((await f.call('b1', 'lilbot_group', { action: 'start', requestId: 'r3', purpose: 'x', text: 'y', members: ['b2', 'b3'] })).error).toContain(IN_CHECK)
   expect((await f.call('b1', 'lilbot_group', { action: 'status', groupId: 'nope' })).error).not.toContain(IN_CHECK)
   // The verdict passes the gate; the board decides on it (here: no such item is being checked).

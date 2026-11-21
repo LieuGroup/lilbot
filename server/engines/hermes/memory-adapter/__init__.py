@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 NAME = Path(__file__).resolve().parent.name
 SETTINGS_FILE = "lilbot-memory.json"
 # Keep equal to plugin.yaml. LilBot warns when a bot still calls with an older one.
-VERSION = "0.12.0"
+VERSION = "0.13.0"
 DEFAULT_URL = "http://127.0.0.1:3370"
 DEFAULT_TOKEN_FILE = "~/.local/share/lilbot/engine-token"
 TIMEOUT_SECONDS = 5
@@ -71,29 +71,29 @@ a notice that memory is over its budget, tidy before adding more."""
 TOOLS = [
     {
         "name": "recall_memory",
-        "description": "Search your long-term memory for facts that are not shown to you already. Returns matching facts with their id, kind, date and text.",
+        "description": "Search long-term memory for facts not shown above. Returns id, kind, date, text.",
         "parameters": {
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "Words to look for. Leave empty to list the newest facts."},
-                "kind": {"type": "string", "enum": ["profile", "journal"], "description": "Only this kind of fact."},
-                "limit": {"type": "integer", "description": "How many facts at most (default 20, max 50)."},
+                "query": {"type": "string", "description": "Search words; empty lists newest."},
+                "kind": {"type": "string", "enum": ["profile", "journal"]},
+                "limit": {"type": "integer", "description": "Max results (default 20, max 50)."},
             },
             "required": [],
         },
     },
     {
         "name": "update_memory",
-        "description": "Save one fact to your long-term memory, or forget one. To correct a fact: forget it, then write the new one.",
+        "description": "Save or forget one long-term memory fact. To correct: forget old, write new.",
         "parameters": {
             "type": "object",
             "properties": {
                 "action": {"type": "string", "enum": ["write", "forget"]},
-                "kind": {"type": "string", "enum": ["profile", "journal"], "description": "For write: profile = lasting fact, journal = dated history."},
-                "fact": {"type": "string", "description": "For write: the fact, one or two sentences."},
-                "scope": {"type": "string", "enum": ["bot", "shared"], "description": "For write, optional: bot = only you, shared = all the user's bots."},
-                "expires": {"type": "string", "description": "For write, optional: a date like 2026-12-31 after which the fact no longer applies."},
-                "id": {"type": "string", "description": "For forget: the id shown in brackets before the fact."},
+                "kind": {"type": "string", "enum": ["profile", "journal"], "description": "write: profile (lasting) or journal (dated)"},
+                "fact": {"type": "string", "description": "write: 1-2 sentences"},
+                "scope": {"type": "string", "enum": ["bot", "shared"], "description": "write: bot (only you) or shared"},
+                "expires": {"type": "string", "description": "write: expiry YYYY-MM-DD"},
+                "id": {"type": "string", "description": "forget: fact id in brackets"},
             },
             "required": ["action"],
         },
@@ -212,7 +212,7 @@ class LilBotMemoryProvider(MemoryProvider):
     def get_tool_schemas(self) -> list[dict[str, Any]]:
         return [{
             "name": "search_conversations",
-            "description": "Search your own past conversations with Oscar, including earlier sessions. Returns snippets with stable ids and times. Excludes other bots, threads and routine runs. Use this to recover details no longer in context.",
+            "description": "Search your past conversations with Oscar (excludes other bots, threads, routine runs). Returns snippets with ids and times.",
             "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["query"]}
         }] + list(TOOLS)
 
