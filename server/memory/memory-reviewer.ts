@@ -63,6 +63,11 @@ export class MemoryReviewer {
     private botExists: (botId: string) => boolean = () => true
   ) {}
 
+  /** The model reviews run on; without it, the bot's own. */
+  get model(): BotModel | undefined {
+    return this.settings.model
+  }
+
   trackReview(chatId: string) {
     this.reviewChats.push(chatId)
     if (this.reviewChats.length > REMEMBERED_REVIEW_CHATS) this.reviewChats.shift()

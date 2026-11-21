@@ -57,6 +57,11 @@ Inspect `job.json` and both units, keep the service stopped, repair the cause, s
 database copy, and preserve every key. Only after confirming health may a person remove `deploy/lock/` and resume
 normal deployment. Nothing removes a stale lock automatically.
 
+A rollback to a release before memory adapter 0.13.0 (#148) leaves `compression.checkpoint_required: true` in each
+connected bot's Hermes profile with an adapter that cannot take the checkpoint, so long conversations would never be
+shortened. After such a rollback set it false for each connected bot: `hermes -p <profile> config set
+compression.checkpoint_required false` (the default bot: without `-p`).
+
 ## `bun run check:deploy`
 
 Uses its own clone, release root, symlink, data directory, free port and two temporary systemd units, with an

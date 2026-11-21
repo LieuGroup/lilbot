@@ -577,9 +577,22 @@ Visual specs: "Work between bots" in [docs/screens.md](docs/screens.md).
   seconds; startup never waits for history. Errors leave the import pending for retry; it is safe to resume and repeat.
 - `search_conversations(query, limit?)` searches only the calling bot's user/assistant rows and reports import
   progress. It moves to #62's hub later.
-- Before Hermes compresses, `on_pre_compress` synchronously offers the conversation's user/assistant text (the last
-  100,000 characters) to a hidden memory-only review by the same bot, under the normal memory rules. Review sessions
-  never review themselves. It is best effort: a failure logs a warning and Hermes may proceed.
+- Before Hermes shortens a conversation, LilBot reviews every user and assistant word of it for memory (#148; Hermes'
+  pre-compress checkpoint v2, `/engine/history/save`). `memory/memory-checkpoint.ts` cuts it into passes of about
+  100,000 characters on message boundaries, oldest first, three at a time, each a hidden memory-only review of the same
+  bot on `LILBOT_REVIEW_MODEL` under the normal memory rules, and answers only once every pass finished. A reviewed piece
+  is remembered per bot while the server runs, so a retry or the next shortening reviews only what is new. LilBot's own
+  sessions, their continuations and review sessions answer `skipped` (complete, nothing reviewed); an unreadable lineage
+  is refused, never skipped.
+- Every bot connected to LilBot memory is fail-closed (`compression.checkpoint_required`, set and cleared with the
+  memory connection, Oscar's decision on #148): both of Hermes' compaction paths, its own and the gateway's hygiene
+  pre-pass, take the save or do not shorten. A compaction asked for from outside a turn (`session.mutate` compress) is
+  always refused then (#167).
+- When the save cannot finish (LilBot down or restarting, a review failing), the turn that needed the compaction fails
+  after a few seconds with Hermes' generic text ("Something went wrong and I couldn't finish this reply. Use /retry …",
+  stored as "This turn did not complete …"; the model does not run). The conversation keeps its session and nothing is
+  reset; later turns answer from the whole conversation while it still fits the model's window, and the first message
+  after LilBot is back shortens it with the save. Measured in `check:checkpoint`.
 - `bun live-checks/history-benchmark.ts` uses a synthetic 5,000-row dev copy, never production data.
 
 ## Threads
@@ -1173,7 +1186,7 @@ for connected bots).
 
 - Finished turns of real conversations (not routine or webhook runs, bot threads, their compression children or
   sub-agents) queue in `review-queue.ts` until reviewed; the save before compressing skips the same sessions
-  (`saved: false`, which the adapter logs as a warning).
+  (`skipped`: Hermes' checkpoint completes without a review).
 - `memory-reviewer.ts` reviews a bot once 10 turns wait, or once 3 wait and the chat has been quiet for 2 minutes.
   `LILBOT_REVIEW=off`, `LILBOT_REVIEW_TURNS` and `LILBOT_REVIEW_QUIET_SECONDS` change that. Each tick drops queued
   turns of unknown or deleted bots (also below the threshold or with reviews off); owned bots with missing runtimes
@@ -1474,7 +1487,13 @@ profiles, isolated directories, cleanup in `finally`. Most cost a few model call
 - `bun run check:memory`: tells a temporary bot facts and checks a new session knows them; prints tokens per turn.
   Inherited memory is disconnected before the baseline turn.
 - `bun run check:history`: continuous history, paging and search, tool lines after reload and new session, backfill of
-  tool rows into a copy that lost them; kills only its own server mid-import, repeats the import without duplicates; forced compression.
+  tool rows into a copy that lost them; kills only its own server mid-import, repeats the import without duplicates; a
+  requested compaction is refused while the bot is fail-closed.
+- `bun run check:checkpoint`: a temporary bot whose profile compacts just above its conversation: the agent's own compaction of
+  some 270,000 characters runs only after a review in passes, which saves a fact from the first message; the gateway's
+  hygiene pre-pass (forced by a low message limit on that profile) saves first too; with LilBot stopped, a turn sent
+  straight to the engine is not shortened, and the first message after LilBot is back shortens it with the save. Prints
+  passes, seconds and review tokens.
 - `bun run check:threads`: a temporary bot hands work to another with `lilbot_delegate` and the answer returns; a receiver hands
   it on to a third from its hidden session; the engine API's legacy `threads/ask` still answers idempotently, with its limits.
 - `bun run check:delegation`: a temporary lead hands two tasks to two helpers in one call, one with a file; then it

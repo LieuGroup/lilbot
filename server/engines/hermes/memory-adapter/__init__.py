@@ -1,11 +1,7 @@
-"""LilBot memory provider for Hermes.
-
-Holds no data. Every call goes to the LilBot server on this machine, which owns the memory
-(`server/memory/` and `server/http/engine-api.ts` in the LilBot repo). The stable bot id is supplied in the connection settings.
-
+"""LilBot memory provider for Hermes. Holds no data: every call goes to the LilBot server on this machine, which owns the
+memory (`server/memory/`, `server/http/engine-api.ts`). The stable bot id is supplied in the connection settings.
 Installed per profile by LilBot (`server/engines/hermes/hermes-memory-setup.ts`): this folder is copied to
-`$HERMES_HOME/plugins/lilbot-memory-v<version>/` and `$HERMES_HOME/lilbot-memory.json` says where LilBot is.
-"""
+`$HERMES_HOME/plugins/lilbot-memory-v<version>/` and `$HERMES_HOME/lilbot-memory.json` says where LilBot is."""
 
 from __future__ import annotations
 
@@ -16,15 +12,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from agent.memory_provider import MemoryProvider
-
-try:
-    from agent.memory_provider import spawn_context_thread
-except ImportError:  # older Hermes
-    import threading
-
-    def spawn_context_thread(target, name=None):
-        return threading.Thread(target=target, name=name, daemon=True)
+from agent.memory_provider import MemoryProvider, spawn_context_thread
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +22,11 @@ logger = logging.getLogger(__name__)
 NAME = Path(__file__).resolve().parent.name
 SETTINGS_FILE = "lilbot-memory.json"
 # Keep equal to plugin.yaml. LilBot warns when a bot still calls with an older one.
-VERSION = "0.12.0"
+VERSION = "0.13.0"
 DEFAULT_URL = "http://127.0.0.1:3370"
 DEFAULT_TOKEN_FILE = "~/.local/share/lilbot/engine-token"
 TIMEOUT_SECONDS = 5
+SAVE_TIMEOUT_SECONDS = 600  # the save before compressing reviews the whole conversation in passes; Hermes waits for it
 
 RULES = """# Memory
 You have a long-term memory that outlasts this conversation. The facts you need most are shown to you
@@ -101,12 +90,21 @@ TOOLS = [
 ]
 
 
+def _text(content: Any) -> str:
+    """A message's words: its text, or the text parts of a multimodal message."""
+    parts = content if isinstance(content, list) else [{"type": "text", "text": content if isinstance(content, str) else ""}]
+    return "\n".join(str(p.get("text") or "") for p in parts if isinstance(p, dict) and p.get("type") in ("text", "input_text"))
+
+
 def _bot_id(hermes_home: Path) -> str:
     """The profile id LilBot knows this bot by: the default profile lives in the Hermes home itself."""
     return hermes_home.name if hermes_home.parent.name == "profiles" else "default"
 
 
 class LilBotMemoryProvider(MemoryProvider):
+    # Hermes' fail-closed pre-compress checkpoint (`compression.checkpoint_required`): a save that does not finish raises.
+    pre_compress_checkpoint_api_version = 2
+
     def __init__(self) -> None:
         self._url = DEFAULT_URL
         self._token = ""
@@ -153,7 +151,7 @@ class LilBotMemoryProvider(MemoryProvider):
             method="POST",
         )
         try:
-            with urllib.request.urlopen(request, timeout=240 if endpoint.startswith("history/save") else TIMEOUT_SECONDS) as response:
+            with urllib.request.urlopen(request, timeout=SAVE_TIMEOUT_SECONDS if endpoint.startswith("history/save") else TIMEOUT_SECONDS) as response:
                 return json.loads(response.read())
         except urllib.error.HTTPError as error:
             try:
@@ -193,18 +191,20 @@ class LilBotMemoryProvider(MemoryProvider):
             logger.debug("lilbot-memory: could not hand the turn to LilBot: %s", error)
 
     def on_pre_compress(self, messages: list[dict[str, Any]]) -> str:
-        """Synchronous opportunity to save before Hermes compresses. No model runs in LilBot."""
-        if not self._primary or not self._token:
-            return ""
-        # Only conversational text, never system prompts, tool secrets or credentials.
-        evidence = [{"role": m.get("role"), "text": m.get("content", m.get("text", ""))}
+        """Before Hermes compresses, LilBot reviews every user and assistant word of the conversation for memory. Until
+        that finished this raises (whether or not Hermes requires the checkpoint), so the conversation stays as it is."""
+        if not self._primary:
+            return ""  # LilBot reviews only conversations with the user, never scheduled runs or sub-agents.
+        # Only conversational text, never system prompts, tool output or credentials.
+        evidence = [{"role": m["role"], "text": _text(m.get("content", m.get("text", "")))}
                     for m in messages if m.get("role") in ("user", "assistant")]
-        text = json.dumps(evidence, ensure_ascii=False)[-100000:]
-        result = self._call("history/save", {"text": text, "chatId": self._chat})
+        result = self._call("history/save", {"messages": evidence, "chatId": self._chat})
         if result.get("saved"):
             return "Lasting facts were reviewed for saving to LilBot memory before this summary."
-        logger.warning("lilbot-memory: pre-compression saving did not complete")
-        return ""
+        if result.get("skipped"):
+            return ""
+        logger.warning("lilbot-memory: pre-compression saving did not complete: %s", result.get("error"))
+        raise RuntimeError(f"LilBot did not save this conversation to memory before compressing: {result.get('error') or 'no answer'}")
 
     def on_session_switch(self, new_session_id: str, **kwargs) -> None:
         self._chat = str(new_session_id or self._chat)

@@ -14,7 +14,7 @@ import { backgroundTask } from './background'
 import { BotPrefsStore } from './bots/bot-prefs-store'
 import { BotService } from './bots/bot-service'
 import { BotStore } from './bots/bot-store'
-import { hiddenChats, sessionRoots } from './bots/hidden-chats'
+import { chatKinds, hiddenChats, sessionRoots } from './bots/hidden-chats'
 import { Workspaces } from './bots/workspaces'
 import { ComputerService } from './computers/computer-service'
 import { ComputerStore } from './computers/computer-store'
@@ -92,7 +92,8 @@ export function createAppServices(
   const rootOf = sessionRoots(engine, store)
   const checkStore = new WorkCheckStore(database)
   const ownChat = (chat: string) => routineStore.isRoutineChat(chat) || threadStore.isInternal(chat) || webhookStore.isWebhookChat(chat) || checkStore.isCheckChat(chat)
-  const hiddenChat = hiddenChats(rootOf, ownChat)
+  const chatKind = chatKinds(rootOf, ownChat)
+  const hiddenChat = hiddenChats(chatKind)
   const library = new LibraryService(
     libraryStore,
     id => workspaces.pathFor(id),
@@ -191,7 +192,7 @@ export function createAppServices(
     onMemoryChanged: memoryChanged,
     adapterVersion: MEMORY_ADAPTER_VERSION,
     reviewer,
-    hiddenChat,
+    chatKind,
     inCheck: checkSessions.refusal,
     ...gates
   })

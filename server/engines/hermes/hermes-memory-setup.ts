@@ -1,6 +1,7 @@
 /** Connects a Hermes profile to LilBot's memory: installs the provider plug-in into the profile,
  *  tells it where LilBot is, selects it, and switches Hermes' own two-file memory off so the bot
- *  has one memory. `removeMemory` undoes all of it.
+ *  has one memory. Then Hermes may shorten the conversation only after the plug-in has saved it
+ *  (`compression.checkpoint_required`, #148). `removeMemory` undoes all of it.
  *
  *  The Hermes gateway keeps a plug-in's code loaded per folder until it restarts. So each version
  *  of the plug-in is installed under its own folder name (`lilbot-memory-v0-3-0`): a new version is
@@ -110,10 +111,12 @@ export async function installMemory(botId: string, connection: MemoryConnection)
   await configSet(botId, 'memory.provider', name)
   await configSet(botId, 'memory.memory_enabled', 'false')
   await configSet(botId, 'memory.user_profile_enabled', 'false')
+  await configSet(botId, 'compression.checkpoint_required', 'true')
 }
 
 export async function removeMemory(botId: string) {
   const home = profileHome(botId)
+  await configSet(botId, 'compression.checkpoint_required', 'false')
   await configSet(botId, 'memory.provider', '')
   await configSet(botId, 'memory.memory_enabled', 'true')
   await configSet(botId, 'memory.user_profile_enabled', 'true')

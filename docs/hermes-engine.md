@@ -59,8 +59,8 @@ field LilBot uses is in `tests/engines/hermes/hermes-contract.test.ts`. A profil
   `model.switch_context_confirm_tokens`, default 100,000). A flagged pick is refused with a reply that has no `revision`,
   nothing written, and a `confirm` token (not declared in the contract); LilBot reads the missing `revision` as the refusal and
   answers `confirm_required`. A pick under the threshold to a smaller window is accepted, and the next turn compacts
-  first ("Pre-API compression", summarised by the auxiliary model), which runs the memory plug-in's `on_pre_compress`
-  (the review of the conversation) on the bot's new model.
+  first ("Pre-API compression", summarised by the auxiliary model), which runs the memory plug-in's checkpoint (the
+  review of the conversation, on `LILBOT_REVIEW_MODEL`).
 - A session that is resumed keeps the model and effort it has (thread follow-ups, routine answers); only new sessions
   take the bot's current ones.
 
@@ -96,8 +96,23 @@ folder is gone uses `profile purge-identity` to finish gateway identity settleme
   runs only with its built-in memory tool, which a connected bot no longer has.
 - `sync_turn` hands every finished turn of a real conversation to `/engine/memory/turn` on a thread (not scheduled
   runs or sub-agents).
-- `on_pre_compress` is Hermes' best-effort hook, not the v2 fail-closed checkpoint promise: an unavailable server or a
-  failed review logs a warning and Hermes may proceed.
+- The save before compressing is Hermes' pre-compress checkpoint API v2 (`pre_compress_checkpoint_api_version = 2`,
+  #148). Hermes hands v2 providers its normalised evidence (user and assistant messages; earlier summaries, tool rows and
+  system text left out); the adapter sends all of it to `/engine/history/save` and raises on anything but `saved` or
+  `skipped`, so a failure keeps the transcript as it is. Sub-agents and scheduled agent contexts return at once (LilBot
+  never reviews them).
+- `installMemory` also sets `compression.checkpoint_required: true` (after the provider is selected); `removeMemory`
+  sets it false first. With it on, both compaction paths run the checkpoint or refuse: the agent's own (pre-API,
+  post-tool, overflow) and the gateway's hygiene pre-pass, whose detached agent then loads the memory provider. It also
+  withholds Hermes' lossy side paths (proactive tool-result prune, post-turn micro-compaction, server-side native
+  compaction), all off in LilBot's profiles anyway. A flagged profile without a v2 provider can never compact, and the
+  `codex_app_server` runtime refuses to start with the flag; LilBot sets neither.
+- `session.mutate` `compress` (a compaction asked for from outside a turn, #167) is refused with
+  `compression_checkpoint_required` whenever the flag is on, before any provider is asked
+  (`gateway/session_mutation_compress.py`); v2 does not change that. Checked live in `check:history`.
+- Rolling back to a release before adapter 0.13.0 reinstalls the v1 adapter but leaves the flag on, so those bots would
+  never compact: after such a rollback run `hermes -p <profile> config set compression.checkpoint_required false` for
+  each connected bot (see `docs/deploy.md`).
 
 ## History import
 
