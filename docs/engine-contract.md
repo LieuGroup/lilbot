@@ -59,13 +59,25 @@ conversations, reaches LilBot through MCP, and keeps a thin adapter for the few 
 ## 4. Reaching LilBot: an MCP client
 
 - [ ] An MCP client for Streamable HTTP with a URL and a bearer token per server, a per-call timeout, and a tool
-  allowlist (`McpConnection`). `prepareConnections` makes the connections available from the runtime's next session and
-  is safe to repeat.
+  allowlist (`McpConnection`, `server/engines/mcp-connection.ts`). `prepareConnections` gives the runtime exactly the
+  connections listed, for sessions from their next resume, and is safe to repeat. Every name starts with `lilbot_`:
+  the engine owns those servers (one no longer listed is removed) and never changes or removes any other server, even on
+  a name match. A connection marked `optional` (a service a bot added) may fail to connect without failing the bot.
+- [ ] `applyConnections(runtime, chatIds)` brings open conversations in step with the connections last prepared, in
+  place: from their next message, keeping their context and prompt cache, never by opening a new session or resuming
+  one (a resume re-sends the conversation uncached). Per chat it answers `applied`, `unchanged`, `busy` (a turn runs:
+  nothing changes in a running turn, and LilBot asks again once it ends) or `not_open` (no live conversation by that
+  id: a later resume reads the connections anyway). Timing LilBot relies on: after a service is added, signed in,
+  expired or removed, every bot's open main conversation has the change by its next message once the turn that caused
+  it has ended; the turn that added a service never sees its tools. LilBot calls it about a second after the change,
+  after the call that caused it was answered, because changing a server can abort a call in flight to that server.
 - [ ] The tool list is refreshed when the URL changes: LilBot puts a hash of the tool definitions in the query string, so
   a release that changes a tool reconnects every bot once and an unchanged restart changes nothing. The engine must not
   keep a stale list.
-- [ ] Two connections today: `lilbot_system` (LilBot's own tools, [system-mcp.md](system-mcp.md)) and `lilbot_t3` (T3 Code
-  through LilBot's bridge). A bot's key is valid for that bot only; a deleted bot's key is refused.
+- [ ] The connections: `lilbot_system` (LilBot's own tools, [system-mcp.md](system-mcp.md)), `lilbot_t3` (T3 Code
+  through LilBot's bridge) and one `lilbot_c_<name>` per MCP service a bot added (LilBot's forwarding route; LilBot holds
+  the service's sign-in and tokens, the engine only its own key). A bot's key is valid for that bot and that connection
+  only; a deleted bot's key is refused. An engine never runs its own OAuth for these: the routes never answer 401.
 - [ ] The system note (about 200 words) is delivered as the bot's instructions, the one engine-neutral system-prompt path.
   An engine need not show MCP `instructions`, and must not repeat the note on every turn.
 - [ ] If the engine defers or searches tools, say so here: Hermes' Tool Search defers every MCP tool behind
@@ -107,4 +119,4 @@ An engine without skill tools of its own would get a `lilbot_skills` tool on the
 An engine is ready when the unit and contract tests pass and these checks pass against it on the development setup
 (`bun run dev:setup` equivalent for the engine): `check:live` (chat, stop, resume), `check:reasoning`,
 `check:memory`, `check:history`, `check:system`, `check:threads`, `check:delegation`, `check:routines`, `check:skills`,
-`check:computers`, `check:attachments` and `check:restart`.
+`check:computers`, `check:attachments`, `check:connections` and `check:restart`.

@@ -3,8 +3,9 @@
  *  process. T3 Code still owns projects, threads, worktrees and pull requests. */
 
 import { connectionCaller } from './connection-keys'
-import { type JsonRpc, refusedResult, rpcError, rpcResult, toolError } from './mcp-json-rpc'
-import { filterToolList, scopedRequestId, signedOutReply } from './t3-bridge-replies'
+import { listedTools } from './mcp-forward-replies'
+import { oneMessage, refusedResult, rpcError, rpcResult, toolError } from './mcp-json-rpc'
+import { scopedRequestId, t3SignedOut } from './t3-bridge-replies'
 import { T3_KEY_PURPOSE, T3_STATUS_TOOL, T3_TOOLS } from './t3-connection'
 import { signInMessage, type T3Grants } from './t3-grant'
 
@@ -64,13 +65,8 @@ export function createT3Bridge(options: T3BridgeOptions) {
       return response ? passThrough(response) : new Response(null, { status: 502 })
     }
 
-    let message: JsonRpc
-    try {
-      message = JSON.parse(await request.text())
-    } catch {
-      return rpcError(null, -32700, 'The bridge expects one JSON-RPC message.')
-    }
-    if (!message || typeof message !== 'object' || Array.isArray(message)) return rpcError(null, -32600, 'The bridge expects one JSON-RPC message.')
+    const message = await oneMessage(request)
+    if (message instanceof Response) return message
 
     if (message.method === 'tools/call') {
       const name = message.params?.name
@@ -81,7 +77,7 @@ export function createT3Bridge(options: T3BridgeOptions) {
             { type: 'text', text: `LilBot is signed in to T3 Code until ${new Date(signedIn.expiresAt).toISOString().slice(0, 10)}. Start a new session so the T3 tools load.` }
           ]
         })
-      if (!ALLOWED.has(name)) return signedIn ? toolError(message.id, `${String(name)} is not available to LilBot bots.`) : signedOutReply(message, explanation())
+      if (!ALLOWED.has(name)) return signedIn ? toolError(message.id, `${String(name)} is not available to LilBot bots.`) : t3SignedOut(message, explanation())
       const refused = await options.refusal(botId, name, message.params.arguments)
       if (refused) return refusedResult(message.id, refused)
       const args = message.params.arguments
@@ -89,7 +85,7 @@ export function createT3Bridge(options: T3BridgeOptions) {
     }
 
     const grant = options.grants.usable()
-    if (!grant) return signedOutReply(message, explanation())
+    if (!grant) return t3SignedOut(message, explanation())
     const response = await upstream(request, grant.accessToken, JSON.stringify(message))
     if (!response) {
       const text = 'T3 Code is not reachable on this machine right now. Tell Oscar; do not start the task another way.'
@@ -111,11 +107,11 @@ export function createT3Bridge(options: T3BridgeOptions) {
           : rpcError(message.id, -32000, 'T3 Code refused this call once. Try again.')
       options.grants.markRevoked()
       console.error('[t3-bridge] T3 Code refused LilBot’s sign-in; it needs a new approval.')
-      return signedOutReply(message, explanation())
+      return t3SignedOut(message, explanation())
     }
     if (message.method === 'tools/list' && response.ok) {
       const contentType = response.headers.get('content-type') ?? ''
-      return passThrough(response, filterToolList(await response.text(), contentType, ALLOWED))
+      return passThrough(response, listedTools(await response.text(), contentType, ALLOWED).body)
     }
     return passThrough(response)
   }

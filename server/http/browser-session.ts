@@ -36,7 +36,8 @@ export class BrowserSession {
     private routines?: RoutineService,
     private library?: LibraryService,
     private threads?: import('../threads/thread-service').ThreadService,
-    private connections?: () => ConnectionsStatus,
+    /** `ready`: what waits for a conversation (a service added or signed in) is applied before a message goes in. */
+    private connections?: { status: () => ConnectionsStatus; ready: (botId: string, chatId: string) => Promise<void> },
     private computers?: import('../computers/computer-service').ComputerService,
     private deploymentNotice?: () => string | undefined,
     private attachments?: AttachmentService,
@@ -100,7 +101,7 @@ export class BrowserSession {
     'library.list': input => requireService(this.library, 'Library is unavailable.').list(input),
     'library.workspace': ({ botId, path }) => requireService(this.library, 'Library is unavailable.').workspace(botId, path),
     'library.content': async ({ botId, itemId }) => requireService(this.library, 'Library is unavailable.').contentUrl(botId, itemId),
-    'connections.status': async () => requireService(this.connections, 'Connections are unavailable.')(),
+    'connections.status': async () => requireService(this.connections, 'Connections are unavailable.').status(),
     'bots.delete': input => this.bots.deleteBot(input),
     'bots.deleteDefaults.get': async () => this.bots.deleteDefaults(),
     'bots.deleteDefaults.set': async input => this.bots.setDeleteDefaults(input),
@@ -146,6 +147,7 @@ export class BrowserSession {
     'chat.new': ({ botId }, afterResponse) => this.chats.track(afterResponse, onEvent => this.bots.newChat(botId, onEvent)),
     'chat.send': async ({ chatId, text, attachmentIds, messageId, deviceId }) => {
       const chat = this.chats.get(chatId)
+      await this.connections?.ready(chat.snapshot.botId, chatId)
       const origin = this.devices?.origin(deviceId)
       if (attachmentIds?.length)
         return { ok: true, message: await requireService(this.attachments, 'Attachments are unavailable.').send(chat, text, attachmentIds, messageId!, origin) }

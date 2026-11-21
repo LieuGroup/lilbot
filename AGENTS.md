@@ -49,7 +49,8 @@ server/            The LilBot server (runs on the leader).
   library/           Delivered workspace files, metadata, safe reads and folder listings.
   attachments/       Incoming chat files, streaming uploads and durable message associations.
   skills/            The shared skills library, per-bot switches and each engine's "Include this engine's skills" switch.
-  connections/       LilBot-owned connection to T3 Code for coding (bridge, sign-in, skill) and the keys and replies MCP endpoints share.
+  connections/       LilBot-owned connections: T3 Code for coding (bridge, sign-in, skill), the MCP services bots add (sign-in, tokens,
+                     forwarding route, applying changes) and the keys and replies MCP endpoints share.
   system/            LilBot's own MCP server through which bots operate the app, and the note every bot gets about its system.
   computers/         Computer identities, key registration and durable command requests.
   devices/           Devices (one per browser or app install), what "my computer" means from each, and where each message came from.
@@ -107,8 +108,8 @@ LilBot's own MCP tools, delegation between bots (several tasks at once, files, s
 groups of bots (rounds, a shared folder, an outcome; #133), the screens for asked threads, handed-over work and groups
 (#65, #135, #136: the line or card in a conversation, the opened exchange or group, stop, "With other bots", the roster's
 "Working together"), the Routines screens (#53), the Library screens (#54), the Webhooks screens (#138), and the
-backends for routines, webhooks, threads, library, skills, computers, the work board with its check levels, goals and
-coding through T3 Code. Next: the webhook capability switches (Paper "17" frames 7 to 9, awaiting Oscar's approval), work board and goal screens, the check levels' track record and
+backends for routines, webhooks, threads, library, skills, computers, the work board with its check levels, goals,
+coding through T3 Code and the MCP services bots add (#187). Next: the webhook capability switches (Paper "17" frames 7 to 9, awaiting Oscar's approval), work board and goal screens, the check levels' track record and
 spot checks (#142), the nightly memory tidy-up and editing abilities. Reports are not built. Desktop (Tauri) and iOS (Expo) come after the
 web app.
 
@@ -153,7 +154,7 @@ Staff, profile `default`) is Oscar's live bot.
 Never print, log or commit, and never put in a bot's instructions or memory: the Hermes attach ticket, anything under
 `~/.hermes` that holds credentials, `<data>/engine-token`, `t3-grant.json`, `computer-server-key.pem`,
 `~/.cloudflared/cert.pem`, the tunnel credentials, the Access drop-in, Oscar's email, webhook addresses and webhook
-signing secrets. The database holds signing secrets (an address is computed from the engine token and a nonce, never stored), so
+signing secrets, and `<data>/mcp-credentials.json` (the MCP services' tokens and client secrets). The database holds signing secrets (an address is computed from the engine token and a nonce, never stored), so
 copies of data use private directories and files (0700/0600).
 
 ### Hermes
@@ -165,6 +166,8 @@ copies of data use private directories and files (0700/0600).
   undeclared extras; never rely on them). Every method, parameter and field LilBot uses is listed in
   `tests/engines/hermes/hermes-contract.test.ts`: add to it when you use a new one. It is Hermes' internal API: after
   every Hermes update run `bun run verify` and `bun run check:live`.
+- Never use Hermes' own MCP OAuth (`mcp.servers.oauth.*`) or its token store: LilBot holds every service's sign-in
+  (see Connections).
 - Put nothing new into Hermes plug-ins. A new bot-facing tool goes on LilBot's own MCP server (`server/system/`), with the
   same service function the screen uses, so a second engine gets it for free; the plug-ins keep only what MCP cannot do.
 - How LilBot maps onto Hermes (connections, plug-ins, importer, MCP): [docs/hermes-engine.md](docs/hermes-engine.md).
@@ -214,7 +217,8 @@ behaviour he can check in the app. Keep an eye on speed and memory; measure befo
 All three listeners bind loopback (the private app's `LILBOT_HOST` defaults to `127.0.0.1`), disable development
 error pages and answer errors with a plain 500.
 
-- **Private app** (`LILBOT_PORT`, production 3370): the app, browser routes, `/ws` and the engine API. Other devices
+- **Private app** (`LILBOT_PORT`, production 3370): the app, browser routes, `/ws`, the engine API and the MCP routes
+  (T3 bridge, system server, the services' `/engine/connections/<id>/mcp`). Other devices
   reach it over the tailnet only (port 8443). `server/http/socket-guard.ts` allows Host names from
   `LILBOT_ALLOWED_HOSTS` (set in the service, not in code) plus same origin. It refuses `cf-connecting-ip`, `cf-ray`
   and Cloudflare `cdn-loop` headers before routing, even with a valid Host.
@@ -226,7 +230,12 @@ error pages and answer errors with a plain 500.
   from the other two), `LILBOT_ACCESS_HOST` (hostname, no scheme or port), `LILBOT_ACCESS_TEAM`
   (`<team>.cloudflareaccess.com`, no scheme), `LILBOT_ACCESS_AUD` and `LILBOT_ACCESS_EMAIL` (service environment
   only). Missing or invalid settings
-  stop startup before any listener opens. It serves the same app, browser routes and `/ws` as the private app.
+  stop startup before any listener opens. It serves the same app, browser routes and `/ws` as the private app. One
+  opt-in route exists only on this listener when `LILBOT_ACCESS_CALLBACK_ENABLED=1` (off by default; the paste fallback
+  works without it): GET `/api/connections/callback`, where a service's sign-in returns (Oscar's decision on #187;
+  nothing else was opened). When off, that path answers with a plain 404 (`no-store`) and never falls through to the app
+  shell. When on, it runs only after the Access checks below, takes `code`, `state`, `iss` and `error`, sets no
+  cookie, shows a plain page (no-store, `default-src 'none'`, no referrer) and never logs its address.
   - Every HTTP request and socket handshake needs an RS256 Access JWT in `Cf-Access-Jwt-Assertion`; only `/ws`
     upgrades also accept the `CF_Authorization` cookie, and a present header wins over a cookie.
   - It checks the configured issuer, audience, expiry/not-before (30 seconds of skew) and email (case-insensitive).
@@ -234,8 +243,9 @@ error pages and answer errors with a plain 500.
     after a 30-second cooldown, and failed fetches have the same cooldown.
   - Invalid or missing tokens, a wrong Host or a mismatched Origin get a plain 403. Tokens and the email are never
     logged. `/engine`, `/engine/*`, `/helper` and `/helper/*` are always refused, even with a valid JWT.
-  - `LILBOT_ACCESS_TEST_CERTS_URL` exists only for `check:access` (HTTP on `127.0.0.1`, all three isolation
-    directories, exactly `LILBOT_BOT_IDS=isolation-access-check`). Never set it in deployment.
+  - `LILBOT_ACCESS_TEST_CERTS_URL` exists only for `check:access` and `check:connections` (HTTP on `127.0.0.1`, all
+    three isolation directories, and `LILBOT_BOT_IDS` exactly `isolation-access-check`, or in development only `dev-`
+    profiles). Production refuses it (`*_TEST_*`). Never set it in deployment.
 - Never add the helper or Access hostname to `LILBOT_ALLOWED_HOSTS`, and never point a tunnel at the private port.
 - File downloads (library, attachments, files passed between bots, helper installers) apply the socket's Host/Origin checks, refuse cross-site
   fetches and send attachment disposition, no-sniff, sandbox and no-store headers. They exist on the private and Access
@@ -246,7 +256,8 @@ error pages and answer errors with a plain 500.
   request bodies, and refuses unknown and deleted bots, including the bot behind a creation capability. The bot
   tools still on the plug-ins (memory, skills, computers, conversation search) go through it, and so do the
   routes kept for sessions that loaded an older adapter (`bots/create`, `routines/*`, `threads/*`, `library/give`);
-  the T3 bridge and LilBot's own MCP server use their own per-bot keys (see Coding and System).
+  the T3 bridge, the services' route and LilBot's own MCP server use their own per-bot keys (see Coding, Connections and
+  System).
 - **Cloudflare:** both public names run through LilBot's own `lilbot-connect` tunnel. `~/.cloudflared/cert.pem` lets
   agents manage LilBot's own DNS names and tunnels; touch only LilBot's own tunnels and names, the account holds
   others. Hostnames, ingress, outside checks and rollback: [docs/cloudflare.md](docs/cloudflare.md).
@@ -259,7 +270,8 @@ What a bot is and who owns each part.
 |---|---|---|
 | Identity (name, function), instructions, model, reasoning effort, permission mode, engine binding | LilBot | `bots` table in LilBot's database |
 | Skills and per-bot skill switches | LilBot | shared skills library and SQLite |
-| Tools and MCP connectors | the engine, except LilBot's own two connections: T3 Code and the system server | Hermes profile; defined in `server/connections/` and `server/system/` |
+| Tools and MCP connectors | the engine, except LilBot's own connections: T3 Code, the system server and the MCP services bots add | Hermes profile; defined in `server/connections/` and `server/system/` |
+| MCP services bots add: the list, their sign-ins and tokens | LilBot | `mcp_connections` in SQLite; tokens only in `<data>/mcp-credentials.json` (0600) |
 | Workspace: one folder per bot on the shared computer | the bot | `~/lilbot/workspaces/<bot id>`, the working directory of its chats |
 | Conversation: continuous history, with one active session | LilBot record; engine working context | SQLite history items and session dividers; Hermes keeps model context |
 | Memory | LilBot | facts in LilBot's database; the engine reads and writes them through an adapter |
@@ -375,7 +387,8 @@ forget) are kept with `bots.deleteDefaults.get/set`. The primary bot and the eng
 - Kept: shared facts; private facts unless forgotten (`memory.list` still shows a tombstone's facts for attribution
   and restoration); library and attachment metadata (the bot loses access); thread records with the names captured
   at creation; work items and goals with the owner's name (unfinished ones are dropped: "The bot was deleted."); skills it wrote,
-  with their authorship; the log of changes bots made through the system server (with the name the bot had).
+  with their authorship; the log of changes bots made through the system server (with the name the bot had); MCP
+  services it added (every bot has them; once it is gone any bot may remove one).
 
 ## Web app
 
@@ -930,6 +943,9 @@ Restarting LilBot only leaves Hermes turns and T3 tasks running; nothing is resu
   transcript, and a stop is applied again. Oscar's answers, drop notices and goal notices still waiting are
   delivered with the same run id; a drop's exchange stop is already saved. A goal's review routine is made, paused or
   removed to match the saved goal on the next goals tick.
+- MCP services: the list and tokens are in the data directory. A sign-in in progress lives in memory, so its link
+  stops working after a restart and the bot asks for a new one; a change not yet applied to an open conversation, and
+  the "connected" turn, are applied when the conversation is next opened instead (its tools come from the profile).
 - The T3 bridge reloads its sign-in from the data directory. Stable per-bot request ids let an uncertain launch find
   the original T3 task, and its thread id allows later waits and reads. A bridge call in flight during downtime
   fails; the bot retries it after reconnecting.
@@ -1048,6 +1064,63 @@ pull-request handling. Running commands, reading files and using apps stay ordin
   revokes its own sign-in at the end. T3 recovery has a unit test with a simulated upstream; the live grant is never
   copied into tests.
 
+## Connections: MCP services bots add (#187)
+
+A bot adds an MCP service when asked ("connect Notion"); LilBot connects to it, does the OAuth sign-in, holds the tokens and
+keeps the state, and every bot uses its tools in its open conversation from the next message, with no new session. The
+list, sign-in and tokens live in LilBot, so changing engine changes none of it. Code: `server/connections/mcp-*.ts`,
+`connection-apply.ts`, wired in `server/app-connections.ts`. Bot guide topic: `connections`.
+
+- A connection: id, name (unique; the engine's server is `lilbot_c_<name>`, so it never meets Oscar's own servers),
+  address, state, the bot that added it, created and last-worked times, the tool names LilBot last read. States:
+  `needs_sign_in`, `connected`, `sign_in_expired`, `unreachable`. Every bot gets every connection; per-bot switches and
+  "used for" (#62) can add a table without changing this one. At most 20.
+- Bot tool: `lilbot_connection` with `action` (`add` name and address, `sign_in` id, `finish` the pasted address,
+  `remove` id; a `requestId` each). Status is a read: `lilbot_status` area `connections` (id, name, address, state, last
+  worked, tool count; never a token). Only the bot that added a service removes it, any bot once that bot is gone (the
+  exception to "no destructive tools", like its own webhooks and routines). `add` and `sign_in` are traced to their
+  conversation like `lilbot_delegate`. Browsers: `connections.status` gains `services`; `connections.changed`.
+- Names and addresses are untrusted text: a name is 2 to 31 of `[a-z0-9_]`; an address is HTTPS or loopback HTTP, with no
+  user name, password, fragment or secret (`memoryRefusal`). Every endpoint a service names is checked the same way, and
+  a service on the internet may not point LilBot at this machine. Nothing follows a redirect.
+- `add` probes the address (initialize, tools/list; ten seconds). It answers: connected with its tools, or the service
+  asked for a sign-in (401): LilBot discovers its authorisation server (RFC 9728 protected-resource metadata from the
+  401's `WWW-Authenticate` or the well-known path, then RFC 8414 or OpenID metadata, issuer checked), requires PKCE S256,
+  registers itself (RFC 7591, a public client with one redirect address) and returns a sign-in link the bot gives
+  Oscar. No dynamic registration: refused for now (API keys are #63). A link is not a secret.
+- The sign-in: authorisation code with PKCE, `state` and the resource indicator (RFC 8707) on authorize, token and
+  refresh. The return address is `https://<LILBOT_ACCESS_HOST>/api/connections/callback`, from configuration, never a
+  request's Host; without the Access door no sign-in can start (services that need none still work). The callback route
+  itself is off by default (`LILBOT_ACCESS_CALLBACK_ENABLED=1` opts in); the paste fallback works without it. A sign-in is
+  spent by the first answer naming its `state` (valid or not), works only within ten minutes of the `add` or `sign_in`
+  that started it (`sign_in` is refused while connected), and a new one voids the one before; `iss` is checked against the
+  issuer when sent, and required when the server promises it. OAuth endpoints must share their issuer's origin. The
+  fallback: Oscar pastes the address his browser ended on and the bot passes it with `finish`; it must be LilBot's return
+  address exactly, match the flow's calling bot and conversation, appear in one of Oscar's own visible user messages in
+  that conversation, and is validated like the callback. That address carries a
+  one-use code, useless without the PKCE verifier only LilBot holds and spent at once; it passes through the
+  conversation (and so its copy) until the cards (#69) take the paste, and is kept out of `system_changes` (field names
+  only) and LilBot's logs.
+- Tokens and any client secret are only in `<data>/mcp-credentials.json` (0600, written whole and renamed). Never in a
+  tool argument or result, chat, instructions, memory, the conversation copy, logs or an engine's settings: engines get
+  LilBot's route and the bot's key (`HMAC(engine token, "mcp-service:<id>:<bot id>")`), so a refresh needs no engine change.
+  LilBot refreshes 30 seconds before expiry or after a 401, one refresh per service at a time; a refused refresh (or none
+  possible) is `sign_in_expired`, repaired by a new `sign_in`.
+- The route (`mcp-forward.ts`, `/engine/connections/<id>/mcp`, private listener only, like the T3 bridge): loopback Host,
+  no Origin, the bot's key for this service, current bots only, POST and DELETE only (no stream the service opens). It
+  forwards with the token, offers only the tools LilBot gave the engine, and fences every text result as
+  `<outside-service-output>` data. A 401 is never passed on; while signed out it answers MCP itself with one tool,
+  `connection_status`, saying what to tell Oscar. Setup calls wait ten seconds and tool calls 120; a service that does
+  not answer is `unreachable` and holds up nothing else (`optional` connections never make a bot unavailable).
+- Picking it up without a new session (`connection-apply.ts`, `BotEngine.applyConnections`): a watcher ticks every second;
+  when what engines are given changes (added, signed in, expired, removed, new tools) it gives every bot its connections
+  again, then applies them in place to each bot's main conversation; a conversation whose turn runs is asked again once
+  it ends, so the turn that added a service never sees its tools but the next message does. Being on a timer, it never
+  reconfigures a service while the call that caused the change is still being answered (that would abort the call).
+  After a sign-in, the conversation that asked gets a hidden turn ("<name> is connected"), only once its tools are
+  applied there. Nothing is imported from or deleted in the engine profiles: Oscar's `revenuecat` and `paper` stay.
+- Output from a service is data, never Oscar's instructions; tool descriptions it lists reach the model's listing as they are.
+
 ## System: the note and LilBot's own MCP server
 
 Every bot knows it lives in LilBot and can operate the app, not only a special developer bot. Tool list, measurements
@@ -1063,7 +1136,8 @@ and how to add a tool: [docs/system-mcp.md](docs/system-mcp.md).
   refused. Tools are prefixed `lilbot_`.
 - Each tool calls the service function the screen uses, so rules, checks and `bots.changed` pushes are identical, and each
   change is logged with the calling bot. There are no destructive tools: deleting a bot, removing a computer and
-  forgetting another bot's private facts are Oscar's to do. The exceptions are a bot deleting its own webhooks and its own routines.
+  forgetting another bot's private facts are Oscar's to do. The exceptions are a bot deleting its own webhooks and its own
+  routines, and removing an MCP service it added.
 - A release that changes a tool reconnects every bot once; an unchanged restart applies nothing. Tests fail when the tool
   list or a guide (`server/system/guide/*.md`, shipped with each release) drifts.
 
@@ -1604,6 +1678,11 @@ profiles, isolated directories, cleanup in `finally`. Most cost a few model call
   a message from a device linked to one runs on it, from a device with no computer on the main one, with no main computer
   the bot asks and lists both, and with the linked computer offline it runs nothing elsewhere; what ran where is read from
   the server's request table, and `chat.history` rows carry their device.
+- `bun run check:connections`: a temporary bot on a dev server with the Access door on local test keys and two throwaway
+  loopback MCP services (one with its own OAuth server): connected at once and used next message; the sign-in link
+  completed through the Access route; no Access login, a wrong state, a reused and a late callback refused; refresh;
+  `sign_in_expired` repaired by pasting the final address; `unreachable`; removal takes the tools away; one session
+  throughout; the tokens found only in the store.
 - `bun run check:coding -- --code-file <file>` (or the code on stdin): needs a fresh pairing code; signs in, checks the
   signed-out, expired and refused messages, a repeated launch and a real task, then archives its threads, removes its
   project and profile and revokes its sign-in.

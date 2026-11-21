@@ -122,6 +122,20 @@ row) instead of a second goal tool, which would have added another listing line;
 up, about 800 tokens then. How to propose and review is the guide topic `goals`, not a skill, whose catalogue line would
 cost every turn; the note is unchanged.
 
+### Connections' cost (#187, against main at 97c4399, characters from `systemFixture`)
+
+| | before | after |
+|---|---|---|
+| listing lines Hermes shows every turn | 3,958 (37 tools) | 4,086 (+128: the `lilbot_connection` line, 84, and "or the MCP services bots added (connections)" in `lilbot_status`'s) |
+| the note | unchanged | unchanged |
+| full `tools/list` | 20,841 | 22,085 (+1,244: `lilbot_connection`'s schema 593 and description 482, the `connections` area, the `connections` guide topic) |
+
+Per turn that is one listing line and a longer one, about 35 tokens. One tool with an `action` field instead of four, and
+status as an area of the existing `lilbot_status` (a read, so no change-log row) instead of a listing tool, keep it to one
+line. What a service costs is its own tools: each is one deferred listing line in every turn of every bot (about 45 tokens
+at #154's measure), which is why LilBot holds at most 20 services. Applying a change in place costs nothing (#187's
+verification: the model-facing tool array does not change under Tool Search); a resume would re-send the conversation.
+
 ### The library's `give_file` moved (#113, third slice; before on main at 58776c6, after on this branch)
 
 Measured as in the second slice (temporary dev bot, memory adapter connected, `cliproxyapi anthropic/claude-sonnet-5-5`, Hermes
@@ -206,7 +220,7 @@ Every tool acts as the calling bot and calls the function the screen uses. Reads
 |---|---|
 | `lilbot_about` | live facts: you, other bots, computers (with which is `main`), T3, release, deploy status and last failure, recent changes |
 | `lilbot_guide(topic?)` | text shipped in `server/system/guide/*.md` |
-| `lilbot_status(area)` | `connections.status` (t3), `computers.list`, `deploy.status` |
+| `lilbot_status(area)` | `connections.status` (t3, and `connections`: the MCP services bots added, never a token), `computers.list`, `deploy.status` |
 | `lilbot_bots_list`, `lilbot_bot_read` | `bots.list` with `sections.list`, `bots.get` |
 | `lilbot_bot_create` | `BotService.createFromBot` (any bot; request-id idempotency; model inherited); the plug-in's `create_bot` ended with adapter 0.11.0 |
 | `lilbot_bot_edit` | `bots.update` for name, function, instructions, model, reasoning effort (not the permission mode); bot text gets the creation-time `memoryRefusal` check |
@@ -231,9 +245,11 @@ Every tool acts as the calling bot and calls the function the screen uses. Reads
 | `lilbot_webhooks_list` | `webhooks.list` for the caller (latest five runs, results cut to 500 characters and fenced as outside data; never addresses or secrets) |
 | `lilbot_webhook_message` | only from a webhook run: its one message to its own bot, saved on the run and sent hidden into the bot's main conversation (opened like a new bot's greeting), fenced as outside data (`webhooks/webhook-messages.ts`) |
 | `lilbot_workspace_read` | a text file (first 100 kB) or folder in the caller's own folder, through the Library's no-follow opens; for webhook runs, which have no engine file tools |
+| `lilbot_connection` | the MCP services bots add (#187): `action` add (name, address), sign_in (id: a fresh link), finish (the address Oscar's browser ended on), remove (id, one the caller added); `McpConnections` in `server/connections/` |
 
 Not offered, by decision: deleting a bot, removing a computer, forgetting another bot's private facts, changing a bot's
-permission mode, registering computers. The deletes a bot has are of its own webhooks (Oscar's decision on #12) and its own routines (it always could: `delete_routine`).
+permission mode, registering computers. The deletes a bot has are of its own webhooks (Oscar's decision on #12) and its own routines (it always could: `delete_routine`),
+and removing an MCP service it added (any bot once the adder is gone; the service keeps its data and adding it again asks for a new sign-in).
 Skills (see below), computers, `search_conversations` and memory writes stay on the engine plug-ins until #113 moves them;
 `ask_bot` and `list_bots` ended with adapter 0.10.0 (their work done by `lilbot_delegate` and `lilbot_bots_list`), and
 `create_bot` and the five routine tools with adapter 0.11.0 (`lilbot_bot_create`, `lilbot_routine`, `lilbot_routines_list`), and `give_file`

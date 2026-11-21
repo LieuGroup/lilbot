@@ -7,6 +7,7 @@ import type { BotService } from '../bots/bot-service'
 import type { BotStore } from '../bots/bot-store'
 import type { Workspaces } from '../bots/workspaces'
 import type { ComputerService } from '../computers/computer-service'
+import type { McpConnections } from '../connections/mcp-connections'
 import type { GoalService } from '../goals/goal-service'
 import type { LibraryService } from '../library/library-service'
 import type { MemoryService } from '../memory/memory-service'
@@ -46,6 +47,8 @@ export interface SystemDeps extends SystemFacts {
   /** Gives a file to the bot's Library from the conversation the call came from (`giveFrom` in `app-work.ts`). */
   giveFile: (botId: string, input: z.infer<typeof GiveFileInput>) => ReturnType<LibraryService['give']>
   webhooks: WebhookService
+  /** The MCP services bots add (#187). */
+  connections: McpConnections
   /** Which session made a call, and which sessions are checks: a check session only reads and gives its verdict. */
   calls: CallingChats
   checkSessions: CheckSessions

@@ -33,8 +33,8 @@ export const TOOL_GROUPS: Partial<Record<WebhookCapability, string[]>> = {
   webhooks: ['lilbot_webhook', 'lilbot_webhooks_list']
 }
 
-/** In no group: Oscar's list names the work board, not goals. */
-export const NO_RUN_TOOLS = ['lilbot_goal']
+/** In no group: Oscar's list names the work board, not goals, and no webhook run may add or remove MCP services. */
+export const NO_RUN_TOOLS = ['lilbot_goal', 'lilbot_connection']
 
 const groupsOf = (tool: string) => (Object.keys(TOOL_GROUPS) as WebhookCapability[]).filter(group => TOOL_GROUPS[group]?.includes(tool))
 

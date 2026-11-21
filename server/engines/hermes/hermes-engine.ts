@@ -3,13 +3,13 @@ import type { ActivityEvent } from '../../../shared/activity-schema'
 import type { BotIdentity, BotModel } from '../../../shared/bot-schema'
 import type { ChatEvent } from '../../../shared/chat-schema'
 import { LilBotError } from '../../../shared/lilbot-error'
-import type { ActivityCursor, BotEngine, ChatOptions, McpConnection, MemoryConnection, ReviewOptions, RuntimeBinding, RuntimeIdentity, SessionChange } from '../bot-engine'
+import type { ActivityCursor, BotEngine, ChatOptions, MemoryConnection, ReviewOptions, RuntimeBinding, RuntimeIdentity, SessionChange } from '../bot-engine'
 import { watchHermesActivity } from './hermes-activity'
 import { adapterHash, applied, hashOf } from './hermes-applied'
 import { botDetailFromProfile, botFromProfile, DEFAULT_PROFILE, providersFromModelOptions, requireListedModel } from './hermes-bot-mapping'
 import { openChat } from './hermes-chat'
 import { configureComputers } from './hermes-computers'
-import { connectionPreparer } from './hermes-connections'
+import { connectionPreparer, hermesMcpToolName } from './hermes-connections'
 import { deleteRuntime } from './hermes-delete'
 import { allowedProfile, requireProfileEnvironment } from './hermes-environment'
 import { conversations } from './hermes-history'
@@ -49,9 +49,7 @@ export class HermesEngine implements BotEngine {
         const profiles = new Set((await this.profiles()).map(bot => bot.id))
         for (const bot of bound) {
           const present = profiles.has(bot.engineBotId)
-          if ((!present || known.has(bot.engineBotId)) && known.get(bot.engineBotId) !== present) {
-            availability?.(bot.engineBotId, present)
-          }
+          if ((!present || known.has(bot.engineBotId)) && known.get(bot.engineBotId) !== present) availability?.(bot.engineBotId, present)
           known.set(bot.engineBotId, present)
         }
         return bound.filter(bot => profiles.has(bot.engineBotId))
@@ -131,20 +129,22 @@ export class HermesEngine implements BotEngine {
     await this.requireBot(botId)
     return reviewMemory(botId, prompt, options)
   }
-
   async runRoutine(botId: string, prompt: string, options: import('../bot-engine').RoutineOptions & ChatOptions) {
     await this.requireBot(botId)
     return runRoutine(botId, prompt, options)
   }
 
   private connections = connectionPreparer(id => HermesSocket.connect(id === DEFAULT_PROFILE ? '' : id))
-  async prepareConnections(id: string, connections: McpConnection[]) {
+  mcpToolName = hermesMcpToolName
+  async prepareConnections(id: string, connections: import('../mcp-connection').McpConnection[]) {
     await this.requireBot(id)
-    if (!(await applied(id, 'connections', hashOf(connections), () => this.connections(id, connections)))) {
-      await applied(id, null, '', () => this.connections(id, connections, true))
-    }
+    if (!(await applied(id, 'connections', hashOf('v2', connections), () => this.connections.prepare(id, connections))))
+      await applied(id, null, '', () => this.connections.prepare(id, connections, true))
   }
-
+  async applyConnections(id: string, chatIds: string[]) {
+    await this.requireBot(id)
+    return this.connections.apply(id, chatIds)
+  }
   private computerSettings = new Map<string, string>()
   async configureComputers(id: string, settings: { url: string; tokenFile: string; botId: string }) {
     await this.requireBot(id)

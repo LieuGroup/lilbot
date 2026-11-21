@@ -149,6 +149,15 @@ export class HistoryStore {
       ORDER BY rank LIMIT ?`)
       .all(terms, bot, limit)
   }
+  /** Whether Oscar sent a visible user message in `(bot, session)` containing `needle`. Hidden prompts, tool output and assistant turns never match. */
+  hasUserMessageContaining(bot: string, session: string, needle: string): boolean {
+    if (!needle) return false
+    const inEvents = this.db
+      .query(`SELECT 1 FROM history_events WHERE bot=? AND session=? AND json_extract(event,'$.type')='user.message' AND instr(json_extract(event,'$.text'),?)>0 LIMIT 1`)
+      .get(bot, session, needle)
+    if (inEvents) return true
+    return !!this.db.query(`SELECT 1 FROM history_items WHERE bot=? AND session=? AND json_extract(item,'$.kind')='user' AND instr(text,?)>0 LIMIT 1`).get(bot, session, needle)
+  }
   forget(bot: string) {
     this.db.transaction(() => {
       for (const table of ['history_items', 'history_sessions', 'history_events', 'history_imports', 'history_exclusions'])

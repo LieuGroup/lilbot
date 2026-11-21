@@ -146,3 +146,13 @@ test('goals sit on the work board and routines: no HTTP, bots, system, threads o
     ...crossings('server/bots', 'server/goals')
   ]).toEqual([])
 })
+
+test('connections work for every engine and sit below the bots: no HTTP, bots, system or concrete engine; bots never import them', () => {
+  expect([
+    ...crossings('server/connections', 'server/http'),
+    ...crossings('server/connections', 'server/bots'),
+    ...crossings('server/connections', 'server/system'),
+    ...crossings('server/connections', 'server/engines/hermes'),
+    ...crossings('server/bots', 'server/connections')
+  ]).toEqual([])
+})

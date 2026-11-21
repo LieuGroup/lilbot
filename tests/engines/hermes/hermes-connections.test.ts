@@ -5,14 +5,16 @@ import { systemConnection } from '../../../server/system/system-connection'
 
 const connection = t3Connection('http://127.0.0.1:3370', 'token', 'bot-a')
 
-function socket(servers: Record<string, unknown>[], statuses?: Record<string, unknown>[]) {
+function socket(servers: Record<string, unknown>[], statuses?: Record<string, unknown>[], rawConfig?: Record<string, unknown>) {
   const calls: { method: string; params: any }[] = []
   const connected = statuses ?? servers.map(server => ({ name: server.name, connected: true }))
+  const mcpServers = rawConfig ?? Object.fromEntries(servers.map(server => [String(server.name), { sampling: { enabled: false }, elicitation: { enabled: false }, ...server }]))
   return {
     calls,
     request: async <T>(method: string, params?: any): Promise<T> => {
       calls.push({ method, params })
       if (method === 'mcp.servers.list') return { servers } as T
+      if (method === 'config.get') return { config: { mcp_servers: mcpServers } } as T
       if (method === 'mcp.servers.status') return { servers: connected } as T
       return { ok: true } as T
     }
@@ -30,6 +32,8 @@ test('adds the connection with the bot key as Hermes’ bearer token, leaving ot
   // The key goes to the profile's .env through bearer_token, never into config.yaml.
   expect(JSON.stringify(add.config)).not.toContain(connection.bearerToken)
   expect(add.config).toEqual(serverConfig(connection))
+  expect(add.config.sampling).toEqual({ enabled: false })
+  expect(add.config.elicitation).toEqual({ enabled: false })
   expect(add.config.tools.include).toContain('t3_thread_launch')
   expect(add.config.timeout).toBeGreaterThanOrEqual(600)
 })
@@ -47,7 +51,20 @@ test('a drifted entry is replaced as a whole; a current one is left alone withou
   const config = serverConfig(connection)
   const current = socket([{ name: 'lilbot_t3', url: config.url, enabled: true, tools: config.tools }])
   expect(await prepareConnections(current, [connection])).toBe(false)
-  expect(current.calls.map(call => call.method)).toEqual(['mcp.servers.list', 'mcp.servers.status'])
+  expect(current.calls.map(call => call.method)).toEqual(['mcp.servers.list', 'config.get', 'mcp.servers.status'])
+  // Existing profiles without sampling/elicitation disabled are treated as stale and replaced (H1).
+  const unhardened = socket([{ name: 'lilbot_t3', url: config.url, enabled: true, tools: config.tools }], undefined, {
+    lilbot_t3: { url: config.url, sampling: { enabled: true } }
+  })
+  expect(await prepareConnections(unhardened, [connection])).toBe(true)
+  expect(unhardened.calls.map(call => `${call.method}:${call.params?.name ?? ''}`)).toEqual([
+    'mcp.servers.list:',
+    'config.get:',
+    'mcp.servers.remove:lilbot_t3',
+    'reload.mcp:',
+    'mcp.servers.add:lilbot_t3',
+    'reload.mcp:'
+  ])
 })
 
 test('a parked or disconnected server with matching config is removed, reloaded, and re-added fresh (#202)', async () => {
@@ -56,6 +73,7 @@ test('a parked or disconnected server with matching config is removed, reloaded,
   expect(await prepareConnections(parked, [connection])).toBe(true)
   expect(parked.calls.map(call => `${call.method}:${call.params?.name ?? ''}`)).toEqual([
     'mcp.servers.list:',
+    'config.get:',
     'mcp.servers.status:',
     'mcp.servers.remove:lilbot_t3',
     'reload.mcp:',
@@ -119,7 +137,7 @@ test('a parked connection is still replaced when a sibling connection is drifted
 test('concurrent preparations of one profile run one after another and apply once', async () => {
   const fake = socket([])
   let opened = 0
-  const prepare = connectionPreparer(async () => {
+  const { prepare } = connectionPreparer(async () => {
     opened++
     return { ...fake, close: () => {} }
   })
@@ -158,9 +176,15 @@ test('the system connection is added beside T3 without disturbing it, and the pa
   const t3 = serverConfig(connection)
   const fake = socket([{ name: 'lilbot_t3', url: t3.url, enabled: true, tools: t3.tools }])
   expect(await prepareConnections(fake, [connection, system])).toBe(true)
-  expect(fake.calls.map(call => `${call.method}:${call.params?.name ?? ''}`)).toEqual(['mcp.servers.list:', 'mcp.servers.status:', 'mcp.servers.add:lilbot_system', 'reload.mcp:'])
-  expect(fake.calls[2].params.bearer_token).toBe(system.bearerToken)
-  expect(fake.calls[2].params.config.url).toBe('http://127.0.0.1:3370/engine/lilbot/mcp?tools=v1')
+  expect(fake.calls.map(call => `${call.method}:${call.params?.name ?? ''}`)).toEqual([
+    'mcp.servers.list:',
+    'config.get:',
+    'mcp.servers.status:',
+    'mcp.servers.add:lilbot_system',
+    'reload.mcp:'
+  ])
+  expect(fake.calls[3].params.bearer_token).toBe(system.bearerToken)
+  expect(fake.calls[3].params.config.url).toBe('http://127.0.0.1:3370/engine/lilbot/mcp?tools=v1')
   // A changed tool list is a new URL, so the server is replaced and Hermes fetches the new tools.
   const next = systemConnection('http://127.0.0.1:3370', 'token', 'bot-a', ['lilbot_about'], 'v2')
   const config = serverConfig(system)

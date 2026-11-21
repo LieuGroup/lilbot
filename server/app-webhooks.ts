@@ -11,12 +11,14 @@ import type { SessionRoot } from './bots/hidden-chats'
 import type { HistoryStore } from './history/history-store'
 import { pluginCall, SESSION_HEADER } from './http/engine-run-gate'
 import { RoutineScheduler } from './routines/routine-scheduler'
+import { checkToolRefusal } from './system/check-access'
 import { refusalFor } from './system/run-access'
 import type { CallingChats } from './threads/calling-chats'
 import { webhookCallers } from './webhooks/webhook-callers'
 import { WebhookMessages } from './webhooks/webhook-messages'
 import { WebhookService } from './webhooks/webhook-service'
 import type { WebhookStore } from './webhooks/webhook-store'
+import type { CheckSessions } from './work/check-sessions'
 
 /** A run's message to its bot, as a notice: a line in the bot's main conversation that turns it unread, and the text the
  *  bot gets with Oscar's next message there (`BotServiceOptions.turnNotes`). No model turn. */
@@ -78,7 +80,13 @@ export function createWebhooks({ webhookStore, messages, bots, rootOf, calls, to
       const call = pluginCall(pathname, body)
       return call ? refusalFor(callers.forChat(botId, request.headers.get(SESSION_HEADER) || undefined), call.tool, call.groups) : null
     },
-    t3Refusal: async (botId: string, tool: string, args: unknown) => refusalFor(await callers.forCall(botId, tool, args), tool, ['coding'])
+    t3Refusal: async (botId: string, tool: string, args: unknown) => refusalFor(await callers.forCall(botId, tool, args), tool, ['coding']),
+    serviceRefusal:
+      (checks: Pick<CheckSessions, 'checking' | 'isCheck'>) =>
+      async (botId: string, tool: string, args: unknown): Promise<string | null> => {
+        const webhook = refusalFor(await callers.forCall(botId, tool, args), tool, [])
+        return webhook ?? checkToolRefusal(checks, calls, botId, tool, args)
+      }
   }
   return { webhooks, gates, webhookRuns: { callers, messages, callingChat: (botId: string, requestId: string) => calls.find(botId, 'lilbot_webhook_message', requestId) } }
 }

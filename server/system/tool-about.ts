@@ -24,7 +24,7 @@ const summary = (topic: string) =>
     .split('\n', 1)[0]
     .replace(/^#\s*/, '')
 
-export function aboutTools({ bots, workspaces, computers, t3, commit, dataDir, changes }: SystemDeps): McpTool[] {
+export function aboutTools({ bots, workspaces, computers, t3, commit, dataDir, changes, connections }: SystemDeps): McpTool[] {
   const guideTopics = topics()
   const computerRows = () =>
     computers.list().map(computer => ({ id: computer.id, name: computer.name, os: computer.os, online: computer.online, main: computer.main, lastSeen: iso(computer.lastSeen) }))
@@ -54,11 +54,20 @@ export function aboutTools({ bots, workspaces, computers, t3, commit, dataDir, c
       z.object({ topic: z.enum(guideTopics as [string, ...string[]]).optional() }),
       async (_caller, { topic }) => (topic ? { topic, guide: readFileSync(join(GUIDE, `${topic}.md`), 'utf8') } : { topics: guideTopics.map(name => `${name}: ${summary(name)}`) })
     ),
-    readTool('lilbot_status', 'Status of T3 Code coding, the computers or deployment.', z.object({ area: z.enum(['t3', 'computers', 'deploy']) }), async (_caller, { area }) => {
-      if (area === 'computers') return computerRows()
-      if (area === 'deploy') return { running: commit.slice(0, 12), latest: deployStatus(dataDir) ?? null, lastFailure: deployNotice(dataDir) ?? null }
-      const status = t3()
-      return { state: status.state, expiresAt: iso(status.expiresAt), ...(status.state === 'connected' ? {} : { whatToTellOscar: signInMessage(status) }) }
-    })
+    readTool(
+      'lilbot_status',
+      'Status of T3 Code coding, the computers, deployment or the MCP services bots added (connections).',
+      z.object({ area: z.enum(['t3', 'computers', 'deploy', 'connections']) }),
+      async (_caller, { area }) => {
+        if (area === 'computers') return computerRows()
+        if (area === 'connections')
+          return connections
+            .list()
+            .map(({ id, name, address, state, addedBy, lastWorkedAt, tools }) => ({ id, name, address, state, addedBy, lastWorked: iso(lastWorkedAt), tools }))
+        if (area === 'deploy') return { running: commit.slice(0, 12), latest: deployStatus(dataDir) ?? null, lastFailure: deployNotice(dataDir) ?? null }
+        const status = t3()
+        return { state: status.state, expiresAt: iso(status.expiresAt), ...(status.state === 'connected' ? {} : { whatToTellOscar: signInMessage(status) }) }
+      }
+    )
   ]
 }

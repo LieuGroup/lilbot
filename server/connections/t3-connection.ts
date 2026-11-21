@@ -1,6 +1,6 @@
 /** The one LilBot-owned connection every bot gets: T3 Code's MCP tools for coding work, reached
  *  through LilBot's bridge so every engine shares LilBot's single T3 sign-in. */
-import type { McpConnection } from '../engines/bot-engine'
+import type { McpConnection } from '../engines/mcp-connection'
 import { connectionKey } from './connection-keys'
 
 /** Engines name the tools after this (Hermes: `mcp__lilbot_t3__t3_thread_launch`). */

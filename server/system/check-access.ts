@@ -12,6 +12,33 @@ const FRESH_MS = 15_000
 const READS_MEMORY = new Set(['lilbot_memory_list'])
 const IN_CHECK = 'This session is a check: LilBot lets it read and give its verdict (lilbot_work with verdict), nothing else.'
 
+export async function checkToolRefusal(
+  sessions: Pick<CheckSessions, 'checking' | 'isCheck'>,
+  calls: Pick<CallingChats, 'starts' | 'waitMs'>,
+  botId: string,
+  name: string,
+  raw: unknown
+): Promise<string | null> {
+  if (!sessions.checking(botId)) return null
+  const args = (raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>
+  const key = argsKey(args)
+  const requestId = typeof args.requestId === 'string' ? args.requestId : null
+  const asked = Date.now()
+  for (;;) {
+    const own = calls.starts(botId, name, asked - FRESH_MS).filter(start => start.args === key || (requestId !== null && start.requestId === requestId))
+    if (own.some(start => sessions.isCheck(botId, start.chatId))) {
+      console.warn(`[check-session] ${name} refused in a check session`)
+      return IN_CHECK
+    }
+    if (own.length) return null
+    if (Date.now() - asked >= calls.waitMs) {
+      console.warn(`[check-session] ${name}: no tool start seen while a check runs; refused`)
+      return NOT_SEEN
+    }
+    await Bun.sleep(50)
+  }
+}
+
 export function checkRefusal(tools: McpTool[], sessions: Pick<CheckSessions, 'checking' | 'isCheck'>, calls: Pick<CallingChats, 'starts' | 'waitMs'>) {
   const byName = new Map(tools.map(tool => [tool.name, tool]))
   return async (botId: string, name: string, raw: unknown): Promise<string | null> => {
@@ -20,21 +47,6 @@ export function checkRefusal(tools: McpTool[], sessions: Pick<CheckSessions, 'ch
     const args = (raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>
     const reads = typeof tool.readOnly === 'function' ? tool.readOnly(args) : tool.readOnly
     if ((reads && !READS_MEMORY.has(name)) || (name === 'lilbot_work' && args.verdict !== undefined)) return null
-    const key = argsKey(args)
-    const requestId = typeof args.requestId === 'string' ? args.requestId : null
-    const asked = Date.now()
-    for (;;) {
-      const own = calls.starts(botId, name, asked - FRESH_MS).filter(start => start.args === key || (requestId !== null && start.requestId === requestId))
-      if (own.some(start => sessions.isCheck(botId, start.chatId))) {
-        console.warn(`[check-session] ${name} refused in a check session`)
-        return IN_CHECK
-      }
-      if (own.length) return null
-      if (Date.now() - asked >= calls.waitMs) {
-        console.warn(`[check-session] ${name}: no tool start seen while a check runs; refused`)
-        return NOT_SEEN
-      }
-      await Bun.sleep(50)
-    }
+    return checkToolRefusal(sessions, calls, botId, name, raw)
   }
 }

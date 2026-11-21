@@ -10,10 +10,15 @@ const KEEP_MS = 120_000
 /** How long before its request a call's own start may have been seen: an older one belongs to an earlier call. */
 const EARLY_MS = 15_000
 /** The tools that need to know their calling conversation. Engines may prefix the name with the server's. */
-export type CallingTool = 'lilbot_delegate' | 'lilbot_work' | 'lilbot_group' | 'lilbot_goal' | 'lilbot_give_file' | 'lilbot_webhook_message'
+export type CallingTool = 'lilbot_delegate' | 'lilbot_work' | 'lilbot_group' | 'lilbot_goal' | 'lilbot_give_file' | 'lilbot_webhook_message' | 'lilbot_connection'
 
-/** `mcp__lilbot_system__lilbot_work` names `lilbot_work`; `lilbot_work_list` does not. */
-const names = (name: string, tool: string) => name === tool || (name.endsWith(tool) && !/[a-z0-9]/i.test(name.charAt(name.length - tool.length - 1)))
+/** Matches a LilBot-owned server prefix or exact tool name, never an outside `lilbot_c_*` or third-party server. */
+const names = (name: string, tool: string) => {
+  if (name === tool) return true
+  if (tool.startsWith('mcp__')) return false
+  if (tool.startsWith('lilbot_')) return name === `mcp__lilbot_system__${tool}`
+  return name === `mcp__lilbot_t3__${tool}`
+}
 const record = (value: unknown) => (value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {})
 
 /** The tools a call runs. Tool search wraps them: `tool_call({ calls: [{ name, arguments }] })` or a single
