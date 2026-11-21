@@ -98,3 +98,33 @@ test('an epoch change and a truncated delta each trigger only one full read', as
     connect.mockRestore()
   }
 })
+
+test('non-activity session.info events do not re-emit finished on an idle session (#195)', async () => {
+  let poll = 0
+  const connect = spyOn(HermesSocket, 'connect').mockResolvedValue({
+    isOpen: true,
+    close() {},
+    async request(method: string) {
+      if (method === 'session.list') return { sessions: [{ session_id: 'chat', running: false, started_at: Date.now() / 1000 }] }
+      poll++
+      if (poll === 1) return { replay_epoch: 'e', last_sequence: 1, truncated: false, events: [{ seq: 1, type: 'message.complete', payload: { status: 'complete', text: 'Hi' } }] }
+      // Simulates session.mutate (model/effort edit) emitting session.info on the idle session.
+      return { replay_epoch: 'e', last_sequence: poll, truncated: false, events: [{ seq: poll, type: 'session.info', payload: { model: 'opus', reasoning_effort: 'medium' } }] }
+    }
+  } as unknown as HermesSocket)
+  const events: any[] = []
+  const stop = watchHermesActivity(
+    async () => [{ id: 'a', engineBotId: 'a' }],
+    e => events.push(e),
+    () => undefined
+  )
+  try {
+    await Bun.sleep(2150)
+    expect(poll).toBeGreaterThanOrEqual(2)
+    expect(events).toHaveLength(1)
+    expect(events[0].status).toBe('finished')
+  } finally {
+    stop()
+    connect.mockRestore()
+  }
+})

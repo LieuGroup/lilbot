@@ -75,7 +75,10 @@ export function watchHermesActivity(
         const baseline = fresh && !row.running && row.started_at < startedAt
         if (baseline) state.status = 'idle'
         const key = `${state.epoch}:${state.sequence}`
-        if (key !== saved || (row.running && !previous)) emit({ botId, chatId, key, status: state.status, tool: state.tool, spoke: !baseline && spoke })
+        // Non-activity events (such as `session.info` after a model/effort edit) advance the sequence
+        // without starting or finishing a turn; do not re-emit a settled status such as `finished`.
+        const quiet = !!previous && !reset && !spoke && !updates.some(u => u.status || u.tool || u.clearTool) && state.status === previous.status && state.tool === previous.tool
+        if ((!quiet && key !== saved) || (row.running && !previous)) emit({ botId, chatId, key, status: state.status, tool: state.tool, spoke: !baseline && spoke })
         observer.sessions.set(chatId, state)
       }
       for (const id of observer.sessions.keys()) if (!live.has(id)) observer.sessions.delete(id)

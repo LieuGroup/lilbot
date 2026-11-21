@@ -47,6 +47,17 @@ try {
 
   await restart('as a deploy does, no tool change')
   assert.equal((await open(call, bot.id)).chatId, main, 'A restart moved the conversation to a new session')
+  // #194: even when config is unchanged across a >20 s deploy pause, parked LilBot MCP servers must reconnect.
+  const check = await HermesSocket.connect(native)
+  try {
+    const status = await check.request('mcp.servers.status', {})
+    for (const name of ['lilbot_system', 'lilbot_t3']) {
+      const row = (status.servers as { name: string; connected: boolean; tools: number }[]).find(s => s.name === name)
+      assert.ok(row?.connected && row.tools > 0, `MCP server ${name} was not connected after restart: ${JSON.stringify(row)}`)
+    }
+  } finally {
+    check.close()
+  }
 
   // A release with a changed tool list: the profile's LilBot entry no longer matches, so start-up reconnects it.
   const config = join(process.env.HERMES_HOME!, 'profiles', native, 'config.yaml')

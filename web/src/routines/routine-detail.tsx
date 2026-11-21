@@ -44,9 +44,11 @@ export default function RoutineDetail({ botId, routineId }: { botId: string; rou
           <div className="flex flex-col gap-1.5">
             <div className="flex items-start gap-3 px-2">
               <p className={`flex-1 text-sm/[21px] font-medium break-words whitespace-pre-wrap ${routine.paused ? 'text-foreground/70' : ''}`}>{routine.description}</p>
-              <span className="flex h-[21px] items-center">
-                <RoutineSwitch botId={botId} routine={routine} goal={goal} onFailure={setFailure} />
-              </span>
+              {!goal && (
+                <span className="flex h-[21px] items-center">
+                  <RoutineSwitch botId={botId} routine={routine} goal={goal} onFailure={setFailure} />
+                </span>
+              )}
             </div>
             {failure && <p className={`${note} text-destructive`}>{failure}</p>}
           </div>

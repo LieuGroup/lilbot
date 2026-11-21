@@ -69,17 +69,10 @@ function Row({ botId, routine, now, onFailure }: { botId: string; routine: Routi
 
 /** On while the routine runs on its schedule. A goal's review routine follows its goal, so it has no switch of its own. */
 export function RoutineSwitch({ botId, routine, goal, onFailure }: { botId: string; routine: Routine; goal: string | undefined; onFailure: (text: string) => void }) {
+  if (goal) return null
   const change = (on: boolean) => {
     onFailure('')
     setPaused(botId, routine, !on).catch(failure => onFailure(`Could not ${on ? 'resume' : 'pause'} it. ${messageOf(failure)}`))
   }
-  return (
-    <Switch
-      checked={!routine.paused}
-      disabled={!!goal}
-      onCheckedChange={change}
-      aria-label={routine.paused ? 'Resume this routine' : 'Pause this routine'}
-      title={goal ? 'It follows its goal' : undefined}
-    />
-  )
+  return <Switch checked={!routine.paused} onCheckedChange={change} aria-label={routine.paused ? 'Resume this routine' : 'Pause this routine'} />
 }
