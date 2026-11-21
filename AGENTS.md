@@ -66,7 +66,8 @@ web/src/           The web app.
   history/           the conversation's earlier parts: paging, day lines, session dividers, its start
   attachments/       files in the composer and in sent messages, the drop area
   activity/, library/, memory/   their details tabs (Library is a placeholder)
-  threads/           work between bots: the line in a conversation, the opened exchange, stop, "With other bots"
+  threads/           work between bots: the line in a conversation, the opened exchange or group, stop, "With other bots",
+                     "Working together"
   routines/, skills/ data clients for panels not built yet
   computers/         the Settings > Computers page (list, remove, add this computer, add by command line)
   devices/           this browser's device id and name, and the "This device" block on the Computers page
@@ -99,8 +100,9 @@ continuous main conversation per bot on every device, the three-column shell (ro
 Activity, Library, Memory and Setup tabs), bot menu, delete confirmation, Settings, chat attachments, LilBot's own
 memory with a Memory panel and after-chat review, every bot knowing its system (the note) and operating the app through
 LilBot's own MCP tools, delegation between bots (several tasks at once, files, status, stop, redirect, wait), temporary
-groups of bots (rounds, a shared folder, an outcome; #133), the screens for asked threads and handed-over work (#65,
-#135: the line or card in a conversation, the opened exchange, stop, "With other bots"), and the
+groups of bots (rounds, a shared folder, an outcome; #133), the screens for asked threads, handed-over work and groups
+(#65, #135, #136: the line or card in a conversation, the opened exchange or group, stop, "With other bots", the roster's
+"Working together"), and the
 backends for routines, webhooks, threads, library, skills, computers, the work board with its check levels, goals and
 coding through T3 Code. Next: the Routines, Webhooks (#138), Library, work board and goal screens, the check levels' track record and
 spot checks (#142), the nightly memory tidy-up and editing abilities. Reports are not built. Desktop (Tauri) and iOS (Expo) come after the
@@ -414,7 +416,7 @@ Visual specs (sizes, copy, Paper frames): [docs/screens.md](docs/screens.md).
   connection (`bots/model-list.ts`). Setup shows the same model and effort (with "Sent as ..." under it) and reloads when
   they change.
 
-### Work between bots (`web/src/threads/`, #65, #135)
+### Work between bots (`web/src/threads/`, #65, #135, #136)
 
 Visual specs: "Work between bots" in [docs/screens.md](docs/screens.md).
 
@@ -422,14 +424,25 @@ Visual specs: "Work between bots" in [docs/screens.md](docs/screens.md).
   for the bots on screen and again half a second after `threads.changed`); an exchange not read yet, or a group, keeps
   the plain tool line. With a `batchId` it is a handed-over task, without one an asked thread; the delegating side is
   the first participant. Tasks of one batch share one card at the first line; the other lines draw nothing and their
-  rows hide. Wording lives in `threads/thread-lines.ts` only.
-- The line, the opened view and the stop dialog are lazy chunks; the chat's first load carries only the `ChatItem`
-  switch and `?thread=` handling.
+  rows hide. Wording lives in `threads/thread-lines.ts` and, for groups, `threads/group-lines.ts` only.
+- A group's line (`threads/group-line.tsx`) is drawn in the leader's and every member's conversation from that bot's
+  `threads.list`, with its state from `group` (rounds, replies, how it ended); the wording for an end other than a close is
+  LilBot's own, never the server's `end.outcome`. A group runs until `group.end` is set, whatever its status.
+- The line, the opened view, the group view (loaded from the opened view), the stop dialog and "Working together"
+  are lazy chunks; the chat's first load carries only the `ChatItem` switch, `?thread=` handling and the check whether
+  any bot has `groups`.
+- "Working together" (`threads/working-together.tsx`): the roster's top section and the rail's group slots, only while a
+  bot in `bots.list` has `groups`. Members and the leader come from each bot's `groups`; a row opens
+  `/bots/<leader>?thread=<group>`. Row states ("Leading a group", "In a group", "In a group · <activity>") are in
+  `bots/row-state.ts`: a member's live activity in `bots.list` is its usual `activity`, combined with its `groups`.
 - Opening sets `?thread=<id>` on `/bots/$botId` (tab links and the panel's auto-open keep it with `search: true`). The
   view covers the conversation column while the conversation stays mounted, `invisible` and inert: its connection
   and scroll position are unchanged. On a phone, opening from the details panel goes to the conversation first.
   "Back to chat" drops the parameter; each bot button opens that bot's chat.
-- Stop (a running task's line and its view) asks first, then calls `threads.cancel`; asked threads have no Stop.
+- Stop (a running task's or group's line and its view) asks first, then calls `threads.cancel`; asked threads have no
+  Stop. Any participant's line can stop a group.
+- Files passed in a group, and the files its leader kept, show as chips without a link: `ThreadService.file` does not
+  serve group files yet.
 - Oscar never writes in an exchange: no composer.
 
 ### Conversation scroll (AI Elements' Message Scroller)
@@ -597,7 +610,8 @@ the same outbox, receipts, hidden sessions, file copies and fences as delegation
 - Oscar: `threads.list` and `threads.open` include groups (`group` with members' states, rounds with who replied, the
   round limit, turns, end and kept files), `threads.changed` and `threads.cancel`. `bots.list` gives each bot the
   running groups it is in (`groups`: id, purpose, round, round limit, leading), pushed with `bots.changed` when a group
-  starts, opens a round or ends. Each participant's main conversation gets a `group` / `in <leader>'s group` line.
+  starts, opens a round or ends. Each participant's main conversation gets a `group` / `in <leader>'s group` line. The
+  screens (#136) are in "Work between bots" under Web app.
 - Limits (`GROUP_LIMITS` in `thread-limits.ts`): 4 members, 6 rounds, 40 messages, 120 minutes, 15 quiet minutes, 2
   running groups per leader, 6,000 characters per earlier message in a prompt. `LILBOT_GROUP_TEST_ROUNDS` lowers the
   round limit for a dev server with the test data folder and allowlist; production refuses it.

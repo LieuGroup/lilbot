@@ -9,8 +9,15 @@ and icon sizes follow the Stack rules in `AGENTS.md`.
 - Wide screen: roster 272px and details panel 332px on the page tint (`bg-background`), the conversation on
   `bg-card`; a `hairline` divides them.
 - Roster (`bots/bot-sidebar.tsx`, Paper "16 Roster: pinned tiles and collapsed rail"): app icon, then collapse
-  (wide screens only), search and new bot; the tiles (or the primary's row); sections as 12px labels; collapsed
-  "Unassigned" and "Hidden" groups with counts. Grouping is `bots/roster-groups.ts`.
+  (wide screens only), search and new bot; "Working together" while a group runs; the tiles (or the primary's row);
+  sections as 12px labels; collapsed "Unassigned" and "Hidden" groups with counts. Grouping is `bots/roster-groups.ts`.
+- Working together (`threads/working-together.tsx`, Paper "18 Bots working together" frame 6, a lazy chunk loaded only
+  once a bot in `bots.list` has `groups`): a section labelled like the others, at the very top, hidden while searching.
+  One 52px row per running group: a 36px tile of the first four bots' avatars 2 by 2 (15px, gap 2, padding 2, radius
+  10, `foreground/6`), the purpose (14/20 500, one line) and "Round N · N bots" (13/18 muted) with the blue spinner.
+  The row opens the group in its leader's conversation; the open one has the pressed tint. The bots and the leader come
+  from each bot's `groups` (`runningGroups` in `threads/group-lines.ts`), so the row goes when the group disbands and the
+  section with the last one.
 - Tiles (`bots/roster-tiles.tsx`, Paper frames 5 to 7): only once a bot is pinned; with nothing pinned the primary is an
   ordinary first row with its star and state line. Tiles share the roster's width equally, at most three to a line
   (two tiles half each, three or more a third each; a shorter last line keeps that width). Radius 12, gap 4, padding
@@ -22,12 +29,18 @@ and icon sizes follow the Stack rules in `AGENTS.md`.
   one-line state. A 20px "more" button appears at the top right on hover.
 - Rail (`bots/roster-rail.tsx`): 64px. The app icon, then 36px avatars in 48px slots (radius 12) in the roster's
   order, with a 28px hairline between groups; open groups only. Same dot, spinner, star and open tint, scaled down.
+  While a group runs, a slot per group with the same 36px tile goes above the bots, then a hairline; its label is the
+  purpose and "Round N · N bots" (same lazy chunk as "Working together").
   Pointing at an avatar shows a dark label (`ui/tooltip.tsx`) with the name (13/18, 500) and the state (12/16, 70%).
   Foot: open roster, search (opens the roster with the search box focused), new bot, settings, the user (or a red
   dot while offline). The deployment failure notice shows only in the open roster.
 - Row (52px), one line from `bots/row-state.ts`: working (blue spinner and the activity text, "For <bot> · <activity>"
-  while it works on a task another bot handed it, from `workingFor` on `bots.list`), "Waiting for you",
-  finished (green check), failed (red cross), or, idle, the bot's function (no message preview in the data yet).
+  while it works on a task another bot handed it, from `workingFor` on `bots.list`; "In a group · <activity>" or
+  "Leading a group · <activity>" while it works and is in a running group), "Waiting for you", finished (green check),
+  failed (red cross), or, idle, "Leading a group" / "In a group" (no mark) while it is in a running group, else the
+  bot's function (no message preview in the data yet). A handed-over task wins over a group (that is the turn running
+  now); waiting for Oscar and an unavailable runtime win over both. The drawing's "· 2 tasks out" has no data and is
+  not shown.
   Unread rows have a 600 name and a blue dot; on hover the "more" button replaces the dot.
 - Footer: the user, a Settings button and, while the socket is down, "Offline · reconnecting" with a red dot (the
   composer then says "Reconnecting...").
@@ -115,10 +128,11 @@ Avatar, name and pill tabs. Activity shows the live state (with how long, only w
 `activity/activity-since.ts`), "With other bots" (below), a Routines placeholder and the workspace folder (click copies
 the path; a browser cannot open a server folder).
 
-## Work between bots (Paper "09 Bot threads", "18 Bots working together" frames 1 to 4, 8 and 9, `web/src/threads/`)
+## Work between bots (Paper "09 Bot threads", "18 Bots working together" frames 1 to 9, `web/src/threads/`)
 
-One pattern for asking (#65) and handing over (#135); groups (#136) will reuse the parts. Wording is
-`threads/thread-lines.ts` (pure, tested), data `threads/thread-store.ts` (`threads.list` per bot on screen, read again
+One pattern for asking (#65), handing over (#135) and temporary groups (#136). Wording is `threads/thread-lines.ts`
+and, for groups, `threads/group-lines.ts` (pure, tested; LilBot's own words, never the server's text for an end that was
+not a close), data `threads/thread-store.ts` (`threads.list` per bot on screen, read again
 half a second after `threads.changed`). Bot and file names are plain text everywhere.
 
 - Line in a conversation (`threads/thread-line.tsx`, a lazy chunk): a bordered row (radius 10, `hairline` ring), padding
@@ -133,10 +147,19 @@ half a second after `threads.changed`). Bot and file names are plain text everyw
     The receiver's line says "N files received, N sent back".
   - Tasks of one call share one card: a header "Handed out N tasks" / "M of N finished" (12px muted, padding 8/12),
     then the rows divided by `foreground/6`. The card is drawn at the batch's first line; the others' rows are empty
-    and hidden (`empty:hidden`), so they take no gap. A group keeps its plain tool line for now.
+    and hidden (`empty:hidden`), so they take no gap.
+  - A group (`threads/group-line.tsx`, in the same chunk): every bot's avatar overlapping (20px, 5px overlap, at most
+    five, each on a card-coloured plate), "Group · <purpose>" in the leader's conversation and "In <leader>'s group ·
+    <purpose>" in a member's; "Round N · X of Y have replied" with the spinner while it runs ("Starting" before the first
+    round), "Closed · N rounds, N turns, <time> · outcome inside", "Stopped by you · round N", "Ended by itself ·
+    reached the N-round limit" / "reached the message limit" / "reached the time limit" / "went quiet" / "its leader
+    could not be reached" (ended other than closed: muted title). Stop while it runs, in every participant's line. It
+    stays in the conversation and opens the group long after it disbanded.
 - Stop (`threads/stop-thread-dialog.tsx`, lazy): "Stop this task?" (16/22 600), "<bot> stops working on it now.
   <delegating bot> is told you stopped it, and what was said so far stays readable. Work a bot already did is not
   undone." (13/20 muted), "Keep going" and "Stop task" (red). 400px, padding 20, radius 16. Calls `threads.cancel`.
+  A group: "Stop this group?", "All four bots stop working on it now. <leader> is told you stopped it, ..." (the
+  number of bots, leader included, in words up to five), "Stop group".
 - Opened (`threads/thread-view.tsx`, lazy): over the conversation column (`?thread=<id>` on `/bots/$botId`); the
   conversation stays mounted, `invisible` and inert, so its socket and scroll position are kept.
   - Header 52px, hairline under it: a task's title (14/20 600) with "<A> handed this to <B>" (12/16 muted), or "<A>
@@ -153,10 +176,32 @@ half a second after `threads.changed`). Bot and file names are plain text everyw
     While the receiver works: its avatar and name, then a spinner and its activity.
   - Footer, hairline above: "You watch this. To steer, talk to either bot." ("You read threads." for an asked thread)
     and a button to each bot's chat (a deleted bot's is disabled; its stored name still shows).
+- A group, opened (`threads/group-view.tsx`, its own lazy chunk loaded from the thread view; Paper frames 5 and 7):
+  - Header: the purpose (14/20 600) with "Temporary group · led by <leader>", after the end "Group closed today 10:21 ·
+    led by <leader>" ("stopped", "ended"); "Stop group" (red outline) only while it runs, and "Back to chat".
+  - Strip, only while it runs: one chip per bot (14px avatar, the first word of its name at 12/16, the leader's at 500;
+    pill on `bg-card` with a hairline ring; scrolls sideways on a phone) and "Round N of <roundCap>" at the right.
+  - Discussion, gap 16: a centred divider between hairlines opens each round at its point, "Round N · to everyone ·
+    10:10" or "to Footy and HeardBack" (first words of the names). Messages as in a task; the leader's carry "leader"
+    in place of the time (its round's divider has it), "leader · 10:21" on a message outside a round. File chips have
+    no link: the server does not serve group files yet.
+  - While a round runs, under the discussion (indented 26px, gap 8): each bot the round is for, and the leader once it
+    works on the replies: 16px avatar, "<bot> replied" with a green check, "<bot> · <activity>" with the spinner (from
+    `group.members[].activity`), or "<bot> · Waiting to start".
+  - Ended: a card on top (`bg-background`, radius 12, padding 14/16, gap 10): "Outcome" (12/16 600) and "N rounds · N
+    turns · <time>" at the right, the outcome (15/24), then "Kept by the leader" and the kept files as chips. A stopped
+    or self-ended group has "Stopped by you" / "Ended by itself" and the reason in its place ("You stopped this group
+    in round 2, before the leader closed it.", "It reached the 3-round limit before the leader closed it."). The whole
+    discussion follows.
+  - Footer: "You watch groups. To steer, tell the leader in its chat." with a button to the leader's chat; after the
+    end "This group has disbanded. It stays readable from the line in <leader>'s chat and from its Activity tab."
 - "With other bots" in Activity (`threads/with-other-bots.tsx`): hidden when there are none; "N running" (else the
   count) at the right of its label; rows (avatar 20, 13/18 500 title, 12/16 line, chevron) "Asked <bot>", "<bot> asked
   this bot", "Handed to <bot>", "<bot> handed this bot work", with "Working · <task>" or "<date> · <task or ended
-  state>". Running first, then newest; a row opens the exchange (on a phone it closes the panel first).
+  state>", and groups: two other bots' avatars overlapping (16px), "Group · <purpose>", "Running · round N · N bots"
+  or "<date> · closed with an outcome" / "stopped by you" / "ended by itself · <reason>". Avatars sit in a 26px lane.
+  Running first (a group runs until it ends), then newest; a row opens the exchange or group (on a phone it closes
+  the panel first).
 
 ## Conversation history (Paper "11 Conversation history", `web/src/history/`)
 
