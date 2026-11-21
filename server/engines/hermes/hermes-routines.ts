@@ -52,7 +52,8 @@ export async function runRoutine(botId: string, prompt: string, options: Routine
         return {
           items: items.slice(base),
           status: receipt.outcome === 'completed' ? ('completed' as const) : receipt.outcome === 'interrupted' ? ('stopped' as const) : ('failed' as const),
-          text: last ? last.text : `Routine ended: ${receipt.outcome ?? receipt.status}. Execution was not retried.`
+          text: last ? last.text : `Routine ended: ${receipt.outcome ?? receipt.status}. Execution was not retried.`,
+          ...(receipt.status === 'unknown' ? { unknownReceipt: true as const } : {})
         }
       }
       await Bun.sleep(1000)

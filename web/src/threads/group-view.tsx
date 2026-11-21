@@ -1,12 +1,12 @@
 import { CheckIcon, LoaderCircleIcon } from 'lucide-react'
 import { Fragment, type ReactNode } from 'react'
-import type { BotThread } from '../../../shared/thread-schema'
+import { type BotThread, keptId } from '../../../shared/thread-schema'
 import { useNow } from '../app/use-now'
 import { clockTime } from '../history/history-labels'
 import { type GroupThread, groupSubtitle, isGroup, leaderOf, outcomeCard, pendingReplies, roundLabel, shortNames } from './group-lines'
 import { StopThread } from './stop-thread'
 import { ThreadAvatar } from './thread-avatar'
-import { CentredLine, FileChip, ThreadMessageRow } from './thread-message'
+import { CentredLine, FileChip, fileUrl, ThreadMessageRow } from './thread-message'
 import { ChatButton, stopButton, ViewHeader } from './thread-view'
 
 /** A temporary group, opened in the conversation column (Paper "18 Bots working together" frames 5 and 7). Read-only: the
@@ -30,7 +30,7 @@ export default function GroupView({ botId, thread, back }: { botId: string; thre
       {!ended && <Strip thread={thread} />}
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-[744px] flex-col gap-4 px-4 pt-4 pb-5 md:px-6">
-          {ended && <Outcome thread={thread} now={now} />}
+          {ended && <Outcome botId={botId} thread={thread} now={now} />}
           <Discussion botId={botId} thread={thread} />
         </div>
       </div>
@@ -67,7 +67,7 @@ function Strip({ thread }: { thread: GroupThread }) {
 }
 
 /** The tinted card on top of an ended group: the outcome and the files the leader kept, or the reason it ended. */
-function Outcome({ thread, now }: { thread: GroupThread; now: number }) {
+function Outcome({ botId, thread, now }: { botId: string; thread: GroupThread; now: number }) {
   const card = outcomeCard(thread, now)
   const kept = thread.group.kept
   return (
@@ -81,7 +81,7 @@ function Outcome({ thread, now }: { thread: GroupThread; now: number }) {
         <div className="flex flex-col gap-1.5">
           <span className="text-xs/4 text-muted-foreground">Kept by the leader</span>
           {kept.map((file, index) => (
-            <FileChip key={`${file.name}-${index}`} file={file} href={null} />
+            <FileChip key={`${file.name}-${index}`} file={file} href={file.path ? fileUrl(botId, thread.id, keptId(thread.id), index) : null} />
           ))}
         </div>
       )}

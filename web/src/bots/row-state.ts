@@ -12,7 +12,7 @@ export interface RowState {
 
 /** Working shows the server's activity text ("Running commands"), and whom it works for while it
  *  is on a task another bot handed it ("For FillLight Bot · Working") or that it works in a group
- *  ("In a group · Searching the web"); the other states have fixed words, so the row reads the same
+ *  ("In a group · Running commands": what the bot does in that group, else its general activity); the other states have fixed words, so the row reads the same
  *  whatever the engine calls them. A bot in a running group that is not at work says so instead of
  *  its function. Finished and failed settle back to idle on the server after eight seconds. */
 export function rowState(bot: Bot): RowState {
@@ -20,7 +20,7 @@ export function rowState(bot: Bot): RowState {
   const unread = activity?.unread ?? false
   switch (activity?.status) {
     case 'working':
-      return { tone: 'working', text: `${workingIn(bot)}${activity.text || 'Working'}`, unread }
+      return { tone: 'working', text: `${workingIn(bot)}${(!bot.workingFor && groupActivity(bot)) || activity.text || 'Working'}`, unread }
     case 'waiting':
       return { tone: 'waiting', text: 'Waiting for you', unread }
     case 'finished':
@@ -38,6 +38,9 @@ function workingIn(bot: Bot) {
   const group = groupText(bot)
   return group ? `${group} · ` : ''
 }
+
+/** What the bot does in a running group right now, as the server saw its turn there. */
+const groupActivity = (bot: Bot) => bot.groups?.find(group => group.activity)?.activity
 
 /** "Leading a group" when it leads any running group, else "In a group". */
 const groupText = (bot: Bot) => (!bot.groups?.length ? '' : bot.groups.some(group => group.leading) ? 'Leading a group' : 'In a group')

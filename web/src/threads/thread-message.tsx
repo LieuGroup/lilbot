@@ -33,19 +33,19 @@ export function ThreadMessageRow({ botId, thread, message }: { botId: string; th
           <ChatItem key={index} item={item} botId={botId} />
         ))}
         {message.files?.map((file, index) => (
-          <FileChip key={`${file.name}-${index}`} file={file} href={!thread.group && file.path ? fileUrl(botId, thread, message, index) : null} />
+          <FileChip key={`${file.name}-${index}`} file={file} href={file.path ? fileUrl(botId, thread.id, message.id, index) : null} />
         ))}
       </div>
     </article>
   )
 }
 
-const fileUrl = (botId: string, thread: BotThread, message: ThreadMessage, index: number) =>
-  `/api/threads/${[botId, thread.id, message.id, String(index)].map(encodeURIComponent).join('/')}`
+/** The server's guarded download route for the n-th file of a message (a group's kept files hang under its `keptId`). */
+export const fileUrl = (botId: string, threadId: string, messageId: string, index: number) =>
+  `/api/threads/${[botId, threadId, messageId, String(index)].map(encodeURIComponent).join('/')}`
 
-/** A file passed with a message: icon, name and size. An exchange's delivered copy downloads through the server's guarded
- *  route (`href`); files in a group are not served yet, so they show without a link. The name is the sending bot's text, so it
- *  is only ever plain text. */
+/** A file passed with a message: icon, name and size. A delivered copy downloads through the server's guarded route (`href`);
+ *  one not delivered shows without a link. The name is the sending bot's text, so it is only ever plain text. */
 export function FileChip({ file, href }: { file: ExchangeFile; href: string | null }) {
   return (
     <Attachment className={`max-w-full min-w-0 gap-2 rounded-[10px] border-0 py-1.5! pr-2.5! pl-2! ring-1 ring-hairline ${href ? 'hover:bg-foreground/4!' : ''}`}>

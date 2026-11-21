@@ -9,13 +9,13 @@ export const MAX_FILES = 10
 const folderFlags = C.O_RDONLY | C.O_DIRECTORY | C.O_NOFOLLOW
 
 /** Opens `root` without following any link on the way, then each of `parts` below it, creating them (0700). */
-export async function openFolder(root: string, parts: string[]) {
+export async function openFolder(root: string, parts: string[], create = true) {
   const above = resolve(root).split('/').filter(Boolean)
   let handle = await open('/', folderFlags)
   try {
     for (const [i, part] of [...above, ...parts].entries()) {
       const path = `/proc/self/fd/${handle.fd}/${part}`
-      if (i >= above.length)
+      if (create && i >= above.length)
         await mkdir(path, { mode: 0o700 }).catch(error => {
           if (error.code !== 'EEXIST') throw error
         })
@@ -80,8 +80,8 @@ export async function writeAttachment(root: string, name: string, body: Readable
 }
 
 /** Reads `name` in `folder` below `root` (the bot's attachments, or an exchange's copies) and checks it against its hash. */
-export async function readAttachment(root: string, name: string, hash: string, parts = ['attachments']) {
-  const folder = await openFolder(root, parts)
+export async function readAttachment(root: string, name: string, hash: string, parts = ['attachments'], create = true) {
+  const folder = await openFolder(root, parts, create)
   let file: FileHandle | undefined
   try {
     file = await open(`/proc/self/fd/${folder.fd}/${name}`, C.O_RDONLY | C.O_NOFOLLOW | C.O_NONBLOCK)

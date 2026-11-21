@@ -51,13 +51,17 @@ export function botStatus(view: BotThread) {
   }
 }
 
-/** Running groups by bot, for the roster: each bot's groups, and whether it leads them. */
-export function rosterGroups(store: ThreadStore, groups: GroupStore) {
+/** Running groups by bot, for the roster: each bot's groups, whether it leads them and, while its turn there runs, what it is doing. */
+export function rosterGroups(store: ThreadStore, groups: GroupStore, runner: ThreadRunner) {
   const out = new Map<string, BotGroup[]>()
   for (const row of groups.running()) {
     const g = store.get(row.thread_id).group!
-    for (const p of store.get(row.thread_id).participants)
-      out.set(p.id, [...(out.get(p.id) ?? []), { id: row.thread_id, purpose: g.purpose, round: g.rounds.length, roundCap: g.roundCap, leading: p.id === row.leader_id }])
+    const running = runner.runningIn(row.thread_id)
+    for (const p of store.get(row.thread_id).participants) {
+      const line = runner.lineOf(running.find(d => d.target === p.id))
+      const group = { id: row.thread_id, purpose: g.purpose, round: g.rounds.length, roundCap: g.roundCap, leading: p.id === row.leader_id, ...(line ? { activity: line } : {}) }
+      out.set(p.id, [...(out.get(p.id) ?? []), group])
+    }
   }
   return out
 }

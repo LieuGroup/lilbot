@@ -79,6 +79,8 @@ export interface ThreadMessage {
   /** In a group: the leader's point that opens this round. */
   round?: number
 }
+/** The message id under which the files a group's leader kept are recorded and downloaded. */
+export const keptId = (groupId: string) => `${groupId}:kept`
 /** How a group ended: closed by its leader, stopped by Oscar, or by itself (round, message or time limit, gone quiet,
  *  its leader unreachable). */
 export type GroupEnd = 'closed' | 'stopped' | 'rounds' | 'messages' | 'time' | 'quiet' | 'failed'
@@ -121,6 +123,8 @@ export interface BotThread {
   /** The delegating bot's work item this exchange was handed out under; the receiver's own item has the exchange's id. */
   parentId: string | null
   status: ExchangeStatus
+  /** Why it failed, in LilBot's own fixed words (never raw error text); only while `status` is failed. Older failures have none. */
+  failure?: string
   /** What the receiver is doing right now, while it works. */
   activity: string | null
   startedAt: number | null

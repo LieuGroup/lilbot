@@ -76,11 +76,13 @@ export function createThreads(deps: ThreadDeps) {
       })
       work.settleExchanges(id => threadStore.get(id).stoppedBy?.name ?? null)
     },
-    (d, working) => {
-      for (const botId of [d.sender, d.target])
-        if (store.exists(botId)) activity.observe({ botId, chatId: `thread:${d.id}`, key: `${d.id}:${working}:${Date.now()}`, status: working ? 'working' : 'finished' })
+    (botId, d, working) => {
+      if (store.exists(botId)) activity.observe({ botId, chatId: `thread:${d.id}`, key: `${d.id}:${working}:${Date.now()}`, status: working ? 'working' : 'finished' })
     },
-    () => publish({ event: 'threads.changed' }),
+    roster => {
+      publish({ event: 'threads.changed' })
+      if (roster) deps.botsChanged()
+    },
     groupHost,
     groupLimits(process.env)
   )

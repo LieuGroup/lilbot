@@ -1,13 +1,14 @@
-/** What the roster shows of each bot's work with other bots: the running groups it is in, and whose task it works on now. */
+/** What the roster shows of each bot's work with other bots: the running groups it is in (and what it does there), and whose task it works on now. */
 import type { BotGroup, BotWorkingFor } from '../../shared/bot-schema'
 import type { GroupStore } from './group-store'
 import { rosterGroups } from './group-view'
-import type { Delivery, ThreadStore } from './thread-store'
+import type { ThreadRunner } from './thread-runner'
+import type { ThreadStore } from './thread-store'
 
-export function botRoster(store: ThreadStore, groups: GroupStore | undefined, running: Iterable<Delivery>) {
+export function botRoster(store: ThreadStore, groups: GroupStore | undefined, runner: ThreadRunner) {
   const out = new Map<string, { groups?: BotGroup[]; workingFor?: BotWorkingFor }>()
-  if (groups) for (const [botId, list] of rosterGroups(store, groups)) out.set(botId, { groups: list })
-  for (const d of running) {
+  if (groups) for (const [botId, list] of rosterGroups(store, groups, runner)) out.set(botId, { groups: list })
+  for (const d of runner.running.values()) {
     // A receiver's turn on a task it was handed; answers and notices run in the delegating bot's own sessions.
     if (d.kind !== 'request' && d.kind !== 'redirect' && d.kind !== 'oscar') continue
     const thread = store.get(d.threadId)

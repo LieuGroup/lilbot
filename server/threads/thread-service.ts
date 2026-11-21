@@ -6,6 +6,7 @@ import { type BotThread, ThreadAsk } from '../../shared/thread-schema'
 import { readAttachment } from '../attachments/attachment-files'
 import { backgroundFailure } from '../background'
 import { GroupEnding, type GroupHost } from './group-end'
+import { readGroupFile } from './group-files'
 import { GroupRounds } from './group-rounds'
 import { GroupService } from './group-service'
 import { GroupStore } from './group-store'
@@ -29,12 +30,13 @@ export class ThreadService {
   readonly waits: ThreadWaits
   readonly groups?: GroupService
   private groupStore?: GroupStore
+  private groupRoot = ''
   constructor(
     readonly store: ThreadStore,
     private host: ThreadHost,
     readonly changed: () => void = () => {},
-    activity: (d: Delivery, working: boolean) => void = () => {},
-    touched: () => void = () => {},
+    activity: (botId: string, d: Delivery, working: boolean) => void = () => {},
+    touched: (roster?: boolean) => void = () => {},
     groupHost?: GroupHost,
     limits: GroupLimits = GROUP_LIMITS
   ) {
@@ -56,6 +58,7 @@ export class ThreadService {
       rounds = new GroupRounds(store, groups, this.files, ending, host.folder, limits, changed)
       this.groups = new GroupService(this, groups, ending, { ...host, ...groupHost }, limits)
       this.groupStore = groups
+      this.groupRoot = groupHost.root
     }
     this.runner = new ThreadRunner(store, this.files, this.waits, host, changed, activity, touched, rounds)
   }
@@ -65,7 +68,7 @@ export class ThreadService {
   }
   /** Running groups and the task each bot works on now, by bot, for the roster. */
   roster() {
-    return botRoster(this.store, this.groupStore, this.runner.running.values())
+    return botRoster(this.store, this.groupStore, this.runner)
   }
   /** The stored exchange with its files per message and the receiver's live activity line. */
   view(thread: BotThread): BotThread {
@@ -89,11 +92,12 @@ export class ThreadService {
     return this.view(thread)
   }
   /** A file passed in an exchange, as delivered: read from the recipient's copy without following links and checked against
-   *  the hash taken when it was copied. Files in groups are not served here. */
+   *  the hash taken when it was copied. In a group: a file passed in it, or one its leader kept (`readGroupFile`). */
   async file(botId: string, threadId: string, messageId: string, index: number) {
     const thread = await this.open(botId, threadId)
     const row = this.files.forMessage(messageId)[index]
-    if (thread.group || !row || row.thread_id !== threadId || !row.copy || !row.sha256 || !this.host.folder) throw new LilBotError('file_missing', 'That file was not delivered.')
+    if (!row || row.thread_id !== threadId || !row.copy || !row.sha256 || !this.host.folder) throw new LilBotError('file_missing', 'That file was not delivered.')
+    if (thread.group) return { name: row.name, ...(await readGroupFile(this.groupRoot, this.host.folder, thread, row)) }
     const to = await this.host.requireBot(thread.participants.find(p => p.id !== row.sender)!.id)
     const parts = row.copy.split('/')
     const stored = parts.pop()!

@@ -131,7 +131,7 @@ export class ThreadStore {
         items: [{ kind: 'assistant', text: input.text }],
         ...(kind === 'redirect' ? { redirect: true } : kind === 'oscar' ? { oscar: true } : {})
       })
-      if (thread.status !== 'working') Object.assign(thread, { status: 'waiting', endedAt: null })
+      if (thread.status !== 'working') Object.assign(thread, { status: 'waiting', endedAt: null, failure: undefined })
       this.save(thread)
       if (!input.threadId)
         this.db.query('INSERT OR IGNORE INTO thread_links(thread_id,batch_id,parent_id) VALUES(?,?,?)').run(thread.id, input.batchId ?? null, input.parentId ?? null)

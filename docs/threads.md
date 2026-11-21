@@ -61,7 +61,7 @@ and share the upstream model allowance with production.
 - A receiver attaches answer files only while one of its deliveries for that exchange runs. They are checked then and
   copied when the answer goes out; one that vanished or became a link since is listed with no copy.
 - Copies are `exchanges/<exchange id>/<8 hex>-<name with anything outside [A-Za-z0-9._-] replaced>`, mode 0600, in the
-  recipient's folder; SHA-256 recorded.
+  recipient's folder; SHA-256 recorded. Downloads open every folder without creating or following anything.
 
 ## Redirect and stop, step by step
 
@@ -102,7 +102,8 @@ implementation's.
 - **Turns.** Every member and leader turn recorded before the end, plus the closing turn. Late turns count nothing.
 - **Files.** One copy per file in the group folder (not one per member): members read it by full path. A kept file is a
   copy of that copy in the leader's own folder, so the Library item survives the archive. A copy of a copy gets one
-  fresh prefix, not two.
+  fresh prefix, not two. Kept files are recorded in `thread_files` in the end transaction under `<group id>:kept` (with
+  the hash), so the same download route serves them; passed files are served from the group folder, then the archive.
 - **Journal facts** are written in the end transaction, `kind: journal`, `scope: bot`, `author: bot`, `via: chat`, with
   the member's group session as the source chat (memory has no `via` for LilBot itself; the Memory panel shows it as
   learned in a chat). The longest of three versions that memory accepts is saved; a refusal never blocks the end.

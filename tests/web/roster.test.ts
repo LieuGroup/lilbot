@@ -104,6 +104,12 @@ test('each activity status maps to its row state and words', () => {
   ).toBe('Leading a group')
   expect(rowState(member({ status: 'working', text: 'Searching the web' }))).toEqual({ tone: 'working', text: 'In a group · Searching the web', unread: false })
   expect(rowState(member({ status: 'working', text: '' }, true)).text).toBe('Leading a group · Working')
+  // What the bot does in the group beats its general activity text; a handed-over task still wins over the group.
+  const busy = (activity: string, leading = false) => ({ ...member({ status: 'working', text: 'Working' }, leading), groups: [{ ...g, leading, activity }] })
+  expect(rowState(busy('Running commands')).text).toBe('In a group · Running commands')
+  expect(rowState(busy('Searching the web', true)).text).toBe('Leading a group · Searching the web')
+  expect(rowState({ ...busy('Running commands'), workingFor: { threadId: 't', name: 'FillLight Bot' } }).text).toBe('For FillLight Bot · Working')
+  expect(rowState({ ...member(undefined, true), groups: [{ ...g, leading: true, activity: 'Running commands' }] }).text).toBe('Leading a group')
   // A handed-over task is the turn running now; waiting for Oscar and an unavailable runtime win over the group.
   expect(rowState({ ...member({ status: 'working', text: '' }), workingFor: { threadId: 't', name: 'FillLight Bot' } }).text).toBe('For FillLight Bot · Working')
   expect(rowState(member({ status: 'waiting', text: '' })).text).toBe('Waiting for you')

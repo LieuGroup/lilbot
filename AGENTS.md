@@ -434,15 +434,16 @@ Visual specs: "Work between bots" in [docs/screens.md](docs/screens.md).
 - "Working together" (`threads/working-together.tsx`): the roster's top section and the rail's group slots, only while a
   bot in `bots.list` has `groups`. Members and the leader come from each bot's `groups`; a row opens
   `/bots/<leader>?thread=<group>`. Row states ("Leading a group", "In a group", "In a group · <activity>") are in
-  `bots/row-state.ts`: a member's live activity in `bots.list` is its usual `activity`, combined with its `groups`.
+  `bots/row-state.ts`: a member's live activity in `bots.list` is what it does in its group (`groups[].activity`), else its usual `activity`, combined with its `groups`.
 - Opening sets `?thread=<id>` on `/bots/$botId` (tab links and the panel's auto-open keep it with `search: true`). The
   view covers the conversation column while the conversation stays mounted, `invisible` and inert: its connection
   and scroll position are unchanged. On a phone, opening from the details panel goes to the conversation first.
   "Back to chat" drops the parameter; each bot button opens that bot's chat.
 - Stop (a running task's or group's line and its view) asks first, then calls `threads.cancel`; asked threads have no
   Stop. Any participant's line can stop a group.
-- Files passed in a group, and the files its leader kept, show as chips without a link: `ThreadService.file` does not
-  serve group files yet.
+- Files passed in a group, and the files its leader kept, show as chips that download through the same route as an
+  exchange's (`ThreadService.file`). A group closed before #178 has no recorded hash for its kept files, so their chips' links
+  answer "File missing or unavailable" (the files are in the leader's Library).
 - Oscar never writes in an exchange: no composer.
 
 ### Conversation scroll (AI Elements' Message Scroller)
@@ -556,17 +557,31 @@ Visual specs: "Work between bots" in [docs/screens.md](docs/screens.md).
   same persisted transcript, including the other bot's tool rows and files per message. A delivered copy downloads
   from `/api/threads/<bot id>/<thread id>/<message id>/<n>` (`ThreadService.file`): the bot must be a participant,
   the copy is read from the recipient's folder without following links and checked against the hash taken when it
-  was copied; files in groups are not served there yet. A running exchange's view has `redirecting` while a redirect
+  was copied. In a group the bot must be one of its participants (leader or member) and the thread must own the file:
+  a file passed in it is read from its shared folder, else from the archive once it has ended (never creating a folder),
+  and a file the leader kept (recorded under `keptId`, with its hash, when the group ends) from the leader's own folder.
+  A running exchange's view has `redirecting` while a redirect
   did not reach the running turn and waits for the receiver's next step.
+- A failed exchange carries `failure` (in `threads.list` and `threads.open`), a short fixed phrase chosen from what LilBot
+  knows (`thread-failure.ts`): the receiver's turn ended in an error, LilBot could not confirm how it ended (an unknown
+  engine receipt), the receiving bot or the bot that handed it over is gone, the request or answer was too long or
+  withheld by the safety check, the message limit. Never an exception's text, a run's output or bot text. A stopped
+  exchange stays stopped; a follow-up clears the failure. The task line reads "Failed · <failure>" (older failures have
+  none and read "Failed · <bot> could not be reached"); its state still comes from `threads.list`. The `thread` chat event
+  also carries `failure` while the thread has one (never on the stored tool line, which history records once).
+- The leader's row between its own turns in a group reads "Leading a group" (idle), not working and not "waiting" (that
+  status means waiting for Oscar); the working marks are chosen in `ThreadRunner.mark`.
 - `bots.list` gives a bot working on a task another bot handed it `workingFor` (exchange id and the delegating bot's
   name), from the deliveries running now (`thread-roster.ts`, with the running groups); the roster row reads "For
-  <bot> · <activity>".
+  <bot> · <activity>". Each of a bot's `groups` entries adds `activity` while its own turn in that group runs and a tool
+  call has been seen in it (the runner's live line; a tool call in a group also pushes `bots.changed`): "In a group ·
+  <activity>".
 - Main conversations get one `tool` reference with `threadId` per exchange (in snapshots and idempotent `thread` chat
   events), merged at the HTTP edge, never written as fake user messages. The screens are in "Work between bots"
   under Web app.
 - Hidden session aliases are persisted before submission and excluded from after-chat reviews, also after restart.
-  Thread activity sets working/finished on both bots without unread; only the asking bot's visible answer to Oscar can
-  mark it unread. Status and activity changes push a plain `threads.changed`; the per-bot chat lines are rebuilt only
+  Thread activity sets working/finished without unread (on both bots of an exchange; in a group, on the member taking a
+  point and on the leader only for its own turns); only the asking bot's visible answer to Oscar can mark it unread. Status and activity changes push a plain `threads.changed`; the per-bot chat lines are rebuilt only
   when exchanges are added or settle.
 - Limits are in `thread-limits.ts`: depth 3, 20 messages per thread with the answer reserved, 20,000 characters per
   request, 6 deliveries running at once (measured on the dev gateway), 8 exchanges under way per delegating bot. A
