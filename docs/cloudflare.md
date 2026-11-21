@@ -70,6 +70,9 @@ orchestrator adds the rule below after a separate security review. Agents buildi
 - Check from outside: every path, including `/ws`, `/api/*`, `/engine/*` and `/helper/*`, answers with a redirect to
   the Access sign-in; a forged token sent through the tunnel is redirected too, and sent straight to the listener
   gets 403.
+- Local test certs: `LILBOT_ACCESS_TEST_CERTS_URL` exists only for `check:access` and `check:connections` (HTTP on
+  `127.0.0.1`, all three isolation directories, and `LILBOT_BOT_IDS` exactly `isolation-access-check`, or in development
+  only `dev-` profiles). Production refuses it (`*_TEST_*`). Never set it in deployment.
 - Roll back the app hostname only: remove its ingress rule and restart `lilbot-tunnel.service` (the helper door keeps
   working); optionally delete the DNS name and the `access.conf` drop-in, then `systemctl --user daemon-reload` and
   restart `lilbot.service`.

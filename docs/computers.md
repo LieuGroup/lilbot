@@ -1,16 +1,33 @@
 # Computers: helper protocol and limits
 
-Detail for `server/computers/`, `helper/` and the `lilbot-computers-v1` plug-in. The rules that apply everywhere
-(the helper door's two paths, secrets, full access, untrusted output) are in `AGENTS.md` under "Computers" and
-"Listeners and trust boundaries". Public door hostname and tunnel: [cloudflare.md](cloudflare.md).
+Detail for `server/computers/`, `shared/computer-schema.ts`, `helper/` and the `lilbot-computers-v1` plug-in. The rules
+that apply everywhere (the helper door's two paths, secrets, full access, untrusted output) are in `AGENTS.md` under
+"Computers and devices" and "Listeners and trust boundaries". Public door hostname and tunnel:
+[cloudflare.md](cloudflare.md).
 
 ## Records and browser methods
 
+- The leader is always `leader` and runs operations locally through the same bounded runner. Every bot can use every
+  computer; the authenticated bot owns its requests, never an id from the body. All computer operations require
+  `full-access`.
 - Migration 15: computer records, Ed25519 public keys, one-time install codes, replay nonces and durable request
   identities. Migration 16: persistent receive allowances and an active-only bot request index.
-- `computers.installCode({ name })` lasts 10 minutes and is single use. The minted name wins over the helper's
-  advisory hostname. OS is an enum; home is at most 512 characters with control and hidden formatting characters
-  refused. `keyConflict` reports a competing key connection.
+- Browser methods `computers.list`, `computers.installCode`, `computers.remove`, `computers.addThis.*` and the
+  `computers.changed` push exist; Settings > Computers ([screens.md](screens.md)) lists machines live, removes after
+  confirmation, mints one-time commands in "Add by command line" and runs the three-step "Add this computer" dialog.
+  Helpers connect only through the helper door.
+- `computers.installCode({ name })` lasts 10 minutes and is single use, and also returns `helperUrl` (the helper door
+  origin) when `LILBOT_HELPER_URL` is set so the command-line dialog builds its command from it (no hostname in web
+  code) and says so when missing. The minted name wins over the helper's advisory hostname. OS is an enum; home is at
+  most 512 characters with control and hidden formatting characters refused. `keyConflict` reports a competing key
+  connection.
+- LilBot creates `computer-server-key.pem` (0600) in its data directory; back it up with the database and preserve it on
+  redeploy.
+- Computer hard stops (Hermes' `detect_hardline_command`) are a guard for full-access bots, not a security boundary:
+  direct engine submissions and write/copy operations do not enforce Hermes' protected-path refusals. Full-access bots
+  share the OS user's authority. Machine output is untrusted data.
+- Deliver the helper binary and its `.sha256` from a trusted channel; the sidecar detects corruption, not tampering.
+- A failure to configure the computers plug-in is logged without making the bot unavailable.
 
 ## Rate limits (no edge rule)
 
@@ -102,8 +119,32 @@ Detail for `server/computers/`, `helper/` and the `lilbot-computers-v1` plug-in.
 
 ## Adding a computer from its browser
 
-The rules are in `AGENTS.md` ("Adding a computer from its browser"). This is the detail for the screen (#68), the
-builds and signing.
+Oscar opens LilBot on the machine, chooses "Add this computer", downloads the installer, opens it, and the computer
+appears. No terminal on macOS. The command-line install (`computers.installCode`) stays for headless machines. This is
+the detail for the screen (#68), the hand-over, the builds and signing.
+
+- `computers.addThis.start({ name, system, deviceId? })` mints an ordinary install code (single use, 10 minutes) for an
+  attempt and returns the downloads for that system, or `supported: false` (`system`: not macOS or Linux;
+  `unavailable`: no installer built for this LilBot). `computers.addThis.status({ attemptId })` answers waiting,
+  registered, connected or expired, with the computer once one registered with that attempt's code (migration 23 links
+  them).
+- Downloads are served from `<data>/helper-downloads` at `/api/computers/download/<file>` on the private app and the
+  Access listener with the socket's Host/Origin checks and no cross-site fetches; never on the helper door. A build is
+  offered only while its sidecar's settings hash matches the server's current settings.
+- An installer is the same file for every machine and carries no secret. It carries this LilBot's public settings, baked
+  in at build time and written by the server to `helper-settings.json`: the helper door origin (`LILBOT_HELPER_URL`,
+  required for the feature), the exact page origins allowed to hand over (the non-loopback `LILBOT_ALLOWED_HOSTS` names
+  and the Access name over HTTPS; loopback pages only in development) and the server key fingerprint. The helper never
+  registers anywhere else, so a page or local process cannot point it at another server. Changing those settings means
+  rebuilding the downloads.
+- Hand-over of the code, first that works: (1) the opened helper listens on `127.0.0.1:47613` for 10 minutes and accepts
+  one code, only from an allowed Origin with the loopback Host, only from a socket owned by the same OS user; (2) a
+  `lilbot-helper://register#<code>` link handled by the macOS app; (3) the same short line pasted into the installer's
+  window. The page holds the short code (no fingerprint); it never goes into a logged URL, argv or a log. A port already
+  taken by something else disables (1). Registration itself is unchanged: HMAC and the helper's fresh key proof through
+  the helper door.
+- Signing secrets rule: identity and notary key (path, key id, issuer id), team id and email come from that Mac's
+  environment or a local file outside the repo; never put them in the repo, issues or PRs.
 
 ### What the page does
 
@@ -221,9 +262,19 @@ The rules are in `AGENTS.md` ("My computer"). Code: `server/devices/`, `shared/d
   so reading a page again gives the same answer. Waiting messages older than six hours, and those the engine refused,
   are removed. A message from another client with the same text can only be mistaken for one of ours while one is
   waiting. The `user.message` event is also published for plain messages.
-- **Bot-facing.** The standing rules are in the note and `server/system/guide/computers.md`; `main` is on `lilbot_about`,
-  `lilbot_status` and the computers plug-in's `list_computers`. The note's existing line of computer names is unchanged; the rules add no online state and no main mark, so
-  a computer coming online or becoming main never rewrites any bot's instructions.
+- **Bot-facing.** The standing rules live in the note and `server/system/guide/computers.md`: a computer named in the
+  message, else the origin device's, else the main one; ask Oscar in the reply (not with a tool: LilBot draws no card
+  for one), listing computers by name, when it is offline, none can be told or the words fit several; never guess for a
+  command that changes something; say which computer was used. `main` is on `lilbot_about`, `lilbot_status` and the
+  computers plug-in's `list_computers`. The note's existing line of computer names is unchanged; the rules add no online
+  state and no main mark, so a computer coming online or becoming main never rewrites any bot's instructions.
+- **Browser client (`web/src/devices/`, [screens.md](screens.md)).** The browser keeps its device id in `localStorage`
+  (`devices/this-device.ts`, made on first use; name max 100 chars, no control or hidden chars) and registers it with
+  `devices.current` on every connection; every `chat.send` carries it and a client `messageId`, so the `user.message`
+  event fills in the sent message, and a message from another device or tab joins the conversation live. Settings >
+  Computers starts with "This device" (name, "Runs on", the line from `resolves`); the list has the Main tag and "Make
+  main"; the last step of "Add this computer" has the "Make it my main computer" switch. A user message from another
+  device shows "from <name>" under it, as plain text.
 
 ## Tests
 

@@ -100,18 +100,15 @@ Rules that keep it this way:
 
 ## Status
 
-Built: roster, create bot, Setup panel (toolsets and connectors read-only; skills with a per-bot switch and a reader, #137), chat with live tool rows, stop and new session, one
-continuous main conversation per bot on every device, the three-column shell (roster, conversation, details panel with
-Activity, Library, Memory and Setup tabs), bot menu, delete confirmation, Settings, chat attachments, LilBot's own
-memory with a Memory panel and after-chat review, every bot knowing its system (the note) and operating the app through
-LilBot's own MCP tools, delegation between bots (several tasks at once, files, status, stop, redirect, wait), temporary
-groups of bots (rounds, a shared folder, an outcome; #133), the screens for asked threads, handed-over work and groups
-(#65, #135, #136: the line or card in a conversation, the opened exchange or group, stop, "With other bots", the roster's
-"Working together"), the Routines screens (#53), the Library screens (#54), the Webhooks screens (#138), and the
-backends for routines, webhooks, threads, library, skills, computers, the work board with its check levels, goals,
-coding through T3 Code and the MCP services bots add (#187). Next: the webhook capability switches (Paper "17" frames 7 to 9, awaiting Oscar's approval), work board and goal screens, the check levels' track record and
-spot checks (#142), the nightly memory tidy-up and editing abilities. Reports are not built. Desktop (Tauri) and iOS (Expo) come after the
-web app.
+Built: roster, create bot, Setup panel (toolsets and connectors read-only; skills with per-bot switch and reader, #137),
+chat with live tool rows, stop and new session, continuous main conversation per bot across devices, three-column shell
+(Activity, Library, Memory, Setup), bot menu, delete confirmation, Settings, chat attachments, LilBot memory with panel
+and after-chat review, system note and LilBot MCP tools, delegation and temporary groups (#133) with screens (#65, #135,
+#136), Routines screens (#53), Library screens (#54), Webhooks screens (#138), and backends for routines, webhooks,
+threads, library, skills, computers/devices, work board with check levels, goals, T3 Code coding and bot-added MCP
+services (#187). Next: webhook capability switches (Paper "17" frames 7–9, awaiting Oscar's approval), work board and
+goal screens, check-level track record and spot checks (#142), nightly memory tidy-up and editing abilities. Reports are
+not built. Desktop (Tauri) and iOS (Expo) follow the web app.
 
 ## Safety: production and development
 
@@ -154,8 +151,9 @@ Staff, profile `default`) is Oscar's live bot.
 Never print, log or commit, and never put in a bot's instructions or memory: the Hermes attach ticket, anything under
 `~/.hermes` that holds credentials, `<data>/engine-token`, `t3-grant.json`, `computer-server-key.pem`,
 `~/.cloudflared/cert.pem`, the tunnel credentials, the Access drop-in, Oscar's email, webhook addresses and webhook
-signing secrets, and `<data>/mcp-credentials.json` (the MCP services' tokens and client secrets). The database holds signing secrets (an address is computed from the engine token and a nonce, never stored), so
-copies of data use private directories and files (0700/0600).
+signing secrets, and `<data>/mcp-credentials.json` (the MCP services' tokens and client secrets). The database holds
+signing secrets (an address is computed from the engine token and a nonce, never stored), so copies of data use private
+directories and files (0700/0600).
 
 ### Hermes
 
@@ -168,10 +166,11 @@ copies of data use private directories and files (0700/0600).
   every Hermes update run `bun run verify` and `bun run check:live`.
 - Never use Hermes' own MCP OAuth (`mcp.servers.oauth.*`) or its token store: LilBot holds every service's sign-in
   (see Connections).
-- Put nothing new into Hermes plug-ins. A new bot-facing tool goes on LilBot's own MCP server (`server/system/`), with the
-  same service function the screen uses, so a second engine gets it for free; the plug-ins keep only what MCP cannot do.
-- How LilBot maps onto Hermes (connections, plug-ins, importer, MCP): [docs/hermes-engine.md](docs/hermes-engine.md).
-  What any engine must provide, as a checklist: [docs/engine-contract.md](docs/engine-contract.md).
+- Put nothing new into Hermes plug-ins. A new bot-facing tool goes on LilBot's own MCP server (`server/system/`), with
+  the same service function the screen uses, so a second engine gets it for free; the plug-ins keep only what MCP
+  cannot do.
+- Mapping onto Hermes: [docs/hermes-engine.md](docs/hermes-engine.md). Engine checklist:
+  [docs/engine-contract.md](docs/engine-contract.md).
 
 ## Stack
 
@@ -179,1340 +178,333 @@ TypeScript on Bun. No Effect, no server web framework, no ORM. Oscar does not wr
 behaviour he can check in the app. Keep an eye on speed and memory; measure before optimising.
 
 - Server: plain `Bun.serve`; database `bun:sqlite` directly.
-- Web: React + Vite, TanStack Router, Tailwind 4, Zustand, Zod. The UI is built on shadcn/ui (Base UI variant,
+- Web: React + Vite, TanStack Router, Tailwind 4, Zustand, Zod. Built on shadcn/ui (Base UI variant,
   `components.json`) and its AI Elements patterns:
-  - Never hand-write a part shadcn has (button, input, menu, dialog, ...). Add it with `bunx shadcn@latest add
-    <name>`; it lands in `web/src/ui/` (alias `@/ui`). Then run `bun run format`. Delete exports nothing uses so the
-    file stays under about 200 lines. The code is ours: edit it when needed.
-  - A chat feature first looks for its AI Elements pattern: read
-    `https://ui.shadcn.com/docs/ai-elements/base/<name>.md` (Chat, Message, Prompt Input, Tool, Task, Queue, Model
-    Selector, ...), add the parts it lists, and compose them in the feature's folder. Patterns take plain props: map
-    our own data to them at the component edge (`chat/chat-item.tsx`), never reshape `chat-state.ts` or `shared/` for
-    a library, and never add the Vercel AI SDK. Next to adopt, when their feature exists: Context, File Tree,
-    Confirmation, Subagent, Plan, Sources.
-  - Colours: only shadcn's token names (`bg-background`, `bg-card`, `bg-muted`, `text-muted-foreground`,
-    `bg-primary`, `text-destructive`, `border`), plus `success` for green and `hairline` (foreground at 8%) for the
-    line between columns and around cards. Other tints are the foreground at an opacity (`bg-foreground/4` hover,
-    `/6` pressed). Accent blue (`primary`) is only for the unread dot and the working spinner; switches and primary
-    buttons are ink (`bg-foreground`). They are defined once in `app/styles.css` with LilBot's palette; dark mode
-    follows the device (`prefers-color-scheme`). Bot replies use the `prose-chat` utility defined there.
-  - Font: Inter, bundled in `app/fonts/` (three subsets, about 48 kB for English text, loaded by the browser as
-    needed), so the app looks the same on every device; the device's own font shows while it loads.
-  - Type scale, closed: 12 meta and section labels, 13 previews and menus, 14 names, 15 chat text, 16 panel and
-    dialog titles. Weights 400, 500, 600. Icons 16px at stroke 1.75 in 28px buttons (`ui/icon-button.ts`).
-  - Bundle budget: the chat's first load stays about 220 kB of JavaScript and 17 kB of styles (gzip -9, counting every
-    file `dist/index.html` references; Vite's per-file sizes alone understate it). So feature code imports parts as
-    `@/ui/<part>`; pages with forms are lazy routes in `app/router.tsx`; details tabs are lazy chunks in
-    `bots/bot-details-panel.tsx`; the bot menu, its dialogs and Settings are lazy (the roster only writes to small
-    stores and loads them on hover or first use); so is the composer's model menu (the pill writes to
-    `bots/model-picker-target.ts`); the image viewer loads on the first click on an image.
-  - `bun run build` also writes brotli and gzip copies of `dist/` text files; `server/http/static-files.ts` serves the
-    accepted encoding to every listener that serves the app, hashed `/assets/` files as immutable (a missing one is a
-    404, never the page) and `index.html` as `no-cache` with an ETag.
-- Checks: Biome, `tsc`, knip (unused files, exports, dependencies), the 200-line file limit, `bun test`, Vite build, all
-  through `bun run verify`.
+  - Never hand-write a part shadcn has (button, input, menu, dialog, ...). Add with `bunx shadcn@latest add <name>`
+    (lands in `web/src/ui/`, alias `@/ui`), run `bun run format`, and delete unused exports to stay under ~200 lines.
+  - Chat features first check `https://ui.shadcn.com/docs/ai-elements/base/<name>.md` and compose those parts with plain
+    props at the component edge (`chat/chat-item.tsx`); never reshape `chat-state.ts` or `shared/` for a library and
+    never add the Vercel AI SDK. Next to adopt when needed: Context, File Tree, Confirmation, Subagent, Plan, Sources.
+  - Colours: only shadcn token names (`bg-background`, `bg-card`, `bg-muted`, `text-muted-foreground`, `bg-primary`,
+    `text-destructive`, `border`), plus `success` and `hairline` (foreground at 8%). Other tints are foreground
+    opacities (`bg-foreground/4` hover, `/6` pressed). Accent blue (`primary`) is only for the unread dot and working
+    spinner; switches and primary buttons are ink (`bg-foreground`). Defined in `app/styles.css`; dark mode follows
+    `prefers-color-scheme`; bot replies use `prose-chat`.
+  - Font: Inter bundled in `app/fonts/` (~48 kB English subsets). Closed type scale: 12 meta/section, 13 previews/menus,
+    14 names, 15 chat, 16 panel/dialog titles; weights 400, 500, 600. Icons 16px at stroke 1.75 in 28px buttons
+    (`ui/icon-button.ts`).
+  - Bundle budget: chat's first load stays about 220 kB JS and 17 kB CSS (gzip -9, all files `dist/index.html`
+    references). Import UI parts as `@/ui/<part>`; keep form pages, details tabs, bot menu/dialogs, Settings, model
+    menu, image viewer and thread/routine/webhook/library detail views lazy.
+  - `bun run build` writes brotli and gzip copies of `dist/`; `server/http/static-files.ts` serves them, hashed
+    `/assets/` immutable (404 when missing), `index.html` `no-cache` with ETag.
+- Checks: Biome, `tsc`, knip, 200-line file limit, `AGENTS.md` size/link checks, `bun test`, Vite build (`bun run verify`).
 
 ## Listeners and trust boundaries
 
-All three listeners bind loopback (the private app's `LILBOT_HOST` defaults to `127.0.0.1`), disable development
-error pages and answer errors with a plain 500.
+All three listeners bind loopback (`LILBOT_HOST` defaults to `127.0.0.1`), disable development error pages and answer
+errors with a plain 500.
 
-- **Private app** (`LILBOT_PORT`, production 3370): the app, browser routes, `/ws`, the engine API and the MCP routes
-  (T3 bridge, system server, the services' `/engine/connections/<id>/mcp`). Other devices
-  reach it over the tailnet only (port 8443). `server/http/socket-guard.ts` allows Host names from
-  `LILBOT_ALLOWED_HOSTS` (set in the service, not in code) plus same origin. It refuses `cf-connecting-ip`, `cf-ray`
-  and Cloudflare `cdn-loop` headers before routing, even with a valid Host.
-- **Helper door** (off by default; `LILBOT_PUBLIC_ENABLED=1`, `LILBOT_PUBLIC_PORT`, production 3372, must differ from
-  the private port): only POST `/helper/register` (8 KiB bodies), GET `/helper/connect` (WebSocket) and POST
-  `/hook/<address>` (webhook deliveries, 256 KiB bodies; see Webhooks). No app, browser socket or engine endpoint.
-  Behind Cloudflare the client address is `cf-connecting-ip`.
-- **Access listener** (off by default): `LILBOT_ACCESS_ENABLED=1` and all of `LILBOT_ACCESS_PORT` (3373, distinct
-  from the other two), `LILBOT_ACCESS_HOST` (hostname, no scheme or port), `LILBOT_ACCESS_TEAM`
-  (`<team>.cloudflareaccess.com`, no scheme), `LILBOT_ACCESS_AUD` and `LILBOT_ACCESS_EMAIL` (service environment
-  only). Missing or invalid settings
-  stop startup before any listener opens. It serves the same app, browser routes and `/ws` as the private app. One
-  opt-in route exists only on this listener when `LILBOT_ACCESS_CALLBACK_ENABLED=1` (off by default; the paste fallback
-  works without it): GET `/api/connections/callback`, where a service's sign-in returns (Oscar's decision on #187;
-  nothing else was opened). When off, that path answers with a plain 404 (`no-store`) and never falls through to the app
-  shell. When on, it runs only after the Access checks below, takes `code`, `state`, `iss` and `error`, sets no
-  cookie, shows a plain page (no-store, `default-src 'none'`, no referrer) and never logs its address.
-  - Every HTTP request and socket handshake needs an RS256 Access JWT in `Cf-Access-Jwt-Assertion`; only `/ws`
-    upgrades also accept the `CF_Authorization` cookie, and a present header wins over a cookie.
-  - It checks the configured issuer, audience, expiry/not-before (30 seconds of skew) and email (case-insensitive).
-    Keys come only from `https://<team>/cdn-cgi/access/certs`, cached ten minutes; an unknown key triggers a refresh
-    after a 30-second cooldown, and failed fetches have the same cooldown.
-  - Invalid or missing tokens, a wrong Host or a mismatched Origin get a plain 403. Tokens and the email are never
-    logged. `/engine`, `/engine/*`, `/helper` and `/helper/*` are always refused, even with a valid JWT.
-  - `LILBOT_ACCESS_TEST_CERTS_URL` exists only for `check:access` and `check:connections` (HTTP on `127.0.0.1`, all
-    three isolation directories, and `LILBOT_BOT_IDS` exactly `isolation-access-check`, or in development only `dev-`
-    profiles). Production refuses it (`*_TEST_*`). Never set it in deployment.
+- **Private app** (`LILBOT_PORT`, production 3370): app, browser routes, `/ws`, engine API and MCP routes (T3 bridge,
+  system server, `/engine/connections/<id>/mcp`). Reached from other devices over the tailnet only (port 8443).
+  `server/http/socket-guard.ts` allows `LILBOT_ALLOWED_HOSTS` plus same origin and refuses `cf-connecting-ip`, `cf-ray`
+  and Cloudflare `cdn-loop` headers before routing.
+- **Helper door** (off by default; `LILBOT_PUBLIC_ENABLED=1`, `LILBOT_PUBLIC_PORT`, production 3372, distinct from
+  private port): only `POST /helper/register` (8 KiB), `GET /helper/connect` (WebSocket) and `POST /hook/<address>`
+  (256 KiB). No app, browser socket or engine endpoint. Behind Cloudflare the client IP is `cf-connecting-ip`.
+- **Access listener** (off by default): `LILBOT_ACCESS_ENABLED=1` with `LILBOT_ACCESS_PORT` (3373, distinct),
+  `LILBOT_ACCESS_HOST`, `LILBOT_ACCESS_TEAM` (`<team>.cloudflareaccess.com`), `LILBOT_ACCESS_AUD` and
+  `LILBOT_ACCESS_EMAIL` (service env only; invalid settings halt startup). Serves the app, browser routes and `/ws`.
+  One opt-in route exists only here when `LILBOT_ACCESS_CALLBACK_ENABLED=1` (off by default; paste fallback works
+  without it): `GET /api/connections/callback` (runs only after Access JWT checks, plain `no-store` / `default-src
+  'none'` page, no cookie, never logs its address; when off, plain 404 `no-store`, never the app shell).
+  - Every HTTP request and `/ws` handshake requires a verified RS256 Access JWT in `Cf-Access-Jwt-Assertion` (`/ws` also
+    accepts `CF_Authorization`, header wins), checking issuer, audience, expiry/nbf (30 s skew) and email via certs from
+    `https://<team>/cdn-cgi/access/certs` (10 min cache, 30 s refresh/failure cooldown). Invalid/missing tokens or
+    Host/Origin mismatch get 403; never log tokens or email. `/engine*` and `/helper*` are always refused.
+  - `LILBOT_ACCESS_TEST_CERTS_URL` is strictly for `check:access`/`check:connections` on loopback with isolated dev
+    dirs/allowlist; production refuses `*_TEST_*`.
 - Never add the helper or Access hostname to `LILBOT_ALLOWED_HOSTS`, and never point a tunnel at the private port.
-- File downloads (library, attachments, files passed between bots, helper installers) apply the socket's Host/Origin checks, refuse cross-site
-  fetches and send attachment disposition, no-sniff, sandbox and no-store headers. They exist on the private and Access
-  listeners, never on the helper door.
-- **Engine API** (`server/http/engine-api.ts`, `/engine/*` on the private listener): for engine plug-ins on this
-  machine. Loopback only, no browsers, token from `<data>/engine-token`. A plug-in acts as one bot through the
-  bot-bound capability in its profile settings: the server takes the caller from that capability, ignores bot ids in
-  request bodies, and refuses unknown and deleted bots, including the bot behind a creation capability. The bot
-  tools still on the plug-ins (memory, skills, computers, conversation search) go through it, and so do the
-  routes kept for sessions that loaded an older adapter (`bots/create`, `routines/*`, `threads/*`, `library/give`);
-  the T3 bridge, the services' route and LilBot's own MCP server use their own per-bot keys (see Coding, Connections and
-  System).
-- **Cloudflare:** both public names run through LilBot's own `lilbot-connect` tunnel. `~/.cloudflared/cert.pem` lets
-  agents manage LilBot's own DNS names and tunnels; touch only LilBot's own tunnels and names, the account holds
-  others. Hostnames, ingress, outside checks and rollback: [docs/cloudflare.md](docs/cloudflare.md).
+- File downloads (library, attachments, thread files, helper installers) run only on private and Access listeners (never
+  helper door) with Host/Origin checks, no cross-site fetches, attachment disposition, no-sniff, sandbox and no-store.
+- **Engine API** (`server/http/engine-api.ts`, `/engine/*` on private listener): loopback only, token from
+  `<data>/engine-token`, caller taken strictly from the bot-bound capability (ignores body bot ids, refuses unknown and
+  deleted bots). Serves remaining plug-in tools (memory, skills, computers, conversation search) and legacy adapter
+  routes; T3, bot-added MCP services and System MCP use per-bot HMAC keys.
+- **Cloudflare:** `lilbot-connect` tunnel; touch only LilBot's own tunnels and DNS names. Detail:
+  [docs/cloudflare.md](docs/cloudflare.md).
 
 ## Foundation model
-
-What a bot is and who owns each part.
 
 | Part | Owner | Where it lives |
 |---|---|---|
 | Identity (name, function), instructions, model, reasoning effort, permission mode, engine binding | LilBot | `bots` table in LilBot's database |
 | Skills and per-bot skill switches | LilBot | shared skills library and SQLite |
-| Tools and MCP connectors | the engine, except LilBot's own connections: T3 Code, the system server and the MCP services bots add | Hermes profile; defined in `server/connections/` and `server/system/` |
-| MCP services bots add: the list, their sign-ins and tokens | LilBot | `mcp_connections` in SQLite; tokens only in `<data>/mcp-credentials.json` (0600) |
-| Workspace: one folder per bot on the shared computer | the bot | `~/lilbot/workspaces/<bot id>`, the working directory of its chats |
-| Conversation: continuous history, with one active session | LilBot record; engine working context | SQLite history items and session dividers; Hermes keeps model context |
-| Memory | LilBot | facts in LilBot's database; the engine reads and writes them through an adapter |
+| Tools and MCP connectors | engine, except LilBot's own connections (T3, system server, bot-added MCP services) | Hermes profile; `server/connections/`, `server/system/` |
+| MCP services bots add: list, sign-ins and tokens | LilBot | `mcp_connections` in SQLite; tokens only in `<data>/mcp-credentials.json` (0600) |
+| Workspace: one folder per bot on the shared computer | the bot | `~/lilbot/workspaces/<bot id>`, working directory of its chats |
+| Conversation: continuous history, one active session | LilBot record; engine working context | SQLite history items & dividers; Hermes keeps model context |
+| Memory | LilBot | facts in SQLite; engine reads/writes through adapter |
 | Primary bot, avatar, section, pinned, hidden, unread | the user | LilBot's own SQLite database |
 
-- A bot has no type, role or template. Its `function` is a short roster description, not a category. Instructions
-  define what makes bots different; every bot has the same skills and tools by default.
-- Each bot has one permission mode, stored with its identity: `full-access` by default. The protocol names
-  `approval-required`, `auto-accept-edits`, `auto` and `full-access`; only full access is supported now. Engines declare
-  supported modes, and unsupported choices fail before saving. LilBot applies the mode on creation, once per bot at
-  startup, on mode changes, chats and reviews, repairing drift. Routine runs currently use full access (`yolo`); webhook
-  runs are narrow (see Webhooks). When other modes exist, routine and webhook runs must use the bot's mode. There are no approval cards. LilBot bots do not
-  follow the home rule requiring approval for App Store Connect or submissions to Apple. They may still ask task
-  questions, and engine hard stops remain.
-- The user chooses one primary bot (in Setup) and can still talk to any bot directly. The choice lives in LilBot's
-  database, defaults to the engine's default bot, and falls back to it if the chosen one disappears. Changing it only
-  moves the mark. The roster puts it first; app entry opens its conversation. Bots answer whoever gave them the work:
-  Oscar in that chat, another bot in their shared thread. Nothing routes to the primary automatically; extra
-  knowledge for the primary is not decided.
-- Any bot creates bots when asked (`lilbot_bot_create`; the plug-in's `create_bot` ended with adapter 0.11.0): LilBot ignores caller ids and models in the
-  arguments. The caller writes the instructions and function; the new bot inherits its model. Request ids prevent duplicate creation, including concurrent retries and server restarts. The bot appears at
-  once; a hidden first prompt starts its main conversation with its own greeting and task suggestions, which normal
-  activity observation marks unread. The caller returns a link. The app's create form stays available.
-- "Workspace" means exactly one folder per bot on the shared computer, not a level above bots. All bots share one
-  machine (the leader); other machines are execution environments (see Computers).
-- Long conversations are the engine's job: Hermes compresses the conversation at 50% of the model's context (silently,
-  with a separate model), loads two memory files into every run, reminds the bot to save memories every 10 user turns
-  and runs a background review. LilBot builds none of this and never summarises; it shows it and lets Oscar edit it.
-- Sidebar state belongs to the user, not the bot: pin, section, read/unread and hide are independent settings.
-- A bot's live state (running, writing, waiting, current activity) is separate from unread and from the health of its
-  computer.
+- Bots have no type, role or template: instructions differentiate them, and every bot gets the same skills and tools by
+  default. "Workspace" means one folder per bot on the leader; other machines are execution environments (Computers).
+- Each bot has one permission mode (`full-access` default; only `full-access` is supported now; unsupported choices fail
+  before saving). LilBot applies it on creation, startup, edits, chats and reviews, repairing drift. Routine runs use
+  full access; webhook runs are narrow by default (see Webhooks). There are no approval cards, and LilBot bots do not
+  require approval for App Store Connect / Apple submissions; engine hard stops remain.
+- One primary bot (defaults to engine's default bot) sits first in the roster and opens on app entry; bots answer whoever
+  gave them the work. Any bot creates bots via `lilbot_bot_create` (inheriting its model, request-id idempotent, hidden
+  first prompt starts its greeting).
+- Long conversations are the engine's job (Hermes compresses at 50% context; LilBot never summarises). Sidebar state
+  (pin, section, unread, hide) belongs to the user; live activity is separate from unread and computer health.
 
 ## How the server works
 
-- `server/bots/bot-service.ts` is what LilBot does with bots, whichever client asks. It joins LilBot's identity
-  (`bot-store.ts`), the engine (abilities and chats), the user's preferences (`bot-prefs-store.ts`) and the bot's
-  workspace (`workspaces.ts`). Layers, top to bottom: `http/browser-session.ts` (transport) -> `bots/bot-service.ts`
-  -> engine and stores. `browser-session.ts` is a typed handler map: a protocol method without a handler does not
-  compile.
-- `bot-runtimes.ts` resolves the engine binding and applies saved identity. Runtime availability and abilities are
-  cached at startup and refreshed on creation, updates, memory connection and observed profile disappearance/return.
-  Roster and detail reads use that snapshot and database identities, with `runtimePending` until preparation
-  finishes; they never wait for engine calls, profile preparation, memory refresh or the activity observer.
-- Start-up preparation (`bots/runtime-readiness.ts`) is one flight per bot: permissions, tools (computers, skills,
-  connections), then identity. The server prepares the primary bot first, the rest five at a time after a short
-  head start, in the background. A chat, review or routine waits only for its own bot's flight (`BotRuntimes.use`),
-  never the roster. A bot whose preparation fails settles as unavailable, never `runtimePending`, and is retried
-  after 5 s, 15 s, 45 s, then every two minutes until it is ready or deleted; one bot's failure never stops another's.
-  Every settle pushes `bots.changed`. `initialize()` rejects only when the one-time import fails.
-- Every start-up pass that touches engine profiles (permissions, memory refresh, skills, connections), and memory
-  connection, uses only the non-deleted database bindings, by native id, never all engine profiles. Only the one-time
-  import into a new database needs engine discovery. That import is atomic and idempotent: existing bots keep their
-  profile ids. New bots get UUIDs independent of their native runtime ids. A missing runtime stays in the roster as
-  unavailable; its identity and memory stay in LilBot.
-- Identity is imported once, then LilBot wins on mismatch. Model edits are checked against the engine's available
-  models before anything is saved, also when repairing a bot with an invalid saved model; unsupported permission
-  modes fail before saving. Accepted edits are saved in the database before they are applied to the runtime.
-- Model and reasoning effort (`bots/bot-session-settings.ts`, details in [docs/hermes-engine.md](docs/hermes-engine.md)):
-  the effort is `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` or unset (the engine's default; `ultra` is
-  not offered). It is saved with the bot, one per bot, kept as chosen when the model changes, and an unknown level is
-  refused before saving. `models.list` keeps `models` and adds `capabilities` per model (`reasoning`,
-  `canDisableReasoning`: null when the engine does not say, so hide "Off" only for false).
-  - An edit to model or effort is saved, then applied to the bot's main conversation with `session.mutate`
-    (`BotEngine.updateSession`), so it takes effect from the next message, also while a turn runs: the running turn
-    finishes as it was. Edits to one bot run in order. An effort for a model that does not reason stays saved and is not sent.
-  - Every session LilBot creates for the bot starts with its effort: chats, routine runs and bot threads (a session that is
-    resumed keeps its own). The memory review keeps its own model and gets none.
-  - `effectiveReasoningEffort` on the bot is what the engine says it sends for the main conversation (null: none). It is
-    kept in memory from the session when a chat opens, after an edit and from `session.info` events, never read on demand,
-    and absent until the engine has reported it. Null cannot tell "off" from the engine's default (both are sent as no
-    level): read it with `reasoningEffort`.
-  - The engine can hold a conversation's switch back (a conversation of 100,000+ tokens, an expensive model, a data
-    policy) until its own confirmation: `bots.update` then answers `confirm_required` after saving (the same edit's
-    effort still applies), the choice stays saved for new conversations and the conversation keeps its model. That
-    refusal is not retried by later edits. The engine's confirmation token comes back only in undeclared fields of
-    `session.mutate`'s result (checked live, #79), so LilBot never confirms; picking the model does not override the
-    guard. The first message after a switch has no prompt cache.
-- `server/database/migrations.ts` owns the schema as an ordered list of migration steps (`database.ts` opens the file
-  and applies them): add a step, never edit a shipped one. Each store file owns the SQL of its tables. Default file
-  `~/.local/share/lilbot/lilbot.db` (`LILBOT_DATA_DIR`). SQLite connections wait up to five seconds for short locks.
-- Workspaces: `~/lilbot/workspaces/<bot id>` (`LILBOT_WORKSPACES_DIR`), created on first use and passed to the engine
-  as the working directory of new chats. A resumed chat keeps the folder it was made with.
-- Pushes: `bots.changed` goes to every browser when a bot, preference or section changes, or the engine reports that
-  sessions or skills changed; browsers fetch the list again. Each feature has its own `<feature>.changed` push.
-- Activity (`server/activity/`): live per-session status and durable per-bot unread, in `bots.list` and pushed with
-  `bots.changed`. Opening a chat marks its bot read, and any connected viewer keeps it read until the chat closes.
-  Finished/failed settles after eight seconds. Replay cursors stop old replies becoming unread again after a restart.
-  Unread turns on for a reply, for a session that starts waiting for Oscar and for one that fails, with or without text,
-  unless he is viewing; an engine repeating the same waiting/failed status with a later event does not turn it on again
-  (`ActivityService.needsOscar`). Hidden memory reviews are excluded. `LILBOT_BOT_IDS` restricts the engine to a
-  native-profile allowlist; runtimes created on that server join it.
-- Background timers (`background.ts`) catch failures and retry on later ticks; their logs carry
-  fixed task labels, never exception payloads. A persistent database failure logs and leaves work pending rather than
-  stopping the server.
+Full server mechanics, model/reasoning effort rules and bot deletion teardown: [docs/server.md](docs/server.md).
 
-### Deleting a bot
-
-`bots.delete` takes optional `files: archive | delete` and `privateMemories: forget | keep`; defaults (archive,
-forget) are kept with `bots.deleteDefaults.get/set`. The primary bot and the engine's default bot cannot be deleted.
-
-- `bot-deletion.ts` saves a tombstone with the name and choices before teardown, removes the runtime through its
-  native binding, then the workspace, memory, preferences, activity and queued reviews. Retrying the same id finishes
-  incomplete cleanup with the original choices. Deletion clears the creation marker and removes the profile settings
-  that hold its capability and memory binding.
-- A tombstoned bot's capability is refused at once, even while teardown retries; creation retries cannot revive it;
-  late activity and memory calls are ignored or refused; uploads, attachment reads and library access stop at once.
-  Tombstones stay out of the roster.
-- Removed: conversation record and journal (whatever the choices), routines and webhooks with their run history (a
-  tombstoned bot cannot dispatch, and its webhook addresses answer 404 at once), skill off switches; its active
-  computer requests are cancelled.
-- Files: archived to `<workspaces>/.archive/<bot id>` without following links, or deleted; attachments follow the same
-  choice.
-- Kept: shared facts; private facts unless forgotten (`memory.list` still shows a tombstone's facts for attribution
-  and restoration); library and attachment metadata (the bot loses access); thread records with the names captured
-  at creation; work items and goals with the owner's name (unfinished ones are dropped: "The bot was deleted."); skills it wrote,
-  with their authorship; the log of changes bots made through the system server (with the name the bot had); MCP
-  services it added (every bot has them; once it is gone any bot may remove one).
+- Layers: `http/browser-session.ts` (typed handler map) -> `bots/bot-service.ts` -> engine and SQLite stores
+  (`server/database/migrations.ts`: append-only migration steps, default `~/.local/share/lilbot/lilbot.db`).
+- `bot-runtimes.ts` caches runtime availability/abilities; roster and detail reads never wait for engine calls. Startup
+  (`runtime-readiness.ts`) prepares only non-deleted DB bindings in the background (primary first, then 5 at a time;
+  backoff retries on failure; `BotRuntimes.use` waits only for that bot's flight). Identity is imported once, then
+  LilBot wins; model and effort edits validate before saving and apply in place via `session.mutate` (refused switches
+  return `confirm_required` after saving; never auto-confirmed).
+- Activity (`server/activity/`) tracks live session state and durable per-bot unread (`bots.changed` pushes; each
+  feature has `<feature>.changed`). Background timers (`background.ts`) catch errors and log fixed task labels only.
+- **Deleting a bot (`bot-deletion.ts`):** primary and engine-default bots cannot be deleted. Saves a tombstone first
+  (capabilities, uploads, webhooks and library access stop at once), removes runtime, conversation/journal, routines,
+  webhooks and skill switches, cancels active computer requests, archives or deletes files (`files: archive|delete`,
+  `privateMemories: forget|keep`), and keeps shared facts, attribution metadata, thread/work/goal records, authored
+  skills, system change logs and bot-added MCP services.
 
 ## Web app
 
-Visual specs (sizes, copy, Paper frames): [docs/screens.md](docs/screens.md).
+Visual specs, Paper frames and full client behaviour (shell, rail, menus, details panel, model picker, feature views,
+scroll and history): [docs/screens.md](docs/screens.md).
 
-- Shell: on a wide screen three columns: roster, conversation, details panel. The roster search filters names and
-  functions, hidden bots included. On top, tiles, only once a bot is pinned: the primary bot with a star, then pinned
-  bots in pin order (`pinnedAt` from `bots.list`, the same on every device), sharing the width at most three to a line;
-  a pinned bot leaves its section, and a hidden one stays in Hidden. With nothing pinned, the primary is an ordinary
-  first row. Then the user's sections, then collapsed "Unassigned" and "Hidden" groups (with no sections, bots are
-  listed plainly). The group holding the open bot stays open; open groups are remembered per browser. Grouping is
-  `bots/roster-groups.ts`.
-- Rail: on a wide screen the roster collapses to a 64px rail of avatars in the same order (closed groups left out),
-  remembered per browser (`bots/roster-view.ts`); the rail is a lazy chunk. Phones never show it.
-- Bot menu (`bots/bot-menu-rules.ts` decides the items): opened from a row's or tile's "more" button or a right-click
-  on a row, tile or rail avatar. The
-  primary bot's menu has only Mark as read/unread, Name and avatar and "Change primary bot" (a submenu of the other
-  bots; only the mark moves): it is always the first tile, so pin, section and hide would change nothing, and it cannot
-  be deleted. The engine's default bot has no Delete.
-- Delete dialog: starts from `bots.deleteDefaults.get`, read on every open; "Change defaults" closes it and opens
-  Settings on Bots; deleting the open bot returns to the app's start.
-- Details panel: each tab is the route `/bots/$botId/$tab`; `/bots/$botId` is a layout route, so the chat column stays
-  mounted and connected while tabs open, change and close. At 1280px and wider the panel opens on Activity by itself
-  unless the user closed it (remembered per browser); opening another bot keeps the open tab. On a phone it opens
-  only from the toggle and covers the chat. To add a tab: an entry in `DETAILS_TABS` (`bots/details-tabs.ts`) and a
-  lazy entry in `tabContent`, whose component takes `{ botId }` and wraps its body in `ui/panel.tsx`.
-- Avatars: ten vector cover shapes and twelve colours for cover and face. Shape and cover default from the bot's id;
-  a missing face colour reads as ink without rewriting the row. Create and the bot menu's "Name and avatar"
-  (`bots/edit-avatar-dialog.tsx`) use the same three picker rows.
-- Model picker: a pill in the composer after the attach button shows "model · Effort", or the model alone for a model
-  the engine says does not reason (`bots/model-pill.tsx`); it opens the Model Selector menu upward (`bots/model-menu.tsx`,
-  a lazy chunk): "Find a model" (Base UI's menu filter), models grouped by provider with a tick on the current one
-  (`ModelChoices`, shared with Setup's field), then a "Reasoning effort" row with a submenu (`bots/effort-choices.tsx`:
-  Default, Off, Minimal to Max for every reasoning model; "Off" hidden when `canDisableReasoning` is false, marked "if the
-  model allows" when null), and "Changes <bot>'s model and effort, from the next message." Choosing saves at once with
-  `bots.update`, also while the bot works; the pill shows a spinner meanwhile, a refusal puts the saved value back with a
-  red note in the composer. When the engine sends another level than the one chosen (`effectiveReasoningEffort`) the pill
-  shows an info mark and the row reads "<chosen>, sent as <sent>"; never for Off against Default, which the engine reports
-  alike (`bots/reasoning-effort.ts`). A switch the engine holds back (`confirm_required`) keeps the saved choice and shows a
-  plain note: "This long conversation keeps its model until New session; new conversations use the new one." The saved
-  model reads "Choose a model" in red only once `models.list` has loaded without it. The engine's list is fetched once per
-  connection (`bots/model-list.ts`). Setup shows the same model and effort (with "Sent as ..." under it) and reloads when
-  they change.
-
-### Skills (`web/src/skills/`, #137)
-
-Visual specs: "Skills" in [docs/screens.md](docs/screens.md).
-
-- A "Skills" section in the Setup tab (in its lazy chunk) replaces the old read-only skills line; Abilities keeps
-  Toolsets and Connectors. `skills/skill-store.ts` reads `skills.list` for the bots on screen, again on `skills.changed`
-  and reconnect. A skill an engine's switch excludes (`excluded`) is not part of the library, so it is left out of the
-  list, the count and search, as in `bots.get`. Wording is `skills/skill-lines.ts` only (pure, tested).
-- The switch saves at once with `skills.setEnabled`; a refusal puts it back with "Could not switch <skill> off. Try
-  again." There is no form to write or edit a skill: bots write them.
-- A row opens the skill with `?skill=<name>` on `/bots/$botId`: it replaces the Setup tab's content (avatar and tabs stay)
-  as a lazy chunk; changing tab or closing the panel drops it. "Written by" comes from `origin`: a bot's name, "You",
-  "Imported" (an engine's skill, also after a bot edited it) or "LilBot".
-- Skill text is untrusted. `skills/skill-file-text.tsx` draws a `.md` file with react-markdown (no raw HTML, images
-  dropped so nothing is fetched, only http(s) links stay links and open in a new tab; SKILL.md's frontmatter is left out
-  since the name and description show above) and any other file as plain text.
-- The engine's "Include this engine's skills" switch (#140) has no approved screen yet (`needs-ui`): Paper "19 Plugged
-  in" frame 4, with rows grouped by origin, waits for Oscar. `SkillRow` is its own part so that grouping can go on top.
-
-### Routines (`web/src/routines/`, #53)
-
-Visual specs: "Routines" in [docs/screens.md](docs/screens.md).
-
-- They live in the Activity tab ("Routines" card, in its lazy chunk); there is no Routines tab and no form: routines are
-  made by asking the bot. `routines/routine-store.ts` reads `routines.list` (and `goals.list` to know which routine
-  reviews a goal) for the bots on screen, again on `routines.changed`, `goals.changed` and reconnect. Wording is
-  `routines/routine-lines.ts` only (pure, tested).
-- A row opens one routine with `?routine=<id>` on `/bots/$botId`: it replaces the whole details panel (avatar and tabs
-  included) on the Activity tab, as a lazy chunk; changing tab or closing the panel drops it. The switch pauses and
-  resumes (`routines.pause`/`resume`, shown at once and put back on refusal); the bin asks first, then `routines.delete`.
-- A goal's review routine (a goal whose `routineId` is this routine) says "For your goal" and shows the goal's words. It
-  has no switch and no Delete: LilBot's goal tick puts its state back within seconds (see Goals), so a control would
-  silently undo itself. It follows the goal.
-- A run row opens its transcript with `?run=<id>`, the same column swap as an opened exchange (one of the two at a time):
-  the conversation stays mounted, `invisible` and inert. The run's chat (`routines.openRun`) is kept in the view's own
-  state, never the bot's chat slot, followed live while it runs, and closed (`chat.close`) when the view goes. Its only
-  user message is LilBot's wrapper prompt, so user messages are left out and "The routine asked" shows the routine's
-  words. A run not started yet has no transcript and is not a link.
-
-### Webhooks (`web/src/webhooks/`, #138)
-
-Visual specs: "Webhooks" in [docs/screens.md](docs/screens.md).
-
-- A "Webhooks" section in the Activity tab, under Routines (in its lazy chunk), hidden while the bot has none or the read
-  fails (the helper door off refuses every read). No form: webhooks are made by asking the bot.
-  `webhooks/webhook-store.ts` reads `webhooks.list` for the bots on screen, again on `webhooks.changed` and reconnect
-  (`app/watched-reads.ts`, shared with routines and skills). Wording is `webhooks/webhook-lines.ts` only (pure, tested).
-- A row opens one webhook with `?webhook=<id>`, in place of the whole details panel like a routine (opening one closes
-  the other). The switch pauses and resumes (`webhooks.pause`/`resume`); the bin asks first, then `webhooks.delete`.
-- The address is never in list data, on screen, in a store or a log: "Copy" calls `webhooks.address` on the click and
-  hands it to the clipboard as a pending `ClipboardItem` (so Safari keeps the click's permission), `writeText` where
-  that is missing. The button says "Copied" or "Could not copy" for two seconds.
-- A run row opens its transcript with `?webhookRun=<id>` in the conversation column, like a routine run
-  (`routines/run-transcript.tsx`, `webhooks.openRun`): "The webhook asked" shows the task; LilBot's prompt with the events
-  is left out like a routine's. `thread`, `run` and `webhookRun` are one column view at a time (`withoutColumn`).
-- Not built, waiting for an approved design: Oscar's capability groups (`webhooks.setCapabilities`; Paper "17" frames 7 to
-  9 are drawn, not approved) and any drawing of a run's message to its bot beyond the plain `webhook message` tool line
-  the history already shows in the conversation.
-
-### Library (`web/src/library/`, #54)
-
-Visual specs: "Library" in [docs/screens.md](docs/screens.md).
-
-- The Library tab reads `library.list` for one filter (All, Media, or Files: `kinds: ['file', 'page']`, since pages are
-  listed with files) and again on `library.changed` for its bot and on reconnect, keeping as many items as were shown;
-  "Show more" reads the next page. Groups (Today, This week from Monday, Older) and every line are worked out on the
-  device, in its time zone (`library/library-lines.ts`, pure and tested).
-- An image or a page opens the viewer (a lazy chunk over the app); any other file, sound and video included, downloads
-  with the file's own name; a missing file does nothing. Thumbnails are the image itself (`<img>`, lazy).
-- Pages are bot text, never live HTML on LilBot's origin: Markdown is drawn by React with no raw HTML, images shown as
-  their words and links opening a new window; an HTML page goes into an `<iframe sandbox="">` (no scripts, forms,
-  pop-ups or same origin) whose `srcdoc` starts with a policy refusing every request but inline styles and `data:`
-  images. Both read the bytes from the download route; pages over 2 MB only download.
-- "Show in chat" opens the routine run (`?run=`) or the bot's conversation the item came from; the data names the chat,
-  not the message. A webhook run's file reads "Given in the chat" (its session is recorded as the conversation).
-- "Browse the whole workspace" opens `?folder=/<path>` on the Library tab, which replaces the whole panel like a routine
-  (`library/workspace-view.tsx`, a lazy chunk); tab links drop it. It is read-only: `library.workspace` gives names and
-  sizes, and the download route serves only given items.
-
-### Work between bots (`web/src/threads/`, #65, #135, #136)
-
-Visual specs: "Work between bots" in [docs/screens.md](docs/screens.md).
-
-- A `tool` item with `threadId` draws as a bordered line from the bot's `threads.list` (`threads/thread-store.ts`, read
-  for the bots on screen and again half a second after `threads.changed`); an exchange not read yet, or a group, keeps
-  the plain tool line. With a `batchId` it is a handed-over task, without one an asked thread; the delegating side is
-  the first participant. Tasks of one batch share one card at the first line; the other lines draw nothing and their
-  rows hide. Wording lives in `threads/thread-lines.ts` and, for groups, `threads/group-lines.ts` only.
-- A group's line (`threads/group-line.tsx`) is drawn in the leader's and every member's conversation from that bot's
-  `threads.list`, with its state from `group` (rounds, replies, how it ended); the wording for an end other than a close is
-  LilBot's own, never the server's `end.outcome`. A group runs until `group.end` is set, whatever its status.
-- The line, the opened view, the group view (loaded from the opened view), the stop dialog and "Working together"
-  are lazy chunks; the chat's first load carries only the `ChatItem` switch, `?thread=` handling and the check whether
-  any bot has `groups`.
-- "Working together" (`threads/working-together.tsx`): the roster's top section and the rail's group slots, only while a
-  bot in `bots.list` has `groups`. Members and the leader come from each bot's `groups`; a row opens
-  `/bots/<leader>?thread=<group>`. Row states ("Leading a group", "In a group", "In a group · <activity>") are in
-  `bots/row-state.ts`: a member's live activity in `bots.list` is what it does in its group (`groups[].activity`), else its usual `activity`, combined with its `groups`.
-- Opening sets `?thread=<id>` on `/bots/$botId` (tab links and the panel's auto-open keep it with `search: true`). The
-  view covers the conversation column while the conversation stays mounted, `invisible` and inert: its connection
-  and scroll position are unchanged. On a phone, opening from the details panel goes to the conversation first.
-  "Back to chat" drops the parameter; each bot button opens that bot's chat.
-- Stop (a running task's or group's line and its view) asks first, then calls `threads.cancel`; asked threads have no
-  Stop. Any participant's line can stop a group.
-- Files passed in a group, and the files its leader kept, show as chips that download through the same route as an
-  exchange's (`ThreadService.file`). A group closed before #178 has no recorded hash for its kept files, so their chips' links
-  answer "File missing or unavailable" (the files are in the leader's Library).
-- Oscar never writes in an exchange: no composer.
-
-### Conversation scroll (AI Elements' Message Scroller)
-
-- It opens at its latest message (also after a reload or resume). A sent message moves up and the reply grows below
-  it (Oscar's choice); the list follows the reply only while the reader stays at the end.
-- Only messages sent while the list is open are scroll anchors: the scroller jumps to any anchor it did not see arrive
-  (`chat/scroll-anchors.ts`). Rows are counted by position in the conversation (`ChatView.first` plus the index), and
-  each transcript load (`ChatView.load`) moves the end of what counts as arrived, so earlier parts loading above never
-  become anchors.
-- Rows are memoised and keyed by that position, so a streamed chunk redraws only the last row, an earlier part redraws
-  none below it, and a reloaded transcript keeps unchanged item objects (`reuseItems` in `history/history-view.ts`).
-- A chat this page has not shown appears from `chat.history` (a database read) while `chat.open` attaches; the message
-  box takes typing meanwhile and sends once the chat is open. The list first draws the latest 20 rows, then the
-  earlier ones in a transition that yields to typing; the view stays in place as they arrive above.
-- Queued messages show as dashed bubbles, the activity line as a shimmering Trace line (not Reasoning: we get a
-  status, not thinking text), tool use as Trace lines.
-
-### Conversation history on screen (`web/src/history/`)
-
-- The main conversation is one continuous history across sessions, built from the snapshot's `history` page; other
-  chats, such as a routine run, show only their own transcript.
-- It opens on its latest part. Scrolling within one screen of the top (or a conversation that fits the screen)
-  fetches the next earlier part with `chat.history` and its cursor, one part at a time, drawn in a transition.
-- The "Loading earlier messages" line is an overlay, never a row: the scroller keeps the reader's place only when the
-  first row is still there and has moved down, so the first row is always a message while more can load.
-- Day lines go between two rows on different local days, never above the earliest loaded row unless it is the very
-  start. The very start shows only when the server sends `start` (import complete). While the import runs, a
-  `history.changed` push for this bot, with the reader at the top, reads the earliest part again (at most every three
-  seconds) and adds only rows older than those shown.
-- New session: the header button adds a divider at once and keeps the conversation; the new session's snapshot
-  replaces it with the saved divider.
-- Reopening or reconnecting keeps earlier parts already loaded when the new latest part shares a row with them
-  (`withLatest`); rows that arrived live are replaced by their saved copies. `MessageList` is keyed by bot, so a new
-  session never remounts the scroller.
+- Wide screen: three columns (roster 272px, conversation max 680px, details panel 332px); collapsible 64px rail (lazy;
+  desktop only). Pinned tiles appear once any bot is pinned (primary first, then `pinnedAt` order); sections plus
+  collapsed Unassigned/Hidden below.
+- `/bots/$botId` is a layout route keeping the chat mounted while tabs (`/bots/$botId/$tab`) or column overlays
+  (`?thread=`, `?run=`, `?webhookRun=`, one at a time) open. Composer has files, lazy model/reasoning pill and send/stop;
+  AI Elements' Message Scroller anchors only messages sent while open, memoises rows by position and preserves scroll
+  when earlier history pages load above.
+- Feature panels live in lazy chunks: Skills (Setup tab, #137), Routines & Webhooks (Activity tab, #53/#138; webhook
+  addresses are fetched only on Copy click), Library (All/Media/Files, sandboxed page viewer, read-only workspace
+  browser, #54) and Work between bots (conversation cards, opened exchanges/groups, "Working together", #65/#135/#136).
 
 ## Conversation history
 
-`server/history/` owns the conversation record; Hermes owns the model's working context and LilBot never summarises.
+Full journalling, importer, `#180` usage/compaction and `#148` pre-compress checkpoint details:
+[docs/history.md](docs/history.md).
 
-- Streaming chat events are journalled before forwarding; when no browser is open, observer replay is journalled by
-  epoch and sequence (user sends, tool rows, completion). A read-only background importer reconciles Hermes
-  transcripts, including work done while LilBot was offline. Row ids are namespaced by engine and profile, and repeated
-  pages upsert; tool results are keyed by their persisted tool call id. It is an append-only record: rewinds and resets
-  never erase copied rows. Migration 19 rewinds import checkpoints once to backfill tool lines into existing copies,
-  keeping every stored row.
-- `bun run history:exclude -- --bot <id> --session <id> --reason "<text>" [--yes]` (operator only) permanently removes
-  one engine session from LilBot's copy and keeps importers, journal and replay from restoring it (Hermes untouched;
-  the main session is refused). It previews without `--yes` and reads `LILBOT_DATA_DIR`.
-- Attachment metadata and thread references are merged at the HTTP edge; a thread's private transcript is never
-  indexed. Routine and webhook runs and hidden thread and review sessions are excluded, and so is a session the engine
-  continued one of them in after compressing: Hermes writes that child without the hidden mark, so
-  `bots/hidden-chats.ts` follows `BotEngine.compressionRoot` (read-only, from the profile's session metadata, roots
-  remembered) and the overflow catalogue drops a lineage with any hidden or tool session in it. The same check keeps
-  those sessions out of activity observation and both memory reviews. When the lineage cannot be read the session
-  counts as hidden (it fails closed, logged once a minute as `[session-lineage]`) and is asked about again next time.
-- `chat.open`/`chat.new` keep their snapshot shape: `items` holds the latest 100 records without session dividers (for
-  old clients); additive `history` holds the page (`shared/history-schema.ts`). The active session id remains
-  `snapshot.chatId`; a new session keeps earlier history.
-- Per-turn usage, bot context and compaction markers (#180): `turn.finished` and stored `assistant` history items carry
-  additive `usage` (`TurnUsage`: `inputTokens`, `cacheReadTokens`, `cacheWriteTokens`, `outputTokens`, `contextTokens`,
-  `contextWindow`; counts only, no prices, omitted when the engine reports nothing), persisted in `history_turn_usage`
-  and merged on import/re-import. `Bot.context` (`{ used, window }`) tracks the main conversation's current occupancy
-  against its model's window in `bot_context`, surfaced on `bots.list`, `bots.get` and `ChatSnapshot.context` with no
-  extra on-demand engine round trips. Declared engine compaction rows (`row_kind: 'compaction'`) store as `compaction`
-  items (`author: 'system'`) with `compactedMessages`, `summary`, and `beforeTokens`/`afterTokens` (from live
-  compaction counts in `history_compactions` or shrinking neighbor turns).
-- A session divider (`session:<id>`) marks where a session began. Pages (`HistoryStore.page`) leave out the divider of
-  a session with no user or assistant message, unless it is the bot's main session (just after New session). The rule
-  is applied when a page is built, so stored dividers (older ones included) and re-imported rows follow it, and nothing
-  is deleted: another client's empty session in the same profile, or a session left before anything was said, shows no
-  line. A session LilBot started because the engine could not resume the conversation carries `reason: not_resumed`,
-  and the screen says so.
-- `chat.history` pages are newest first, records within a page chronological. Cursors are bot-bound sort keys, so new
-  messages do not shift old pages. `start` appears only on the oldest page after import completes; `null` is not a
-  definitive beginning while import is pending. `history.changed {botId}` tells clients to refresh.
-- The importer does one 100-row page per bot per second with atomic row/cursor checkpoints; discovery runs every 30
-  seconds; startup never waits for history. Errors leave the import pending for retry; it is safe to resume and repeat.
-- `search_conversations(query, limit?)` searches only the calling bot's user/assistant rows and reports import
-  progress. It moves to #62's hub later.
-- Before Hermes shortens a conversation, LilBot reviews every user and assistant word of it for memory (#148; Hermes'
-  pre-compress checkpoint v2, `/engine/history/save`). `memory/memory-checkpoint.ts` cuts it into passes of about
-  100,000 characters on message boundaries, oldest first, three at a time, each a hidden memory-only review of the same
-  bot on `LILBOT_REVIEW_MODEL` under the normal memory rules, and answers only once every pass finished. Reviewed pieces
-  are remembered per bot in SQLite (bounded, pruned oldest first, cleared on bot deletion), so a retry, restart or the
-  next shortening reviews only what is new, and a second save of the same conversation waits for the first. LilBot's own sessions, their continuations and review sessions
-  answer `skipped` (complete, nothing reviewed); an unreadable lineage is refused, never skipped. Webhook notes are
-  taken out of the evidence first (`withoutWebhookNotes`).
-- Every bot connected to LilBot memory is fail-closed (`compression.checkpoint_required`, set and cleared with the
-  memory connection, Oscar's decision on #148): both of Hermes' compaction paths, its own and the gateway's hygiene
-  pre-pass, take the save or do not shorten. A compaction asked for from outside a turn (`session.mutate` compress) is
-  always refused then (#167). Start-up sets the flag again once when something outside LilBot changed the profile (the
-  deploy watchdog clears it for a rollback, see Deploy); an unchanged restart writes nothing, since a changed flag
-  rebuilds every cached Hermes agent of the bot.
-- A save that finds LilBot gone (connection refused or cut off before an answer, as during a deploy's restart) is sent
-  again every 3 seconds for up to 90 seconds, so a restart only pauses the turn; a save that timed out while running
-  is never sent again.
-- When the save cannot finish (LilBot down longer, a review failing), the turn that needed the compaction stops (the
-  model does not run) and LilBot shows one line in its own words instead of Hermes' text: "<bot> couldn't save its
-  memory before shortening this long conversation, so it stopped instead of forgetting anything. Send your message
-  again in a moment." (`web/src/chat/failure-lines.ts`). LilBot knows it from the adapter's own record of its saves
-  (`lilbot-memory-saves.jsonl` in the profile: session, time, finished or not; never text): a turn that failed, live or
-  replayed, or a stored row that closes a failed turn (`display_kind` `failed_turn`), while its session's latest save
-  had failed becomes `turn.finished` with `failure: memory_save` or an `error` item with `reason: memory_save`
-  (`engines/hermes/hermes-memory-saves.ts`). The next turn answers once (Hermes has no fresh token count after a failed
-  turn, so it skips compaction), then every turn stops the same way until the save can run. The session is kept and
-  nothing is reset; once LilBot is back the message sent again is answered and the conversation shortens with the
-  save. Measured in `check:checkpoint`.
-- `bun live-checks/history-benchmark.ts` uses a synthetic 5,000-row dev copy, never production data.
+- `server/history/` keeps an append-only SQLite record per bot via live event journalling plus a background importer
+  (one 100-row page/bot/s; operator `bun run history:exclude` removes non-main sessions). Hidden sessions (routines,
+  webhooks, threads, reviews) and their compression continuations (`bots/hidden-chats.ts`, fail-closed on unreadable
+  lineage) are excluded from history, activity and memory reviews.
+- `chat.open`/`chat.new` preserve `items` and add paginated `history`; `chat.history` pages newest-first with stable
+  bot-bound cursors. `#180` adds per-turn `usage` (`TurnUsage`), `Bot.context` (`{ used, window }`) and `compaction`
+  items. Empty sessions omit dividers except the active main session.
+- **Memory save before compression (#148):** connected bots are fail-closed (`compression.checkpoint_required`); Hermes
+  runs `/engine/history/save` in ~100k-char passes on `LILBOT_REVIEW_MODEL` before compacting. Outages retry for 90 s;
+  if the save fails, the turn stops cleanly (`failure: memory_save`) rather than forgetting.
 
-## Threads
+## Threads and temporary groups
 
-`server/threads/` owns bot-to-bot exchanges (`shared/thread-schema.ts`): delegation on LilBot's MCP server
-(`lilbot_delegate` and `lilbot_delegation`, `delegation-service.ts`). The plug-in tools `ask_bot` and
-`list_bots` ended with adapter 0.10.0 (#113): new sessions use `lilbot_delegate` and `lilbot_bots_list`. The engine API's
-`threads/ask` and `threads/bots` stay only for sessions that loaded 0.9.x. Detail, engine findings and measurements:
-[docs/threads.md](docs/threads.md).
+Full delegation, files, engine findings, concurrency and temporary group rules: [docs/threads.md](docs/threads.md).
 
-- Any bot may hand work to any other, never itself. One `lilbot_delegate` call names several bots, one task each; each
-  task is its own exchange and the call's tasks share a `batchId`. `exchangeId` continues the same work. Each exchange
-  has a nullable `parentId` (`thread_links`): the delegating bot's work item it was handed out under (see Work).
-- The receiver works in its own hidden session with its own instructions, memory, skills, workspace and full access;
-  follow-ups reuse it. The delegating bot returns at once; the answer is queued as a hidden input into the exact
-  originating session, even if Oscar has since started a new chat. Nested delegation resumes the parent exchange, which
-  then reports to its requester. MCP calls carry no session, so `calling-chats.ts` matches each call to its own
-  `tool.start` (`BotEngine.onToolCall`, with the engine's call id): same bot, tool and `requestId`, seen at most 15
-  seconds before the call or within 5 seconds after, and not matched to another call yet. A call whose start is not
-  seen in time, or that two sessions could have made, is refused with a retryable error (`session_unknown`), never
-  guessed (#174). The activity observer reports only calls still under way: none from an idle session, none that
-  completed in the same replay. A goal's review passes its matched session on to the work board (`actFrom`).
-- Status per exchange: `waiting` (accepted, not started), `working` (with the receiver's live activity line, in memory,
-  and run time from `startedAt`), `finished`, `failed`, `cancelled` (with `stoppedBy`: the bot or Oscar).
-- Control is the delegating bot's only: status, cancel, redirect, wait. Cancel interrupts the receiver's hidden session
-  (`BotEngine.stopRun`) and drops its queued work; whatever still arrives is kept in the record as `withheld` and never
-  delivered. Redirect is bot text like a request, marked `redirect` in the transcript: steered into the running turn
-  (`BotEngine.steerRun`), joined to the first turn when the task has not started, otherwise the receiver's next turn;
-  a steer the turn never took runs as its next turn. Wait never holds a call open: each answer still arrives, and the
-  bot is told once when all are in (folded into the last answer, or a short LilBot notice).
-- Files travel with a request (`files` per task) or an answer (`lilbot_delegation` `action: attach` by the receiver), by path in
-  the sender's own folder, with the chat-attachment limits (20 MB, 10 per message): every path part opened with
-  O_NOFOLLOW from the folder's descriptor, regular files only, written exclusive-create into
-  `<recipient folder>/exchanges/<exchange id>/` under a generated name. Copies only, never shared paths; names are
-  untrusted text. `thread_files` lists each file, its sender and where its copy is (none while not delivered). An
-  answer's files are copied when the answer goes out, so a withheld answer's files never move.
-- Oscar reads exchanges (`threads.list`, `threads.open`, `threads.changed`) and can stop one (`threads.cancel`,
-  recorded as stopped by Oscar; the delegating bot is told). He never writes into them. Both participants read the
-  same persisted transcript, including the other bot's tool rows and files per message. A delivered copy downloads
-  from `/api/threads/<bot id>/<thread id>/<message id>/<n>` (`ThreadService.file`): the bot must be a participant,
-  the copy is read from the recipient's folder without following links and checked against the hash taken when it
-  was copied. In a group the bot must be one of its participants (leader or member) and the thread must own the file:
-  a file passed in it is read from its shared folder, else from the archive once it has ended (never creating a folder),
-  and a file the leader kept (recorded under `keptId`, with its hash, when the group ends) from the leader's own folder.
-  A running exchange's view has `redirecting` while a redirect
-  did not reach the running turn and waits for the receiver's next step.
-- A failed exchange carries `failure` (in `threads.list` and `threads.open`), a short fixed phrase chosen from what LilBot
-  knows (`thread-failure.ts`): the receiver's turn ended in an error, LilBot could not confirm how it ended (an unknown
-  engine receipt), the receiving bot or the bot that handed it over is gone, the request or answer was too long or
-  withheld by the safety check, the message limit. Never an exception's text, a run's output or bot text. A stopped
-  exchange stays stopped; a follow-up clears the failure. The task line reads "Failed · <failure>" (older failures have
-  none and read "Failed · <bot> could not be reached"); its state still comes from `threads.list`. The `thread` chat event
-  also carries `failure` while the thread has one (never on the stored tool line, which history records once).
-- The leader's row between its own turns in a group reads "Leading a group" (idle), not working and not "waiting" (that
-  status means waiting for Oscar); the working marks are chosen in `ThreadRunner.mark`.
-- `bots.list` gives a bot working on a task another bot handed it `workingFor` (exchange id and the delegating bot's
-  name), from the deliveries running now (`thread-roster.ts`, with the running groups); the roster row reads "For
-  <bot> · <activity>". Each of a bot's `groups` entries adds `activity` while its own turn in that group runs and a tool
-  call has been seen in it (the runner's live line; a tool call in a group also pushes `bots.changed`): "In a group ·
-  <activity>".
-- Main conversations get one `tool` reference with `threadId` per exchange (in snapshots and idempotent `thread` chat
-  events), merged at the HTTP edge, never written as fake user messages. The screens are in "Work between bots"
-  under Web app.
-- Hidden session aliases are persisted before submission and excluded from after-chat reviews, also after restart.
-  Thread activity sets working/finished without unread (on both bots of an exchange; in a group, on the member taking a
-  point and on the leader only for its own turns); only the asking bot's visible answer to Oscar can mark it unread. Status and activity changes push a plain `threads.changed`; the per-bot chat lines are rebuilt only
-  when exchanges are added or settle.
-- Limits are in `thread-limits.ts`: depth 3, 20 messages per thread with the answer reserved, 20,000 characters per
-  request, 6 deliveries running at once (measured on the dev gateway), 8 exchanges under way per delegating bot. A
-  limit refuses further work and tells the bot to report back.
-- Bot text passes memory-style secret, hidden-character and instruction-override checks and is delivered in a named,
-  JSON-quoted fence, never as Oscar's instructions. Delivery and admission ids are persisted and reused across
-  transport failures and restarts (the routine runner's receipt machinery); a terminal unknown receipt is never
-  resubmitted with a new identity. A stop recorded while LilBot was down is applied when the delivery is picked up.
+- `server/threads/` owns bot-to-bot exchanges (`lilbot_delegate`, `lilbot_delegation`) and temporary groups
+  (`lilbot_group`, #133, 1 leader + 2–4 members). Receivers work in hidden sessions; MCP calls are matched to their
+  exact `tool.start` (`calling-chats.ts`, refused as `session_unknown` if unmatched, #174).
+- Control (status, cancel, redirect, wait) belongs to the delegating bot; Oscar reads (`threads.list`/`open`) and may
+  stop (`threads.cancel`), never writes. Files copy safely with `O_NOFOLLOW` and SHA-256 verification; bot text passes
+  safety checks and is JSON-fenced. Limits (`thread-limits.ts`): depth 3, 20 msgs/exchange, 6 concurrent deliveries, 8
+  open exchanges/bot; groups: 4 members, 6 rounds, 40 msgs, 120 min, 15 min quiet, 2 active/leader.
 
-### Temporary groups
+## Work and check levels
 
-A group (#133) is a thread with more than two participants: its first participant leads, 2 to 4 others are members, and
-`group` on the thread holds the purpose, rounds, total turns, end and kept files (`thread_groups` beside it). It runs on
-the same outbox, receipts, hidden sessions, file copies and fences as delegation (`group-*.ts`, detail in
-[docs/threads.md](docs/threads.md)). One tool, `lilbot_group`, with an action field: `start`, `say`, `attach`, `close`,
-`status`.
+Full board rules, session attribution, drop/answer routing and `#142` check-level mechanics: [docs/work.md](docs/work.md).
 
-- Any bot may start one from any session except a group session (no group inside a group; members may still delegate
-  to one bot). Retries with the same `requestId` find the same group or round. The first point goes with the start.
-- A round: the leader's point (to all, or to named members) becomes one `point` delivery per member, run in parallel in
-  each member's own hidden group session (the runner orders deliveries per member within a group). Each prompt carries
-  only what that member has not seen (`seen` per bot) plus the point, other bots' words fenced and cut, a message failing
-  the shared checks withheld. A member's final response is its reply. When every member a point was for is done, one
-  `round` delivery takes the replies to the leader's own hidden group session, in the same transaction; there it says
-  the next point or closes. A member's own delegation answered later into its group session joins the discussion.
-- Who has replied, member states (`waiting`, `working` with the live activity line, `replied`, `idle`) and the round's
-  addressees are worked out from the deliveries and the runner, never stored twice.
-- Ending, once, in one transaction (`group-end.ts`): the leader closes with an outcome; Oscar stops it
-  (`threads.cancel`, recorded as stopped by Oscar); or it ends by itself at the round limit (once the last round's
-  replies are in), the message limit (a point that does not fit is refused; a group with no room for another round
-  ends), the time limit, going quiet (nothing queued or running, no point for 15 minutes) or an unreachable leader. The
-  outcome, or LilBot's reason with the replies the leader had not seen, is a `notice` into the conversation the group was
-  started from, and each member gets a private journal fact (purpose, how it ended, the outcome, its own part; a shorter
-  one when memory refuses). Then turns still running stop (on close, not the leader's own), exchanges members handed
-  out from the group stop, their unfinished work items drop and the folder is archived; that part retries until done.
-  Late words are kept as `withheld`. An ended group is read-only.
-- Shared folder: `<workspaces>/.groups/<group id>/`, created through no-follow descriptors. Files from a point or a
-  member's `attach` are copied in with delegation's rules and listed with their full path in each prompt. On close the
-  leader's `keep` copies files into its own folder (`groups/<group id>/`) and gives them to its Library (the same
-  `LibraryService.give` as `lilbot_give_file`), before the folder moves to `<workspaces>/.archive/.groups/<group id>/`.
-- Oscar: `threads.list` and `threads.open` include groups (`group` with members' states, rounds with who replied, the
-  round limit, turns, end and kept files), `threads.changed` and `threads.cancel`. `bots.list` gives each bot the
-  running groups it is in (`groups`: id, purpose, round, round limit, leading), pushed with `bots.changed` when a group
-  starts, opens a round or ends. Each participant's main conversation gets a `group` / `in <leader>'s group` line. The
-  screens (#136) are in "Work between bots" under Web app.
-- Limits (`GROUP_LIMITS` in `thread-limits.ts`): 4 members, 6 rounds, 40 messages, 120 minutes, 15 quiet minutes, 2
-  running groups per leader, 6,000 characters per earlier message in a prompt. `LILBOT_GROUP_TEST_ROUNDS` lowers the
-  round limit for a dev server with the test data folder and allowlist; production refuses it.
-
-## Work
-
-`server/work/` owns the work board (`shared/work-schema.ts`): every real piece of bot work is an item Oscar can see, with
-who asked, who owns it, how "done" is defined, the evidence and the result. What must always happen is built in; what
-takes judgement is the `lilbot-work` skill (`server/work/work-skill/SKILL.md`, installed into the skills library at
-startup and restored if it differs, like `t3-coding`).
-
-- An item: id, title, owner (name captured at opening), who asked (`oscar`, `bot`, `routine`, `webhook` or `self`),
-  origin (`conversation`, `exchange`, `group`, `routine_run`, `webhook_run`), the "done" definition, kind of work, check
-  level (0-3) and the kind's default when it got its kind, status (`open`, `working`, `checking`, `needs_oscar`, `done`,
-  `failed`, `dropped`), evidence, result, its checks, times, an optional parent and an optional goal (see Goals). Statuses and kinds are checked in
-  code, not SQL. `work_events` keeps every change with where it came from.
-- Who asked and the origin come from LilBot's records of the calling session (`app-work.ts`, `workSessions`): an
-  exchange's hidden session is the exchange, asked by the delegating bot; a routine or webhook run's session is the run,
-  asked by the routine or webhook (named by its task); anything else is a conversation, asked by Oscar unless the bot
-  says `self`. A session the engine continued after compressing one of those counts as it (`bots/hidden-chats.ts`,
-  `sessionRoots`, the lookup the hidden-session check uses); while its lineage cannot be read the work call is refused
-  rather than credited to Oscar. A group session is the group (origin `group`), asked by its leader; the leader's own
-  group session is its own work (`self`).
-- Rules: opening needs a kind; with a definition (or at level 0) it starts the work; `working` needs the definition and a
-  kind; `done` needs them, at least one evidence entry and a result, unless the item is at level 0. Only the owner reports
-  on its item; the caller is the key's bot. `needs_oscar` carries exactly one question; a second while one waits is
-  refused. `failed` needs a result, `dropped` a reason. Final items take nothing more. Nothing is deleted.
-- Evidence: what it proves plus exactly one pointer: a Library item of the owner (checked), a url, a command with its
-  output, or a number with its source and time. All work text passes `memoryRefusal` (no secrets, hidden characters or
-  instructions); output is capped at 4,000 characters.
-- `needs_oscar` uses the activity service like a waiting session (`work:<item id>`): the bot shows waiting and turns
-  unread unless Oscar is viewing; leaving it ends the waiting state. The live line is in memory; unread survives restarts.
-- Delegation: `lilbot_delegate` inside an item (`itemId`, else the caller's only unfinished item in that session) sets
-  the exchange's `parentId` and opens the receiver's child item with the exchange's id, asked by the delegating bot, no
-  definition yet, in the same transaction. The receiver's prompt names it; its first open from that session fills it in.
-  A stopped exchange drops its child item ("The exchange was stopped by ..."). A routine or webhook run that reports on
-  an existing item is linked to it (`links`, from the event log).
-- Groups: a group started inside an item (`itemId`, else the leader's only unfinished one) sets the group's `parentId`
-  and opens each member's child item (`<group id>:<member id>`, origin `group`, asked by the leader) in the group's
-  transaction; a member's first point names it, and its first open from its group session fills it in (the item LilBot
-  opened has no request id: `WorkStore.prepared`). When the group ends, members' unfinished items for it are dropped
-  ("The group closed.", "The group was stopped by Oscar.", "The group ended by itself.").
-- An item opened in a conversation leaves a `tool` line there (`workItemId`, `toolId: work:<id>`) in LilBot's history.
-- Bot tools (System MCP): `lilbot_work` (no itemId: open; with itemId: definition, evidence and status in one call;
-  request ids make retries safe) and `lilbot_work_list` (mine, every bot's, or one in full).
-- Oscar: `work.list` (bot, status, updated between `from` and `to`), `work.open`, `work.drop` (with his reason),
-  `work.answer`, `work.brief` (needs him, failed and done since a time, the last day by default) and the push
-  `work.changed`. Screens: `needs-ui`.
-- An answer is saved, the item returns to `working` (or `open` if it never started), and is delivered once through
-  `work_answers`: a hidden turn with a stable run id in the bot's main conversation for work from a conversation,
-  otherwise in the session the work came from; transport failures retry after 30 seconds. On an item handed over by
-  another bot (origin an exchange) it instead continues the exchange (a thread delivery of kind `oscar`, from the
-  delegating bot's side): the receiver's next turn, whose reply returns to the delegating bot as an ordinary thread
-  answer in its own session. An exchange that cannot take another message (full, failed) gets the direct delivery, so
-  an answer is never lost. The delegating bot reads the question and answer on the child item with `lilbot_work_list`.
-- `work.drop` (one transaction) drops the item and every unfinished item below it, with the same reason, and stops the
-  work. An exchange's own item stops that exchange as Oscar in the same transaction (`ThreadService.dropped`: the
-  delegating bot is told with his reason; only the interrupt of the receiver's turn follows the commit, and the
-  runner repeats it after a restart; an exchange that has answered already only tells the delegating bot). Any other
-  owner is told in the session the item belongs to through `work_answers` (`drop-<item id>`: stop, report nothing
-  further, say so). If it was `working`, the row first waits as `stopping` until the running turn of that session has
-  been ended (once), so the bot reads the notice and not its own last words. A secondary item opened inside an
-  exchange's session is only told, with no interrupt (ending that turn would end the exchange), and not at all when the
-  same drop stops that exchange. A dropped handed-over parent gives its delegating bot two notices: its own and the
-  exchange's "Oscar stopped".
-
-### Check levels (#142)
-
-0 no check; 1 the owner reads the real result and attaches evidence; 2 a second bot reproduces the claim (a fresh session of
-the owner when no other bot is eligible); 3 Oscar checks.
-What must happen is built in (`work-check-*.ts`, `work-checks.ts`, `work-levels.ts`); how to check is the `lilbot-check`
-skill (`server/work/check-skill/`, installed like `lilbot-work`).
-
-- Kinds (`shared/work-check-schema.ts`) and built-in levels: `reply`, `note` 0; `file`, `computer`, `code` 1; `deploy`,
-  `outside` (a message or post that leaves the system), `spending`, `figure` (a number Oscar decides on) 2. Oscar sets a
-  default per kind and per kind for one bot (`work.levels.get`, `work.levels.set`, null removes his; `work_levels`, bot
-  id '' for every bot); the bot's wins. "Hard to undo" is not a kind: the skill tells bots to raise the level for it.
-- The bot gives the kind at opening (an exchange's item: when the receiver first reports); LilBot refuses a level below
-  the effective default and any lowering; raising is allowed until it finishes. An item from before kinds has none: it
-  cannot move to `working` or `done` until its bot gives one, which can raise its level to that kind's default.
-- Level 2: the owner's `done` (same checks as level 1) moves the item to `checking`, not done; LilBot picks the checker
-  in the same transaction (`work_checks`): never the owner or the owner of any item under it, never a choice of the
-  owner's (there is no argument for it); among the rest, one that has not checked this item, then the fewest checks, then
-  by id. Candidates are bots that are ready or being prepared. A real second bot is always preferred.
-- No other bot eligible (Oscar has one bot, or every other bot works under the item): the check is a **same-bot check**,
-  never a wait for Oscar. It is a new hidden session of the owner (`by` is the owner, `sameBot` true), told nothing but
-  the check prompt (done definition, claim and evidence pointers fenced as data), so it remembers nothing of the owner's
-  conversation, read-only by instruction. It runs on `LILBOT_REVIEW_MODEL` when that differs from the bot's own model
-  (`WorkHost.checkModel`, `differentModel`; a bot with no model of its own counts as different), else on the bot's own,
-  and the check's `note` says which. The choice is saved with the check (`same_bot`, `checker_model`, `WorkCheck.sameBot`
-  and `model`), so Oscar's screens can show it, and a restart reuses it. A run with another model starts without the
-  bot's reasoning effort (like the memory review).
-- The check runs as a new hidden session of the checker (`work-check-runner.ts`, run id `check-<check id>`, both session
-  ids saved before the prompt in `work_check_chats`, so it is excluded from history, activity and both memory reviews).
-  The prompt gives the done definition, claim and the owner's evidence in a `work-claim` JSON fence, the owner's folder
-  and the verdict's request id (`verdict-<check id>`). Retries and restarts reuse the run id.
-- A check session, same-bot or a second bot's, gets no memory and changes nothing but its verdict (#174;
-  `work/check-sessions.ts`, by both saved ids and the compression lineage). The engine API answers its memory context
-  with an empty block (no deployment notice either) and refuses its recall, writes, forgets and conversation search, by
-  the session id the adapter sends; with no session id, while a check of that bot runs. Skill changes name no session,
-  so the skills plug-in's writes are refused while a check of that bot runs. It starts with only
-  `CHECK_TOOLSETS` (web, vision, terminal, file, skills, `lilbot_system`: no memory, scheduling, delegation or coding).
-  LilBot's MCP server refuses it every changing `lilbot_*` call and `lilbot_memory_list`; only reads and the verdict
-  pass (`system/check-access.ts`: while a bot checks, its calls are matched to their starts by request id or
-  arguments; one not seen in time is refused). Files and the terminal can still write: read-only stays an instruction
-  there. Refusals log fixed labels (`[check-session]`, `[work-check] verdict refused: <code>`, a check that ended
-  without a verdict with its end status and whether it was a same-bot check).
-- The verdict comes only through `lilbot_work` (`verdict`, `result`, the checker's own evidence) from the assigned bot,
-  from that check session (`work_check_chats`): for a same-bot check the owner's main and every other session are refused,
-  though it is the same bot. `verified`: done. `not_verified`: back to `working`, the owner told once through
-  `work_answers` with what the checker saw (fenced); a second failure waits for Oscar. `could_not_check`, a run that ends
-  without a verdict, or a checker that is gone: waits for Oscar. While a check is open the owner can report nothing.
-  These notices (and Oscar's send-back) reach a handed-over item's owner in its own session, not through the exchange.
-- Oscar's checks: level 3, a second failure or a check that could not be done put the item in `needs_oscar` with an
-  open Oscar check. `work.pass` (optional note): done.
-  `work.sendBack` (reason): back to `working`, the owner told. `work.answer` refuses these. Dropping an item closes its
-  open check.
-- A level 2 or 3 item is done only as `verified` (a bot) or `passed` (Oscar): every summary carries its latest `check`,
-  and an item carries all of them. Track record and spot checks are not built (proposal on #142).
-- The note has two static lines on when to open an item: before any work beyond a reply, however small (changing
-  something, handed over, scheduled or from outside), not for answering a question.
+- `server/work/` tracks every real piece of bot work (`lilbot_work`, `lilbot_work_list`; `lilbot-work` skill): owner,
+  asker/origin from LilBot's session records (`workSessions`, `sessionRoots`), "done" definition, kind, check level
+  (0–3), evidence pointers, result and status (`open`, `working`, `checking`, `needs_oscar`, `done`, `failed`, `dropped`).
+  Delegation and groups open child items automatically; `work.drop` cascades in one transaction. Screens: `needs-ui`.
+- **Check levels (#142, `lilbot-check` skill):** 0 none (`reply`, `note`), 1 owner evidence (`file`, `computer`, `code`),
+  2 second bot reproduces claim (`deploy`, `outside`, `spending`, `figure`; falls back to a fresh isolated same-bot
+  session on `LILBOT_REVIEW_MODEL`), 3 Oscar (`work.pass`/`work.sendBack`). Check sessions (`#174`) get no memory,
+  `CHECK_TOOLSETS` only, and MCP blocks all writes except the assigned verdict.
 
 ## Goals
 
-`server/goals/` owns goals (`shared/goal-schema.ts`, #143). Oscar gives an outcome once, in his words; the bot proposes an
-agreement and a target measured from a real source; once he agrees, the bot works on the board and LilBot's review
-routine reports against the target on a rhythm. The bot promises the work and measures honestly; it does not promise the
-number. How to propose and review is the guide topic `goals` (no skill: a skill's catalogue line costs every turn).
+Full agreement, review routine and progress rules: [docs/goals.md](docs/goals.md).
 
-- A goal belongs to one bot: Oscar's words, the agreement (what it does alone, needs from Oscar: access, money, a
-  decision; cannot influence), the target (measure, source, the baseline value with the time LilBot saved it and one
-  evidence pointer of the reading, the target value, a due date `YYYY-MM-DD` in Adelaide), the review rhythm (a routine
-  schedule, default weekly on Monday at 09:00 Adelaide) and a state: `proposed`, `agreed`, `paused`, `reached`, `dropped`
-  (the last two final). Events and reviews are never deleted (`goal_events`, `goal_reviews`).
-- Bot tool (System MCP): `lilbot_goal` with `action`. `propose` without goalId: a new goal, only from a conversation session
-  (never a routine or webhook run, an exchange or a check; the call is traced like `lilbot_work`), with Oscar's words,
-  the agreement and the target; with goalId, a new version of a proposed goal or a change to an agreed or paused one
-  (`why`; a new agreement, target or rhythm, or `drop`). `progress`: a review. Reads go through `lilbot_work_list`
-  (`goals`, `goalId`), so goals add one listing line per turn. Request ids make retries safe; text passes `memoryRefusal`;
-  a target differs from its baseline and is due today or later; a rhythm keeps the routines' minimum interval.
-- Nothing proactive before Oscar agrees: a work item links to a goal (`goalId` at opening, nullable `work_items.goal_id`)
-  only while it is the bot's own and `agreed` (`WorkHost.checkGoal`); reviews likewise; there is no routine before.
-- Oscar: `goals.list` (bot, states), `goals.open` (its reviews, work items and events), `goals.agree` (a proposed goal
-  starts, a paused one resumes, a proposed change applies and a proposal to drop drops it; `review` replaces the rhythm),
-  `goals.adjust` (his words; the bot proposes again), `goals.pause`, `goals.drop` (optional reason), push
-  `goals.changed`. A proposed goal or a change waits for Oscar: the bot shows waiting and turns unread (`goal:<id>`), like a
-  `needs_oscar` item, and it is not also a work item, so he has one way to answer. Screens: `needs-ui`.
-- Each decision is saved with its notice in one transaction. Notices are hidden turns in the bot's main conversation
-  through `work_answers` (`WorkAnswers.notify`, stable run ids): agreed (open an item per thing it does alone and a
-  `needs_oscar` item with one question per thing it needs from Oscar), resumed, change applied, adjusted, paused, dropped.
-- The review routine (`goal-routines.ts`) is made through `RoutineService.create` once the goal is agreed, with
-  `createdBy: oscar` (his agreement is the request), so it is not one of the bot's five; request id `goal-<id>-<n>`. A
-  tick every five seconds keeps it matching the goal: running while agreed, paused while paused, removed otherwise, on
-  the goal's rhythm (a new rhythm replaces it as `n+1`); one the bot paused or deleted with its routine tools comes back.
-  Its task names the goal and reads it live, so a changed target needs no new routine.
-- A review comes only from a run of the goal's own review routine (the calling session's routine), so reviews keep the
-  rhythm; it needs the value read now, `did` (what the bot did of what it said) and evidence. LilBot compares the value with
-  the previous review (or the baseline) and the target: moved toward, away or not at all, met, and stalled (not met, and
-  nothing moved toward the target in this and the previous review, or past due). A stalled review is refused without a
-  change or drop in the same call, unless one already waits. The report becomes a work item through `WorkService.act`,
-  linked to the goal: kind `figure` (level 2 by default, so a second bot, or a fresh session of the bot when it is the only one, reproduces the reading; Oscar may change the
-  default), the reading as a number entry plus the bot's own evidence, and a result that keeps "Number: ..." and
-  "Work: ... (items for the goal: ...)" apart. Review items are not counted as the goal's work.
-- Reached only when the latest review met the target and its work item is `done` (checked at its level), never on the
-  bot's number alone; the routine is then removed.
-- `goals.drop` drops every unfinished item of the goal in the same transaction (`WorkBoard.dropping`, the same as
-  `work.drop`, which tells the bot about each); only with none does the bot get the goal's own notice. A deleted bot's
-  goals are dropped ("The bot was deleted."); its routines go with it.
+- `server/goals/` (#143, guide topic `goals`): a bot proposes an agreement, measured target with baseline evidence and
+  review rhythm (`lilbot_goal`, conversation sessions only). Nothing proactive runs before `goals.agree`; proposals wait
+  for Oscar (`goal:<id>` unread). Screens: `needs-ui`.
+- Once agreed, `goal-routines.ts` maintains a LilBot-owned review routine (`createdBy: oscar`, synced every 5 s).
+  Reviews come only from that routine, become level-2 `figure` work items, reject stalled progress without a proposed
+  change/drop, and reach the goal only after the review's work item is checked `done`.
 
 ## Restart recovery
 
-Restarting LilBot only leaves Hermes turns and T3 tasks running; nothing is resubmitted.
+Full per-feature recovery steps: [docs/server.md](docs/server.md#restart-recovery).
 
-- The browser reconnects and opens the persisted main conversation. Hermes says whether the turn still runs; LilBot
-  reconciles the durable transcript, including tool work and the final answer.
-- A new main session starts only when Oscar asks for one or the engine truly cannot resume the conversation: a "not
-  found" is asked again on a newly attached connection, and only a second refusal starts one, logged as `[chat]
-  conversation could not be resumed` with the engine's code and shown on its divider. A deploy-like restart (past the
-  gateway's 20-second grace), a tool reconnect and a second device keep the session (`check:restart`).
-- Routines and webhook runs recover the same persisted run and admission receipt. Threads recover their outbox and return the answer to
-  the original caller session, never a replacement exchange; a steered redirect is checked against the recovered
-  transcript, and a stop is applied again. Oscar's answers, drop notices and goal notices still waiting are
-  delivered with the same run id; a drop's exchange stop is already saved. A goal's review routine is made, paused or
-  removed to match the saved goal on the next goals tick.
-- MCP services: the list and tokens are in the data directory. A sign-in in progress lives in memory, so its link
-  stops working after a restart and the bot asks for a new one; a change not yet applied to an open conversation, and
-  the "connected" turn, are applied when the conversation is next opened instead (its tools come from the profile).
-- The T3 bridge reloads its sign-in from the data directory. Stable per-bot request ids let an uncertain launch find
-  the original T3 task, and its thread id allows later waits and reads. A bridge call in flight during downtime
-  fails; the bot retries it after reconnecting.
-- This covers a LilBot process restart with data preserved, not a Hermes crash or a machine reboot. An unknown engine
-  receipt fails explicitly rather than repeating possibly completed work; engine crashes cannot guarantee exactly-once
-  external side effects. Failed deployments are recovered by the deploy watchdog. The self-development skill is not
-  installed.
+- Restarting LilBot leaves Hermes turns and T3 tasks running without resubmission. Browsers reconnect and reconcile the
+  main conversation (a new session starts only if Oscar asks or two attach attempts confirm "not found"). Routines,
+  webhooks, threads, work answers/drops, goal ticks and the T3 grant all resume from SQLite/data using persisted
+  admission/request ids; in-memory MCP OAuth sign-in links expire on restart and pending MCP tool applies run on next
+  chat open. Unknown engine receipts fail explicitly rather than repeating side effects.
 
 ## Deploy
 
-Production runs only from `~/lilbot/release`, a symlink to an immutable built folder `~/lilbot/releases/<commit>`.
-`~/code/LilBot` and T3 worktrees are development source only: editing or pulling there does not change production.
-Nobody edits release folders. Only `bun run deploy` builds releases and restarts the live service; bots restart
-production only through it.
+Internals, machine install, overrides and manual recovery: [docs/deploy.md](docs/deploy.md).
 
-- Procedure: commit, then `bun run verify && bun run deploy` in a clean source checkout. Verify records the exact
-  commit; a dirty checkout gets no deploy marker. Deploy builds that commit from `git archive`.
-- Rollback: an independent watchdog (`lilbot-deploy.service`) copies the database, switches the release symlink,
-  restarts LilBot and checks health for 60 seconds. On failure it stops LilBot, restores the database, switches back
-  to the previous release and restarts once (no Git checkout, reset, install or build during rollback), then checks
-  that version for another 60 seconds. Before that restart it clears `compression.checkpoint_required` in every bound,
-  non-deleted bot's Hermes profile that has it (`server/deploy/rollback-profiles.ts`, with the service unit's own Hermes
-  home and executable; in development only `dev-` profiles under the development home), so a release from before #148,
-  whose memory adapter cannot take the save, can still shorten conversations; a release that has #148 sets it again at
-  start-up. It logs only counts (`[rollback] memory save flag cleared for N bots`). Failed recovery stops the service
-  and keeps the lock, releases and copies for a person; it never loops. A killed watchdog also leaves its lock. Nothing removes a stale lock automatically.
-  Development checkouts, including uncommitted changes, are never touched.
-- Database copies use SQLite's online backup API; never raw-copy `lilbot.db`, `-wal` and `-shm` independently. The
-  data directory is never replaced: keys, `engine-token`, `t3-grant.json`, other secrets, workspaces and engine
-  sessions stay in place. Back up `computer-server-key.pem` securely alongside the database copies.
-- Outcome: `bun run deploy --status` tells the deploying bot the result on its resumed turn. The last failure is a
-  notice the app fetches on reconnect and every bot's next memory context includes. No agent loop, developer bot or
-  notification system for it.
-- Migrations and new plug-in versions ship with a normal deploy; existing data imports after it.
-- Internals, installation, overrides and manual recovery: [docs/deploy.md](docs/deploy.md).
+- Production runs only from `~/lilbot/release` -> `~/lilbot/releases/<commit>` (immutable, built via `git archive` from
+  a verified clean commit). Only `bun run deploy` builds releases and restarts `lilbot.service`.
+- Procedure: commit, then `bun run verify && bun run deploy`. Watchdog (`lilbot-deploy.service`) backs up SQLite via
+  the online backup API, swaps symlink, restarts and monitors health for 60 s; on failure it restores DB, clears
+  `compression.checkpoint_required` on bound non-deleted profiles (for pre-#148 rollback), swaps back and restarts once.
+  Data dir, secrets, `computer-server-key.pem`, workspaces and engine sessions are never replaced. Failed recovery stops
+  and keeps the lock for manual inspection; `bun run deploy --status` and failure notices report outcomes.
 
-## Library
+## Library and chat attachments
 
-`server/library/` owns delivered items (`shared/library-schema.ts`). A bot delivers with `lilbot_give_file` (path, title,
-`requestId`; LilBot's MCP server, #113), which needs a title and the conversation the call came from. That comes from
-LilBot's records of the call (`giveFrom` in `app-work.ts`: the call matched to its own tool start, as for
-`lilbot_delegate` and `lilbot_work`; refused when none is seen), never from an argument: a routine run's two session aliases and a session the
-engine continued after compressing it resolve to the persisted run id of that bot (`workSessions`), a webhook run's
-session is recorded as the conversation, and a lineage that cannot be read refuses and gives nothing. Each call is
-logged in `system_changes`. The adapter's `give_file` ended with adapter 0.12.0; the engine API's `/engine/library/give`
-stays for sessions that loaded an older adapter.
+Full upload, storage, marker, safety and read rules: [docs/library-and-attachments.md](docs/library-and-attachments.md).
 
-- Items point to workspace files, never copies; only explicitly given files appear. Kinds: media (image/audio/video
-  MIME), page (.md/.html/.htm), file. Size limit in `library-files.ts`.
-- `library.list` is newest first, filterable by `kinds`, with each item's missing status, MIME type (from its name) and
-  download URL. `library.content` returns the same URL; `library.workspace` lists a folder separately (names and sizes:
-  a file nobody gave cannot be downloaded). The download sends the file's own name.
-- Reads use Linux descriptor-relative opens with no-follow flags; workspace-root symlinks and nonregular files are
-  refused.
-- Hermes exposes no outgoing attachment manifest, so assistant files are not collected automatically; tool image
-  previews are not deliveries.
-
-## Chat attachments
-
-`server/attachments/` owns incoming files and message associations; the screens are in `web/src/attachments/`.
-
-- Three ways in, several files at once: the composer's plus button, pasting files (pasted text stays text) and
-  dropping on the conversation column. Uploads in progress disable Send; a message may be files only. Refused files
-  (with a reason) and files over the per-message limit never block sending the rest. The client counts staged,
-  not-refused files against the limit before `attachments.prepare`; the server enforces it again on send.
-- File names are untrusted: always plain text (React text nodes, `alt`, `title`, `download`), never HTML, and never
-  part of a path. Staged files belong to one bot: switching bots empties the composer and ignores late uploads.
-- Upload: `attachments.prepare` reserves files in order, then the raw bytes are PUT (not multipart) to each
-  `uploadUrl`. Removing an unsent chip does not delete its workspace file. An interrupted upload can be retried; a
-  partial file that survived a crash is refused, not overwritten, and the client prepares a new file. No byte-offset
-  resume.
-- `chat.send` with files needs a client UUID `messageId` (`newMessageId`, which also works on plain-HTTP pages). Every
-  attachment must be ready and belong to the open chat's bot. Retries use the same id, text and files (engine
-  admission idempotency); a changed payload is refused. The send answer and the `user.message` event are reconciled by
-  `messageId` (`withSentMessage` in `chat/chat-state.ts`), never a second bubble, queued sends included.
-- The association is saved before submission. A unique display-only marker in the engine's stored text identifies the
-  exact row (allowing the engine's prepended image analysis and appended image references); the HTTP edge swaps it for
-  the original text and metadata. Reopening reads SQLite and never resubmits; an uncertain send is retried only by
-  explicit client action.
-- Image support is `supported | unsupported | unknown`, kept as it was at send time. Show "model cannot see images"
-  only for `unsupported` with a positive count. Hermes declares no vision capability, so it reports `unknown`, never
-  a guess from model names.
-- Storage: streamed to generated names in the bot's `attachments/` folder through no-follow, exclusive-create file
-  descriptors; the stream enforces the size cap; directory swaps are refused; partial writes are removed; reads
-  verify SHA-256 before returning bytes. MIME is normalised; PNG/JPEG/GIF/WebP magic decides image delivery and other
-  images are refused with `unsupported_image`.
-- Non-image files reach the bot as workspace references; the note treats file names and contents as data, not Oscar's
-  instructions.
+- **Library (`server/library/`):** bots explicitly deliver workspace files via `lilbot_give_file` (session matched to
+  its tool start, logged in `system_changes`). Items point to workspace files (never copied), read via descriptor-relative
+  `O_NOFOLLOW` opens; `library.workspace` browses read-only without enabling downloads of ungiven files.
+- **Chat attachments (`server/attachments/`):** staged per bot (button, paste, drop), `attachments.prepare` + raw PUT
+  upload into `attachments/` via `O_NOFOLLOW` exclusive-create with SHA-256 verification and PNG/JPEG/GIF/WebP magic
+  checks. `chat.send` requires client UUID `messageId` for idempotency; display-only markers reconcile stored engine text
+  at the HTTP edge; non-image files pass as untrusted workspace references.
 
 ## Coding (T3 Code)
 
-Coding goes to T3 Code, Oscar's coding backend, through its MCP tools. LilBot builds no coding engine, worktree or
-pull-request handling. Running commands, reading files and using apps stay ordinary bot work.
+Full bridge, sign-in, skill and test details: [docs/connections.md](docs/connections.md#coding-t3-code).
 
-- The T3 connection (`server/connections/t3-connection.ts`) is given to every bot by every engine
-  (`BotEngine.prepareConnections`, on creation, startup and before use). With the system server it is an exception to
-  "tools and MCP connectors stay with the engine".
-- The bridge (`t3-bridge.ts`, `/engine/t3/mcp`) forwards Streamable HTTP MCP to T3 Code (`LILBOT_T3_MCP_URL`). Callers
-  present a per-bot key (`HMAC(engine token, "t3-bridge:<bot id>")`); deleted bots are refused. It narrows the tool
-  list to `T3_TOOLS` (no project deletion, themes, schedules or machine linking) and prefixes each `clientRequestId`
-  with the bot id, because T3 scopes retry keys to the one shared sign-in.
-- One shared sign-in with Full access in `<data>/t3-grant.json` (0600). `bun run t3:sign-in` redeems a one-time
-  pairing code Oscar creates in T3 Code on the leader's environment (Settings → Sharing & access → Create link → Copy
-  code; the link works too; codes last about five minutes). T3 has no refresh grant: the sign-in lasts 30 days, then
-  Oscar approves again. The running server picks up a new sign-in without a restart.
-- Missing, expired or revoked: the bridge answers MCP itself with one tool, `t3_connection_status`, telling the bot
-  what to tell Oscar. A T3 401 on an unexpired grant marks it revoked; the 401 is never passed on, so an engine never
-  starts its own OAuth. `connections.status` returns state and expiry, never the token. No Settings screen yet
-  (`needs-ui`).
-- Bot instructions are the skill `t3-coding` (`server/connections/t3-coding-skill/SKILL.md`), installed into the
-  skills library at startup and restored if it differs: one launch with a stable `clientRequestId`, then
-  `t3_thread_wait`/`t3_thread_read`, with the T3 `link` in the chat right away and with the result. An uncertain
-  launch retries the original `clientRequestId`, never a replacement task. There is no LilBot follow-up queue after
-  the Hermes turn ends.
-- `check:coding` runs its real task in the project root of a throwaway repo (T3's MCP has no worktree removal) and
-  revokes its own sign-in at the end. T3 recovery has a unit test with a simulated upstream; the live grant is never
-  copied into tests.
+- Coding delegates to T3 Code via MCP (`server/connections/t3-bridge.ts`, `/engine/t3/mcp`, per-bot HMAC key, narrowed
+  to `T3_TOOLS`, `clientRequestId` prefixed with bot id). One shared Full-access grant in `<data>/t3-grant.json` (0600,
+  30 days, `bun run t3:sign-in`, hot-reloaded); missing/expired/revoked returns `t3_connection_status` and never passes
+  401 upstream. Bot instructions live in `t3-coding` skill. Settings screen: `needs-ui`.
 
 ## Connections: MCP services bots add (#187)
 
-A bot adds an MCP service when asked ("connect Notion"); LilBot connects to it, does the OAuth sign-in, holds the tokens and
-keeps the state, and every bot uses its tools in its open conversation from the next message, with no new session. The
-list, sign-in and tokens live in LilBot, so changing engine changes none of it. Code: `server/connections/mcp-*.ts`,
-`connection-apply.ts`, wired in `server/app-connections.ts`. Bot guide topic: `connections`.
+Full OAuth, discovery, forwarding and in-place apply details:
+[docs/connections.md](docs/connections.md#mcp-services-bots-add-187).
 
-- A connection: id, name (unique; the engine's server is `lilbot_c_<name>`, so it never meets Oscar's own servers),
-  address, state, the bot that added it, created and last-worked times, the tool names LilBot last read. States:
-  `needs_sign_in`, `connected`, `sign_in_expired`, `unreachable`. Every bot gets every connection; per-bot switches and
-  "used for" (#62) can add a table without changing this one. At most 20.
-- Bot tool: `lilbot_connection` with `action` (`add` name and address, `sign_in` id, `finish` the pasted address,
-  `remove` id; a `requestId` each). Status is a read: `lilbot_status` area `connections` (id, name, address, state, last
-  worked, tool count; never a token). Only the bot that added a service removes it, any bot once that bot is gone (the
-  exception to "no destructive tools", like its own webhooks and routines). `add` and `sign_in` are traced to their
-  conversation like `lilbot_delegate`. Browsers: `connections.status` gains `services`; `connections.changed`.
-- Names and addresses are untrusted text: a name is 2 to 31 of `[a-z0-9_]`; an address is HTTPS or loopback HTTP, with no
-  user name, password, fragment or secret (`memoryRefusal`). Every endpoint a service names is checked the same way, and
-  a service on the internet may not point LilBot at this machine. Nothing follows a redirect.
-- `add` probes the address (initialize, tools/list; ten seconds). It answers: connected with its tools, or the service
-  asked for a sign-in (401): LilBot discovers its authorisation server (RFC 9728 protected-resource metadata from the
-  401's `WWW-Authenticate` or the well-known path, then RFC 8414 or OpenID metadata, issuer checked), requires PKCE S256,
-  registers itself (RFC 7591, a public client with one redirect address) and returns a sign-in link the bot gives
-  Oscar. No dynamic registration: refused for now (API keys are #63). A link is not a secret.
-- The sign-in: authorisation code with PKCE, `state` and the resource indicator (RFC 8707) on authorize, token and
-  refresh. The return address is `https://<LILBOT_ACCESS_HOST>/api/connections/callback`, from configuration, never a
-  request's Host; without the Access door no sign-in can start (services that need none still work). The callback route
-  itself is off by default (`LILBOT_ACCESS_CALLBACK_ENABLED=1` opts in); the paste fallback works without it. A sign-in is
-  spent by the first answer naming its `state` (valid or not), works only within ten minutes of the `add` or `sign_in`
-  that started it (`sign_in` is refused while connected), and a new one voids the one before; `iss` is checked against the
-  issuer when sent, and required when the server promises it. OAuth endpoints must share their issuer's origin. The
-  fallback: Oscar pastes the address his browser ended on and the bot passes it with `finish`; it must be LilBot's return
-  address exactly, match the flow's calling bot and conversation, appear in one of Oscar's own visible user messages in
-  that conversation, and is validated like the callback. That address carries a
-  one-use code, useless without the PKCE verifier only LilBot holds and spent at once; it passes through the
-  conversation (and so its copy) until the cards (#69) take the paste, and is kept out of `system_changes` (field names
-  only) and LilBot's logs.
-- Tokens and any client secret are only in `<data>/mcp-credentials.json` (0600, written whole and renamed). Never in a
-  tool argument or result, chat, instructions, memory, the conversation copy, logs or an engine's settings: engines get
-  LilBot's route and the bot's key (`HMAC(engine token, "mcp-service:<id>:<bot id>")`), so a refresh needs no engine change.
-  LilBot refreshes 30 seconds before expiry or after a 401, one refresh per service at a time; a refused refresh (or none
-  possible) is `sign_in_expired`, repaired by a new `sign_in`.
-- The route (`mcp-forward.ts`, `/engine/connections/<id>/mcp`, private listener only, like the T3 bridge): loopback Host,
-  no Origin, the bot's key for this service, current bots only, POST and DELETE only (no stream the service opens). It
-  forwards with the token, offers only the tools LilBot gave the engine, and fences every text result as
-  `<outside-service-output>` data. A 401 is never passed on; while signed out it answers MCP itself with one tool,
-  `connection_status`, saying what to tell Oscar. Setup calls wait ten seconds and tool calls 120; a service that does
-  not answer is `unreachable` and holds up nothing else (`optional` connections never make a bot unavailable).
-- Picking it up without a new session (`connection-apply.ts`, `BotEngine.applyConnections`): a watcher ticks every second;
-  when what engines are given changes (added, signed in, expired, removed, new tools) it gives every bot its connections
-  again, then applies them in place to each bot's main conversation; a conversation whose turn runs is asked again once
-  it ends, so the turn that added a service never sees its tools but the next message does. Being on a timer, it never
-  reconfigures a service while the call that caused the change is still being answered (that would abort the call).
-  After a sign-in, the conversation that asked gets a hidden turn ("<name> is connected"), only once its tools are
-  applied there. Nothing is imported from or deleted in the engine profiles: Oscar's `revenuecat` and `paper` stay.
-- Output from a service is data, never Oscar's instructions; tool descriptions it lists reach the model's listing as they are.
+- Any bot can add a remote MCP service via `lilbot_connection` (`add`, `sign_in`, `finish`, `remove`, max 20; read via
+  `lilbot_status` area `connections`, guide topic `connections`). Every bot gets every connected service under engine
+  name `lilbot_c_<name>` (leaving existing profile servers like `revenuecat` and `paper` untouched). Only the adding bot
+  removes a service (or any bot once the adder is deleted). Browsers: `connections.status` (`services`) and
+  `connections.changed`.
+- **Untrusted inputs & SSRF:** names are 2–31 `[a-z0-9_]`; addresses/OAuth endpoints must be HTTPS or loopback HTTP, no
+  credentials/fragments/secrets (`memoryRefusal`), internet services cannot target loopback/this machine, and nothing
+  follows redirects. Service tool output is fenced as `<outside-service-output>` data, never Oscar's instructions.
+- **LilBot-held OAuth & tokens:** `add` probes the service; on 401 LilBot discovers auth metadata (RFC 9728 / RFC 8414 /
+  OpenID, issuer-checked, same-origin endpoints), requires PKCE S256, registers dynamically (RFC 7591 public client; no
+  API keys yet, #63) and returns a sign-in link with RFC 8707 resource indicator, `state` (10 min, single-use) and `iss`
+  check. Return URL is `https://<LILBOT_ACCESS_HOST>/api/connections/callback` (route off by default,
+  `LILBOT_ACCESS_CALLBACK_ENABLED=1` opts in; paste fallback via `finish` works without it and requires Oscar's visible
+  user message in the same bot/conversation). Tokens and client secrets live ONLY in `<data>/mcp-credentials.json`
+  (0600) — never in chats, logs, memory or engine configs; LilBot refreshes 30 s before expiry or on 401.
+- **Forwarding & in-place apply:** engines connect to `/engine/connections/<id>/mcp` (private listener, loopback, no
+  Origin, per-bot HMAC key, POST/DELETE only, never forwards 401; signed-out answers `connection_status`). A 1 s watcher
+  (`connection-apply.ts`, `BotEngine.applyConnections`) updates profiles and applies tool changes in place to open main
+  conversations from the next message (no new session), then delivers a hidden `"<name> is connected"` turn.
 
 ## System: the note and LilBot's own MCP server
 
-Every bot knows it lives in LilBot and can operate the app, not only a special developer bot. Tool list, measurements
-and how to add a tool: [docs/system-mcp.md](docs/system-mcp.md).
+Tool table, token measurements and how to add a tool: [docs/system-mcp.md](docs/system-mcp.md).
 
-- The note (`bots/system-note.ts`, about 200 words, the rules for choosing a computer included) is added after the user's instructions whenever an engine applies a
-  bot. The stored and shown instructions never include it. It is the engine-neutral system-prompt path: Hermes does not
-  show MCP `instructions`, and its per-turn memory block repeats in every turn. Keep volatile facts out of it (any change
-  rewrites every bot's instructions); `lilbot_about` gives the live ones.
-- The server (`server/system/`, `/engine/lilbot/mcp`) is on the private listener only, never the Access listener or the
-  helper door. It is the second LilBot-owned connection, given to every bot through `BotEngine.prepareConnections` with
-  the bot's own key. The caller is always the key's bot: arguments cannot name another identity and deleted bots are
-  refused. Tools are prefixed `lilbot_`.
-- Each tool calls the service function the screen uses, so rules, checks and `bots.changed` pushes are identical, and each
-  change is logged with the calling bot. There are no destructive tools: deleting a bot, removing a computer and
-  forgetting another bot's private facts are Oscar's to do. The exceptions are a bot deleting its own webhooks and its own
-  routines, and removing an MCP service it added.
-- A release that changes a tool reconnects every bot once; an unchanged restart applies nothing. Tests fail when the tool
-  list or a guide (`server/system/guide/*.md`, shipped with each release) drifts.
+- The static ~200-word note (`bots/system-note.ts`) is appended after user instructions when engines apply a bot (kept
+  out of stored/displayed instructions; volatile facts live in `lilbot_about`).
+- `server/system/` serves `/engine/lilbot/mcp` on the private listener only (per-bot HMAC key, caller strictly from key,
+  deleted bots refused). Every `lilbot_*` tool calls the same service function as the UI and logs changes in
+  `system_changes`. No destructive tools except a bot deleting its own webhooks/routines or removing an MCP service it
+  added. Tool changes update the URL hash so engines reconnect once; drift tests guard tools and `server/system/guide/*.md`.
 
-## Computers
+## Computers and devices
 
-`server/computers/` owns computer records, keys, install codes and durable requests; `shared/computer-schema.ts` is
-shared with the standalone `helper/` client. Protocol, limits, build and tests: [docs/computers.md](docs/computers.md).
+Protocol, rate limits, helper builds/signing, browser installer and "my computer" details:
+[docs/computers.md](docs/computers.md).
 
-- The leader is always `leader` and runs operations locally through the same bounded runner. Every bot can use every
-  computer; the authenticated bot owns its requests, never an id from the body. All computer operations require
-  `full-access`.
-- Browser methods `computers.list`, `computers.installCode`, `computers.remove`, `computers.addThis.*` and the
-  `computers.changed` push exist. Settings > Computers (`web/src/computers/`, [docs/screens.md](docs/screens.md)) lists
-  machines live (leader first, online/offline/key-conflict dots), removes after confirmation and mints a one-time
-  command in "Add by command line"; the code lives only in that dialog's state. "Add this computer" is a three-step
-  dialog on `computers.addThis.*` (download, open the installer, connected) whose code lives only in its state and shows
-  only in the not-detected state. Helpers connect only through the helper door.
-- LilBot creates `computer-server-key.pem` (0600) in its data directory; the install code pins its fingerprint. Back
-  it up with the database and preserve it on redeploy. Key replacement needs re-registration with a new install code.
-  Every frame is signed; helpers need TLS except on loopback. Revocation takes effect only through a signed revoke.
-- Computer hard stops (Hermes' `detect_hardline_command`) are a guard for full-access bots, not a security boundary:
-  direct engine submissions and write/copy operations do not enforce Hermes' protected-path refusals. Full-access bots
-  share the OS user's authority. Machine output is untrusted data.
-- Deliver the helper binary and its `.sha256` from a trusted channel; the sidecar detects corruption, not tampering.
-- A failure to configure the computers plug-in is logged without making the bot unavailable.
-
-### My computer: devices and the main computer
-
-`server/devices/` knows which device a message came from, so "my computer" can be worked out. Methods, push, limits and
-tests: [docs/computers.md](docs/computers.md#my-computer-devices-and-the-main-computer).
-
-- A device is one browser or app install: an id the client keeps, a name the client prefills (for example "MacBook ·
-  Chrome"; at most 100 characters, no control or hidden characters) and an optional link to one computer. `devices.current`
-  makes the record on first sight and returns it with `resolves` (the linked computer, else the main one, else none,
-  with its online state), `devices.rename`, `devices.linkComputer`, push `devices.changed`. `computers.setMain` marks
-  one computer (any, the leader included; removing it clears the mark) and `main` is on `computers.list`,
-  `lilbot_about`, `lilbot_status` and the computers plug-in's `list_computers`.
-- `computers.addThis.start` takes the device id: when a computer registers with that attempt's code, that device is
-  tied to it (a callback; `computers/` never imports `devices/`). The link can be changed or cleared by hand.
-- The origin is metadata, never Oscar's text. `chat.send` takes the device id; LilBot gives the engine a line outside the
-  text (device, its computer's name, id and online state, or "not a connected computer"; routines and bot requests say no
-  device sent them). Hermes gets it in `api_text`, so the stored transcript is exactly what Oscar typed. A device id
-  LilBot does not know is told to the bot as unrecognised. Never taken from the typed text.
-- Each stored user message carries the device id and its name at send time (renaming does not rewrite old messages;
-  messages from before have none), in snapshots, `chat.history` pages and the `user.message` event (also sent for plain
-  messages). A message with files keeps it in its own record; a plain message waits in `message_origins` until the
-  history importer matches it to its row: same bot, same text, oldest first, sent up to six hours before the row. A matched
-  row is remembered by id, so importing a page again gives the same answer.
-- The bot's rules live in the note and `server/system/guide/computers.md`: a computer named in the message, else the
-  origin device's, else the main one; ask Oscar in the reply (not with a tool: LilBot draws no card for one), listing
-  computers by name, when it is offline, none can be told or the words fit several; never guess for a command that
-  changes something; say which computer was used. The rules are static text: the note's existing line of computer names
-  is unchanged and it adds no online state and no main mark. Live facts come from the per-message line, `lilbot_about`
-  and `list_computers`.
-- A device id from a browser is not a security boundary: the private and Access listeners are already Oscar-only.
-- Screens (`web/src/devices/`, [docs/screens.md](docs/screens.md)): the browser keeps its device id in
-  `localStorage` (`devices/this-device.ts`, made on first use) and registers it with `devices.current` on every
-  connection; every `chat.send` carries it and a client `messageId`, so the `user.message` event fills in the sent
-  message, and a message from another device or tab joins the conversation live. Settings > Computers starts with
-  "This device" (name, "Runs on", the line from `resolves`); the list has the Main tag and "Make main"; the last step
-  of "Add this computer" has the "Make it my main computer" switch. A user message from another device shows
-  "from <name>" under it, as plain text.
-
-### Adding a computer from its browser
-
-Oscar opens LilBot on the machine, chooses "Add this computer", downloads the installer, opens it, and the computer
-appears. No terminal on macOS. The command-line install (`computers.installCode`) stays for headless machines.
-Protocol, browser behaviour, building and signing: [docs/computers.md](docs/computers.md#adding-a-computer-from-its-browser).
-
-- `computers.installCode` also returns `helperUrl`, the helper door origin, when `LILBOT_HELPER_URL` is set; the
-  command-line dialog builds its command from it (no hostname in the web code) and says so when it is missing.
-- `computers.addThis.start({ name, system, deviceId? })` mints an ordinary install code (single use, 10 minutes) for an attempt
-  and returns the downloads for that system, or `supported: false` (`system`: not macOS or Linux; `unavailable`: no
-  installer built for this LilBot). `computers.addThis.status({ attemptId })` answers waiting, registered, connected or
-  expired, with the computer once one registered with that attempt's code (migration 23 links them).
-- Downloads are served from `<data>/helper-downloads` at `/api/computers/download/<file>` on the private app and the
-  Access listener with the socket's Host/Origin checks and no cross-site fetches; never on the helper door. A build is
-  offered only while its sidecar's settings hash matches the server's current settings.
-- An installer is the same file for every machine and carries no secret. It does carry this LilBot's public
-  settings, baked in at build time and written by the server to `helper-settings.json`: the helper door origin
-  (`LILBOT_HELPER_URL`, required for the feature), the exact page origins allowed to hand over (the non-loopback
-  `LILBOT_ALLOWED_HOSTS` names and the Access name over HTTPS; loopback pages only in development) and the server key
-  fingerprint. The helper never registers anywhere else, so a page or local process cannot point it at another server.
-  Changing those settings means rebuilding the downloads.
-- Hand-over of the code, first that works: (1) the opened helper listens on `127.0.0.1:47613` for 10 minutes and
-  accepts one code, only from an allowed Origin with the loopback Host, only from a socket owned by the same OS user;
-  (2) a `lilbot-helper://register#<code>` link handled by the macOS app; (3) the same short line pasted into the
-  installer's window. The page holds the short code (no fingerprint); it never goes into a logged URL, argv or a log.
-  A port already taken by something else disables (1). Registration itself is unchanged: HMAC and the helper's fresh
-  key proof through the helper door.
-- Opening a downloaded helper again on a registered machine replaces the installed binary and restarts the service:
-  the update path. Only opening the app updates: a `lilbot-helper://` link on a registered machine does nothing, since any
-  page or local program can open one. Baked builds register only at their own door.
-- The macOS app is built, signed with a Developer ID Application identity, notarised and stapled on a Mac by
-  `scripts/sign-macos-helper.ts`. Identity and notary key (path, key id, issuer id) come from that Mac's environment
-  or a local file outside the repo; never put them, the team id or an email in the repo, issues or PRs. An unsigned
-  (ad-hoc) app still works after Privacy & Security > Open Anyway.
+- `server/computers/` and `helper/`: `leader` runs locally; remote helpers register via one-time install codes pinning
+  `computer-server-key.pem` (0600, back up with DB) and connect only through the helper door with signed frames over TLS
+  (revocation requires a signed revoke). Every bot may use every computer; requires `full-access`. Hard stops are a
+  guard, not a security boundary; machine output is untrusted data.
+- **Browser installer (`computers.addThis.*`):** downloads served from `<data>/helper-downloads` on private/Access
+  listeners with baked public settings (`helper-settings.json`); code hands over via same-user loopback `:47613`,
+  `lilbot-helper://` link or paste. Never put signing identities, notary keys, team id or email in repo, issues or PRs.
+- **Devices & main computer (`server/devices/`):** browsers keep a UUID in `localStorage` (`devices.current` on connect)
+  and send `deviceId` on `chat.send`. LilBot injects a model-only origin line (`api_text` on Hermes) resolving
+  linked computer -> main computer (`computers.setMain`) -> none; bots follow static note rules and ask when offline or
+  ambiguous. Stored user messages record `{ deviceId, name }` at send time.
 
 ## Skills
 
-`server/skills/` owns a shared standard SKILL.md library at `~/lilbot/skills` (`LILBOT_SKILLS_DIR`), with authorship
-and per-bot off switches in SQLite. All skills default on; Setup shows the same states (see Skills under Web app).
+Full library, import and `#140` engine-switch details: [docs/skills.md](docs/skills.md).
 
-- Chat, routine runs and memory reviews prepare the same catalogue and switches. Switches control offered skills, not
-  filesystem access for full-access bots. Tool changes apply at once; prompt catalogues refresh next session.
-- New and edited skill text refuses secrets and hidden characters; instructions in a skill are allowed. Authorship
-  comes from the bot's capability.
-- The three skill tools stay on the Hermes skills plug-in, not on the MCP server (#113, third slice): Hermes' own
-  `skill_manage` cannot be dropped without a patch, and without the override it would write into the library with no
-  check and no author. Evidence and the way back: [docs/hermes-engine.md](docs/hermes-engine.md#skills-plug-in-skills-adapter).
-- Import copies user skill folders from bound, non-deleted profiles once per source path, never moving or deleting
-  profile files. Identical copies coalesce; different contents get a stable hash-suffixed name. Imported text is not
-  retroactively filtered. Native engine skills stay with the engine; changing one through the app tool first creates
-  an app-owned copy.
-- Removing duplicate profile skill folders is a future, separate change made after checking import results and
-  backups.
-- One "Include this engine's skills" switch per engine (#140), global for all bots (`engine_skills`); per-bot
-  differences stay with the per-skill switch. It covers the skills imported from that engine's profiles (origin kept in
-  `skill_origins`, set when an import writes the skill, so a bot's later edit does not move it) and the skills the
-  engine offers by itself. Off: excluded, so no bot is offered them; nothing is deleted and no per-bot switch is touched,
-  so switching on restores them exactly. Hermes hides its bundled skills through the profile's `skills.disabled`,
-  except `hermes-agent`, which Hermes refuses to disable: `BotEngine.alwaysOnSkills` reports it with the reason.
-- Defaults: an engine that already has bots when the migration runs is on (Oscar's Hermes, so nothing changes); an
-  engine added later, or a new LilBot, is off, and start-up imports nothing from it until it is switched on. Turning a
-  switch applies it to every bound, non-deleted bot in the background (the start-up flight, with its retries).
-- `skills.list` gives each skill's `origin` (LilBot, an engine, a bot, Oscar) and `excluded`; `enabled` stays the bot's
-  own switch. `skills.engines` lists engines with their state, counts and always-on skills; `skills.setEngine` sets it,
-  with the `skills.changed` push. Oscar's setting: no bot tool. Screen: `needs-ui`.
+- `server/skills/` owns the shared `SKILL.md` library (`~/lilbot/skills`, `LILBOT_SKILLS_DIR`) with authorship and
+  per-bot off switches in SQLite (default on). New/edited text refuses secrets and hidden characters. Skill tools stay
+  on the Hermes plug-in because Hermes' `skill_manage` cannot be disabled alone without patching
+  ([docs/hermes-engine.md](docs/hermes-engine.md#skills-plug-in-skills-adapter)).
+- `#140` adds a global per-engine "Include this engine's skills" switch (`engine_skills`; on for existing engines at
+  migration, off for new engines; `hermes-agent` stays always-on). Screen: `needs-ui`.
 
 ## Memory
 
-LilBot owns memory so it survives an engine change, can be shared between bots, and can be seen and corrected by
-Oscar.
+Full schema, safety rules, plug-in versioning and after-chat review details: [docs/memory.md](docs/memory.md).
 
-- `server/memory/memory-store.ts`: the `memory_facts` table with full-text search. A fact has a kind (`profile` =
-  lasting, `journal` = dated history), a scope (`bot` = only the bot that learned it, `shared` = all bots), an author
-  (bot or user), dates, an optional expiry, `via` (chat, review, app, import) and the chat it came from. Forget marks
-  a fact; it is never erased. A fact can be paused (kept, not shown to bots), forgotten and restored.
-- `memory-service.ts`: the rules, engine-neutral and unit-tested: default scope (profile facts shared, journal entries
-  private; either can be overridden), visibility, de-duplication, recall by search, and `contextBlock`, what a bot sees
-  before each turn (lasting facts, then its last 10 journal entries, within about 1,500 tokens; the rest by recall).
-  A write tells the bot when it holds more lasting facts than it is shown, so it tidies.
-- The engine reads and writes memory through a plug-in (Hermes: Python, standard library only, holding no data) and
-  the engine API: `recall_memory` and `update_memory` (write
-  or forget one fact, optional `expires`). New bots use LilBot memory from their first session; an existing bot is
-  connected from its Memory panel, from its next session.
-- Saving rules (in the plug-in's instructions): save only what is grounded in the conversation, never infer traits, a
-  one-off request is not a standing preference, one fact goes in once, and never save secrets, what can be looked up,
-  task progress or "tool X is broken". `memory-safety.ts` refuses facts carrying model instructions, secrets or
-  invisible characters (zero-width, bidi controls, the byte-order mark, stray tag characters), from bots and from the
-  user. Soft hyphens, the England, Scotland and Wales flags (the only tag sequences allowed; other tag characters are
-  hidden ASCII) and other format characters stay ordinary text there and in bot-to-bot messages; only webhook payloads
-  refuse every format character but the soft hyphen. Every rule scans in linear time.
-- Plug-in versions: the current one is in `memory-adapter/plugin.yaml`. To ship a change, bump `version` there and
-  `VERSION` in `__init__.py`: each version installs into its own folder and loads on the bot's next session; start-up
-  reinstalls older adapters only for bound, non-deleted profiles. LilBot warns when a bot still calls with an older
-  adapter.
-- Design sources: `~/agent-tmp/memory-study/` (Hermes, OpenMausBot, nightly-labs OpenBot, CopilotKit OpenBot).
-- Not built yet: the nightly tidy-up (merge duplicates, drop outdated facts), attaching facts relevant to the user's
-  message automatically, and holding a turn's writes until the turn succeeds.
-
-### The after-chat review
-
-A bot saves what it notices during a chat; LilBot's review catches what it missed (Hermes' own review does not run
-for connected bots).
-
-- Finished turns of real conversations (not routine or webhook runs, bot threads, their compression children or
-  sub-agents) queue in `review-queue.ts` until reviewed; the save before compressing skips the same sessions
-  (`skipped`: Hermes' checkpoint completes without a review).
-- `memory-reviewer.ts` reviews a bot once 10 turns wait, or once 3 wait and the chat has been quiet for 2 minutes.
-  `LILBOT_REVIEW=off`, `LILBOT_REVIEW_TURNS` and `LILBOT_REVIEW_QUIET_SECONDS` change that. Each tick drops queued
-  turns of unknown or deleted bots (also below the threshold or with reviews off); owned bots with missing runtimes
-  keep theirs. If the engine reports a missing bot its turns are discarded once; other failures retry after 10
-  minutes.
-- LilBot runs no model: `BotEngine.reviewMemory` runs a hidden session of the same bot with only its memory tools
-  (about 4,500 prompt tokens instead of 26,000), on `LILBOT_REVIEW_MODEL` (`provider::model`; otherwise the bot's own
-  model, which costs more). Its own session is never queued for review. The same setting picks the model of a same-bot work
-  check (see Check levels).
-- A review may not bring back a fact the user removed and may not forget a fact the user wrote. What it saves is
-  marked `via: review`. No approval step (Oscar's decision): facts apply at once, and the Memory panel shows where
-  each came from and lets him pause, forget and restore.
-- `check:memory` reads the bot's real system prompt for the rules; asking a bot to describe its own instructions is
-  unreliable.
+- `server/memory/` owns `memory_facts` (`profile` lasting/shared by default, `journal` dated/private by default; pause,
+  forget, restore) and `contextBlock` (~1,500 tokens before each turn; rest via `recall_memory`). `memory-safety.ts`
+  blocks model instructions, secrets and invisible characters in linear time. Bump `memory-adapter/plugin.yaml` and
+  `__init__.py` `VERSION` together when changing the adapter.
+- **After-chat review (`memory-reviewer.ts`):** queues finished real-conversation turns (excluding routines, webhooks,
+  threads, compression children, sub-agents) and runs a hidden memory-only session on `LILBOT_REVIEW_MODEL` (10 turns or
+  3 turns + 2 min quiet; cannot undo user edits; `via: review`). Nightly tidy-up is not built yet.
 
 ## Routines
 
-`server/routines/` owns routines, schedules and run history, keyed by LilBot bot id. LilBot dispatches through
-`BotEngine.runRoutine` and never creates, changes or removes Hermes cron jobs; existing external jobs stay
-independent.
+Full schedule, DST, scheduler and browser API details: [docs/routines.md](docs/routines.md).
 
-- A schedule is an interval in seconds, daily at HH:MM, or weekly on a local weekday at HH:MM. Calendar schedules
-  default to `Australia/Adelaide` and store an IANA zone. DST gaps skip that day's missing time; repeated times run at
-  their first occurrence only.
-- Bot tools (LilBot's MCP server, the caller's own routines only): `lilbot_routine` (`action`: create, pause, resume,
-  delete) and `lilbot_routines_list` (the latest five runs of each routine, results cut to 500 characters). Two tools,
-  not five: two listing lines a turn instead of five (#113). The plug-in's `create_routine`, `list_routines`,
-  `pause_routine`, `resume_routine` and `delete_routine` ended with adapter 0.11.0; the engine API's `routines/*` stay
-  only for sessions that loaded an older one. `createdBy:
-  oscar` means the bot acts on an explicit request, `bot` its own initiative (attribution trusts the bot, not a
-  security boundary). A bot may self-create at most five, paused included; a goal's review routine is LilBot's (see
-  Goals) and not one of them. The minimum interval is five minutes for all. Repeating a create request id returns the original; deletion leaves a tombstone against resurrection.
-- The scheduler atomically creates a run and advances the next time before engine calls. After downtime it runs once
-  for the oldest missed time and skips the rest. A routine never overlaps itself. Pause stops new occurrences (an
-  admitted run may finish); resume starts at the next future time without replaying.
-- Each run has its own hidden full-access session in the bot's folder and never touches the main conversation;
-  results stay in Routines. Both session aliases are persisted before submission and excluded from the after-chat
-  review, also after restart. Persisted run ids supply the session and submission request ids, so retries recover the
-  same admission; transport failures retry after 30 seconds. If the engine says an outcome is unknown, show a failed
-  run rather than risk repeating side effects. Runs emit activity and can mark the bot unread.
-- Browser methods: `routines.list` (newest 50 runs; all stay in the database), `pause`, `resume`, `delete`,
-  `openRun` (a tracked chat snapshot, main chat preserved), push `routines.changed`. Screens: "Routines" under Web app.
-- A short-interval test override needs all of `LILBOT_DATA_DIR`, `LILBOT_BOT_IDS` and
-  `LILBOT_ROUTINE_TEST_INTERVAL_SECONDS`; never on the live server.
+- `server/routines/` owns app-level schedules (interval, daily, weekly; `Australia/Adelaide` default IANA zone) and
+  dispatches through `BotEngine.runRoutine` without touching Hermes cron jobs. Bot tools: `lilbot_routine` and
+  `lilbot_routines_list` (caller's own only; max 5 self-created; 5-min minimum; goal review routines excluded).
+- Scheduler atomically creates runs, coalesces missed ticks to one, never overlaps, persists hidden full-access session
+  aliases and run ids before dispatch (30 s transport retries; unknown outcomes fail explicitly). Short-interval test
+  override (`LILBOT_ROUTINE_TEST_INTERVAL_SECONDS`) is forbidden in production.
 
 ## Webhooks
 
-`server/webhooks/` owns webhooks, accepted deliveries and their runs (`shared/webhook-schema.ts`, #12). A webhook
-belongs to one bot: a description of what to do when events arrive, the calling service's name (`source`), an optional
-signature scheme, and an address. Any sender may call one (Oscar, 2026-11-20).
+Full door order, payload/safety pipeline, capability analysis and run message details:
+[docs/webhooks.md](docs/webhooks.md).
 
-- The route: `POST /hook/<address>` on the helper door only (`http/webhook-route.ts`), never the private app or the
-  Access listener. The tunnel's ingress rule for it is in [docs/cloudflare.md](docs/cloudflare.md); applying it is
-  the orchestrator's, after a security review.
-- The address is the secret: 64 base64url characters, the webhook id and an HMAC of it and a random per-webhook nonce
-  under the engine token (`webhook-address.ts`). It is never stored or logged; it is computed when shown and checked
-  with `timingSafeEqual` (one MAC is computed even for an unknown id). A new address draws a new nonce, so even the
-  engine token does not give the next one; deletion ends it. The bot gets it from `lilbot_webhook` (`action: create`, repeating
-  the same `requestId` returns the current address and any signing secret LilBot made again: that is how a lost reply
-  is recovered; and `action: new_address`); those tool results stay in its transcript, so the history copy
-  holds them too. The list never has it; the screen copies it with `webhooks.address`.
-- Signatures (`webhook-signature.ts`, over the raw body): `github` (`X-Hub-Signature-256`; LilBot makes the secret
-  when none is given), `stripe` (`Stripe-Signature`, the secret Stripe gives, five minutes of timestamp tolerance) or
-  `hmac-sha256` in a named header (hex or base64, optional `sha256=`). With a scheme set, unsigned or wrongly signed
-  deliveries get 401 and leave nothing; refusals are logged by webhook id, at most one line a minute per webhook.
-- Order at the door: path shape, per-client-address budget (120 a minute, `cf-connecting-ip`; a full table lets new
-  addresses through), address check, paused (409, at once), body cap (256 KiB, by Content-Length or as it streams,
-  413), signature, per-webhook budget (60 a minute, spent only after verification), repeat (202 "Already received"),
-  waiting cap (100, 429), and only then decoding and the safety check, then 202. Deliveries arriving together are
-  prepared one at a time, each in its own turn of the event loop (the webhook looked up again first: paused 409, gone
-  404), so a burst never holds the server for its sum. Unknown, malformed or deleted
-  addresses, other methods and a deleted bot's webhooks get the same 404 as any other path. Limits: `webhook-limits.ts`.
-- Repeats (`webhook-delivery.ts`), remembered for seven days: by the sender's delivery id (`X-GitHub-Delivery`,
-  `webhook-id`, `X-Delivery-Id`, `X-Event-Id`, `Idempotency-Key`; for Stripe only the event id in its signed body) and,
-  for every signed scheme, by the SHA-256 of the signed body, since id headers are not signed and a body may have no
-  id. Unsigned webhooks dedupe by header only (identical alerts from them are legitimate).
-- What the bot is shown (`webhook-payload.ts`, `webhook-decode.ts`): each event becomes one JSON string at receive
-  time: JSON decoded and a one-field form body's field decoded (only text that opens with `[` or `{` is parsed), both refused
-  past 64 levels of nesting (counted in one pass before parsing: writing a deeper value back blocks the server for
-  over a second); at most 8 headers such as
-  `x-github-event`, 200 characters each; every webhook address blanked (escaped, percent-encoded once or twice,
-  HTML-entity and fullwidth slashes, whitespace after `/hook/`, the first 64 of a longer run, and any 16-character
-  piece of the webhook's own address, with any JSON escape the piece starts inside, so a split one cannot be rebuilt
-  and the string stays valid JSON; shorter pieces spread over fields, and other
-  forms, are not blanked); cut to 24,000 characters inside the fence, headers included. Two scans must pass
-  (`outsideReason`, the shared rules plus every format character but the soft hyphen, the three flags allowed): one
-  over every decoded string and key as a model reads them (`folded`: whitespace collapsed; every mark removed before one
-  NFKD pass, since reordering a long run of marks is quadratic and once blocked the server for 28 s; compatibility forms
-  folded; default-ignorable characters and marks removed; scanned twice, with other control characters as spaces and
-  removed when there are any), and one over the stored string itself. The run's `<webhook-events>` fence joins the stored strings
-  unchanged (`fenceJson`: `<`, `>`, control and format characters and every default-ignorable character become `\u`
-  escapes). Withheld events keep
-  no payload; a run of only withheld events records a failed run and never wakes the bot. Preparing any body up to the
-  cap takes tens of milliseconds (`tests/webhooks/webhook-limits.test.ts` times it), and a minute's budget of the
-  costliest shapes sent at once never holds the event loop for long (`webhook-burst.test.ts`). The rules are a heuristic:
-  paraphrase passes, which is why runs are narrow.
-- Runs: a burst ends after 5 seconds without a new event or once its first event waited a minute. A run takes the
-  oldest waiting events up to 48,000 characters (about 12,000 to 16,000 tokens; a typical GitHub `pull_request` event
-  is 21,700) and 20 events; the rest wait. A webhook never overlaps itself, runs at most once a minute and 20 times an
-  hour, and at most two webhook runs go at once across bots. Runs reuse the routines' machinery: persisted before
-  dispatch, `RoutineScheduler`, `BotEngine.runRoutine` (hidden session, run id `webhook-<id>`, receipts, retry after 30
-  seconds), activity and unread, sessions in `webhook_chats`.
-- What a run may do (Oscar, #12 finding 3): narrow by default. It reads its bot's folder (`lilbot_workspace_read`) and
-  its bot's own work items, reports on the items its own run opened (`lilbot_work`), leaves its bot one message, and its
-  result is its report. No web, commands, file writes, memory, computers, T3 Code, bot creation, delegation or groups,
-  routines or webhook management, unless Oscar adds that group to the webhook: `capabilities` (`web`, `shell`,
-  `computers`, `coding`, `bots`, `delegation`, `memory`, `routines`, `webhooks`), set only with
-  `webhooks.setCapabilities` (no bot tool); a run gets exactly those on top, read at each call and run.
-- **Granting any group except `web` and `webhooks` gives whoever can reach the address full access** (#12 review,
-  finding 7): `shell` and `computers` directly (the engine token, the profile's keys, the leader is a computer);
-  `coding` (a T3 Code task is a full-access coding agent on the leader); `delegation` (the receiver's hidden session has
-  full access and the run writes the task); `routines` (routine runs have full access and the run writes the task);
-  `bots` (a new bot's first prompt runs with full access, and `lilbot_bot_edit` rewrites any bot's instructions);
-  `memory` (shared facts every bot reads on every turn). `webhooks` stays narrow but adds addresses and runs; `web` lets
-  outside data lead the run to fetch a URL carrying what it read.
-- Reads: whatever its groups, a run never reads another bot's work items or any goal (`lilbot_work_list` with `mine:
-  false`, `goals`, `goalId` or another bot's `itemId` is refused; `readsBeyondOwn` in `system/run-access.ts`).
-  `lilbot_about` (the other bots, computers, T3, deploy, the change log) needs `bots` and `lilbot_status` needs
-  `computers` or `coding`: a run needs none of it, and a refusal from the one tested list cannot drift the way a trimmed
-  answer could. Skills stay readable (`skills_list`, `skill_view`): Hermes adds the skills plug-in back, and
-  `lilbot-work` tells the run how to use the board. The folder read covers `attachments/`, `exchanges/` and `groups/`
-  too. The bot's note (its system prompt, with the names of the computers) is the same in every session.
-- Work (`work/webhook-items.ts`): a run opens at most three items and reports only on those; it names no check level and
-  links no goal, so its items get their kind's level, and an item a bot would check (level 2) is checked by Oscar
-  instead: a checker repeats the owner's commands and opens its links, which the run wrote. Every bot reads the text of a
-  webhook run's items (title, done, question, result, drop reason, evidence) fenced as `<webhook-work-item>`, wherever it
-  appears in `lilbot_work` and `lilbot_work_list` answers (lists, an item in full, its children, a goal's items). An item of a webhook run never resumes the run's
-  session (`work-answers.ts`): Oscar's answer or send-back goes to the bot's main conversation with the item fenced as
-  `<webhook-work-item>`; a drop ends a running turn and tells no session; a failed bot check (an older item) tells none.
-- **Decided by the session, never by time** (#12 review, finding 1): a webhook run's session, and every session the
-  engine continued it in, stays narrow for as long as it exists, whether the run is under way, settled or the engine
-  works on its transcript later (Hermes' background review forks share the session's id). Two layers, both chosen from
-  one list:
-  - `webhook-access.ts` starts the run's session with only `lilbot_system` plus each group's engine toolsets (web:
-    `web`; shell: `terminal`, `code_execution`, `file`; computers: `lilbot_computers`; coding: `lilbot_t3`; memory:
-    `memory`). Hermes freezes a session's toolsets. Naming one MCP server leaves the others out. Hermes' `file` toolset
-    is read and write together and has no per-session write root, so a narrow run reads with `lilbot_workspace_read`
-    instead. Without `memory` the engine's memory tools and `search_conversations` are gone too. `lilbot_give_file` is
-    in `shell` (a run can only give a file it could write); `lilbot_goal` is refused to every run.
-  - LilBot refuses at the call what a run's session may not do (`webhooks/webhook-callers.ts`), because Hermes adds the
-    computers and skills plug-ins back to any session and LilBot's own server lists every tool (`tools/list` has no
-    session). A call that names its session is looked up: the memory adapter's, and the computers and skills
-    adapters', which send Hermes' `session_id` (`x-lilbot-session`). An MCP call is matched to exactly one tool start,
-    its own (`CallingChats.take`: the oldest one with its arguments or request id that no other call took, waiting up
-    to 5 seconds), so a run's identical call cannot get Oscar's refused, nor pass on his start. A call that cannot be placed (no
-    start seen, no session named, an unreadable lineage) counts as a webhook run's: it fails closed. A bot that never
-    had a webhook run is never held. Every `lilbot_*` tool is in `RUN_TOOLS` or a group (`system/run-access.ts`,
-    tested). The T3 bridge refuses its tools without `coding`; the engine API refuses plug-in computer tools without
-    `computers`, `skill_manage` always (the skills handler's own `/write` test) and the routes only older adapters call
-    (`bots/create`, `routines/*`, `threads/*`) without their groups; memory reads and writes and `give_file` need
-    `memory` (the memory block comes back empty).
-  - A refusal is an ordinary tool result (`{"refused": ...}`), not a tool error: Hermes pauses a whole MCP server for
-    about a minute after three tool errors in a row, keyed by the profile's connection, which could reach the bot's
-    other conversations.
-  - Other sessions: a webhook run never makes Oscar's calls wait a fixed time. For a bot that has had webhook runs, a
-    main-conversation call outside the narrow set waits only until its own start is reported (usually already there)
-    and is refused, retryably, only when none is seen in 5 seconds, as `lilbot_work`'s own matching already does (#174).
-    Measured: 1 to 5 ms with the chat open in a browser, 0.75 to 1 s without (the activity observer polls every second),
-    for good once a bot has had a webhook run. A sub-agent's calls of those tools report no start of their own and are
-    refused after 5 seconds.
-    An MCP server entry of its own for webhook sessions would remove the matching, but Hermes gives every enabled
-    server to every normal session and cannot enable one for some sessions only (`_merge_mcp_servers`), so it would
-    change every normal session.
-- The run's message (`webhook-messages.ts`, `lilbot_webhook_message`, matched to its run by `requestId`): once per run
-  and at most five per webhook a day, at most 4,000 characters, checked like an event (both scans), saved on the run. It never starts a turn: it is shown
-  as a `webhook message` line in the bot's main conversation (the bot turns unread; state `shown`), and the bot gets it
-  only with Oscar's next message there, as model-only text after the origin line (`TurnNotes`, state `read`): a LilBot
-  notice and the message fenced as `<webhook-run-message>`. One message of his carries only the newest three, each cut
-  to 1,000 characters, and the count of the rest (taken too, left to the Webhooks list), so waiting messages never push
-  his send past what the engine takes (Hermes refuses `api_text` over 1,000,000 characters; 300 waiting 4,000-character
-  messages did before). Both memory paths drop these fences before a review sees the
-  turn (`withoutWebhookNotes`: the after-chat queue and the save before compressing).
-- Not gated: Hermes' background skill review of the bot's main conversation, after a turn that carried a webhook
-  message or Oscar's answer to a webhook item (fenced). Its skill write names the main session, as the bot's own
-  `skill_manage` does, so LilBot cannot tell which turn it reviews; turning the review off for bots with webhooks
-  (`skills.creation_nudge_interval: 0`) would change Oscar's chats, which is his call. The text reaches it fenced and
-  only after Oscar acted.
-- Production tool set (read from `~/.hermes` files, 2026-11-21): the one configured profile (`default`) enables only the
-  `lilbot-skills-v1` and `lilbot-computers-v1` plug-ins, the same two LilBot adds to every bot, so a narrow run gets the
-  same plug-in tools as on dev (`check:webhooks` prints them); its `revenuecat` and `paper` MCP servers are left out by
-  the session's toolsets.
-- Kept: the stored event string only until its run settles, but the run's own engine transcript (opened by
-  `webhooks.openRun`) and its result keep what the bot saw and said.
-- Bot tools (LilBot's MCP server, the caller's own webhooks only): `lilbot_webhook` (`action`: `create` with request-id
-  idempotency, at most five webhooks a bot, whoever asked, since `createdBy` is the bot's word; `pause`, `resume`,
-  `delete`, `new_address`), `lilbot_webhooks_list` (each run's result fenced as outside data: a model wrote it after
-  reading the events), and from a run `lilbot_webhook_message`. Nothing is in the Hermes plug-ins.
-- Browser methods: `webhooks.list` (newest 50 runs with their event counts and messages; each webhook's
-  `capabilities`), `pause`, `resume`, `delete`, `openRun` (a tracked chat snapshot), `address` (Copy),
-  `setCapabilities`, push `webhooks.changed`. Screens: "Webhooks" under Web app (no screen for `setCapabilities` yet).
-- Without `LILBOT_PUBLIC_ENABLED=1` and `LILBOT_HELPER_URL`, creating a webhook is refused (no outside service could
-  reach it).
+- `server/webhooks/` (#12): `POST /hook/<address>` on the **helper door only** (requires `LILBOT_PUBLIC_ENABLED=1` and
+  `LILBOT_HELPER_URL`; tunnel ingress in [docs/cloudflare.md](docs/cloudflare.md)). 64-char base64url HMAC addresses
+  are never stored or logged; supports `github`, `stripe` and `hmac-sha256` signatures, rate/body/waiting caps, 7-day
+  dedupe, address blanking, two-pass safety scans (`outsideReason`) and `<webhook-events>` JSON fencing.
+- **Narrow by default, session-scoped forever:** a webhook run reads its bot's folder (`lilbot_workspace_read`) and own
+  work items, opens/updates up to 3 items (level 2 checked by Oscar, fenced as `<webhook-work-item>`), and leaves one
+  fenced message (`lilbot_webhook_message`, shown in chat, fed on Oscar's next turn, dropped before memory reviews).
+  Extra `capabilities` (`web`, `shell`, `computers`, `coding`, `bots`, `delegation`, `memory`, `routines`, `webhooks`)
+  are Oscar-only (`webhooks.setCapabilities`, no screen yet). **Granting any group except `web` and `webhooks` gives
+  whoever can reach the address full access.**
+- Enforcement is **by session and its compression lineage, never by time** (both frozen engine toolsets and fail-closed
+  call-time checks in `webhook-callers.ts` / `system/run-access.ts`, returning ordinary `{"refused": ...}` results so
+  Hermes never trips its MCP error pause). Bot tools: `lilbot_webhook`, `lilbot_webhooks_list`, `lilbot_webhook_message`
+  (max 5/bot).
 
 ## Known gaps
 
-- Hermes opens a waiting request (clarify, approval, sudo) only for a client that sends `client.capabilities
-  {server_requests: true}`; LilBot sends none, so `open_requests` stays empty, the tool call runs on without Oscar (a
-  clarify call waited about 90 seconds) and a question reaches him as a finished reply. The `waiting` status and its
-  unread rule are ready, but nothing produces them today. If a client ever advertises the capability, the Hermes
-  observer must also emit on a status change: a blocked request adds no replay events, so `key !== saved` stays false.
-  Hermes' `error` event (a failure outside a turn) is not mapped: a failed turn always ends with `message.complete`
-  status `error`.
-- Activity observation polls every second; very short activity may only be seen at completion. Hermes live listings
-  show at most 200 sessions per profile. A host-scoped subscription could reduce latency.
-- A first history import can only recover rows Hermes still exposes (it may rotate very old compression lineages and
-  caps a row at 2 MiB). Rows already copied stay in LilBot.
+- Hermes opens waiting requests (clarify, approval, sudo) only when a client sends `client.capabilities
+  {server_requests: true}`; LilBot sends none, so `waiting` status is ready but unused today. If enabled later, the
+  Hermes observer must emit on status changes too (`key !== saved` stays false when a blocked request adds no replay
+  events). Hermes' out-of-turn `error` event is unmapped (failed turns end with `message.complete` status `error`).
+- Activity observation polls every second (at most 200 live sessions/profile in Hermes); very short activity may only
+  appear at completion.
+- First history import recovers only rows Hermes still exposes (old compression lineages may rotate; 2 MiB row cap).
 
 ## Working rules
 
@@ -1529,8 +521,8 @@ signature scheme, and an address. Any sender may call one (Oscar, 2026-11-20).
 - No pass-through layers, and no option with one caller.
 - No comments that restate the code or tell history.
 - No tests that assert nothing real or repeat another test.
-- Files stay under 200 lines. `scripts/size-exceptions.json` lists the older offenders; it may only shrink.
-- `bun run verify` passes, including knip and the size limit.
+- Files stay under 200 lines (`scripts/size-exceptions.json` may only shrink); `AGENTS.md` stays under its verify limit.
+- `bun run verify` passes, including knip and the size/doc-link checks.
 - The PR body states the lines and web-bundle delta from the verify growth report.
 
 ## Issues and labels
@@ -1540,153 +532,57 @@ orchestrator builds them, and a separate UI thread designs screens. The discussi
 so the labels say whether a screen still has to be designed.
 
 - One issue per agreed decision.
-- `backend`: server, data and engine work. The issue describes the data and the API, never the layout.
-- `ui`: screens, designed by the UI thread.
-- `spike`: investigate and report in the issue; nothing ships.
-- `needs-ui`: a note that this feature has a screen nobody has designed yet.
-- The discussion thread messages the UI thread directly when it marks an issue `needs-ui`. The message gives the issue
-  number, what the screen must show and do, and where the data is documented, never the layout. It also messages the
-  orchestrator each time it files or materially changes a backend issue. The labels stay the record and the
-  fallback.
+- `backend`: server, data and engine work (data and API, never layout). `ui`: screens designed by the UI thread.
+  `spike`: investigate and report; nothing ships. `needs-ui`: feature has a screen nobody has designed yet.
+- The discussion thread messages the UI thread directly when marking an issue `needs-ui` (issue number, what the screen
+  must show and do, where the data is documented — never layout), and messages the orchestrator whenever it files or
+  materially changes a backend issue. Labels stay the record and fallback.
 
 Issues are actioned automatically (Oscar, 2026-11-20); nobody has to say "go".
 
-- The orchestrator starts the next open issue whenever a slot is free. It runs at most three builders at once, because
-  they share the development gateway; a spike that needs no dev server may run as a fourth. An hourly scheduled task
-  wakes it to check.
-- Order: the discussion thread's explicit queue, then bugs and regressions Oscar reported, then the open milestone,
-  then the rest, oldest first. "Depends on" notes are respected. Before delegating, and again before merging, re-read
-  the issue's latest comments: a later "on hold" or rewrite overrides an earlier confirmation.
+- The orchestrator starts the next open issue whenever a slot is free (at most three builders sharing the dev gateway; a
+  spike needing no dev server may run as a fourth; hourly scheduled wakeup).
+- Order: discussion thread's explicit queue, then bugs/regressions Oscar reported, then open milestone, then oldest
+  first. Respect "Depends on" notes and re-read latest comments before delegating and before merging ("on hold" or a
+  rewrite overrides earlier confirmation).
 - A `ui` issue is buildable once its Paper design is approved.
-- Parts marked "proposed, not confirmed by Oscar":
-  - an implementation detail goes ahead, and the report says what was chosen;
-  - a part that changes what Oscar experiences, costs money, deletes or exposes something, or touches his accounts is
-    asked through the discussion thread first, while the rest is built.
+- Parts marked "proposed, not confirmed by Oscar": implementation details go ahead (report what was chosen); anything
+  that changes Oscar's experience, costs money, deletes/exposes data or touches his accounts is asked via the discussion
+  thread first while the rest is built.
 - Never automatic, always Oscar's call: paid plans or credits, destructive actions on his data, opening anything new to
   the internet, using his Apple or Cloudflare accounts beyond what he approved, and approving a design.
-- Skipped, with a note in the issue: draft PR #4 (the ACP spike, never merged) and anything marked as waiting on
-  Oscar.
-- Every merge is reported to the discussion thread.
+- Skipped with a note: draft PR #4 (ACP spike) and anything waiting on Oscar. Report every merge to the discussion
+  thread.
 
-How screens get designed:
+How screens get designed and closed:
 
-- The UI thread designs the screen on Paper and shows Oscar. Only after he approves does it open the `ui` build issue,
-  linked to the backend issue, and remove `needs-ui`. No other thread approves a design.
-- `needs-ui` never blocks building or closing a backend issue. Whoever builds or closes one leaves the label on.
-- A backend issue does not stay open only because its screen is missing. Once its backend part is merged, it is
-  closed when the approved design's `ui` issue exists and is linked.
-- So `needs-ui`, open or closed, means "no approved design yet". `gh issue list --label needs-ui --state all` lists
-  them.
+- The UI thread designs the screen on Paper and shows Oscar; no other thread approves a design.
+- `needs-ui` never blocks building a backend issue. Once the backend PR is merged, if an approved `ui` build issue is
+  already linked, close the backend issue on merge; otherwise keep the backend issue open with `needs-ui` until the UI
+  thread gets Oscar's Paper approval, opens and links the `ui` build issue, removes `needs-ui` and closes the backend
+  issue.
+- `gh issue list --label needs-ui --state all` lists features still awaiting an approved design.
 
 Cleaning up after a merge:
 
-- The agent that merges a PR also removes what it used: its t3 worktree, its local branch and its remote branch.
-  With squash merges git reports the branch as unmerged; delete it once the PR shows as merged.
-- Remove only your own worktree and branch. Another thread's unmerged work stays.
-- A branch whose PR was abandoned is removed the same way, after saying so in the issue.
+- The merging agent removes its own t3 worktree, local branch and remote branch (squash merges look unmerged to git;
+  delete once the PR shows merged). Never touch another thread's unmerged work. Remove abandoned PR branches the same
+  way after noting it in the issue.
 
 ## Commands
 
-Every `check:*` and `bun live-checks/*.ts` follows the development rules above: dev launcher, temporary `dev-`
-profiles, isolated directories, cleanup in `finally`. Most cost a few model calls.
+Full walkthroughs of every `check:*` and `bun live-checks/*.ts` script: [docs/commands.md](docs/commands.md). All live
+checks use the dev launcher, temporary `dev-` profiles, isolated directories and cleanup in `finally`; run one at a time.
 
-- `bun run verify`: lint, typecheck, knip, file-size limit, unit and contract tests, web build into `dist/`, then a growth
-  report (lines per folder, web first-load size). `bun run format` applies
-  formatting.
-- `bun run dev:setup`: create or repair the development home and start the dev gateway.
-- `bun run dev`: Vite with hot reload, proxying to a dev server on `LILBOT_PORT` (default 3371); production ports are
-  refused. `bun run start`: run the server (`LILBOT_PORT`, `LILBOT_HOST`).
-- `bun run deploy` (`--status`, `--bootstrap`): see Deploy. `bun run t3:sign-in`: redeem a T3 pairing code from stdin
-  or `--code-file`, into `LILBOT_DATA_DIR`. `bun run build:helper`: build the computer helper.
-- `bun run check:live`: a temporary bot with a throwaway memory endpoint chats, stops, resumes and is deleted.
-- `bun run check:reasoning`: on an isolated server, the effort is readable before a message, a model and effort edit applies
-  from the next message (between turns and mid-turn, with the earlier context kept), and a routine run and a bot thread
-  start with the bot's effort. `bun run check:model-switch`: a switch to a smaller window compacts first and the
-  save-before-compress hook runs; a switch of a 100,000+ token conversation is refused with `confirm_required`.
-- `bun run check:memory`: tells a temporary bot facts and checks a new session knows them; prints tokens per turn.
-  Inherited memory is disconnected before the baseline turn.
-- `bun run check:history`: continuous history, paging and search, tool lines after reload and new session, backfill of
-  tool rows into a copy that lost them; kills only its own server mid-import, repeats the import without duplicates; a
-  requested compaction is refused while the bot is fail-closed.
-- `bun run check:checkpoint`: a temporary bot whose profile compacts at 90,000 tokens: (1) the agent's own compaction of
-  some 270,000 characters runs only after a review in passes, which saves a fact from the first message; (2) a
-  deploy-like restart of the check's server (SIGTERM, back 5 seconds later) during the turn that compacts only pauses it;
-  (3) the server down past the adapter's 90 seconds stops that turn, and after it is back the conversation holds exactly
-  one line in LilBot's words and nothing of Hermes' text, and the message sent again is answered and compacts with the
-  save; (4) with a review model that does not exist the turn stops live with `failure: memory_save`; (5) the gateway's
-  hygiene pre-pass (forced by a low message limit on that profile) saves first too. Prints seconds, passes and review
-  tokens.
-- `bun run check:threads`: a temporary bot hands work to another with `lilbot_delegate` and the answer returns; a receiver hands
-  it on to a third from its hidden session; the engine API's legacy `threads/ask` still answers idempotently, with its limits.
-- `bun run check:delegation`: a temporary lead hands two tasks to two helpers in one call, one with a file; then it
-  reads their status, redirects one mid-command and stops the other; the first answer returns once, with a file.
-- `bun run check:groups`: on a dev server with the round limit at 3, a temporary lead starts a group with two members and a
-  file; both reply at once; LilBot is killed mid-round 2 and restarted (the member's gated script ran once); the member
-  attaches a file, the lead closes and keeps it (Library, archive, journal facts) and the outcome reaches its
-  conversation; a second group is stopped by Oscar; a third ends by itself at the round limit. Nothing is delivered twice.
-- `bun run check:work`: a temporary bot asked for a small real task opens an item, defines done, adds evidence and
-  finishes it (seen in `work.list`); done without evidence is refused by the bot's attempt, and a direct call with its
-  key, which no session made, is refused too; a task it hands to a second bot inside an item becomes that bot's child
-  item, which the helper finishes.
-- `bun run check:work-drop`: two temporary bots, with the dev server SIGKILLed right after a drop and after an answer. Oscar
-  drops an item mid-work: its turn ends, the bot is told once and says so. Dropping a parent drops the child and stops its
-  exchange as Oscar. Oscar answers the child's question: the helper continues in the exchange and the lead gets the outcome
-  once in its own conversation; the lead reads the question and answer with `lilbot_work_list`.
-- `bun run check:checks`: a `lilbot_work` call no session made is refused. With one temporary bot (review model Haiku), a
-  true level 2 claim is verified by a fresh hidden session of the same bot (recorded as a same-bot check on the review
-  model, which Hermes confirms the session ran on, outside the history), whose verdict reuses the request id the owner
-  finished with; what that session sent the model has no memory block and its tools no memory, while the owner's turn
-  had the planted fact. A false one (the file changes after the owner finishes) comes back not verified with what the
-  checker saw, returns to the owner, then waits for Oscar. With a second bot, that bot checks instead, without memory too.
-- `bun run check:goals`: a temporary bot told in chat to grow notes.txt in its folder to 10 lines proposes a goal with a
-  baseline read from the file; nothing exists for it before `goals.agree`; after it, the review routine (90 s through the
-  routine test override, not one of the bot's five) and goal work items appear; the first review is a `figure` item from
-  the routine run with the reading as evidence, checked against the file by a fresh session of the same bot; a met goal is
-  reached once that check is done.
-- `bun run check:routines`: create from chat, a real file-writing run, open history, pause, restart, resume, delete.
-- `bun run check:webhooks`: a dev server with its own helper door on loopback and a temporary bot whose webhook is made
-  through its MCP tool: a signed event wakes it; a repeat, an unsigned and a wrongly signed event do nothing. The narrow
-  run reads a file in its folder, finishes a work item, asks Oscar a question and leaves its bot a message; its tries at
-  `lilbot_bot_create`, `computer_exec`, `lilbot_about` and `lilbot_work_list` with `mine: false` are refused (no bot, no
-  change logged, no computer request); unreported direct calls are refused during and after the run; its session's
-  real tools (`session.info`, `tools.show`) lack the web, shell, file writes, memory and T3. After it ends
-  (`webhook-session-checks.ts`): a skill write and the computers naming its session are refused, Oscar's answer reaches
-  the main conversation and the run's transcript does not grow, its message is a line with no turn until Oscar writes,
-  his next message passes its own tool call and gives the bot the message, and the review queue never holds it; no
-  skill is written meanwhile. Given `web`, `shell` and `coding`, a run gains exactly those, its stored `web_extract`
-  output holds the fetched page, and it cannot change the first run's item. A burst of three is one run; pause refuses,
-  resume accepts, delete ends the address.
-- `bun run check:restart`: SIGKILLs only its own second server mid-turn; chat, routine and thread side-effect counters
-  must stay at one. Confirms its profiles are gone with `hermes profile list`. Then `restart-session-check.ts`: two
-  deploy-like restarts (SIGTERM, 30 seconds away), one with a changed tool list, an empty session another client opens
-  in the bot's profile and a second device; the same engine session continues, the bot still knows what it was told
-  and no divider appears.
-- `bun run check:attachments`: a generated PNG, a text file, oversize refusal, the live metadata event, reload and
-  byte-identical image reopening.
-- `bun run check:skills`: skill use, per-bot exclusion and authored writes, then the Hermes engine switch off and on against
-  the bot's real system prompt (Hermes builds it on a session's first turn, so each read runs one trivial turn).
-- `bun run check:computers`, `bun run check:access`: see [docs/computers.md](docs/computers.md) and Listeners.
-- `bun run check:add-computer`: on a dev server, builds the Linux downloads, downloads one, opens the helper under a
-  throwaway HOME with a stub service manager, refuses a wrong origin, hands the code over on loopback and sees the
-  computer online. `bun run build:helper-downloads [data dir]`: build the Linux downloads for a server.
-- `bun run check:deploy`: temporary clone, release root, data and systemd units, and one temporary `dev-` profile bound
-  in its database whose memory save flag the rollback must clear; see [docs/deploy.md](docs/deploy.md).
-- `bun run check:system`: on the dev server, a temporary bot whose instructions never mention LilBot answers what it runs
-  in, which version and how it would change LilBot, then pins another bot and creates one through its `lilbot_*` tools;
-  checks the roster push, the change log and that an unchanged restart applies nothing.
-- `bun run check:my-computer`: on the dev server, two test computers (real helpers under throwaway homes) and a temporary bot:
-  a message from a device linked to one runs on it, from a device with no computer on the main one, with no main computer
-  the bot asks and lists both, and with the linked computer offline it runs nothing elsewhere; what ran where is read from
-  the server's request table, and `chat.history` rows carry their device.
-- `bun run check:connections`: a temporary bot on a dev server with the Access door on local test keys and two throwaway
-  loopback MCP services (one with its own OAuth server): connected at once and used next message; the sign-in link
-  completed through the Access route; no Access login, a wrong state, a reused and a late callback refused; refresh;
-  `sign_in_expired` repaired by pasting the final address; `unreachable`; removal takes the tools away; one session
-  throughout; the tokens found only in the store.
-- `bun run check:coding -- --code-file <file>` (or the code on stdin): needs a fresh pairing code; signs in, checks the
-  signed-out, expired and refused messages, a repeated launch and a real task, then archives its threads, removes its
-  project and profile and revokes its sign-in.
-- `bun live-checks/permissions-check.ts`: repairs a temporary profile from manual approvals to off, runs a harmless
-  recursive delete and file write, and checks no approvals remain. `bun live-checks/library-check.ts`: a temporary bot told only to
-  deliver a file gives it through `lilbot_give_file` (a `system_changes` row names the item), then push, list, separate
-  workspace and download; then a routine run it created gives a file from its hidden session and the item records that run.
+- `bun run verify` / `bun run format`: full check suite (lint, typecheck, knip, size & `AGENTS.md` limits, tests, web
+  build, growth report) and Biome formatting.
+- `bun run dev:setup`: create/repair `~/lilbot-dev/` and start `lilbot-dev-hermes.service`.
+- `bun run dev` / `bun run start`: Vite dev server (proxies to `LILBOT_PORT`, default 3371) / run server.
+- `bun run deploy` (`--status`, `--bootstrap`), `bun run t3:sign-in`, `bun run build:helper`,
+  `bun run build:helper-downloads [data dir]`, `bun run history:exclude`.
+- Live checks: `check:live`, `check:reasoning`, `check:model-switch`, `check:memory`, `check:history`,
+  `check:checkpoint`, `check:threads`, `check:delegation`, `check:groups`, `check:work`, `check:work-drop`,
+  `check:checks`, `check:goals`, `check:routines`, `check:webhooks`, `check:restart`, `check:attachments`,
+  `check:skills`, `check:computers`, `check:access`, `check:add-computer`, `check:deploy`, `check:system`,
+  `check:my-computer`, `check:connections`, `check:coding -- --code-file <file>`, plus
+  `live-checks/permissions-check.ts` and `live-checks/library-check.ts`.
