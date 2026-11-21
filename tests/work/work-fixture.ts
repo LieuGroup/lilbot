@@ -96,7 +96,7 @@ export function workFixture(options: { database?: Database; requireBot?: (id: st
     }
   )
   /** `answers.tick()`, then waits until every answer it began to send has been sent or has failed. */
-  const sending = (answers as unknown as { running: Set<string> }).running
+  const sending = (answers as unknown as { retries: { running: Map<string, unknown> } }).retries.running
   const tickAnswers = async () => {
     answers.tick()
     await until(() => sending.size === 0)

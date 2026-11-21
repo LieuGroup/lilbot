@@ -1,6 +1,6 @@
 import { expect, spyOn, test } from 'bun:test'
 import { rmSync } from 'node:fs'
-import { backgroundTask } from '../server/background'
+import { backgroundTask, RetryQueue } from '../server/background'
 import { ComputerService } from '../server/computers/computer-service'
 import { ComputerStore } from '../server/computers/computer-store'
 import { loadServerKey } from '../server/computers/server-key'
@@ -85,5 +85,50 @@ test('routine, review and outbox timers recover after a database read or claim f
     log.mockRestore()
     f.database.close()
     rmSync(f.root, { recursive: true, force: true })
+  }
+})
+
+test('retry queue tracks in-flight items, backs off 30s on transient failures, clears on handled/success, and guards cleanup', async () => {
+  let time = 1_000
+  const log = spyOn(console, 'error').mockImplementation(() => {})
+  const queue = new RetryQueue<string>('sample job', () => time)
+  try {
+    let seenInFinally = true
+    queue.run(
+      'a',
+      () => {
+        throw new Error('sync boom')
+      },
+      {
+        value: 'item-a',
+        onFinally: () => {
+          seenInFinally = queue.running.has('a')
+        }
+      }
+    )
+    expect([queue.ready('a'), queue.running.get('a')]).toEqual([false, 'item-a'])
+    await Bun.sleep(5)
+    expect([seenInFinally, queue.ready('a')]).toEqual([false, false])
+    time += 29_999
+    expect(queue.ready('a')).toBe(false)
+    time += 1
+    expect(queue.ready('a')).toBe(true)
+    expect(log).toHaveBeenCalledWith('[background] sample job failed; will retry on the next tick.')
+
+    queue.run('a', () => Promise.reject(new Error('terminal')), { value: 'item-a', onError: () => true })
+    await Bun.sleep(5)
+    expect([queue.ready('a'), log.mock.calls.length]).toEqual([true, 1])
+
+    queue.run('b', async () => {}, {
+      value: 'item-b',
+      onFinally: () => {
+        throw new Error('cleanup boom')
+      }
+    })
+    await Bun.sleep(5)
+    expect(queue.running.has('b')).toBe(false)
+    expect(log).toHaveBeenLastCalledWith('[background] sample job cleanup failed; will retry on the next tick.')
+  } finally {
+    log.mockRestore()
   }
 })

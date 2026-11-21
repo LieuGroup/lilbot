@@ -84,7 +84,7 @@ export async function runFixture(input: WebhookCreate = unsigned) {
   const live = () => f.webhooks.find(f.token(hook.address))!
   const send = (text: string, headers: Record<string, string> = {}) => f.webhooks.receive(live(), new TextEncoder().encode(text), new Headers(headers))
   /** The runs the scheduler has under way: a tick is done when they have all ended. */
-  const underway = (f.scheduler as unknown as { running: Set<string> }).running
+  const underway = (f.scheduler as unknown as { retries: { running: Map<string, unknown> } }).retries.running
   const tick = async (at: number) => {
     f.setTime(at)
     const started = f.scheduler.tick()
