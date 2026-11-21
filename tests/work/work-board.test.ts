@@ -50,7 +50,7 @@ test('Oscar answers the one question: saved, the item goes back to work, and the
   await Bun.sleep(5)
   expect(f.delivered).toEqual([])
   f.deliver.fail = null
-  Object.assign(f.answers, { retryAt: new Map() })
+  Object.assign((f.answers as unknown as { retries: object }).retries, { retryAt: new Map() })
   f.answers.tick()
   f.answers.tick() // still on its way: not sent twice
   await Bun.sleep(5)

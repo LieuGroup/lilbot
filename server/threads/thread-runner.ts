@@ -2,7 +2,7 @@
  *  comes back. Transport failures retry the same engine admission, never a fresh turn. */
 import type { ChatItem } from '../../shared/chat-schema'
 import { LilBotError } from '../../shared/lilbot-error'
-import { backgroundFailure } from '../background'
+import { RetryQueue } from '../background'
 import { botLine } from '../devices/origin-line'
 import type { RoutineOptions } from '../engines/bot-engine'
 import { memoryRefusal } from '../memory/memory-safety'
@@ -28,8 +28,8 @@ const TERMINAL = ['bot_not_found', 'unsafe_message', 'thread_limit']
 const PREPARED = ['notice', 'oscar', 'point', 'round']
 
 export class ThreadRunner {
-  readonly running = new Map<string, Delivery>()
-  private retryAt = new Map<string, number>()
+  private retries = new RetryQueue<Delivery>('thread delivery')
+  readonly running = this.retries.running
   private lines = new Map<string, string>()
   constructor(
     private store: ThreadStore,
@@ -77,30 +77,29 @@ export class ThreadRunner {
     })
     for (const [index, d] of pending.entries()) {
       if (this.running.size >= THREAD_LIMITS.concurrent) break
-      if (this.running.has(d.id) || (this.retryAt.get(d.id) ?? 0) > Date.now()) continue
-      if (lanes.slice(0, index).includes(lanes[index])) continue
-      this.running.set(d.id, d)
-      void Promise.resolve()
-        .then(() => {
+      if (!this.retries.ready(d.id) || lanes.slice(0, index).includes(lanes[index])) continue
+      this.retries.run(
+        d.id,
+        async () => {
           this.mark(d, true)
-          return this.run(d)
-        })
-        .catch(error => {
-          if (error instanceof LilBotError && error.code === 'thread_cancelled') this.store.setStatus(d.id, 'done')
-          else if (error instanceof LilBotError && TERMINAL.includes(error.code))
-            return this.groups?.owns(d.threadId) ? this.groups.failed(d) : failExchange(this.store, this.waits, this.host, d, error)
-          else {
-            this.retryAt.set(d.id, Date.now() + 30_000)
-            backgroundFailure('thread delivery')
+          await this.run(d)
+        },
+        {
+          value: d,
+          onError: async error => {
+            if (error instanceof LilBotError && error.code === 'thread_cancelled') this.store.setStatus(d.id, 'done')
+            else if (error instanceof LilBotError && TERMINAL.includes(error.code))
+              await (this.groups?.owns(d.threadId) ? this.groups.failed(d) : failExchange(this.store, this.waits, this.host, d, error))
+            else return false
+            return true
+          },
+          onFinally: () => {
+            this.lines.delete(d.id)
+            this.mark(d, false)
+            this.changed()
           }
-        })
-        .finally(() => {
-          this.running.delete(d.id)
-          this.lines.delete(d.id)
-          this.mark(d, false)
-          this.changed()
-        })
-        .catch(() => backgroundFailure('thread delivery cleanup'))
+        }
+      )
     }
   }
 
@@ -162,7 +161,7 @@ export class ThreadRunner {
     const items = result.items?.filter(i => i.kind !== 'user') ?? [{ kind: 'assistant' as const, text: result.text }]
     if (result.status !== 'completed') items.push({ kind: 'assistant', text: `Thread work ${result.status}: ${result.text}` })
     const group = this.groups?.groupOf(d)
-    if (group) return this.groups!.record(d, group, items).then(() => this.retryAt.delete(d.id))
+    if (group) return void (await this.groups!.record(d, group, items))
     // A redirect steered into this turn that the turn never took runs as the receiver's next turn instead.
     const work = this.store.workThread(d)
     for (const r of work ? this.store.steered(work) : [])
@@ -191,6 +190,5 @@ export class ThreadRunner {
       }
       for (const id of settled) this.store.setStatus(id, 'done')
     })()
-    this.retryAt.delete(d.id)
   }
 }

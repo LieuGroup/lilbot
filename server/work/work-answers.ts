@@ -3,7 +3,7 @@
  *  restart reaches the same engine admission instead of a second turn. All SQL for `work_answers` is here. */
 import type { Database } from 'bun:sqlite'
 import { LilBotError } from '../../shared/lilbot-error'
-import { backgroundFailure } from '../background'
+import { backgroundFailure, RetryQueue } from '../background'
 import { fenced } from '../memory/memory-safety'
 import { fromWebhook } from './webhook-items'
 import type { StoredItem } from './work-store'
@@ -13,7 +13,6 @@ type Row = { id: string; item_id: string; bot_id: string; chat_id: string | null
 export type Deliver = (botId: string, prompt: string, runId: string, chatId: string | null) => Promise<unknown>
 /** Ends whatever turn the bot's session (its main conversation when null) is running. */
 export type Interrupt = (botId: string, chatId: string | null) => Promise<unknown>
-const RETRY_MS = 30_000
 
 export const answerPrompt = (item: StoredItem, answer: string) =>
   `Oscar answered your question on work item ${item.id} (${JSON.stringify(item.title)}), on the work board:\n\n${answer}\n\nCarry on with the work and keep reporting on the item with lilbot_work.`
@@ -30,8 +29,7 @@ const webhookItemPrompt = (item: StoredItem, oscar: string) =>
   ].join('\n\n')
 
 export class WorkAnswers {
-  private running = new Set<string>()
-  private retryAt = new Map<string, number>()
+  private retries = new RetryQueue('work answer')
   constructor(
     private db: Database,
     private deliver: Deliver,
@@ -59,16 +57,14 @@ export class WorkAnswers {
 
   tick() {
     for (const row of this.db.query("SELECT * FROM work_answers WHERE status IN ('pending', 'stopping') ORDER BY rowid").all() as Row[]) {
-      if (this.running.has(row.id) || (this.retryAt.get(row.id) ?? 0) > Date.now()) continue
-      this.running.add(row.id)
-      void this.send(row)
-        .then(() => this.settle(row.id, 'done'))
-        .catch(error => {
-          if (error instanceof LilBotError && error.code === 'bot_not_found') return this.settle(row.id, 'failed')
-          this.retryAt.set(row.id, Date.now() + RETRY_MS)
-          backgroundFailure('work answer')
-        })
-        .finally(() => this.running.delete(row.id))
+      if (!this.retries.ready(row.id)) continue
+      this.retries.run(row.id, () => this.send(row).then(() => this.settle(row.id, 'done')), {
+        onError: error => {
+          if (!(error instanceof LilBotError && error.code === 'bot_not_found')) return false
+          this.settle(row.id, 'failed')
+          return true
+        }
+      })
     }
   }
 
@@ -86,6 +82,5 @@ export class WorkAnswers {
 
   private settle(id: string, status: 'done' | 'failed') {
     this.db.query('UPDATE work_answers SET status = ? WHERE id = ?').run(status, id)
-    this.retryAt.delete(id)
   }
 }
