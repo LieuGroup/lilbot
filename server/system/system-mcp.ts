@@ -7,7 +7,7 @@
 import { ZodError } from 'zod'
 import { LilBotError } from '../../shared/lilbot-error'
 import { connectionCaller } from '../connections/connection-keys'
-import { type JsonRpc, rpcError, rpcResult, toolError } from '../connections/mcp-json-rpc'
+import { type JsonRpc, oneMessage, rpcError, rpcResult, toolError } from '../connections/mcp-json-rpc'
 import { inputSchema, type McpTool } from './mcp-tool'
 import type { SystemChanges } from './system-changes'
 import { SYSTEM_KEY_PURPOSE } from './system-connection'
@@ -78,13 +78,8 @@ export function createSystemMcp(options: SystemMcpOptions) {
     if (!caller) return Response.json({ error: 'Unknown bot credential.' }, { status: 403 })
     if (request.method !== 'POST') return new Response(null, { status: request.method === 'DELETE' ? 204 : 405, headers: { allow: 'POST' } })
 
-    let message: JsonRpc
-    try {
-      message = JSON.parse(await request.text())
-    } catch {
-      return rpcError(null, -32700, 'Send one JSON-RPC message.')
-    }
-    if (!message || typeof message !== 'object' || Array.isArray(message)) return rpcError(null, -32600, 'Send one JSON-RPC message.')
+    const message = await oneMessage(request)
+    if (message instanceof Response) return message
 
     switch (message.method) {
       case 'initialize':

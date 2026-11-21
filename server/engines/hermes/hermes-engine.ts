@@ -3,7 +3,7 @@ import type { ActivityEvent } from '../../../shared/activity-schema'
 import type { BotIdentity, BotModel } from '../../../shared/bot-schema'
 import type { ChatEvent } from '../../../shared/chat-schema'
 import { LilBotError } from '../../../shared/lilbot-error'
-import type { ActivityCursor, BotEngine, ChatOptions, McpConnection, MemoryConnection, ReviewOptions, RuntimeBinding, RuntimeIdentity, SessionChange } from '../bot-engine'
+import type { ActivityCursor, BotEngine, ChatOptions, MemoryConnection, ReviewOptions, RuntimeBinding, RuntimeIdentity, SessionChange } from '../bot-engine'
 import { watchHermesActivity } from './hermes-activity'
 import { adapterHash, applied, hashOf } from './hermes-applied'
 import { botDetailFromProfile, botFromProfile, DEFAULT_PROFILE, providersFromModelOptions, requireListedModel } from './hermes-bot-mapping'
@@ -49,9 +49,7 @@ export class HermesEngine implements BotEngine {
         const profiles = new Set((await this.profiles()).map(bot => bot.id))
         for (const bot of bound) {
           const present = profiles.has(bot.engineBotId)
-          if ((!present || known.has(bot.engineBotId)) && known.get(bot.engineBotId) !== present) {
-            availability?.(bot.engineBotId, present)
-          }
+          if ((!present || known.has(bot.engineBotId)) && known.get(bot.engineBotId) !== present) availability?.(bot.engineBotId, present)
           known.set(bot.engineBotId, present)
         }
         return bound.filter(bot => profiles.has(bot.engineBotId))
@@ -138,9 +136,13 @@ export class HermesEngine implements BotEngine {
   }
 
   private connections = connectionPreparer(id => HermesSocket.connect(id === DEFAULT_PROFILE ? '' : id))
-  async prepareConnections(id: string, connections: McpConnection[]) {
+  async prepareConnections(id: string, connections: import('../mcp-connection').McpConnection[]) {
     await this.requireBot(id)
-    await applied(id, 'connections', hashOf(connections), () => this.connections(id, connections))
+    await applied(id, 'connections', hashOf(connections), () => this.connections.prepare(id, connections))
+  }
+  async applyConnections(id: string, chatIds: string[]) {
+    await this.requireBot(id)
+    return this.connections.apply(id, chatIds)
   }
 
   private computerSettings = new Map<string, string>()

@@ -21,14 +21,16 @@ export function accessSettings(env: Record<string, string | undefined>, privateP
   if (host.length > 253 || !host.split('.').every(label => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))) throw new Error('Access host must be a hostname.')
   const issuer = `https://${team}`
   let certsUrl = new URL(`${issuer}/cdn-cgi/access/certs`)
-  // Only the isolated live check can substitute a local key server. No production URL override.
+  // Only an isolated live check can substitute a local key server: `check:access` with no bots, or a development server whose
+  // bots are all temporary `dev-` profiles (`check:connections`). No production URL override (it refuses `*_TEST_*` too).
   if (env.LILBOT_ACCESS_TEST_CERTS_URL) {
     certsUrl = new URL(env.LILBOT_ACCESS_TEST_CERTS_URL)
+    const temporaryBots = env.LILBOT_ENV === 'development' && !!env.LILBOT_BOT_IDS?.split(',').every(id => /^dev-[a-z0-9-]+$/.test(id))
     if (
       !env.LILBOT_DATA_DIR ||
       !env.LILBOT_WORKSPACES_DIR ||
       !env.LILBOT_SKILLS_DIR ||
-      env.LILBOT_BOT_IDS !== 'isolation-access-check' ||
+      (env.LILBOT_BOT_IDS !== 'isolation-access-check' && !temporaryBots) ||
       certsUrl.protocol !== 'http:' ||
       certsUrl.hostname !== '127.0.0.1' ||
       certsUrl.username ||

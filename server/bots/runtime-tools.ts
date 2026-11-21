@@ -1,7 +1,8 @@
 /** What LilBot gives every bot's runtime besides its identity: computer tools, the shared skills and
  *  LilBot's own MCP connections. The engine skips what it has already applied. */
 import { backgroundFailure } from '../background'
-import type { BotEngine, McpConnection, MemoryConnection } from '../engines/bot-engine'
+import type { BotEngine, MemoryConnection } from '../engines/bot-engine'
+import type { McpConnection } from '../engines/mcp-connection'
 import { memoryRefusal } from '../memory/memory-safety'
 import { files } from '../skills/skill-files'
 import type { SkillsService } from '../skills/skills-service'

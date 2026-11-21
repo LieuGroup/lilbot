@@ -4,6 +4,7 @@ import type { ActivityEvent } from '../shared/activity-schema'
 import type { EventFrame } from '../shared/protocol'
 import { ActivityService } from './activity/activity-service'
 import { ActivityStore } from './activity/activity-store'
+import { createConnections } from './app-connections'
 import { createGoals } from './app-goals'
 import { createThreads } from './app-threads'
 import { createWork, giveFrom } from './app-work'
@@ -18,10 +19,9 @@ import { Workspaces } from './bots/workspaces'
 import { ComputerService } from './computers/computer-service'
 import { ComputerStore } from './computers/computer-store'
 import { loadServerKey } from './computers/server-key'
-import { createT3Bridge } from './connections/t3-bridge'
-import { T3_DEFAULT_MCP_URL, t3Connection } from './connections/t3-connection'
+import { CALLBACK_PATH } from './connections/mcp-callback'
+import { t3Connection } from './connections/t3-connection'
 import { T3Grants } from './connections/t3-grant'
-import { watchT3SignIn } from './connections/t3-watch'
 import { openDatabase } from './database/database'
 import { deployNotice } from './deploy/deploy-notice'
 import { createDevices } from './devices/device-service'
@@ -61,11 +61,13 @@ export function createAppServices(
     COMMIT: string
     /** The helper door's public origin, where webhook addresses point. */
     HOOK_ORIGIN: string | undefined
+    /** The Access door's hostname: services' sign-ins return there. */
+    ACCESS_HOST: string | undefined
     publish: (frame: EventFrame) => void
     botsChanged: () => void
   }
 ) {
-  const { DATA_DIR, WORKSPACES_DIR, PORT, MEMORY_ADAPTER_VERSION, COMMIT, HOOK_ORIGIN, publish, botsChanged } = settings
+  const { DATA_DIR, WORKSPACES_DIR, PORT, MEMORY_ADAPTER_VERSION, COMMIT, HOOK_ORIGIN, ACCESS_HOST, publish, botsChanged } = settings
   const repeat = (name: string, interval: number, run: () => unknown | Promise<unknown>) => setInterval(backgroundTask(name, run), interval)
   const workspaces = new Workspaces(WORKSPACES_DIR)
   const database = openDatabase(join(DATA_DIR, 'lilbot.db'))
@@ -142,10 +144,12 @@ export function createAppServices(
     changed: botsChanged,
     memoryChanged,
     memoryConnection: { url: `http://127.0.0.1:${PORT}`, tokenFile: join(DATA_DIR, 'engine-token') },
-    connections: botId => [t3Connection(`http://127.0.0.1:${PORT}`, token, botId, t3Grants.generation()), system.connection(botId)],
+    connections: botId => [t3Connection(`http://127.0.0.1:${PORT}`, token, botId, t3Grants.generation()), system.connection(botId), ...mcp.connections(botId)],
     systemNote: systemNote(facts)
   })
   const calls = new CallingChats()
+  const redirectUri = ACCESS_HOST ? `https://${ACCESS_HOST}${CALLBACK_PATH}` : undefined
+  const mcp = createConnections({ database, dataDir: DATA_DIR, port: PORT, engineToken: token, redirectUri, engine, store, prefs, bots, calls, t3Grants, publish, repeat })
   const runs = { threadStore, routineStore, webhookStore, rootOf, goalStore: new GoalStore(database), reviewModel: reviewSettingsFrom(process.env).model ?? null }
   const workDeps = { database, engine, store, prefs, bots, ...runs, libraryStore, workspaces, activity, history: history.store, calls, publish }
   const { work, links, answers, checks, checkSessions } = createWork(workDeps)
@@ -155,15 +159,8 @@ export function createAppServices(
   const { goals, boards } = createGoals({ goalStore: runs.goalStore, work, answers, threads, routines, activity, store, publish, repeat })
   const giveFile = giveFrom(library, calls, threadStore, routineStore, webhookStore, rootOf)
   const webhooks = new WebhookService(webhookStore, bots, token, HOOK_ORIGIN, () => publish({ event: 'webhooks.changed' }))
-  const deps = { ...facts, bots, activity, memory, memoryChanged, delegation, work, goals, routines, giveFile, webhooks, calls, checkSessions }
+  const deps = { ...facts, bots, activity, memory, memoryChanged, delegation, work, goals, routines, giveFile, webhooks, calls, checkSessions, connections: mcp.services }
   const system = createSystemServer({ ...deps, changes: new SystemChanges(database), engineToken: token, port: PORT })
-  watchT3SignIn(
-    t3Grants,
-    () => publish({ event: 'connections.changed' }),
-    () => bots.refreshConnections()
-  )
-  const botIds = () => store.list().map(bot => bot.id)
-  const t3Bridge = createT3Bridge({ upstream: process.env.LILBOT_T3_MCP_URL ?? T3_DEFAULT_MCP_URL, grants: t3Grants, engineToken: token, port: PORT, botIds })
   repeat('threads', 1000, () => threads.tick())
   repeat('work answers', 1000, () => answers.tick())
   repeat('work checks', 1000, () => checks.tick())
@@ -193,5 +190,5 @@ export function createAppServices(
     hiddenChat,
     inCheck: checkSessions.refusal
   })
-  return { bots, store, skills, library, computers, devices, attachments, t3Grants, t3Bridge, system, engineApi, activity, routines, threads, boards, webhooks, hiddenChat }
+  return { bots, store, skills, library, computers, devices, attachments, t3Grants, mcp, system, engineApi, activity, routines, threads, boards, webhooks, hiddenChat }
 }

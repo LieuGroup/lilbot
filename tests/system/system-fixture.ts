@@ -1,8 +1,13 @@
+import { join } from 'node:path'
 /** LilBot's MCP server over the in-memory fake engine: real services, real database, no network. */
 import { giveFrom } from '../../server/app-work'
 import { Workspaces } from '../../server/bots/workspaces'
 import type { ComputerService } from '../../server/computers/computer-service'
 import { connectionKey } from '../../server/connections/connection-keys'
+import { McpConnectionStore } from '../../server/connections/mcp-connection-store'
+import { McpConnections } from '../../server/connections/mcp-connections'
+import { McpCredentials } from '../../server/connections/mcp-credentials'
+import { SignInFlows } from '../../server/connections/mcp-sign-in'
 import { GoalService } from '../../server/goals/goal-service'
 import { LibraryService } from '../../server/library/library-service'
 import { LibraryStore } from '../../server/library/library-store'
@@ -76,6 +81,20 @@ export function systemFixture() {
     { waiting: () => {}, tell: (id, goal, prompt) => work.answers.notify(id, goal.id, goal.botId, prompt), changed: () => {} },
     60
   )
+  const signedIn: { botId: string; chatId: string; name: string }[] = []
+  const connections = new McpConnections(
+    new McpConnectionStore(fake.database),
+    new McpCredentials(join(fake.root, 'mcp-credentials.json')),
+    new SignInFlows(),
+    {
+      botName: id => fake.store.get(id).name,
+      botExists: id => fake.store.exists(id),
+      callingChat: (botId, requestId) => calls.find(botId, 'lilbot_connection', requestId),
+      signedIn: (botId, chatId, name) => signedIn.push({ botId, chatId, name }),
+      changed: () => {}
+    },
+    'https://bot.example.com/api/connections/callback'
+  )
   const server = createSystemServer({
     store: fake.store,
     workspaces,
@@ -92,6 +111,7 @@ export function systemFixture() {
     goals,
     giveFile,
     webhooks,
+    connections,
     calls,
     checkSessions: checkSessions(work.work.checks, rootOf),
     changes,
@@ -135,6 +155,8 @@ export function systemFixture() {
     from,
     roots,
     webhooks,
+    connections,
+    signedIn,
     rosterPushes: fake.changes,
     request,
     as,

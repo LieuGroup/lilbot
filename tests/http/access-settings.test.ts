@@ -39,3 +39,22 @@ test('local key override requires isolated paths, the exact sentinel and a loopb
   for (const url of ['http://evil.example/certs', 'https://127.0.0.1/certs', 'http://user:password@127.0.0.1/certs'])
     expect(() => accessSettings({ ...isolated, LILBOT_ACCESS_TEST_CERTS_URL: url }, 3370, 3372)).toThrow()
 })
+
+test('local Access keys also serve a development server whose bots are all temporary dev- profiles, and nothing else', () => {
+  const env = {
+    ...accessEnv,
+    LILBOT_DATA_DIR: '/test/data',
+    LILBOT_WORKSPACES_DIR: '/test/workspaces',
+    LILBOT_SKILLS_DIR: '/test/skills',
+    LILBOT_ACCESS_TEST_CERTS_URL: 'http://127.0.0.1:3456/certs'
+  }
+  expect(accessSettings({ ...env, LILBOT_ENV: 'development', LILBOT_BOT_IDS: 'dev-abc123' }, 3370, 3372)?.certsUrl.href).toBe(env.LILBOT_ACCESS_TEST_CERTS_URL)
+  for (const bad of [
+    { LILBOT_ENV: 'production', LILBOT_BOT_IDS: 'dev-abc123' },
+    { LILBOT_ENV: 'development', LILBOT_BOT_IDS: 'dev-abc123,default' },
+    { LILBOT_ENV: 'development', LILBOT_BOT_IDS: 'chief' },
+    { LILBOT_ENV: 'development', LILBOT_BOT_IDS: '' },
+    { LILBOT_ENV: 'development' }
+  ])
+    expect(() => accessSettings({ ...env, ...bad }, 3370, 3372)).toThrow()
+})

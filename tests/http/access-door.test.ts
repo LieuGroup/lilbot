@@ -92,3 +92,45 @@ test('Access failures return a plain 500 without error details', async () => {
     fake.server.stop(true)
   }
 })
+
+test('the sign-in callback is the one route only the Access door has, reached only after its checks; the services’ routes stay refused there', async () => {
+  const fake = fakeAccess()
+  const seen: string[] = []
+  const root = mkdtempSync(join(homedir(), 'agent-tmp', 'access-unit-'))
+  await Bun.write(join(root, 'index.html'), '<html>App shell</html>')
+  const routes = appRoutes({ content: async () => ({ data: Buffer.from(''), mime: 'text/plain', name: 'x' }) }, root, new Set([fake.settings.host]), 'test')
+  const callback = async (request: Request) => {
+    seen.push(new URL(request.url).search)
+    return new Response('Signed in')
+  }
+  const server = startAccessDoor(fake.settings, routes, { message() {} }, { '/api/connections/callback': callback })
+  const get = (path: string, headers: Record<string, string>) => fetch(new URL(path, server.url), { headers: { host: fake.settings.host, ...headers } })
+  try {
+    const path = '/api/connections/callback?code=c&state=s'
+    const refusals: Record<string, string>[] = [
+      {},
+      { 'Cf-Access-Jwt-Assertion': token({ exp: 1 }) },
+      { cookie: `CF_Authorization=${token()}` },
+      { 'Cf-Access-Jwt-Assertion': token(), host: 'evil.example' }
+    ]
+    for (const headers of refusals) {
+      expect((await get(path, headers)).status).toBe(403)
+    }
+    expect(seen).toEqual([])
+    const ok = await get(path, { 'Cf-Access-Jwt-Assertion': token(), 'sec-fetch-site': 'cross-site' })
+    expect(ok.status).toBe(200)
+    expect(await ok.text()).toBe('Signed in')
+    expect(seen).toEqual(['?code=c&state=s'])
+    for (const refused of ['/engine/connections/1/mcp', `/engine/connections/${crypto.randomUUID()}/mcp`]) {
+      expect((await get(refused, { 'Cf-Access-Jwt-Assertion': token() })).status).toBe(403)
+    }
+    // The private app's routes do not have it: there the path is only the app shell.
+    expect(
+      await (await routes(new Request(`http://${fake.settings.host}/api/connections/callback?code=c&state=s`, { headers: { host: fake.settings.host } }), {} as any))?.text()
+    ).toContain('App shell')
+  } finally {
+    server.stop(true)
+    fake.server.stop(true)
+    rmSync(root, { recursive: true, force: true })
+  }
+})

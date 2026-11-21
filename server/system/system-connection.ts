@@ -1,7 +1,7 @@
 /** The MCP connection every bot is given to LilBot's own server (`system-mcp.ts`), the same for every engine. */
 import { createHash } from 'node:crypto'
 import { connectionKey } from '../connections/connection-keys'
-import type { McpConnection } from '../engines/bot-engine'
+import type { McpConnection } from '../engines/mcp-connection'
 import { inputSchema, type McpTool } from './mcp-tool'
 
 /** Engines name the tools after this (Hermes: `mcp__lilbot_system__lilbot_about`). */

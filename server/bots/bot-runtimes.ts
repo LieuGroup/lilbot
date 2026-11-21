@@ -1,7 +1,7 @@
 /** Resolves LilBot ids to runtime ids. The database always wins over an engine's copy. */
 import type { BotCreateInput, BotUpdateInput } from '../../shared/bot-schema'
 import { LilBotError } from '../../shared/lilbot-error'
-import type { BotEngine, McpConnection, RuntimeState } from '../engines/bot-engine'
+import type { BotEngine, RuntimeState } from '../engines/bot-engine'
 import type { BotRecord, BotStore } from './bot-store'
 import { importBots } from './runtime-import'
 import { Readiness } from './runtime-readiness'
@@ -18,7 +18,7 @@ export class BotRuntimes {
     private skills?: import('../skills/skills-service').SkillsService,
     private connection?: import('../engines/bot-engine').MemoryConnection,
     /** LilBot-owned MCP connections every bot gets (`server/connections/`). */
-    private connections?: (botId: string) => McpConnection[],
+    private connections?: (botId: string) => import('../engines/mcp-connection').McpConnection[],
     options: { changed?: () => void; retryDelays?: readonly number[]; headStartMs?: number; systemNote?: (bot: BotRecord) => string } = {}
   ) {
     this.systemNote = options.systemNote

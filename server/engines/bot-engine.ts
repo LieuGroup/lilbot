@@ -3,6 +3,7 @@ import type { ActivityEvent } from '../../shared/activity-schema'
 import type { BotIdentity, BotModel, BotSetup, ModelProvider, PermissionMode, ReasoningEffort } from '../../shared/bot-schema'
 import type { ChatEvent, ChatSnapshot } from '../../shared/chat-schema'
 import type { MessageOrigin } from '../../shared/device-schema'
+import type { ConnectionsApplied, McpConnection } from './mcp-connection'
 
 export type EngineBotDetail = BotIdentity & BotSetup
 export type RuntimeIdentity = BotIdentity & { instructions: string }
@@ -56,18 +57,6 @@ export interface ChatOptions {
   /** Explicit history must not silently become a new conversation. */
   omitMessages?: boolean
   requireExisting?: boolean
-}
-
-/** An MCP server LilBot supplies to every bot, the same for every engine (today: T3 Code through
- *  LilBot's bridge, `server/connections/`). The bearer token is a LilBot credential for this bot only. */
-export interface McpConnection {
-  name: string
-  url: string
-  bearerToken: string
-  /** Seconds one tool call may take. */
-  timeoutSeconds: number
-  /** The tools the engine should offer; the bridge enforces the same list. */
-  tools: readonly string[]
 }
 
 /** An edit to a stored conversation, applied from its next message. A turn that is running finishes first. */
@@ -132,8 +121,12 @@ export interface BotEngine {
   deleteRuntime(engineBotId: string): Promise<void>
   /** Prepare persistent policy at startup and when the saved mode changes. */
   prepareRuntime?(engineBotId: string, identity: RuntimeIdentity): Promise<void>
-  /** Make LilBot's MCP connections available to this runtime from its next session. Safe to repeat. */
+  /** Give this runtime exactly LilBot's MCP connections (servers named `lilbot_*` not listed are removed; others are left
+   *  alone), for its sessions from their next resume. An optional one that does not connect is not an error. Safe to repeat. */
   prepareConnections?(engineBotId: string, connections: McpConnection[]): Promise<void>
+  /** Bring these open conversations in step with the connections last prepared, in place: from their next message, with
+   *  their context and cache kept. A running turn is never changed (`busy`: LilBot asks again once it ends). */
+  applyConnections?(engineBotId: string, chatIds: string[]): Promise<{ chatId: string; state: ConnectionsApplied }[]>
   userSkillPaths?(id: string): string[]
   /** Skills the engine offers by itself in this runtime, without the ones in `alwaysOnSkills`: the engine's own switch can hide these. */
   bundledSkills?(id: string): string[]

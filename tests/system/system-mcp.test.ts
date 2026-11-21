@@ -37,6 +37,7 @@ const EXPECTED_TOOLS = [
   'lilbot_routines_list',
   'lilbot_webhook_create',
   'lilbot_webhooks_list',
+  'lilbot_connection',
   'lilbot_webhook_pause',
   'lilbot_webhook_resume',
   'lilbot_webhook_delete',

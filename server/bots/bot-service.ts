@@ -4,7 +4,7 @@ import type { Bot, BotCreateInput, BotDetail, BotPrefsInput, BotUpdateInput, Mod
 import type { ChatEvent } from '../../shared/chat-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import type { MemoryFact, MemoryWriteInput } from '../../shared/memory-schema'
-import type { ActivityCursor, BotEngine, McpConnection, MemoryConnection } from '../engines/bot-engine'
+import type { ActivityCursor, BotEngine, MemoryConnection } from '../engines/bot-engine'
 import type { MemoryService } from '../memory/memory-service'
 import { BackgroundRuns } from './bot-background-runs'
 import { BotConversations } from './bot-conversations'
@@ -28,7 +28,7 @@ export interface BotServiceOptions {
   cleanupBot?: (botId: string) => void
   memoryConnection?: MemoryConnection
   /** LilBot-owned MCP connections given to every bot, by LilBot id. */
-  connections?: (botId: string) => McpConnection[]
+  connections?: (botId: string) => import('../engines/mcp-connection').McpConnection[]
   /** The "about your system" note added to the instructions an engine runs (`system-note.ts`). */
   systemNote?: (bot: BotRecord) => string
 }

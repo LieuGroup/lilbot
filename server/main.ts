@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import type { WebSocketHandler } from 'bun'
 import { AddThisComputer } from './computers/add-this-computer'
 import { HelperDownloads, helperSettings } from './computers/helper-downloads'
+import { CALLBACK_PATH } from './connections/mcp-callback'
 import { T3_BRIDGE_PATH } from './connections/t3-connection'
 import { deployNotice } from './deploy/deploy-notice'
 import { runningCommit } from './deploy/health'
@@ -52,7 +53,7 @@ function botsChanged() {
 }
 
 const engine = new HermesEngine(process.env.LILBOT_BOT_IDS?.split(',').filter(Boolean))
-const { bots, store, skills, hiddenChat, library, computers, devices, attachments, t3Grants, t3Bridge, system, engineApi, activity, routines, threads, boards, webhooks } =
+const { bots, store, skills, hiddenChat, library, computers, devices, attachments, t3Grants, mcp, system, engineApi, activity, routines, threads, boards, webhooks } =
   createAppServices(engine, {
     DATA_DIR,
     WORKSPACES_DIR,
@@ -61,6 +62,7 @@ const { bots, store, skills, hiddenChat, library, computers, devices, attachment
     COMMIT,
     // `helperSettings` below refuses a helper URL that is not the door's HTTPS origin.
     HOOK_ORIGIN: PUBLIC_ENABLED && process.env.LILBOT_HELPER_URL ? new URL(process.env.LILBOT_HELPER_URL).origin : undefined,
+    ACCESS_HOST: ACCESS?.host,
     publish: frame => publish(EVERYONE, JSON.stringify(frame)),
     botsChanged
   })
@@ -106,7 +108,7 @@ const websocket: WebSocketHandler<SocketData> = {
       routines,
       library,
       threads,
-      () => ({ t3: t3Grants.status() }),
+      () => ({ t3: t3Grants.status(), services: mcp.services.list() }),
       computers,
       () => deployNotice(DATA_DIR),
       attachments,
@@ -137,7 +139,12 @@ const server = Bun.serve<SocketData>({
       const url = new URL(request.url)
       if (url.pathname === T3_BRIDGE_PATH) {
         server.timeout(request, 0)
-        return t3Bridge(request)
+        return mcp.t3Bridge(request)
+      }
+      if (url.pathname.startsWith('/engine/connections/')) {
+        // The route bounds each call itself (`mcp-forward.ts`).
+        server.timeout(request, 0)
+        return mcp.forward(request, url.pathname)
       }
       if (url.pathname === SYSTEM_PATH) {
         // Creating a bot waits for its greeting: no idle timeout.
@@ -153,7 +160,10 @@ const server = Bun.serve<SocketData>({
   },
   websocket
 })
-const accessServer = ACCESS ? startAccessDoor(ACCESS, appRoutes(library, DIST, new Set([ACCESS.host]), 'hermes', attachments, downloads, threads), websocket) : undefined
+// The sign-in callback is the one route only the Access door has (#187).
+const accessServer = ACCESS
+  ? startAccessDoor(ACCESS, appRoutes(library, DIST, new Set([ACCESS.host]), 'hermes', attachments, downloads, threads), websocket, { [CALLBACK_PATH]: mcp.callback })
+  : undefined
 
 // LilBot's own skills, restored at every start if they differ.
 for (const [name, folder] of [

@@ -5,8 +5,14 @@ import type { appRoutes, SocketData } from './app-routes'
 import { plainServerError } from './listener-safety'
 import { socketAllowed } from './socket-guard'
 
-/** No engine or helper handler is passed to this listener. */
-export function startAccessDoor(settings: AccessSettings, routes: ReturnType<typeof appRoutes>, websocket: WebSocketHandler<SocketData>) {
+/** No engine or helper handler is passed to this listener. `only` holds the routes the Access door alone serves (the
+ *  connections' sign-in callback), reached like every other route only after the Access checks. */
+export function startAccessDoor(
+  settings: AccessSettings,
+  routes: ReturnType<typeof appRoutes>,
+  websocket: WebSocketHandler<SocketData>,
+  only: Record<string, (request: Request) => Promise<Response>> = {}
+) {
   const verify = accessVerifier(settings)
   const hosts = new Set([settings.host])
   return Bun.serve<SocketData>({
@@ -27,7 +33,7 @@ export function startAccessDoor(settings: AccessSettings, routes: ReturnType<typ
         ) {
           return new Response('Forbidden', { status: 403, headers: { 'Cache-Control': 'no-store', 'Content-Type': 'text/plain' } })
         }
-        return await routes(request, server)
+        return await (Object.hasOwn(only, path) ? only[path](request) : routes(request, server))
       } catch {
         return plainServerError()
       }
