@@ -108,7 +108,7 @@ const websocket: WebSocketHandler<SocketData> = {
       routines,
       library,
       threads,
-      () => ({ t3: t3Grants.status(), services: mcp.services.list() }),
+      { status: () => ({ t3: t3Grants.status(), services: mcp.services.list() }), ready: mcp.ready },
       computers,
       () => deployNotice(DATA_DIR),
       attachments,

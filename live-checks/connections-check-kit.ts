@@ -51,9 +51,19 @@ export async function conversation(port: number) {
       console.log(`  bot: ${turn.text.replace(/\s+/g, ' ').slice(0, 160)}`)
       return turn.text
     },
-    /** A turn LilBot gives the conversation (the "connected" notice), counted from `seen` finished turns. */
-    lilbotTurn: (seen: number) => next(seen, 'the turn LilBot gives after a sign-in', 180_000),
-    finishedCount: () => finished.length
+    /** The bot's reply in a turn LilBot gave the conversation after `since` (the "connected" notice). A hidden turn is not
+     *  streamed to an open chat, so it is read from the conversation record, which does not resume the session. */
+    lilbotReply: async (since: number, not = '') => {
+      for (const end = Date.now() + 180_000; Date.now() < end; await Bun.sleep(1000)) {
+        const page = await client.call('chat.history', { botId: bot.id })
+        const reply = page.items.find((row: any) => row.sessionId === chat.chatId && row.at > since && row.item.kind === 'assistant' && row.item.text !== not)
+        if (reply) {
+          console.log(`  bot (LilBot's turn): ${String(reply.item.text).replace(/\s+/g, ' ').slice(0, 160)}`)
+          return reply.item.text as string
+        }
+      }
+      throw new Error('Timed out waiting for the turn LilBot gives after a sign-in')
+    }
   }
 }
 

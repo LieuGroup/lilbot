@@ -72,6 +72,8 @@ try {
 
   await chat.say(`Connect the MCP service at ${plain.address} with lilbot_connection; name it plaincheck. Reply in one sentence.`)
   assert.equal((await status('plaincheck'))?.state, 'connected')
+  for (let i = 0; !servers(profileConfig()).includes('lilbot_c_plaincheck') && i < 30; i++) await Bun.sleep(500)
+  assert.ok(servers(profileConfig()).includes('lilbot_c_plaincheck'), 'the engine was not given the new service')
   const plainReply = await chat.say('Use the plaincheck echo tool with the text hello and tell me exactly what it returned.')
   assert.ok(plain.counts.toolCalls >= 1 && plainReply.includes('PLAIN_CHECK_hello'), 'the plain tool was not used in the next message')
   pass('a service with no sign-in is connected at once and its tool works in the next message of the same conversation')
@@ -85,11 +87,11 @@ try {
   const forged = new URL(landed)
   forged.searchParams.set('state', 'forged-state-value')
   assert.equal((await openOnAccess(accessPort, forged.href)).status, 400, 'a wrong state was accepted')
-  const seen = chat.finishedCount()
+  const signedAt = Date.now()
   const done = await openOnAccess(accessPort, landed)
   assert.ok(done.status === 200 && done.text.includes('Signed in'), 'the Access callback did not sign in')
   assert.equal((await openOnAccess(accessPort, landed)).status, 400, 'a reused callback was accepted')
-  await chat.lilbotTurn(seen)
+  await chat.lilbotReply(signedAt)
   assert.equal((await status('oauthcheck'))?.state, 'connected')
   const used = await chat.say('Use the oauthcheck tool with the text world and tell me exactly what it returned.')
   assert.ok(used.includes('OAUTH_CHECK_world'), 'the signed-in tool was not used')
@@ -116,10 +118,10 @@ try {
   const repairLink = linkIn(await chat.say('Give me a fresh sign-in link for oauthcheck, exactly as LilBot returns it.'), oauth.server.port!)
   assert.ok(repairLink, 'no repair link')
   const pasted = await signInPage(repairLink)
-  const before = chat.finishedCount()
-  await chat.say(`My browser could not open the last page of the sign-in. It ended on this address; finish the sign-in with it: ${pasted}`)
+  const pastedAt = Date.now()
+  const finished = await chat.say(`My browser could not open the last page of the sign-in. It ended on this address; finish the sign-in with it: ${pasted}`)
   assert.equal((await status('oauthcheck'))?.state, 'connected')
-  await chat.lilbotTurn(before + 1)
+  await chat.lilbotReply(pastedAt, finished)
   assert.ok((await chat.say('Use the oauthcheck tool with the text repaired and tell me exactly what it returned.')).includes('OAUTH_CHECK_repaired'))
   pass('a refused token shows sign_in_expired; a new sign_in, finished by pasting the final address with the callback blocked, repairs it')
 
@@ -160,6 +162,21 @@ try {
   ]
   assert.deepEqual(hits, [], 'a token was found outside LilBot’s store')
   pass(`${oauth.issued.length} tokens found only in the 0600 store: not in the database, conversation copy, logs, workspace or engine profile`)
+} catch (error) {
+  // What the server said, for the reader of a failed run (fixed log labels only; it never logs tokens).
+  for (const file of [log, `${log}.err`]) {
+    try {
+      console.error(
+        readFileSync(file, 'utf8')
+          .split('\n')
+          .filter(line => /\[(connections|background|bots|hermes|chat|system)\]/.test(line))
+          .slice(-40)
+          .join('\n')
+      )
+    } catch {}
+  }
+  if (nativeId) console.error(`profile servers: ${servers(readFileSync(join(skillHome(nativeId), 'config.yaml'), 'utf8')).join(', ')}`)
+  throw error
 } finally {
   close()
   child?.kill()

@@ -76,3 +76,17 @@ test('a refresh that fails is retried later, and nothing is applied before it su
   await f.applier.tick()
   expect(f.log).toEqual(['refresh', 'refresh', 'apply dev-a a-main', 'apply dev-b b-main'])
 })
+
+test('a message sent the moment the turn ended waits for the change to be applied; other messages never wait', async () => {
+  const f = fixture()
+  f.states.set('a-main', 'busy')
+  f.state.generation = 'g1'
+  await f.applier.tick()
+  f.states.set('a-main', 'applied')
+  const before = f.log.length
+  await f.applier.ready('a', 'a-main')
+  expect(f.log.slice(before)).toEqual(['apply dev-a a-main'])
+  await f.applier.ready('a', 'a-main')
+  await f.applier.ready('b', 'b-main')
+  expect(f.log.slice(before)).toHaveLength(1)
+})

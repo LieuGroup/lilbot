@@ -22,6 +22,8 @@ type Pending = { botId: string; chatId: string; since: number; notice?: { prompt
 /** A turn that runs longer than this is left: its conversation reads the connections when next opened. */
 const GIVE_UP_MS = 30 * 60_000
 const RETRY_MS = 30_000
+/** A message never waits longer than this for a change to be applied. */
+const READY_WAIT_MS = 5_000
 
 export const connectedPrompt = (name: string) =>
   `Oscar finished signing in to ${name}, so LilBot is connected to it and its tools are yours now. Carry on with what he asked; if nothing waits on ${name}, tell him in one short sentence that it is connected.`
@@ -30,7 +32,7 @@ export class ConnectionApplier {
   private pending = new Map<string, Pending>()
   private applied: string | null = null
   private status: string
-  private busy = false
+  private running: Promise<void> | null = null
   private retryAt = 0
   constructor(
     private host: ApplyHost,
@@ -51,9 +53,27 @@ export class ConnectionApplier {
     this.pending.set(`${botId}\n${chatId}`, { botId, chatId, since: this.now(), notice: { prompt: connectedPrompt(name), runId } })
   }
 
-  async tick() {
-    if (this.busy) return
-    this.busy = true
+  /** One pass at a time; a call while one runs gets that pass. */
+  tick(): Promise<void> {
+    this.running ??= this.pass().finally(() => {
+      this.running = null
+    })
+    return this.running
+  }
+
+  /** Before a message goes into a conversation: a change waiting for it is applied first, so a message sent the moment the
+   *  turn that caused it ended still has it. A turn still running keeps it waiting (the message queues behind that turn). */
+  async ready(botId: string, chatId: string) {
+    // Nothing waits on a refresh or an apply that failed and is retried later.
+    const waiting = () => {
+      const entry = this.pending.get(`${botId}\n${chatId}`)
+      return (this.generation() !== this.applied && this.now() >= this.retryAt) || (!!entry && (entry.retryAt ?? 0) <= this.now())
+    }
+    // The pass under way may have found the turn still running: one more pass once it is over.
+    for (let pass = 0; pass < 2 && waiting(); pass++) await Promise.race([this.tick(), Bun.sleep(READY_WAIT_MS)])
+  }
+
+  private async pass() {
     try {
       const status = this.statusKey()
       if (status !== this.status) {
@@ -76,8 +96,8 @@ export class ConnectionApplier {
         }
       }
       if (this.applied === next) await this.applyPending()
-    } finally {
-      this.busy = false
+    } catch {
+      backgroundFailure('connections')
     }
   }
 
@@ -108,10 +128,13 @@ export class ConnectionApplier {
   }
 
   private notify(entry: Pending & { notice: NonNullable<Pending['notice']> }) {
-    this.host.tell(entry.botId, entry.chatId, entry.notice.prompt, entry.notice.runId).catch(() => {
-      backgroundFailure('connection notice')
-      // The same run id reaches the same engine admission, so a retry never gives a second turn.
-      this.pending.set(`${entry.botId}\n${entry.chatId}`, { ...entry, since: this.now(), retryAt: this.now() + RETRY_MS })
-    })
+    this.host
+      .tell(entry.botId, entry.chatId, entry.notice.prompt, entry.notice.runId)
+      .then(() => console.log(`[connections] bot ${entry.botId} was told its sign-in finished`))
+      .catch(() => {
+        backgroundFailure('connection notice')
+        // The same run id reaches the same engine admission, so a retry never gives a second turn.
+        this.pending.set(`${entry.botId}\n${entry.chatId}`, { ...entry, since: this.now(), retryAt: this.now() + RETRY_MS })
+      })
   }
 }

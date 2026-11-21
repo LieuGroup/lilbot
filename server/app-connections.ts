@@ -93,6 +93,7 @@ export function createConnections({ database, dataDir, port, engineToken, redire
     t3Bridge: createT3Bridge({ upstream: process.env.LILBOT_T3_MCP_URL ?? T3_DEFAULT_MCP_URL, grants: t3Grants, engineToken, port, botIds }),
     forward: createServiceForward({ services, store: rows, credentials, keeper: new TokenKeeper(credentials), engineToken, port, botIds }),
     callback: connectionCallback(services),
+    ready: (botId: string, chatId: string) => applier.ready(botId, chatId),
     connections: (botId: string) => serviceConnections(services, lilbotUrl, engineToken, botId)
   }
 }
