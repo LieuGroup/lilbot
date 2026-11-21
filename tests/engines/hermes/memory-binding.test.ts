@@ -14,8 +14,8 @@ spec = importlib.util.spec_from_file_location('adapter', sys.argv[1])
 module = importlib.util.module_from_spec(spec)
 sys.modules['adapter'] = module
 spec.loader.exec_module(module)
-assert module.VERSION == "0.13.0"
-assert "version: 0.13.0" in pathlib.Path(sys.argv[1]).with_name("plugin.yaml").read_text()
+assert module.VERSION == "0.14.0"
+assert "version: 0.14.0" in pathlib.Path(sys.argv[1]).with_name("plugin.yaml").read_text()
 tools = {tool["name"] for tool in module.LilBotMemoryProvider().get_tool_schemas()}
 assert {"search_conversations", "recall_memory", "update_memory"} == tools
 assert 'lilbot_routine' in module.LilBotMemoryProvider().system_prompt_block()

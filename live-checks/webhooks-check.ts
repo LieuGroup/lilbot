@@ -18,7 +18,7 @@ import { SYSTEM_KEY_PURPOSE, SYSTEM_PATH } from '../server/system/system-connect
 import { checkClient } from './check-client'
 import { deleteProfile, startServer } from './check-process'
 import { afterRun, pauseResumeDelete } from './webhook-session-checks'
-import { ENGINE_TOOLS, fromServer, githubDelivery, has, PAGE, runTask, serverUp, sessionTools, waitFor } from './webhook-run-tools'
+import { createHook, ENGINE_TOOLS, fromServer, githubDelivery, has, PAGE, serverUp, sessionTools, waitFor } from './webhook-run-tools'
 
 const root = devScratch('lilbot-webhooks')
 const port = devPort()
@@ -76,7 +76,7 @@ try {
     assert.ok(!result.refused, `${name} was refused: ${result.refused}`)
     return result
   }
-  const hook = await tool('lilbot_webhook_create', { requestId: 'check', source: 'GitHub', createdBy: 'oscar', signing: { scheme: 'github' }, description: runTask(CODEWORD_FILE) })
+  const hook = await tool('lilbot_webhook', createHook(CODEWORD_FILE))
   const address = new URL(hook.address)
   assert.ok(address.origin === door, 'the address is not on the dev helper door')
   const secret: string = hook.signingSecret

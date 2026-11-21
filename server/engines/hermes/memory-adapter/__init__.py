@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 NAME = Path(__file__).resolve().parent.name
 SETTINGS_FILE = "lilbot-memory.json"
 # Keep equal to plugin.yaml. LilBot warns when a bot still calls with an older one.
-VERSION = "0.13.0"
+VERSION = "0.14.0"
 DEFAULT_URL = "http://127.0.0.1:3370"
 DEFAULT_TOKEN_FILE = "~/.local/share/lilbot/engine-token"
 TIMEOUT_SECONDS = 5
@@ -185,7 +185,7 @@ class LilBotMemoryProvider(MemoryProvider):
     def get_tool_schemas(self) -> list[dict[str, Any]]:
         return [{
             "name": "search_conversations",
-            "description": "Search your own past conversations with Oscar, including earlier sessions. Returns snippets with stable ids and times. Excludes other bots, threads and routine runs. Use this to recover details no longer in context.",
+            "description": "Search your past conversations with Oscar (excludes other bots, threads, routine runs). Returns snippets with ids and times.",
             "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["query"]}
         }] + list(TOOLS)
 

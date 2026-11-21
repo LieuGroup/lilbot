@@ -13,7 +13,7 @@ export function routineTools({ routines }: SystemDeps): McpTool[] {
   return [
     actionTool(
       'lilbot_routine',
-      "Schedule work for yourself, or pause, resume or delete your own routines, instead of the engine's cron. create: requestId, description, schedule (interval of at least 300 seconds, daily at HH:MM, or weekly on a day 0-6 at HH:MM, default zone Australia/Adelaide) and createdBy (oscar only when he asked for the schedule, otherwise bot; at most five of your own, paused included). pause, resume and delete: id. Each run is its own session in your folder with full access and its result appears only in Routines; it is not a new request from Oscar. Reuse requestId when retrying.",
+      'Create, pause, resume or delete your own routines (use instead of engine cron). create: requestId, description, schedule (>=300s interval, daily HH:MM, or weekly day 0-6 HH:MM; default Australia/Adelaide), createdBy (oscar only if he asked, else bot; max 5). pause/resume/delete: id. Runs use full access in Routines only; reuse requestId on retry.',
       RoutineActionInput,
       async (caller, { action, id, ...fields }) => {
         if (action === 'create') return routines.create(caller, RoutineCreate.parse(fields))

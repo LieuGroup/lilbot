@@ -9,9 +9,10 @@ import { chatEventFrom } from './hermes-chat-mapping'
 import { saveFailed } from './hermes-memory-saves'
 import { HermesSocket } from './hermes-socket'
 import { reportReplay } from './hermes-tool-calls'
+import { TurnUsageTracker } from './hermes-usage'
 
 type Cursor = (botId: string, chatId: string) => string | undefined
-type Observer = { socket?: HermesSocket; retryAt: number; failures: number; sessions: Map<string, ActivityReplayState> }
+type Observer = { socket?: HermesSocket; retryAt: number; failures: number; sessions: Map<string, ActivityReplayState>; usage: Map<string, TurnUsageTracker> }
 
 export function watchHermesActivity(
   bots: () => Promise<RuntimeBinding[]>,
@@ -48,11 +49,23 @@ export function watchHermesActivity(
         // One full read re-baselines a gap/epoch change; do not loop if the buffer is itself truncated.
         if (reset) replay = await socket.request('session.events.since', { session_id: chatId, last_sequence: 0, replay_epoch: replay.replay_epoch })
         reportReplay(engineBotId === 'default' ? '' : engineBotId, chatId, replay.events, (!previous || reset) && !row.running)
-        if (conversationEvent)
-          for (const event of replay.events) {
-            const mapped = chatEventFrom(event, () => saveFailed(engineBotId, [chatId]))
-            if (mapped) conversationEvent(botId, chatId, mapped, `${replay.replay_epoch}:${event.seq}`)
+        let tracker = observer.usage.get(chatId)
+        if (!tracker || reset) {
+          const fromStart = !replay.truncated && (!replay.events.length || replay.events[0]?.seq === 1)
+          tracker = new TurnUsageTracker(fromStart)
+          if (!fromStart && !replay.events.some((e: any) => e.type === 'message.complete')) {
+            tracker.seedStats(await socket.request('session.stats', { session_id: chatId }).catch(() => undefined))
           }
+          observer.usage.set(chatId, tracker)
+        }
+        for (const event of replay.events) {
+          if (event.type === 'session.usage') {
+            tracker.onSessionUsage(event.payload)
+            continue
+          }
+          const mapped = chatEventFrom(event, () => saveFailed(engineBotId, [chatId]), { tracker, nativeId: engineBotId })
+          if (mapped && conversationEvent) conversationEvent(botId, chatId, mapped, `${replay.replay_epoch}:${event.seq}`)
+        }
         const updates: ActivityUpdate[] = replay.events.map((event: any) => ({
           sequence: event.seq,
           ...(event.type === 'message.start' ? { status: 'working', clearTool: true } : {}),
@@ -82,7 +95,11 @@ export function watchHermesActivity(
         if ((!quiet && key !== saved) || (row.running && !previous)) emit({ botId, chatId, key, status: state.status, tool: state.tool, spoke: !baseline && spoke })
         observer.sessions.set(chatId, state)
       }
-      for (const id of observer.sessions.keys()) if (!live.has(id)) observer.sessions.delete(id)
+      for (const id of observer.sessions.keys())
+        if (!live.has(id)) {
+          observer.sessions.delete(id)
+          observer.usage.delete(id)
+        }
       observer.failures = 0
       observer.retryAt = 0
     } catch {
@@ -107,7 +124,7 @@ export function watchHermesActivity(
         roster.map(bot => {
           let observer = observers.get(bot.id)
           if (!observer) {
-            observer = { retryAt: 0, failures: 0, sessions: new Map() }
+            observer = { retryAt: 0, failures: 0, sessions: new Map(), usage: new Map() }
             observers.set(bot.id, observer)
           }
           return read(bot, observer)

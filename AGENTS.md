@@ -586,6 +586,14 @@ Visual specs: "Work between bots" in [docs/screens.md](docs/screens.md).
 - `chat.open`/`chat.new` keep their snapshot shape: `items` holds the latest 100 records without session dividers (for
   old clients); additive `history` holds the page (`shared/history-schema.ts`). The active session id remains
   `snapshot.chatId`; a new session keeps earlier history.
+- Per-turn usage, bot context and compaction markers (#180): `turn.finished` and stored `assistant` history items carry
+  additive `usage` (`TurnUsage`: `inputTokens`, `cacheReadTokens`, `cacheWriteTokens`, `outputTokens`, `contextTokens`,
+  `contextWindow`; counts only, no prices, omitted when the engine reports nothing), persisted in `history_turn_usage`
+  and merged on import/re-import. `Bot.context` (`{ used, window }`) tracks the main conversation's current occupancy
+  against its model's window in `bot_context`, surfaced on `bots.list`, `bots.get` and `ChatSnapshot.context` with no
+  extra on-demand engine round trips. Declared engine compaction rows (`row_kind: 'compaction'`) store as `compaction`
+  items (`author: 'system'`) with `compactedMessages`, `summary`, and `beforeTokens`/`afterTokens` (from live
+  compaction counts in `history_compactions` or shrinking neighbor turns).
 - A session divider (`session:<id>`) marks where a session began. Pages (`HistoryStore.page`) leave out the divider of
   a session with no user or assistant message, unless it is the bot's main session (just after New session). The rule
   is applied when a page is built, so stored dividers (older ones included) and re-imported rows follow it, and nothing
@@ -602,9 +610,9 @@ Visual specs: "Work between bots" in [docs/screens.md](docs/screens.md).
 - Before Hermes shortens a conversation, LilBot reviews every user and assistant word of it for memory (#148; Hermes'
   pre-compress checkpoint v2, `/engine/history/save`). `memory/memory-checkpoint.ts` cuts it into passes of about
   100,000 characters on message boundaries, oldest first, three at a time, each a hidden memory-only review of the same
-  bot on `LILBOT_REVIEW_MODEL` under the normal memory rules, and answers only once every pass finished. A reviewed piece
-  is remembered per bot while the server runs, so a retry or the next shortening reviews only what is new, and a second
-  save of the same conversation waits for the first. LilBot's own sessions, their continuations and review sessions
+  bot on `LILBOT_REVIEW_MODEL` under the normal memory rules, and answers only once every pass finished. Reviewed pieces
+  are remembered per bot in SQLite (bounded, pruned oldest first, cleared on bot deletion), so a retry, restart or the
+  next shortening reviews only what is new, and a second save of the same conversation waits for the first. LilBot's own sessions, their continuations and review sessions
   answer `skipped` (complete, nothing reviewed); an unreadable lineage is refused, never skipped. Webhook notes are
   taken out of the evidence first (`withoutWebhookNotes`).
 - Every bot connected to LilBot memory is fail-closed (`compression.checkpoint_required`, set and cleared with the
@@ -632,7 +640,7 @@ Visual specs: "Work between bots" in [docs/screens.md](docs/screens.md).
 ## Threads
 
 `server/threads/` owns bot-to-bot exchanges (`shared/thread-schema.ts`): delegation on LilBot's MCP server
-(`lilbot_delegate` and the `lilbot_delegation_*` tools, `delegation-service.ts`). The plug-in tools `ask_bot` and
+(`lilbot_delegate` and `lilbot_delegation`, `delegation-service.ts`). The plug-in tools `ask_bot` and
 `list_bots` ended with adapter 0.10.0 (#113): new sessions use `lilbot_delegate` and `lilbot_bots_list`. The engine API's
 `threads/ask` and `threads/bots` stay only for sessions that loaded 0.9.x. Detail, engine findings and measurements:
 [docs/threads.md](docs/threads.md).
@@ -657,7 +665,7 @@ Visual specs: "Work between bots" in [docs/screens.md](docs/screens.md).
   (`BotEngine.steerRun`), joined to the first turn when the task has not started, otherwise the receiver's next turn;
   a steer the turn never took runs as its next turn. Wait never holds a call open: each answer still arrives, and the
   bot is told once when all are in (folded into the last answer, or a short LilBot notice).
-- Files travel with a request (`files` per task) or an answer (`lilbot_delegation_attach` by the receiver), by path in
+- Files travel with a request (`files` per task) or an answer (`lilbot_delegation` `action: attach` by the receiver), by path in
   the sender's own folder, with the chat-attachment limits (20 MB, 10 per message): every path part opened with
   O_NOFOLLOW from the folder's descriptor, regular files only, written exclusive-create into
   `<recipient folder>/exchanges/<exchange id>/` under a generated name. Copies only, never shared paths; names are
@@ -1282,9 +1290,9 @@ signature scheme, and an address. Any sender may call one (Oscar, 2026-11-20).
 - The address is the secret: 64 base64url characters, the webhook id and an HMAC of it and a random per-webhook nonce
   under the engine token (`webhook-address.ts`). It is never stored or logged; it is computed when shown and checked
   with `timingSafeEqual` (one MAC is computed even for an unknown id). A new address draws a new nonce, so even the
-  engine token does not give the next one; deletion ends it. The bot gets it from `lilbot_webhook_create` (repeating
-  the same `requestId` returns the current address, and a signing secret LilBot made, again: that is how a lost reply
-  is recovered) and `lilbot_webhook_new_address`; those tool results stay in its transcript, so the history copy
+  engine token does not give the next one; deletion ends it. The bot gets it from `lilbot_webhook` (`action: create`, repeating
+  the same `requestId` returns the current address and any signing secret LilBot made again: that is how a lost reply
+  is recovered; and `action: new_address`); those tool results stay in its transcript, so the history copy
   holds them too. The list never has it; the screen copies it with `webhooks.address`.
 - Signatures (`webhook-signature.ts`, over the raw body): `github` (`X-Hub-Signature-256`; LilBot makes the secret
   when none is given), `stripe` (`Stripe-Signature`, the secret Stripe gives, five minutes of timestamp tolerance) or
@@ -1408,11 +1416,10 @@ signature scheme, and an address. Any sender may call one (Oscar, 2026-11-20).
   the session's toolsets.
 - Kept: the stored event string only until its run settles, but the run's own engine transcript (opened by
   `webhooks.openRun`) and its result keep what the bot saw and said.
-- Bot tools (LilBot's MCP server, the caller's own webhooks only): `lilbot_webhook_create` (request-id idempotency;
-  at most five webhooks a bot, whoever asked, since `createdBy` is the bot's word), `lilbot_webhooks_list` (each run's
-  result fenced as outside data: a model wrote it after reading the events),
-  `lilbot_webhook_pause`, `lilbot_webhook_resume`, `lilbot_webhook_delete`, `lilbot_webhook_new_address`, and from a
-  run `lilbot_webhook_message`. Nothing is in the Hermes plug-ins.
+- Bot tools (LilBot's MCP server, the caller's own webhooks only): `lilbot_webhook` (`action`: `create` with request-id
+  idempotency, at most five webhooks a bot, whoever asked, since `createdBy` is the bot's word; `pause`, `resume`,
+  `delete`, `new_address`), `lilbot_webhooks_list` (each run's result fenced as outside data: a model wrote it after
+  reading the events), and from a run `lilbot_webhook_message`. Nothing is in the Hermes plug-ins.
 - Browser methods: `webhooks.list` (newest 50 runs with their event counts and messages; each webhook's
   `capabilities`), `pause`, `resume`, `delete`, `openRun` (a tracked chat snapshot), `address` (Copy),
   `setCapabilities`, push `webhooks.changed`. Screens: "Webhooks" under Web app (no screen for `setCapabilities` yet).

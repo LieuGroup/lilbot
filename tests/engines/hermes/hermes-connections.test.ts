@@ -50,19 +50,70 @@ test('a drifted entry is replaced as a whole; a current one is left alone withou
   expect(current.calls.map(call => call.method)).toEqual(['mcp.servers.list', 'mcp.servers.status'])
 })
 
-test('a parked or disconnected server with matching config is reloaded without rewriting config (#194)', async () => {
+test('a parked or disconnected server with matching config is removed, reloaded, and re-added fresh (#202)', async () => {
   const config = serverConfig(connection)
-  const parked = socket([{ name: 'lilbot_t3', url: config.url, enabled: true, tools: config.tools }], [{ name: 'lilbot_t3', connected: false }])
+  const parked = socket([{ name: 'lilbot_t3', url: config.url, enabled: true, tools: config.tools }, { name: 'github' }], [{ name: 'lilbot_t3', connected: false }])
   expect(await prepareConnections(parked, [connection])).toBe(true)
-  expect(parked.calls.map(call => call.method)).toEqual(['mcp.servers.list', 'mcp.servers.status', 'reload.mcp'])
+  expect(parked.calls.map(call => `${call.method}:${call.params?.name ?? ''}`)).toEqual([
+    'mcp.servers.list:',
+    'mcp.servers.status:',
+    'mcp.servers.remove:lilbot_t3',
+    'reload.mcp:',
+    'mcp.servers.add:lilbot_t3',
+    'reload.mcp:'
+  ])
 
-  const statusOnly = socket([], [{ name: 'lilbot_t3', connected: false }])
+  const statusOnly = socket([{ name: 'lilbot_t3', url: config.url, enabled: true, tools: config.tools }, { name: 'github' }], [{ name: 'lilbot_t3', connected: false }])
   expect(await reconnectDisconnected(statusOnly, [connection])).toBe(true)
-  expect(statusOnly.calls.map(call => call.method)).toEqual(['mcp.servers.status', 'reload.mcp'])
+  expect(statusOnly.calls.map(call => `${call.method}:${call.params?.name ?? ''}`)).toEqual([
+    'mcp.servers.status:',
+    'mcp.servers.list:',
+    'mcp.servers.remove:lilbot_t3',
+    'reload.mcp:',
+    'mcp.servers.add:lilbot_t3',
+    'reload.mcp:'
+  ])
 
   const healthy = socket([], [{ name: 'lilbot_t3', connected: true }])
   expect(await reconnectDisconnected(healthy, [connection])).toBe(false)
   expect(healthy.calls.map(call => call.method)).toEqual(['mcp.servers.status'])
+})
+
+test('a parked connection is still replaced when a sibling connection is drifted or reload reports it unavailable', async () => {
+  const system = systemConnection('http://127.0.0.1:3370', 'token', 'bot-a', ['lilbot_about'], 'v2')
+  const t3 = serverConfig(connection)
+  const mixed = socket(
+    [
+      { name: 'lilbot_t3', url: t3.url, enabled: true, tools: t3.tools },
+      { name: 'lilbot_system', url: 'http://127.0.0.1:3370/engine/lilbot/mcp?tools=v1', enabled: true, tools: { include: ['lilbot_about'] } }
+    ],
+    [
+      { name: 'lilbot_t3', connected: false },
+      { name: 'lilbot_system', connected: true }
+    ]
+  )
+  expect(await prepareConnections(mixed, [connection, system])).toBe(true)
+  expect(mixed.calls.filter(call => call.method === 'mcp.servers.remove').map(call => call.params.name)).toEqual(['lilbot_system', 'lilbot_t3'])
+  expect(mixed.calls.filter(call => call.method === 'mcp.servers.add').map(call => call.params.name)).toEqual(['lilbot_system', 'lilbot_t3'])
+
+  const partial = {
+    request: async (method: string) => {
+      if (method === 'mcp.servers.list') return { servers: [] }
+      if (method === 'reload.mcp') return { status: 'reloaded', unavailable: ['lilbot_t3'] }
+      if (method === 'mcp.servers.status') return { servers: [{ name: 'lilbot_t3', connected: false }] }
+      return {}
+    }
+  }
+  await expect(prepareConnections(partial as any, [connection])).rejects.toThrow('mcp servers unavailable')
+
+  const unrelatedUnavailable = {
+    request: async (method: string) => {
+      if (method === 'mcp.servers.list') return { servers: [] }
+      if (method === 'reload.mcp') return { status: 'reloaded', unavailable: ['optional_other'] }
+      return {}
+    }
+  }
+  expect(await prepareConnections(unrelatedUnavailable as any, [connection])).toBe(true)
 })
 
 test('concurrent preparations of one profile run one after another and apply once', async () => {
@@ -107,9 +158,9 @@ test('the system connection is added beside T3 without disturbing it, and the pa
   const t3 = serverConfig(connection)
   const fake = socket([{ name: 'lilbot_t3', url: t3.url, enabled: true, tools: t3.tools }])
   expect(await prepareConnections(fake, [connection, system])).toBe(true)
-  expect(fake.calls.map(call => `${call.method}:${call.params?.name ?? ''}`)).toEqual(['mcp.servers.list:', 'mcp.servers.add:lilbot_system', 'reload.mcp:'])
-  expect(fake.calls[1].params.bearer_token).toBe(system.bearerToken)
-  expect(fake.calls[1].params.config.url).toBe('http://127.0.0.1:3370/engine/lilbot/mcp?tools=v1')
+  expect(fake.calls.map(call => `${call.method}:${call.params?.name ?? ''}`)).toEqual(['mcp.servers.list:', 'mcp.servers.status:', 'mcp.servers.add:lilbot_system', 'reload.mcp:'])
+  expect(fake.calls[2].params.bearer_token).toBe(system.bearerToken)
+  expect(fake.calls[2].params.config.url).toBe('http://127.0.0.1:3370/engine/lilbot/mcp?tools=v1')
   // A changed tool list is a new URL, so the server is replaced and Hermes fetches the new tools.
   const next = systemConnection('http://127.0.0.1:3370', 'token', 'bot-a', ['lilbot_about'], 'v2')
   const config = serverConfig(system)

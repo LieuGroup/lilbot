@@ -1,10 +1,35 @@
 /** Chat transcript and live events in LilBot's own terms. Engines translate into these. */
 import { z } from 'zod'
 import { Attachment, AttachmentMessage, ImageSupport } from './attachment-schema'
+import { BotContext } from './bot-schema'
 import { MessageOrigin } from './device-schema'
 
 /** Why a turn failed, when LilBot knows: never the engine's own wording. */
 const TurnFailure = z.literal('memory_save')
+
+/** Token and cache counts for one turn, when the engine reports them. Counts only: no prices. */
+export const TurnUsage = z.object({
+  /** Fresh (non-cached) input tokens sent during this turn. */
+  inputTokens: z.number().int().nonnegative().optional(),
+  /** Tokens read from prompt cache during this turn. */
+  cacheReadTokens: z.number().int().nonnegative().optional(),
+  /** Tokens written to prompt cache during this turn. */
+  cacheWriteTokens: z.number().int().nonnegative().optional(),
+  /** Output tokens produced during this turn. */
+  outputTokens: z.number().int().nonnegative().optional(),
+  /** Conversation context size in tokens at the end of this turn. */
+  contextTokens: z.number().int().nonnegative().optional(),
+  /** Model context window in tokens reported with this turn. */
+  contextWindow: z.number().int().positive().optional()
+})
+export type TurnUsage = z.infer<typeof TurnUsage>
+
+/** Context size before and after a compaction observed during a turn. */
+export const CompactionSizes = z.object({
+  beforeTokens: z.number().int().nonnegative().optional(),
+  afterTokens: z.number().int().nonnegative().optional()
+})
+export type CompactionSizes = z.infer<typeof CompactionSizes>
 
 export const ChatItem = z.discriminatedUnion('kind', [
   z.object({
@@ -16,7 +41,7 @@ export const ChatItem = z.discriminatedUnion('kind', [
     /** The device it was sent from; messages sent before devices existed have none. */
     origin: MessageOrigin.optional()
   }),
-  z.object({ kind: z.literal('assistant'), text: z.string(), stopped: z.boolean().optional() }),
+  z.object({ kind: z.literal('assistant'), text: z.string(), stopped: z.boolean().optional(), usage: TurnUsage.optional() }),
   z.object({
     kind: z.literal('tool'),
     toolId: z.string(),
@@ -28,6 +53,18 @@ export const ChatItem = z.discriminatedUnion('kind', [
     result: z.string().optional(),
     running: z.boolean(),
     failed: z.boolean().optional()
+  }),
+  /** Where the engine shortened the conversation (a compaction handoff). */
+  z.object({
+    kind: z.literal('compaction'),
+    /** How many messages the engine summarized, when reported. */
+    compactedMessages: z.number().int().nonnegative().optional(),
+    /** Context size in tokens before shortening, when known. */
+    beforeTokens: z.number().int().nonnegative().optional(),
+    /** Context size in tokens after shortening, when known. */
+    afterTokens: z.number().int().nonnegative().optional(),
+    /** Reader-facing summary written by the engine, when present. */
+    summary: z.string().optional()
   }),
   /** `memory_save`: the turn stopped because the engine could not save the conversation to memory before shortening it
    *  (#148); the screen words it, so `text` is empty. */
@@ -50,6 +87,12 @@ export const ChatEvent = z.discriminatedUnion('type', [
     text: z.string(),
     /** How many tokens the model was sent on the turn's last call, when the engine reports it. */
     contextTokens: z.number().optional(),
+    /** Per-turn token and cache counts, when the engine reports them. */
+    usage: TurnUsage.optional(),
+    /** Engine-stable history row id for this turn's final assistant message, when reported. */
+    rowId: z.string().optional(),
+    /** Context sizes before and after a compaction observed during this turn. */
+    compacted: CompactionSizes.optional(),
     /** Set when LilBot knows why a failed turn failed; its `text` is then empty. */
     failure: TurnFailure.optional()
   }),
@@ -67,6 +110,8 @@ export const ChatSnapshot = z.object({
   running: z.boolean(),
   /** The folder this chat works in, as the engine reports it. */
   workspace: z.string(),
+  /** Current context size of this conversation against its model's window, when reported. */
+  context: BotContext.optional(),
   history: z.custom<import('./history-schema').HistoryPage>().optional(),
   items: z.array(ChatItem)
 })

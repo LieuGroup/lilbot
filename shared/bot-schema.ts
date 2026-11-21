@@ -61,6 +61,15 @@ export type BotGroup = z.infer<typeof BotGroup>
 export const BotWorkingFor = z.object({ threadId: z.string(), name: z.string() })
 export type BotWorkingFor = z.infer<typeof BotWorkingFor>
 
+/** Current context size of the bot's main conversation against the model's window. */
+export const BotContext = z.object({
+  /** Tokens currently in the main conversation's context. */
+  used: z.number().int().nonnegative(),
+  /** Model context window in tokens, or null when the engine does not report it. */
+  window: z.number().int().positive().nullable()
+})
+export type BotContext = z.infer<typeof BotContext>
+
 /** What lists and headers need. */
 export const Bot = BotIdentity.extend({
   /** The user's primary bot, resolved by LilBot rather than the engine. */
@@ -79,7 +88,9 @@ export const Bot = BotIdentity.extend({
   workspace: z.string(),
   /** The level the engine really sends for the main conversation, which may differ from `reasoningEffort`
    *  (the engine adapts a level the model does not take). Null: none is sent. Absent until the engine has reported it. */
-  effectiveReasoningEffort: z.string().nullable().optional()
+  effectiveReasoningEffort: z.string().nullable().optional(),
+  /** Current context size of the bot's main conversation against its model's window. Absent until reported. */
+  context: BotContext.optional()
 })
 export type Bot = z.infer<typeof Bot>
 
