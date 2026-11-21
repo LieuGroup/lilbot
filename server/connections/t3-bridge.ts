@@ -3,7 +3,7 @@
  *  process. T3 Code still owns projects, threads, worktrees and pull requests. */
 
 import { connectionCaller } from './connection-keys'
-import { type JsonRpc, rpcError, rpcResult, toolError } from './mcp-json-rpc'
+import { type JsonRpc, refusedResult, rpcError, rpcResult, toolError } from './mcp-json-rpc'
 import { filterToolList, scopedRequestId, signedOutReply } from './t3-bridge-replies'
 import { T3_KEY_PURPOSE, T3_STATUS_TOOL, T3_TOOLS } from './t3-connection'
 import { signInMessage, type T3Grants } from './t3-grant'
@@ -16,6 +16,8 @@ export interface T3BridgeOptions {
   port: number
   /** Non-deleted LilBot bot ids. */
   botIds: () => string[]
+  /** Why the calling session may not make this call (a webhook run without coding), or null. */
+  refusal: (botId: string, tool: string, args: unknown) => Promise<string | null>
   fetch?: typeof fetch
 }
 
@@ -80,6 +82,8 @@ export function createT3Bridge(options: T3BridgeOptions) {
           ]
         })
       if (!ALLOWED.has(name)) return signedIn ? toolError(message.id, `${String(name)} is not available to LilBot bots.`) : signedOutReply(message, explanation())
+      const refused = await options.refusal(botId, name, message.params.arguments)
+      if (refused) return refusedResult(message.id, refused)
       const args = message.params.arguments
       if (args && typeof args.clientRequestId === 'string') args.clientRequestId = scopedRequestId(botId, args.clientRequestId)
     }

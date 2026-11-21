@@ -82,10 +82,12 @@ export async function runFixture(input: WebhookCreate = unsigned) {
   const hook = await f.webhooks.create('b1', input)
   const live = () => f.webhooks.find(f.token(hook.address))!
   const send = (text: string, headers: Record<string, string> = {}) => f.webhooks.receive(live(), new TextEncoder().encode(text), new Headers(headers))
+  /** Ticks the scheduler and waits (at most a second, for an engine that never answers) until the runs it started settle. */
   const tick = async (at: number) => {
     f.setTime(at)
     const started = f.scheduler.tick()
-    await new Promise(resolve => setTimeout(resolve, 20))
+    for (let waited = 0; waited < 1_000 && f.store.pending().some(run => started.includes(run.id)); waited += 10) await Bun.sleep(10)
+    await Bun.sleep(10)
     return started
   }
   return { ...f, prompts, hook, live, send, tick }

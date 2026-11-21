@@ -7,7 +7,7 @@
 import { ZodError } from 'zod'
 import { LilBotError } from '../../shared/lilbot-error'
 import { connectionCaller } from '../connections/connection-keys'
-import { type JsonRpc, rpcError, rpcResult, toolError } from '../connections/mcp-json-rpc'
+import { type JsonRpc, refusedResult, rpcError, rpcResult, toolError } from '../connections/mcp-json-rpc'
 import { inputSchema, type McpTool } from './mcp-tool'
 import type { SystemChanges } from './system-changes'
 import { SYSTEM_KEY_PURPOSE } from './system-connection'
@@ -21,7 +21,7 @@ export interface SystemMcpOptions {
   changes: SystemChanges
   /** What an engine that shows an MCP server's instructions tells the model about these tools. */
   instructions: string
-  /** Why the calling session may not make this call (a check session, `check-access.ts`), or null. */
+  /** Why the calling session may not make this call (a check session, `check-access.ts`; a webhook run, `run-access.ts`), or null. */
   refusal: (botId: string, tool: string, args: unknown) => Promise<string | null>
 }
 
@@ -47,7 +47,7 @@ export function createSystemMcp(options: SystemMcpOptions) {
     const tool = tools.get(message.params?.name)
     if (!tool) return toolError(message.id, `${String(message.params?.name)} is not a LilBot tool.`)
     const refused = await options.refusal(caller.id, tool.name, message.params?.arguments)
-    if (refused) return toolError(message.id, refused)
+    if (refused) return refusedResult(message.id, refused)
     try {
       const args = tool.input.parse(message.params?.arguments ?? {}) as Record<string, unknown>
       const result = await tool.run(caller.id, args)

@@ -6,6 +6,7 @@ import { ActivityService } from './activity/activity-service'
 import { ActivityStore } from './activity/activity-store'
 import { createGoals } from './app-goals'
 import { createThreads } from './app-threads'
+import { createWebhooks, webhookMessages } from './app-webhooks'
 import { createWork, giveFrom } from './app-work'
 import { AttachmentService } from './attachments/attachment-service'
 import { AttachmentStore } from './attachments/attachment-store'
@@ -45,7 +46,6 @@ import { systemNote } from './system/system-note-facts'
 import { createSystemServer } from './system/system-server'
 import { CallingChats } from './threads/calling-chats'
 import { ThreadStore } from './threads/thread-store'
-import { WebhookService } from './webhooks/webhook-service'
 import { WebhookStore } from './webhooks/webhook-store'
 import { WorkCheckStore } from './work/work-check-store'
 
@@ -125,9 +125,11 @@ export function createAppServices(
     botId => publish({ event: 'history.changed', botId })
   )
   repeat('history', 1000, () => history.tick())
+  const messages = webhookMessages(database, { store, prefs, history: history.store, activity, bots: () => bots }, publish)
   const bots = new BotService(engine, store, prefs, workspaces, memory, {
     skills,
     history,
+    turnNotes: messages,
     cleanupBot: botId => {
       history.store.forget(botId)
       devices.forgetBot(botId)
@@ -154,8 +156,11 @@ export function createAppServices(
   const routines = new RoutineService(routineStore, bots, () => publish({ event: 'routines.changed' }), routineSettings(process.env))
   const { goals, boards } = createGoals({ goalStore: runs.goalStore, work, answers, threads, routines, activity, store, publish, repeat })
   const giveFile = giveFrom(library, calls, threadStore, routineStore, webhookStore, rootOf)
-  const webhooks = new WebhookService(webhookStore, bots, token, HOOK_ORIGIN, () => publish({ event: 'webhooks.changed' }))
-  const deps = { ...facts, bots, activity, memory, memoryChanged, delegation, work, goals, routines, giveFile, webhooks, calls, checkSessions }
+  const observeRun = (event: ActivityEvent) => {
+    if (store.exists(event.botId)) activity.observe(event)
+  }
+  const { webhooks, webhookRuns, gates } = createWebhooks({ webhookStore, messages, bots, rootOf, calls, token, origin: HOOK_ORIGIN, observeRun, publish, repeat })
+  const deps = { ...facts, bots, activity, memory, memoryChanged, delegation, work, goals, routines, giveFile, library, webhooks, webhookRuns, calls, checkSessions }
   const system = createSystemServer({ ...deps, changes: new SystemChanges(database), engineToken: token, port: PORT })
   watchT3SignIn(
     t3Grants,
@@ -163,17 +168,13 @@ export function createAppServices(
     () => bots.refreshConnections()
   )
   const botIds = () => store.list().map(bot => bot.id)
-  const t3Bridge = createT3Bridge({ upstream: process.env.LILBOT_T3_MCP_URL ?? T3_DEFAULT_MCP_URL, grants: t3Grants, engineToken: token, port: PORT, botIds })
+  const t3Upstream = process.env.LILBOT_T3_MCP_URL ?? T3_DEFAULT_MCP_URL
+  const t3Bridge = createT3Bridge({ upstream: t3Upstream, grants: t3Grants, engineToken: token, port: PORT, botIds, refusal: gates.t3Refusal })
   repeat('threads', 1000, () => threads.tick())
   repeat('work answers', 1000, () => answers.tick())
   repeat('work checks', 1000, () => checks.tick())
-  const observeRun = (event: ActivityEvent) => {
-    if (store.exists(event.botId)) activity.observe(event)
-  }
   const routineScheduler = new RoutineScheduler(routines, observeRun)
   repeat('routines', 1000, () => routineScheduler.tick())
-  const webhookScheduler = new RoutineScheduler(webhooks, observeRun)
-  repeat('webhooks', 1000, () => webhookScheduler.tick())
   const reviewer = new MemoryReviewer(reviewQueue, bots, reviewSettingsFrom(process.env), Date.now, id => store.exists(id))
   repeat('memory reviewer', 20_000, () => reviewer.tick())
 
@@ -191,7 +192,8 @@ export function createAppServices(
     adapterVersion: MEMORY_ADAPTER_VERSION,
     reviewer,
     hiddenChat,
-    inCheck: checkSessions.refusal
+    inCheck: checkSessions.refusal,
+    ...gates
   })
   return { bots, store, skills, library, computers, devices, attachments, t3Grants, t3Bridge, system, engineApi, activity, routines, threads, boards, webhooks, hiddenChat }
 }

@@ -74,7 +74,7 @@ export function workFixture(options: { database?: Database; requireBot?: (id: st
     checkGoal: (botId, goalId) => requireAgreed(goalStore.get(goalId), botId),
     waiting: (botId, itemId, key, on) => state.waits.push({ botId, itemId, key, on }),
     line: item => state.lines.push(item),
-    tell: (id, item, prompt) => answers.queue(id, item, prompt),
+    tell: (id, item, prompt, oscar) => answers.queue(id, item, prompt, false, oscar),
     changed: () => state.pushes++
   })
   const delivered: { botId: string; prompt: string; runId: string; chatId: string | null }[] = []

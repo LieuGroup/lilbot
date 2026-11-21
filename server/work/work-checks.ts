@@ -4,6 +4,7 @@
 import { LilBotError } from '../../shared/lilbot-error'
 import type { WorkCheck } from '../../shared/work-check-schema'
 import { WorkInput, type WorkItem } from '../../shared/work-schema'
+import { fromWebhook } from './webhook-items'
 import { failedNotice, sentBackNotice } from './work-check-prompts'
 import { afterCheck, checkerLabel, chooseChecker, OSCAR, OSCAR_QUESTION, sameBotNote, underItem } from './work-check-rules'
 import type { StoredCheck } from './work-check-store'
@@ -39,7 +40,8 @@ export class WorkChecks {
    *  session of its owner; at level 3, for Oscar's. The choice is saved with the item's move, before any check runs. */
   hold(item: StoredItem, level: number, report: Report, at: number): ItemChange {
     const requestId = report.requestId ?? null
-    if (level >= 3) {
+    // A webhook run's claim is never repeated by a bot: Oscar checks it (`webhook-items.ts`).
+    if (level >= 3 || fromWebhook(item.origin)) {
       this.checks.add(item.id, OSCAR, requestId, null, at)
       return { status: 'needs_oscar', question: OSCAR_QUESTION, finishedAt: null }
     }
@@ -111,7 +113,10 @@ export class WorkChecks {
     const change: ItemChange = { status: next.status, question: next.question ?? null }
     if (next.status === 'done') change.finishedAt = at
     if (next.status === 'needs_oscar') this.checks.add(item.id, OSCAR, null, null, at)
-    if (next.toOwner) this.work.host.tell(`check-${check.id}`, item, state === 'sent_back' ? sentBackNotice(item, text ?? '') : failedNotice(item, check, text ?? ''))
+    if (next.toOwner) {
+      const sentBack = state === 'sent_back'
+      this.work.host.tell(`check-${check.id}`, item, sentBack ? sentBackNotice(item, text ?? '') : failedNotice(item, check, text ?? ''), sentBack ? (text ?? '') : undefined)
+    }
     const number = log('status', next.status, next.question ?? null)
     this.store.update(item.id, change, at)
     return { item: this.store.get(item.id)!, asked: next.status === 'needs_oscar' ? number : null, ended: item.status === 'needs_oscar' ? number : null }

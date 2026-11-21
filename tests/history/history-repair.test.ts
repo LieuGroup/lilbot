@@ -23,7 +23,7 @@ test('upgrade rewinds completed copies once, repairs missing tools and resumes i
     store.write('bot', 'session', [rows[0], rows[2]], 'tail', true)
     store.discovered('bot')
     db.exec(
-      'ALTER TABLE bot_prefs DROP COLUMN pinned_at; ALTER TABLE bots DROP COLUMN reasoning_effort; ALTER TABLE work_items DROP COLUMN kind; ALTER TABLE work_items DROP COLUMN default_level; DROP INDEX work_items_goal; ALTER TABLE work_items DROP COLUMN goal_id; ALTER TABLE work_checks DROP COLUMN same_bot; ALTER TABLE work_checks DROP COLUMN checker_model; PRAGMA user_version=18'
+      'ALTER TABLE bot_prefs DROP COLUMN pinned_at; ALTER TABLE bots DROP COLUMN reasoning_effort; ALTER TABLE work_items DROP COLUMN kind; ALTER TABLE work_items DROP COLUMN default_level; ALTER TABLE webhooks DROP COLUMN capabilities; ALTER TABLE webhook_runs DROP COLUMN message; ALTER TABLE webhook_runs DROP COLUMN message_state; DROP INDEX work_items_goal; ALTER TABLE work_items DROP COLUMN goal_id; ALTER TABLE work_checks DROP COLUMN same_bot; ALTER TABLE work_checks DROP COLUMN checker_model; PRAGMA user_version=18'
     )
     db.close()
     db = openDatabase(path)

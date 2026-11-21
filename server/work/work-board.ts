@@ -83,7 +83,7 @@ export class WorkBoard {
       const event = this.work.store.log(item.id, { at: this.now(), by: 'oscar', kind: 'answered', status: null, text: answer, via: null })
       const id = `answer-${event}`
       const prompt = answerPrompt(item, answer)
-      if (!this.viaExchange(item, id, prompt)) this.answers.queue(id, item, prompt)
+      if (!this.viaExchange(item, id, prompt)) this.answers.queue(id, item, prompt, false, answer)
       return this.work.report(item, {}, { status: item.startedAt === null ? 'open' : 'working' }, OSCAR)
     })()
     this.work.after(saved)

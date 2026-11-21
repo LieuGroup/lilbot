@@ -213,6 +213,8 @@ Every tool acts as the calling bot and calls the function the screen uses. Reads
 | `lilbot_webhooks_list` | `webhooks.list` for the caller (latest five runs, results cut to 500 characters and fenced as outside data; never addresses or secrets) |
 | `lilbot_webhook_pause`, `_resume`, `_delete` | `webhooks.pause`, `.resume`, `.delete`, only the caller's own webhooks |
 | `lilbot_webhook_new_address` | `WebhookService.newAddress`: the old address stops working at once |
+| `lilbot_webhook_message` | only from a webhook run: its one message to its own bot, saved on the run and sent hidden into the bot's main conversation (opened like a new bot's greeting), fenced as outside data (`webhooks/webhook-messages.ts`) |
+| `lilbot_workspace_read` | a text file (first 100 kB) or folder in the caller's own folder, through the Library's no-follow opens; for webhook runs, which have no engine file tools |
 
 Not offered, by decision: deleting a bot, removing a computer, forgetting another bot's private facts, changing a bot's
 permission mode, registering computers. The deletes a bot has are of its own webhooks (Oscar's decision on #12) and its own routines (it always could: `delete_routine`).
@@ -228,6 +230,39 @@ Each start is matched to one call only (same tool and request id, close in time)
 sessions could have made, is refused and retried, never credited to the main conversation (#174). While a bot has a check
 running, `system/check-access.ts` holds its changing calls until their start is seen and refuses those from a check
 session: a check only reads and gives its verdict.
+
+### Webhook runs (#12, finding 3)
+
+Cost, measured on the dev gateway by `check:webhooks` (run 2026-11-21, its seven-step task) and with `systemFixture`:
+
+| | tools | calls | context on the last call |
+|---|---|---|---|
+| narrow run (`lilbot_system`; Hermes adds `lilbot_computers` and `skills` back) | 50 | 6 | 16,235 tokens |
+| the same task given `web`, `shell` and `coding` | 60 | 11 | 21,456 tokens |
+
+Without `web` a narrow session has two tools fewer (`web_search`, `web_extract`) than when the web was in the narrow set.
+
+Every bot pays for the two new tools in every session: their listing lines (about 70 tokens a turn) and their full
+`tools/list` entries. A full-access run had every toolset of the profile, including every other MCP
+server (production, from its config: RevenueCat and Paper as well as T3 Code); a narrow one has none of them.
+
+Every tool is either open to a narrow webhook run (`RUN_TOOLS` in `system/run-access.ts`: the guide, the work board, the
+run's message, the folder read) or in a capability group Oscar adds per webhook (`TOOL_GROUPS`; `lilbot_give_file` is in
+`shell`, since a run can only give a file it could write; `lilbot_about` in `bots`, `lilbot_status` in `computers` and
+`coding`, the groups whose facts they show), or refused to every webhook run (`NO_RUN_TOOLS`: `lilbot_goal`); a test fails
+when a new tool is in none of them. A run reads only its own bot's work items, whatever its groups: `readsBeyondOwn`
+marks a `lilbot_work_list` call with `mine: false`, `goals`, `goalId` or another bot's `itemId`, and only such a call is
+matched to its session (the bot's own list and items answer at once).
+
+Before a call runs, `runRefusal` asks `webhooks/webhook-callers.ts` which session made it, by the session and never by
+time: only for a bot that has had a webhook run, the call is matched to exactly one `tool.start` report, its own
+(`CallingChats.take`: the oldest with its arguments or request id that no other call took, waiting up to 5 seconds). A webhook run's session, or one the engine continued it in, gives
+that webhook's groups for as long as it exists; another session's call passes; a call never seen, or an unreadable
+lineage, counts as a webhook run's (it fails closed). `tools/list` carries no session, so a narrow run still sees every
+tool's listing line; a refusal comes back as an ordinary result (`{"refused": ...}`) saying why, never as a tool error,
+because Hermes pauses the whole server for about a minute after three errors in a row. The T3 bridge (`coding`) refuses
+the same way; the engine API decides plug-in calls (computers, `skill_manage`, the routes only older adapters call) and
+memory by the session the adapter names.
 
 Judgment calls: a memory tool may name another bot's panel (as Oscar can on the screens), but only a fact in that
 panel can be named, by the short id a bot sees; the default is the calling bot's own. Another bot's private facts can

@@ -1,17 +1,24 @@
 import { devScratch } from '../scripts/dev-env'
 import { devPort } from '../scripts/dev-paths'
 /** Webhooks on an isolated dev server and its own helper door on loopback, with one temporary bot: a signed event wakes
- *  the bot and its result is recorded; unsigned and wrongly signed events do nothing; a burst is one run; pause, resume
- *  and delete work, and delete ends the address. The address and signing secret stay in this process only. */
+ *  the bot, unsigned and wrongly signed ones do nothing. The run is narrow: its session's real tools lack the web, shell,
+ *  file writes, memory and T3; it reads its folder, finishes a work item, asks Oscar and leaves its bot a message, and its
+ *  tries at bot creation, a computer, lilbot_about and every bot's work items are refused by LilBot. Once it has ended its
+ *  session stays narrow, Oscar's answer does not resume it, and its message started no turn and reaches no memory review
+ *  (`webhook-session-checks.ts`). A run widened with web, shell and coding gains exactly those, really fetches a page and
+ *  cannot change the first run's item. A burst is one run; pause, resume and delete work. The address and signing secret
+ *  stay in this process only. */
 import { Database } from 'bun:sqlite'
 import assert from 'node:assert/strict'
-import { createHmac, randomBytes } from 'node:crypto'
-import { readFile, rm } from 'node:fs/promises'
+import { randomBytes } from 'node:crypto'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { connectionKey } from '../server/connections/connection-keys'
 import { SYSTEM_KEY_PURPOSE, SYSTEM_PATH } from '../server/system/system-connection'
 import { checkClient } from './check-client'
 import { deleteProfile, startServer } from './check-process'
+import { afterRun, pauseResumeDelete } from './webhook-session-checks'
+import { ENGINE_TOOLS, fromServer, githubDelivery, has, PAGE, runTask, serverUp, sessionTools, waitFor } from './webhook-run-tools'
 
 const root = devScratch('lilbot-webhooks')
 const port = devPort()
@@ -28,116 +35,156 @@ const server = startServer({
   LILBOT_WORKSPACES_DIR: join(root, 'workspaces'),
   LILBOT_BOT_IDS: 'isolation-no-existing-profile',
   LILBOT_SKIP_MEMORY_SETUP: '1',
-  LILBOT_REVIEW: 'off'
+  // Turns are queued for the after-chat review, which never runs here: the check reads what it would see.
+  LILBOT_REVIEW_TURNS: '1000',
+  LILBOT_REVIEW_QUIET_SECONDS: '100000'
 })
-const waitFor = async <T>(read: () => Promise<T>, matches: (value: T) => boolean, timeout = 240_000): Promise<T> => {
-  const end = Date.now() + timeout
-  while (Date.now() < end) {
-    const value = await read()
-    if (matches(value)) return value
-    await Bun.sleep(500)
-  }
-  throw new Error('Timed out waiting for the webhook check.')
-}
-const events: string[] = []
+const CODEWORD = `kestrel-${randomBytes(3).toString('hex')}`
+const CODEWORD_FILE = 'webhook-guide.txt'
+const done = (status: string) => ['completed', 'failed', 'stopped'].includes(status)
+const frames: { at: number; frame: any }[] = []
 let socket: WebSocket | undefined
 let db: Database | undefined
 let nativeId: string | undefined
 try {
-  await waitFor(
-    () =>
-      fetch(`http://127.0.0.1:${port}/api/health`)
-        .then(r => r.ok)
-        .catch(() => false),
-    ok => ok,
-    30_000
-  )
-  const client = await checkClient(port, frame => events.push(frame.event))
+  await serverUp(port)
+  const client = await checkClient(port, frame => frames.push({ at: Date.now(), frame }))
   socket = client.socket
   const call = client.call
   const bot = await call('bots.create', {
     name: `Webhook check ${Date.now()}`,
     function: 'Tests webhooks',
-    instructions: 'This is an isolated LilBot test bot. Do exactly what a run asks, briefly.'
+    instructions:
+      'This is an isolated LilBot test bot. In a webhook run, do exactly what its task asks, briefly. In your main conversation use a tool only when Oscar names it, and reply in one short sentence.'
   })
   db = new Database(join(root, 'lilbot.db'))
   db.exec('PRAGMA busy_timeout = 5000')
   nativeId = (db.query('SELECT engine_bot_id FROM bots WHERE id = ?').get(bot.id) as { engine_bot_id: string }).engine_bot_id
+  await mkdir(bot.workspace, { recursive: true })
+  await writeFile(join(bot.workspace, CODEWORD_FILE), `The codeword is ${CODEWORD}.\n`)
 
-  // The bot's own MCP call, with the key its engine is given.
-  const key = connectionKey((await readFile(join(root, 'engine-token'), 'utf8')).trim(), SYSTEM_KEY_PURPOSE, bot.id)
-  const tool = async (name: string, args: object) => {
-    const answer = await fetch(`http://127.0.0.1:${port}${SYSTEM_PATH}`, {
+  const token = (await readFile(join(root, 'engine-token'), 'utf8')).trim()
+  const key = connectionKey(token, SYSTEM_KEY_PURPOSE, bot.id)
+  const answer = (name: string, args: object) =>
+    fetch(`http://127.0.0.1:${port}${SYSTEM_PATH}`, {
       method: 'POST',
       headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } })
-    }).then(r => r.json())
-    assert.ok(!answer.result.isError, `${name} was refused`)
-    return JSON.parse(answer.result.content[0].text)
+    }).then(async r => JSON.parse(((await r.json()).result as { content: { text: string }[] }).content[0].text))
+  const tool = async (name: string, args: object) => {
+    const result = await answer(name, args)
+    assert.ok(!result.refused, `${name} was refused: ${result.refused}`)
+    return result
   }
-  const hook = await tool('lilbot_webhook_create', {
-    requestId: 'check',
-    source: 'GitHub',
-    createdBy: 'oscar',
-    signing: { scheme: 'github' },
-    description: 'For every event, append its body\'s "action" value to webhook-proof.txt in your workspace, one per line. Reply with the actions, comma-separated.'
-  })
+  const hook = await tool('lilbot_webhook_create', { requestId: 'check', source: 'GitHub', createdBy: 'oscar', signing: { scheme: 'github' }, description: runTask(CODEWORD_FILE) })
   const address = new URL(hook.address)
   assert.ok(address.origin === door, 'the address is not on the dev helper door')
   const secret: string = hook.signingSecret
-  const deliver = (action: string, signature: 'good' | 'wrong' | 'none' = 'good', delivery = crypto.randomUUID()) => {
-    const body = JSON.stringify({ action, issue: { number: 7, title: 'Webhook check' } })
-    const signed = (signingKey: string) => `sha256=${createHmac('sha256', signingKey).update(body).digest('hex')}`
-    const headers: Record<string, string> = { 'content-type': 'application/json', 'x-github-event': 'issues', 'x-github-delivery': delivery }
-    if (signature !== 'none') headers['x-hub-signature-256'] = signed(signature === 'good' ? secret : 'not-the-secret-not-the-secret')
-    return fetch(address, { method: 'POST', headers, body }).then(async r => [r.status, await r.text()] as const)
-  }
+  const deliver = githubDelivery(address, secret)
   const runs = async () => (await call('webhooks.list', { botId: bot.id }))[0]?.runs ?? []
-  const stored = () => (db!.query('SELECT COUNT(*) AS n FROM webhook_events').get() as { n: number }).n
+  const count = (sql: string, ...args: string[]) => (db!.query(sql).get(...args) as { n: number }).n
+  const messageState = (runId: string) => (db!.query('SELECT message_state AS s FROM webhook_runs WHERE id = ?').get(runId) as { s: string | null }).s
+
+  /** Checks one finished run: its report, the work item, the refusal, the message and its session's tools. */
+  const checkRun = async (run: { id: string; status: string; result: string; chatId: string }, action: string, finished = true) => {
+    assert.equal(run.status, 'completed')
+    assert.match(run.result, new RegExp(action))
+    assert.ok(run.result.includes(CODEWORD), 'the run did not read its folder')
+    for (const tried of ['bot_create', 'computer', 'about', 'others']) assert.match(run.result, new RegExp(`${tried}: refused`))
+    assert.match(run.result, finished ? /other item: (none|refused)/ : /other item: refused/)
+    assert.equal(count('SELECT COUNT(*) AS n FROM computer_requests WHERE bot_id = ?', bot.id), 0, 'a webhook run used a computer')
+    const opened = await call('webhooks.openRun', { botId: bot.id, runId: run.id })
+    assert.ok(
+      opened.items.some((item: { kind: string; detail: string }) => item.kind === 'tool' && item.detail.includes('bot create')),
+      'the run never tried bot creation'
+    )
+    await call('chat.close', { chatId: opened.chatId })
+    assert.equal(count("SELECT COUNT(*) AS n FROM system_changes WHERE tool = 'lilbot_bot_create'"), 0)
+    assert.ok(!(await call('bots.list')).some((b: { name: string }) => b.name === 'Forbidden'), 'a webhook run created a bot')
+    const board = await call('work.list', { botId: bot.id })
+    const items = board.filter(
+      (item: { title: string; origin: { kind: string; id: string } }) => item.origin.kind === 'webhook_run' && item.origin.id === run.id && item.title === 'Webhook check'
+    )
+    // The board credits the item to the run; the narrow run must also finish it (a longer task sometimes stops short).
+    assert.ok(
+      items.length > 0 && (!finished || items[0].status === 'done'),
+      `the run did not update its work item: ${items[0]?.status}; board ${JSON.stringify(board.map((item: { title: string; status: string; origin: unknown }) => [item.title, item.status, item.origin]))}; result ${run.result.slice(0, 400)}`
+    )
+    assert.ok(messageState(run.id) !== null, `the run left its bot no message: ${run.result.slice(0, 400)}`)
+    assert.equal(
+      await waitFor(
+        () => messageState(run.id),
+        state => state !== 'pending',
+        30_000
+      ),
+      'shown'
+    )
+    return sessionTools(nativeId!, run.chatId)
+  }
 
   const first = crypto.randomUUID()
   assert.deepEqual(await deliver('labeled', 'good', first), [202, 'Accepted'])
   assert.deepEqual(await deliver('labeled', 'good', first), [202, 'Already received'])
   assert.deepEqual(await deliver('forged', 'none'), [401, 'Signature refused'])
   assert.deepEqual(await deliver('forged', 'wrong'), [401, 'Signature refused'])
-  assert.equal(stored(), 1)
-  const [run] = await waitFor(runs, list => list[0]?.status === 'completed' || list[0]?.status === 'failed')
-  assert.equal(run.status, 'completed')
-  assert.equal(run.events, 1)
-  assert.ok(run.result.length > 0)
-  const proof = () => readFile(join(bot.workspace, 'webhook-proof.txt'), 'utf8').catch(() => '')
-  assert.match(await proof(), /labeled/)
-  assert.doesNotMatch(await proof(), /forged/)
-  assert.ok(events.includes('webhooks.changed'))
-  assert.equal((await call('bots.list')).find((b: { id: string }) => b.id === bot.id).activity.unread, true)
-  const opened = await call('webhooks.openRun', { botId: bot.id, runId: run.id })
-  assert.ok(opened.items.some((item: { kind: string }) => item.kind === 'assistant'))
-  await call('chat.close', { chatId: opened.chatId })
-  console.log('ok: a signed event woke the bot once, its result is recorded and opens; repeats, unsigned and wrongly signed events did nothing')
+  assert.equal(count('SELECT COUNT(*) AS n FROM webhook_events'), 1)
+  // While the run works, a call of the bot's that no session reported counts as the run's: LilBot refuses it itself.
+  await waitFor(runs, list => list[0]?.status === 'running')
+  const during: [string, object, string][] = [
+    ['lilbot_section_create', { name: 'During the run' }, 'A webhook run cannot use lilbot_section_create'],
+    ['lilbot_work_list', { mine: false }, 'reads only its own work items'],
+    ['lilbot_about', {}, 'A webhook run cannot use lilbot_about']
+  ]
+  for (const [name, args, refusal] of during) assert.ok(String((await answer(name, args)).refused).includes(refusal), `LilBot did not refuse ${name} during the run`)
+  const [run] = await waitFor(runs, list => done(list[0]?.status ?? ''))
+  // Once the bot has had a webhook run, a call no session reported stays refused after the run too: it cannot be placed.
+  assert.ok(String((await answer('lilbot_section_create', { name: 'After the run' })).refused).includes('A webhook run cannot use'), 'an unplaced call passed after the run')
+  const narrow = await checkRun(run, 'labeled')
+  for (const names of Object.values(ENGINE_TOOLS)) assert.deepEqual(has(narrow, names), [], `a narrow run had ${names.join(', ')}`)
+  assert.deepEqual(fromServer(narrow, 'lilbot_t3'), [], 'a narrow run had T3 tools')
+  assert.ok(narrow.tools.includes('mcp__lilbot_system__lilbot_work'), 'a narrow run lacked the work board')
+  assert.ok(!narrow.toolsets.includes('web'), 'a narrow run had the web toolset')
+  assert.deepEqual(narrow.fetched, [], 'a narrow run fetched a page')
+  assert.ok(frames.some(({ frame }) => frame.event === 'webhooks.changed'))
+  console.log(
+    `ok: a narrow run had no web tools, read its folder, finished its work item, asked Oscar, left its bot a message and was refused lilbot_bot_create, a computer, lilbot_about and every bot's items; toolsets ${narrow.toolsets.join(', ')}; ${narrow.tools.length} tools, beyond LilBot's own server: ${narrow.tools.filter(name => !name.startsWith('mcp__lilbot_system__')).join(', ')}; usage ${JSON.stringify(narrow.usage)}`
+  )
+  const message = (db.query('SELECT message FROM webhook_runs WHERE id = ?').get(run.id) as { message: string | null }).message
+  const after = await afterRun({ call, db, token, port, botId: bot.id, nativeId, frames }, { id: run.id, chatId: run.chatId, message })
+  console.log(
+    `ok: after the run its session stayed narrow (skill write and computers refused by session), Oscar's answer reached the main conversation without resuming the run, the message started no turn, reached the bot with Oscar's next message and not the review queue; the main conversation's lilbot_section_create passed${after.latency === null ? '' : ` ${after.latency} ms after its start reached the browser`}`
+  )
+  const firstItem = (await call('work.list', { botId: bot.id })).find(
+    (item: { title: string; origin: { id: string } }) => item.title === 'Webhook check' && item.origin.id === run.id
+  )
+
+  await call('webhooks.setCapabilities', { botId: bot.id, id: hook.id, capabilities: ['web', 'shell', 'coding'] })
+  assert.equal((await deliver('widened'))[0], 202)
+  const widenedRuns = await waitFor(runs, list => list.length === 2 && done(list[0].status))
+  const widened = await checkRun(widenedRuns[0], 'widened', false)
+  assert.deepEqual(has(widened, ['terminal', 'execute_code', 'write_file', ...ENGINE_TOOLS.web]), ['terminal', 'execute_code', 'write_file', ...ENGINE_TOOLS.web])
+  assert.ok(
+    widened.fetched.some(output => output.includes('Example Domain')),
+    `a run given web did not fetch ${PAGE}: ${JSON.stringify(widened.fetched).slice(0, 300)}`
+  )
+  assert.ok(fromServer(widened, 'lilbot_t3').length > 0, 'a run given coding lacked the T3 tools')
+  assert.deepEqual(has(widened, [...ENGINE_TOOLS.memory, ...ENGINE_TOOLS.engineDelegation]), [])
+  assert.equal((await call('work.open', { itemId: firstItem.id })).status, 'done', "the widened run changed the first run's item")
+  console.log(
+    `ok: a run given web, shell and coding gained exactly their tools (${widened.tools.length - narrow.tools.length} more), fetched ${PAGE} and was still refused bot creation, lilbot_about, every bot's items and the first run's item; usage ${JSON.stringify(widened.usage)}`
+  )
+  await call('webhooks.setCapabilities', { botId: bot.id, id: hook.id, capabilities: [] })
 
   for (const action of ['opened', 'closed', 'reopened']) assert.equal((await deliver(action))[0], 202)
-  const burst = await waitFor(runs, list => list.length === 2 && ['completed', 'failed'].includes(list[0].status))
+  const burst = await waitFor(runs, list => list.length === 3 && done(list[0].status))
   assert.equal(burst[0].status, 'completed')
   assert.equal(burst[0].events, 3)
-  for (const action of ['opened', 'closed', 'reopened']) assert.match(await proof(), new RegExp(action))
-  const history = await call('chat.history', { botId: bot.id })
-  assert.ok(!JSON.stringify(history).includes('Webhook run'), 'a webhook session reached the main conversation')
+  const history = JSON.stringify(await call('chat.history', { botId: bot.id }))
+  assert.ok(!history.includes('Webhook run (not a message from Oscar)'), 'a webhook session reached the main conversation')
   console.log('ok: a burst of three events was handled in one run; no webhook session entered the main conversation')
 
-  await call('webhooks.pause', { botId: bot.id, id: hook.id })
-  assert.deepEqual(await deliver('while-paused'), [409, 'Webhook paused'])
-  assert.equal((await call('webhooks.list', { botId: bot.id }))[0].paused, true)
-  await call('webhooks.resume', { botId: bot.id, id: hook.id })
-  assert.deepEqual(await deliver('after-resume'), [202, 'Accepted'])
-  const copied = (await call('webhooks.address', { botId: bot.id, id: hook.id })).address
-  assert.ok(copied === hook.address, 'the copied address differs from the one create gave')
-  await call('webhooks.delete', { botId: bot.id, id: hook.id })
-  const unknown = await fetch(`${door}/hook/${randomBytes(48).toString('base64url')}`, { method: 'POST', body: '{}' }).then(async r => [r.status, await r.text()])
-  assert.deepEqual(await deliver('after-delete'), unknown)
-  assert.deepEqual(await call('webhooks.list', { botId: bot.id }), [])
-  await Bun.sleep(8000)
-  assert.equal((db.query('SELECT COUNT(*) AS n FROM webhook_runs').get() as { n: number }).n, 2)
-  assert.doesNotMatch(await proof(), /after-resume|after-delete|while-paused/)
+  await pauseResumeDelete(call, deliver, door, bot.id, hook)
+  assert.equal(count('SELECT COUNT(*) AS n FROM webhook_runs'), 3)
   console.log('ok: pause refused at once, resume accepted again, delete ended the address (same 404 as an unknown one) before its event ran')
 } finally {
   socket?.close()

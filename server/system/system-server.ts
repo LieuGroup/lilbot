@@ -1,6 +1,7 @@
 /** LilBot's own MCP server, assembled: the tools, the key check, and the connection every bot is given. */
 
 import { checkRefusal } from './check-access'
+import { readsBeyondOwn, runRefusal } from './run-access'
 import { systemConnection, toolsVersion } from './system-connection'
 import type { SystemDeps } from './system-deps'
 import { createSystemMcp } from './system-mcp'
@@ -16,6 +17,7 @@ import { routineTools } from './tool-routines'
 import { settingsTools } from './tool-settings'
 import { webhookTools } from './tool-webhooks'
 import { workTools } from './tool-work'
+import { workspaceTools } from './tool-workspace'
 
 /** For an engine that shows an MCP server's instructions to the model (Hermes does not; the note carries the same pointers). */
 const INSTRUCTIONS =
@@ -33,12 +35,15 @@ export function createSystemServer(deps: SystemDeps & { engineToken: string; por
     ...workTools(deps),
     ...goalTools(deps),
     ...libraryTools(deps),
+    ...workspaceTools(deps),
     ...routineTools(deps),
     ...webhookTools(deps)
   ]
   const version = toolsVersion(tools)
   const names = tools.map(tool => tool.name)
   const url = `http://127.0.0.1:${deps.port}`
+  const inCheck = checkRefusal(tools, deps.checkSessions, deps.calls)
+  const beyondOwn = readsBeyondOwn(itemId => deps.work.store.get(itemId)?.ownerId)
   return {
     tools,
     handler: createSystemMcp({
@@ -48,7 +53,7 @@ export function createSystemServer(deps: SystemDeps & { engineToken: string; por
       tools,
       changes: deps.changes,
       instructions: INSTRUCTIONS,
-      refusal: checkRefusal(tools, deps.checkSessions, deps.calls)
+      refusal: async (botId, tool, args) => (await inCheck(botId, tool, args)) ?? runRefusal(deps.webhookRuns.callers, botId, tool, args, beyondOwn)
     }),
     connection: (botId: string) => systemConnection(url, deps.engineToken, botId, names, version)
   }

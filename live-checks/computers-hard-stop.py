@@ -16,11 +16,13 @@ class Context:
         pass
 adapter.register(Context())
 calls = []
-adapter.call = lambda action, args: calls.append(args) or {'ok': True}
+adapter.call = lambda action, args, session='': calls.append((args, session)) or {'ok': True}
 # Harmless shell no-op even if executed; the real detector still identifies command position.
 refused = json.loads(handlers['computer_exec']({'computer': 'leader', 'command': 'if false; then mkfs; fi'}))
 assert 'hard stop' in refused['error'], refused
 assert not calls
-assert json.loads(handlers['computer_exec']({'computer': 'leader', 'command': 'printf OK'}))['ok']
+assert json.loads(handlers['computer_exec']({'computer': 'leader', 'command': 'printf OK'}, session_id='webhook-session'))['ok']
 assert len(calls) == 1
-print('PASS: Hermes hard-stop command refused before submission; harmless control accepted')
+# The session Hermes names goes with the call, so LilBot can refuse a webhook run's session.
+assert calls[0][1] == 'webhook-session', calls
+print('PASS: Hermes hard-stop command refused before submission; harmless control accepted with its session')

@@ -35,7 +35,15 @@ test('a lost T3 launch response survives bridge restart without starting another
     return Response.json({ jsonrpc: '2.0', id: rpc.id, result: { structuredContent: result } })
   }) as typeof fetch
   const restart = () => {
-    bridge = createT3Bridge({ upstream: 'http://t3.test/mcp', grants: new T3Grants(path), engineToken: token, port: 3998, botIds: () => ['bot'], fetch: upstream })
+    bridge = createT3Bridge({
+      upstream: 'http://t3.test/mcp',
+      grants: new T3Grants(path),
+      engineToken: token,
+      port: 3998,
+      botIds: () => ['bot'],
+      refusal: async () => null,
+      fetch: upstream
+    })
   }
   const call = async (name: string, args: object) => {
     const response = await bridge(

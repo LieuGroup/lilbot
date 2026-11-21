@@ -139,6 +139,10 @@ export class WorkStore {
   children(parentId: string): WorkSummary[] {
     return (this.db.query(`${SELECT} WHERE w.parent_id = ? ORDER BY w.created_at, w.rowid`).all(parentId) as Row[]).map(row => summary(item(row)))
   }
+  /** How many items were opened from this origin (a webhook run's, which may open only a few). */
+  countFrom(origin: WorkOrigin) {
+    return (this.db.query('SELECT COUNT(*) AS n FROM work_items WHERE origin_kind = ? AND origin_id = ?').get(origin.kind, origin.id) as { n: number }).n
+  }
   /** The item LilBot opened (no request id) for this owner's part in an exchange or a group, if any. */
   prepared(ownerId: string, origin: WorkOrigin): StoredItem | null {
     if (origin.kind !== 'exchange' && origin.kind !== 'group') return null

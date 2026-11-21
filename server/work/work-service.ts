@@ -3,6 +3,7 @@
 import type { BotModel } from '../../shared/bot-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import { type WorkAsker, WorkInput, type WorkItem, type WorkOrigin, WorkReadInput } from '../../shared/work-schema'
+import { fromWebhook, webhookLevel, webhookRefusal } from './webhook-items'
 import { WorkCheckStore } from './work-check-store'
 import { WorkChecks } from './work-checks'
 import { WorkLevelStore } from './work-levels'
@@ -33,8 +34,9 @@ export interface WorkHost {
   waiting(botId: string, itemId: string, key: string, on: boolean): void
   /** The line in a conversation that links to an item opened there. */
   line(item: StoredItem): void
-  /** A notice for the item's owner, delivered once as a new turn where its work continues (`id` keeps it once). */
-  tell(id: string, item: StoredItem, prompt: string): void
+  /** A notice for the item's owner, delivered once as a new turn where its work continues (`id` keeps it once). `oscar`:
+   *  his own words in it, the only part that goes on for a webhook run's item. */
+  tell(id: string, item: StoredItem, prompt: string, oscar?: string): void
   changed(): void
 }
 export type Actor = { by: 'bot' | 'oscar' | 'lilbot'; via: WorkOrigin | null }
@@ -88,12 +90,14 @@ export class WorkService {
     refuseUnsafe([input.title, input.done, input.question, input.result, input.reason, ...(input.evidence ?? []).flatMap(evidenceTexts)])
     if (this.checks.isCheckChat(chatId)) throw new LilBotError('work_check_session', 'This session is a check: give your verdict, do not open or report on items here.')
     const session = this.host.session(callerId, chatId)
+    webhookRefusal(session.origin, input, this.store, callerId)
     const [checkers, checkModel] = input.status === 'done' ? await Promise.all([this.host.checkers(), this.host.checkModel(callerId)]) : [[], null]
     const { saved, created } = this.store.db.transaction(() => {
       const opened = input.itemId ? null : this.open(caller, input, chatId, session)
       const item = this.store.get(input.itemId ?? opened!.id)
       if (!item) throw new LilBotError('work_missing', 'No work item has that id.')
       if (item.ownerId !== callerId) throw new LilBotError('work_forbidden', 'Only the bot that owns an item reports on it.')
+      webhookRefusal(session.origin, input, this.store, callerId, item)
       const unchanged = { saved: { item, asked: null, ended: null }, created: false }
       if (isFinal(item.status) && input.status === item.status) return unchanged
       // While its check is open the owner's work stays as it was checked; the report that finished it is a retry.
@@ -145,7 +149,7 @@ export class WorkService {
       title: input.title,
       done: '',
       kind: input.kind,
-      checkLevel: input.level ?? least,
+      checkLevel: fromWebhook(session.origin) ? webhookLevel(least) : (input.level ?? least),
       defaultLevel: least,
       status: 'open',
       askedBy: asked,

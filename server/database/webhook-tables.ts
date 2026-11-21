@@ -7,3 +7,9 @@ export const WEBHOOK_TABLES = `CREATE TABLE IF NOT EXISTS webhooks(id TEXT PRIMA
    CREATE TABLE IF NOT EXISTS webhook_chats(chat_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES webhook_runs(id) ON DELETE CASCADE);
    CREATE TABLE IF NOT EXISTS webhook_events(id TEXT PRIMARY KEY, webhook_id TEXT NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE, delivery_id TEXT, body_hash TEXT, received_at INTEGER NOT NULL, state TEXT NOT NULL DEFAULT 'waiting', run_id TEXT, item TEXT, size INTEGER NOT NULL DEFAULT 0, refusal TEXT, UNIQUE(webhook_id, delivery_id), UNIQUE(webhook_id, body_hash));
    CREATE INDEX IF NOT EXISTS webhook_events_waiting ON webhook_events(webhook_id, received_at) WHERE state = 'waiting'; CREATE INDEX IF NOT EXISTS webhook_events_run ON webhook_events(run_id); CREATE INDEX IF NOT EXISTS webhook_events_time ON webhook_events(received_at);`
+
+/** What a webhook's runs may do beyond the narrow default (#12 finding 3: Oscar's list of capability groups), and the one
+ *  message a run may send its bot, with where its delivery to the bot's main conversation stands. */
+export const WEBHOOK_ACCESS = `ALTER TABLE webhooks ADD COLUMN capabilities TEXT NOT NULL DEFAULT '[]';
+   ALTER TABLE webhook_runs ADD COLUMN message TEXT;
+   ALTER TABLE webhook_runs ADD COLUMN message_state TEXT;`
