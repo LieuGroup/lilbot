@@ -2,6 +2,7 @@ import { devScratch } from '../scripts/dev-env'
 import { devPort } from '../scripts/dev-paths'
 import { checkClient } from './check-client'
 import { deleteProfile, startServer } from './check-process'
+import { waitFor } from './wait-for'
 /** `bun run check:goals`: on an isolated dev server a temporary bot is given a small measurable goal whose source is a real
  *  file in its folder (notes.txt to 10 lines). It proposes an agreement with a baseline it read from the file; after
  *  `goals.agree` LilBot makes the review routine (on a short interval through the routine test override) and the bot opens
@@ -35,13 +36,7 @@ let db: Database | undefined
 let goalId: string | undefined
 const events: any[] = []
 const call = (method: string, params = {}) => client!.call(method, params)
-async function until<T>(read: () => Promise<T> | T, ok: (value: T) => boolean, what: string, timeout = 400_000): Promise<T> {
-  for (const end = Date.now() + timeout; Date.now() < end; await Bun.sleep(1000)) {
-    const value = await read()
-    if (ok(value)) return value
-  }
-  throw new Error(`Timed out waiting for ${what}`)
-}
+const until = <T>(read: () => Promise<T> | T, ok: (value: T) => boolean, label: string, timeout = 400_000): Promise<T> => waitFor(read, ok, { label, timeout, interval: 1000 })
 const lines = (file: string) => readFileSync(file, 'utf8').split('\n').filter(Boolean).length
 try {
   await until(

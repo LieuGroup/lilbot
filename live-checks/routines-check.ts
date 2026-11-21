@@ -2,6 +2,7 @@ import { devScratch } from '../scripts/dev-env'
 import { checkClient } from './check-client'
 import { startServer, deleteProfile } from './check-process'
 import { devPort } from '../scripts/dev-paths'
+import { waitFor as pollFor } from './wait-for'
 /** Exercises only a temporary bot and a second LilBot server. Never reads or mutates cron jobs. */
 import { Database } from 'bun:sqlite'
 import assert from 'node:assert/strict'
@@ -26,15 +27,8 @@ let socket: WebSocket | undefined
 let nativeId: string | undefined
 let db: Database | undefined
 let bot: any
-const waitFor = async <T>(read: () => Promise<T>, matches: (value: T) => boolean, timeout = 180_000): Promise<T> => {
-  const end = Date.now() + timeout
-  while (Date.now() < end) {
-    const value = await read()
-    if (matches(value)) return value
-    await Bun.sleep(250)
-  }
-  throw new Error('Timed out waiting for routine check.')
-}
+const waitFor = <T>(read: () => Promise<T>, matches: (value: T) => boolean, timeout = 180_000): Promise<T> =>
+  pollFor(read, matches, { timeout, interval: 250, error: 'Timed out waiting for routine check.' })
 const events: string[] = []
 let call!: Awaited<ReturnType<typeof checkClient>>['call']
 async function connect() {

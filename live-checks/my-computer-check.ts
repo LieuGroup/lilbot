@@ -3,6 +3,7 @@ import { devPort } from '../scripts/dev-paths'
 import { checkClient } from './check-client'
 import { deleteProfile, startServer } from './check-process'
 import { eventually } from './computers-client'
+import { waitFor } from './wait-for'
 /** `bun run check:my-computer`: on an isolated dev server with two test computers (real helpers under throwaway homes)
  *  and a temporary bot whose instructions say nothing about choosing a computer, messages from three devices show which
  *  computer a bot picks: a device linked to A (main is B), a device with no computer (main is B), no main computer, and a
@@ -53,17 +54,15 @@ async function ask(botId: string, deviceId: string, text: string) {
   const chat = await call('chat.new', { botId })
   const start = events.length
   await call('chat.send', { chatId: chat.chatId, text, deviceId })
-  for (let i = 0; i < 1200; i++) {
-    const done = events.slice(start).find(f => f.event === 'chat' && f.chatId === chat.chatId && f.data.type === 'turn.finished')
-    if (done) {
-      await call('chat.close', { chatId: chat.chatId })
-      const mine = events.slice(start).filter(f => f.chatId === chat.chatId)
-      const tools = mine.filter(f => f.data?.type === 'tool.started').map(f => String(f.data.name))
-      return { reply: String(done.data.text), tools, echoed: mine.find(f => f.data?.type === 'user.message')?.data }
-    }
-    await Bun.sleep(250)
-  }
-  throw new Error('The turn did not finish')
+  const done = await waitFor<any>(() => events.slice(start).find(f => f.event === 'chat' && f.chatId === chat.chatId && f.data.type === 'turn.finished'), Boolean, {
+    timeout: 300_000,
+    interval: 250,
+    error: 'The turn did not finish'
+  })
+  await call('chat.close', { chatId: chat.chatId })
+  const mine = events.slice(start).filter(f => f.chatId === chat.chatId)
+  const tools = mine.filter(f => f.data?.type === 'tool.started').map(f => String(f.data.name))
+  return { reply: String(done!.data.text), tools, echoed: mine.find(f => f.data?.type === 'user.message')?.data }
 }
 
 const log = (line: string) => console.log(line)

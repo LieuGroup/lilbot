@@ -6,21 +6,26 @@ import { connectionKey } from '../server/connections/connection-keys'
 import { SYSTEM_KEY_PURPOSE } from '../server/system/system-connection'
 import { accessEnv, token } from '../tests/http/access-fixture'
 import { checkClient } from './check-client'
+import { waitFor } from './wait-for'
 
 export async function startCheckServer(env: Record<string, string>, log: string) {
   const child = Bun.spawn(['bun', 'server/main.ts'], { env: { ...process.env, ...env }, stdout: Bun.file(log), stderr: Bun.file(`${log}.err`) })
-  for (let i = 0; i < 300; i++) {
-    if (
-      await fetch(`http://127.0.0.1:${env.LILBOT_PORT}/api/health`).then(
-        r => r.ok,
-        () => false
+  await waitFor(
+    async () => {
+      if (
+        await fetch(`http://127.0.0.1:${env.LILBOT_PORT}/api/health`).then(
+          r => r.ok,
+          () => false
+        )
       )
-    )
-      return child
-    if (child.exitCode !== null) throw new Error('The dev server exited before it was ready')
-    await Bun.sleep(100)
-  }
-  throw new Error('The dev server did not start')
+        return true
+      if (child.exitCode !== null) throw new Error('The dev server exited before it was ready')
+      return false
+    },
+    Boolean,
+    { timeout: 30_000, interval: 100, error: 'The dev server did not start' }
+  )
+  return child
 }
 
 /** One conversation: send a message and wait for the bot's reply; or wait for a turn LilBot started itself. */
@@ -31,12 +36,9 @@ export async function conversation(port: number) {
   })
   const [bot] = await client.call('bots.list', {})
   const chat = await client.call('chat.open', { botId: bot.id })
-  const next = async (seen: number, what: string, ms = 240_000) => {
-    for (const end = Date.now() + ms; Date.now() < end; await Bun.sleep(200)) {
-      const turn = finished.slice(seen).find(item => item.chatId === chat.chatId)
-      if (turn) return turn
-    }
-    throw new Error(`Timed out waiting for ${what}`)
+  const next = async (seen: number, label: string, timeout = 240_000) => {
+    const turn = await waitFor(() => finished.slice(seen).find(item => item.chatId === chat.chatId), Boolean, { label, timeout, interval: 200 })
+    return turn!
   }
   return {
     client,
@@ -54,15 +56,16 @@ export async function conversation(port: number) {
     /** The bot's reply in a turn LilBot gave the conversation after `since` (the "connected" notice). A hidden turn is not
      *  streamed to an open chat, so it is read from the conversation record, which does not resume the session. */
     lilbotReply: async (since: number, not = '') => {
-      for (const end = Date.now() + 180_000; Date.now() < end; await Bun.sleep(1000)) {
-        const page = await client.call('chat.history', { botId: bot.id })
-        const reply = page.items.find((row: any) => row.sessionId === chat.chatId && row.at > since && row.item.kind === 'assistant' && row.item.text !== not)
-        if (reply) {
-          console.log(`  bot (LilBot's turn): ${String(reply.item.text).replace(/\s+/g, ' ').slice(0, 160)}`)
-          return reply.item.text as string
-        }
-      }
-      throw new Error('Timed out waiting for the turn LilBot gives after a sign-in')
+      const reply = await waitFor<any>(
+        async () => {
+          const page = await client.call('chat.history', { botId: bot.id })
+          return page.items.find((row: any) => row.sessionId === chat.chatId && row.at > since && row.item.kind === 'assistant' && row.item.text !== not)
+        },
+        Boolean,
+        { timeout: 180_000, interval: 1000, error: 'Timed out waiting for the turn LilBot gives after a sign-in' }
+      )
+      console.log(`  bot (LilBot's turn): ${String(reply.item.text).replace(/\s+/g, ' ').slice(0, 160)}`)
+      return reply.item.text as string
     }
   }
 }

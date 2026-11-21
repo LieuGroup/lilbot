@@ -1,6 +1,7 @@
 import { devScratch } from '../scripts/dev-env'
 import { devPort } from '../scripts/dev-paths'
 import { startServer, deleteProfile } from './check-process'
+import { waitFor } from './wait-for'
 /** Measure real cold/warm roster reads with isolated, pre-imported temporary bots. */
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -92,11 +93,11 @@ try {
       return { ms: performance.now() - start, pending: frame.result.filter((bot: any) => bot.runtimePending).length }
     }
     const cold = await list()
-    const deadline = Date.now() + 90_000
-    while ((await list()).pending > 0) {
-      if (Date.now() > deadline) throw new Error('Preparation timed out')
-      await Bun.sleep(100)
-    }
+    await waitFor(
+      async () => (await list()).pending,
+      pending => pending === 0,
+      { timeout: 90_000, interval: 100, error: 'Preparation timed out' }
+    )
     const warm: number[] = []
     for (let i = 0; i < 5; i++) warm.push((await list()).ms)
     console.log(JSON.stringify({ bots: count, coldMs: cold.ms, coldPending: cold.pending, warmMs: warm }))
