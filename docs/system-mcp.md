@@ -122,6 +122,46 @@ row) instead of a second goal tool, which would have added another listing line;
 up, about 800 tokens then. How to propose and review is the guide topic `goals`, not a skill, whose catalogue line would
 cost every turn; the note is unchanged.
 
+### The library's `give_file` moved (#113, third slice; before on main at 58776c6, after on this branch)
+
+Measured as in the second slice (temporary dev bot, memory adapter connected, `cliproxyapi anthropic/claude-sonnet-5-5`, Hermes
+0.23.1, fresh session, same prompt, `contextTokens`; three fresh sessions each gave the same number).
+
+| | before | after |
+|---|---|---|
+| whole bot, tokens a turn | 19,863 | 19,760 (-103, -0.5%) |
+| tools Hermes sends in full every turn besides its own and Tool Search | 4 | 3 (`search_conversations`, `recall_memory`, `update_memory`) |
+| schema characters of those adapter tools | 2,093 | 1,735 (-358: `give_file`) |
+| `lilbot_*` listing lines (name and first sentence) | 36 (3,810 characters) | 37 (3,938 characters, +128) |
+| full `tools/list`, fetched only by `tool_describe` or an eager engine | 20,188 | 20,796 (+608) |
+
+358 eager characters at 0.43 tokens a character is about 154 tokens, minus one listing line (about 35 to 45), so about -110;
+measured -103. `lilbot_give_file` takes a `requestId` (a new one for each file) because an MCP call carries no session: LilBot
+finds the conversation by matching it against the engine's tool starts, as for `lilbot_delegate` and `lilbot_work`. It
+is not an idempotency key: a retry gives a second item.
+
+### The skills tools stay on the plug-in (#113, third slice)
+
+Not moved, because it cannot be done without patching Hermes. What was checked, on Hermes 0.23.1 in a scratch
+`HERMES_HOME` (Hermes' own tool functions, `skills.external_dirs` and `skills.create_dir` set to a library, no plug-in):
+
+- Reading works natively. `skills_list` and `skill_view` honour `skills.disabled`, a change to it applies in the running process at
+  once, and `hermes-agent` stays offered even when listed (`ESSENTIAL_SKILLS`). So the per-bot switches and #140's engine switch
+  would keep working for reads with no override.
+- Writing does not. Hermes' `skill_manage` writes straight into `skills.create_dir`, which is the shared library: a skill
+  holding a password, a key and a zero-width character was created without complaint (`safeText` is bypassed), and
+  `SkillsService.list` then records it as written by `oscar` (it adopts any folder it finds), so the author and the secret
+  check are gone (`check:skills` asserts the author, `tests/skills/skills.test.ts` the refusal).
+- The native tool cannot be taken away alone. `skill_manage`, `skill_view` and `skills_list` share the toolset `skills`
+  (`toolsets.py`), and `agent.disabled_toolsets` takes toolset names: dropping `skill_manage` drops `skill_view` too, which is
+  the only way to a bundled skill, including `hermes-agent` (Hermes' prompt tells the model to load it with `skill_view`). Hermes'
+  own prompt also names `skill_view` and `skill_manage`, so an MCP copy would sit beside them, not instead of them.
+- Registering our own versions under the same names is what the plug-in does (`override=True`); only a plug-in can.
+
+So a `lilbot_skills` tool on the MCP server would be a second definition next to Hermes' three, with no token saving (the
+override replaces tools that are eager either way) and with the native writer still open. The plug-in stays as it is. An engine
+without skill tools of its own would get the MCP tool then, calling the same `SkillsService` as `/engine/skills/*`.
+
 ## The server
 
 - `POST /engine/lilbot/mcp` on the private listener (`main.ts`, beside the T3 bridge). Streamable HTTP answered as plain
@@ -129,8 +169,8 @@ cost every turn; the note is unchanged.
   the Access listener or the helper door (their `/engine/*` refusal covers it; `tests/http/access-door.test.ts`).
 - One key per bot per purpose: `connectionKey(engineToken, "lilbot-system", botId)`. The server accepts only keys of
   current bots (`store.list()`), so a deleted bot is refused. The T3 bridge's key (purpose `t3-bridge`) is unchanged and
-  does not work here. Future bot tools (memory, library, skills, computers: #113) join this server
-  with the same key.
+  does not work here. The bot tools that move off the engine plug-ins (#113: routines, `create_bot`, the library; memory and
+  computers still to come) join this server with the same key.
 - Arguments are checked by zod schemas built from `shared/`; keys a schema does not name are dropped, so no argument
   can claim another identity. The caller id only ever comes from the key. `inputSchema` is generated from the same
   schemas.
@@ -168,6 +208,7 @@ Every tool acts as the calling bot and calls the function the screen uses. Reads
 | `lilbot_goal` | goals (#143): `propose` a goal from Oscar's words in his conversation, a new version or a change (`GoalService.act`); `progress`, a review, saved as a work item through `WorkService.act` |
 | `lilbot_routine` | `routines.*` for the caller's own routines: `action` create (`RoutineService.create`; request-id idempotency, five of its own, five-minute minimum), pause, resume or delete (`id`) |
 | `lilbot_routines_list` | `routines.list` for the caller: latest five runs each, results cut to 500 characters |
+| `lilbot_give_file` | `LibraryService.give`: a finished file from the caller's folder to its Library (`path`, `title`, `requestId`). The conversation and routine run come from the call, not from an argument; each call is a `system_changes` row naming the item. The adapter's `give_file` ended with adapter 0.12.0 |
 | `lilbot_webhook_create` | `WebhookService.create` for the caller (five webhooks a bot; the same `requestId` returns the current address and any secret LilBot made again) |
 | `lilbot_webhooks_list` | `webhooks.list` for the caller (latest five runs, results cut to 500 characters and fenced as outside data; never addresses or secrets) |
 | `lilbot_webhook_pause`, `_resume`, `_delete` | `webhooks.pause`, `.resume`, `.delete`, only the caller's own webhooks |
@@ -175,13 +216,14 @@ Every tool acts as the calling bot and calls the function the screen uses. Reads
 
 Not offered, by decision: deleting a bot, removing a computer, forgetting another bot's private facts, changing a bot's
 permission mode, registering computers. The deletes a bot has are of its own webhooks (Oscar's decision on #12) and its own routines (it always could: `delete_routine`).
-Library, skills, computers, `search_conversations` and memory writes stay on the engine plug-ins until #113 moves them;
+Skills (see below), computers, `search_conversations` and memory writes stay on the engine plug-ins until #113 moves them;
 `ask_bot` and `list_bots` ended with adapter 0.10.0 (their work done by `lilbot_delegate` and `lilbot_bots_list`), and
-`create_bot` and the five routine tools with adapter 0.11.0 (`lilbot_bot_create`, `lilbot_routine`, `lilbot_routines_list`).
+`create_bot` and the five routine tools with adapter 0.11.0 (`lilbot_bot_create`, `lilbot_routine`, `lilbot_routines_list`), and `give_file`
+with adapter 0.12.0 (`lilbot_give_file`).
 
 MCP requests carry no session (checked live: two sessions of one bot send identical requests, `_meta` holds only a
 progress token). A tool that needs the calling conversation takes a `requestId` and resolves it from the engine's
-`tool.start` reports (`server/threads/calling-chats.ts`, which traces `lilbot_delegate`, `lilbot_work`, `lilbot_group` and `lilbot_goal`).
+`tool.start` reports (`server/threads/calling-chats.ts`, which traces `lilbot_delegate`, `lilbot_work`, `lilbot_group`, `lilbot_goal` and `lilbot_give_file`).
 
 Judgment calls: a memory tool may name another bot's panel (as Oscar can on the screens), but only a fact in that
 panel can be named, by the short id a bot sees; the default is the calling bot's own. Another bot's private facts can

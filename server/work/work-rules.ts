@@ -23,7 +23,7 @@ export function pointerOf(e: EvidenceInput, libraryTitle: (itemId: string) => st
   if (kinds.length !== 1) throw new LilBotError('work_evidence', 'Give each evidence entry exactly one of: library, url, command (with output), value (with source).')
   if (e.library !== undefined) {
     const title = libraryTitle(e.library)
-    if (!title) throw new LilBotError('work_evidence', 'That Library item is not yours or does not exist. Give the file to the Library first (give_file).')
+    if (!title) throw new LilBotError('work_evidence', 'That Library item is not yours or does not exist. Give the file to the Library first (lilbot_give_file).')
     return { kind: 'library', itemId: e.library, title }
   }
   if (e.url !== undefined) return { kind: 'link', url: e.url }

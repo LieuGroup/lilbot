@@ -1,7 +1,9 @@
 /** Builds the work board's service and its checks and connects them to the bots, exchanges, routine runs, activity, history
  *  and browsers; Oscar's side (`WorkBoard`) is built after the exchanges, which it stops and answers through. */
 import type { Database } from 'bun:sqlite'
+import type { z } from 'zod'
 import type { ChatItem } from '../shared/chat-schema'
+import type { GiveFileInput } from '../shared/library-schema'
 import { type EventFrame, LilBotError } from '../shared/protocol'
 import type { ActivityService } from './activity/activity-service'
 import type { BotPrefsStore } from './bots/bot-prefs-store'
@@ -14,6 +16,7 @@ import type { BotEngine } from './engines/bot-engine'
 import { requireAgreed } from './goals/goal-rules'
 import type { GoalStore } from './goals/goal-store'
 import type { HistoryStore } from './history/history-store'
+import type { LibraryService } from './library/library-service'
 import type { LibraryStore } from './library/library-store'
 import type { RoutineStore } from './routines/routine-store'
 import type { CallingChats } from './threads/calling-chats'
@@ -91,6 +94,19 @@ export function workSessions(threadStore: ThreadStore, routineStore: RoutineStor
     const root = rootOf(botId, chatId)
     if (root === null) throw new LilBotError('session_unknown', 'LilBot cannot tell where this session came from just now. Try again in a moment.')
     return (root !== chatId && known(botId, root)) || { origin: { kind: 'conversation', id: chatId }, askedBy: null }
+  }
+}
+
+/** What `lilbot_give_file` calls: gives a file to the caller's Library from the conversation the call came from. It is found by the call's `requestId` (the engine's tool starts), never taken from an argument. A routine run's session aliases and a session
+ *  the engine continued after compressing one resolve to that run; a webhook run's session is recorded as the conversation. A lineage that cannot be read
+ *  refuses, as the work board does. */
+export function giveFrom(library: LibraryService, calls: CallingChats, ...sessions: Parameters<typeof workSessions>) {
+  const session = workSessions(...sessions)
+  return async (botId: string, { path, title, requestId }: z.infer<typeof GiveFileInput>) => {
+    const chatId = await calls.find(botId, requestId)
+    if (!chatId) throw new LilBotError('session_unknown', 'LilBot cannot tell which conversation this came from just now. Try again in a moment.')
+    const { origin } = session(botId, chatId)
+    return library.give(botId, { path, title, chatId, routineRunId: origin.kind === 'routine_run' ? origin.id : undefined })
   }
 }
 

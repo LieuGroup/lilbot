@@ -143,7 +143,9 @@ manifest on `MessageCompletePayload` or `TranscriptMessage`.
 ## Skills plug-in (`skills-adapter/`)
 
 - Separate from the memory adapter. It overrides the three skill tools to read LilBot's catalogue and route writes to
-  `/engine/skills/*`.
+  `/engine/skills/*`. It stays a plug-in: Hermes' own `skill_manage` writes into the shared library unchecked and cannot be
+  removed alone, so the override is what keeps secrets out and records the author (the checks and numbers are in
+  [system-mcp.md](system-mcp.md#the-skills-tools-stay-on-the-plug-in-113-third-slice)). Reading would work without it.
 - `.bundled_manifest` identifies shipped skills, which stay with Hermes. Hermes searches profile-local skills before
   external/create directories, so LilBot suppresses the stale user entries in Hermes' manifest and supplies its own
   catalogue. `skills.create_dir` and `skills.external_dirs` point to the library.

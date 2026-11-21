@@ -1,11 +1,14 @@
 /** What the tools of LilBot's MCP server call: the same services the screens use. */
+import type { z } from 'zod'
 import type { T3ConnectionStatus } from '../../shared/connections-schema'
+import type { GiveFileInput } from '../../shared/library-schema'
 import type { ActivityService } from '../activity/activity-service'
 import type { BotService } from '../bots/bot-service'
 import type { BotStore } from '../bots/bot-store'
 import type { Workspaces } from '../bots/workspaces'
 import type { ComputerService } from '../computers/computer-service'
 import type { GoalService } from '../goals/goal-service'
+import type { LibraryService } from '../library/library-service'
 import type { MemoryService } from '../memory/memory-service'
 import type { RoutineService } from '../routines/routine-service'
 import type { DelegationControl } from '../threads/delegation-control'
@@ -35,6 +38,8 @@ export interface SystemDeps extends SystemFacts {
   work: WorkService
   routines: RoutineService
   goals: GoalService
+  /** Gives a file to the bot's Library from the conversation the call came from (`giveFrom` in `app-work.ts`). */
+  giveFile: (botId: string, input: z.infer<typeof GiveFileInput>) => ReturnType<LibraryService['give']>
   webhooks: WebhookService
   changes: SystemChanges
   dataDir: string

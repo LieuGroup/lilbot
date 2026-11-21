@@ -6,7 +6,7 @@ import { ActivityService } from './activity/activity-service'
 import { ActivityStore } from './activity/activity-store'
 import { createGoals } from './app-goals'
 import { createThreads } from './app-threads'
-import { createWork } from './app-work'
+import { createWork, giveFrom } from './app-work'
 import { AttachmentService } from './attachments/attachment-service'
 import { AttachmentStore } from './attachments/attachment-store'
 import { backgroundTask } from './background'
@@ -152,8 +152,9 @@ export function createAppServices(
   const { threads, delegation } = createThreads({ ...threadDeps, botsChanged, memoryChanged })
   const routines = new RoutineService(routineStore, bots, () => publish({ event: 'routines.changed' }), routineSettings(process.env))
   const { goals, boards } = createGoals({ goalStore: runs.goalStore, work, answers, threads, routines, activity, store, publish, repeat })
+  const giveFile = giveFrom(library, calls, threadStore, routineStore, webhookStore, rootOf)
   const webhooks = new WebhookService(webhookStore, bots, token, HOOK_ORIGIN, () => publish({ event: 'webhooks.changed' }))
-  const deps = { ...facts, bots, activity, memory, memoryChanged, delegation, work, goals, routines, webhooks, changes: new SystemChanges(database) }
+  const deps = { ...facts, bots, activity, memory, memoryChanged, delegation, work, goals, routines, giveFile, webhooks, changes: new SystemChanges(database) }
   const system = createSystemServer({ ...deps, engineToken: token, port: PORT })
   watchT3SignIn(
     t3Grants,

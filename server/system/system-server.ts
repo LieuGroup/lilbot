@@ -8,6 +8,7 @@ import { botTools } from './tool-bots'
 import { delegationTools } from './tool-delegation'
 import { goalTools } from './tool-goals'
 import { groupTools } from './tool-groups'
+import { libraryTools } from './tool-library'
 import { memoryTools } from './tool-memory'
 import { rosterTools } from './tool-roster'
 import { routineTools } from './tool-routines'
@@ -30,6 +31,7 @@ export function createSystemServer(deps: SystemDeps & { engineToken: string; por
     ...groupTools(deps),
     ...workTools(deps),
     ...goalTools(deps),
+    ...libraryTools(deps),
     ...routineTools(deps),
     ...webhookTools(deps)
   ]
