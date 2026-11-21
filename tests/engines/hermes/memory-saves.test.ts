@@ -15,7 +15,7 @@ beforeAll(() => {
   mkdirSync(join(home, 'profiles', 'dev-bot'), { recursive: true })
   writeFileSync(
     join(home, 'profiles', 'dev-bot', 'lilbot-memory-saves.jsonl'),
-    line('main', 100, false) + 'not json\n' + line('main', 200, true) + line('main', 300, false) + line('other', 50, true)
+    `${line('main', 100, false)}not json\n${line('main', 200, true)}${line('main', 300, false)}${line('other', 50, true)}`
   )
 })
 afterAll(() => {

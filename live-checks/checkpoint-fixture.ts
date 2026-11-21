@@ -11,7 +11,7 @@ import { type RestartServer, waitFor } from './restart-server'
 
 const MODEL = { provider: 'cliproxyapi', model: 'anthropic/claude-haiku-5-5' }
 /** Between the conversation after two pastes (about 77,000 tokens) and after three (about 105,000). */
-export const TRIGGER = 90_000
+const TRIGGER = 90_000
 const RUN = 1 + Math.floor(Math.random() * 100_000)
 export const say = (line: string) => console.log(`ok: ${line}`)
 
