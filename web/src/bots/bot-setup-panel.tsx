@@ -5,12 +5,14 @@ import { Separator } from '@/ui/separator'
 import type { Ability, BotDetail } from '../../../shared/bot-schema'
 import { LilBotError } from '../../../shared/protocol'
 import { lilbot, messageOf } from '../app/lilbot-socket'
+import { SkillsSection } from '../skills/skills-section'
 import { BotForm } from './bot-form'
 import { useBotStore } from './bot-store'
 import { modelKey } from './model-choice'
 import { PrimaryBotAction } from './primary-bot-action'
 
-const kindLabels: Record<Ability['kind'], string> = { toolset: 'Toolsets', skill: 'Skills', connector: 'Connectors' }
+// Skills have their own section with a switch each.
+const kindLabels: Partial<Record<Ability['kind'], string>> = { toolset: 'Toolsets', connector: 'Connectors' }
 
 /** One line per kind of ability: how many are on, and the names of the first few. */
 function AbilitySummary({ abilities }: { abilities: Ability[] }) {
@@ -111,6 +113,8 @@ export function BotSetupPanel({ botId }: { botId: string }) {
             <p className="text-sm text-muted-foreground">This bot's own folder. New sessions work here.</p>
             <code className="break-all rounded-lg bg-muted px-2.5 py-1.5 font-mono text-[13px]">{bot.workspace}</code>
           </section>
+          <Separator />
+          <SkillsSection botId={botId} botName={bot.name} />
           <Separator />
           <section aria-labelledby="abilities" className="flex flex-col gap-3">
             <h3 id="abilities" className="font-semibold">

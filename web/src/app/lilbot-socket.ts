@@ -101,6 +101,11 @@ class LilBotSocket {
     return this.onPush('routines.changed', () => listener())
   }
 
+  /** Told when a skill was written or switched, or an engine's skills were included or excluded. */
+  onSkillsChanged(listener: () => void) {
+    return this.onPush('skills.changed', () => listener())
+  }
+
   /** Told when any goal changed (its review routine among them). */
   onGoalsChanged(listener: () => void) {
     return this.onPush('goals.changed', () => listener())

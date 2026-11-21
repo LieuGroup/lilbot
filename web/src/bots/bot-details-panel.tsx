@@ -19,8 +19,10 @@ const tabContent: Record<DetailsTab, TabContent> = {
 }
 // One routine replaces the whole panel (avatar and tabs too) while it is open (`?routine=` on the Activity tab).
 const RoutineDetail = lazy(() => import('../routines/routine-detail'))
-/** Leaving the tab, or the panel, closes an open routine. */
-const withoutRoutine = ({ routine: _closed, ...rest }: BotSearch) => rest
+// One skill replaces the Setup tab's content while it is open (`?skill=`).
+const SkillDetail = lazy(() => import('../skills/skill-detail'))
+/** Leaving the tab, or the panel, closes an open routine or skill. */
+const withoutViews = ({ routine: _routine, skill: _skill, ...rest }: BotSearch) => rest
 
 /** The details panel beside the chat: the bot's avatar and name, then pill tabs. Each tab is its
  *  own route, so a link or a reload opens the same tab. On a phone it covers the chat. */
@@ -28,6 +30,7 @@ export function BotDetailsPanel() {
   const { botId, tab } = useParams({ from: '/bots/$botId/$tab' })
   const bot = useBotStore(state => state.bots.find(candidate => candidate.id === botId))
   const routine = useBotSearch('routine')
+  const skill = useBotSearch('skill')
   if (!isDetailsTab(tab)) return <Navigate to="/bots/$botId" params={{ botId }} replace />
   const Content = tabContent[tab]
   if (tab === 'activity' && routine)
@@ -42,7 +45,7 @@ export function BotDetailsPanel() {
       <Link
         to="/bots/$botId"
         params={{ botId }}
-        search={withoutRoutine}
+        search={withoutViews}
         onClick={() => rememberDetailsOpen(false)}
         aria-label="Back to the chat"
         className={iconButton({ className: 'absolute top-[calc(12px+env(safe-area-inset-top))] left-3 md:hidden' })}
@@ -59,7 +62,7 @@ export function BotDetailsPanel() {
             key={item.id}
             to="/bots/$botId/$tab"
             params={{ botId, tab: item.id }}
-            search={withoutRoutine}
+            search={withoutViews}
             className="rounded-full px-2.5 py-1 text-[13px]/[18px] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
             activeProps={{ className: 'bg-foreground/6 font-medium text-foreground', 'aria-current': 'page' }}
           >
@@ -67,9 +70,10 @@ export function BotDetailsPanel() {
           </Link>
         ))}
       </nav>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      {/* Opening or closing a skill starts at the top. */}
+      <div key={tab === 'setup' ? (skill ?? '') : ''} className="min-h-0 flex-1 overflow-y-auto">
         <Suspense fallback={<p className="px-5 py-2 text-[13px] text-muted-foreground">Loading...</p>}>
-          <Content key={botId} botId={botId} />
+          {tab === 'setup' && skill ? <SkillDetail key={`${botId}:${skill}`} botId={botId} name={skill} /> : <Content key={botId} botId={botId} />}
         </Suspense>
       </div>
     </div>

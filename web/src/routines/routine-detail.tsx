@@ -1,6 +1,7 @@
 import { ChevronLeftIcon, Trash2Icon } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/ui/button'
+import { Fact } from '@/ui/fact'
 import { iconButton } from '@/ui/icon-button'
 import { useNow } from '../app/use-now'
 import { DeleteRoutineDialog } from './delete-routine-dialog'
@@ -60,15 +61,6 @@ export default function RoutineDetail({ botId, routineId }: { botId: string; rou
         </div>
       )}
       {deleting && routine && <DeleteRoutineDialog botId={botId} routine={routine} onClose={() => setDeleting(false)} />}
-    </div>
-  )
-}
-
-function Fact({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between gap-3 border-foreground/6 px-3 py-2.5 not-first:border-t">
-      <dt className="text-[13px]/[18px] text-muted-foreground">{label}</dt>
-      <dd className="text-right text-[13px]/[18px]">{value}</dd>
     </div>
   )
 }
