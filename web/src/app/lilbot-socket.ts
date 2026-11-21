@@ -96,6 +96,16 @@ class LilBotSocket {
     return this.onPush('threads.changed', () => listener())
   }
 
+  /** Told when a routine was made, changed or removed, or one of its runs started or ended. */
+  onRoutinesChanged(listener: () => void) {
+    return this.onPush('routines.changed', () => listener())
+  }
+
+  /** Told when any goal changed (its review routine among them). */
+  onGoalsChanged(listener: () => void) {
+    return this.onPush('goals.changed', () => listener())
+  }
+
   /** Told when the history import brought in more of a bot's conversation. */
   onHistoryChanged(listener: (botId: string) => void) {
     return this.onPush('history.changed', frame => listener(frame.botId))

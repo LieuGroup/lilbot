@@ -6,6 +6,7 @@ import { useNow } from '../app/use-now'
 import { useBotStore } from '../bots/bot-store'
 import { rowState } from '../bots/row-state'
 import { StatusIcon } from '../bots/status-icon'
+import { RoutinesCard } from '../routines/routines-card'
 import { WithOtherBots } from '../threads/with-other-bots'
 import { formatElapsed } from './activity-since'
 
@@ -52,10 +53,7 @@ export function ActivityTab({ botId }: { botId: string }) {
         </div>
       </Card>
       <WithOtherBots botId={botId} />
-      {/* Placeholder: the Routines card is designed under #10. */}
-      <Card title="Routines">
-        <p className="px-3 py-2.5 text-[13px]/[18px] text-muted-foreground">Scheduled work for {bot.name} will show here.</p>
-      </Card>
+      <RoutinesCard botId={botId} botName={bot.name} />
       <Card title="Workspace">
         <Button
           variant="ghost"

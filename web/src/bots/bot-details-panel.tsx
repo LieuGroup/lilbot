@@ -4,6 +4,7 @@ import { type ComponentType, type LazyExoticComponent, lazy, Suspense } from 're
 
 import { BotBadge } from '@/ui/bot-badge'
 import { iconButton } from '@/ui/icon-button'
+import { type BotSearch, useBotSearch } from '../threads/open-thread'
 import { useBotStore } from './bot-store'
 import { DETAILS_TABS, type DetailsTab, isDetailsTab, rememberDetailsOpen } from './details-tabs'
 
@@ -16,21 +17,32 @@ const tabContent: Record<DetailsTab, TabContent> = {
   memory: lazy(() => import('../memory/memory-panel').then(module => ({ default: module.MemoryPanel }))),
   setup: lazy(() => import('./bot-setup-panel').then(module => ({ default: module.BotSetupPanel })))
 }
+// One routine replaces the whole panel (avatar and tabs too) while it is open (`?routine=` on the Activity tab).
+const RoutineDetail = lazy(() => import('../routines/routine-detail'))
+/** Leaving the tab, or the panel, closes an open routine. */
+const withoutRoutine = ({ routine: _closed, ...rest }: BotSearch) => rest
 
 /** The details panel beside the chat: the bot's avatar and name, then pill tabs. Each tab is its
  *  own route, so a link or a reload opens the same tab. On a phone it covers the chat. */
 export function BotDetailsPanel() {
   const { botId, tab } = useParams({ from: '/bots/$botId/$tab' })
   const bot = useBotStore(state => state.bots.find(candidate => candidate.id === botId))
+  const routine = useBotSearch('routine')
   if (!isDetailsTab(tab)) return <Navigate to="/bots/$botId" params={{ botId }} replace />
   const Content = tabContent[tab]
+  if (tab === 'activity' && routine)
+    return (
+      <Suspense>
+        <RoutineDetail key={routine} botId={botId} routineId={routine} />
+      </Suspense>
+    )
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">
       <Link
         to="/bots/$botId"
         params={{ botId }}
-        search
+        search={withoutRoutine}
         onClick={() => rememberDetailsOpen(false)}
         aria-label="Back to the chat"
         className={iconButton({ className: 'absolute top-[calc(12px+env(safe-area-inset-top))] left-3 md:hidden' })}
@@ -47,7 +59,7 @@ export function BotDetailsPanel() {
             key={item.id}
             to="/bots/$botId/$tab"
             params={{ botId, tab: item.id }}
-            search
+            search={withoutRoutine}
             className="rounded-full px-2.5 py-1 text-[13px]/[18px] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
             activeProps={{ className: 'bg-foreground/6 font-medium text-foreground', 'aria-current': 'page' }}
           >

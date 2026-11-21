@@ -68,7 +68,8 @@ web/src/           The web app.
   activity/, library/, memory/   their details tabs (Library is a placeholder)
   threads/           work between bots: the line in a conversation, the opened exchange or group, stop, "With other bots",
                      "Working together"
-  routines/, skills/ data clients for panels not built yet
+  routines/          the Activity tab's Routines card, one routine (in place of the panel), a run's transcript
+  skills/            data client for a panel not built yet
   computers/         the Settings > Computers page (list, remove, add this computer, add by command line)
   devices/           this browser's device id and name, and the "This device" block on the Computers page
   deploy/            last deployment failure notice
@@ -102,9 +103,9 @@ memory with a Memory panel and after-chat review, every bot knowing its system (
 LilBot's own MCP tools, delegation between bots (several tasks at once, files, status, stop, redirect, wait), temporary
 groups of bots (rounds, a shared folder, an outcome; #133), the screens for asked threads, handed-over work and groups
 (#65, #135, #136: the line or card in a conversation, the opened exchange or group, stop, "With other bots", the roster's
-"Working together"), and the
+"Working together"), the Routines screens (#53), and the
 backends for routines, webhooks, threads, library, skills, computers, the work board with its check levels, goals and
-coding through T3 Code. Next: the Routines, Webhooks (#138), Library, work board and goal screens, the check levels' track record and
+coding through T3 Code. Next: the Webhooks (#138), Library, work board and goal screens, the check levels' track record and
 spot checks (#142), the nightly memory tidy-up and editing abilities. Reports are not built. Desktop (Tauri) and iOS (Expo) come after the
 web app.
 
@@ -415,6 +416,26 @@ Visual specs (sizes, copy, Paper frames): [docs/screens.md](docs/screens.md).
   model reads "Choose a model" in red only once `models.list` has loaded without it. The engine's list is fetched once per
   connection (`bots/model-list.ts`). Setup shows the same model and effort (with "Sent as ..." under it) and reloads when
   they change.
+
+### Routines (`web/src/routines/`, #53)
+
+Visual specs: "Routines" in [docs/screens.md](docs/screens.md).
+
+- They live in the Activity tab ("Routines" card, in its lazy chunk); there is no Routines tab and no form: routines are
+  made by asking the bot. `routines/routine-store.ts` reads `routines.list` (and `goals.list` to know which routine
+  reviews a goal) for the bots on screen, again on `routines.changed`, `goals.changed` and reconnect. Wording is
+  `routines/routine-lines.ts` only (pure, tested).
+- A row opens one routine with `?routine=<id>` on `/bots/$botId`: it replaces the whole details panel (avatar and tabs
+  included) on the Activity tab, as a lazy chunk; changing tab or closing the panel drops it. The switch pauses and
+  resumes (`routines.pause`/`resume`, shown at once and put back on refusal); the bin asks first, then `routines.delete`.
+- A goal's review routine (a goal whose `routineId` is this routine) says "For your goal" and shows the goal's words. It
+  has no switch and no Delete: LilBot's goal tick puts its state back within seconds (see Goals), so a control would
+  silently undo itself. It follows the goal.
+- A run row opens its transcript with `?run=<id>`, the same column swap as an opened exchange (one of the two at a time):
+  the conversation stays mounted, `invisible` and inert. The run's chat (`routines.openRun`) is kept in the view's own
+  state, never the bot's chat slot, followed live while it runs, and closed (`chat.close`) when the view goes. Its only
+  user message is LilBot's wrapper prompt, so user messages are left out and "The routine asked" shows the routine's
+  words. A run not started yet has no transcript and is not a link.
 
 ### Work between bots (`web/src/threads/`, #65, #135, #136)
 
@@ -1141,7 +1162,7 @@ independent.
   same admission; transport failures retry after 30 seconds. If the engine says an outcome is unknown, show a failed
   run rather than risk repeating side effects. Runs emit activity and can mark the bot unread.
 - Browser methods: `routines.list` (newest 50 runs; all stay in the database), `pause`, `resume`, `delete`,
-  `openRun` (a tracked chat snapshot, main chat preserved), push `routines.changed`. Panel: `needs-ui`.
+  `openRun` (a tracked chat snapshot, main chat preserved), push `routines.changed`. Screens: "Routines" under Web app.
 - A short-interval test override needs all of `LILBOT_DATA_DIR`, `LILBOT_BOT_IDS` and
   `LILBOT_ROUTINE_TEST_INTERVAL_SECONDS`; never on the live server.
 

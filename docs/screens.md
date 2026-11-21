@@ -126,8 +126,33 @@ choices as the delete dialog, saved at once with `bots.deleteDefaults.set`. Gene
 ## Details panel (`bots/bot-details-panel.tsx`)
 
 Avatar, name and pill tabs. Activity shows the live state (with how long, only when this browser saw it start:
-`activity/activity-since.ts`), "With other bots" (below), a Routines placeholder and the workspace folder (click copies
+`activity/activity-since.ts`), "With other bots" (below), "Routines" (below) and the workspace folder (click copies
 the path; a browser cannot open a server folder).
+
+## Routines (Paper "07 Routines", `web/src/routines/`)
+
+- Card (`routines-card.tsx`, panel 1): a 12px "Routines" label with the count, then one hairline card. Row (padding
+  10/12, gap 12, `foreground/6` lines between rows): the task on one line (13/18 500, truncated; 70% ink when paused),
+  a 12/16 line and the ink switch. Lines: "Every day at 09:00 · next tomorrow" (the time only for interval schedules),
+  "Running now · every 30 min" with the blue spinner, "Last run failed · next today 18:00" in red, "Paused · Mondays at
+  08:00". A calendar schedule in another zone than the device's adds "<city> time". Under the card, 12px muted: "Ask
+  <bot> in the chat to add or change one." With none, only "Ask <bot> in the chat to add one, for example “check the
+  reviews every morning”."
+- One routine (`routine-detail.tsx`, panel 2), in place of the whole panel: a 52px bar with "‹ Routines" (13/18 500)
+  and the bin (28px icon button; none for a goal's routine). Then the full task (14/21 500) with the switch, a facts card
+  (Schedule, Next run or "Paused", Created: "You asked for it", "The bot set it up" or "For your goal"), for a goal's
+  routine a 12px note with the goal's words, and "Runs" (`run-list.tsx`): status mark in a 14×18 slot (green check,
+  red cross, grey square stopped, blue spinner running or starting), the due time (13/18 500), the result on up to two
+  lines (12/16, red with "Failed: " when failed) and a chevron. Five runs, then "Show older runs" (12/16 500) adds ten.
+- Delete (`delete-routine-dialog.tsx`): 432px, "Delete this routine?", the task quoted (120 characters at most), "no
+  longer runs, and it leaves this list with its runs. A run already under way finishes. This cannot be undone.",
+  Cancel and a red "Delete routine". Back to the list after.
+- A run (`run-view.tsx`, panel 3), in the conversation column: a 52px header with the 16px clock, "Routine run" (14/20
+  600) and "Today 09:00 · 48 s" (13/18 muted; "· running" while it runs), and "Back to chat". Then, 744px wide at most,
+  a `bg-background` block "The routine asked" (12/16 muted) with the task (14/21), the tool lines (4px apart) and the
+  bot's text, the shimmering activity line while it runs. Foot, 12/16 muted and centred: "A finished run is read-only.
+  To follow up, go back to the chat." (while it runs: "The run is still working. It is read-only: to follow up, go back
+  to the chat."). No composer.
 
 ## Work between bots (Paper "09 Bot threads", "18 Bots working together" frames 1 to 9, `web/src/threads/`)
 
