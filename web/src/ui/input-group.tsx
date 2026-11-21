@@ -3,6 +3,7 @@ import { cn } from 'cn'
 import type * as React from 'react'
 
 import { Button } from '@/ui/button'
+import { Input } from '@/ui/input'
 import { Textarea } from '@/ui/textarea'
 
 function InputGroup({ className, ...props }: React.ComponentProps<'div'>) {
@@ -60,6 +61,19 @@ function InputGroupButton({
   return <Button type={type} data-size={size} variant={variant} className={cn(inputGroupButtonVariants({ size }), className)} {...props} />
 }
 
+function InputGroupInput({ className, ...props }: React.ComponentProps<'input'>) {
+  return (
+    <Input
+      data-slot="input-group-control"
+      className={cn(
+        'flex-1 rounded-none border-0 bg-transparent shadow-none ring-0 focus-visible:ring-0 disabled:bg-transparent aria-invalid:ring-0 dark:bg-transparent dark:disabled:bg-transparent',
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
 function InputGroupTextarea({ className, ...props }: React.ComponentProps<'textarea'>) {
   return (
     <Textarea
@@ -73,4 +87,4 @@ function InputGroupTextarea({ className, ...props }: React.ComponentProps<'texta
   )
 }
 
-export { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea }
+export { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, InputGroupTextarea }

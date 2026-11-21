@@ -69,7 +69,7 @@ web/src/           The web app.
   threads/           work between bots: the line in a conversation, the opened exchange or group, stop, "With other bots",
                      "Working together"
   routines/          the Activity tab's Routines card, one routine (in place of the panel), a run's transcript
-  skills/            data client for a panel not built yet
+  skills/            the Setup tab's Skills section: the list with each bot's switch, search, and one skill's reader
   computers/         the Settings > Computers page (list, remove, add this computer, add by command line)
   devices/           this browser's device id and name, and the "This device" block on the Computers page
   deploy/            last deployment failure notice
@@ -96,7 +96,7 @@ Rules that keep it this way:
 
 ## Status
 
-Built: roster, create bot, Setup panel (abilities read-only), chat with live tool rows, stop and new session, one
+Built: roster, create bot, Setup panel (toolsets and connectors read-only; skills with a per-bot switch and a reader, #137), chat with live tool rows, stop and new session, one
 continuous main conversation per bot on every device, the three-column shell (roster, conversation, details panel with
 Activity, Library, Memory and Setup tabs), bot menu, delete confirmation, Settings, chat attachments, LilBot's own
 memory with a Memory panel and after-chat review, every bot knowing its system (the note) and operating the app through
@@ -416,6 +416,25 @@ Visual specs (sizes, copy, Paper frames): [docs/screens.md](docs/screens.md).
   model reads "Choose a model" in red only once `models.list` has loaded without it. The engine's list is fetched once per
   connection (`bots/model-list.ts`). Setup shows the same model and effort (with "Sent as ..." under it) and reloads when
   they change.
+
+### Skills (`web/src/skills/`, #137)
+
+Visual specs: "Skills" in [docs/screens.md](docs/screens.md).
+
+- A "Skills" section in the Setup tab (in its lazy chunk) replaces the old read-only skills line; Abilities keeps
+  Toolsets and Connectors. `skills/skill-store.ts` reads `skills.list` for the bots on screen, again on `skills.changed`
+  and reconnect. A skill an engine's switch excludes (`excluded`) is not part of the library, so it is left out of the
+  list, the count and search, as in `bots.get`. Wording is `skills/skill-lines.ts` only (pure, tested).
+- The switch saves at once with `skills.setEnabled`; a refusal puts it back with "Could not switch <skill> off. Try
+  again." There is no form to write or edit a skill: bots write them.
+- A row opens the skill with `?skill=<name>` on `/bots/$botId`: it replaces the Setup tab's content (avatar and tabs stay)
+  as a lazy chunk; changing tab or closing the panel drops it. "Written by" comes from `origin`: a bot's name, "You",
+  "Imported" (an engine's skill, also after a bot edited it) or "LilBot".
+- Skill text is untrusted. `skills/skill-file-text.tsx` draws a `.md` file with react-markdown (no raw HTML, images
+  dropped so nothing is fetched, only http(s) links stay links and open in a new tab; SKILL.md's frontmatter is left out
+  since the name and description show above) and any other file as plain text.
+- The engine's "Include this engine's skills" switch (#140) has no approved screen yet (`needs-ui`): Paper "19 Plugged
+  in" frame 4, with rows grouped by origin, waits for Oscar. `SkillRow` is its own part so that grouping can go on top.
 
 ### Routines (`web/src/routines/`, #53)
 
@@ -1065,7 +1084,7 @@ Protocol, browser behaviour, building and signing: [docs/computers.md](docs/comp
 ## Skills
 
 `server/skills/` owns a shared standard SKILL.md library at `~/lilbot/skills` (`LILBOT_SKILLS_DIR`), with authorship
-and per-bot off switches in SQLite. All skills default on; Setup shows the same states.
+and per-bot off switches in SQLite. All skills default on; Setup shows the same states (see Skills under Web app).
 
 - Chat, routine runs and memory reviews prepare the same catalogue and switches. Switches control offered skills, not
   filesystem access for full-access bots. Tool changes apply at once; prompt catalogues refresh next session.
