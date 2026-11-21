@@ -171,6 +171,29 @@ the path; a browser cannot open a server folder).
   To follow up, go back to the chat." (while it runs: "The run is still working. It is read-only: to follow up, go back
   to the chat."). No composer.
 
+## Library (Paper "08 Library", `web/src/library/`)
+
+- Tab (`library-tab.tsx`, panel 1): filter pills All / Media / Files (12/16 500, 4/10 padding, 6 apart; the chosen one
+  ink with background text, the others a `foreground/12` ring). Then one section per group: a 12px muted label (Today,
+  This week, Older) and a hairline card, `foreground/6` lines between rows. Empty: "Nothing here yet. When <bot> hands
+  you a file, it appears here." (another filter: "Nothing of this kind yet.").
+- Row (`library-row.tsx`, padding 8/10, gap 10): a 36px tile (radius 8): the image itself, else a 16px icon (file,
+  page, sound, video) on `bg-background`; the title (13/18 500, one line) and "Image · 412 KB · 09:14" (12/16 muted;
+  "Mon" this week, "2 Nov" before; a file's kind is its extension in capitals, "CSV"). A downloadable file shows a 28px
+  download mark on hover or keyboard focus (always on touch screens). Missing: an outlined tile with a crossed file,
+  the title at 50% ink, "File no longer in the workspace", not clickable.
+- "Show more" (12/16 500 muted) under the last group while more remain. At the bottom of the tab, a hairline card "Browse
+  the whole workspace" with a 15px folder and a chevron.
+- Workspace (`workspace-view.tsx`, panel 2), in place of the whole panel: a 52px bar with "‹ Library", the path line
+  (13/18: "Workspace / raw / 2026", earlier parts muted and clickable, `foreground/40` slashes, the last 500), then one card
+  of folders (15px folder, chevron, opens it) and files (15px file, size 12px muted), padding 9/12. Under it, 12/16 muted:
+  "2 folders, 4 files. Working files stay here; only what the bot hands over appears in the Library."
+- Viewer (`library-viewer.tsx`, panel 3, lazy): 560px wide and up to 760px high (880 by 900 on large screens), radius 16.
+  A 56px header: the title (14/20 600) and "Image · 412 KB · today 09:14" (12/16 muted), an outlined Download button
+  (13/18 500, 14px icon) and close. The preview on `bg-background`: the image fitted with 24px around, or a page on a
+  hairline sheet (Markdown in `prose-chat`, HTML in a sandboxed frame). Footer (12/20 padding, 13/18): "Given in the chat,
+  today 09:14" or "Given by a routine run, ..." muted, and "Show in chat" (500).
+
 ## Work between bots (Paper "09 Bot threads", "18 Bots working together" frames 1 to 9, `web/src/threads/`)
 
 One pattern for asking (#65), handing over (#135) and temporary groups (#136). Wording is `threads/thread-lines.ts`
@@ -280,5 +303,6 @@ half a second after `threads.changed`). Bot and file names are plain text everyw
   by side, wrapping) that open the image viewer; files as chips that download through their server URL; then the
   text bubble (none when the text is empty).
 - Image viewer (`ui/image-viewer.tsx`, lazy, props `{ image: { url, name }, onClose }`): the image large, its name,
-  download and close. Built for the Library to reuse.
+  download and close. The Library has its own viewer (`library/library-viewer.tsx`) with the design's details line and
+  footer.
 - "Model cannot see images": a tinted note under the message with a "Change model" link to the Setup tab.
