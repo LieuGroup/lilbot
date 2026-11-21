@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test'
+import { expect, spyOn, test } from 'bun:test'
 import { NO_RUN_TOOLS, RUN_TOOLS, refusalFor, TOOL_GROUPS } from '../../server/system/run-access'
 import { systemFixture } from './system-fixture'
 import { RUN_CHAT, withRun } from './webhook-run-fixture'
@@ -42,16 +42,21 @@ test('after the run ends its session stays narrow, and so do the sessions the en
   expect(f.changes.recent(10)).toEqual([])
 })
 
+// A call whose start is not found yet is looked for again after a sleep, up to the window; a call placed at once never sleeps.
 test('the bot’s other sessions keep their tools at once; a call never reported is refused only for a bot with webhook runs', async () => {
   const f = await withRun()
-  const started = Date.now()
-  expect((await f.call('b1', 'lilbot_section_create', { name: 'Work' })).data.name).toBe('Work')
-  expect(Date.now() - started).toBeLessThan(150)
-  expect((await f.call('b1', 'lilbot_section_create', { name: 'Unreported' }, false)).error).toContain('A webhook run cannot use')
-  const other = systemFixture()
-  const at = Date.now()
-  expect((await other.call('b1', 'lilbot_section_create', { name: 'No runs' }, false)).data.name).toBe('No runs')
-  expect(Date.now() - at).toBeLessThan(150)
+  const slept = spyOn(Bun, 'sleep')
+  try {
+    expect((await f.call('b1', 'lilbot_section_create', { name: 'Work' })).data.name).toBe('Work')
+    expect(slept).not.toHaveBeenCalled()
+    expect((await f.call('b1', 'lilbot_section_create', { name: 'Unreported' }, false)).error).toContain('A webhook run cannot use')
+    slept.mockClear()
+    const other = systemFixture()
+    expect((await other.call('b1', 'lilbot_section_create', { name: 'No runs' }, false)).data.name).toBe('No runs')
+    expect(slept).not.toHaveBeenCalled()
+  } finally {
+    slept.mockRestore()
+  }
 })
 
 test('a refusal is an ordinary result, not a tool error, so the engine does not pause LilBot’s server', async () => {
