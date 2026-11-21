@@ -18,6 +18,28 @@ export function serverConfig(connection: McpConnection) {
 
 type Summary = { name?: unknown; url?: unknown; enabled?: unknown; tools?: { include?: unknown } }
 
+async function reloadConnections(socket: Pick<HermesSocket, 'request'>, connections: McpConnection[]) {
+  try {
+    await socket.request('reload.mcp', { confirm: true })
+  } catch (error) {
+    // An inherited optional server can fail reload even when our own bridge connected.
+    // Accept only evidence that every requested connection is actually ready.
+    if (!(error instanceof Error) || !error.message.includes('mcp servers unavailable')) throw error
+    const status = await socket.request('mcp.servers.status', {})
+    if (!connections.every(connection => status.servers?.some((row: { name: string; connected: boolean }) => row.name === connection.name && row.connected))) throw error
+  }
+}
+
+/** Reconnects LilBot's own MCP servers if Hermes parked or disconnected them (for example during a LilBot restart). */
+export async function reconnectDisconnected(socket: Pick<HermesSocket, 'request'>, connections: McpConnection[]): Promise<boolean> {
+  if (!connections.length) return false
+  const status = await socket.request('mcp.servers.status', {})
+  const rows: { name?: unknown; connected?: unknown }[] = Array.isArray(status.servers) ? status.servers : []
+  if (connections.every(connection => rows.some(row => row.name === connection.name && row.connected === true))) return false
+  await reloadConnections(socket, connections)
+  return true
+}
+
 /** Returns whether anything changed. */
 export async function prepareConnections(socket: Pick<HermesSocket, 'request'>, connections: McpConnection[]): Promise<boolean> {
   const listed = await socket.request('mcp.servers.list', {})
@@ -27,7 +49,7 @@ export async function prepareConnections(socket: Pick<HermesSocket, 'request'>, 
     const config = serverConfig(connection)
     return !(existing?.url === config.url && existing.enabled !== false && JSON.stringify(existing.tools?.include) === JSON.stringify(config.tools.include))
   })
-  if (!stale.length) return false
+  if (!stale.length) return reconnectDisconnected(socket, connections)
   // Hermes reconciles running servers by name, so a changed entry is removed and disconnected first,
   // then added and connected: that is what makes it fetch the bridge's new tool list.
   const present = stale.filter(connection => servers.some(server => server.name === connection.name))
@@ -41,15 +63,7 @@ export async function prepareConnections(socket: Pick<HermesSocket, 'request'>, 
     }
   }
   for (const connection of stale) await socket.request('mcp.servers.add', { name: connection.name, config: serverConfig(connection), bearer_token: connection.bearerToken })
-  try {
-    await socket.request('reload.mcp', { confirm: true })
-  } catch (error) {
-    // An inherited optional server can fail reload even when our own bridge connected.
-    // Accept only evidence that every requested connection is actually ready.
-    if (!(error instanceof Error) || !error.message.includes('mcp servers unavailable')) throw error
-    const status = await socket.request('mcp.servers.status', {})
-    if (!connections.every(connection => status.servers?.some((row: { name: string; connected: boolean }) => row.name === connection.name && row.connected))) throw error
-  }
+  await reloadConnections(socket, connections)
   return true
 }
 
@@ -58,7 +72,7 @@ export async function prepareConnections(socket: Pick<HermesSocket, 'request'>, 
 export function connectionPreparer(open: (id: string) => Promise<Pick<HermesSocket, 'request' | 'close'>>) {
   const applied = new Map<string, string>()
   const queue = new Map<string, Promise<void>>()
-  return (id: string, connections: McpConnection[]): Promise<void> => {
+  return (id: string, connections: McpConnection[], statusOnly = false): Promise<void> => {
     const run = (queue.get(id) ?? Promise.resolve())
       .catch(() => {})
       .then(async () => {
@@ -66,7 +80,7 @@ export function connectionPreparer(open: (id: string) => Promise<Pick<HermesSock
         if (applied.get(id) === key) return
         const socket = await open(id)
         try {
-          await prepareConnections(socket, connections)
+          await (statusOnly ? reconnectDisconnected(socket, connections) : prepareConnections(socket, connections))
         } finally {
           socket.close()
         }

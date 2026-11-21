@@ -140,7 +140,7 @@ export class HermesEngine implements BotEngine {
   private connections = connectionPreparer(id => HermesSocket.connect(id === DEFAULT_PROFILE ? '' : id))
   async prepareConnections(id: string, connections: McpConnection[]) {
     await this.requireBot(id)
-    await applied(id, 'connections', hashOf(connections), () => this.connections(id, connections))
+    if (!(await applied(id, 'connections', hashOf(connections), () => this.connections(id, connections)))) await this.connections(id, connections, true)
   }
 
   private computerSettings = new Map<string, string>()

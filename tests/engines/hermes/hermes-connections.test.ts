@@ -1,17 +1,20 @@
 import { expect, test } from 'bun:test'
 import { t3Connection } from '../../../server/connections/t3-connection'
-import { connectionPreparer, prepareConnections, serverConfig } from '../../../server/engines/hermes/hermes-connections'
+import { connectionPreparer, prepareConnections, reconnectDisconnected, serverConfig } from '../../../server/engines/hermes/hermes-connections'
 import { systemConnection } from '../../../server/system/system-connection'
 
 const connection = t3Connection('http://127.0.0.1:3370', 'token', 'bot-a')
 
-function socket(servers: Record<string, unknown>[]) {
+function socket(servers: Record<string, unknown>[], statuses?: Record<string, unknown>[]) {
   const calls: { method: string; params: any }[] = []
+  const connected = statuses ?? servers.map(server => ({ name: server.name, connected: true }))
   return {
     calls,
     request: async <T>(method: string, params?: any): Promise<T> => {
       calls.push({ method, params })
-      return (method === 'mcp.servers.list' ? { servers } : { ok: true }) as T
+      if (method === 'mcp.servers.list') return { servers } as T
+      if (method === 'mcp.servers.status') return { servers: connected } as T
+      return { ok: true } as T
     }
   }
 }
@@ -44,7 +47,22 @@ test('a drifted entry is replaced as a whole; a current one is left alone withou
   const config = serverConfig(connection)
   const current = socket([{ name: 'lilbot_t3', url: config.url, enabled: true, tools: config.tools }])
   expect(await prepareConnections(current, [connection])).toBe(false)
-  expect(current.calls.map(call => call.method)).toEqual(['mcp.servers.list'])
+  expect(current.calls.map(call => call.method)).toEqual(['mcp.servers.list', 'mcp.servers.status'])
+})
+
+test('a parked or disconnected server with matching config is reloaded without rewriting config (#194)', async () => {
+  const config = serverConfig(connection)
+  const parked = socket([{ name: 'lilbot_t3', url: config.url, enabled: true, tools: config.tools }], [{ name: 'lilbot_t3', connected: false }])
+  expect(await prepareConnections(parked, [connection])).toBe(true)
+  expect(parked.calls.map(call => call.method)).toEqual(['mcp.servers.list', 'mcp.servers.status', 'reload.mcp'])
+
+  const statusOnly = socket([], [{ name: 'lilbot_t3', connected: false }])
+  expect(await reconnectDisconnected(statusOnly, [connection])).toBe(true)
+  expect(statusOnly.calls.map(call => call.method)).toEqual(['mcp.servers.status', 'reload.mcp'])
+
+  const healthy = socket([], [{ name: 'lilbot_t3', connected: true }])
+  expect(await reconnectDisconnected(healthy, [connection])).toBe(false)
+  expect(healthy.calls.map(call => call.method)).toEqual(['mcp.servers.status'])
 })
 
 test('concurrent preparations of one profile run one after another and apply once', async () => {
