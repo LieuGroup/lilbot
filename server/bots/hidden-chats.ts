@@ -33,12 +33,19 @@ export function sessionRoots(engine: BotEngine, store: BotStore): SessionRoot {
   }
 }
 
-/** Sessions LilBot runs itself are never history, never activity of their own and never reviewed for memory, nor are
- *  their continuations. An unreadable lineage counts as hidden (it fails closed). */
-export function hiddenChats(rootOf: SessionRoot, own: (chatId: string) => boolean) {
-  return (botId: string, chatId: string) => {
-    if (own(chatId)) return true
+/** What a chat is to LilBot: a session it runs itself (a routine, webhook or check run, a bot thread) or a continuation of
+ *  one, a conversation, or unknown while the engine cannot read its lineage. */
+export type ChatKind = (botId: string, chatId: string) => 'lilbot' | 'conversation' | 'unknown'
+
+export function chatKinds(rootOf: SessionRoot, own: (chatId: string) => boolean): ChatKind {
+  return (botId, chatId) => {
+    if (own(chatId)) return 'lilbot'
     const root = rootOf(botId, chatId)
-    return root === null || (root !== chatId && own(root))
+    if (root === null) return 'unknown'
+    return root !== chatId && own(root) ? 'lilbot' : 'conversation'
   }
 }
+
+/** Sessions LilBot runs itself are never history, never activity of their own and never reviewed for memory, nor are
+ *  their continuations. An unreadable lineage counts as hidden (it fails closed). */
+export const hiddenChats = (kind: ChatKind) => (botId: string, chatId: string) => kind(botId, chatId) !== 'conversation'

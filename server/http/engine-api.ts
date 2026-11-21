@@ -49,8 +49,8 @@ export interface EngineApiOptions {
   adapterVersion?: string
   /** Receives finished turns and knows which chats are reviews. Without it there is no review. */
   reviewer?: MemoryReviewer
-  /** Routine, thread and webhook sessions and their compression children: never reviewed, before or after compressing. */
-  hiddenChat?: (botId: string, chatId: string) => boolean
+  /** Routine, thread and webhook sessions and their compression children are never reviewed, before or after compressing. */
+  chatKind?: import('../bots/hidden-chats').ChatKind
   /** Why a call that may come from a check session (no memory, no changes) may not use memory or change skills, or null. */
   inCheck?: (botId: string, chatId: string | undefined, use: 'memory' | 'skills') => string | null
   /** Webhook runs (`app-webhooks.ts`): why a session may not use memory or give files, and why a plug-in call is refused. */
@@ -60,6 +60,7 @@ export interface EngineApiOptions {
 
 export function createEngineApi(memory: MemoryService, token: string, port: number, options: EngineApiOptions) {
   const onMemoryChanged = options.onMemoryChanged ?? (() => {})
+  const history = historyApi(options)
   const staleBots = new Set<string>()
   const expected = Buffer.from(`Bearer ${token}`)
   const loopback = new Set([`127.0.0.1:${port}`, `localhost:${port}`])
@@ -91,14 +92,7 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
         return json(422, { error: 'Cannot give this file. Use a regular file inside your workspace, at most 50 MiB.' })
       }
     }
-    if (
-      pathname === '/engine/bots/create' ||
-      pathname.startsWith('/engine/routines/') ||
-      pathname.startsWith('/engine/skills/') ||
-      pathname.startsWith('/engine/threads/') ||
-      pathname.startsWith('/engine/history/') ||
-      pathname.startsWith('/engine/computers/')
-    ) {
+    if (pathname === '/engine/bots/create' || /^\/engine\/(routines|skills|threads|history|computers)\//.test(pathname)) {
       try {
         const capability = request.headers.get('x-lilbot-bot-capability') ?? ''
         const caller = (await options.bots?.listBots())?.find(bot => matchesCapability(token, bot.id, capability))
@@ -108,7 +102,7 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
         if (pathname.startsWith('/engine/history/')) {
           const body = await request.json()
           const inCheck = pathname === '/engine/history/search' && options.inCheck?.(caller.id, typeof body?.chatId === 'string' ? body.chatId : undefined, 'memory')
-          return inCheck ? json(422, { error: inCheck }) : json(200, await historyApi(caller.id, pathname.slice('/engine/history/'.length), body, options))
+          return inCheck ? json(422, { error: inCheck }) : json(200, await history(caller.id, pathname.slice('/engine/history/'.length), body))
         }
         if (pathname.startsWith('/engine/threads/')) return json(200, await threadApi(options, caller.id, pathname.slice('/engine/threads/'.length), await request.json()))
         if (pathname.startsWith('/engine/computers/')) {
@@ -184,7 +178,8 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
           return json(200, { forgotten: forBot(fact, body.botId) })
         }
         case '/engine/memory/turn':
-          if (!options.hiddenChat?.(body.botId, body.chatId)) options.reviewer?.record(body.botId, body.chatId, withoutWebhookNotes(String(body.user ?? '')), body.assistant)
+          if ((options.chatKind?.(body.botId, body.chatId) ?? 'conversation') === 'conversation')
+            options.reviewer?.record(body.botId, body.chatId, withoutWebhookNotes(String(body.user ?? '')), body.assistant)
           return json(200, { ok: true })
       }
     } catch (error) {

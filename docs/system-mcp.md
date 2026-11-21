@@ -171,7 +171,7 @@ Measured on one temporary dev bot (memory adapter connected, `Reply with exactly
 | whole bot, tokens a turn (`chat.new` `contextTokens`) | 19,850 | 19,326 (-524, -2.6%) |
 | `lilbot_*` deferred listing lines (name and first sentence) | 39 (4,218 chars) | 31 (2,899 chars, -1,319) |
 | full `tools/list` JSON (loaded by `tool_describe` or eager engines) | 21,606 chars | 18,242 chars (-3,364, -15.6%) |
-| eager `memory-adapter` schemas (3 tools, v0.12.0 -> v0.13.0) | 1,739 chars | 1,332 chars (-407, -23.4%) |
+| eager `memory-adapter` schemas (3 tools, v0.13.0 -> v0.14.0) | 1,739 chars | 1,332 chars (-407, -23.4%) |
 | deferred `computers-adapter` schemas (8 tools, v1.0.0 -> v1.1.0) | 3,228 chars | 2,707 chars (-521, -16.1%) |
 
 Collapsing five webhook management tools into `lilbot_webhook` (keeping `lilbot_webhooks_list` and the narrow-run

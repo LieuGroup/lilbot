@@ -1,6 +1,7 @@
 /** Connects a Hermes profile to LilBot's memory: installs the provider plug-in into the profile,
  *  tells it where LilBot is, selects it, and switches Hermes' own two-file memory off so the bot
- *  has one memory. `removeMemory` undoes all of it.
+ *  has one memory. Then Hermes may shorten the conversation only after the plug-in has saved it
+ *  (`compression.checkpoint_required`, #148). `removeMemory` undoes all of it.
  *
  *  The Hermes gateway keeps a plug-in's code loaded per folder until it restarts. So each version
  *  of the plug-in is installed under its own folder name (`lilbot-memory-v0-3-0`): a new version is
@@ -28,7 +29,7 @@ export const MEMORY_ADAPTER_VERSION = /^version:\s*(\S+)/m.exec(readFileSync(joi
 /** The name Hermes knows this version of the provider by: also its folder name. */
 const providerName = (version: string) => `${PLUGIN}-v${version.replaceAll('.', '-')}`
 
-function profileHome(botId: string): string {
+export function profileHome(botId: string): string {
   if (!PROFILE_ID.test(botId)) throw new Error(`Not a profile id: ${botId}`)
   const hermesHome = process.env.HERMES_HOME ?? join(homedir(), '.hermes')
   return botId === 'default' ? hermesHome : join(hermesHome, 'profiles', botId)
@@ -110,10 +111,12 @@ export async function installMemory(botId: string, connection: MemoryConnection)
   await configSet(botId, 'memory.provider', name)
   await configSet(botId, 'memory.memory_enabled', 'false')
   await configSet(botId, 'memory.user_profile_enabled', 'false')
+  await configSet(botId, 'compression.checkpoint_required', 'true')
 }
 
 export async function removeMemory(botId: string) {
   const home = profileHome(botId)
+  await configSet(botId, 'compression.checkpoint_required', 'false')
   await configSet(botId, 'memory.provider', '')
   await configSet(botId, 'memory.memory_enabled', 'true')
   await configSet(botId, 'memory.user_profile_enabled', 'true')
@@ -126,8 +129,14 @@ export async function removeMemory(botId: string) {
 export async function refreshMemoryAdapters(ids: string[]): Promise<string[]> {
   const updated: string[] = []
   for (const id of ids) {
-    if (!memoryInstalled(id) || memoryCurrent(id)) continue
+    if (!memoryInstalled(id)) continue
     try {
+      // Fail-closed again after the deploy watchdog cleared it for a rollback (`server/deploy/rollback-profiles.ts`);
+      // once, not on every start: a changed `checkpoint_required` rebuilds every cached Hermes agent of the bot.
+      if (memoryCurrent(id)) {
+        await applied(id, 'checkpoint', '1', () => configSet(id, 'compression.checkpoint_required', 'true'))
+        continue
+      }
       const connection = await memoryConnection(id)
       if (!connection) continue
       await applied(id, null, '', () => installMemory(id, connection))

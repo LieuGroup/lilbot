@@ -136,13 +136,9 @@ try {
   console.log('ok: excluded session stays out after restart and forced re-import')
   db.close()
   console.log('ok: dev server killed mid-import; resumed with no loss or duplicates')
+  // A compaction asked for from outside a turn is refused while the bot is fail-closed (#148, #167): Hermes cannot
+  // run the save first there, whatever the memory plug-in supports. `check:checkpoint` covers the engine's own compactions.
   const reopened = await server.call('chat.open', { botId: bot.id })
-  await turn(
-    reopened.chatId,
-    'For future reference, my favourite garden flower is the blue iris. For this test, reply OK without saving it yet; the pre-compression review will save it.'
-  )
-  const before = await server.call('memory.list', { botId: bot.id })
-  assert.ok(!before.facts.some((f: any) => /blue iris/i.test(f.text)), 'Fact was saved before the pre-compression hook')
   await server.call('chat.close', { chatId: reopened.chatId })
   const socket = await HermesSocket.connect(
     [...server.natives][0],
@@ -151,21 +147,25 @@ try {
   )
   try {
     const session = await socket.request('session.resume', { session_id: reopened.chatId, source: 'gui', display_projection: true })
-    const result = await socket.request('session.mutate', {
-      session_id: session.session_id,
-      request_id: crypto.randomUUID(),
-      expected_revision: session.revision,
-      expected_generation: session.execution_generation,
-      operation: 'compress',
-      payload: {}
-    })
-    assert.ok(typeof result.revision === 'number' && result.revision > session.revision, 'Forced compression did not commit')
-    const memory = await server.call('memory.list', { botId: bot.id })
-    assert.ok(
-      memory.facts.some((f: any) => /blue iris/i.test(f.text)),
-      'Pre-compression review did not save the fact'
-    )
-    console.log('ok: real pre-compression hook saves a fact before forced summarisation')
+    for (const payload of [{ preview: true }, {}]) {
+      const refusal = await socket
+        .request('session.mutate', {
+          session_id: session.session_id,
+          request_id: crypto.randomUUID(),
+          expected_revision: session.revision,
+          expected_generation: session.execution_generation,
+          operation: 'compress',
+          payload
+        })
+        .then(
+          () => '',
+          (error: Error) => error.message
+        )
+      assert.match(refusal, /compression_checkpoint_required|checkpoint required/, `a requested compaction was not refused: ${JSON.stringify(payload)}`)
+    }
+    const after = await socket.request('session.resume', { session_id: reopened.chatId, source: 'gui', display_projection: true, omit_messages: true })
+    assert.equal(after.revision, session.revision, 'a refused compaction changed the conversation')
+    console.log('ok: a requested compaction is refused while the bot is fail-closed, and the conversation is unchanged')
   } finally {
     socket.close()
   }

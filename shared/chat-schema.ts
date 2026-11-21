@@ -3,6 +3,9 @@ import { z } from 'zod'
 import { Attachment, AttachmentMessage, ImageSupport } from './attachment-schema'
 import { MessageOrigin } from './device-schema'
 
+/** Why a turn failed, when LilBot knows: never the engine's own wording. */
+const TurnFailure = z.literal('memory_save')
+
 export const ChatItem = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('user'),
@@ -26,7 +29,9 @@ export const ChatItem = z.discriminatedUnion('kind', [
     running: z.boolean(),
     failed: z.boolean().optional()
   }),
-  z.object({ kind: z.literal('error'), text: z.string() })
+  /** `memory_save`: the turn stopped because the engine could not save the conversation to memory before shortening it
+   *  (#148); the screen words it, so `text` is empty. */
+  z.object({ kind: z.literal('error'), text: z.string(), reason: TurnFailure.optional() })
 ])
 export type ChatItem = z.infer<typeof ChatItem>
 
@@ -44,7 +49,9 @@ export const ChatEvent = z.discriminatedUnion('type', [
     status: z.enum(['completed', 'stopped', 'failed']),
     text: z.string(),
     /** How many tokens the model was sent on the turn's last call, when the engine reports it. */
-    contextTokens: z.number().optional()
+    contextTokens: z.number().optional(),
+    /** Set when LilBot knows why a failed turn failed; its `text` is then empty. */
+    failure: TurnFailure.optional()
   }),
   z.object({ type: z.literal('title'), title: z.string() }),
   z.object({ type: z.literal('error'), message: z.string() }),

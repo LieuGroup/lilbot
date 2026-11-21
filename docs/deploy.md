@@ -57,6 +57,16 @@ Inspect `job.json` and both units, keep the service stopped, repair the cause, s
 database copy, and preserve every key. Only after confirming health may a person remove `deploy/lock/` and resume
 normal deployment. Nothing removes a stale lock automatically.
 
+The watchdog's rollback clears `compression.checkpoint_required` (#148) itself before the previous release starts
+(`rollback-profiles.ts`): a release from before memory adapter 0.13.0 cannot take the save, so a flag left on would stop
+its bots from ever shortening a long conversation. It reads the bound, non-deleted bots from the restored database and
+runs Hermes with the service unit's `HERMES_HOME`, `LILBOT_HERMES_BIN`, `LILBOT_ENV` and `PATH`; in development only on
+`dev-` profiles under the development home, in production never on them. `job.logs` gets one line with counts. If it says
+some could not be checked or cleared, clear those by hand: `hermes -p <profile> config set
+compression.checkpoint_required false` (the default bot: without `-p`). During the rollback itself a cached Hermes agent may
+still run adapter 0.13.0 against the older server, which refuses its request: one turn may then stop with Hermes' own
+text.
+
 ## `bun run check:deploy`
 
 Uses its own clone, release root, symlink, data directory, free port and two temporary systemd units, with an

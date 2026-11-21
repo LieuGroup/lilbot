@@ -1,10 +1,11 @@
 import '../scripts/dev-env'
-/** Real systemd restarts, never the live LilBot unit, checkout, data or tunnel. No profiles created. */
+/** Real systemd restarts, never the live LilBot unit, checkout, data or tunnel. One temporary `dev-` profile, deleted at the end. */
 import { Database } from 'bun:sqlite'
 import assert from 'node:assert/strict'
 import { mkdir, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { git, systemctl } from '../server/deploy/process'
+import { deleteProfile } from './check-process'
 import { DeployFixture } from './deploy-fixture'
 
 async function within<T>(promise: Promise<T>) {
@@ -22,6 +23,13 @@ async function within<T>(promise: Promise<T>) {
 }
 
 const f = new DeployFixture()
+// A bound bot whose profile is fail-closed (#148): the rollback must clear the flag before the previous release starts.
+const profile = `dev-rollback-${crypto.randomUUID().slice(0, 8)}`
+const hermes = (...args: string[]) => {
+  const done = Bun.spawnSync([process.env.LILBOT_HERMES_BIN ?? 'hermes', ...args], { env: process.env })
+  assert.equal(done.exitCode, 0, `hermes ${args.slice(0, 3).join(' ')}`)
+  return done.stdout.toString().trim()
+}
 try {
   await f.setup()
   // Bootstrap and subsequent deployments use the same public command. This external gate lets the
@@ -52,18 +60,20 @@ try {
   const db = new Database(join(f.data, 'lilbot.db'))
   db.exec('PRAGMA busy_timeout = 5000')
   db.exec("PRAGMA wal_autocheckpoint=0; CREATE TABLE deployment_marker(value TEXT); INSERT INTO deployment_marker VALUES ('before deploy')")
+  hermes('profile', 'create', profile)
+  hermes('-p', profile, 'config', 'set', 'compression.checkpoint_required', 'true')
+  db.query("INSERT INTO bots(id, name, function, instructions, engine_id, engine_bot_id) VALUES ('rollback-check', 'Rollback check', '', '', 'hermes', ?)").run(profile)
   db.close()
   const key = await readFile(join(f.data, 'computer-server-key.pem'), 'utf8')
   const main = await f.read('server/main.ts')
   assert.equal(await Bun.file(join(f.link, '.git')).exists(), false, 'Releases must be clean exports, not working trees')
   // Typechecks and tests pass; actual startup fails after a schema/data change.
-  await f.edit(
-    'server/main.ts',
-    main.replace(
-      'const activity = new ActivityService',
-      "if (process.env.LILBOT_DATA_DIR) {\ndatabase.exec(\"INSERT INTO deployment_marker VALUES ('failed version'); PRAGMA user_version=999\")\nthrow new Error('deploy-check deliberate startup failure; password=do-not-record-me')\n}\nconst activity = new ActivityService"
-    )
+  const failing = main.replace(
+    'const engine = new HermesEngine(',
+    "if (process.env.LILBOT_DATA_DIR) {\nnew (await import('bun:sqlite')).Database(join(DATA_DIR, 'lilbot.db')).exec(\"INSERT INTO deployment_marker VALUES ('failed version'); PRAGMA user_version=999\")\nthrow new Error('deploy-check deliberate startup failure; password=do-not-record-me')\n}\nconst engine = new HermesEngine("
   )
+  assert.notEqual(failing, main, 'the start-up line the broken commit edits has moved')
+  await f.edit('server/main.ts', failing)
   const broken = await f.commit('test: deliberately broken startup')
   await f.verify()
   const started = Date.now()
@@ -75,6 +85,8 @@ try {
   assert.equal(await git(f.checkout, 'rev-parse', 'HEAD'), broken, 'Rollback must never change the source checkout')
   assert.equal(await realpath(f.link), join(f.releases, good))
   assert.equal(rolled.logs?.includes('do-not-record-me'), false)
+  assert.ok(rolled.logs?.includes('[rollback] memory save flag cleared for 1 bots'), 'the rollback did not clear the memory save flag')
+  assert.equal(hermes('-p', profile, 'config', 'get', 'compression.checkpoint_required').toLowerCase(), 'false')
   assert.ok(rolled.logs?.includes('deliberate startup failure') || rolled.logs?.includes('newer LilBot'))
   const restored = new Database(join(f.data, 'lilbot.db'))
   restored.exec('PRAGMA busy_timeout = 5000')
@@ -98,7 +110,7 @@ try {
   } finally {
     socket.close()
   }
-  console.log('ok: broken commit rolls back in about a minute; WAL marker and key survive; app notice and masked record persisted')
+  console.log('ok: broken commit rolls back in about a minute; WAL marker and key survive; app notice and masked record persisted; memory save flag cleared')
 
   // Reuse the exact broken commit that passed verification above. The last running good
   // revision only encounters this external failure on restart, so recovery fails as well.
@@ -117,5 +129,7 @@ try {
   console.log('ok: failed rollback stops permanently with three backups, record and lock for manual recovery')
 } finally {
   await f.cleanup()
-  console.log('cleaned: temporary units and directories removed; no Hermes profiles created')
+  await deleteProfile(profile, 'ignore').exited
+  assert.ok(!hermes('profile', 'list').includes(profile), 'the temporary profile remains')
+  console.log('cleaned: temporary units, directories and the temporary profile removed')
 }

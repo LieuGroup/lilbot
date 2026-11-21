@@ -4,6 +4,7 @@ import type { ChatOptions, OpenChat } from '../bot-engine'
 import { prepareAttachments } from './hermes-attachments'
 import { DEFAULT_PROFILE } from './hermes-bot-mapping'
 import { chatEventFrom, itemsFromRows, sessionLostEvents } from './hermes-chat-mapping'
+import { saveFailed } from './hermes-memory-saves'
 import { ensureFullAccess } from './hermes-permissions'
 import { wireEffort } from './hermes-session-settings'
 import { type HermesEvent, HermesSocket } from './hermes-socket'
@@ -23,6 +24,7 @@ export async function openChat(
   connect = HermesSocket.connect
 ): Promise<OpenChat> {
   let sessionId = ''
+  let storedId = ''
   let generation: number | null = null
   let closed = false
   const reportEffort = (effort: string | null | undefined) => {
@@ -45,7 +47,7 @@ export async function openChat(
     // A change picked during a turn takes effect when the turn ends and is announced here.
     if (event.type === 'session.info') reportEffort(wireEffort(event.payload))
     reportToolCall(profile, event.sessionId ?? sessionId, event.type, event.payload)
-    const mapped = chatEventFrom(event)
+    const mapped = chatEventFrom(event, () => saveFailed(profile, [storedId, sessionId]))
     if (mapped) onEvent(mapped)
   }
   const onSocketClose = () => {
@@ -88,6 +90,7 @@ export async function openChat(
       ...(options.reasoningEffort ? { reasoning: options.reasoningEffort } : {})
     })
     sessionId = session.session_id
+    storedId = session.stored_session_id ?? sessionId
     reportEffort(wireEffort(session.info))
     if (typeof session.execution_generation === 'number') generation = session.execution_generation
     spares.refill(profile)
@@ -102,7 +105,7 @@ export async function openChat(
         title: typeof session.info?.title === 'string' ? session.info.title : '',
         running: session.running === true,
         workspace: typeof session.info?.cwd === 'string' ? session.info.cwd : '',
-        items: itemsFromRows(session.display_messages)
+        items: itemsFromRows(session.display_messages, at => saveFailed(profile, [storedId, sessionId], at))
       },
       send: async (text, options) => {
         // The origin line is model-only (`api_text`), so the stored transcript keeps exactly what Oscar wrote.
