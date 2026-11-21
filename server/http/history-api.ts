@@ -31,6 +31,7 @@ export function historyApi({ history, bots, reviewer, chatKind }: EngineApiOptio
       if (kind === 'unknown') throw new LilBotError('lineage_unknown', 'LilBot cannot tell which conversation this is just now; try again.')
       const passes = await checkpoint.save(
         bot,
+        input.chatId,
         input.messages.map(message => ({ ...message, text: withoutWebhookNotes(message.text) }))
       )
       return { saved: true, passes }

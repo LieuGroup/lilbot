@@ -35,16 +35,27 @@ test('a failed pass fails the save; a retry reviews only what is left, and the n
     reviews.push(mark)
   })
   const evidence = ['a', 'b', 'c', 'd', 'e'].map(mark => said('user', 90_000, mark))
-  await expect(checkpoint.save('bot', evidence)).rejects.toThrow('the review did not finish')
+  await expect(checkpoint.save('bot', 'chat', evidence)).rejects.toThrow('the review did not finish')
   const done = reviews.length
   expect(reviews).not.toContain('b')
   expect(done).toBeLessThan(5)
   failing = ''
-  expect(await checkpoint.save('bot', evidence)).toBe(5 - done)
+  expect(await checkpoint.save('bot', 'chat', evidence)).toBe(5 - done)
   expect(reviews.sort()).toEqual(['a', 'b', 'c', 'd', 'e'])
-  expect(await checkpoint.save('bot', [...evidence, said('assistant', 10, 'f')])).toBe(1)
+  expect(await checkpoint.save('bot', 'chat', [...evidence, said('assistant', 10, 'f')])).toBe(1)
   expect(reviews.at(-1)).toBe('f')
-  expect(await checkpoint.save('other bot', evidence.slice(0, 1))).toBe(1)
+  expect(await checkpoint.save('other bot', 'chat', evidence.slice(0, 1))).toBe(1)
+})
+
+test('a second save of the same conversation while one runs reviews nothing twice', async () => {
+  const reviews: string[] = []
+  const checkpoint = new MemoryCheckpoint(async (_bot, prompt) => {
+    reviews.push(prompt)
+    await Bun.sleep(5)
+  })
+  const evidence = ['a', 'b'].map(mark => said('user', 90_000, mark))
+  expect(await Promise.all([checkpoint.save('bot', 'chat', evidence), checkpoint.save('bot', 'chat', evidence)])).toEqual([2, 0])
+  expect(reviews).toHaveLength(2)
 })
 
 test('at most three passes run at once', async () => {
@@ -58,6 +69,7 @@ test('at most three passes run at once', async () => {
   expect(
     await checkpoint.save(
       'bot',
+      'chat',
       Array.from({ length: 7 }, (_, i) => said('user', 90_000, `m${i}`))
     )
   ).toBe(7)

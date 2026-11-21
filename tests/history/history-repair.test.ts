@@ -12,7 +12,7 @@ test('upgrade rewinds completed copies once, repairs missing tools and resumes i
   const dir = mkdtempSync(join(tmpdir(), 'history-repair-'))
   const path = join(dir, 'test.db')
   let db = openDatabase(path)
-  const rows = historyRows('dev-test', [
+  const rows = historyRows('dev-test', 'session', [
     { row_kind: 'message', role: 'user', row_id: 1, timestamp: 1, text: 'date' },
     { row_kind: 'message', role: 'tool', tool_call_id: 'call', timestamp: 2, name: 'terminal', context: 'date' },
     { row_kind: 'message', role: 'assistant', row_id: 4, timestamp: 3, text: 'done' }

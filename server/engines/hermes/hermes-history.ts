@@ -30,7 +30,7 @@ export async function conversations(nativeId: string): Promise<ConversationSourc
         limit: 100,
         order: latest ? 'latest' : 'oldest'
       })
-      const rows = historyRows(nativeId, result.rows)
+      const rows = historyRows(nativeId, id, result.rows)
       return { rows, cursor: result.next_cursor, reset: result.reset, empty: result.rows.length === 0 }
     }
   }

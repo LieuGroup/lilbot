@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { applyChatEvent, chatFromSnapshot, emptyChat } from '../../web/src/chat/chat-state'
+import { failureLine } from '../../web/src/chat/failure-lines'
 import { withSentMessage, withUserMessage } from '../../web/src/chat/user-messages'
 import { play, texts } from './chat-helpers'
 
@@ -46,6 +47,15 @@ describe('a normal turn', () => {
   test('a failed turn with no text says so', () => {
     const chat = play(withUserMessage(emptyChat, 'x'), { type: 'turn.started' }, { type: 'turn.finished', status: 'failed', text: '' })
     expect(chat.items.at(-1)?.kind).toBe('error')
+  })
+
+  test("a turn that stopped for want of the memory save gets one line in LilBot's words, after any text it had streamed", () => {
+    const failed = { type: 'turn.finished', status: 'failed', text: '', failure: 'memory_save' } as const
+    expect(play(withUserMessage(emptyChat, 'x'), { type: 'turn.started' }, failed).items.slice(1)).toEqual([{ kind: 'error', text: '', reason: 'memory_save' }])
+    const streamed = play(withUserMessage(emptyChat, 'x'), { type: 'turn.started' }, { type: 'text.delta', text: 'Working on it.' }, failed)
+    expect(texts(streamed)).toEqual(['user:x', 'assistant:Working on it.', 'error:'])
+    expect(failureLine('memory_save', 'Chief of Staff')).toStartWith("Chief of Staff couldn't save its memory before shortening this long conversation")
+    expect(failureLine('memory_save', undefined)).toStartWith("The bot couldn't save")
   })
 
   test('a stopped turn keeps the partial text and is marked stopped', () => {

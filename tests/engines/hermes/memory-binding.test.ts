@@ -3,7 +3,7 @@ import { join } from 'node:path'
 
 test('the memory adapter uses the stable app id and supports old settings', async () => {
   const script = `
-import importlib.util, json, pathlib, sys, tempfile, types
+import importlib.util, json, pathlib, shutil, sys, tempfile, types
 agent = types.ModuleType('agent')
 provider = types.ModuleType('agent.memory_provider')
 provider.MemoryProvider = object
@@ -39,6 +39,29 @@ try:
 except RuntimeError as error:
     assert "not reachable" in str(error)
 calls.pop()
+# LilBot gone (a deploy restarting it): sent again until it answers; a read that timed out is not sent again.
+saves = pathlib.Path(tempfile.mkdtemp())
+adapter._home = saves
+answers = [{"error": "x", "gone": True}, {"error": "x", "gone": True}, {"saved": True}]
+adapter._call = lambda endpoint, body: calls.append((endpoint, body)) or answers.pop(0)
+module.time.sleep = lambda seconds: None
+assert adapter.on_pre_compress([{"role": "user", "content": "likes orchids"}])
+assert len(calls) == 3 and answers == []
+calls.clear()
+adapter._call = lambda endpoint, body: calls.append((endpoint, body)) or {"error": "timed out", "gone": False}
+try:
+    adapter.on_pre_compress([{"role": "user", "content": "likes orchids"}])
+    raise AssertionError("a save that did not finish must raise")
+except RuntimeError:
+    pass
+assert len(calls) == 1
+calls.clear()
+records = [json.loads(line) for line in (saves / "lilbot-memory-saves.jsonl").read_text().splitlines()]
+assert [(r["session"], r["saved"]) for r in records] == [("", True), ("", False)] and all(isinstance(r["at"], float) for r in records)
+shutil.rmtree(saves)
+# A refused connection is LilBot gone; port 9 has no listener here.
+adapter._url = "http://127.0.0.1:9"
+assert module.LilBotMemoryProvider._call(adapter, "history/save", {})["gone"] is True
 adapter._primary = False
 assert adapter.on_pre_compress([{"role": "user", "content": "a sub-agent's task"}]) == ""
 assert calls == []

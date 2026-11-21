@@ -52,12 +52,26 @@ export function checkpointPrompt(pieces: Evidence[], index: number, count: numbe
 
 export class MemoryCheckpoint {
   private reviewed = new Set<string>()
+  /** The save running for each conversation: a second one for it (Hermes' hygiene pass and the agent, or a retry)
+   *  waits and then reviews only what the first did not. */
+  private running = new Map<string, Promise<number>>()
 
   constructor(private review: (botId: string, prompt: string) => Promise<void>) {}
 
   /** Reviews whatever of the evidence was not reviewed yet. Resolves with the number of passes once all finished; rejects
    *  with the first failure once the passes already running have settled (those that finished still count next time). */
-  async save(botId: string, evidence: Evidence[]): Promise<number> {
+  async save(botId: string, chatId: string, evidence: Evidence[]): Promise<number> {
+    const key = `${botId}\n${chatId}`
+    const run = (this.running.get(key) ?? Promise.resolve(0)).catch(() => 0).then(() => this.passes(botId, evidence))
+    this.running.set(key, run)
+    try {
+      return await run
+    } finally {
+      if (this.running.get(key) === run) this.running.delete(key)
+    }
+  }
+
+  private async passes(botId: string, evidence: Evidence[]): Promise<number> {
     const passes = checkpointPasses(botId, evidence, key => this.reviewed.has(key))
     const failures: unknown[] = []
     let next = 0

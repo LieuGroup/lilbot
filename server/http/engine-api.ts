@@ -178,7 +178,8 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
           return json(200, { forgotten: forBot(fact, body.botId) })
         }
         case '/engine/memory/turn':
-          if ((options.chatKind?.(body.botId, body.chatId) ?? 'conversation') === 'conversation') options.reviewer?.record(body.botId, body.chatId, withoutWebhookNotes(String(body.user ?? '')), body.assistant)
+          if ((options.chatKind?.(body.botId, body.chatId) ?? 'conversation') === 'conversation')
+            options.reviewer?.record(body.botId, body.chatId, withoutWebhookNotes(String(body.user ?? '')), body.assistant)
           return json(200, { ok: true })
       }
     } catch (error) {

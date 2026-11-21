@@ -29,7 +29,7 @@ export const MEMORY_ADAPTER_VERSION = /^version:\s*(\S+)/m.exec(readFileSync(joi
 /** The name Hermes knows this version of the provider by: also its folder name. */
 const providerName = (version: string) => `${PLUGIN}-v${version.replaceAll('.', '-')}`
 
-function profileHome(botId: string): string {
+export function profileHome(botId: string): string {
   if (!PROFILE_ID.test(botId)) throw new Error(`Not a profile id: ${botId}`)
   const hermesHome = process.env.HERMES_HOME ?? join(homedir(), '.hermes')
   return botId === 'default' ? hermesHome : join(hermesHome, 'profiles', botId)
@@ -129,8 +129,14 @@ export async function removeMemory(botId: string) {
 export async function refreshMemoryAdapters(ids: string[]): Promise<string[]> {
   const updated: string[] = []
   for (const id of ids) {
-    if (!memoryInstalled(id) || memoryCurrent(id)) continue
+    if (!memoryInstalled(id)) continue
     try {
+      // Fail-closed again after the deploy watchdog cleared it for a rollback (`server/deploy/rollback-profiles.ts`);
+      // once, not on every start: a changed `checkpoint_required` rebuilds every cached Hermes agent of the bot.
+      if (memoryCurrent(id)) {
+        await applied(id, 'checkpoint', '1', () => configSet(id, 'compression.checkpoint_required', 'true'))
+        continue
+      }
       const connection = await memoryConnection(id)
       if (!connection) continue
       await applied(id, null, '', () => installMemory(id, connection))
