@@ -3,6 +3,7 @@ import { escapeJson } from '../../server/memory/memory-safety'
 import { MAX_DEPTH } from '../../server/webhooks/webhook-decode'
 import { WEBHOOK_LIMITS } from '../../server/webhooks/webhook-limits'
 import { eventView } from '../../server/webhooks/webhook-payload'
+import { cpuMs } from '../helpers/cpu-time'
 import { runFixture } from './webhook-fixture'
 
 const SIZE = WEBHOOK_LIMITS.bodyBytes
@@ -10,8 +11,9 @@ const TOKEN = 'Q'.repeat(64)
 const view = (text: string, headers: Record<string, string> = {}) => eventView(new TextEncoder().encode(text), new Headers(headers), null, 0, TOKEN)
 
 // Preparing an event runs on the server's only thread: a 40,000-deep body once blocked it for 1.2 s, a run of combining
-// marks for 28 s. Measured worst now is about 55 ms (U+FDFA, which NFKD expands 18 times); the bound leaves room for a
-// loaded machine. Bursts of these through the door: webhook-burst.test.ts.
+// marks for 28 s. Measured worst now is 55 ms of CPU alone and 125 ms on a busy machine (U+FDFA, which NFKD expands 18
+// times); the bound is 3 times that, and still below the 1.2 s regression. CPU time, since a busy machine stretches the wall
+// time of the same work. Bursts of these through the door: webhook-burst.test.ts.
 test('preparing any body up to the cap stays far below a second: deep, wide, long and many-keyed shapes', () => {
   const shapes: [string, Record<string, string>][] = [
     [`${'['.repeat(40_000)}${']'.repeat(40_000)}`, { 'content-type': 'application/json' }],
@@ -36,9 +38,8 @@ test('preparing any body up to the cap stays far below a second: deep, wide, lon
     ['\u3164'.repeat(SIZE / 3), { 'content-type': 'text/plain' }]
   ]
   for (const [body, headers] of shapes) {
-    const started = performance.now()
-    const shown = view(body, headers)
-    expect(performance.now() - started).toBeLessThan(150)
+    let shown!: ReturnType<typeof view>
+    expect(cpuMs(() => (shown = view(body, headers)))).toBeLessThan(400)
     expect(shown.size).toBeLessThanOrEqual(WEBHOOK_LIMITS.eventChars)
   }
   expect(view(`${'['.repeat(MAX_DEPTH + 1)}${']'.repeat(MAX_DEPTH + 1)}`).refusal).toContain('nested more than')
@@ -57,9 +58,7 @@ const MARKS: [string, Record<string, string>][] = [
 
 test('combining marks, also those that decompose into two, are folded in linear time', () => {
   for (const [body, headers] of MARKS) {
-    const started = performance.now()
-    view(body, headers)
-    expect(performance.now() - started).toBeLessThan(100)
+    expect(cpuMs(() => view(body, headers))).toBeLessThan(100)
   }
 })
 

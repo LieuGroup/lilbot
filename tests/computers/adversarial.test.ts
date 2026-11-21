@@ -3,7 +3,9 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { connectionHeaders } from '../../helper/identity'
 import { BACKGROUND_RETENTION_MS, BOT_PAYLOAD_LIMIT } from '../../server/computers/computer-store'
-import { adversary, until } from './adversarial-fixture'
+import { cpuMs } from '../helpers/cpu-time'
+import { until } from '../helpers/until'
+import { adversary, HEALTH_P99_MS } from './adversarial-fixture'
 
 for (const kind of ['result', 'heartbeat', 'connect'] as const)
   test(`private health survives signed ${kind} flood with 100k receipts`, async () => {
@@ -41,7 +43,7 @@ for (const kind of ['result', 'heartbeat', 'connect'] as const)
           expect(code).toBe(0)
         }
       })
-      expect(p99).toBeLessThan(250)
+      expect(p99).toBeLessThan(HEALTH_P99_MS)
       peer.socket.close()
     } finally {
       f.close()
@@ -56,9 +58,8 @@ test('reserve and enqueue stay indexed at one million receipts', () => {
     const samples: number[] = []
     // Enough samples for p99 to represent a tail, rather than one scheduling pause.
     for (let i = 0; i < 1000; i++) {
-      const start = performance.now()
-      const row = f.store.enqueue('bot', 'remote', `new${i}`, { kind: 'exec', command: 'true', timeoutMs: 1000 })
-      samples.push(performance.now() - start)
+      let row!: ReturnType<typeof f.store.enqueue>
+      samples.push(cpuMs(() => (row = f.store.enqueue('bot', 'remote', `new${i}`, { kind: 'exec', command: 'true', timeoutMs: 1000 }))))
       f.store.result('remote', row.id, { output: '' }, true)
     }
     const plan = f.db.query('EXPLAIN QUERY PLAN SELECT bytes FROM computer_bytes WHERE bot_id=?').all('bot')
@@ -88,7 +89,7 @@ test('eight parallel 4 MiB copies deliver every frame and preserve bytes', async
       expect(result.every(r => r.status === 'completed')).toBe(true)
     })
     for (let i = 0; i < 8; i++) expect(readFileSync(join(f.root, `target${i}`)).equals(bytes)).toBe(true)
-    expect(p99).toBeLessThan(250)
+    expect(p99).toBeLessThan(HEALTH_P99_MS)
     console.log('MEASURE: 8/8 work frames delivered; 8/8 files byte-identical')
     const readLag = await f.measure('8 parallel 4 MiB return copies', async () => {
       const results = await Promise.all(
@@ -104,7 +105,7 @@ test('eight parallel 4 MiB copies deliver every frame and preserve bytes', async
       )
       expect(results.every(row => row.status === 'completed')).toBe(true)
     })
-    expect(readLag).toBeLessThan(250)
+    expect(readLag).toBeLessThan(HEALTH_P99_MS)
     for (let i = 0; i < 8; i++) expect(readFileSync(join(f.root, `returned${i}`)).equals(bytes)).toBe(true)
   } finally {
     child.kill()
@@ -131,7 +132,7 @@ test('eight fast coloured commands remain connected and offline storage stays pe
       expect(results.every(r => r.status === 'completed')).toBe(true)
       expect(f.service.list().find(c => c.id === 'remote')?.online).toBe(true)
     })
-    expect(p99).toBeLessThan(250)
+    expect(p99).toBeLessThan(HEALTH_P99_MS)
     console.log('MEASURE: 8/8 coloured commands completed, helper remained connected')
     child.kill()
     await child.exited
@@ -163,7 +164,7 @@ test('eight fast coloured commands remain connected and offline storage stays pe
       expect(f.store.pending('remote')).toHaveLength(0)
       console.log(`MEASURE: offline attacker admitted ${count} writes, ${used} reserved bytes; other bot leader exec succeeds; queued work expires`)
     })
-    expect(storageLag).toBeLessThan(250)
+    expect(storageLag).toBeLessThan(HEALTH_P99_MS)
   } finally {
     child.kill()
     await child.exited
@@ -179,9 +180,7 @@ test('forgetting a bot seeks only its active requests among one million receipts
     const row = f.store.enqueue('bot', 'remote', 'active', { kind: 'exec', command: 'true', timeoutMs: 1000 })
     const query = "SELECT id,status FROM computer_requests WHERE bot_id=? AND status IN ('pending','running')"
     expect(JSON.stringify(f.db.query(`EXPLAIN QUERY PLAN ${query}`).all('bot'))).toContain('computer_bot_active')
-    const start = performance.now()
-    f.store.forgetBot('bot')
-    const elapsed = performance.now() - start
+    const elapsed = cpuMs(() => f.store.forgetBot('bot'))
     expect(f.store.status(row.id)).toBe('cancel_acked')
     console.log(`MEASURE: forgetBot / 1M receipts ${elapsed.toFixed(3)} ms; active-only index`)
     expect(elapsed).toBeLessThan(50)

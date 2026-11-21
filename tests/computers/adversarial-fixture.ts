@@ -10,6 +10,11 @@ import { ComputerStore } from '../../server/computers/computer-store'
 import { loadServerKey } from '../../server/computers/server-key'
 import { openDatabase } from '../../server/database/database'
 import { startPublicDoor } from '../../server/http/public-door'
+import { cpuNow } from '../helpers/cpu-time'
+
+/** The longest a caller of the private app may wait (p99), in CPU milliseconds the process spends meanwhile. A real stall is
+ *  seconds of it; the heaviest healthy case (eight 4 MiB copies at once) took 83 to 204 ms on a quiet and on a saturated machine. */
+export const HEALTH_P99_MS = 500
 
 export function adversary() {
   const root = mkdtempSync(join(homedir(), 'agent-tmp/computer-adversary-'))
@@ -51,24 +56,27 @@ export function adversary() {
     })
     return { socket, send }
   }
+  /** How long the private app made a caller wait while `action` ran, as the CPU the process spent meanwhile: a delay from running
+   *  code (a long synchronous turn) shows, one from other processes taking the machine does not. Probes are /api/health calls
+   *  every 5 ms, and a timer period that ran long counts as the probes it would have delayed. */
   async function measure(label: string, action: () => Promise<void>) {
     const samples: number[] = []
     const pending = new Set<Promise<void>>()
     let stalledMs = 0
-    let last = performance.now()
+    let last = cpuNow()
     const timer = setInterval(() => {
-      const now = performance.now()
+      const now = cpuNow()
       const gap = now - last
       if (gap > 20) stalledMs += gap - 5
       // Weight delayed timer periods: a 200 ms stall is not just one good-looking sample.
       if (gap > 20) for (let i = 1; i < Math.floor(gap / 5); i++) samples.push(gap - i * 5)
       last = now
       if (pending.size >= 32) return
-      const start = performance.now()
+      const start = cpuNow()
       const probe = fetch(`http://127.0.0.1:${privateApp.port}/api/health`)
         .then(r => r.text())
         .then(() => {
-          samples.push(performance.now() - start)
+          samples.push(cpuNow() - start)
         })
         .finally(() => pending.delete(probe))
       pending.add(probe)
@@ -85,11 +93,10 @@ export function adversary() {
     console.log(
       `MEASURE: ${label}: private /api/health p99 ${p99.toFixed(2)} ms, max ${samples.at(-1)?.toFixed(2)} ms, total event-loop stall ${stalledMs.toFixed(2)} ms (${samples.length} weighted samples)`
     )
-    // A cumulative stall budget grows with the workload duration and counts host
-    // scheduling jitter as application blocking. Bound latency instead, including
+    // A cumulative stall budget grows with the workload duration. Bound latency instead, including
     // the weighted timer gaps above so synchronous stalls cannot hide from p99.
-    expect(p99).toBeLessThan(250)
-    expect(samples.at(-1) ?? 0).toBeLessThan(1000)
+    expect(p99).toBeLessThan(HEALTH_P99_MS)
+    expect(samples.at(-1) ?? 0).toBeLessThan(2 * HEALTH_P99_MS)
     return p99
   }
   function launch() {
@@ -123,12 +130,5 @@ export function adversary() {
       db.close()
       rmSync(root, { recursive: true, force: true })
     }
-  }
-}
-export async function until(check: () => boolean, ms = 10_000) {
-  const end = Date.now() + ms
-  while (!check()) {
-    if (Date.now() > end) throw new Error('Timed out')
-    await Bun.sleep(10)
   }
 }

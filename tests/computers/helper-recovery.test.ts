@@ -3,7 +3,8 @@ import { expect, test } from 'bun:test'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { prepareJournal } from '../../helper/journal'
-import { adversary, until } from './adversarial-fixture'
+import { until } from '../helpers/until'
+import { adversary } from './adversarial-fixture'
 
 for (const mode of ['unknown', 'exhausted'] as const)
   test(`real helper acknowledges ${mode} result and completes next request`, async () => {

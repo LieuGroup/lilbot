@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import { ComputerStore } from '../../server/computers/computer-store'
-import { adversary, until } from './adversarial-fixture'
+import { until } from '../helpers/until'
+import { adversary } from './adversarial-fixture'
 
 test('arrival timing survives a blocked payload queue; early progress and heartbeat are dropped', async () => {
   const f = adversary()

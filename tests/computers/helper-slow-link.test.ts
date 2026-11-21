@@ -1,7 +1,8 @@
 import { expect, test } from 'bun:test'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { adversary, until } from './adversarial-fixture'
+import { until } from '../helpers/until'
+import { adversary } from './adversarial-fixture'
 import { throttledProxy } from './throttled-proxy'
 
 for (const rate of [1_000_000, 500_000])
