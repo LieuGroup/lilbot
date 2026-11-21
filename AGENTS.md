@@ -632,7 +632,8 @@ startup and restored if it differs, like `t3-coding`).
 
 ### Check levels (#142)
 
-0 no check; 1 the owner reads the real result and attaches evidence; 2 a second bot reproduces the claim; 3 Oscar checks.
+0 no check; 1 the owner reads the real result and attaches evidence; 2 a second bot reproduces the claim (a fresh session of
+the owner when no other bot is eligible); 3 Oscar checks.
 What must happen is built in (`work-check-*.ts`, `work-checks.ts`, `work-levels.ts`); how to check is the `lilbot-check`
 skill (`server/work/check-skill/`, installed like `lilbot-work`).
 
@@ -646,18 +647,29 @@ skill (`server/work/check-skill/`, installed like `lilbot-work`).
 - Level 2: the owner's `done` (same checks as level 1) moves the item to `checking`, not done; LilBot picks the checker
   in the same transaction (`work_checks`): never the owner or the owner of any item under it, never a choice of the
   owner's (there is no argument for it); among the rest, one that has not checked this item, then the fewest checks, then
-  by id. Candidates are bots that are ready or being prepared.
+  by id. Candidates are bots that are ready or being prepared. A real second bot is always preferred.
+- No other bot eligible (Oscar has one bot, or every other bot works under the item): the check is a **same-bot check**,
+  never a wait for Oscar. It is a new hidden session of the owner (`by` is the owner, `sameBot` true), told nothing but
+  the check prompt (done definition, claim and evidence pointers fenced as data), so it remembers nothing of the owner's
+  conversation, read-only by instruction. It runs on `LILBOT_REVIEW_MODEL` when that differs from the bot's own model
+  (`WorkHost.checkModel`, `differentModel`; a bot with no model of its own counts as different), else on the bot's own,
+  and the check's `note` says which. The choice is saved with the check (`same_bot`, `checker_model`, `WorkCheck.sameBot`
+  and `model`), so Oscar's screens can show it, and a restart reuses it. A run with another model starts without the
+  bot's reasoning effort (like the memory review). Limit: the fresh session still loads the bot's LilBot memory block
+  (lasting facts and recent journal entries, a plug-in `prefetch` for every session), which may mention the work; LilBot
+  cannot strip it.
 - The check runs as a new hidden session of the checker (`work-check-runner.ts`, run id `check-<check id>`, both session
   ids saved before the prompt in `work_check_chats`, so it is excluded from history, activity and both memory reviews).
   The prompt gives the done definition, claim and the owner's evidence in a `work-claim` JSON fence, and the owner's
   folder. Read-only is by instruction only (full access, like routines). Retries and restarts reuse the run id.
 - The verdict comes only through `lilbot_work` (`verdict`, `result`, the checker's own evidence) from the assigned bot,
-  from that check session. `verified`: done. `not_verified`: back to `working`, the owner told once through
+  from that check session (`work_check_chats`): for a same-bot check the owner's main and every other session are refused,
+  though it is the same bot. `verified`: done. `not_verified`: back to `working`, the owner told once through
   `work_answers` with what the checker saw (fenced); a second failure waits for Oscar. `could_not_check`, a run that ends
   without a verdict, or a checker that is gone: waits for Oscar. While a check is open the owner can report nothing.
   These notices (and Oscar's send-back) reach a handed-over item's owner in its own session, not through the exchange.
-- Oscar's checks: level 3, no other bot ("No second bot was available", a note on the check), a second failure or a
-  check that could not be done put the item in `needs_oscar` with an open Oscar check. `work.pass` (optional note): done.
+- Oscar's checks: level 3, a second failure or a check that could not be done put the item in `needs_oscar` with an
+  open Oscar check. `work.pass` (optional note): done.
   `work.sendBack` (reason): back to `working`, the owner told. `work.answer` refuses these. Dropping an item closes its
   open check.
 - A level 2 or 3 item is done only as `verified` (a bot) or `passed` (Oscar): every summary carries its latest `check`,
@@ -703,7 +715,7 @@ number. How to propose and review is the guide topic `goals` (no skill: a skill'
   the previous review (or the baseline) and the target: moved toward, away or not at all, met, and stalled (not met, and
   nothing moved toward the target in this and the previous review, or past due). A stalled review is refused without a
   change or drop in the same call, unless one already waits. The report becomes a work item through `WorkService.act`,
-  linked to the goal: kind `figure` (level 2 by default, so a second bot reproduces the reading; Oscar may change the
+  linked to the goal: kind `figure` (level 2 by default, so a second bot, or a fresh session of the bot when it is the only one, reproduces the reading; Oscar may change the
   default), the reading as a number entry plus the bot's own evidence, and a result that keeps "Number: ..." and
   "Work: ... (items for the goal: ...)" apart. Review items are not counted as the goal's work.
 - Reached only when the latest review met the target and its work item is `done` (checked at its level), never on the
@@ -1028,7 +1040,8 @@ for connected bots).
   minutes.
 - LilBot runs no model: `BotEngine.reviewMemory` runs a hidden session of the same bot with only its memory tools
   (about 4,500 prompt tokens instead of 26,000), on `LILBOT_REVIEW_MODEL` (`provider::model`; otherwise the bot's own
-  model, which costs more). Its own session is never queued for review.
+  model, which costs more). Its own session is never queued for review. The same setting picks the model of a same-bot work
+  check (see Check levels).
 - A review may not bring back a fact the user removed and may not forget a fact the user wrote. What it saves is
   marked `via: review`. No approval step (Oscar's decision): facts apply at once, and the Memory panel shows where
   each came from and lets him pause, forget and restore.
@@ -1260,14 +1273,16 @@ profiles, isolated directories, cleanup in `finally`. Most cost a few model call
   drops an item mid-work: its turn ends, the bot is told once and says so. Dropping a parent drops the child and stops its
   exchange as Oscar. Oscar answers the child's question: the helper continues in the exchange and the lead gets the outcome
   once in its own conversation; the lead reads the question and answer with `lilbot_work_list`.
-- `bun run check:checks`: with one temporary bot, an item below its kind's default is refused and a level 2 item waits for
-  Oscar; with a second, a true claim the owner makes itself comes back verified by the other bot, and a false one comes
-  back not verified with what the checker saw, returns to the owner, then waits for Oscar. The owner cannot skip or answer
-  its own check.
+- `bun run check:checks`: with one temporary bot (review model Haiku), an item below its kind's default is refused; a true
+  level 2 claim is verified by a fresh hidden session of the same bot (recorded as a same-bot check on the review model,
+  which Hermes confirms the session ran on, outside the history), and a false one comes back not verified with what the
+  checker saw, returns to the owner, then waits for Oscar. The owner's own session cannot give the verdict, skip or answer
+  the check. With a second bot, that bot checks instead.
 - `bun run check:goals`: a temporary bot told in chat to grow notes.txt in its folder to 10 lines proposes a goal with a
   baseline read from the file; nothing exists for it before `goals.agree`; after it, the review routine (90 s through the
   routine test override, not one of the bot's five) and goal work items appear; the first review is a `figure` item from
-  the routine run with the reading as evidence, checked against the file; passing Oscar's check reaches a met goal.
+  the routine run with the reading as evidence, checked against the file by a fresh session of the same bot; a met goal is
+  reached once that check is done.
 - `bun run check:routines`: create from chat, a real file-writing run, open history, pause, restart, resume, delete.
 - `bun run check:webhooks`: a dev server with its own helper door on loopback and a temporary bot whose webhook is made
   through its MCP tool: a signed event wakes it and the result is recorded and opens; a repeat, an unsigned and a

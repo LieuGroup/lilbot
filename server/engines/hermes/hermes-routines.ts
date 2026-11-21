@@ -28,6 +28,7 @@ export async function runRoutine(botId: string, prompt: string, options: Routine
           cwd: options.workspace,
           cwd_explicit: true,
           ...(options.toolsets ? { toolsets: options.toolsets } : {}),
+          ...(options.model ? { model: options.model.model, provider: options.model.provider } : {}),
           ...(options.reasoningEffort ? { reasoning: options.reasoningEffort } : {})
         })
     // Both identities are persisted before the prompt can run (also excludes memory reviews).

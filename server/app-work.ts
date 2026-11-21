@@ -2,6 +2,7 @@
  *  and browsers; Oscar's side (`WorkBoard`) is built after the exchanges, which it stops and answers through. */
 import type { Database } from 'bun:sqlite'
 import type { z } from 'zod'
+import type { BotModel } from '../shared/bot-schema'
 import type { ChatItem } from '../shared/chat-schema'
 import type { GiveFileInput } from '../shared/library-schema'
 import { type EventFrame, LilBotError } from '../shared/protocol'
@@ -23,6 +24,7 @@ import type { CallingChats } from './threads/calling-chats'
 import type { ThreadStore } from './threads/thread-store'
 import type { WebhookStore } from './webhooks/webhook-store'
 import { WorkAnswers } from './work/work-answers'
+import { differentModel } from './work/work-check-rules'
 import { WorkCheckRunner } from './work/work-check-runner'
 import { WorkLinks } from './work/work-links'
 import { type SessionOrigin, WorkService } from './work/work-service'
@@ -44,6 +46,8 @@ interface WorkDeps {
   activity: ActivityService
   history: Pick<HistoryStore, 'reference'>
   calls: CallingChats
+  /** `LILBOT_REVIEW_MODEL`: what a same-bot check runs on when it differs from the bot's own. */
+  reviewModel: BotModel | null
   publish: (frame: EventFrame) => void
 }
 
@@ -126,11 +130,13 @@ export function createWork({
   activity,
   history,
   calls,
+  reviewModel,
   publish
 }: WorkDeps) {
   const work = new WorkService(new WorkStore(database), {
     requireBot: id => bots.requireBot(id),
     checkers: async () => (await bots.listBots()).filter(bot => bot.runnable || bot.runtimePending).map(({ id, name }) => ({ id, name })),
+    checkModel: async botId => differentModel((await bots.requireBot(botId)).model, reviewModel),
     callingChat: (botId, requestId) => calls.find(botId, requestId),
     session: workSessions(threadStore, routineStore, webhookStore, rootOf),
     libraryTitle: (botId, itemId) => libraryStore.get(botId, itemId)?.title ?? null,
@@ -156,7 +162,7 @@ export function createWork({
   )
   const checks = new WorkCheckRunner(
     work,
-    (botId, prompt, runId, onChat) => bots.runRoutine(botId, prompt, { runId, hiddenInput: true, onChat, origin: { line: boardLine } }),
+    (botId, prompt, runId, onChat, model) => bots.runRoutine(botId, prompt, { runId, hiddenInput: true, onChat, model, origin: { line: boardLine } }),
     (botId, checkId, working) => {
       if (store.exists(botId)) activity.observe({ botId, chatId: `check:${checkId}`, key: `${checkId}:${working}:${Date.now()}`, status: working ? 'working' : 'finished' })
     },

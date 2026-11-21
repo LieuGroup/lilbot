@@ -1,5 +1,5 @@
 /** Sessions the engine runs for a bot without a browser: routine and thread runs, and the after-chat memory review.
- *  A run starts with the bot's reasoning effort; the review keeps its own model and is not given it. */
+ *  A run starts with the bot's reasoning effort; the review, and a run given another model, keep their own model and are not given it. */
 import { LilBotError } from '../../shared/protocol'
 import type { ReviewOptions, RoutineOptions } from '../engines/bot-engine'
 import type { BotRuntimes } from './bot-runtimes'
@@ -16,9 +16,11 @@ export class BackgroundRuns {
 
   async routine(bot: BotRecord, prompt: string, options: RoutineOptions) {
     await this.runtimes.use(bot)
-    return this.runtimes
-      .engineFor(bot)
-      .runRoutine(bot.engineBotId, prompt, { ...options, workspace: await this.workspaces.ensure(bot.id), reasoningEffort: await this.sessions.forNewSession(bot) })
+    return this.runtimes.engineFor(bot).runRoutine(bot.engineBotId, prompt, {
+      ...options,
+      workspace: await this.workspaces.ensure(bot.id),
+      reasoningEffort: options.model ? undefined : await this.sessions.forNewSession(bot)
+    })
   }
 
   async review(bot: BotRecord, prompt: string, options: ReviewOptions) {

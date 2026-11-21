@@ -3,7 +3,7 @@
 import { z } from 'zod'
 import { KIND_NAMES, type WorkCheck, type WorkKind, type WorkLevels } from './work-check-schema'
 
-/** open: not started. working: under way. checking: finished by its owner, a second bot is checking it (level 2).
+/** open: not started. working: under way. checking: finished by its owner, a second bot (or, with none eligible, a fresh session of the owner) is checking it (level 2).
  *  needs_oscar: waits for his answer to one question, or for his check. The last three are final. */
 const WORK_STATUSES = ['open', 'working', 'checking', 'needs_oscar', 'done', 'failed', 'dropped'] as const
 export type WorkStatus = (typeof WORK_STATUSES)[number]
@@ -60,7 +60,7 @@ export interface WorkSummary {
   goalId: string | null
   /** Null on items from before kinds, and on an exchange's item until its receiver says. */
   kind: WorkKind | null
-  /** 0 no check, 1 the bot checks the real result itself, 2 a second bot reproduces it, 3 Oscar checks. Never lowered. */
+  /** 0 no check, 1 the bot checks the real result itself, 2 a second bot reproduces it (a fresh session of the owner when no other is eligible), 3 Oscar checks. Never lowered. */
   checkLevel: number
   /** The kind's default level for this bot when the item got its kind: why the level is what it is. */
   defaultLevel: number | null
@@ -126,7 +126,9 @@ export const WorkInput = z.object({
     .min(0)
     .max(3)
     .optional()
-    .describe("At least the kind's default; raise it for anything hard to undo, never lower. 0 no check, 1 you check the real result, 2 another bot reproduces it, 3 Oscar"),
+    .describe(
+      "At least the kind's default; raise it for anything hard to undo, never lower. 0 no check, 1 you check the real result, 2 another bot reproduces it (a fresh session of you if none is eligible), 3 Oscar"
+    ),
   asked: z.enum(['oscar', 'self']).optional().describe('Who asked, in a conversation (default oscar)'),
   goalId: itemId.optional().describe('At open: the agreed goal of yours this work is for'),
   status: z.enum(['working', 'needs_oscar', 'done', 'failed', 'dropped']).optional(),

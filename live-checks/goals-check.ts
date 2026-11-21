@@ -6,7 +6,7 @@ import { deleteProfile, startServer } from './check-process'
  *  file in its folder (notes.txt to 10 lines). It proposes an agreement with a baseline it read from the file; after
  *  `goals.agree` LilBot makes the review routine (on a short interval through the routine test override) and the bot opens
  *  work items for the goal; the review reports the measured value against the target as a work item with evidence, which
- *  Oscar's check passes (one bot, so no second bot can check it). Costs a few model calls; cleanup in `finally`. */
+ *  a fresh session of the same bot checks (one bot, so no second bot can). Costs a few model calls; cleanup in `finally`. */
 import { Database } from 'bun:sqlite'
 import assert from 'node:assert/strict'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -121,9 +121,21 @@ try {
   assert.match(item.result, /\nWork: /)
   console.log(`ok: review ${review.value} (previous ${review.previous}, ${review.moved}, met ${review.met}); file has ${now}; item ${item.status}: ${item.result}`)
 
-  // 4. One bot: the review waits for Oscar's check; passing it reaches the goal when the target was met.
-  if (item.status === 'needs_oscar') await call('work.pass', { itemId: item.id })
-  if (review.met) {
+  // 4. One bot: a fresh session of it checks the review (a check that could not be done waits for Oscar, who passes it);
+  // once the item is done the goal is reached when the target was met.
+  const checked = await until(
+    () => call('work.open', { itemId: item.id }),
+    (i: any) => i.check && (i.check.state !== 'checking' || i.check.by.kind === 'oscar'),
+    'the same-bot check of the review',
+    400_000
+  )
+  assert.ok(checked.checks[0].sameBot && checked.checks[0].by.id === bot.id, `checked by a fresh session of the same bot: ${JSON.stringify(checked.checks[0])}`)
+  console.log(
+    `ok: the review was checked by a fresh session of ${checked.checks[0].by.name}: ${checked.checks[0].state}${checked.checks[0].text ? ` (${checked.checks[0].text})` : ''}`
+  )
+  if (checked.status === 'needs_oscar') await call('work.pass', { itemId: item.id })
+  const final = checked.status === 'done' || checked.status === 'needs_oscar'
+  if (review.met && final) {
     const reached = await until(
       () => call('goals.open', { goalId }),
       (goal: any) => goal.state === 'reached',
@@ -132,7 +144,7 @@ try {
     )
     assert.equal((await call('routines.list', { botId: bot.id })).length, 0, 'the review routine is removed once reached')
     console.log(`ok: reached; events ${reached.events.map((e: any) => e.kind).join(', ')}`)
-  } else console.log('ok: the target was not met at the first review, so the goal stays agreed')
+  } else console.log('ok: the target was not met at the first review, or its check sent the item back, so the goal stays agreed')
 } finally {
   if (client && goalId) await call('goals.drop', { goalId, reason: 'The check is over' }).catch(() => {})
   client?.socket.close()

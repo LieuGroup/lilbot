@@ -1,45 +1,12 @@
 import { expect, test } from 'bun:test'
 import { WorkCheckRunner } from '../../server/work/work-check-runner'
 import { LilBotError } from '../../shared/protocol'
-import type { EvidenceInput } from '../../shared/work-schema'
-import { workFixture } from './work-fixture'
-
-const proof = { proves: 'The site shows version 7', url: 'https://example.com/version' }
-const saw = { proves: 'The page I opened', command: 'curl -s https://example.com/version', output: 'version 6' }
-const refusal = (promise: Promise<unknown>) =>
-  promise.then(
-    () => '',
-    (error: Error & { code?: string }) => error.code ?? error.message
-  )
-
-/** A workFixture whose check runs stay open until released, so the checking bot can give its verdict meanwhile. */
-function fixture() {
-  const f = workFixture()
-  let release = () => {}
-  f.run.result = new Promise(resolve => {
-    release = () => resolve({ status: 'completed' })
-  })
-  return { ...f, release: () => release() }
-}
-type F = ReturnType<typeof fixture>
-/** `a` opens a deploy (level 2) and finishes it. */
-async function finish(f: F, extra: Record<string, unknown> = {}) {
-  const item = await f.open('a', { kind: 'deploy', ...extra })
-  return f.work.act('a', { requestId: `fin-${item.id}`, itemId: item.id, status: 'done', result: 'Version 7 is live', evidence: [proof] })
-}
-/** Runs the open check and gives `verdict` as the checking bot, from its check session. */
-async function check(f: F, itemId: string, verdict: 'verified' | 'not_verified' | 'could_not_check', evidence: EvidenceInput[] = [saw]) {
-  f.checkRuns.tick()
-  await Bun.sleep(1)
-  const open = f.work.checks.open(itemId)!
-  f.state.chats.set(open.by.id!, `check-${open.id}-session`)
-  return f.work.act(open.by.id!, { requestId: `v-${open.id}`, itemId, verdict, result: `I read version ${verdict === 'verified' ? 7 : 6}`, evidence })
-}
+import { check, finish, fixture, proof, refusal, saw } from './work-check-fixture'
 
 test('a level 2 item is not done when its owner finishes: another bot LilBot chose checks it in a hidden session', async () => {
   const f = fixture()
   const item = await finish(f)
-  expect(item).toMatchObject({ status: 'checking', finishedAt: null, check: { state: 'checking', by: { kind: 'bot', id: 'b', name: 'B' }, round: 1 } })
+  expect(item).toMatchObject({ status: 'checking', finishedAt: null, check: { state: 'checking', by: { kind: 'bot', id: 'b', name: 'B' }, round: 1, sameBot: false, model: null } })
   f.checkRuns.tick()
   await Bun.sleep(1)
   expect(f.state.runs).toEqual([{ botId: 'b', prompt: expect.stringContaining('<work-claim>'), runId: `check-${item.id}:check:1` }])
@@ -101,31 +68,25 @@ test('not verified goes back to its owner once, with what the checker saw; a sec
   expect(f.state.waits.at(-1)).toMatchObject({ on: false })
 })
 
-test('with no other bot, a level 2 item waits for Oscar with a note; level 3 always does; he passes or sends it back', async () => {
+test('level 3 always waits for Oscar, who passes it or sends it back; a bot cannot answer for him', async () => {
   const f = fixture()
-  f.state.checkers = [{ id: 'a', name: 'A' }]
-  const alone = await finish(f)
-  expect(alone).toMatchObject({
-    status: 'needs_oscar',
-    question: expect.stringContaining('No second bot'),
-    check: { by: { kind: 'oscar' }, note: expect.stringContaining('No second bot') }
-  })
-  expect(f.board.sendBack(alone.id, 'Version 7 is not live yet')).toMatchObject({ status: 'working', check: { state: 'sent_back' } })
-  f.answers.tick()
-  await Bun.sleep(1)
-  expect(f.delivered.at(-1)?.prompt).toContain('Version 7 is not live yet')
-  expect(() => f.board.pass(alone.id)).toThrow('not waiting for your check')
-  f.state.checkers = [
-    { id: 'a', name: 'A' },
-    { id: 'b', name: 'B' }
-  ]
   const asking = await f.open('a', { kind: 'deploy', level: 3 })
   await f.work.act('a', { requestId: 'ask', itemId: asking.id, status: 'needs_oscar', question: 'Which site?' })
   await f.work.act('a', { requestId: 'fin', itemId: asking.id, status: 'done', result: 'Live', evidence: [proof] })
   expect(f.state.waits.filter(w => w.itemId === asking.id).map(w => w.on)).toEqual([true, true])
   const level3 = await finish(f, { level: 3 })
-  expect(level3).toMatchObject({ status: 'needs_oscar', question: expect.stringContaining('pass it or send it back'), check: { by: { kind: 'oscar' }, note: null } })
-  expect(f.board.pass(level3.id).status).toBe('done')
+  expect(level3).toMatchObject({
+    status: 'needs_oscar',
+    question: expect.stringContaining('pass it or send it back'),
+    check: { by: { kind: 'oscar' }, note: null, sameBot: false }
+  })
+  expect(f.board.sendBack(level3.id, 'Version 7 is not live yet')).toMatchObject({ status: 'working', check: { state: 'sent_back' } })
+  f.answers.tick()
+  await Bun.sleep(1)
+  expect(f.delivered.at(-1)?.prompt).toContain('Version 7 is not live yet')
+  expect(() => f.board.pass(level3.id)).toThrow('not waiting for your check')
+  const again = await f.work.act('a', { requestId: 'fin-again', itemId: level3.id, status: 'done', result: 'Live now', evidence: [proof] })
+  expect(f.board.pass(again.id).status).toBe('done')
 })
 
 test('a child item’s owner never checks it; a run with no verdict, or a checker gone, waits for Oscar; a drop closes the check', async () => {

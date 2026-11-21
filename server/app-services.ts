@@ -146,7 +146,7 @@ export function createAppServices(
     systemNote: systemNote(facts)
   })
   const calls = new CallingChats(botId => prefs.mainChat(botId))
-  const runs = { threadStore, routineStore, webhookStore, rootOf, goalStore: new GoalStore(database) }
+  const runs = { threadStore, routineStore, webhookStore, rootOf, goalStore: new GoalStore(database), reviewModel: reviewSettingsFrom(process.env).model ?? null }
   const { work, links, answers, checks } = createWork({ database, engine, store, prefs, bots, ...runs, libraryStore, workspaces, activity, history: history.store, calls, publish })
   const threadDeps = { engine, store, prefs, bots, workspaces, history, activity, threadStore, calls, work: links, memory, library, root: WORKSPACES_DIR, rootOf, publish }
   const { threads, delegation } = createThreads({ ...threadDeps, botsChanged, memoryChanged })
