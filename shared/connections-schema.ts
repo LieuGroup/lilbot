@@ -35,11 +35,11 @@ export interface ConnectionsStatus {
   services: McpService[]
 }
 
-/** A connection's name: also the engine's tool prefix (after LilBot's own `lilbot_c_`). No `__` so server/tool boundaries never collide. */
+/** A connection's name: also the engine's tool prefix (after LilBot's own `lilbot_c_`). No `__` or trailing `_` so server/tool boundaries never collide. */
 const Name = z
   .string()
-  .regex(/^(?!.*__)[a-z][a-z0-9_]{1,30}$/, 'a name is 2 to 31 lowercase letters, digits or single underscores, starting with a letter')
-  .describe('Short name, e.g. notion: lowercase letters, digits, single underscores')
+  .regex(/^(?!.*__)[a-z][a-z0-9_]{0,29}[a-z0-9]$/, 'a name is 2 to 31 lowercase letters, digits or single underscores, starting with a letter and ending with a letter or digit')
+  .describe('Short name, e.g. notion: lowercase letters, digits, single underscores (starts with a letter, ends with a letter or digit)')
 
 export const ConnectionActionInput = z.object({
   action: z.enum(['add', 'sign_in', 'finish', 'remove']),

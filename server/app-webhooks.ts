@@ -11,7 +11,7 @@ import type { SessionRoot } from './bots/hidden-chats'
 import type { HistoryStore } from './history/history-store'
 import { pluginCall, SESSION_HEADER } from './http/engine-run-gate'
 import { RoutineScheduler } from './routines/routine-scheduler'
-import { checkToolRefusal } from './system/check-access'
+import { serviceSessionRefusal } from './system/check-access'
 import { refusalFor } from './system/run-access'
 import type { CallingChats } from './threads/calling-chats'
 import { webhookCallers } from './webhooks/webhook-callers'
@@ -81,12 +81,7 @@ export function createWebhooks({ webhookStore, messages, bots, rootOf, calls, to
       return call ? refusalFor(callers.forChat(botId, request.headers.get(SESSION_HEADER) || undefined), call.tool, call.groups) : null
     },
     t3Refusal: async (botId: string, tool: string, args: unknown) => refusalFor(await callers.forCall(botId, tool, args), tool, ['coding']),
-    serviceRefusal:
-      (checks: Pick<CheckSessions, 'checking' | 'isCheck'>) =>
-      async (botId: string, tool: string, args: unknown): Promise<string | null> => {
-        const webhook = refusalFor(await callers.forCall(botId, tool, args), tool, [])
-        return webhook ?? checkToolRefusal(checks, calls, botId, tool, args)
-      }
+    serviceRefusal: (checks: Pick<CheckSessions, 'checking' | 'isCheck'>) => serviceSessionRefusal(callers, checks, calls)
   }
   return { webhooks, gates, webhookRuns: { callers, messages, callingChat: (botId: string, requestId: string) => calls.find(botId, 'lilbot_webhook_message', requestId) } }
 }

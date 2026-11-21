@@ -62,7 +62,7 @@ export function createServiceForward(options: ServiceForwardOptions) {
     return serviceSignedOut(message, { ...connection, state: current?.tokens ? connection.state : 'sign_in_expired' })
   }
   const worked = (connection: StoredConnection) => {
-    if (connection.state === 'unreachable') store.setState(connection.id, 'connected')
+    if (connection.state === 'unreachable' || (connection.state === 'needs_sign_in' && !credentials.get(connection.id))) store.setState(connection.id, 'connected')
     if (!connection.lastWorkedAt || now() - connection.lastWorkedAt > WORKED_EVERY_MS) store.worked(connection.id, now())
   }
 

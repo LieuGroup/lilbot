@@ -47,13 +47,16 @@ test('a service on the internet may not point its sign-in at this machine; a loc
   expect(endpointOf('http://127.0.0.1:8080/token', new URL('http://127.0.0.1:9/mcp')).port).toBe('8080')
 })
 
-test('tool names an engine may be given: the MCP pattern only, dropping lilbot_* spoofing (M4), without repeats, at most 200', () => {
+test('tool names an engine may be given: alphanumeric-start MCP pattern only, dropping lilbot_* spoofing (M4) and leading separators (L1), without repeats, at most 200', () => {
   expect(
     toolNames([
       { name: 'search' },
       { name: 'search' },
       { name: 'lilbot_work' },
       { name: 'LILBOT_connection' },
+      { name: '_x' },
+      { name: '.x' },
+      { name: '-x' },
       { name: 'bad name' },
       { name: '<script>' },
       { name: 'a-b' },
@@ -63,8 +66,10 @@ test('tool names an engine may be given: the MCP pattern only, dropping lilbot_*
       null
     ])
   ).toEqual(['search', 'a-b', 'a.b-c_d'])
-  expect(ConnectionActionInput.safeParse({ action: 'add', requestId: 'r1', name: 'my__svc', address: 'https://a.test/mcp' }).success).toBe(false)
-  expect(ConnectionActionInput.safeParse({ action: 'add', requestId: 'r1', name: 'my_svc', address: 'https://a.test/mcp' }).success).toBe(true)
+  for (const bad of ['my__svc', 'ab_', 'a_', 'a', '_ab', '1ab'])
+    expect(ConnectionActionInput.safeParse({ action: 'add', requestId: 'r1', name: bad, address: 'https://a.test/mcp' }).success).toBe(false)
+  for (const ok of ['my_svc', 'ab', 'a_b', 'a1'])
+    expect(ConnectionActionInput.safeParse({ action: 'add', requestId: 'r1', name: ok, address: 'https://a.test/mcp' }).success).toBe(true)
   expect(toolNames(Array.from({ length: 300 }, (_, i) => ({ name: `t${i}` })))).toHaveLength(200)
   expect(toolNames('nope')).toEqual([])
 })

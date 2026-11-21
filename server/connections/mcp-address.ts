@@ -7,7 +7,7 @@ import { isBlockedLiteralHost, isLoopbackHost } from './mcp-net'
 /** Engine-side server names are `lilbot_c_<name>`: LilBot's own namespace, so a bot's name never meets Oscar's servers. */
 export const ENGINE_PREFIX = 'lilbot_c_'
 const MAX_TOOLS = 200
-const TOOL_NAME = /^[A-Za-z0-9_.-]{1,64}$/
+const TOOL_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/
 
 export const isLoopback = (url: URL) => isLoopbackHost(url.hostname)
 

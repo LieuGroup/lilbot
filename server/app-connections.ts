@@ -94,7 +94,8 @@ export function createConnections({
       callingChat: (botId, requestId) => calls.find(botId, 'lilbot_connection', requestId),
       userSentInChat: (botId, chatId, text) => history.hasUserMessageContaining(botId, chatId, text),
       signedIn: (botId, chatId, name, runId) => applier.signedIn(botId, chatId, name, runId),
-      changed: soon
+      changed: soon,
+      toolName: engine.mcpToolName
     },
     redirectUri,
     Date.now,
