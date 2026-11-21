@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { cn } from 'cn'
 import { PanelLeftIcon, PlusIcon, SearchIcon, SlidersHorizontalIcon } from 'lucide-react'
-import { Fragment } from 'react'
+import { Fragment, lazy, Suspense } from 'react'
 
 import { iconButton } from '@/ui/icon-button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/ui/tooltip'
@@ -17,7 +17,9 @@ import { RosterOverlays } from './roster-overlays'
 import { setCollapsed, useRosterView } from './roster-view'
 import { rowState } from './row-state'
 
-/** The collapsed roster, 64px: the app icon, avatars in the open roster's order with a short line
+const RailGroups = lazy(() => import('../threads/working-together').then(module => ({ default: module.RailGroups })))
+
+/** The collapsed roster, 64px: the app icon, a slot per running group, avatars in the open roster's order with a short line
  *  between groups, then open, search, new bot, settings and the user. Loaded only when used. */
 export function RosterRail() {
   const { bots, sections, connected } = useBotStore()
@@ -33,6 +35,11 @@ export function RosterRail() {
       </div>
       <TooltipProvider delay={300}>
         <ul className="flex w-full flex-1 flex-col items-center gap-1 overflow-y-auto pt-1 pb-2">
+          {bots.some(bot => bot.groups?.length) && (
+            <Suspense>
+              <RailGroups />
+            </Suspense>
+          )}
           {groups.map((list, index) => (
             <Fragment key={list[0].id}>
               {index > 0 && <li aria-hidden="true" className="h-px w-7 flex-none bg-hairline" />}

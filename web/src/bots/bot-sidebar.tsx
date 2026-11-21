@@ -14,8 +14,10 @@ import { RosterTiles } from './roster-tiles'
 import { loadRail, setQuery, useRailShown, useRosterView } from './roster-view'
 
 const RosterRail = lazy(() => loadRail().then(module => ({ default: module.RosterRail })))
+// Loaded only once a bot is in a running group.
+const WorkingTogether = lazy(() => import('../threads/working-together').then(module => ({ default: module.WorkingTogether })))
 
-/** The roster: the primary and pinned bots as tiles (alone, the primary is an ordinary row), then
+/** The roster: the running groups ("Working together"), the primary and pinned bots as tiles (alone, the primary is an ordinary row), then
  *  the user's sections, then the collapsed "Unassigned" and "Hidden" groups. With no sections yet,
  *  the other bots are listed plainly. On a wide screen it can collapse to the rail. */
 export function BotSidebar() {
@@ -51,6 +53,11 @@ function OpenRoster() {
           </ul>
         ) : (
           <ul className="flex flex-col gap-0.5">
+            {bots.some(bot => bot.groups?.length) && (
+              <Suspense>
+                <WorkingTogether />
+              </Suspense>
+            )}
             {groups.tiled ? <RosterTiles bots={groups.top} openId={openId} tab={tab} /> : groups.top.map(row)}
             {groups.sections.map(group => (
               <RosterSection key={group.section.id} name={group.section.name}>
