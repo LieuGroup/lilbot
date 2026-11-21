@@ -156,6 +156,6 @@ test('a call the session may not make (a webhook run without coding) is refused 
     fetch: upstream
   })
   const result = await (await post(call('t3_thread_launch', { title: 'x' }))).json()
-  expect(result.result).toEqual({ content: [{ type: 'text', text: 'A webhook run cannot use t3_thread_launch.' }], isError: true })
+  expect(result.result).toEqual({ content: [{ type: 'text', text: JSON.stringify({ refused: 'A webhook run cannot use t3_thread_launch.' }) }] })
   expect(received).toEqual([])
 })

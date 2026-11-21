@@ -1,22 +1,24 @@
-/** Whether a call to one of LilBot's tools comes from a webhook run, and what Oscar lets that run do (#12, finding 3).
- *  MCP calls carry no session, so a call is matched to the tool calls the engine reported starting
- *  (`CallingChats.starts`). It fails closed: while a webhook run of the bot is under way, a call no session can be found
- *  for, or one whose session's lineage cannot be read, counts as the run's. */
+/** Which calls to LilBot come from a webhook run's session, and what Oscar lets that webhook's runs do (#12, finding 3).
+ *  Decided by the session, never by time: a webhook session and the sessions the engine continued it in stay narrow for
+ *  as long as they exist, whether the run is under way, settled, or the engine works on its transcript later (Hermes'
+ *  background review forks share the session's id). A call that names its session (memory, plug-ins) is looked up; an
+ *  MCP call carries none, so it is matched to its own tool start (`CallingChats.starts`, by its arguments or request id).
+ *  It fails closed: a call that cannot be placed, or whose session's lineage cannot be read, counts as a webhook run's.
+ *  Calls of a bot that never had a webhook run are never held. */
 import type { WebhookCapability } from '../../shared/webhook-schema'
 import type { SessionRoot } from '../bots/hidden-chats'
+import { argsKey, type CallingChats } from '../threads/calling-chats'
 import type { WebhookStore } from './webhook-store'
 
-/** The bot's sessions that started a call of `tool` since a time, newest first, with their arguments' keys. */
-export type ToolStarts = (botId: string, tool: string, since: number) => { chatId: string; args: string }[]
-
-/** How long before its request a call's start counts, and how long a webhook run's own report may lag behind it. */
-const FRESH_MS = 10_000
-const GRACE_MS = 250
+/** How long before its request a call's own start counts (as for `CallingChats.find`). */
+const FRESH_MS = 15_000
+/** What a session that cannot be placed may do: nothing beyond the narrow set. */
+const UNPLACED: WebhookCapability[] = []
 
 /** What every one of the runs may do. */
 const common = (lists: WebhookCapability[][]) => lists.reduce((all, list) => all.filter(item => list.includes(item)), lists[0] ?? [])
 
-export function webhookCallers(store: Pick<WebhookStore, 'runForChat' | 'underWay'>, rootOf: SessionRoot, starts: ToolStarts, waitMs = 3000) {
+export function webhookCallers(store: Pick<WebhookStore, 'runForChat' | 'hasRuns'>, rootOf: SessionRoot, calls: Pick<CallingChats, 'starts' | 'waitMs'>) {
   /** The session's webhook run (null: none), also after the engine compressed it; undefined while its lineage is unreadable. */
   const runOf = (botId: string, chatId: string) => {
     const direct = store.runForChat(botId, chatId)
@@ -25,36 +27,36 @@ export function webhookCallers(store: Pick<WebhookStore, 'runForChat' | 'underWa
     if (root === null) return undefined
     return root === chatId ? null : store.runForChat(botId, root)
   }
+  /** What a session of the bot may do: its webhook's groups, or null when it is not a webhook run's session. */
+  const forChat = (botId: string, chatId: string | undefined): WebhookCapability[] | null => {
+    if (!store.hasRuns(botId)) return null
+    if (!chatId) return UNPLACED
+    const run = runOf(botId, chatId)
+    return run === undefined ? UNPLACED : run ? run.capabilities : null
+  }
 
   return {
     run: runOf,
-    /** For a call that names its session (memory writes): what its webhook run may do, or null for any other session.
-     *  Without a session, or with an unreadable one, it counts as a run's while one is under way. */
-    forChat(botId: string, chatId: string | undefined): WebhookCapability[] | null {
-      const run = chatId ? runOf(botId, chatId) : undefined
-      if (run !== undefined) return run ? run.capabilities : null
-      const under = store.underWay(botId)
-      return under.length ? common(under) : null
-    },
-
-    /** For a call of `tool` with these arguments (`argsKey`; null when the caller reshaped them, so any start of the tool
-     *  matches): what the webhook run that made it may do, or null when a session that is not a webhook run made this
-     *  call. Waits up to `waitMs` for the engine's report. */
-    async forCall(botId: string, tool: string, args: string | null): Promise<WebhookCapability[] | null> {
-      if (!store.underWay(botId).length) return null
+    forChat,
+    /** For an MCP call of `tool` with these arguments: what the webhook run that made it may do, or null when another
+     *  session made it. Waits for the call's own start up to `calls.waitMs`; a call never seen counts as a run's. */
+    async forCall(botId: string, tool: string, raw: unknown): Promise<WebhookCapability[] | null> {
+      if (!store.hasRuns(botId)) return null
+      const args = (raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>
+      const key = argsKey(args)
+      const requestId = typeof args.requestId === 'string' ? args.requestId : null
       const asked = Date.now()
-      await Bun.sleep(GRACE_MS)
       for (;;) {
-        const under = store.underWay(botId)
-        if (!under.length) return null
-        const found = starts(botId, tool, asked - FRESH_MS)
-        const runs = found.map(start => runOf(botId, start.chatId))
-        if (runs.includes(undefined)) return common(under)
-        const hooks = runs.flatMap(run => (run ? [run.capabilities] : []))
-        if (hooks.length) return common(hooks)
-        if (found.some(start => args === null || start.args === args)) return null
-        if (Date.now() >= asked + waitMs) return common(under)
-        await Bun.sleep(100)
+        const own = calls.starts(botId, tool, asked - FRESH_MS).filter(start => start.args === key || (requestId !== null && start.requestId === requestId))
+        if (own.length) {
+          const allowed = own.map(start => forChat(botId, start.chatId)).filter(list => list !== null)
+          return allowed.length ? common(allowed) : null
+        }
+        if (Date.now() - asked >= calls.waitMs) {
+          console.warn(`[webhook-session] ${tool}: no tool start seen; treated as a webhook run's call`)
+          return UNPLACED
+        }
+        await Bun.sleep(50)
       }
     }
   }

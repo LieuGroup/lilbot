@@ -11,13 +11,13 @@ def settings():
     return json.loads((get_hermes_home() / 'lilbot-skills.json').read_text())
 
 
-def call(action, args):
+def call(action, args, session=''):
     config = settings()
     token = Path(config['tokenFile']).read_text().strip()
     capability = hmac.new(token.encode(), ('create-bot:' + config['botId']).encode(), hashlib.sha256).hexdigest()
     req = urllib.request.Request(config['url'] + '/engine/skills/' + action,
         data=json.dumps(args).encode(), headers={'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + token, 'x-lilbot-bot-capability': capability})
+        'Authorization': 'Bearer ' + token, 'x-lilbot-bot-capability': capability, 'x-lilbot-session': str(session or '')})
     try:
         with urllib.request.urlopen(req, timeout=15) as response:
             return json.loads(response.read())
@@ -39,7 +39,8 @@ def register(ctx):
         return skill_view(**args)
 
     def writing(args, **kwargs):
-        return json.dumps(call('write', args))
+        # The session that asked (Hermes' background review shares it), so LilBot refuses a webhook run's writes.
+        return json.dumps(call('write', args, kwargs.get('session_id')))
 
     schema = {'name': 'skill_manage', 'description': 'Create or improve a shared LilBot skill. All bots can use it. Use standard SKILL.md with name and description frontmatter.',
         'parameters': {'type': 'object', 'properties': {

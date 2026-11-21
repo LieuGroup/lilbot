@@ -6,6 +6,12 @@ import type { BotRuntimes } from './bot-runtimes'
 import type { SessionSettings } from './bot-session-settings'
 import type { Workspaces } from './workspaces'
 
+/** Model-only text LilBot gives a bot with Oscar's next message in its main conversation (a webhook run's message),
+ *  never as a turn of its own; `taken` once the engine accepted the message. */
+export interface TurnNotes {
+  pending(botId: string): { text: string; taken: () => void } | null
+}
+
 /** Main-session selection and the history journal share one chat lifecycle. */
 export class BotConversations {
   constructor(
@@ -13,7 +19,8 @@ export class BotConversations {
     private prefs: BotPrefsStore,
     private workspaces: Workspaces,
     private sessions: SessionSettings,
-    private history?: HistoryService
+    private history?: HistoryService,
+    private notes?: TurnNotes
   ) {}
 
   // null starts a new main session; undefined resumes or creates the main session.
@@ -54,7 +61,10 @@ export class BotConversations {
           images: { support: 'unknown', imageCount: 0 },
           ...(options?.origin?.device ? { origin: options.origin.device } : {})
         })
-      return send(text, options)
+      const note = !options?.hidden && id === this.prefs.mainChat(botId) ? this.notes?.pending(botId) : null
+      if (!note) return send(text, options)
+      await send(text, { ...options, origin: { ...options?.origin, line: [options?.origin?.line, note.text].filter(Boolean).join('\n\n') } })
+      note.taken()
     }
     chat.snapshot.botId = botId
     if (chat.resumeRefused) console.warn(`[chat] conversation could not be resumed; started a new session (${chat.resumeRefused})`)

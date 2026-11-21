@@ -148,7 +148,7 @@ export function createWork({
     line: item => {
       if (item.chatId && store.exists(item.ownerId)) history.reference(item.ownerId, item.chatId, workLine(item), item.createdAt)
     },
-    tell: (id, item, prompt) => answers.queue(id, item, prompt),
+    tell: (id, item, prompt, oscar) => answers.queue(id, item, prompt, false, oscar),
     changed: () => publish({ event: 'work.changed' })
   })
   /** The session a bot's answer or notice goes to: the one it came from, else its main conversation. */

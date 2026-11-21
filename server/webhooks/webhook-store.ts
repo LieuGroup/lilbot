@@ -183,10 +183,9 @@ export class WebhookStore {
       .get(chatId, botId) as { runId: string; webhookId: string; task: string; capabilities: string } | null
     return row && { ...row, capabilities: JSON.parse(row.capabilities) as WebhookCapability[] }
   }
-  /** What each of the bot's webhook runs under way may do (one list per run). */
-  underWay(botId: string): WebhookCapability[][] {
-    const rows = this.db.query(`SELECT w.capabilities FROM webhook_runs r JOIN webhooks w ON w.id = r.webhook_id WHERE r.bot_id = ? AND ${UNDER_WAY}`).all(botId)
-    return (rows as { capabilities: string }[]).map(row => JSON.parse(row.capabilities))
+  /** Whether the bot ever had a webhook run, so a session of it could be a webhook run's (its runs are kept until it is deleted). */
+  hasRuns(botId: string) {
+    return !!this.db.query('SELECT 1 FROM webhook_runs WHERE bot_id = ? LIMIT 1').get(botId)
   }
   isWebhookChat(chatId: string) {
     return !!this.db.query('SELECT 1 FROM webhook_chats WHERE chat_id = ?').get(chatId)

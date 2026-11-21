@@ -8,14 +8,14 @@ import uuid
 from pathlib import Path
 
 
-def call(action, args):
+def call(action, args, session=''):
     from hermes_constants import get_hermes_home
     config = json.loads((get_hermes_home() / 'lilbot-computers.json').read_text())
     token = Path(config['tokenFile']).read_text().strip()
     capability = hmac.new(token.encode(), ('create-bot:' + config['botId']).encode(), hashlib.sha256).hexdigest()
     req = urllib.request.Request(config['url'] + '/engine/computers/' + action,
         data=json.dumps(args).encode(), headers={'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + token, 'x-lilbot-bot-capability': capability})
+        'Authorization': 'Bearer ' + token, 'x-lilbot-bot-capability': capability, 'x-lilbot-session': str(session or '')})
     try:
         with urllib.request.urlopen(req, timeout=35) as response:
             return json.loads(response.read())
@@ -37,7 +37,8 @@ def register(ctx):
                 blocked, reason = detect_hardline_command(payload['operation']['command'])
                 if blocked:
                     return json.dumps({'error': 'Command refused by engine hard stop: ' + reason})
-            return json.dumps(call(action, payload))
+            # The session that asked, so LilBot can refuse a webhook run's session the computers.
+            return json.dumps(call(action, payload, kwargs.get('session_id')))
         ctx.register_tool(name=name, toolset='lilbot_computers', schema={'name': name,
             'description': description, 'parameters': {'type': 'object', 'properties': properties,
             'required': required}}, handler=handler)

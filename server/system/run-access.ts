@@ -3,7 +3,6 @@
  *  Oscar can add to one webhook, or is refused to every run. Every tool is listed here (a test checks), so a new tool
  *  needs that decision. */
 import type { WebhookCapability } from '../../shared/webhook-schema'
-import { argsKey } from '../threads/calling-chats'
 import type { WebhookCallers } from '../webhooks/webhook-callers'
 
 export const RUN_TOOLS = ['lilbot_guide', 'lilbot_work', 'lilbot_work_list', 'lilbot_webhook_message', 'lilbot_workspace_read']
@@ -48,15 +47,13 @@ export const NO_RUN_TOOLS = ['lilbot_goal']
 
 const groupsOf = (tool: string) => (Object.keys(TOOL_GROUPS) as WebhookCapability[]).filter(group => TOOL_GROUPS[group]?.includes(tool))
 
-/** Why a webhook run may not make this call of a tool in `groups`, or null when it may (or the caller is not a webhook
- *  run). `args` is the key of the call's arguments as sent (`argsKey`), or null when the caller reshaped them (plug-ins).
+/** Why a session that may do `allowed` (null: not a webhook run's) may not use a tool in `groups`, or null when it may.
  *  The T3 bridge uses it for its tools, all in `coding`, and the engine API for plug-in tools. */
-export async function refusalFor(callers: WebhookCallers, botId: string, tool: string, args: string | null, groups: WebhookCapability[]): Promise<string | null> {
-  const allowed = await callers.forCall(botId, tool, args)
+export function refusalFor(allowed: WebhookCapability[] | null, tool: string, groups: WebhookCapability[]): string | null {
   if (allowed === null || groups.some(group => allowed.includes(group))) return null
-  return `A webhook run cannot use ${tool}: webhook runs read, report, update the work board and message their bot (lilbot_webhook_message). ${
+  return `A webhook run cannot use ${tool}: webhook runs read their folder, report on their own work items and leave their bot one message (lilbot_webhook_message). ${
     groups.length ? `Oscar can let this webhook's runs use "${groups[0]}" tools in the app.` : 'No webhook run can use it.'
-  } If you are not in a webhook run, try again in a moment.`
+  } If you are not in a webhook run, make the call again from your own conversation.`
 }
 
 /** Whether a `lilbot_work_list` call reads beyond the calling bot's own items: every bot's, goals, or another bot's item.
@@ -67,10 +64,10 @@ export const readsBeyondOwn = (owner: (itemId: string) => string | undefined) =>
   return mine === false || Boolean(goals) || goalId !== undefined || (itemId !== undefined && owner(String(itemId)) !== botId)
 }
 
-/** The same for LilBot's own tools. The narrow ones are allowed without waiting, except a work-board read beyond the bot's
- *  own items, which no webhook run may make (Oscar's decision, whatever its groups). */
+/** The same for LilBot's own tools, matched to the call's own start. The narrow ones are allowed without waiting, except
+ *  a work-board read beyond the bot's own items, which no webhook run may make (Oscar's decision, whatever its groups). */
 export async function runRefusal(callers: WebhookCallers, botId: string, tool: string, args: unknown, beyondOwn: (botId: string, tool: string, args: unknown) => boolean) {
-  if (!RUN_TOOLS.includes(tool)) return refusalFor(callers, botId, tool, argsKey(args ?? {}), groupsOf(tool))
-  if (!beyondOwn(botId, tool, args) || (await callers.forCall(botId, tool, argsKey(args ?? {}))) === null) return null
-  return 'A webhook run reads only its own work items: list them without mine false, goals or goalId, or open one of its own. If you are not in a webhook run, try again in a moment.'
+  if (!RUN_TOOLS.includes(tool)) return refusalFor(await callers.forCall(botId, tool, args), tool, groupsOf(tool))
+  if (!beyondOwn(botId, tool, args) || (await callers.forCall(botId, tool, args)) === null) return null
+  return 'A webhook run reads only its own work items: list them without mine false, goals or goalId, or open one of its own. If you are not in a webhook run, make the call again from your own conversation.'
 }
