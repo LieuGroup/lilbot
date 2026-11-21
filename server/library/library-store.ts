@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite'
 import type { LibraryItem, LibraryKind } from '../../shared/library-schema'
 
-type StoredItem = Omit<LibraryItem, 'missing' | 'group'>
+type StoredItem = Omit<LibraryItem, 'missing' | 'mime' | 'url'>
 export class LibraryStore {
   constructor(private db: Database) {}
   add(item: StoredItem) {
@@ -14,12 +14,21 @@ export class LibraryStore {
   get(botId: string, id: string) {
     return this.db.query(`${this.select} WHERE bot_id = ? AND id = ?`).get(botId, id) as StoredItem | null
   }
-  list(botId: string, kind: LibraryKind | undefined, offset: number, limit: number) {
+  list(botId: string, kinds: LibraryKind[] | undefined, offset: number, limit: number) {
     return this.db
-      .query(`${this.select} WHERE bot_id = ? AND (? IS NULL OR kind = ?) ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`)
-      .all(botId, kind ?? null, kind ?? null, limit, offset) as StoredItem[]
+      .query(`${this.select} WHERE bot_id = ? AND (? IS NULL OR kind IN (SELECT value FROM json_each(?))) ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`)
+      .all(botId, ...kindsFilter(kinds), limit, offset) as StoredItem[]
   }
-  count(botId: string, kind?: LibraryKind) {
-    return (this.db.query('SELECT count(*) AS n FROM library_items WHERE bot_id = ? AND (? IS NULL OR kind = ?)').get(botId, kind ?? null, kind ?? null) as { n: number }).n
+  count(botId: string, kinds?: LibraryKind[]) {
+    return (
+      this.db.query('SELECT count(*) AS n FROM library_items WHERE bot_id = ? AND (? IS NULL OR kind IN (SELECT value FROM json_each(?)))').get(botId, ...kindsFilter(kinds)) as {
+        n: number
+      }
+    ).n
   }
+}
+
+const kindsFilter = (kinds: LibraryKind[] | undefined) => {
+  const json = kinds ? JSON.stringify(kinds) : null
+  return [json, json] as const
 }

@@ -11,7 +11,7 @@ test('Access serves browser routes only after authentication, host and origin ch
   const root = mkdtempSync(join(homedir(), 'agent-tmp', 'access-unit-'))
   await Bun.write(join(root, 'index.html'), '<html>App shell</html>')
   await Bun.write(join(root, 'asset.js'), '/* app asset */')
-  const routes = appRoutes({ content: async () => ({ data: Buffer.from('delivered file'), mime: 'text/plain' }) }, root, new Set([fake.settings.host]), 'test')
+  const routes = appRoutes({ content: async () => ({ data: Buffer.from('delivered file'), mime: 'text/plain', name: 'notes.txt' }) }, root, new Set([fake.settings.host]), 'test')
   const server = startAccessDoor(fake.settings, routes, {
     open(socket) {
       socket.send('connected')
@@ -32,7 +32,7 @@ test('Access serves browser routes only after authentication, host and origin ch
     }
     const file = await get('/api/library/bot/file')
     expect(await file.text()).toBe('delivered file')
-    expect(file.headers.get('content-disposition')).toBe('attachment')
+    expect(file.headers.get('content-disposition')).toBe("attachment; filename*=UTF-8''notes.txt")
     expect(file.headers.get('content-security-policy')).toContain('sandbox')
     for (const path of ['/engine', '/engine/', '/engine/memory', '/engine/t3/mcp', '/engine/lilbot/mcp', '/helper', '/helper/', '/helper/register', '/helper/connect']) {
       expect((await get(path)).status).toBe(403)

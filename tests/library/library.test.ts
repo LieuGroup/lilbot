@@ -56,9 +56,13 @@ test('only delivered files appear; metadata, newest first, filters, paging and c
   const page = await service.list({ botId: 'bot', limit: 1 })
   expect(page.total).toBe(3)
   expect(page.nextOffset).toBe(1)
-  expect(page.items[0]).toMatchObject({ title: 'A result', kind: 'page', group: 'today', chatId: 'chat', missing: false })
-  expect((await service.list({ botId: 'bot', kind: 'media' })).items[0].path).toBe('image.png')
+  expect(page.items[0]).toMatchObject({ title: 'A result', kind: 'page', chatId: 'chat', missing: false, mime: 'text/markdown' })
+  expect(page.items[0].url).toBe(service.contentUrl('bot', page.items[0].id).url)
+  expect((await service.list({ botId: 'bot', kinds: ['media'] })).items.map(item => [item.path, item.mime])).toEqual([['image.png', 'image/png']])
+  const files = await service.list({ botId: 'bot', kinds: ['file', 'page'] })
+  expect([files.total, files.items.map(item => item.path)]).toEqual([2, ['page.md', 'file.txt']])
   expect((await service.list({ botId: 'bot', offset: 2 })).items[0].id).toBe(first.id)
+  expect(await service.content('bot', first.id)).toMatchObject({ name: 'file.txt', mime: 'text/plain;charset=utf-8' })
   expect((await service.content('bot', first.id)).data.toString()).toBe('Hello Oscar')
   expect(changes).toEqual(['bot', 'bot', 'bot'])
   await expect(service.content('other', first.id)).rejects.toThrow('does not exist')
@@ -126,11 +130,8 @@ test('engine delivery requires token and bot credential; ignores forged bot id',
   expect((await call(botCapability('token', 'bot'))).status).toBe(403)
 })
 
-test('date groups and content URLs', async () => {
+test('content URLs', async () => {
   const item = await give()
-  store.add({ ...item, id: 'old', createdAt: Date.now() - 15 * 86400000 })
-  const page = await service.list({ botId: 'bot' })
-  expect(page.items[1].group).toBe('older')
   expect(() => service.contentUrl('other', item.id)).toThrow('does not exist')
   expect(service.contentUrl('bot', item.id).url).toContain(item.id)
 })

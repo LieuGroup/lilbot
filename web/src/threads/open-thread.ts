@@ -1,7 +1,7 @@
 /** What is open over a bot's conversation and in its panel: the search parameters of `/bots/$botId`, so a reload, a link
  *  and the phone's back gesture keep them, and the details tab beside them can change without closing them. `thread` is an
- *  exchange and `run` a routine run, each drawn in the conversation column (one at a time); `routine` is one routine in
- *  the details panel and `skill` one skill in its Setup tab. */
+ *  exchange and `run` a routine run, each drawn in the conversation column (one at a time); `routine` is one routine and
+ *  `folder` a workspace folder, each in place of the details panel, and `skill` one skill in its Setup tab. */
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 
 export interface BotSearch {
@@ -9,9 +9,10 @@ export interface BotSearch {
   run?: string
   routine?: string
   skill?: string
+  folder?: string
 }
 
-const KEYS = ['thread', 'run', 'routine', 'skill'] as const
+const KEYS = ['thread', 'run', 'routine', 'skill', 'folder'] as const
 
 export function botSearch(search: Record<string, unknown>): BotSearch {
   const kept: BotSearch = {}

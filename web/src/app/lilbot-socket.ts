@@ -116,6 +116,11 @@ class LilBotSocket {
     return this.onPush('history.changed', frame => listener(frame.botId))
   }
 
+  /** Told when a bot gave a file to its Library. */
+  onLibraryChanged(listener: (botId: string) => void) {
+    return this.onPush('library.changed', frame => listener(frame.botId))
+  }
+
   onConnection(listener: (connected: boolean) => void) {
     this.connectionListeners.add(listener)
     return () => void this.connectionListeners.delete(listener)

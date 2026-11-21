@@ -18,7 +18,8 @@ export const GiveFileInput = z.object({
 })
 export const LibraryListInput = z.object({
   botId: z.string().min(1),
-  kind: LibraryKind.optional(),
+  /** Pages are listed with files on the screen, so a filter can name several kinds. */
+  kinds: z.array(LibraryKind).min(1).max(3).optional(),
   offset: z.number().int().min(0).default(0),
   limit: z.number().int().min(1).max(100).default(50)
 })
@@ -33,7 +34,10 @@ export interface LibraryItem {
   chatId: string | null
   routineRunId: string | null
   missing: boolean
-  group: 'today' | 'this-week' | 'older'
+  /** The file's type from its name, for choosing how to show it. */
+  mime: string
+  /** Same-origin download address (the same one `library.content` gives). */
+  url: string
 }
 export interface LibraryPage {
   items: LibraryItem[]
