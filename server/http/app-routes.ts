@@ -5,7 +5,7 @@ import type { AttachmentService } from '../attachments/attachment-service'
 import { DOWNLOAD_PATH, type HelperDownloads } from '../computers/helper-downloads'
 import type { LibraryService } from '../library/library-service'
 import type { ThreadService } from '../threads/thread-service'
-import { attachmentRoute } from './attachment-routes'
+import { attachmentRoute, downloadHeaders } from './attachment-routes'
 import type { BrowserSession } from './browser-session'
 import { socketAllowed } from './socket-guard'
 import { staticFile } from './static-files'
@@ -42,15 +42,7 @@ export function appRoutes(
       if (parts.length !== 5) return new Response('Not found', { status: 404 })
       try {
         const file = await library.content(decodeURIComponent(parts[3]), decodeURIComponent(parts[4]))
-        return new Response(file.data, {
-          headers: {
-            'Content-Type': file.mime,
-            'Content-Disposition': 'attachment',
-            'X-Content-Type-Options': 'nosniff',
-            'Content-Security-Policy': "sandbox; default-src 'none'",
-            'Cache-Control': 'no-store'
-          }
-        })
+        return new Response(file.data, { headers: downloadHeaders(file.name, file.mime) })
       } catch {
         return new Response('File missing or unavailable', { status: 404 })
       }

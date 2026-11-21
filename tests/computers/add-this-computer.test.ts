@@ -136,7 +136,8 @@ test('downloads use the socket rules on the app listeners and never exist on the
   f.build('LilBot-Helper-macOS.zip', 'macos', 'universal')
   f.build('old-build.zip', 'macos', 'universal', 'b'.repeat(64))
   writeFileSync(join(f.dir, 'secret.zip'), 'not offered')
-  const routes = appRoutes({ content: async () => ({ data: Buffer.from(''), mime: 'text/plain' }) }, f.root, new Set(['bot.tail.ts.net:8443']), 'test', undefined, f.downloads)
+  const library = { content: async () => ({ data: Buffer.from(''), mime: 'text/plain', name: 'x' }) }
+  const routes = appRoutes(library, f.root, new Set(['bot.tail.ts.net:8443']), 'test', undefined, f.downloads)
   const app = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (request, server) => routes(request, server as never) as Promise<Response> })
   const door = startPublicDoor(f.service, 0)
   cleanups.push(() => {

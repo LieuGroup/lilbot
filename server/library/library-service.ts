@@ -1,10 +1,13 @@
 import { readdir } from 'node:fs/promises'
-import { extname } from 'node:path'
+import { basename, extname } from 'node:path'
 import type { z } from 'zod'
 import { LibraryGiveInput, LibraryListInput, type LibraryPage, type WorkspaceEntry } from '../../shared/library-schema'
 import { LilBotError } from '../../shared/protocol'
 import { MAX_FILE_BYTES, openWorkspaceFile } from './library-files'
 import type { LibraryStore } from './library-store'
+
+const itemUrl = (botId: string, id: string) => `/api/library/${encodeURIComponent(botId)}/${encodeURIComponent(id)}`
+const mimeOf = (path: string) => Bun.file(path).type || 'application/octet-stream'
 
 export class LibraryService {
   constructor(
@@ -22,7 +25,7 @@ export class LibraryService {
     const file = await openWorkspaceFile(this.require(botId), data.path)
     try {
       this.require(botId)
-      const mime = Bun.file(file.path).type
+      const mime = mimeOf(file.path)
       const kind = /^(image|audio|video)\//.test(mime) ? 'media' : ['.html', '.htm', '.md'].includes(extname(file.path).toLowerCase()) ? 'page' : 'file'
       const item = this.store.add({
         id: crypto.randomUUID(),
@@ -42,12 +45,10 @@ export class LibraryService {
     }
   }
   async list(input: z.input<typeof LibraryListInput>): Promise<LibraryPage> {
-    const { botId, kind, offset, limit } = LibraryListInput.parse(input)
+    const { botId, kinds, offset, limit } = LibraryListInput.parse(input)
     const root = this.require(botId)
-    const today = new Date().setUTCHours(0, 0, 0, 0)
-    const week = today - ((new Date(today).getUTCDay() + 6) % 7) * 86400000
     const items = await Promise.all(
-      this.store.list(botId, kind, offset, limit).map(async item => {
+      this.store.list(botId, kinds, offset, limit).map(async item => {
         let missing = false
         try {
           const file = await openWorkspaceFile(root, item.path)
@@ -55,17 +56,17 @@ export class LibraryService {
         } catch {
           missing = true
         }
-        return { ...item, missing, group: item.createdAt >= today ? ('today' as const) : item.createdAt >= week ? ('this-week' as const) : ('older' as const) }
+        return { ...item, missing, mime: mimeOf(item.path), url: itemUrl(botId, item.id) }
       })
     )
     this.require(botId)
-    const total = this.store.count(botId, kind)
+    const total = this.store.count(botId, kinds)
     return { items, total, nextOffset: offset + items.length < total ? offset + items.length : null }
   }
   contentUrl(botId: string, id: string) {
     this.require(botId)
     if (!this.store.get(botId, id)) throw new LilBotError('item_not_found', 'This item does not exist.')
-    return { url: `/api/library/${encodeURIComponent(botId)}/${encodeURIComponent(id)}` }
+    return { url: itemUrl(botId, id) }
   }
   async content(botId: string, id: string) {
     const root = this.require(botId)
@@ -83,7 +84,7 @@ export class LibraryService {
       }
       if (bytesRead > MAX_FILE_BYTES) throw new LilBotError('file_too_large', 'Files must be at most 50 MiB.')
       this.require(botId)
-      return { data: data.subarray(0, bytesRead), mime: Bun.file(item.path).type || 'application/octet-stream' }
+      return { data: data.subarray(0, bytesRead), mime: mimeOf(item.path), name: basename(item.path) }
     } finally {
       await file.handle.close()
     }

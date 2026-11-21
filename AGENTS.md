@@ -65,7 +65,8 @@ web/src/           The web app.
   chat/              the conversation
   history/           the conversation's earlier parts: paging, day lines, session dividers, its start
   attachments/       files in the composer and in sent messages, the drop area
-  activity/, library/, memory/   their details tabs (Library is a placeholder)
+  activity/, memory/ their details tabs
+  library/           the Library tab, the bot's workspace folder view and the item viewer
   threads/           work between bots: the line in a conversation, the opened exchange or group, stop, "With other bots",
                      "Working together"
   routines/          the Activity tab's Routines card, one routine (in place of the panel), a run's transcript
@@ -103,9 +104,9 @@ memory with a Memory panel and after-chat review, every bot knowing its system (
 LilBot's own MCP tools, delegation between bots (several tasks at once, files, status, stop, redirect, wait), temporary
 groups of bots (rounds, a shared folder, an outcome; #133), the screens for asked threads, handed-over work and groups
 (#65, #135, #136: the line or card in a conversation, the opened exchange or group, stop, "With other bots", the roster's
-"Working together"), the Routines screens (#53), and the
+"Working together"), the Routines screens (#53), the Library screens (#54), and the
 backends for routines, webhooks, threads, library, skills, computers, the work board with its check levels, goals and
-coding through T3 Code. Next: the Webhooks (#138), Library, work board and goal screens, the check levels' track record and
+coding through T3 Code. Next: the Webhooks (#138), work board and goal screens, the check levels' track record and
 spot checks (#142), the nightly memory tidy-up and editing abilities. Reports are not built. Desktop (Tauri) and iOS (Expo) come after the
 web app.
 
@@ -455,6 +456,26 @@ Visual specs: "Routines" in [docs/screens.md](docs/screens.md).
   state, never the bot's chat slot, followed live while it runs, and closed (`chat.close`) when the view goes. Its only
   user message is LilBot's wrapper prompt, so user messages are left out and "The routine asked" shows the routine's
   words. A run not started yet has no transcript and is not a link.
+
+### Library (`web/src/library/`, #54)
+
+Visual specs: "Library" in [docs/screens.md](docs/screens.md).
+
+- The Library tab reads `library.list` for one filter (All, Media, or Files: `kinds: ['file', 'page']`, since pages are
+  listed with files) and again on `library.changed` for its bot and on reconnect, keeping as many items as were shown;
+  "Show more" reads the next page. Groups (Today, This week from Monday, Older) and every line are worked out on the
+  device, in its time zone (`library/library-lines.ts`, pure and tested).
+- An image or a page opens the viewer (a lazy chunk over the app); any other file, sound and video included, downloads
+  with the file's own name; a missing file does nothing. Thumbnails are the image itself (`<img>`, lazy).
+- Pages are bot text, never live HTML on LilBot's origin: Markdown is drawn by React with no raw HTML, images shown as
+  their words and links opening a new window; an HTML page goes into an `<iframe sandbox="">` (no scripts, forms,
+  pop-ups or same origin) whose `srcdoc` starts with a policy refusing every request but inline styles and `data:`
+  images. Both read the bytes from the download route; pages over 2 MB only download.
+- "Show in chat" opens the routine run (`?run=`) or the bot's conversation the item came from; the data names the chat,
+  not the message. A webhook run's file reads "Given in the chat" (its session is recorded as the conversation).
+- "Browse the whole workspace" opens `?folder=/<path>` on the Library tab, which replaces the whole panel like a routine
+  (`library/workspace-view.tsx`, a lazy chunk); tab links drop it. It is read-only: `library.workspace` gives names and
+  sizes, and the download route serves only given items.
 
 ### Work between bots (`web/src/threads/`, #65, #135, #136)
 
@@ -899,12 +920,13 @@ stays for sessions that loaded an older adapter.
 
 - Items point to workspace files, never copies; only explicitly given files appear. Kinds: media (image/audio/video
   MIME), page (.md/.html/.htm), file. Size limit in `library-files.ts`.
-- `library.list` is newest first, filterable by kind, grouped Today / This week (Monday start) / Older in UTC, with a
-  missing status. `library.content` returns a download URL; `library.workspace` lists a folder separately.
+- `library.list` is newest first, filterable by `kinds`, with each item's missing status, MIME type (from its name) and
+  download URL. `library.content` returns the same URL; `library.workspace` lists a folder separately (names and sizes:
+  a file nobody gave cannot be downloaded). The download sends the file's own name.
 - Reads use Linux descriptor-relative opens with no-follow flags; workspace-root symlinks and nonregular files are
   refused.
 - Hermes exposes no outgoing attachment manifest, so assistant files are not collected automatically; tool image
-  previews are not deliveries. No Library UI yet.
+  previews are not deliveries.
 
 ## Chat attachments
 

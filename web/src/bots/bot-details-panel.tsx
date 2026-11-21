@@ -21,8 +21,10 @@ const tabContent: Record<DetailsTab, TabContent> = {
 const RoutineDetail = lazy(() => import('../routines/routine-detail'))
 // One skill replaces the Setup tab's content while it is open (`?skill=`).
 const SkillDetail = lazy(() => import('../skills/skill-detail'))
-/** Leaving the tab, or the panel, closes an open routine or skill. */
-const withoutViews = ({ routine: _routine, skill: _skill, ...rest }: BotSearch) => rest
+// The bot's workspace folder replaces the whole panel like a routine (`?folder=` on the Library tab).
+const WorkspaceView = lazy(() => import('../library/workspace-view'))
+/** Leaving the tab, or the panel, closes an open routine, skill or folder. */
+const withoutViews = ({ routine: _routine, skill: _skill, folder: _folder, ...rest }: BotSearch) => rest
 
 /** The details panel beside the chat: the bot's avatar and name, then pill tabs. Each tab is its
  *  own route, so a link or a reload opens the same tab. On a phone it covers the chat. */
@@ -31,12 +33,19 @@ export function BotDetailsPanel() {
   const bot = useBotStore(state => state.bots.find(candidate => candidate.id === botId))
   const routine = useBotSearch('routine')
   const skill = useBotSearch('skill')
+  const folder = useBotSearch('folder')
   if (!isDetailsTab(tab)) return <Navigate to="/bots/$botId" params={{ botId }} replace />
   const Content = tabContent[tab]
   if (tab === 'activity' && routine)
     return (
       <Suspense>
         <RoutineDetail key={routine} botId={botId} routineId={routine} />
+      </Suspense>
+    )
+  if (tab === 'library' && folder)
+    return (
+      <Suspense>
+        <WorkspaceView key={botId} botId={botId} folder={folder} />
       </Suspense>
     )
 
