@@ -179,10 +179,11 @@ half a second after `threads.changed`). Bot and file names are plain text everyw
 - A group, opened (`threads/group-view.tsx`, its own lazy chunk loaded from the thread view; Paper frames 5 and 7):
   - Header: the purpose (14/20 600) with "Temporary group · led by <leader>", after the end "Group closed today 10:21 ·
     led by <leader>" ("stopped", "ended"); "Stop group" (red outline) only while it runs, and "Back to chat".
-  - Strip, only while it runs: one chip per bot (14px avatar, the first word of its name at 12/16, the leader's at 500;
+  - Strip, only while it runs: one chip per bot (14px avatar, the first word of its name at 12/16, or the whole name
+    when another bot in the group starts with the same word; the leader's at 500;
     pill on `bg-card` with a hairline ring; scrolls sideways on a phone) and "Round N of <roundCap>" at the right.
   - Discussion, gap 16: a centred divider between hairlines opens each round at its point, "Round N · to everyone ·
-    10:10" or "to Footy and HeardBack" (first words of the names). Messages as in a task; the leader's carry "leader"
+    10:10" or "to Footy and HeardBack" (the chips' names). Messages as in a task; the leader's carry "leader"
     in place of the time (its round's divider has it), "leader · 10:21" on a message outside a round. File chips have
     no link: the server does not serve group files yet.
   - While a round runs, under the discussion (indented 26px, gap 8): each bot the round is for, and the leader once it

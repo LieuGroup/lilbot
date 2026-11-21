@@ -9,7 +9,7 @@ import {
   pendingReplies,
   roundLabel,
   runningGroups,
-  shortName,
+  shortNames,
   stopSentence
 } from '../../web/src/threads/group-lines'
 import { activityOrder, running } from '../../web/src/threads/thread-lines'
@@ -123,7 +123,10 @@ test('the view: subtitle, round dividers, pending replies and the outcome card',
     title: 'Ended by itself',
     text: 'It reached the 2-round limit before the leader closed it.'
   })
-  expect(shortName('Server Engineer')).toBe('Server')
+  expect([...shortNames(group()).values()]).toEqual(['FillLight', 'Footy', 'HeardBack', 'Server'])
+  const alike = group({}, { participants: [{ id: 'lead', name: 'Group Lead' }, { id: 'footy', name: 'Group Scout' }, heard, eng] })
+  expect([...shortNames(alike).values()]).toEqual(['Group Lead', 'Group Scout', 'HeardBack', 'Server'])
+  expect(roundLabel(alike, second, '10:14')).toBe('Round 2 · to Group Scout and HeardBack · 10:14')
   expect(stopSentence(group())).toBe('All four bots stop working on it now.')
 })
 

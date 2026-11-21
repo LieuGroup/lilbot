@@ -3,7 +3,7 @@ import { Fragment, type ReactNode } from 'react'
 import type { BotThread } from '../../../shared/thread-schema'
 import { useNow } from '../app/use-now'
 import { clockTime } from '../history/history-labels'
-import { type GroupThread, groupSubtitle, isGroup, leaderOf, outcomeCard, pendingReplies, roundLabel, shortName } from './group-lines'
+import { type GroupThread, groupSubtitle, isGroup, leaderOf, outcomeCard, pendingReplies, roundLabel, shortNames } from './group-lines'
 import { StopThread } from './stop-thread'
 import { ThreadAvatar } from './thread-avatar'
 import { CentredLine, FileChip, ThreadMessageRow } from './thread-message'
@@ -48,13 +48,14 @@ export default function GroupView({ botId, thread, back }: { botId: string; thre
 
 /** One chip per bot (the leader's name in 500), and "Round N of <limit>" at the right. */
 function Strip({ thread }: { thread: GroupThread }) {
+  const short = shortNames(thread)
   return (
     <div className="flex flex-none items-center gap-3 border-b border-hairline bg-background px-5 py-2">
       <ul className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto [scrollbar-width:none]">
         {thread.participants.map((bot, index) => (
           <li key={bot.id} title={bot.name} className="flex flex-none items-center gap-[5px] rounded-full bg-card py-0.5 pr-2 pl-1 ring-1 ring-hairline">
             <ThreadAvatar id={bot.id} name={bot.name} size={14} />
-            <span className={`text-xs/4 ${index === 0 ? 'font-medium' : ''}`}>{shortName(bot.name)}</span>
+            <span className={`text-xs/4 ${index === 0 ? 'font-medium' : ''}`}>{short.get(bot.id)}</span>
           </li>
         ))}
       </ul>

@@ -9,8 +9,13 @@ export type GroupThread = BotThread & { group: ThreadGroup }
 
 export const isGroup = (thread: BotThread): thread is GroupThread => thread.group !== undefined
 export const leaderOf = (thread: BotThread) => thread.participants[0]
-/** "FillLight" for "FillLight Bot": the chips and the round dividers. */
-export const shortName = (name: string) => name.trim().split(/\s+/)[0] || name
+const firstWord = (name: string) => name.trim().split(/\s+/)[0] || name
+/** What the chips and the round dividers call each bot: "FillLight" for "FillLight Bot", or the whole name when another bot
+ *  in the group starts with the same word ("Group Lead" and "Group Scout"). */
+export function shortNames(thread: BotThread) {
+  const firsts = thread.participants.map(p => firstWord(p.name))
+  return new Map(thread.participants.map((p, i) => [p.id, firsts.filter(f => f === firsts[i]).length > 1 ? p.name : firsts[i]]))
+}
 
 const LIMITS: Record<Exclude<GroupEnd, 'closed' | 'stopped'>, (g: ThreadGroup) => string> = {
   rounds: g => `reached the ${g.roundCap}-round limit`,
@@ -80,7 +85,8 @@ const listed = (names: string[]) => (names.length < 2 ? names.join('') : `${name
 export function roundLabel(thread: GroupThread, round: ThreadGroup['rounds'][number], time: string) {
   const members = thread.participants.slice(1)
   const everyone = members.every(member => round.to.includes(member.id))
-  const names = members.filter(member => round.to.includes(member.id)).map(member => shortName(member.name))
+  const short = shortNames(thread)
+  const names = members.filter(member => round.to.includes(member.id)).map(member => short.get(member.id)!)
   return `Round ${round.n} · ${everyone ? 'to everyone' : `to ${listed(names)}`} · ${time}`
 }
 
