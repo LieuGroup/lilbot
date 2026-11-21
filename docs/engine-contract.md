@@ -25,7 +25,9 @@ conversations, reaches LilBot through MCP, and keeps a thin adapter for the few 
 ## 2. Sessions and streaming
 
 - [ ] `openChat(botId, chatId|null, options, onEvent)`: a new session or a stored one; a stored one that no longer exists
-  is replaced and the snapshot says which was opened. One continuous main conversation per bot, one active session.
+  is replaced and the snapshot says which was opened, with `resumeRefused` (the engine's code) when it was replaced. Only
+  a definite "does not exist" may replace it, never one connection's refusal. One continuous main conversation per bot,
+  one active session.
 - [ ] Events (`shared/chat-schema.ts`): `turn.started`, `text.delta`, `activity`, `tool.started` / `tool.finished`,
   `turn.finished` (with `contextTokens`), `user.message`, `title`, `error`, `closed`. Reconnecting or restarting LilBot
   must recover a turn that still runs: the engine says whether it runs and returns the durable transcript.

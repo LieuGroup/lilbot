@@ -11,8 +11,17 @@ import type { SpareSockets } from './hermes-spare-sockets'
 import { reportToolCall } from './hermes-tool-calls'
 
 const CLIENT = { name: 'lilbot', version: '0.2.0' }
+const notFound = (error: unknown) => error instanceof LilBotError && error.code === 'hermes_not_found'
+const ignore = () => {}
 
-export async function openChat(spares: SpareSockets, botId: string, chatId: string | null, options: ChatOptions, onEvent: (event: ChatEvent) => void): Promise<OpenChat> {
+export async function openChat(
+  spares: SpareSockets,
+  botId: string,
+  chatId: string | null,
+  options: ChatOptions,
+  onEvent: (event: ChatEvent) => void,
+  connect = HermesSocket.connect
+): Promise<OpenChat> {
   let sessionId = ''
   let generation: number | null = null
   let closed = false
@@ -44,22 +53,30 @@ export async function openChat(spares: SpareSockets, botId: string, chatId: stri
     closed = true
     onEvent({ type: 'closed', message: 'The connection to the bot was lost.' })
   }
+  const attach = () => connect(profile, onSocketEvent, onSocketClose)
   const spare = await spares.take(profile)
-  const socket = spare ? spare.rebind(onSocketEvent, onSocketClose) : await HermesSocket.connect(profile, onSocketEvent, onSocketClose)
+  let socket = spare ? spare.rebind(onSocketEvent, onSocketClose) : await attach()
 
   try {
     await ensureFullAccess(socket)
     let session: any = null
+    let refused: string | undefined
     if (chatId) {
+      const resume = () => socket.request('session.resume', { session_id: chatId, source: 'gui', display_projection: true, omit_messages: options.omitMessages ?? false })
       // Only a chat that no longer exists is replaced by a fresh one. Any other refusal (Hermes
       // restarting, a contract change) is an error, so a long conversation is never swapped
-      // for an empty one by accident.
-      session = await socket
-        .request('session.resume', { session_id: chatId, source: 'gui', display_projection: true, omit_messages: options.omitMessages ?? false })
-        .catch(error => {
-          if (!options.requireExisting && error instanceof LilBotError && error.code === 'hermes_not_found') return null
-          throw error
+      // for an empty one by accident. "Not found" is asked again on a newly attached connection
+      // first, so a refusal that belongs to one connection (a spare among them) loses nothing.
+      session = await resume().catch(async error => {
+        if (options.requireExisting || !notFound(error)) throw error
+        socket.rebind(ignore, ignore).close()
+        socket = await attach()
+        return resume().catch(error => {
+          if (!notFound(error)) throw error
+          refused = error.code
+          return null
         })
+      })
     }
     // A new chat starts in the bot's own folder. A resumed chat keeps the folder it was made with.
     session ??= await socket.request('session.create', {
@@ -78,6 +95,7 @@ export async function openChat(spares: SpareSockets, botId: string, chatId: stri
     return {
       // ModelCapabilities in model.options has no vision field. Do not infer from names.
       imageSupport: 'unknown',
+      ...(refused ? { resumeRefused: refused } : {}),
       snapshot: {
         chatId: session.stored_session_id ?? session.session_id,
         botId,

@@ -1,11 +1,11 @@
 /** What a chat looks like on screen, and how each live event changes it. Pure functions only. */
 import type { ChatEvent, ChatItem, ChatSnapshot } from '../../../shared/chat-schema'
-import type { HistoryPage } from '../../../shared/history-schema'
+import type { HistoryPage, SessionReason } from '../../../shared/history-schema'
 import { reuseItems, withLatest } from '../history/history-view'
 import { withArrivedMessage } from './user-messages'
 
 /** Where a new session began, inside the one continuous conversation. */
-type SessionMark = { kind: 'session'; text: string }
+type SessionMark = { kind: 'session'; text: string; reason?: SessionReason }
 /** `streaming` marks the assistant message that is still being written. Items from the saved
  *  history carry its row `id` and time `at`. */
 export type ViewItem = (ChatItem | SessionMark) & { streaming?: boolean; id?: string; at?: number }

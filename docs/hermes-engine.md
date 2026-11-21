@@ -102,6 +102,11 @@ folder is gone uses `profile purge-identity` to finish gateway identity settleme
 ## History import
 
 - First open reads only the latest engine page and resumes with `omit_messages`.
+- `session.resume` answering `not_found` is asked once more on a newly attached connection (never a spare) before
+  `openChat` starts a new session; only the second refusal does, and the chat reports `resumeRefused: hermes_not_found`.
+- Other clients open sessions in the same profile: an ACP client on the leader opens an empty `acp` session in the
+  default profile about once an hour and closes it after about 2 seconds. Discovery can list one while it is open;
+  it gets no divider because it never holds a message.
 - Tool results are keyed by their persisted `tool_call_id`: Hermes projects them without `row_id`.
 - Both session catalogue APIs cap at 200 without pagination. At that boundary the adapter reads only session metadata
   from that profile's `state.db`, in read-only mode, joining compression parents; all message content still goes

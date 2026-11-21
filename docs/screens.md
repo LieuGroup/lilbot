@@ -127,8 +127,9 @@ cannot open a server folder).
 - The very start: the bot's avatar (44px), its name and "Your conversation started on 3 September 2026".
 - "Latest": a floating pill (arrow and "Latest") at the bottom centre while scrolled up.
 - Session divider: a hairline with "New session" and its time ("Today 14:20", "Yesterday 09:05", "Tue 10 Nov 08:00").
-  Only the newest has the line "<bot> starts fresh from here. It keeps its memory and can search what was said
-  above."
+  A session LilBot started because the engine could not resume the conversation adds "The previous session could not
+  be resumed" under the time, in the same style. Only the newest has the line "<bot> starts fresh from here. It keeps
+  its memory and can search what was said above."
 
 ## Attachments (Paper "10 Attachments", `web/src/attachments/`)
 

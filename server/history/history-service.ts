@@ -1,4 +1,5 @@
 import type { ChatEvent, ChatSnapshot } from '../../shared/chat-schema'
+import type { SessionReason } from '../../shared/history-schema'
 import type { BotEngine, ConversationSource } from '../engines/bot-engine'
 import type { HistoryStore } from './history-store'
 
@@ -80,12 +81,15 @@ export class HistoryService {
       this.busy = false
     }
   }
-  async latest(bot: Binding, snapshot: ChatSnapshot) {
+  async latest(bot: Binding, snapshot: ChatSnapshot, reason?: SessionReason) {
     const source = await this.source(bot)
     if (!source || !this.allowed(bot.id, snapshot.chatId)) return
     this.store.session(bot.id, snapshot.chatId, Date.now())
     const sessions = this.store.sessions(bot.id)
-    for (const session of sessions.slice(1)) this.store.divider(bot.id, session.id, session.at)
+    for (const session of sessions.slice(1)) {
+      const opened = session.id === snapshot.chatId
+      this.store.divider(bot.id, session.id, session.at, opened, opened ? reason : undefined)
+    }
     const page = await source.source.read(snapshot.chatId, null, true)
     if (!this.allowed(bot.id, snapshot.chatId)) return
     this.store.write(bot.id, snapshot.chatId, this.project(bot.id, snapshot.chatId, page.rows))

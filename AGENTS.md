@@ -469,6 +469,10 @@ Visual specs (sizes, copy, Paper frames): [docs/screens.md](docs/screens.md).
 - `chat.open`/`chat.new` keep their snapshot shape: `items` holds the latest 100 records without session dividers (for
   old clients); additive `history` holds the page (`shared/history-schema.ts`). The active session id remains
   `snapshot.chatId`; a new session keeps earlier history.
+- A session divider (`session:<id>`) marks where a session began. It is drawn once the session holds a message, or at
+  once for the session being opened (New session). A session left behind without a message loses its divider; one that
+  never held a message, such as another client's empty session in the same profile, never gets one. A session LilBot
+  started because the engine could not resume the conversation carries `reason: not_resumed`, and the screen says so.
 - `chat.history` pages are newest first, records within a page chronological. Cursors are bot-bound sort keys, so new
   messages do not shift old pages. `start` appears only on the oldest page after import completes; `null` is not a
   definitive beginning while import is pending. `history.changed {botId}` tells clients to refresh.
@@ -718,6 +722,10 @@ Restarting LilBot only leaves Hermes turns and T3 tasks running; nothing is resu
 
 - The browser reconnects and opens the persisted main conversation. Hermes says whether the turn still runs; LilBot
   reconciles the durable transcript, including tool work and the final answer.
+- A new main session starts only when Oscar asks for one or the engine truly cannot resume the conversation: a "not
+  found" is asked again on a newly attached connection, and only a second refusal starts one, logged as `[chat]
+  conversation could not be resumed` with the engine's code and shown on its divider. A deploy-like restart (past the
+  gateway's 20-second grace), a tool reconnect and a second device keep the session (`check:restart`).
 - Routines and webhook runs recover the same persisted run and admission receipt. Threads recover their outbox and return the answer to
   the original caller session, never a replacement exchange; a steered redirect is checked against the recovered
   transcript, and a stop is applied again. Oscar's answers, drop notices and goal notices still waiting are
@@ -1273,7 +1281,10 @@ profiles, isolated directories, cleanup in `finally`. Most cost a few model call
   through its MCP tool: a signed event wakes it and the result is recorded and opens; a repeat, an unsigned and a
   wrongly signed event do nothing; a burst of three is one run; pause refuses, resume accepts, delete ends the address.
 - `bun run check:restart`: SIGKILLs only its own second server mid-turn; chat, routine and thread side-effect counters
-  must stay at one. Confirms its profiles are gone with `hermes profile list`.
+  must stay at one. Confirms its profiles are gone with `hermes profile list`. Then `restart-session-check.ts`: two
+  deploy-like restarts (SIGTERM, 30 seconds away), one with a changed tool list, an empty session another client opens
+  in the bot's profile and a second device; the same engine session continues, the bot still knows what it was told
+  and no divider appears.
 - `bun run check:attachments`: a generated PNG, a text file, oversize refusal, the live metadata event, reload and
   byte-identical image reopening.
 - `bun run check:skills`: skill use, per-bot exclusion and authored writes, then the Hermes engine switch off and on against

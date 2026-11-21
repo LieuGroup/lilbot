@@ -1,6 +1,6 @@
 import type { Database } from 'bun:sqlite'
 import type { ChatEvent, ChatItem } from '../../shared/chat-schema'
-import type { HistoryItem, HistoryPage } from '../../shared/history-schema'
+import type { HistoryItem, HistoryPage, SessionReason } from '../../shared/history-schema'
 import { LilBotError } from '../../shared/protocol'
 
 interface HistorySession {
@@ -116,10 +116,18 @@ export class HistoryStore {
   reference(bot: string, session: string, item: Extract<ChatItem, { kind: 'tool' }>, at: number) {
     this.write(bot, session, [{ id: item.toolId, at, order: 0, item }])
   }
-  divider(bot: string, session: string, at: number) {
+  /** Where a session began: drawn once it holds a message, or at once for the conversation being opened. */
+  divider(bot: string, session: string, at: number, opened = false, reason?: SessionReason) {
     this.db
-      .query(`INSERT OR IGNORE INTO history_items(bot,session,id,at,position,item,text) SELECT ?1,?2,?3,?4,-1,?5,'' WHERE ${notExcluded('?1', '?2')}`)
-      .run(bot, session, `session:${session}`, at, JSON.stringify({ kind: 'session', text: 'New session' }))
+      .query(`INSERT OR IGNORE INTO history_items(bot,session,id,at,position,item,text) SELECT ?1,?2,?3,?4,-1,?5,'' WHERE ${notExcluded('?1', '?2')}
+      AND (?6 OR EXISTS (SELECT 1 FROM history_items WHERE bot=?1 AND session=?2 AND id<>?3))`)
+      .run(bot, session, `session:${session}`, at, JSON.stringify({ kind: 'session', text: 'New session', ...(reason ? { reason } : {}) }), opened)
+  }
+  /** A session left without a single message keeps no divider. */
+  abandoned(bot: string, session: string) {
+    this.db
+      .query('DELETE FROM history_items WHERE bot=?1 AND id=?2 AND NOT EXISTS (SELECT 1 FROM history_items WHERE bot=?1 AND session=?3 AND id<>?2)')
+      .run(bot, `session:${session}`, session)
   }
   search(bot: string, query: string, limit = 20) {
     const terms = query
