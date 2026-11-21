@@ -2,22 +2,24 @@ import { ChevronRightIcon } from 'lucide-react'
 import { Fragment, type ReactNode } from 'react'
 import type { BotThread } from '../../../shared/thread-schema'
 import { useNow } from '../app/use-now'
-import { StatusIcon } from '../bots/status-icon'
+import { GroupLine } from './group-line'
 import { useThreadNavigation } from './open-thread'
+import { StateText } from './state-text'
 import { StopThread } from './stop-thread'
 import { ThreadAvatar } from './thread-avatar'
-import { batchOf, batchSummary, isTask, type LineState, lineState, lineTitle, otherName, running } from './thread-lines'
+import { batchOf, batchSummary, isTask, lineState, lineTitle, otherName, running } from './thread-lines'
 import { useThreads } from './thread-store'
 
 const ring = 'rounded-[10px] ring-1 ring-hairline'
 
 /** A thread reference in a conversation (Paper "09 Bot threads" panel 1, "18 Bots working together" frames 1 and 2): one
- *  bordered line per exchange, and one card for the tasks a bot handed out in one call. The card is drawn at the batch's first
- *  line; the others draw nothing. A group, or an exchange not read yet, keeps the plain line (`fallback`). */
+ *  bordered line per exchange or group, and one card for the tasks a bot handed out in one call. The card is drawn at the batch's first
+ *  line; the others draw nothing. A group draws its own line; an exchange not read yet keeps the plain one (`fallback`). */
 export default function ThreadLine({ botId, threadId, fallback }: { botId: string; threadId: string; fallback: ReactNode }) {
   const threads = useThreads(botId)
   const thread = threads?.find(candidate => candidate.id === threadId)
-  if (!threads || !thread || thread.group) return fallback
+  if (!threads || !thread) return fallback
+  if (thread.group) return <GroupLine botId={botId} thread={thread} />
   const batch = batchOf(threads, thread)
   if (batch[0].id !== thread.id) return null
   if (batch.length === 1) return <ThreadRow botId={botId} thread={thread} className={ring} />
@@ -63,15 +65,5 @@ function ThreadRow({ botId, thread, className = '' }: { botId: string; thread: B
         className="absolute inset-0 rounded-[inherit] outline-none focus-visible:ring-2 focus-visible:ring-ring"
       />
     </div>
-  )
-}
-
-/** The 12px state line, with its spinner or check; `strong` in an opened task's strip. */
-export function StateText({ state, strong = false }: { state: LineState; strong?: boolean }) {
-  return (
-    <span className="flex min-w-0 items-center gap-[5px]">
-      {state.icon && <StatusIcon tone={state.icon} className="size-3" />}
-      <span className={`truncate text-xs/4 ${state.failed ? 'text-destructive' : strong ? 'text-foreground' : 'text-muted-foreground'}`}>{state.text}</span>
-    </span>
   )
 }

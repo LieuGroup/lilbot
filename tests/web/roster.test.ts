@@ -86,6 +86,28 @@ test('each activity status maps to its row state and words', () => {
   expect(state({ status: 'failed', text: 'Failed', unread: true })).toEqual({ tone: 'failed', text: 'Failed', unread: true })
   expect(state({ status: 'idle', text: '', unread: true })).toEqual({ tone: 'idle', text: 'Ships builds', unread: true })
   expect(state()).toEqual({ tone: 'idle', text: 'Ships builds', unread: false })
+  const g = { id: 'g', purpose: 'Plan', round: 1, roundCap: 6 }
+  const member = (activity?: NonNullable<Parameters<typeof bot>[1]>['activity'], leading = false) => ({
+    ...bot('b', { function: 'Ships builds', activity }),
+    groups: [{ ...g, leading }]
+  })
+  expect(rowState(member())).toEqual({ tone: 'idle', text: 'In a group', unread: false })
+  expect(rowState(member(undefined, true)).text).toBe('Leading a group')
+  expect(
+    rowState({
+      ...member(),
+      groups: [
+        { ...g, leading: false },
+        { ...g, id: 'h', leading: true }
+      ]
+    }).text
+  ).toBe('Leading a group')
+  expect(rowState(member({ status: 'working', text: 'Searching the web' }))).toEqual({ tone: 'working', text: 'In a group · Searching the web', unread: false })
+  expect(rowState(member({ status: 'working', text: '' }, true)).text).toBe('Leading a group · Working')
+  // A handed-over task is the turn running now; waiting for Oscar and an unavailable runtime win over the group.
+  expect(rowState({ ...member({ status: 'working', text: '' }), workingFor: { threadId: 't', name: 'FillLight Bot' } }).text).toBe('For FillLight Bot · Working')
+  expect(rowState(member({ status: 'waiting', text: '' })).text).toBe('Waiting for you')
+  expect(rowState({ ...member(), runnable: false }).text).toBe('Runtime unavailable')
   expect(rowState(bot('b')).text).toBe('No function set')
   expect(rowState(bot('b', { runnable: false })).text).toBe('Runtime unavailable')
   expect(rowState(bot('b', { runnable: false, runtimePending: true, function: 'x' })).text).toBe('x')

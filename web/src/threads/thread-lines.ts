@@ -1,5 +1,5 @@
 /** What a line, a row and an opened exchange say about it, from `threads.list`. One wording for asking (#65) and handing
- *  over (#135); groups are #136's. Pure: `now` is passed in so run times keep counting on screen. */
+ *  over (#135); a group's own wording is in `group-lines.ts`. Pure: `now` is passed in so run times keep counting on screen. */
 import type { BotThread } from '../../../shared/thread-schema'
 import { formatElapsed } from '../activity/activity-since'
 import { dayKey, dayLabel, sessionTime } from '../history/history-labels'
@@ -14,12 +14,13 @@ export interface LineState {
   stopped: boolean
 }
 
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 const joined = (...parts: (string | false | null | undefined)[]) => parts.filter(Boolean).join(' · ')
 
 /** Handed over with `lilbot_delegate` (one call, one batch); without a batch it was asked with the older `ask_bot`. */
 export const isTask = (thread: BotThread) => thread.batchId !== null
-export const running = (thread: BotThread) => thread.status === 'waiting' || thread.status === 'working'
+/** A group runs until it ends; an exchange while it waits or works. */
+export const running = (thread: BotThread) => (thread.group ? !thread.group.end : thread.status === 'waiting' || thread.status === 'working')
 /** The bot that asked or handed the work over, then the one that does it. */
 export const sides = (thread: BotThread) => ({ from: thread.participants[0], to: thread.participants[1] })
 export const otherName = (thread: BotThread, botId: string) => (thread.participants.find(p => p.id !== botId) ?? thread.participants[1]).name
@@ -39,7 +40,7 @@ export function fileCounts(thread: BotThread) {
 }
 
 /** "4 min" of work: from when the receiver started (or the request) to the end (or now). */
-function runTime(thread: BotThread, now: number) {
+export function runTime(thread: BotThread, now: number) {
   const ms = (thread.endedAt ?? now) - (thread.startedAt ?? thread.createdAt)
   return ms < 60_000 ? '<1 min' : formatElapsed(ms)
 }
@@ -112,7 +113,7 @@ export function stripState(thread: BotThread, now: number): LineState {
 }
 
 /** "Today 10:08", "Yesterday" or "12 Nov": when a past exchange started, in the Activity tab. */
-function shortDate(at: number, now: number) {
+export function shortDate(at: number, now: number) {
   if (dayKey(at) === dayKey(now)) return sessionTime(at, now)
   if (dayKey(at) === dayKey(now - 86_400_000)) return 'Yesterday'
   return dayLabel(at, now).split(' ').slice(1).join(' ')
@@ -130,9 +131,9 @@ export function activityRow(thread: BotThread, botId: string, now: number) {
   return { title, line: `${shortDate(thread.createdAt, now)} · ${state ? state.text : what}` }
 }
 
-/** Running ones first, then newest. Groups are listed by #136. */
+/** Running ones first, then newest. */
 export function activityOrder(threads: BotThread[]) {
-  return threads.filter(thread => !thread.group).sort((a, b) => Number(running(b)) - Number(running(a)) || b.createdAt - a.createdAt)
+  return [...threads].sort((a, b) => Number(running(b)) - Number(running(a)) || b.createdAt - a.createdAt)
 }
 
 /** Where the centred "Stopped by ..." line goes: before the first message that came after the stop, else at the end. */

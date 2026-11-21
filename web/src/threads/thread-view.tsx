@@ -1,23 +1,25 @@
 import { Link } from '@tanstack/react-router'
-import { Fragment } from 'react'
+import { Fragment, lazy, type ReactNode, Suspense } from 'react'
 import { Button, buttonVariants } from '@/ui/button'
 import type { BotThread } from '../../../shared/thread-schema'
 import { useNow } from '../app/use-now'
 import { useBotStore } from '../bots/bot-store'
 import { clockTime, sessionTime } from '../history/history-labels'
 import { useThreadNavigation } from './open-thread'
+import { StateText } from './state-text'
 import { StopThread } from './stop-thread'
-import { StateText } from './thread-line'
 import { fileCounts, isTask, running, sides, stopIndex, stripState, taskTitle } from './thread-lines'
 import { CentredLine, ThreadMessageRow, WorkingTail } from './thread-message'
 import { useThreadStore, useThreads } from './thread-store'
 
 const headButton = 'h-auto rounded-lg px-2.5 py-[5px] text-[13px]/[18px] font-medium ring-1'
 const footButton = 'h-auto rounded-lg px-2.5 py-[5px] text-xs/4 font-medium ring-1 ring-foreground/12 hover:bg-foreground/4'
+const GroupView = lazy(() => import('./group-view'))
 
 /** An exchange between two bots, opened in the conversation column (Paper "09 Bot threads" panel 2, "18 Bots working
  *  together" frames 4 and 9). Read-only: a header with Stop and "Back to chat", the status strip of a task, the messages from
- *  both sides, and a footer pointing to each bot's chat. The conversation underneath stays mounted and connected. */
+ *  both sides, and a footer pointing to each bot's chat. A group opens its own view (loaded with the first one). The
+ *  conversation underneath stays mounted and connected. */
 export default function ThreadView({ botId, threadId }: { botId: string; threadId: string }) {
   const threads = useThreads(botId)
   const error = useThreadStore(state => state.errors[botId])
@@ -37,24 +39,20 @@ export default function ThreadView({ botId, threadId }: { botId: string; threadI
         <p className="m-auto px-6 text-center text-[13px] text-muted-foreground">{error || (threads ? 'This exchange is not in this bot’s list.' : 'Loading...')}</p>
       </>
     )
+  if (thread.group)
+    return (
+      <Suspense>
+        <GroupView botId={botId} thread={thread} back={back} />
+      </Suspense>
+    )
   const { from, to } = sides(thread)
   const task = isTask(thread)
   return (
     <>
-      <header className="flex h-[calc(52px+env(safe-area-inset-top))] flex-none items-center justify-between gap-3 border-b border-hairline pt-[env(safe-area-inset-top)] pr-3 pl-5">
-        <div className="flex min-w-0 flex-col">
-          <h1 className="truncate text-sm/5 font-semibold tracking-[-0.01em]">{task ? taskTitle(thread) : `${from.name} and ${to.name}`}</h1>
-          {task && (
-            <p className="truncate text-xs/4 text-muted-foreground">
-              {from.name} handed this to {to.name}
-            </p>
-          )}
-        </div>
-        <div className="flex flex-none gap-1.5">
-          {task && running(thread) && <StopThread botId={botId} thread={thread} className={`${headButton} text-destructive ring-destructive/40 hover:bg-destructive/6`} />}
-          {back}
-        </div>
-      </header>
+      <ViewHeader title={task ? taskTitle(thread) : `${from.name} and ${to.name}`} subtitle={task && `${from.name} handed this to ${to.name}`}>
+        {task && running(thread) && <StopThread botId={botId} thread={thread} className={stopButton} />}
+        {back}
+      </ViewHeader>
       {task && <Strip thread={thread} />}
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-[744px] flex-col gap-[18px] px-4 pt-4 pb-5 md:px-6">
@@ -71,6 +69,21 @@ export default function ThreadView({ botId, threadId }: { botId: string; threadI
         </div>
       </footer>
     </>
+  )
+}
+
+export const stopButton = `${headButton} text-destructive ring-destructive/40 hover:bg-destructive/6`
+
+/** The view's 52px header: its title, a muted line under it, and its buttons on the right. */
+export function ViewHeader({ title, subtitle, children }: { title: string; subtitle: string | false; children: ReactNode }) {
+  return (
+    <header className="flex h-[calc(52px+env(safe-area-inset-top))] flex-none items-center justify-between gap-3 border-b border-hairline pt-[env(safe-area-inset-top)] pr-3 pl-5">
+      <div className="flex min-w-0 flex-col">
+        <h1 className="truncate text-sm/5 font-semibold tracking-[-0.01em]">{title}</h1>
+        {subtitle && <p className="truncate text-xs/4 text-muted-foreground">{subtitle}</p>}
+      </div>
+      <div className="flex flex-none gap-1.5">{children}</div>
+    </header>
   )
 }
 
@@ -108,7 +121,7 @@ function Messages({ botId, thread }: { botId: string; thread: BotThread }) {
 }
 
 /** Opens a participant's own chat; a deleted bot keeps its stored name but has no chat to open. */
-function ChatButton({ id, name }: { id: string; name: string }) {
+export function ChatButton({ id, name }: { id: string; name: string }) {
   const exists = useBotStore(state => state.bots.some(bot => bot.id === id))
   if (!exists)
     return (
