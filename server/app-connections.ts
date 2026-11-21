@@ -38,6 +38,7 @@ interface ConnectionDeps {
   bots: BotService
   calls: CallingChats
   t3Grants: T3Grants
+  t3Refusal: (botId: string, tool: string, args: unknown) => Promise<string | null>
   publish: (frame: EventFrame) => void
   repeat: (name: string, interval: number, run: () => unknown) => unknown
 }
@@ -48,7 +49,7 @@ function signInWindow(env: Record<string, string | undefined>): number {
   return test ? Math.max(1, Number(test)) * 1000 : SIGN_IN_WINDOW_MS
 }
 
-export function createConnections({ database, dataDir, port, engineToken, redirectUri, engine, store, prefs, bots, calls, t3Grants, publish, repeat }: ConnectionDeps) {
+export function createConnections({ database, dataDir, port, engineToken, redirectUri, engine, store, prefs, bots, calls, t3Grants, t3Refusal, publish, repeat }: ConnectionDeps) {
   const published = () => publish({ event: 'connections.changed' })
   const botIds = () => store.list().map(bot => bot.id)
   // A sign-in from `bun run t3:sign-in`, an expiry or a revocation changes which tools bots should see.
@@ -90,7 +91,7 @@ export function createConnections({ database, dataDir, port, engineToken, redire
   const lilbotUrl = `http://127.0.0.1:${port}`
   return {
     services,
-    t3Bridge: createT3Bridge({ upstream: process.env.LILBOT_T3_MCP_URL ?? T3_DEFAULT_MCP_URL, grants: t3Grants, engineToken, port, botIds }),
+    t3Bridge: createT3Bridge({ upstream: process.env.LILBOT_T3_MCP_URL ?? T3_DEFAULT_MCP_URL, grants: t3Grants, engineToken, port, botIds, refusal: t3Refusal }),
     forward: createServiceForward({ services, store: rows, credentials, keeper: new TokenKeeper(credentials), engineToken, port, botIds }),
     callback: connectionCallback(services),
     ready: (botId: string, chatId: string) => applier.ready(botId, chatId),

@@ -7,6 +7,7 @@ import { ActivityStore } from './activity/activity-store'
 import { createConnections } from './app-connections'
 import { createGoals } from './app-goals'
 import { createThreads } from './app-threads'
+import { createWebhooks, webhookMessages } from './app-webhooks'
 import { createWork, giveFrom } from './app-work'
 import { AttachmentService } from './attachments/attachment-service'
 import { AttachmentStore } from './attachments/attachment-store'
@@ -14,7 +15,7 @@ import { backgroundTask } from './background'
 import { BotPrefsStore } from './bots/bot-prefs-store'
 import { BotService } from './bots/bot-service'
 import { BotStore } from './bots/bot-store'
-import { hiddenChats, sessionRoots } from './bots/hidden-chats'
+import { chatKinds, hiddenChats, sessionRoots } from './bots/hidden-chats'
 import { Workspaces } from './bots/workspaces'
 import { ComputerService } from './computers/computer-service'
 import { ComputerStore } from './computers/computer-store'
@@ -45,7 +46,6 @@ import { systemNote } from './system/system-note-facts'
 import { createSystemServer } from './system/system-server'
 import { CallingChats } from './threads/calling-chats'
 import { ThreadStore } from './threads/thread-store'
-import { WebhookService } from './webhooks/webhook-service'
 import { WebhookStore } from './webhooks/webhook-store'
 import { WorkCheckStore } from './work/work-check-store'
 
@@ -94,7 +94,8 @@ export function createAppServices(
   const rootOf = sessionRoots(engine, store)
   const checkStore = new WorkCheckStore(database)
   const ownChat = (chat: string) => routineStore.isRoutineChat(chat) || threadStore.isInternal(chat) || webhookStore.isWebhookChat(chat) || checkStore.isCheckChat(chat)
-  const hiddenChat = hiddenChats(rootOf, ownChat)
+  const chatKind = chatKinds(rootOf, ownChat)
+  const hiddenChat = hiddenChats(chatKind)
   const library = new LibraryService(
     libraryStore,
     id => workspaces.pathFor(id),
@@ -127,9 +128,11 @@ export function createAppServices(
     botId => publish({ event: 'history.changed', botId })
   )
   repeat('history', 1000, () => history.tick())
+  const messages = webhookMessages(database, { store, prefs, history: history.store, activity, bots: () => bots }, publish)
   const bots = new BotService(engine, store, prefs, workspaces, memory, {
     skills,
     history,
+    turnNotes: messages,
     cleanupBot: botId => {
       history.store.forget(botId)
       devices.forgetBot(botId)
@@ -148,8 +151,13 @@ export function createAppServices(
     systemNote: systemNote(facts)
   })
   const calls = new CallingChats()
+  const observeRun = (event: ActivityEvent) => {
+    if (store.exists(event.botId)) activity.observe(event)
+  }
+  const { webhooks, webhookRuns, gates } = createWebhooks({ webhookStore, messages, bots, rootOf, calls, token, origin: HOOK_ORIGIN, observeRun, publish, repeat })
   const redirectUri = ACCESS_HOST ? `https://${ACCESS_HOST}${CALLBACK_PATH}` : undefined
-  const mcp = createConnections({ database, dataDir: DATA_DIR, port: PORT, engineToken: token, redirectUri, engine, store, prefs, bots, calls, t3Grants, publish, repeat })
+  const connDeps = { database, dataDir: DATA_DIR, port: PORT, engineToken: token, redirectUri, engine, store, prefs, bots, calls, t3Grants, t3Refusal: gates.t3Refusal }
+  const mcp = createConnections({ ...connDeps, publish, repeat })
   const runs = { threadStore, routineStore, webhookStore, rootOf, goalStore: new GoalStore(database), reviewModel: reviewSettingsFrom(process.env).model ?? null }
   const workDeps = { database, engine, store, prefs, bots, ...runs, libraryStore, workspaces, activity, history: history.store, calls, publish }
   const { work, links, answers, checks, checkSessions } = createWork(workDeps)
@@ -158,37 +166,19 @@ export function createAppServices(
   const routines = new RoutineService(routineStore, bots, () => publish({ event: 'routines.changed' }), routineSettings(process.env))
   const { goals, boards } = createGoals({ goalStore: runs.goalStore, work, answers, threads, routines, activity, store, publish, repeat })
   const giveFile = giveFrom(library, calls, threadStore, routineStore, webhookStore, rootOf)
-  const webhooks = new WebhookService(webhookStore, bots, token, HOOK_ORIGIN, () => publish({ event: 'webhooks.changed' }))
-  const deps = { ...facts, bots, activity, memory, memoryChanged, delegation, work, goals, routines, giveFile, webhooks, calls, checkSessions, connections: mcp.services }
-  const system = createSystemServer({ ...deps, changes: new SystemChanges(database), engineToken: token, port: PORT })
+  const core = { ...facts, bots, activity, memory, memoryChanged, delegation, work, goals, routines, giveFile, library }
+  const extra = { webhooks, webhookRuns, connections: mcp.services, calls, checkSessions, changes: new SystemChanges(database), engineToken: token, port: PORT }
+  const system = createSystemServer({ ...core, ...extra })
   repeat('threads', 1000, () => threads.tick())
   repeat('work answers', 1000, () => answers.tick())
   repeat('work checks', 1000, () => checks.tick())
-  const observeRun = (event: ActivityEvent) => {
-    if (store.exists(event.botId)) activity.observe(event)
-  }
   const routineScheduler = new RoutineScheduler(routines, observeRun)
   repeat('routines', 1000, () => routineScheduler.tick())
-  const webhookScheduler = new RoutineScheduler(webhooks, observeRun)
-  repeat('webhooks', 1000, () => webhookScheduler.tick())
   const reviewer = new MemoryReviewer(reviewQueue, bots, reviewSettingsFrom(process.env), Date.now, id => store.exists(id))
   repeat('memory reviewer', 20_000, () => reviewer.tick())
 
-  const engineApi = createEngineApi(memory, token, PORT, {
-    history,
-    computers,
-    deploymentNotice: () => deployNotice(DATA_DIR),
-    bots,
-    skills,
-    routines,
-    library,
-    threads,
-    botExists: id => store.exists(id),
-    onMemoryChanged: memoryChanged,
-    adapterVersion: MEMORY_ADAPTER_VERSION,
-    reviewer,
-    hiddenChat,
-    inCheck: checkSessions.refusal
-  })
+  const apiServices = { history, computers, bots, skills, routines, library, threads, reviewer, chatKind, adapterVersion: MEMORY_ADAPTER_VERSION }
+  const apiHooks = { deploymentNotice: () => deployNotice(DATA_DIR), botExists: (id: string) => store.exists(id), onMemoryChanged: memoryChanged, inCheck: checkSessions.refusal }
+  const engineApi = createEngineApi(memory, token, PORT, { ...apiServices, ...apiHooks, ...gates })
   return { bots, store, skills, library, computers, devices, attachments, t3Grants, mcp, system, engineApi, activity, routines, threads, boards, webhooks, hiddenChat }
 }

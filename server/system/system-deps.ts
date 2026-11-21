@@ -16,6 +16,8 @@ import type { CallingChats } from '../threads/calling-chats'
 import type { DelegationControl } from '../threads/delegation-control'
 import type { DelegationService } from '../threads/delegation-service'
 import type { GroupService } from '../threads/group-service'
+import type { WebhookCallers } from '../webhooks/webhook-callers'
+import type { WebhookMessages } from '../webhooks/webhook-messages'
 import type { WebhookService } from '../webhooks/webhook-service'
 import type { CheckSessions } from '../work/check-sessions'
 import type { WorkService } from '../work/work-service'
@@ -39,6 +41,7 @@ export interface SystemDeps extends SystemFacts {
   /** Handing work to one bot, and working together in temporary groups. */
   delegation: { hand: DelegationService; control: DelegationControl; groups: GroupService }
   work: WorkService
+  library: LibraryService
   routines: RoutineService
   goals: GoalService
   /** Gives a file to the bot's Library from the conversation the call came from (`giveFrom` in `app-work.ts`). */
@@ -49,6 +52,8 @@ export interface SystemDeps extends SystemFacts {
   /** Which session made a call, and which sessions are checks: a check session only reads and gives its verdict. */
   calls: CallingChats
   checkSessions: CheckSessions
+  /** Which calls come from webhook runs, the one message a run may send its bot, and which session made a call. */
+  webhookRuns: { callers: WebhookCallers; messages: WebhookMessages; callingChat: (botId: string, requestId: string) => Promise<string | null> }
   changes: SystemChanges
   dataDir: string
 }

@@ -21,6 +21,8 @@ import { DelegationControl } from '../../server/threads/delegation-control'
 import { DelegationService } from '../../server/threads/delegation-service'
 import { ThreadService } from '../../server/threads/thread-service'
 import { ThreadStore } from '../../server/threads/thread-store'
+import { webhookCallers } from '../../server/webhooks/webhook-callers'
+import { WebhookMessages } from '../../server/webhooks/webhook-messages'
 import { WebhookService } from '../../server/webhooks/webhook-service'
 import { WebhookStore } from '../../server/webhooks/webhook-store'
 import { checkSessions } from '../../server/work/check-sessions'
@@ -75,6 +77,13 @@ export function systemFixture() {
     id => fake.store.exists(id)
   )
   const giveFile = giveFrom(library, calls, threadStore, routineStore, webhookStore, rootOf)
+  // Which calls come from webhook runs' sessions, and the messages runs left (shown in the main conversation).
+  const shown: { botId: string; runId: string; source: string; text: string }[] = []
+  const webhookRuns = {
+    callers: webhookCallers(webhookStore, rootOf, calls),
+    messages: new WebhookMessages(fake.database, async (botId, runId, source, text) => shown.push({ botId, runId, source, text }) > 0),
+    callingChat: (botId: string, requestId: string) => calls.find(botId, 'lilbot_webhook_message', requestId)
+  }
   const goals = new GoalService(
     work.goalStore,
     work.work,
@@ -110,10 +119,12 @@ export function systemFixture() {
     routines,
     goals,
     giveFile,
+    library,
     webhooks,
     connections,
     calls,
     checkSessions: checkSessions(work.work.checks, rootOf),
+    webhookRuns,
     changes,
     dataDir: fake.root,
     engineToken: TOKEN,
@@ -136,7 +147,10 @@ export function systemFixture() {
     if (reported) calls.saw(botId, from.get(botId) ?? `${botId}-main`, `mcp__lilbot_system__${name}`, args, crypto.randomUUID())
     const result = (await (await rpc(botId, 'tools/call', { name, arguments: args })).json()).result
     const text: string = result.content[0].text
-    return result.isError ? { error: text } : { data: JSON.parse(text) }
+    if (result.isError) return { error: text }
+    const data = JSON.parse(text)
+    // LilBot's refusals are ordinary results, so Hermes does not pause the server after three of them.
+    return typeof data?.refused === 'string' ? { error: data.refused as string } : { data }
   }
   return {
     ...fake,
@@ -157,6 +171,8 @@ export function systemFixture() {
     webhooks,
     connections,
     signedIn,
+    webhookRuns,
+    shown,
     rosterPushes: fake.changes,
     request,
     as,

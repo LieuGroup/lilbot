@@ -23,11 +23,7 @@ const EXPECTED_TOOLS = [
   'lilbot_delete_defaults_get',
   'lilbot_delete_defaults_set',
   'lilbot_delegate',
-  'lilbot_delegation_status',
-  'lilbot_delegation_cancel',
-  'lilbot_delegation_redirect',
-  'lilbot_delegation_wait',
-  'lilbot_delegation_attach',
+  'lilbot_delegation',
   'lilbot_group',
   'lilbot_work',
   'lilbot_work_list',
@@ -35,13 +31,11 @@ const EXPECTED_TOOLS = [
   'lilbot_give_file',
   'lilbot_routine',
   'lilbot_routines_list',
-  'lilbot_webhook_create',
+  'lilbot_webhook',
   'lilbot_webhooks_list',
-  'lilbot_connection',
-  'lilbot_webhook_pause',
-  'lilbot_webhook_resume',
-  'lilbot_webhook_delete',
-  'lilbot_webhook_new_address'
+  'lilbot_webhook_message',
+  'lilbot_workspace_read',
+  'lilbot_connection'
 ]
 
 test('only engine processes on this machine with a current bot’s own system key get in', async () => {
@@ -87,7 +81,7 @@ test('the handshake answers like an MCP server and lists exactly the agreed tool
 test("nothing destructive is offered: no delete, remove or forget of bots, computers or facts; only the bot's own webhooks and routines", async () => {
   const f = systemFixture()
   const names = f.tools.map(tool => tool.name)
-  expect(names.filter(name => /delete|remove|forget|destroy|revoke/.test(name))).toEqual(['lilbot_delete_defaults_get', 'lilbot_delete_defaults_set', 'lilbot_webhook_delete'])
+  expect(names.filter(name => /delete|remove|forget|destroy|revoke/.test(name))).toEqual(['lilbot_delete_defaults_get', 'lilbot_delete_defaults_set'])
   for (const forbidden of ['lilbot_bot_delete', 'lilbot_computer_remove', 'lilbot_memory_forget']) {
     const result = (await (await f.rpc('b1', 'tools/call', { name: forbidden, arguments: { botId: 'b1' } })).json()).result
     expect(result.isError).toBe(true)

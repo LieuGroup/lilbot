@@ -176,6 +176,25 @@ So a `lilbot_skills` tool on the MCP server would be a second definition next to
 override replaces tools that are eager either way) and with the native writer still open. The plug-in stays as it is. An engine
 without skill tools of its own would get the MCP tool then, calling the same `SkillsService` as `/engine/skills/*`.
 
+### Tool weight reduction (#175 item 3, dev bot, `cliproxyapi anthropic/claude-sonnet-5-5`, fresh sessions)
+
+Measured on one temporary dev bot (memory adapter connected, `Reply with exactly: OK`, two fresh `chat.new` sessions each):
+
+| | before | after |
+|---|---|---|
+| whole bot, tokens a turn (`chat.new` `contextTokens`) | 19,850 | 19,326 (-524, -2.6%) |
+| `lilbot_*` deferred listing lines (name and first sentence) | 39 (4,218 chars) | 31 (2,899 chars, -1,319) |
+| full `tools/list` JSON (loaded by `tool_describe` or eager engines) | 21,606 chars | 18,242 chars (-3,364, -15.6%) |
+| eager `memory-adapter` schemas (3 tools, v0.13.0 -> v0.14.0) | 1,739 chars | 1,332 chars (-407, -23.4%) |
+| deferred `computers-adapter` schemas (8 tools, v1.0.0 -> v1.1.0) | 3,228 chars | 2,707 chars (-521, -16.1%) |
+
+Collapsing five webhook management tools into `lilbot_webhook` (keeping `lilbot_webhooks_list` and the narrow-run
+`lilbot_webhook_message` separate) and five delegation control/attach tools into `lilbot_delegation` (`status` stays
+read-only for `check-access.ts` and `system_changes`) removed eight deferred listing lines every turn; trimming the
+largest MCP descriptions/schemas (`lilbot_goal`, `lilbot_work`, `lilbot_routine`, `lilbot_group`, `lilbot_delegate`)
+kept every first sentence inside Hermes' 80-character catalog cap; trimming the three eager memory-adapter tool schemas
+saved directly on every turn.
+
 ## The server
 
 - `POST /engine/lilbot/mcp` on the private listener (`main.ts`, beside the T3 bridge). Streamable HTTP answered as plain
@@ -214,8 +233,7 @@ Every tool acts as the calling bot and calls the function the screen uses. Reads
 | `lilbot_memory_expiry` | `MemoryService.setExpiry` (no screen yet; same `memory.changed` push) |
 | `lilbot_delete_defaults_get`, `_set` | `bots.deleteDefaults.get` and `.set` |
 | `lilbot_delegate` | hand one task to each named bot, with files; one exchange each, one batch (`docs/threads.md`) |
-| `lilbot_delegation_status`, `_cancel`, `_redirect`, `_wait` | the delegating bot's control; cancel is the same `ThreadService.cancel` as `threads.cancel` |
-| `lilbot_delegation_attach` | the receiver's files for its answer |
+| `lilbot_delegation` | `action`: `status` (read-only, no change-log row, allowed in check sessions), `cancel` (`ThreadService.cancel`), `redirect`, `wait` for the delegating bot, and `attach` for the receiver's answer files |
 | `lilbot_group` | temporary groups (#133): `start`, `say`, `attach`, `close`, `status` in one tool; `GroupService`, the same records as `threads.list`, `threads.open` and `threads.cancel` (`docs/threads.md`) |
 | `lilbot_work` | the work board: without itemId opens an item (`WorkService.act`), with itemId reports on the caller's own item: definition, evidence, status in one call; with `verdict`, the check LilBot asked the caller to do |
 | `lilbot_work_list` | the caller's items, every bot's, or one in full: the same records as `work.list` and `work.open`; with `goals` or `goalId`, goals (`goals.list`, `goals.open`) |
@@ -223,10 +241,10 @@ Every tool acts as the calling bot and calls the function the screen uses. Reads
 | `lilbot_routine` | `routines.*` for the caller's own routines: `action` create (`RoutineService.create`; request-id idempotency, five of its own, five-minute minimum), pause, resume or delete (`id`) |
 | `lilbot_routines_list` | `routines.list` for the caller: latest five runs each, results cut to 500 characters |
 | `lilbot_give_file` | `LibraryService.give`: a finished file from the caller's folder to its Library (`path`, `title`, `requestId`). The conversation and routine run come from the call, not from an argument; each call is a `system_changes` row naming the item. The adapter's `give_file` ended with adapter 0.12.0 |
-| `lilbot_webhook_create` | `WebhookService.create` for the caller (five webhooks a bot; the same `requestId` returns the current address and any secret LilBot made again) |
+| `lilbot_webhook` | `webhooks.*` for the caller's own webhooks: `action` `create` (`WebhookService.create`; five a bot, same `requestId` repeats address and generated secret), `pause`, `resume`, `delete`, or `new_address` (`id`) |
 | `lilbot_webhooks_list` | `webhooks.list` for the caller (latest five runs, results cut to 500 characters and fenced as outside data; never addresses or secrets) |
-| `lilbot_webhook_pause`, `_resume`, `_delete` | `webhooks.pause`, `.resume`, `.delete`, only the caller's own webhooks |
-| `lilbot_webhook_new_address` | `WebhookService.newAddress`: the old address stops working at once |
+| `lilbot_webhook_message` | only from a webhook run: its one message to its own bot, saved on the run and sent hidden into the bot's main conversation (opened like a new bot's greeting), fenced as outside data (`webhooks/webhook-messages.ts`) |
+| `lilbot_workspace_read` | a text file (first 100 kB) or folder in the caller's own folder, through the Library's no-follow opens; for webhook runs, which have no engine file tools |
 | `lilbot_connection` | the MCP services bots add (#187): `action` add (name, address), sign_in (id: a fresh link), finish (the address Oscar's browser ended on), remove (id, one the caller added); `McpConnections` in `server/connections/` |
 
 Not offered, by decision: deleting a bot, removing a computer, forgetting another bot's private facts, changing a bot's
@@ -244,6 +262,39 @@ Each start is matched to one call only (same tool and request id, close in time)
 sessions could have made, is refused and retried, never credited to the main conversation (#174). While a bot has a check
 running, `system/check-access.ts` holds its changing calls until their start is seen and refuses those from a check
 session: a check only reads and gives its verdict.
+
+### Webhook runs (#12, finding 3)
+
+Cost, measured on the dev gateway by `check:webhooks` (run 2026-11-21, its seven-step task) and with `systemFixture`:
+
+| | tools | calls | context on the last call |
+|---|---|---|---|
+| narrow run (`lilbot_system`; Hermes adds `lilbot_computers` and `skills` back) | 50 | 6 | 16,235 tokens |
+| the same task given `web`, `shell` and `coding` | 60 | 11 | 21,456 tokens |
+
+Without `web` a narrow session has two tools fewer (`web_search`, `web_extract`) than when the web was in the narrow set.
+
+Every bot pays for the two new tools in every session: their listing lines (about 70 tokens a turn) and their full
+`tools/list` entries. A full-access run had every toolset of the profile, including every other MCP
+server (production, from its config: RevenueCat and Paper as well as T3 Code); a narrow one has none of them.
+
+Every tool is either open to a narrow webhook run (`RUN_TOOLS` in `system/run-access.ts`: the guide, the work board, the
+run's message, the folder read) or in a capability group Oscar adds per webhook (`TOOL_GROUPS`; `lilbot_give_file` is in
+`shell`, since a run can only give a file it could write; `lilbot_about` in `bots`, `lilbot_status` in `computers` and
+`coding`, the groups whose facts they show), or refused to every webhook run (`NO_RUN_TOOLS`: `lilbot_goal`); a test fails
+when a new tool is in none of them. A run reads only its own bot's work items, whatever its groups: `readsBeyondOwn`
+marks a `lilbot_work_list` call with `mine: false`, `goals`, `goalId` or another bot's `itemId`, and only such a call is
+matched to its session (the bot's own list and items answer at once).
+
+Before a call runs, `runRefusal` asks `webhooks/webhook-callers.ts` which session made it, by the session and never by
+time: only for a bot that has had a webhook run, the call is matched to exactly one `tool.start` report, its own
+(`CallingChats.take`: the oldest with its arguments or request id that no other call took, waiting up to 5 seconds). A webhook run's session, or one the engine continued it in, gives
+that webhook's groups for as long as it exists; another session's call passes; a call never seen, or an unreadable
+lineage, counts as a webhook run's (it fails closed). `tools/list` carries no session, so a narrow run still sees every
+tool's listing line; a refusal comes back as an ordinary result (`{"refused": ...}`) saying why, never as a tool error,
+because Hermes pauses the whole server for about a minute after three errors in a row. The T3 bridge (`coding`) refuses
+the same way; the engine API decides plug-in calls (computers, `skill_manage`, the routes only older adapters call) and
+memory by the session the adapter names.
 
 Judgment calls: a memory tool may name another bot's panel (as Oscar can on the screens), but only a fact in that
 panel can be named, by the short id a bot sees; the default is the calling bot's own. Another bot's private facts can

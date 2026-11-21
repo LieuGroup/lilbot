@@ -21,53 +21,84 @@ export function serverConfig(connection: McpConnection) {
 }
 
 type Summary = { name?: unknown; url?: unknown; enabled?: unknown; tools?: { include?: unknown } }
-type Socket = Pick<HermesSocket, 'request'>
+type StatusRow = { name?: unknown; connected?: unknown }
+type Rpc = Pick<HermesSocket, 'request'>
 const unavailable = (error: unknown) => error instanceof Error && error.message.includes('mcp servers unavailable')
+
+async function listServers(socket: Rpc): Promise<Summary[]> {
+  const listed = await socket.request('mcp.servers.list', {})
+  return Array.isArray(listed.servers) ? listed.servers : []
+}
+
+async function disconnectedConnections(socket: Rpc, connections: McpConnection[]): Promise<McpConnection[]> {
+  if (!connections.length) return []
+  const status = await socket.request('mcp.servers.status', {})
+  const rows: StatusRow[] = Array.isArray(status.servers) ? status.servers : []
+  return connections.filter(connection => !rows.some(row => row.name === connection.name && row.connected === true))
+}
 
 /** A reload where a configured server did not connect is refused unless something else took effect. Accept it only when
  *  every required connection is connected: a service a bot added may be down without taking the bot down with it. */
-async function reload(socket: Socket, required: McpConnection[]) {
+async function reloadConnections(socket: Rpc, required: McpConnection[]) {
   try {
-    await socket.request('reload.mcp', { confirm: true })
+    const result = await socket.request('reload.mcp', { confirm: true })
+    const failed: unknown[] = Array.isArray(result?.unavailable) ? result.unavailable : []
+    if (required.some(connection => failed.includes(connection.name))) {
+      throw new LilBotError('hermes_mcp_servers_unavailable', 'Hermes refused the request (mcp servers unavailable).')
+    }
   } catch (error) {
+    // An inherited or optional server can fail reload even when our required connections are ready.
     if (!unavailable(error)) throw error
-    if (!required.length) return
-    const status = await socket.request('mcp.servers.status', {})
-    if (!required.every(connection => status.servers?.some((row: { name: string; connected: boolean }) => row.name === connection.name && row.connected))) throw error
+    if (required.length && (await disconnectedConnections(socket, required)).length) throw error
   }
 }
 
-/** Returns whether anything changed. */
-export async function prepareConnections(socket: Socket, connections: McpConnection[]): Promise<boolean> {
-  const listed = await socket.request('mcp.servers.list', {})
-  const servers: Summary[] = Array.isArray(listed.servers) ? listed.servers : []
-  const named = (name: string) => servers.find(server => server.name === name)
-  const given = connections.filter(connection => OWNED.test(connection.name))
-  const stale = given.filter(connection => {
-    const existing = named(connection.name)
-    const config = serverConfig(connection)
-    return !(existing?.url === config.url && existing.enabled !== false && JSON.stringify(existing.tools?.include) === JSON.stringify(config.tools.include))
-  })
-  const gone = servers.map(server => String(server.name ?? '')).filter(name => OWNED.test(name) && !given.some(connection => connection.name === name))
-  if (!stale.length && !gone.length) return false
-  // Hermes reconciles running servers by name, so a changed entry is removed and disconnected first, then added and
-  // connected: that is what makes it fetch the route's new tool list. Only that server reconnects.
-  const replaced = stale.filter(connection => named(connection.name)).map(connection => connection.name)
-  for (const name of [...replaced, ...gone]) await socket.request('mcp.servers.remove', { name })
-  // Our replaced entries are deliberately absent during this reload; the one below checks the replacements.
-  if (replaced.length || gone.length) await reload(socket, [])
-  for (const connection of stale) await socket.request('mcp.servers.add', { name: connection.name, config: serverConfig(connection), bearer_token: connection.bearerToken })
-  if (stale.length)
-    await reload(
+/** Hermes reconciles running servers by name and keeps parked tasks registered until removed from config, so drifted,
+ *  parked or removed entries are removed and reloaded first, then replacements are added and reloaded fresh. */
+async function replaceConnections(socket: Rpc, given: McpConnection[], targets: McpConnection[], gone: string[], configured?: Summary[]) {
+  const servers = configured ?? (await listServers(socket))
+  const present = targets.filter(connection => servers.some(server => server.name === connection.name)).map(connection => connection.name)
+  for (const name of [...present, ...gone]) await socket.request('mcp.servers.remove', { name })
+  // Replaced entries are deliberately absent during this reload; the one below verifies the replacements.
+  if (present.length || gone.length) await reloadConnections(socket, [])
+  for (const connection of targets) await socket.request('mcp.servers.add', { name: connection.name, config: serverConfig(connection), bearer_token: connection.bearerToken })
+  if (targets.length)
+    await reloadConnections(
       socket,
       given.filter(connection => !connection.optional)
     )
+}
+
+/** Reconnects LilBot's own MCP servers if Hermes parked or disconnected them (for example during a LilBot restart). */
+export async function reconnectDisconnected(socket: Rpc, connections: McpConnection[]): Promise<boolean> {
+  const given = connections.filter(connection => OWNED.test(connection.name))
+  const disconnected = await disconnectedConnections(socket, given)
+  if (!disconnected.length) return false
+  await replaceConnections(socket, given, disconnected, [])
+  return true
+}
+
+/** Returns whether anything changed. */
+export async function prepareConnections(socket: Rpc, connections: McpConnection[]): Promise<boolean> {
+  const servers = await listServers(socket)
+  const given = connections.filter(connection => OWNED.test(connection.name))
+  const stale = given.filter(connection => {
+    const existing = servers.find(server => server.name === connection.name)
+    const config = serverConfig(connection)
+    return !(existing?.url === config.url && existing.enabled !== false && JSON.stringify(existing.tools?.include) === JSON.stringify(config.tools.include))
+  })
+  const matching = given.filter(connection => !stale.includes(connection))
+  const disconnected = matching.length ? await disconnectedConnections(socket, matching) : []
+  const targets = [...stale, ...disconnected]
+  const gone = servers.map(server => String(server.name ?? '')).filter(name => OWNED.test(name) && !given.some(connection => connection.name === name))
+  if (!targets.length && !gone.length) return false
+  await replaceConnections(socket, given, targets, gone, servers)
   return true
 }
 
 /** `reload.mcp` with a conversation's id commits the profile's servers to that live chat in place (`applied`), or answers
  *  `busy` while its turn runs. A chat that is not live gets no `session`: it reads the config when next resumed. */
-async function applyToChats(socket: Socket, chatIds: string[]): Promise<{ chatId: string; state: ConnectionsApplied }[]> {
+async function applyToChats(socket: Rpc, chatIds: string[]): Promise<{ chatId: string; state: ConnectionsApplied }[]> {
   const results: { chatId: string; state: ConnectionsApplied }[] = []
   for (const chatId of chatIds) {
     let session: unknown
@@ -93,7 +124,7 @@ export function connectionPreparer(open: (id: string) => Promise<Pick<HermesSock
     queue.set(id, run)
     return run
   }
-  const using = async <T>(id: string, step: (socket: Pick<HermesSocket, 'request'>) => Promise<T>): Promise<T> => {
+  const using = async <T>(id: string, step: (socket: Rpc) => Promise<T>): Promise<T> => {
     const socket = await open(id)
     try {
       return await step(socket)
@@ -102,11 +133,11 @@ export function connectionPreparer(open: (id: string) => Promise<Pick<HermesSock
     }
   }
   return {
-    prepare: (id: string, connections: McpConnection[]): Promise<void> =>
+    prepare: (id: string, connections: McpConnection[], statusOnly = false): Promise<void> =>
       turn(id, async () => {
         const key = JSON.stringify(connections)
         if (prepared.get(id) === key) return
-        await using(id, socket => prepareConnections(socket, connections))
+        await using(id, socket => (statusOnly ? reconnectDisconnected(socket, connections) : prepareConnections(socket, connections)))
         prepared.set(id, key)
       }),
     apply: (id: string, chatIds: string[]) => turn(id, () => using(id, socket => applyToChats(socket, chatIds)))

@@ -6,6 +6,10 @@ export const rpcResult = (id: JsonRpc['id'], result: unknown) => Response.json({
 export const rpcError = (id: JsonRpc['id'], code: number, message: string) => Response.json({ jsonrpc: '2.0', id: id ?? null, error: { code, message } })
 export const toolError = (id: JsonRpc['id'], text: string) => rpcResult(id, { content: [{ type: 'text', text }], isError: true })
 
+/** LilBot refusing a call the session may not make: an ordinary result, not a tool error, because Hermes pauses a whole
+ *  server for about a minute after three tool errors in a row, which could reach the bot's other conversations. */
+export const refusedResult = (id: JsonRpc['id'], text: string) => rpcResult(id, { content: [{ type: 'text', text: JSON.stringify({ refused: text }) }] })
+
 /** Answers a request without the service behind a route: the bot sees one tool that says what to tell Oscar. */
 export function signedOutReply(message: JsonRpc, explanation: string, server: string, tool: { name: string; description: string }): Response {
   switch (message.method) {

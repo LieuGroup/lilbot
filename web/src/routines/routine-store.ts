@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { create } from 'zustand'
 import type { Routine } from '../../../shared/routine-schema'
 import { lilbot, messageOf } from '../app/lilbot-socket'
+import { watchedReads } from '../app/watched-reads'
 
 interface RoutineStore {
   byBot: Record<string, Routine[]>
@@ -14,8 +15,6 @@ interface RoutineStore {
 }
 
 export const useRoutineStore = create<RoutineStore>(() => ({ byBot: {}, goals: {}, errors: {} }))
-const watching = new Map<string, number>()
-let started = false
 
 async function load(botId: string) {
   try {
@@ -31,29 +30,11 @@ async function load(botId: string) {
   }
 }
 
-const reload = () => {
-  for (const botId of watching.keys()) void load(botId)
-}
+const watch = watchedReads(load, [listener => lilbot.onRoutinesChanged(listener), listener => lilbot.onGoalsChanged(listener)])
 
 /** The bot's routines, oldest first; undefined until the first read. */
 export function useRoutines(botId: string) {
-  useEffect(() => {
-    if (!started) {
-      started = true
-      lilbot.onRoutinesChanged(reload)
-      lilbot.onGoalsChanged(reload)
-      lilbot.onConnection(connected => {
-        if (connected) reload()
-      })
-    }
-    watching.set(botId, (watching.get(botId) ?? 0) + 1)
-    if (watching.get(botId) === 1) void load(botId)
-    return () => {
-      const left = (watching.get(botId) ?? 1) - 1
-      if (left > 0) watching.set(botId, left)
-      else watching.delete(botId)
-    }
-  }, [botId])
+  useEffect(() => watch(botId), [botId])
   return useRoutineStore(state => state.byBot[botId])
 }
 

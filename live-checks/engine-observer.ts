@@ -6,6 +6,8 @@ import { HermesSocket } from '../server/engines/hermes/hermes-socket'
 import { type RestartServer, waitFor } from './restart-server'
 
 export interface Answer {
+  /** Hermes' `message.complete` status: complete, error or interrupted. */
+  status: string
   model: string
   cache: number | undefined
   context: number
@@ -48,7 +50,15 @@ export async function observeChat(server: RestartServer, native: string, chatId:
     if (event.type === 'status.update') statuses.push(String(event.payload.kind))
     if (event.type !== 'message.complete') return
     const { usage = {}, text } = event.payload
-    answers.push({ model: usage.model, cache: usage.cache_hit_pct, context: usage.context_used, window: usage.context_max, compressions: usage.compressions, text: String(text) })
+    answers.push({
+      status: String(event.payload.status ?? ''),
+      model: usage.model,
+      cache: usage.cache_hit_pct,
+      context: usage.context_used,
+      window: usage.context_max,
+      compressions: usage.compressions,
+      text: String(text)
+    })
   })
   await socket.request('session.resume', { session_id: chatId, source: 'gui', display_projection: true, omit_messages: true })
   const finished = (from: number) => (server.events.slice(from).some(e => e.chatId === chatId && e.data?.type === 'turn.finished') ? true : null)

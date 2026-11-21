@@ -70,7 +70,9 @@ web/src/           The web app.
   library/           the Library tab, the bot's workspace folder view and the item viewer
   threads/           work between bots: the line in a conversation, the opened exchange or group, stop, "With other bots",
                      "Working together"
-  routines/          the Activity tab's Routines card, one routine (in place of the panel), a run's transcript
+  routines/          the Activity tab's Routines card, one routine (in place of the panel), a run's transcript; the run
+                     list, transcript and delete dialog webhooks reuse
+  webhooks/          the Activity tab's Webhooks section, one webhook (in place of the panel), a webhook run's transcript
   skills/            the Setup tab's Skills section: the list with each bot's switch, search, and one skill's reader
   computers/         the Settings > Computers page (list, remove, add this computer, add by command line)
   devices/           this browser's device id and name, and the "This device" block on the Computers page
@@ -105,9 +107,9 @@ memory with a Memory panel and after-chat review, every bot knowing its system (
 LilBot's own MCP tools, delegation between bots (several tasks at once, files, status, stop, redirect, wait), temporary
 groups of bots (rounds, a shared folder, an outcome; #133), the screens for asked threads, handed-over work and groups
 (#65, #135, #136: the line or card in a conversation, the opened exchange or group, stop, "With other bots", the roster's
-"Working together"), the Routines screens (#53), the Library screens (#54), and the
+"Working together"), the Routines screens (#53), the Library screens (#54), the Webhooks screens (#138), and the
 backends for routines, webhooks, threads, library, skills, computers, the work board with its check levels, goals,
-coding through T3 Code and the MCP services bots add (#187). Next: the Webhooks (#138), work board and goal screens, the check levels' track record and
+coding through T3 Code and the MCP services bots add (#187). Next: the webhook capability switches (Paper "17" frames 7 to 9, awaiting Oscar's approval), work board and goal screens, the check levels' track record and
 spot checks (#142), the nightly memory tidy-up and editing abilities. Reports are not built. Desktop (Tauri) and iOS (Expo) come after the
 web app.
 
@@ -278,8 +280,8 @@ What a bot is and who owns each part.
 - Each bot has one permission mode, stored with its identity: `full-access` by default. The protocol names
   `approval-required`, `auto-accept-edits`, `auto` and `full-access`; only full access is supported now. Engines declare
   supported modes, and unsupported choices fail before saving. LilBot applies the mode on creation, once per bot at
-  startup, on mode changes, chats and reviews, repairing drift. Routine runs currently use full access (`yolo`); when
-  other modes exist, routine and webhook runs must use the bot's mode. There are no approval cards. LilBot bots do not
+  startup, on mode changes, chats and reviews, repairing drift. Routine runs currently use full access (`yolo`); webhook
+  runs are narrow (see Webhooks). When other modes exist, routine and webhook runs must use the bot's mode. There are no approval cards. LilBot bots do not
   follow the home rule requiring approval for App Store Connect or submissions to Apple. They may still ask task
   questions, and engine hard stops remain.
 - The user chooses one primary bot (in Setup) and can still talk to any bot directly. The choice lives in LilBot's
@@ -468,6 +470,26 @@ Visual specs: "Routines" in [docs/screens.md](docs/screens.md).
   user message is LilBot's wrapper prompt, so user messages are left out and "The routine asked" shows the routine's
   words. A run not started yet has no transcript and is not a link.
 
+### Webhooks (`web/src/webhooks/`, #138)
+
+Visual specs: "Webhooks" in [docs/screens.md](docs/screens.md).
+
+- A "Webhooks" section in the Activity tab, under Routines (in its lazy chunk), hidden while the bot has none or the read
+  fails (the helper door off refuses every read). No form: webhooks are made by asking the bot.
+  `webhooks/webhook-store.ts` reads `webhooks.list` for the bots on screen, again on `webhooks.changed` and reconnect
+  (`app/watched-reads.ts`, shared with routines and skills). Wording is `webhooks/webhook-lines.ts` only (pure, tested).
+- A row opens one webhook with `?webhook=<id>`, in place of the whole details panel like a routine (opening one closes
+  the other). The switch pauses and resumes (`webhooks.pause`/`resume`); the bin asks first, then `webhooks.delete`.
+- The address is never in list data, on screen, in a store or a log: "Copy" calls `webhooks.address` on the click and
+  hands it to the clipboard as a pending `ClipboardItem` (so Safari keeps the click's permission), `writeText` where
+  that is missing. The button says "Copied" or "Could not copy" for two seconds.
+- A run row opens its transcript with `?webhookRun=<id>` in the conversation column, like a routine run
+  (`routines/run-transcript.tsx`, `webhooks.openRun`): "The webhook asked" shows the task; LilBot's prompt with the events
+  is left out like a routine's. `thread`, `run` and `webhookRun` are one column view at a time (`withoutColumn`).
+- Not built, waiting for an approved design: Oscar's capability groups (`webhooks.setCapabilities`; Paper "17" frames 7 to
+  9 are drawn, not approved) and any drawing of a run's message to its bot beyond the plain `webhook message` tool line
+  the history already shows in the conversation.
+
 ### Library (`web/src/library/`, #54)
 
 Visual specs: "Library" in [docs/screens.md](docs/screens.md).
@@ -588,15 +610,40 @@ Visual specs: "Work between bots" in [docs/screens.md](docs/screens.md).
   seconds; startup never waits for history. Errors leave the import pending for retry; it is safe to resume and repeat.
 - `search_conversations(query, limit?)` searches only the calling bot's user/assistant rows and reports import
   progress. It moves to #62's hub later.
-- Before Hermes compresses, `on_pre_compress` synchronously offers the conversation's user/assistant text (the last
-  100,000 characters) to a hidden memory-only review by the same bot, under the normal memory rules. Review sessions
-  never review themselves. It is best effort: a failure logs a warning and Hermes may proceed.
+- Before Hermes shortens a conversation, LilBot reviews every user and assistant word of it for memory (#148; Hermes'
+  pre-compress checkpoint v2, `/engine/history/save`). `memory/memory-checkpoint.ts` cuts it into passes of about
+  100,000 characters on message boundaries, oldest first, three at a time, each a hidden memory-only review of the same
+  bot on `LILBOT_REVIEW_MODEL` under the normal memory rules, and answers only once every pass finished. A reviewed piece
+  is remembered per bot while the server runs, so a retry or the next shortening reviews only what is new, and a second
+  save of the same conversation waits for the first. LilBot's own sessions, their continuations and review sessions
+  answer `skipped` (complete, nothing reviewed); an unreadable lineage is refused, never skipped. Webhook notes are
+  taken out of the evidence first (`withoutWebhookNotes`).
+- Every bot connected to LilBot memory is fail-closed (`compression.checkpoint_required`, set and cleared with the
+  memory connection, Oscar's decision on #148): both of Hermes' compaction paths, its own and the gateway's hygiene
+  pre-pass, take the save or do not shorten. A compaction asked for from outside a turn (`session.mutate` compress) is
+  always refused then (#167). Start-up sets the flag again once when something outside LilBot changed the profile (the
+  deploy watchdog clears it for a rollback, see Deploy); an unchanged restart writes nothing, since a changed flag
+  rebuilds every cached Hermes agent of the bot.
+- A save that finds LilBot gone (connection refused or cut off before an answer, as during a deploy's restart) is sent
+  again every 3 seconds for up to 90 seconds, so a restart only pauses the turn; a save that timed out while running
+  is never sent again.
+- When the save cannot finish (LilBot down longer, a review failing), the turn that needed the compaction stops (the
+  model does not run) and LilBot shows one line in its own words instead of Hermes' text: "<bot> couldn't save its
+  memory before shortening this long conversation, so it stopped instead of forgetting anything. Send your message
+  again in a moment." (`web/src/chat/failure-lines.ts`). LilBot knows it from the adapter's own record of its saves
+  (`lilbot-memory-saves.jsonl` in the profile: session, time, finished or not; never text): a turn that failed, live or
+  replayed, or a stored row that closes a failed turn (`display_kind` `failed_turn`), while its session's latest save
+  had failed becomes `turn.finished` with `failure: memory_save` or an `error` item with `reason: memory_save`
+  (`engines/hermes/hermes-memory-saves.ts`). The next turn answers once (Hermes has no fresh token count after a failed
+  turn, so it skips compaction), then every turn stops the same way until the save can run. The session is kept and
+  nothing is reset; once LilBot is back the message sent again is answered and the conversation shortens with the
+  save. Measured in `check:checkpoint`.
 - `bun live-checks/history-benchmark.ts` uses a synthetic 5,000-row dev copy, never production data.
 
 ## Threads
 
 `server/threads/` owns bot-to-bot exchanges (`shared/thread-schema.ts`): delegation on LilBot's MCP server
-(`lilbot_delegate` and the `lilbot_delegation_*` tools, `delegation-service.ts`). The plug-in tools `ask_bot` and
+(`lilbot_delegate` and `lilbot_delegation`, `delegation-service.ts`). The plug-in tools `ask_bot` and
 `list_bots` ended with adapter 0.10.0 (#113): new sessions use `lilbot_delegate` and `lilbot_bots_list`. The engine API's
 `threads/ask` and `threads/bots` stay only for sessions that loaded 0.9.x. Detail, engine findings and measurements:
 [docs/threads.md](docs/threads.md).
@@ -621,7 +668,7 @@ Visual specs: "Work between bots" in [docs/screens.md](docs/screens.md).
   (`BotEngine.steerRun`), joined to the first turn when the task has not started, otherwise the receiver's next turn;
   a steer the turn never took runs as its next turn. Wait never holds a call open: each answer still arrives, and the
   bot is told once when all are in (folded into the last answer, or a short LilBot notice).
-- Files travel with a request (`files` per task) or an answer (`lilbot_delegation_attach` by the receiver), by path in
+- Files travel with a request (`files` per task) or an answer (`lilbot_delegation` `action: attach` by the receiver), by path in
   the sender's own folder, with the chat-attachment limits (20 MB, 10 per message): every path part opened with
   O_NOFOLLOW from the folder's descriptor, regular files only, written exclusive-create into
   `<recipient folder>/exchanges/<exchange id>/` under a generated name. Copies only, never shared paths; names are
@@ -909,8 +956,12 @@ production only through it.
 - Rollback: an independent watchdog (`lilbot-deploy.service`) copies the database, switches the release symlink,
   restarts LilBot and checks health for 60 seconds. On failure it stops LilBot, restores the database, switches back
   to the previous release and restarts once (no Git checkout, reset, install or build during rollback), then checks
-  that version for another 60 seconds. Failed recovery stops the service and keeps the lock, releases and copies for a
-  person; it never loops. A killed watchdog also leaves its lock. Nothing removes a stale lock automatically.
+  that version for another 60 seconds. Before that restart it clears `compression.checkpoint_required` in every bound,
+  non-deleted bot's Hermes profile that has it (`server/deploy/rollback-profiles.ts`, with the service unit's own Hermes
+  home and executable; in development only `dev-` profiles under the development home), so a release from before #148,
+  whose memory adapter cannot take the save, can still shorten conversations; a release that has #148 sets it again at
+  start-up. It logs only counts (`[rollback] memory save flag cleared for N bots`). Failed recovery stops the service
+  and keeps the lock, releases and copies for a person; it never loops. A killed watchdog also leaves its lock. Nothing removes a stale lock automatically.
   Development checkouts, including uncommitted changes, are never touched.
 - Database copies use SQLite's online backup API; never raw-copy `lilbot.db`, `-wal` and `-shm` independently. The
   data directory is never replaced: keys, `engine-token`, `t3-grant.json`, other secrets, workspaces and engine
@@ -1242,7 +1293,7 @@ for connected bots).
 
 - Finished turns of real conversations (not routine or webhook runs, bot threads, their compression children or
   sub-agents) queue in `review-queue.ts` until reviewed; the save before compressing skips the same sessions
-  (`saved: false`, which the adapter logs as a warning).
+  (`skipped`: Hermes' checkpoint completes without a review).
 - `memory-reviewer.ts` reviews a bot once 10 turns wait, or once 3 wait and the chat has been quiet for 2 minutes.
   `LILBOT_REVIEW=off`, `LILBOT_REVIEW_TURNS` and `LILBOT_REVIEW_QUIET_SECONDS` change that. Each tick drops queued
   turns of unknown or deleted bots (also below the threshold or with reviews off); owned bots with missing runtimes
@@ -1300,9 +1351,9 @@ signature scheme, and an address. Any sender may call one (Oscar, 2026-11-20).
 - The address is the secret: 64 base64url characters, the webhook id and an HMAC of it and a random per-webhook nonce
   under the engine token (`webhook-address.ts`). It is never stored or logged; it is computed when shown and checked
   with `timingSafeEqual` (one MAC is computed even for an unknown id). A new address draws a new nonce, so even the
-  engine token does not give the next one; deletion ends it. The bot gets it from `lilbot_webhook_create` (repeating
-  the same `requestId` returns the current address, and a signing secret LilBot made, again: that is how a lost reply
-  is recovered) and `lilbot_webhook_new_address`; those tool results stay in its transcript, so the history copy
+  engine token does not give the next one; deletion ends it. The bot gets it from `lilbot_webhook` (`action: create`, repeating
+  the same `requestId` returns the current address and any signing secret LilBot made again: that is how a lost reply
+  is recovered; and `action: new_address`); those tool results stay in its transcript, so the history copy
   holds them too. The list never has it; the screen copies it with `webhooks.address`.
 - Signatures (`webhook-signature.ts`, over the raw body): `github` (`X-Hub-Signature-256`; LilBot makes the secret
   when none is given), `stripe` (`Stripe-Signature`, the secret Stripe gives, five minutes of timestamp tolerance) or
@@ -1338,26 +1389,101 @@ signature scheme, and an address. Any sender may call one (Oscar, 2026-11-20).
   no payload; a run of only withheld events records a failed run and never wakes the bot. Preparing any body up to the
   cap takes tens of milliseconds (`tests/webhooks/webhook-limits.test.ts` times it), and a minute's budget of the
   costliest shapes sent at once never holds the event loop for long (`webhook-burst.test.ts`). The rules are a heuristic:
-  paraphrase passes, which is why what a run may do matters.
+  paraphrase passes, which is why runs are narrow.
 - Runs: a burst ends after 5 seconds without a new event or once its first event waited a minute. A run takes the
   oldest waiting events up to 48,000 characters (about 12,000 to 16,000 tokens; a typical GitHub `pull_request` event
   is 21,700) and 20 events; the rest wait. A webhook never overlaps itself, runs at most once a minute and 20 times an
   hour, and at most two webhook runs go at once across bots. Runs reuse the routines' machinery: persisted before
   dispatch, `RoutineScheduler`, `BotEngine.runRoutine` (hidden session, run id `webhook-<id>`, receipts, retry after 30
   seconds), activity and unread, sessions in `webhook_chats`.
-- What a run may do is chosen in one place, `webhook-access.ts`: today every toolset with full access, like a routine
-  run. Narrowing it is Oscar's decision (#12 security review, finding 3): set `toolsets` there (the engine starts the
-  run's session with only those) and the prompt's sentence beside it. Its single caller is deliberate. A narrowed list
-  leaves out `memory`: with it Hermes offers the memory tools, and a run could write shared facts past both reviews.
+- What a run may do (Oscar, #12 finding 3): narrow by default. It reads its bot's folder (`lilbot_workspace_read`) and
+  its bot's own work items, reports on the items its own run opened (`lilbot_work`), leaves its bot one message, and its
+  result is its report. No web, commands, file writes, memory, computers, T3 Code, bot creation, delegation or groups,
+  routines or webhook management, unless Oscar adds that group to the webhook: `capabilities` (`web`, `shell`,
+  `computers`, `coding`, `bots`, `delegation`, `memory`, `routines`, `webhooks`), set only with
+  `webhooks.setCapabilities` (no bot tool); a run gets exactly those on top, read at each call and run.
+- **Granting any group except `web` and `webhooks` gives whoever can reach the address full access** (#12 review,
+  finding 7): `shell` and `computers` directly (the engine token, the profile's keys, the leader is a computer);
+  `coding` (a T3 Code task is a full-access coding agent on the leader); `delegation` (the receiver's hidden session has
+  full access and the run writes the task); `routines` (routine runs have full access and the run writes the task);
+  `bots` (a new bot's first prompt runs with full access, and `lilbot_bot_edit` rewrites any bot's instructions);
+  `memory` (shared facts every bot reads on every turn). `webhooks` stays narrow but adds addresses and runs; `web` lets
+  outside data lead the run to fetch a URL carrying what it read.
+- Reads: whatever its groups, a run never reads another bot's work items or any goal (`lilbot_work_list` with `mine:
+  false`, `goals`, `goalId` or another bot's `itemId` is refused; `readsBeyondOwn` in `system/run-access.ts`).
+  `lilbot_about` (the other bots, computers, T3, deploy, the change log) needs `bots` and `lilbot_status` needs
+  `computers` or `coding`: a run needs none of it, and a refusal from the one tested list cannot drift the way a trimmed
+  answer could. Skills stay readable (`skills_list`, `skill_view`): Hermes adds the skills plug-in back, and
+  `lilbot-work` tells the run how to use the board. The folder read covers `attachments/`, `exchanges/` and `groups/`
+  too. The bot's note (its system prompt, with the names of the computers) is the same in every session.
+- Work (`work/webhook-items.ts`): a run opens at most three items and reports only on those; it names no check level and
+  links no goal, so its items get their kind's level, and an item a bot would check (level 2) is checked by Oscar
+  instead: a checker repeats the owner's commands and opens its links, which the run wrote. Every bot reads the text of a
+  webhook run's items (title, done, question, result, drop reason, evidence) fenced as `<webhook-work-item>`, wherever it
+  appears in `lilbot_work` and `lilbot_work_list` answers (lists, an item in full, its children, a goal's items). An item of a webhook run never resumes the run's
+  session (`work-answers.ts`): Oscar's answer or send-back goes to the bot's main conversation with the item fenced as
+  `<webhook-work-item>`; a drop ends a running turn and tells no session; a failed bot check (an older item) tells none.
+- **Decided by the session, never by time** (#12 review, finding 1): a webhook run's session, and every session the
+  engine continued it in, stays narrow for as long as it exists, whether the run is under way, settled or the engine
+  works on its transcript later (Hermes' background review forks share the session's id). Two layers, both chosen from
+  one list:
+  - `webhook-access.ts` starts the run's session with only `lilbot_system` plus each group's engine toolsets (web:
+    `web`; shell: `terminal`, `code_execution`, `file`; computers: `lilbot_computers`; coding: `lilbot_t3`; memory:
+    `memory`). Hermes freezes a session's toolsets. Naming one MCP server leaves the others out. Hermes' `file` toolset
+    is read and write together and has no per-session write root, so a narrow run reads with `lilbot_workspace_read`
+    instead. Without `memory` the engine's memory tools and `search_conversations` are gone too. `lilbot_give_file` is
+    in `shell` (a run can only give a file it could write); `lilbot_goal` is refused to every run.
+  - LilBot refuses at the call what a run's session may not do (`webhooks/webhook-callers.ts`), because Hermes adds the
+    computers and skills plug-ins back to any session and LilBot's own server lists every tool (`tools/list` has no
+    session). A call that names its session is looked up: the memory adapter's, and the computers and skills
+    adapters', which send Hermes' `session_id` (`x-lilbot-session`). An MCP call is matched to exactly one tool start,
+    its own (`CallingChats.take`: the oldest one with its arguments or request id that no other call took, waiting up
+    to 5 seconds), so a run's identical call cannot get Oscar's refused, nor pass on his start. A call that cannot be placed (no
+    start seen, no session named, an unreadable lineage) counts as a webhook run's: it fails closed. A bot that never
+    had a webhook run is never held. Every `lilbot_*` tool is in `RUN_TOOLS` or a group (`system/run-access.ts`,
+    tested). The T3 bridge refuses its tools without `coding`; the engine API refuses plug-in computer tools without
+    `computers`, `skill_manage` always (the skills handler's own `/write` test) and the routes only older adapters call
+    (`bots/create`, `routines/*`, `threads/*`) without their groups; memory reads and writes and `give_file` need
+    `memory` (the memory block comes back empty).
+  - A refusal is an ordinary tool result (`{"refused": ...}`), not a tool error: Hermes pauses a whole MCP server for
+    about a minute after three tool errors in a row, keyed by the profile's connection, which could reach the bot's
+    other conversations.
+  - Other sessions: a webhook run never makes Oscar's calls wait a fixed time. For a bot that has had webhook runs, a
+    main-conversation call outside the narrow set waits only until its own start is reported (usually already there)
+    and is refused, retryably, only when none is seen in 5 seconds, as `lilbot_work`'s own matching already does (#174).
+    Measured: 1 to 5 ms with the chat open in a browser, 0.75 to 1 s without (the activity observer polls every second),
+    for good once a bot has had a webhook run. A sub-agent's calls of those tools report no start of their own and are
+    refused after 5 seconds.
+    An MCP server entry of its own for webhook sessions would remove the matching, but Hermes gives every enabled
+    server to every normal session and cannot enable one for some sessions only (`_merge_mcp_servers`), so it would
+    change every normal session.
+- The run's message (`webhook-messages.ts`, `lilbot_webhook_message`, matched to its run by `requestId`): once per run
+  and at most five per webhook a day, at most 4,000 characters, checked like an event (both scans), saved on the run. It never starts a turn: it is shown
+  as a `webhook message` line in the bot's main conversation (the bot turns unread; state `shown`), and the bot gets it
+  only with Oscar's next message there, as model-only text after the origin line (`TurnNotes`, state `read`): a LilBot
+  notice and the message fenced as `<webhook-run-message>`. One message of his carries only the newest three, each cut
+  to 1,000 characters, and the count of the rest (taken too, left to the Webhooks list), so waiting messages never push
+  his send past what the engine takes (Hermes refuses `api_text` over 1,000,000 characters; 300 waiting 4,000-character
+  messages did before). Both memory paths drop these fences before a review sees the
+  turn (`withoutWebhookNotes`: the after-chat queue and the save before compressing).
+- Not gated: Hermes' background skill review of the bot's main conversation, after a turn that carried a webhook
+  message or Oscar's answer to a webhook item (fenced). Its skill write names the main session, as the bot's own
+  `skill_manage` does, so LilBot cannot tell which turn it reviews; turning the review off for bots with webhooks
+  (`skills.creation_nudge_interval: 0`) would change Oscar's chats, which is his call. The text reaches it fenced and
+  only after Oscar acted.
+- Production tool set (read from `~/.hermes` files, 2026-11-21): the one configured profile (`default`) enables only the
+  `lilbot-skills-v1` and `lilbot-computers-v1` plug-ins, the same two LilBot adds to every bot, so a narrow run gets the
+  same plug-in tools as on dev (`check:webhooks` prints them); its `revenuecat` and `paper` MCP servers are left out by
+  the session's toolsets.
 - Kept: the stored event string only until its run settles, but the run's own engine transcript (opened by
   `webhooks.openRun`) and its result keep what the bot saw and said.
-- Bot tools (LilBot's MCP server, the caller's own webhooks only): `lilbot_webhook_create` (request-id idempotency;
-  at most five webhooks a bot, whoever asked, since `createdBy` is the bot's word), `lilbot_webhooks_list` (each run's
-  result fenced as outside data: a model wrote it after reading the events),
-  `lilbot_webhook_pause`, `lilbot_webhook_resume`, `lilbot_webhook_delete`, `lilbot_webhook_new_address`. Nothing is in
-  the Hermes plug-ins.
-- Browser methods: `webhooks.list` (newest 50 runs with their event counts), `pause`, `resume`, `delete`, `openRun`
-  (a tracked chat snapshot), `address` (Copy), push `webhooks.changed`. Screens: #138.
+- Bot tools (LilBot's MCP server, the caller's own webhooks only): `lilbot_webhook` (`action`: `create` with request-id
+  idempotency, at most five webhooks a bot, whoever asked, since `createdBy` is the bot's word; `pause`, `resume`,
+  `delete`, `new_address`), `lilbot_webhooks_list` (each run's result fenced as outside data: a model wrote it after
+  reading the events), and from a run `lilbot_webhook_message`. Nothing is in the Hermes plug-ins.
+- Browser methods: `webhooks.list` (newest 50 runs with their event counts and messages; each webhook's
+  `capabilities`), `pause`, `resume`, `delete`, `openRun` (a tracked chat snapshot), `address` (Copy),
+  `setCapabilities`, push `webhooks.changed`. Screens: "Webhooks" under Web app (no screen for `setCapabilities` yet).
 - Without `LILBOT_PUBLIC_ENABLED=1` and `LILBOT_HELPER_URL`, creating a webhook is refused (no outside service could
   reach it).
 
@@ -1467,7 +1593,16 @@ profiles, isolated directories, cleanup in `finally`. Most cost a few model call
 - `bun run check:memory`: tells a temporary bot facts and checks a new session knows them; prints tokens per turn.
   Inherited memory is disconnected before the baseline turn.
 - `bun run check:history`: continuous history, paging and search, tool lines after reload and new session, backfill of
-  tool rows into a copy that lost them; kills only its own server mid-import, repeats the import without duplicates; forced compression.
+  tool rows into a copy that lost them; kills only its own server mid-import, repeats the import without duplicates; a
+  requested compaction is refused while the bot is fail-closed.
+- `bun run check:checkpoint`: a temporary bot whose profile compacts at 90,000 tokens: (1) the agent's own compaction of
+  some 270,000 characters runs only after a review in passes, which saves a fact from the first message; (2) a
+  deploy-like restart of the check's server (SIGTERM, back 5 seconds later) during the turn that compacts only pauses it;
+  (3) the server down past the adapter's 90 seconds stops that turn, and after it is back the conversation holds exactly
+  one line in LilBot's words and nothing of Hermes' text, and the message sent again is answered and compacts with the
+  save; (4) with a review model that does not exist the turn stops live with `failure: memory_save`; (5) the gateway's
+  hygiene pre-pass (forced by a low message limit on that profile) saves first too. Prints seconds, passes and review
+  tokens.
 - `bun run check:threads`: a temporary bot hands work to another with `lilbot_delegate` and the answer returns; a receiver hands
   it on to a third from its hidden session; the engine API's legacy `threads/ask` still answers idempotently, with its limits.
 - `bun run check:delegation`: a temporary lead hands two tasks to two helpers in one call, one with a file; then it
@@ -1497,8 +1632,17 @@ profiles, isolated directories, cleanup in `finally`. Most cost a few model call
   reached once that check is done.
 - `bun run check:routines`: create from chat, a real file-writing run, open history, pause, restart, resume, delete.
 - `bun run check:webhooks`: a dev server with its own helper door on loopback and a temporary bot whose webhook is made
-  through its MCP tool: a signed event wakes it and the result is recorded and opens; a repeat, an unsigned and a
-  wrongly signed event do nothing; a burst of three is one run; pause refuses, resume accepts, delete ends the address.
+  through its MCP tool: a signed event wakes it; a repeat, an unsigned and a wrongly signed event do nothing. The narrow
+  run reads a file in its folder, finishes a work item, asks Oscar a question and leaves its bot a message; its tries at
+  `lilbot_bot_create`, `computer_exec`, `lilbot_about` and `lilbot_work_list` with `mine: false` are refused (no bot, no
+  change logged, no computer request); unreported direct calls are refused during and after the run; its session's
+  real tools (`session.info`, `tools.show`) lack the web, shell, file writes, memory and T3. After it ends
+  (`webhook-session-checks.ts`): a skill write and the computers naming its session are refused, Oscar's answer reaches
+  the main conversation and the run's transcript does not grow, its message is a line with no turn until Oscar writes,
+  his next message passes its own tool call and gives the bot the message, and the review queue never holds it; no
+  skill is written meanwhile. Given `web`, `shell` and `coding`, a run gains exactly those, its stored `web_extract`
+  output holds the fetched page, and it cannot change the first run's item. A burst of three is one run; pause refuses,
+  resume accepts, delete ends the address.
 - `bun run check:restart`: SIGKILLs only its own second server mid-turn; chat, routine and thread side-effect counters
   must stay at one. Confirms its profiles are gone with `hermes profile list`. Then `restart-session-check.ts`: two
   deploy-like restarts (SIGTERM, 30 seconds away), one with a changed tool list, an empty session another client opens
@@ -1512,7 +1656,8 @@ profiles, isolated directories, cleanup in `finally`. Most cost a few model call
 - `bun run check:add-computer`: on a dev server, builds the Linux downloads, downloads one, opens the helper under a
   throwaway HOME with a stub service manager, refuses a wrong origin, hands the code over on loopback and sees the
   computer online. `bun run build:helper-downloads [data dir]`: build the Linux downloads for a server.
-- `bun run check:deploy`: temporary clone, release root, data and systemd units; see [docs/deploy.md](docs/deploy.md).
+- `bun run check:deploy`: temporary clone, release root, data and systemd units, and one temporary `dev-` profile bound
+  in its database whose memory save flag the rollback must clear; see [docs/deploy.md](docs/deploy.md).
 - `bun run check:system`: on the dev server, a temporary bot whose instructions never mention LilBot answers what it runs
   in, which version and how it would change LilBot, then pins another bot and creates one through its `lilbot_*` tools;
   checks the roster push, the change log and that an unchanged restart applies nothing.

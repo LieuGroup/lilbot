@@ -13,6 +13,10 @@ export const WebhookSigning = z.discriminatedUnion('scheme', [
   z.object({ scheme: z.literal('hmac-sha256'), header: z.string().regex(/^[A-Za-z0-9-]{1,64}$/), secret: secret.optional() })
 ])
 export type WebhookSigning = z.infer<typeof WebhookSigning>
+/** What Oscar can add to a webhook's runs, which are narrow without them: they read their bot's folder and its own work
+ *  items, report, update those items and message their own bot. `memory` lets a run write facts that every later turn reads. */
+export const WebhookCapability = z.enum(['web', 'shell', 'computers', 'coding', 'bots', 'delegation', 'memory', 'routines', 'webhooks'])
+export type WebhookCapability = z.infer<typeof WebhookCapability>
 export const WebhookCreate = z.object({
   requestId: z.string().min(1).max(200),
   /** What the bot does when events arrive. */
@@ -23,6 +27,11 @@ export const WebhookCreate = z.object({
   signing: WebhookSigning.optional()
 })
 export type WebhookCreate = z.infer<typeof WebhookCreate>
+/** The bot tool's one input: `action` picks the step; create takes the `WebhookCreate` fields, the others an `id`. */
+export const WebhookActionInput = WebhookCreate.partial().extend({
+  action: z.enum(['create', 'pause', 'resume', 'delete', 'new_address']),
+  id: z.string().min(1).optional()
+})
 
 export interface WebhookRun {
   id: string
@@ -36,6 +45,8 @@ export interface WebhookRun {
   chatId: string | null
   status: 'pending' | 'running' | 'completed' | 'failed' | 'stopped'
   result: string
+  /** What the run told its bot, delivered to the bot's main conversation as outside data. */
+  message: string | null
 }
 export interface Webhook {
   id: string
@@ -46,6 +57,8 @@ export interface Webhook {
   /** The signature scheme deliveries must carry, or null when the address alone is the secret. */
   signing: WebhookSigning['scheme'] | null
   paused: boolean
+  /** Oscar's additions to what its runs may do; empty is narrow. */
+  capabilities: WebhookCapability[]
   createdAt: number
   lastEventAt: number | null
   /** The newest 50. */
@@ -69,7 +82,9 @@ export const webhookMethods = {
   'webhooks.delete': z.object({ botId, id }),
   'webhooks.openRun': z.object({ botId, runId: id }),
   /** The secret address, for the Copy button only. */
-  'webhooks.address': z.object({ botId, id })
+  'webhooks.address': z.object({ botId, id }),
+  /** Oscar's own setting: no bot tool changes it. Applies to the webhook's next tool call and run. */
+  'webhooks.setCapabilities': z.object({ botId, id, capabilities: z.array(WebhookCapability).max(9) })
 } as const
 export interface WebhookResults {
   'webhooks.list': Webhook[]
@@ -78,4 +93,5 @@ export interface WebhookResults {
   'webhooks.delete': { ok: true }
   'webhooks.openRun': ChatSnapshot
   'webhooks.address': { address: string }
+  'webhooks.setCapabilities': { ok: true }
 }

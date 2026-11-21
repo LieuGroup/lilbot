@@ -24,6 +24,7 @@ export interface BotServiceOptions {
   /** Called whenever a fact was saved or forgotten through the app. */
   memoryChanged?: () => void
   history?: import('../history/history-service').HistoryService
+  turnNotes?: import('./bot-conversations').TurnNotes // what LilBot adds to Oscar's next message (a webhook run's message)
   skills?: import('../skills/skills-service').SkillsService
   cleanupBot?: (botId: string) => void
   memoryConnection?: MemoryConnection
@@ -63,7 +64,7 @@ export class BotService {
     if (options.skills) this.skills = new BotSkills(options.skills, this.runtimes, engine, this.changed)
     this.sessions = new SessionSettings(engine, prefs, this.changed)
     this.background = new BackgroundRuns(this.runtimes, workspaces, this.sessions)
-    this.conversations = new BotConversations(this.runtimes, prefs, workspaces, this.sessions, options.history)
+    this.conversations = new BotConversations(this.runtimes, prefs, workspaces, this.sessions, options.history, options.turnNotes)
     this.creation = new BotCreation(this, store)
     this.memoryChanged = options.memoryChanged ?? (() => {})
     this.deletion = new BotDeletion(
@@ -83,7 +84,6 @@ export class BotService {
     )
     this.botMemory = new BotMemory(this.runtimes, memory, options.memoryConnection, this.memoryChanged)
   }
-
   deleteBot(input: BotDeleteInput) {
     return this.deletion.delete(input)
   }

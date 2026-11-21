@@ -101,7 +101,7 @@ test('migration: an install with bots keeps its engine on and its imports attrib
     db.exec(`INSERT INTO skills VALUES ('imported-one','d','imported',1), ('improved','d','bot-a',1), ('mine','d','oscar',1), ('shipped','d','lilbot',1);
       INSERT INTO skill_imports VALUES ('/p/imported-one','imported-one'), ('/p/improved','improved'), ('/p/mine','mine'), ('bot:b1','')`)
     db.exec(
-      'DROP TABLE engine_skills; DROP TABLE skill_origins; ALTER TABLE work_items DROP COLUMN kind; ALTER TABLE work_items DROP COLUMN default_level; DROP INDEX work_items_goal; ALTER TABLE work_items DROP COLUMN goal_id; ALTER TABLE work_checks DROP COLUMN same_bot; ALTER TABLE work_checks DROP COLUMN checker_model; PRAGMA user_version = 26'
+      'DROP TABLE engine_skills; DROP TABLE skill_origins; ALTER TABLE work_items DROP COLUMN kind; ALTER TABLE work_items DROP COLUMN default_level; ALTER TABLE webhooks DROP COLUMN capabilities; ALTER TABLE webhook_runs DROP COLUMN message; ALTER TABLE webhook_runs DROP COLUMN message_state; DROP INDEX work_items_goal; ALTER TABLE work_items DROP COLUMN goal_id; ALTER TABLE work_checks DROP COLUMN same_bot; ALTER TABLE work_checks DROP COLUMN checker_model; PRAGMA user_version = 26'
     )
     db.close()
     db = openDatabase(path)

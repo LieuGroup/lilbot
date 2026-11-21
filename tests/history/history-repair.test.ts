@@ -12,7 +12,7 @@ test('upgrade rewinds completed copies once, repairs missing tools and resumes i
   const dir = mkdtempSync(join(tmpdir(), 'history-repair-'))
   const path = join(dir, 'test.db')
   let db = openDatabase(path)
-  const rows = historyRows('dev-test', [
+  const rows = historyRows('dev-test', 'session', [
     { row_kind: 'message', role: 'user', row_id: 1, timestamp: 1, text: 'date' },
     { row_kind: 'message', role: 'tool', tool_call_id: 'call', timestamp: 2, name: 'terminal', context: 'date' },
     { row_kind: 'message', role: 'assistant', row_id: 4, timestamp: 3, text: 'done' }
@@ -23,7 +23,7 @@ test('upgrade rewinds completed copies once, repairs missing tools and resumes i
     store.write('bot', 'session', [rows[0], rows[2]], 'tail', true)
     store.discovered('bot')
     db.exec(
-      'ALTER TABLE bot_prefs DROP COLUMN pinned_at; ALTER TABLE bots DROP COLUMN reasoning_effort; ALTER TABLE work_items DROP COLUMN kind; ALTER TABLE work_items DROP COLUMN default_level; DROP INDEX work_items_goal; ALTER TABLE work_items DROP COLUMN goal_id; ALTER TABLE work_checks DROP COLUMN same_bot; ALTER TABLE work_checks DROP COLUMN checker_model; PRAGMA user_version=18'
+      'ALTER TABLE bot_prefs DROP COLUMN pinned_at; ALTER TABLE bots DROP COLUMN reasoning_effort; ALTER TABLE work_items DROP COLUMN kind; ALTER TABLE work_items DROP COLUMN default_level; ALTER TABLE webhooks DROP COLUMN capabilities; ALTER TABLE webhook_runs DROP COLUMN message; ALTER TABLE webhook_runs DROP COLUMN message_state; DROP INDEX work_items_goal; ALTER TABLE work_items DROP COLUMN goal_id; ALTER TABLE work_checks DROP COLUMN same_bot; ALTER TABLE work_checks DROP COLUMN checker_model; PRAGMA user_version=18'
     )
     db.close()
     db = openDatabase(path)

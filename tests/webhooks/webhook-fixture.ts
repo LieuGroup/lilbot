@@ -10,6 +10,7 @@ import { WebhookService } from '../../server/webhooks/webhook-service'
 import { WebhookStore } from '../../server/webhooks/webhook-store'
 import type { WebhookCreate } from '../../shared/webhook-schema'
 import { fakeService } from '../helpers/fake-engine'
+import { until } from '../helpers/until'
 
 const ORIGIN = 'https://door.example'
 export const unsigned: WebhookCreate = { requestId: 'one', description: 'Report new issues', source: 'GitHub', createdBy: 'oscar' }
@@ -82,10 +83,12 @@ export async function runFixture(input: WebhookCreate = unsigned) {
   const hook = await f.webhooks.create('b1', input)
   const live = () => f.webhooks.find(f.token(hook.address))!
   const send = (text: string, headers: Record<string, string> = {}) => f.webhooks.receive(live(), new TextEncoder().encode(text), new Headers(headers))
+  /** The runs the scheduler has under way: a tick is done when they have all ended. */
+  const underway = (f.scheduler as unknown as { running: Set<string> }).running
   const tick = async (at: number) => {
     f.setTime(at)
     const started = f.scheduler.tick()
-    await new Promise(resolve => setTimeout(resolve, 20))
+    await until(() => underway.size === 0)
     return started
   }
   return { ...f, prompts, hook, live, send, tick }

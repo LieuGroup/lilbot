@@ -42,6 +42,7 @@
     "check:deploy": "bun live-checks/deploy-check.ts",
     "dev:setup": "bun scripts/dev-setup.ts",
     "check:history": "bun live-checks/history-check.ts",
+    "check:checkpoint": "bun live-checks/checkpoint-check.ts",
     "history:exclude": "bun server/history/history-exclude-cli.ts"
   },
   "dependencies": {

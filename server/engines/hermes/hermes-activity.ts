@@ -6,6 +6,7 @@ import { backgroundFailure } from '../../background'
 import { type ActivityReplayState, type ActivityUpdate, applyActivityReplay, replayNeedsReset, replayPosition } from '../activity-replay'
 import type { RuntimeBinding } from '../bot-engine'
 import { chatEventFrom } from './hermes-chat-mapping'
+import { saveFailed } from './hermes-memory-saves'
 import { HermesSocket } from './hermes-socket'
 import { reportReplay } from './hermes-tool-calls'
 
@@ -49,7 +50,7 @@ export function watchHermesActivity(
         reportReplay(engineBotId === 'default' ? '' : engineBotId, chatId, replay.events, (!previous || reset) && !row.running)
         if (conversationEvent)
           for (const event of replay.events) {
-            const mapped = chatEventFrom(event)
+            const mapped = chatEventFrom(event, () => saveFailed(engineBotId, [chatId]))
             if (mapped) conversationEvent(botId, chatId, mapped, `${replay.replay_epoch}:${event.seq}`)
           }
         const updates: ActivityUpdate[] = replay.events.map((event: any) => ({
@@ -75,7 +76,10 @@ export function watchHermesActivity(
         const baseline = fresh && !row.running && row.started_at < startedAt
         if (baseline) state.status = 'idle'
         const key = `${state.epoch}:${state.sequence}`
-        if (key !== saved || (row.running && !previous)) emit({ botId, chatId, key, status: state.status, tool: state.tool, spoke: !baseline && spoke })
+        // Non-activity events (such as `session.info` after a model/effort edit) advance the sequence
+        // without starting or finishing a turn; do not re-emit a settled status such as `finished`.
+        const quiet = !!previous && !reset && !spoke && !updates.some(u => u.status || u.tool || u.clearTool) && state.status === previous.status && state.tool === previous.tool
+        if ((!quiet && key !== saved) || (row.running && !previous)) emit({ botId, chatId, key, status: state.status, tool: state.tool, spoke: !baseline && spoke })
         observer.sessions.set(chatId, state)
       }
       for (const id of observer.sessions.keys()) if (!live.has(id)) observer.sessions.delete(id)

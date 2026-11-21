@@ -56,19 +56,23 @@ test('development requires every isolated directory and an explicit port', () =>
     expect(() => assertServerEnvironment({ ...development, [key]: undefined })).toThrow()
   }
 })
+// One bun process per entry, side by side: started one after the other they take longer than the default 5 s on a busy machine.
 test('every check entry refuses before executing, even coding before reading a pairing code', async () => {
-  for (const file of readdirSync('live-checks').filter(f => f.endsWith('-check.ts'))) {
-    const child = Bun.spawn(['bun', join('live-checks', file)], {
-      env: { ...process.env, LILBOT_ENV: 'production' },
-      stdin: 'ignore',
-      stdout: 'pipe',
-      stderr: 'pipe'
+  const entries = readdirSync('live-checks').filter(f => f.endsWith('-check.ts'))
+  await Promise.all(
+    entries.map(async file => {
+      const child = Bun.spawn(['bun', join('live-checks', file)], {
+        env: { ...process.env, LILBOT_ENV: 'production' },
+        stdin: 'ignore',
+        stdout: 'pipe',
+        stderr: 'pipe'
+      })
+      const error = await new Response(child.stderr).text()
+      expect(await child.exited, file).not.toBe(0)
+      expect(error, file).toContain('Development refuses LILBOT_ENV=production')
     })
-    const error = await new Response(child.stderr).text()
-    expect(await child.exited, file).not.toBe(0)
-    expect(error, file).toContain('Development refuses LILBOT_ENV=production')
-  }
-})
+  )
+}, 30_000)
 test('production startup refuses overrides before database or engine access', async () => {
   const child = Bun.spawn(['bun', 'server/main.ts'], {
     env: { ...process.env, LILBOT_ENV: 'production', LILBOT_ACCESS_TEST_CERTS_URL: 'http://127.0.0.1:1', LILBOT_HERMES_BIN: '/must-not-run' },

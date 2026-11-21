@@ -4,6 +4,7 @@ import { Button } from '@/ui/button'
 import { Fact } from '@/ui/fact'
 import { iconButton } from '@/ui/icon-button'
 import { useNow } from '../app/use-now'
+import { sessionTime } from '../history/history-labels'
 import { DeleteRoutineDialog } from './delete-routine-dialog'
 import { useRoutineNavigation } from './open-routine'
 import { createdText, scheduleLabel, whenNext } from './routine-lines'
@@ -43,9 +44,11 @@ export default function RoutineDetail({ botId, routineId }: { botId: string; rou
           <div className="flex flex-col gap-1.5">
             <div className="flex items-start gap-3 px-2">
               <p className={`flex-1 text-sm/[21px] font-medium break-words whitespace-pre-wrap ${routine.paused ? 'text-foreground/70' : ''}`}>{routine.description}</p>
-              <span className="flex h-[21px] items-center">
-                <RoutineSwitch botId={botId} routine={routine} goal={goal} onFailure={setFailure} />
-              </span>
+              {!goal && (
+                <span className="flex h-[21px] items-center">
+                  <RoutineSwitch botId={botId} routine={routine} goal={goal} onFailure={setFailure} />
+                </span>
+              )}
             </div>
             {failure && <p className={`${note} text-destructive`}>{failure}</p>}
           </div>
@@ -57,7 +60,7 @@ export default function RoutineDetail({ botId, routineId }: { botId: string; rou
             </dl>
             {goal && <p className={note}>It reviews your goal “{goal}”. It runs while the goal is agreed and pauses with it, so it has no switch of its own.</p>}
           </div>
-          <RunList botId={botId} runs={routine.runs} />
+          <RunList botId={botId} runs={routine.runs} title={run => sessionTime(run.dueAt, now)} column="run" />
         </div>
       )}
       {deleting && routine && <DeleteRoutineDialog botId={botId} routine={routine} onClose={() => setDeleting(false)} />}

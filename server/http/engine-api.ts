@@ -17,10 +17,12 @@ import { endOfDay } from '../memory/memory-expiry'
 import type { MemoryReviewer } from '../memory/memory-reviewer'
 import type { MemoryService } from '../memory/memory-service'
 import type { RoutineService } from '../routines/routine-service'
+import { withoutWebhookNotes } from '../webhooks/webhook-messages'
 import { computerApi } from './computer-api'
 import { historyApi } from './history-api'
 import { forBot, memoryRoutes as routes } from './memory-protocol'
 import { routineApi } from './routine-api'
+import { threadApi } from './thread-api'
 
 /** Reads the token, creating it (readable by the user only) on first start. */
 export function engineToken(dataDir: string): string {
@@ -47,14 +49,18 @@ export interface EngineApiOptions {
   adapterVersion?: string
   /** Receives finished turns and knows which chats are reviews. Without it there is no review. */
   reviewer?: MemoryReviewer
-  /** Routine, thread and webhook sessions and their compression children: never reviewed, before or after compressing. */
-  hiddenChat?: (botId: string, chatId: string) => boolean
+  /** Routine, thread and webhook sessions and their compression children are never reviewed, before or after compressing. */
+  chatKind?: import('../bots/hidden-chats').ChatKind
   /** Why a call that may come from a check session (no memory, no changes) may not use memory or change skills, or null. */
   inCheck?: (botId: string, chatId: string | undefined, use: 'memory' | 'skills') => string | null
+  /** Webhook runs (`app-webhooks.ts`): why a session may not use memory or give files, and why a plug-in call is refused. */
+  memoryLocked?: (botId: string, chatId: string | undefined) => string | null
+  pluginRefusal?: (botId: string, pathname: string, request: Request) => Promise<string | null>
 }
 
 export function createEngineApi(memory: MemoryService, token: string, port: number, options: EngineApiOptions) {
   const onMemoryChanged = options.onMemoryChanged ?? (() => {})
+  const history = historyApi(options)
   const staleBots = new Set<string>()
   const expected = Buffer.from(`Bearer ${token}`)
   const loopback = new Set([`127.0.0.1:${port}`, `localhost:${port}`])
@@ -76,6 +82,8 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
         if (!caller || !options.botExists(caller.id)) return json(403, { error: 'Unknown bot credential.' })
         const input = LibraryGiveInput.safeParse(await request.json())
         if (!input.success) return json(400, { error: 'Invalid file delivery.' })
+        const locked = options.memoryLocked?.(caller.id, input.data.chatId)
+        if (locked) return json(422, { error: locked })
         if (!options.library) return json(503, { error: 'Library unavailable.' })
         const routineRunId = input.data.chatId ? options.routines?.store.runForChat(caller.id, input.data.chatId) : undefined
         const item = await options.library.give(caller.id, { ...input.data, routineRunId })
@@ -84,36 +92,19 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
         return json(422, { error: 'Cannot give this file. Use a regular file inside your workspace, at most 50 MiB.' })
       }
     }
-    if (
-      pathname === '/engine/bots/create' ||
-      pathname.startsWith('/engine/routines/') ||
-      pathname.startsWith('/engine/skills/') ||
-      pathname.startsWith('/engine/threads/') ||
-      pathname.startsWith('/engine/history/') ||
-      pathname.startsWith('/engine/computers/')
-    ) {
+    if (pathname === '/engine/bots/create' || /^\/engine\/(routines|skills|threads|history|computers)\//.test(pathname)) {
       try {
         const capability = request.headers.get('x-lilbot-bot-capability') ?? ''
         const caller = (await options.bots?.listBots())?.find(bot => matchesCapability(token, bot.id, capability))
         if (!caller || !options.bots || !options.botExists(caller.id)) return json(403, { error: 'Unknown bot credential.' })
+        const refused = await options.pluginRefusal?.(caller.id, pathname, request)
+        if (refused) return json(422, { error: refused })
         if (pathname.startsWith('/engine/history/')) {
           const body = await request.json()
-          const refused = pathname === '/engine/history/search' && options.inCheck?.(caller.id, typeof body?.chatId === 'string' ? body.chatId : undefined, 'memory')
-          return refused ? json(422, { error: refused }) : json(200, await historyApi(caller.id, pathname.slice('/engine/history/'.length), body, options))
+          const inCheck = pathname === '/engine/history/search' && options.inCheck?.(caller.id, typeof body?.chatId === 'string' ? body.chatId : undefined, 'memory')
+          return inCheck ? json(422, { error: inCheck }) : json(200, await history(caller.id, pathname.slice('/engine/history/'.length), body))
         }
-        if (pathname.startsWith('/engine/threads/')) {
-          if (!options.threads) return json(503, { error: 'Threads unavailable.' })
-          const body = await request.json()
-          if (pathname.endsWith('/bots'))
-            return json(
-              200,
-              (await options.bots.listBots()).map(b => ({ id: b.id, name: b.name, function: b.function }))
-            )
-          if (pathname.endsWith('/ask')) return json(200, await options.threads.ask(caller.id, body))
-          if (pathname.endsWith('/list')) return json(200, await options.threads.list(caller.id))
-          if (pathname.endsWith('/open')) return json(200, await options.threads.open(caller.id, String(body.threadId)))
-          return json(404, { error: 'Unknown thread operation.' })
-        }
+        if (pathname.startsWith('/engine/threads/')) return json(200, await threadApi(options, caller.id, pathname.slice('/engine/threads/'.length), await request.json()))
         if (pathname.startsWith('/engine/computers/')) {
           if (!options.computers) return json(404, { error: 'Computers unavailable.' })
           return json(200, await computerApi(options.computers, caller.id, pathname.slice('/engine/computers/'.length), await request.json()))
@@ -155,7 +146,7 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
         staleBots.add(body.botId)
         console.error(`[engine-api] bot ${body.botId} runs memory adapter ${version ?? 'unknown'}, LilBot ships ${options.adapterVersion}. Reconnect it and restart the engine.`)
       }
-      const refused = route !== '/engine/memory/turn' && options.inCheck?.(body.botId, body.chatId, 'memory')
+      const refused = route !== '/engine/memory/turn' && (options.inCheck?.(body.botId, body.chatId, 'memory') || options.memoryLocked?.(body.botId, body.chatId))
       if (refused) return route === '/engine/memory/context' ? json(200, { text: '', shown: 0, total: 0 }) : json(422, { error: refused })
       switch (route) {
         case '/engine/memory/context': {
@@ -187,7 +178,8 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
           return json(200, { forgotten: forBot(fact, body.botId) })
         }
         case '/engine/memory/turn':
-          if (!options.hiddenChat?.(body.botId, body.chatId)) options.reviewer?.record(body.botId, body.chatId, body.user, body.assistant)
+          if ((options.chatKind?.(body.botId, body.chatId) ?? 'conversation') === 'conversation')
+            options.reviewer?.record(body.botId, body.chatId, withoutWebhookNotes(String(body.user ?? '')), body.assistant)
           return json(200, { ok: true })
       }
     } catch (error) {

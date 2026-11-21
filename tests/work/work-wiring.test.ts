@@ -17,6 +17,7 @@ import type { BotModel } from '../../shared/bot-schema'
 import type { EventFrame } from '../../shared/protocol'
 import type { WorkInput } from '../../shared/work-schema'
 import { fakeService } from '../helpers/fake-engine'
+import { until } from '../helpers/until'
 
 function wired(reviewModel: BotModel | null = null) {
   const fake = fakeService()
@@ -79,7 +80,7 @@ test('an item opened in a conversation leaves a line there linking to it; Oscarâ
   f.prefs.setMainChat('b1', 'b1-main')
   f.board.answer(item.id, 'Tuesday')
   f.answers.tick()
-  await Bun.sleep(5)
+  await until(() => runs.length > 0)
   expect(runs).toEqual([{ prompt: expect.stringContaining('Tuesday'), chatId: 'b1-main', hidden: true }])
 })
 
@@ -97,7 +98,7 @@ test('a level 2 check runs as a new hidden session of another bot, which shows a
   const checking = await f.act('b1', { requestId: 'r2', itemId: item.id, status: 'done', result: 'Posted', evidence: proof })
   expect(checking).toMatchObject({ status: 'checking', check: { by: { kind: 'bot', name: 'Checker' } } })
   f.checks.tick()
-  await Bun.sleep(5)
+  await until(() => runs.length > 0)
   expect(runs).toEqual([{ botId: expect.not.stringMatching(/^b1$/), chatId: undefined, hidden: true, runId: `check-${item.id}:check:1`, toolsets: CHECK_TOOLSETS }])
   expect(CHECK_TOOLSETS).not.toContain('memory')
   expect(f.work.checks.isCheckChat('check-session')).toBe(true)
@@ -124,7 +125,7 @@ test('with no other bot, the check is a new hidden session of the owner on the r
     const checking = await f.act('b1', { requestId: 'r2', itemId: item.id, status: 'done', result: 'Posted', evidence: proof })
     expect(checking).toMatchObject({ status: 'checking', check: { by: { kind: 'bot', id: 'b1' }, sameBot: true, model: expected ?? null } })
     f.checks.tick()
-    await Bun.sleep(5)
+    await until(() => runs.length > 0)
     expect(runs).toEqual([{ botId: 'b1', chatId: undefined, hidden: true, model: expected }])
     expect(f.work.checks.isCheckChat('same-bot-session')).toBe(true)
   }

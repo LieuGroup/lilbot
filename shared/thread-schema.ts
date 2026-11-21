@@ -35,6 +35,17 @@ export const DelegateInput = z.object({
 export type DelegateInput = z.infer<typeof DelegateInput>
 export const RedirectInput = z.object({ requestId: z.string().min(1).max(100), exchangeId, message: text })
 export const AttachInput = z.object({ exchangeId, files: files.min(1) })
+/** Control over handed-out exchanges, plus attaching answer files as the receiver. */
+export const DelegationActionInput = z.object({
+  action: z.enum(['status', 'cancel', 'redirect', 'wait', 'attach']),
+  exchangeId: exchangeId.optional(),
+  exchangeIds: z.array(exchangeId).max(20).optional(),
+  batchId: z.string().max(100).optional(),
+  requestId: z.string().min(1).max(100).optional(),
+  message: text.optional(),
+  files: files.optional()
+})
+export type DelegationActionInput = z.infer<typeof DelegationActionInput>
 
 const names = z.array(z.string().min(1).max(100))
 /** The one tool of a temporary group (`server/threads/group-service.ts`). The leader starts, says the next point and closes;

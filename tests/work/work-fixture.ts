@@ -17,6 +17,7 @@ import { WorkService } from '../../server/work/work-service'
 import { type StoredItem, WorkStore } from '../../server/work/work-store'
 import type { BotModel } from '../../shared/bot-schema'
 import { LilBotError } from '../../shared/lilbot-error'
+import { until } from '../helpers/until'
 
 type Bot = { id: string; name: string }
 const BOTS: Bot[] = ['a', 'b', 'c'].map(id => ({ id, name: id.toUpperCase() }))
@@ -74,7 +75,7 @@ export function workFixture(options: { database?: Database; requireBot?: (id: st
     checkGoal: (botId, goalId) => requireAgreed(goalStore.get(goalId), botId),
     waiting: (botId, itemId, key, on) => state.waits.push({ botId, itemId, key, on }),
     line: item => state.lines.push(item),
-    tell: (id, item, prompt) => answers.queue(id, item, prompt),
+    tell: (id, item, prompt, oscar) => answers.queue(id, item, prompt, false, oscar),
     changed: () => state.pushes++
   })
   const delivered: { botId: string; prompt: string; runId: string; chatId: string | null }[] = []
@@ -94,6 +95,12 @@ export function workFixture(options: { database?: Database; requireBot?: (id: st
       interrupted.push({ botId, chatId })
     }
   )
+  /** `answers.tick()`, then waits until every answer it began to send has been sent or has failed. */
+  const sending = (answers as unknown as { running: Set<string> }).running
+  const tickAnswers = async () => {
+    answers.tick()
+    await until(() => sending.size === 0)
+  }
   const links = new WorkLinks(work, answers)
   const run = { result: Promise.resolve({ status: 'completed' }) as Promise<{ status: string }> }
   const checkRuns = new WorkCheckRunner(
@@ -114,6 +121,7 @@ export function workFixture(options: { database?: Database; requireBot?: (id: st
     state,
     work,
     answers,
+    tickAnswers,
     delivered,
     interrupted,
     order,

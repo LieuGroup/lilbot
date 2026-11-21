@@ -1,7 +1,7 @@
 import { GOAL_TABLES } from './goal-tables'
 import { GROUP_TABLES } from './group-tables'
 import { MCP_CONNECTION_TABLES } from './mcp-connection-tables'
-import { WEBHOOK_TABLES } from './webhook-tables'
+import { WEBHOOK_ACCESS, WEBHOOK_TABLES } from './webhook-tables'
 import { WORK_CHECK_COLUMNS } from './work-check-columns'
 
 /** LilBot's schema: every step it has shipped, in order; `database.ts` applies the steps a file has not seen. Never edit a shipped step: add one. */
@@ -183,7 +183,6 @@ export const migrations: string[] = [
    CREATE TABLE IF NOT EXISTS work_evidence(id TEXT PRIMARY KEY, item_id TEXT NOT NULL, proves TEXT NOT NULL, pointer TEXT NOT NULL, by_id TEXT NOT NULL, at INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS work_evidence_item ON work_evidence(item_id);
    CREATE TABLE IF NOT EXISTS work_events(id INTEGER PRIMARY KEY AUTOINCREMENT, item_id TEXT NOT NULL, at INTEGER NOT NULL, by_kind TEXT NOT NULL, kind TEXT NOT NULL, status TEXT, text TEXT, via_kind TEXT, via_id TEXT); CREATE INDEX IF NOT EXISTS work_events_item ON work_events(item_id, id);
    CREATE TABLE IF NOT EXISTS work_answers(id TEXT PRIMARY KEY, item_id TEXT NOT NULL, bot_id TEXT NOT NULL, chat_id TEXT, text TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending');`,
-  // Webhooks (#12), in its own file, like temporary groups (#133) and goals (#143) after check levels.
   WEBHOOK_TABLES,
   // Check levels (#142): each item's kind and default level, the checks of finished items, their hidden sessions, and Oscar's default levels (bot_id '' is every bot).
   `ALTER TABLE work_items ADD COLUMN kind TEXT;
@@ -196,5 +195,6 @@ export const migrations: string[] = [
   GROUP_TABLES,
   GOAL_TABLES,
   WORK_CHECK_COLUMNS,
+  WEBHOOK_ACCESS,
   MCP_CONNECTION_TABLES
 ]

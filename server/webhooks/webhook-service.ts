@@ -1,12 +1,13 @@
 /** What LilBot does with webhooks, for the screens, the bot tools and the door. A run reuses the routines' machinery:
- *  persisted before dispatch, one hidden full-access session per run (`BotEngine.runRoutine`), receipts, activity
- *  and unread through `RoutineScheduler`, and its session kept out of history and the after-chat review. */
+ *  persisted before dispatch, one hidden session per run (`BotEngine.runRoutine`) with only what the webhook may do
+ *  (`webhook-access.ts`), receipts, activity and unread through `RoutineScheduler`, and its session kept out of history
+ *  and the after-chat review. */
 import type { ChatEvent } from '../../shared/chat-schema'
 import { LilBotError } from '../../shared/lilbot-error'
-import { type Webhook, type WebhookAddress, WebhookCreate, type WebhookRun } from '../../shared/webhook-schema'
+import { type Webhook, type WebhookAddress, type WebhookCapability, WebhookCreate, type WebhookRun } from '../../shared/webhook-schema'
 import { webhookLine } from '../devices/origin-line'
 import type { RoutineHost } from '../routines/routine-service'
-import { WEBHOOK_RUN_ACCESS } from './webhook-access'
+import { webhookRunAccess } from './webhook-access'
 import { addressMatches, addressPath, claimedId } from './webhook-address'
 import { deliveryKeys } from './webhook-delivery'
 import { WEBHOOK_LIMITS } from './webhook-limits'
@@ -58,6 +59,13 @@ export class WebhookService {
   async pause(botId: string, id: string, paused: boolean) {
     await this.host.requireBot(botId)
     this.store.setPaused(botId, id, paused)
+    this.changed()
+    return { ok: true as const }
+  }
+  /** Oscar's setting only: no bot tool calls it. */
+  async setCapabilities(botId: string, id: string, capabilities: WebhookCapability[]) {
+    await this.host.requireBot(botId)
+    this.store.setCapabilities(botId, id, capabilities)
     this.changed()
     return { ok: true as const }
   }
@@ -114,9 +122,10 @@ export class WebhookService {
       this.changed()
       return result
     }
-    const result = await this.host.runRoutine(run.botId, webhookPrompt(webhook, WEBHOOK_RUN_ACCESS.prompt, items, withheld.length), {
+    const access = webhookRunAccess(webhook.capabilities)
+    const result = await this.host.runRoutine(run.botId, webhookPrompt(webhook, access.prompt, items, withheld.length), {
       runId: `webhook-${run.id}`,
-      toolsets: WEBHOOK_RUN_ACCESS.toolsets,
+      toolsets: access.toolsets,
       origin: { line: webhookLine },
       onChat: id => {
         this.store.attach(run.id, id, this.now())

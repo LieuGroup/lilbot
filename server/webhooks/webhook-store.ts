@@ -2,7 +2,7 @@
  *  webhook stays as a tombstone so a repeated create request cannot bring it back. */
 import type { Database } from 'bun:sqlite'
 import { LilBotError } from '../../shared/lilbot-error'
-import type { Webhook, WebhookCreate, WebhookRun } from '../../shared/webhook-schema'
+import type { Webhook, WebhookCapability, WebhookCreate, WebhookRun } from '../../shared/webhook-schema'
 import { newAddressNonce } from './webhook-address'
 import { WebhookEvents } from './webhook-events'
 import { WEBHOOK_LIMITS } from './webhook-limits'
@@ -18,6 +18,7 @@ type Row = {
   address_nonce: string
   signing: string | null
   paused: number
+  capabilities: string
   deleted: number
   last_event_at: number | null
 }
@@ -32,8 +33,9 @@ export interface LiveWebhook {
 
 /** A run row as `WebhookRun`, named in SQL. */
 const RUN = (r: string) =>
-  `${r}.id, ${r}.webhook_id AS webhookId, ${r}.bot_id AS botId, ${r}.created_at AS createdAt, ${r}.events, ${r}.started_at AS startedAt, ${r}.finished_at AS finishedAt, ${r}.chat_id AS chatId, ${r}.status, ${r}.result`
-const UNSETTLED = `SELECT ${RUN('r')} FROM webhook_runs r JOIN webhooks w ON w.id = r.webhook_id JOIN bots b ON b.id = r.bot_id WHERE w.deleted = 0 AND b.deletion IS NULL AND r.status IN ('pending', 'running')`
+  `${r}.id, ${r}.webhook_id AS webhookId, ${r}.bot_id AS botId, ${r}.created_at AS createdAt, ${r}.events, ${r}.started_at AS startedAt, ${r}.finished_at AS finishedAt, ${r}.chat_id AS chatId, ${r}.status, ${r}.result, ${r}.message`
+const UNDER_WAY = "r.status IN ('pending', 'running')"
+const UNSETTLED = `SELECT ${RUN('r')} FROM webhook_runs r JOIN webhooks w ON w.id = r.webhook_id JOIN bots b ON b.id = r.bot_id WHERE w.deleted = 0 AND b.deletion IS NULL AND ${UNDER_WAY}`
 
 export class WebhookStore {
   readonly events: WebhookEvents
@@ -49,6 +51,7 @@ export class WebhookStore {
       createdBy: row.created_by,
       signing: row.signing ? (JSON.parse(row.signing) as Signing).scheme : null,
       paused: !!row.paused,
+      capabilities: JSON.parse(row.capabilities),
       createdAt: row.created_at,
       lastEventAt: row.last_event_at,
       runs: this.db.query(`SELECT ${RUN('webhook_runs')} FROM webhook_runs WHERE webhook_id = ? ORDER BY created_at DESC LIMIT 50`).all(row.id) as WebhookRun[]
@@ -89,6 +92,10 @@ export class WebhookStore {
         return this.get(botId, id)
       })
       .immediate()
+  }
+  setCapabilities(botId: string, id: string, capabilities: WebhookCapability[]) {
+    this.row(botId, id)
+    this.db.query('UPDATE webhooks SET capabilities = ? WHERE id = ?').run(JSON.stringify([...new Set(capabilities)].sort()), id)
   }
   setPaused(botId: string, id: string, paused: boolean) {
     this.row(botId, id)
@@ -167,13 +174,18 @@ export class WebhookStore {
       this.db.query('INSERT OR IGNORE INTO webhook_chats VALUES (?, ?)').run(chatId, id)
     })()
   }
-  /** The webhook run a bot's session belongs to, with its webhook's task (kept for a deleted one), for the work board. */
+  /** The webhook run a bot's session belongs to, with its webhook's task (kept for a deleted one) and what it may do. */
   runForChat(botId: string, chatId: string) {
-    return this.db
+    const row = this.db
       .query(
-        'SELECT r.id AS runId, w.id AS webhookId, w.description AS task FROM webhook_chats c JOIN webhook_runs r ON r.id = c.run_id JOIN webhooks w ON w.id = r.webhook_id WHERE c.chat_id = ? AND r.bot_id = ?'
+        'SELECT r.id AS runId, w.id AS webhookId, w.description AS task, w.capabilities FROM webhook_chats c JOIN webhook_runs r ON r.id = c.run_id JOIN webhooks w ON w.id = r.webhook_id WHERE c.chat_id = ? AND r.bot_id = ?'
       )
-      .get(chatId, botId) as { runId: string; webhookId: string; task: string } | null
+      .get(chatId, botId) as { runId: string; webhookId: string; task: string; capabilities: string } | null
+    return row && { ...row, capabilities: JSON.parse(row.capabilities) as WebhookCapability[] }
+  }
+  /** Whether the bot ever had a webhook run, so a session of it could be a webhook run's (its runs are kept until it is deleted). */
+  hasRuns(botId: string) {
+    return !!this.db.query('SELECT 1 FROM webhook_runs WHERE bot_id = ? LIMIT 1').get(botId)
   }
   isWebhookChat(chatId: string) {
     return !!this.db.query('SELECT 1 FROM webhook_chats WHERE chat_id = ?').get(chatId)

@@ -129,7 +129,6 @@ export class HermesEngine implements BotEngine {
     await this.requireBot(botId)
     return reviewMemory(botId, prompt, options)
   }
-
   async runRoutine(botId: string, prompt: string, options: import('../bot-engine').RoutineOptions & ChatOptions) {
     await this.requireBot(botId)
     return runRoutine(botId, prompt, options)
@@ -138,7 +137,8 @@ export class HermesEngine implements BotEngine {
   private connections = connectionPreparer(id => HermesSocket.connect(id === DEFAULT_PROFILE ? '' : id))
   async prepareConnections(id: string, connections: import('../mcp-connection').McpConnection[]) {
     await this.requireBot(id)
-    await applied(id, 'connections', hashOf(connections), () => this.connections.prepare(id, connections))
+    if (!(await applied(id, 'connections', hashOf(connections), () => this.connections.prepare(id, connections))))
+      await applied(id, null, '', () => this.connections.prepare(id, connections, true))
   }
   async applyConnections(id: string, chatIds: string[]) {
     await this.requireBot(id)

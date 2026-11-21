@@ -50,7 +50,11 @@ test('routine aliases cannot enqueue memory review turns, including after restar
     store.attach(run.id, 'stored-id', 300_000)
     const restarted = new RoutineStore(f.database)
     const reviewer = new MemoryReviewer(f.queue, f.engine)
-    const handle = createEngineApi(f.memory, 'test', 3371, { botExists: () => true, hiddenChat: (_bot, chat) => restarted.isRoutineChat(chat), reviewer })
+    const handle = createEngineApi(f.memory, 'test', 3371, {
+      botExists: () => true,
+      chatKind: (_bot, chat) => (restarted.isRoutineChat(chat) ? 'lilbot' : 'conversation'),
+      reviewer
+    })
     for (const chatId of ['live-id', 'stored-id', 'real-chat'])
       await handle(
         new Request('http://localhost:3371/engine/memory/turn', {

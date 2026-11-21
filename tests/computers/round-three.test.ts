@@ -5,7 +5,8 @@ import { join } from 'node:path'
 import { codeId, codeKey, helperFrame, registrationMac, verifyHelperFrame } from '../../helper/frame-auth'
 import { acknowledge, finish, prepareJournal, pruneJournal } from '../../helper/journal'
 import { BACKGROUND_RETENTION_MS, BOT_PAYLOAD_LIMIT } from '../../server/computers/computer-store'
-import { adversary, until } from './adversarial-fixture'
+import { until } from '../helpers/until'
+import { adversary } from './adversarial-fixture'
 
 test('full storage cannot turn a failed copy into an empty successful file', async () => {
   const f = adversary()

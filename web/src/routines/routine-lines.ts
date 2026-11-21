@@ -46,8 +46,8 @@ export function routineLine(routine: Routine, now = Date.now()): { text: string;
   return { text: `${schedule} · next ${lowerFirst(whenNext(routine.nextRunAt, now, routine.schedule.kind === 'interval'))}`, tone: 'plain' }
 }
 
-/** Under a run's time: its result, or what it is doing; a failed run says so first. */
-export function runLine(run: RoutineRun) {
+/** Under a routine or webhook run's title: its result, or what it is doing; a failed run says so first. */
+export function runLine(run: Pick<RoutineRun, 'status' | 'result'>) {
   const result = run.result.replace(/\s+/g, ' ').trim()
   switch (run.status) {
     case 'pending':

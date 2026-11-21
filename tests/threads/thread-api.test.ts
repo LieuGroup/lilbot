@@ -30,7 +30,11 @@ test('capability selects author, rejects deleted credentials, and excludes persi
     expect((await call('/engine/threads/ask', input, '')).status).toBe(403)
     for (const alias of ['stored', 'runtime']) store.attach(store.delivery('b1:one')!, other.id, alias, true)
     const reopened = new ThreadStore(f.database)
-    const restarted = createEngineApi(f.memory, 'test', 3371, { botExists: () => true, hiddenChat: (_bot, chat) => reopened.isInternal(chat), reviewer })
+    const restarted = createEngineApi(f.memory, 'test', 3371, {
+      botExists: () => true,
+      chatKind: (_bot, chat) => (reopened.isInternal(chat) ? 'lilbot' : 'conversation'),
+      reviewer
+    })
     for (const chatId of ['stored', 'runtime', 'main'])
       await restarted(
         new Request('http://localhost:3371/engine/memory/turn', {

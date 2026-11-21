@@ -1,7 +1,8 @@
 import { expect, test } from 'bun:test'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { adversary, until } from './adversarial-fixture'
+import { until } from '../helpers/until'
+import { adversary } from './adversarial-fixture'
 
 for (let run = 1; run <= 3; run++)
   test(`real helper chatty background and eight parallel copies, run ${run}`, async () => {

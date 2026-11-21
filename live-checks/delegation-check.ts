@@ -96,7 +96,7 @@ try {
   const sentControl = events.length
   await call('chat.send', {
     chatId: main.chatId,
-    text: `The Reader's exchange is ${toB}, the Sleeper's is ${toC}, the batch is ${threadB.batchId}. In this order: call lilbot_delegation_status for the batch; call lilbot_delegation_redirect on the Reader's exchange with requestId live-redirect and message "Also write the word into answer.txt in your folder and attach it with lilbot_delegation_attach before you answer."; call lilbot_delegation_cancel on the Sleeper's exchange; call lilbot_delegation_wait for the batch. Then reply CONTROL_DONE and the statuses the status call showed.`
+    text: `The Reader's exchange is ${toB}, the Sleeper's is ${toC}, the batch is ${threadB.batchId}. In this order: call lilbot_delegation with action status for the batch; call lilbot_delegation with action redirect on the Reader's exchange with requestId live-redirect and message "Also write the word into answer.txt in your folder and attach it with lilbot_delegation (action attach) before you answer."; call lilbot_delegation with action cancel on the Sleeper's exchange; call lilbot_delegation with action wait for the batch. Then reply CONTROL_DONE and the statuses the status call showed.`
   })
   const control = await until(
     () => events.slice(sentControl).filter(f => f.event === 'chat' && f.chatId === main.chatId && f.data.type === 'turn.finished' && String(f.data.text).includes('CONTROL_DONE')),
@@ -105,7 +105,7 @@ try {
   )
   assert.ok(String(control[0].data.text).toLowerCase().includes('working'), 'the lead read both as working')
   const tools = (db.query("SELECT tool FROM system_changes WHERE bot_id=? AND tool NOT LIKE 'lilbot_work%' ORDER BY id").all(lead.id) as { tool: string }[]).map(r => r.tool)
-  assert.deepEqual(tools, ['lilbot_delegate', 'lilbot_delegation_redirect', 'lilbot_delegation_cancel', 'lilbot_delegation_wait'])
+  assert.deepEqual(tools, ['lilbot_delegate', 'lilbot_delegation', 'lilbot_delegation', 'lilbot_delegation'])
   const redirect = db.query('SELECT kind, status FROM thread_deliveries WHERE id=?').get(`${lead.id}:live-redirect`) as any
   assert.equal(redirect.kind, 'redirect')
   assert.equal(redirect.status, 'steered', 'the redirect reached the reader mid-command')

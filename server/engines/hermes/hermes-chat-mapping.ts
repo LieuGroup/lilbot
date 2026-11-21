@@ -5,8 +5,9 @@ import type { HermesEvent } from './hermes-socket'
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '')
 
-/** `display_messages` from `session.create` / `session.resume`. */
-export function itemsFromRows(rows: unknown): ChatItem[] {
+/** `display_messages` from `session.create` / `session.resume`. `failedSave` says whether a row that closes a failed turn
+ *  (`display_kind` `failed_turn`, at its `timestamp` in seconds) closes one that stopped for want of the memory save. */
+export function itemsFromRows(rows: unknown, failedSave?: (at: number) => boolean): ChatItem[] {
   if (!Array.isArray(rows)) return []
   const items: ChatItem[] = []
   for (const row of rows) {
@@ -14,7 +15,10 @@ export function itemsFromRows(rows: unknown): ChatItem[] {
     const { role, name, context, tool_call_id } = row as Record<string, unknown>
     const body = text((row as Record<string, unknown>).text)
     if (role === 'user' && body) items.push({ kind: 'user', text: body })
-    if (role === 'assistant' && body) items.push({ kind: 'assistant', text: body })
+    const at = (row as Record<string, unknown>).timestamp
+    const unsaved = role === 'assistant' && (row as Record<string, unknown>).display_kind === 'failed_turn' && typeof at === 'number' && failedSave?.(at * 1000)
+    if (unsaved) items.push({ kind: 'error', text: '', reason: 'memory_save' })
+    else if (role === 'assistant' && body) items.push({ kind: 'assistant', text: body })
     if (role === 'tool')
       items.push({
         kind: 'tool',
@@ -44,8 +48,9 @@ export function toolFailed(result: unknown): boolean {
   return success === false || ok === false || (typeof error === 'string' && error.length > 0) || (typeof exit_code === 'number' && exit_code !== 0)
 }
 
-/** One Hermes event as zero or one LilBot event. Events LilBot does not show return null. */
-export function chatEventFrom(event: HermesEvent): ChatEvent | null {
+/** One Hermes event as zero or one LilBot event. Events LilBot does not show return null. `failedSave` says whether the
+ *  session's memory save before compressing failed, which a failed turn then reports instead of the engine's text. */
+export function chatEventFrom(event: HermesEvent, failedSave?: () => boolean): ChatEvent | null {
   const { type, payload } = event
   switch (type) {
     case 'message.start':
@@ -62,7 +67,9 @@ export function chatEventFrom(event: HermesEvent): ChatEvent | null {
       // Hermes' status is complete | error | interrupted.
       const status = payload.status === 'interrupted' ? 'stopped' : payload.status === 'error' ? 'failed' : 'completed'
       const contextTokens = payload.usage?.context_used
-      return { type: 'turn.finished', status, text: text(payload.text), ...(typeof contextTokens === 'number' ? { contextTokens } : {}) }
+      const tokens = typeof contextTokens === 'number' ? { contextTokens } : {}
+      if (status === 'failed' && failedSave?.()) return { type: 'turn.finished', status, text: '', failure: 'memory_save', ...tokens }
+      return { type: 'turn.finished', status, text: text(payload.text), ...tokens }
     }
     case 'session.title':
       return payload.title ? { type: 'title', title: text(payload.title) } : null

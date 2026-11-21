@@ -1,9 +1,9 @@
 import { spawn } from 'node:child_process'
 
 /** Bounded commands, with no shell interpolation and no raw stderr (which can contain secrets). */
-export async function command(args: string[], cwd?: string, timeout = 30_000): Promise<string> {
+export async function command(args: string[], cwd?: string, timeout = 30_000, env?: NodeJS.ProcessEnv): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn(args[0], args.slice(1), { cwd, stdio: ['ignore', 'pipe', 'pipe'] })
+    const child = spawn(args[0], args.slice(1), { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] })
     let output = ''
     child.stdout.on('data', data => {
       output = (output + data).slice(-1_000_000)

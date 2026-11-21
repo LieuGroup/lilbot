@@ -89,6 +89,17 @@ export class LibraryService {
       await file.handle.close()
     }
   }
+  /** The start of a text file in the bot's folder, read the same safe way (for runs without the engine's file tools). */
+  async readText(botId: string, path: string, maxBytes: number) {
+    const file = await openWorkspaceFile(this.require(botId), path)
+    try {
+      const bytes = new Uint8Array(Math.min(file.stat.size, maxBytes))
+      const { bytesRead } = await file.handle.read(bytes, 0, bytes.length, 0)
+      return { path: file.path, size: file.stat.size, text: new TextDecoder().decode(bytes.subarray(0, bytesRead)), cut: file.stat.size > bytesRead }
+    } finally {
+      await file.handle.close()
+    }
+  }
   async workspace(botId: string, path = ''): Promise<WorkspaceEntry[]> {
     const root = this.require(botId)
     const folder = await openWorkspaceFile(root, path, true)
