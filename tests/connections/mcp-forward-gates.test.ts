@@ -8,8 +8,7 @@ import { createServiceForward } from '../../server/connections/mcp-forward'
 import { serviceKeyPurpose } from '../../server/connections/mcp-service-connection'
 import { TokenKeeper } from '../../server/connections/mcp-token-keeper'
 import { hermesMcpToolName } from '../../server/engines/hermes/hermes-connections'
-import { checkToolRefusal } from '../../server/system/check-access'
-import { refusalFor } from '../../server/system/run-access'
+import { serviceSessionRefusal } from '../../server/system/check-access'
 import { CallingChats } from '../../server/threads/calling-chats'
 import { webhookCallers } from '../../server/webhooks/webhook-callers'
 import type { WebhookStore } from '../../server/webhooks/webhook-store'
@@ -96,7 +95,7 @@ test('Low #2: defence-in-depth session gate refuses webhook runs and check sessi
   const callers = webhookCallers(webhookStore, (_b, c) => c, calls)
   const checkSessions = { checking: (b: string) => checking && b === 'bot-a', isCheck: (_b: string, c: string) => c === 'check-chat' }
   const { send } = makeForward({
-    refusal: async (botId, tool, args) => refusalFor(await callers.forCall(botId, tool, args), tool, []) ?? checkToolRefusal(checkSessions, calls, botId, tool, args)
+    refusal: serviceSessionRefusal(callers, checkSessions, calls)
   })
   calls.saw('bot-a', 'hook-chat', 'mcp__lilbot_c_svc__echo', { text: 'w' }, 'c1')
   const hookRes = await (await send({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'echo', arguments: { text: 'w' } } })).json()
@@ -143,7 +142,7 @@ test('N1: session gate matches Hermes-sanitized and >64-char hashed MCP tool nam
   const { send } = makeForward({
     tools,
     toolName: hermesMcpToolName,
-    refusal: async (botId, tool, args) => refusalFor(await callers.forCall(botId, tool, args), tool, []) ?? checkToolRefusal(checkSessions, calls, botId, tool, args)
+    refusal: serviceSessionRefusal(callers, checkSessions, calls)
   })
   expect(hermesMcpToolName('lilbot_c_svc', 'notion-search')).toBe('mcp__lilbot_c_svc__notion_search')
   expect(hermesMcpToolName('lilbot_c_svc', 'a.b')).toBe('mcp__lilbot_c_svc__a_b')

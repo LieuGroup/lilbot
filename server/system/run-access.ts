@@ -3,7 +3,6 @@
  *  Oscar can add to one webhook, or is refused to every run. Every tool is listed here (a test checks), so a new tool
  *  needs that decision. */
 import type { WebhookCapability } from '../../shared/webhook-schema'
-import type { WebhookCallers } from '../webhooks/webhook-callers'
 
 export const RUN_TOOLS = ['lilbot_guide', 'lilbot_work', 'lilbot_work_list', 'lilbot_webhook_message', 'lilbot_workspace_read']
 
@@ -55,10 +54,20 @@ export const readsBeyondOwn = (owner: (itemId: string) => string | undefined) =>
   return mine === false || Boolean(goals) || goalId !== undefined || (itemId !== undefined && owner(String(itemId)) !== botId)
 }
 
-/** The same for LilBot's own tools, matched to the call's own start. The narrow ones are allowed without waiting, except
- *  a work-board read beyond the bot's own items, which no webhook run may make (Oscar's decision, whatever its groups). */
-export async function runRefusal(callers: WebhookCallers, botId: string, tool: string, args: unknown, beyondOwn: (botId: string, tool: string, args: unknown) => boolean) {
-  if (!RUN_TOOLS.includes(tool)) return refusalFor(await callers.forCall(botId, tool, args), tool, groupsOf(tool))
-  if (!beyondOwn(botId, tool, args) || (await callers.forCall(botId, tool, args)) === null) return null
+/** Whether a call to LilBot's own server needs a webhook session check (`RUN_TOOLS` pass unless reading beyond own items). */
+export function needsWebhookCheck(botId: string, tool: string, args: unknown, beyondOwn: (botId: string, tool: string, args: unknown) => boolean): boolean {
+  return !RUN_TOOLS.includes(tool) || beyondOwn(botId, tool, args)
+}
+
+/** Refusal for LilBot's own tool given the session's webhook capabilities (`allowed`, null when not a webhook run). */
+export function runRefusalForChat(
+  allowed: WebhookCapability[] | null,
+  botId: string,
+  tool: string,
+  args: unknown,
+  beyondOwn: (botId: string, tool: string, args: unknown) => boolean
+): string | null {
+  if (!RUN_TOOLS.includes(tool)) return refusalFor(allowed, tool, groupsOf(tool))
+  if (!beyondOwn(botId, tool, args) || allowed === null) return null
   return 'A webhook run reads only its own work items: list them without mine false, goals or goalId, or open one of its own. If you are not in a webhook run, make the call again from your own conversation.'
 }

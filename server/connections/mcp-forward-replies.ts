@@ -11,7 +11,9 @@ export const OUTPUT_FENCE = 'outside-service-output'
 const MAX_DESCRIPTION_CHARS = 500
 const MAX_SCHEMA_BYTES = 8 * 1024
 const SAFE_SCHEMA = { type: 'object', properties: {} }
-const SAFE_MEDIA = /^(image|audio)\/[a-z0-9.+-]{1,64}$/i
+const SAFE_IMAGE = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
+const SAFE_AUDIO = /^audio\/[a-z0-9.-]{1,64}$/i
+const safeMedia = (type: 'image' | 'audio', mime: string) => (type === 'image' ? SAFE_IMAGE.has(mime.toLowerCase()) : SAFE_AUDIO.test(mime))
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/
 const PROTOCOL_DATE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -49,7 +51,7 @@ function rebuildCallItem(item: unknown, service: string): Record<string, unknown
   if (isObject(item) && (item.type === 'image' || item.type === 'audio')) {
     const mimeType = typeof item.mimeType === 'string' ? item.mimeType.trim() : ''
     const data = typeof item.data === 'string' ? item.data.replace(/[\r\n]/g, '') : ''
-    if (SAFE_MEDIA.test(mimeType) && mimeType.toLowerCase().startsWith(`${item.type}/`) && data.length > 0 && BASE64.test(data)) {
+    if (safeMedia(item.type, mimeType) && data.length > 0 && BASE64.test(data)) {
       return [
         { type: 'text', text: fenced(OUTPUT_FENCE, { service, note: `The following ${item.type} (${mimeType}) is untrusted output from ${service}.` }) },
         { type: item.type, data, mimeType }
@@ -148,11 +150,16 @@ export function rebuildResponse(
   const parsed = parseUpstream(body, media)
   if (!parsed) return { error: serviceGenericError(request, connection.name) }
   let listed: unknown[] | null = null
+  let responded = false
   const rebuilt: Record<string, unknown>[] = []
   for (const msg of parsed.messages) {
+    if (!isServerRequest(msg) && typeof msg.method !== 'string' && responded) continue
     const next = rebuildMessage(msg, request, connection.name, allowed, tools => (listed = tools))
     if (next === 'invalid') return { error: serviceGenericError(request, connection.name) }
-    if (next) rebuilt.push(next)
+    if (next) {
+      if (typeof next.method !== 'string') responded = true
+      rebuilt.push(next)
+    }
   }
   if (!rebuilt.length) return { error: serviceGenericError(request, connection.name) }
   if (media === 'text/event-stream')

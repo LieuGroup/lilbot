@@ -9,6 +9,8 @@ import { LilBotError } from '../../shared/lilbot-error'
 const KEEP_MS = 120_000
 /** How long before its request a call's own start may have been seen: an older one belongs to an earlier call. */
 const EARLY_MS = 15_000
+/** Minimum grace window for exact-arg matching before falling back to a lone unmatched start (tools without requestId). */
+const FALLBACK_GRACE_MS = 500
 /** The tools that need to know their calling conversation. Engines may prefix the name with the server's. */
 export type CallingTool = 'lilbot_delegate' | 'lilbot_work' | 'lilbot_group' | 'lilbot_goal' | 'lilbot_give_file' | 'lilbot_webhook_message' | 'lilbot_connection'
 
@@ -58,7 +60,7 @@ interface Seen {
   requestId: string | null
   at: number
   claimed: boolean
-  /** Taken by a gate (`take`), apart from `claimed`: one call is matched by the gate and by `find`. */
+  /** Taken by a gate (`take` / `takeSingle`), apart from `claimed`: one call is placed once by its gate and once by `find`. */
   gated: boolean
 }
 
@@ -104,13 +106,47 @@ export class CallingChats {
     }
   }
 
-  /** For a gate: the session of this call's own start, the oldest start of `tool` since `since` with these arguments
-   *  (`argsKey`) or request id that no gate has taken, taken now. Null while none is seen. */
-  take(botId: string, tool: string, since: number, args: string, requestId: string | null): string | null {
-    const own = this.seen.find(s => !s.gated && s.botId === botId && s.at >= since && names(s.tool, tool) && (s.args === args || (requestId !== null && s.requestId === requestId)))
-    if (!own) return null
+  /** For a gate: the session of this call's own exact-arg or request-id start since `since` that no gate has taken yet.
+   *  When `prefer` is given and several starts match, a preferred session (e.g. a restricted run/check) is taken first. */
+  take(botId: string, tool: string, since: number, args: string, requestId: string | null, prefer?: (chatId: string) => boolean): string | null {
+    const matches = this.seen.filter(
+      s => !s.gated && s.botId === botId && s.at >= since && names(s.tool, tool) && (s.args === args || (requestId !== null && s.requestId === requestId))
+    )
+    if (!matches.length) return null
+    const own = (prefer && matches.find(s => prefer(s.chatId))) ?? matches[0]
     own.gated = true
     return own.chatId
+  }
+
+  /** Fail-closed fallback for tools without requestId whose raw model arguments differ after coercion or truncation:
+   *  succeeds only when strictly ONE unmatched start of `tool` exists in `[since, maxAt]`, never when zero or multiple exist. */
+  takeSingle(botId: string, tool: string, since: number, maxAt: number): string | null {
+    const unmatched = this.seen.filter(s => !s.gated && s.botId === botId && s.at >= since && names(s.tool, tool))
+    if (unmatched.length !== 1 || unmatched[0].at > maxAt) return null
+    unmatched[0].gated = true
+    return unmatched[0].chatId
+  }
+
+  /** Places an MCP call once for session gates: exact argument/requestId match immediately; for calls without requestId,
+   *  falls back to `takeSingle` only after a grace window so concurrent restricted-session starts arrive first. Null when unplaced (fail closed). */
+  async gate(botId: string, tool: string, raw: unknown, prefer?: (chatId: string) => boolean): Promise<string | null> {
+    const args = record(raw)
+    const key = argsKey(args)
+    const requestId = typeof args.requestId === 'string' ? args.requestId : null
+    const asked = Date.now()
+    const graceMs = Math.min(FALLBACK_GRACE_MS, Math.floor(this.waitMs / 2))
+    const stepMs = Math.min(50, Math.max(10, Math.floor(this.waitMs / 5)))
+    for (;;) {
+      const own = this.take(botId, tool, asked - EARLY_MS, key, requestId, prefer)
+      if (own !== null) return own
+      const now = Date.now()
+      if (requestId === null && now - asked >= graceMs) {
+        const single = this.takeSingle(botId, tool, asked - EARLY_MS, now - graceMs)
+        if (single !== null) return single
+      }
+      if (now - asked >= this.waitMs) return null
+      await Bun.sleep(stepMs)
+    }
   }
 
   /** The bot's sessions that started a call of `tool` since `since`, newest first, with the arguments as `argsKey` gives

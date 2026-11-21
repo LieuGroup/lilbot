@@ -14,7 +14,7 @@ class Refused extends Error {
   }
 }
 
-export async function probe(address: URL, token?: string): Promise<Probe> {
+export async function probe(address: URL, token?: string, mapName?: (tool: string) => string): Promise<Probe> {
   let session: string | null = null
   const send = async (message: Record<string, unknown>) => {
     const headers: Record<string, string> = { 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': PROTOCOL }
@@ -46,7 +46,7 @@ export async function probe(address: URL, token?: string): Promise<Probe> {
       cursor = typeof result.nextCursor === 'string' ? result.nextCursor : undefined
       if (!cursor) break
     }
-    return { kind: 'ok', tools: toolNames(tools) }
+    return { kind: 'ok', tools: toolNames(tools, mapName) }
   } catch (error) {
     if (error instanceof Refused) return error.challenge === null || token ? { kind: 'refused' } : { kind: 'sign_in', challenge: error.challenge }
     return { kind: 'unreachable' }

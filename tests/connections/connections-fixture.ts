@@ -11,7 +11,7 @@ import { openDatabase } from '../../server/database/database'
 
 export const REDIRECT = 'https://bot.example.com/api/connections/callback'
 
-export function connectionsFixture(redirectUri: string | null = REDIRECT, callbackEnabled = false) {
+export function connectionsFixture(redirectUri: string | null = REDIRECT, callbackEnabled = false, toolName?: (server: string, tool: string) => string) {
   const root = mkdtempSync(join(tmpdir(), 'lilbot-connections-'))
   afterAll(() => rmSync(root, { recursive: true, force: true }))
   const database = openDatabase(join(root, 'lilbot.db'))
@@ -35,7 +35,8 @@ export function connectionsFixture(redirectUri: string | null = REDIRECT, callba
       callingChat: async botId => chatOf.get(botId) ?? `${botId}-main`,
       userSentInChat: (botId, chatId, text) => userMessages.some(msg => msg.botId === botId && msg.chatId === chatId && msg.text.includes(text)),
       signedIn: (botId, chatId, name, runId) => signedIn.push({ botId, chatId, name, runId }),
-      changed: () => changes++
+      changed: () => changes++,
+      toolName
     },
     redirectUri ?? undefined,
     now,
