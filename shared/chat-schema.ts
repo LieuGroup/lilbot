@@ -33,7 +33,7 @@ export type ChatItem = z.infer<typeof ChatItem>
 export const ChatEvent = z.discriminatedUnion('type', [
   AttachmentMessage.extend({ type: z.literal('user.message') }),
   z.object({ type: z.literal('turn.started') }),
-  z.object({ type: z.literal('thread'), threadId: z.string(), name: z.string(), detail: z.string() }),
+  z.object({ type: z.literal('thread'), threadId: z.string(), name: z.string(), detail: z.string(), failure: z.string().optional() }),
   /** Short status while the bot thinks, e.g. "pondering...". */
   z.object({ type: z.literal('activity'), text: z.string() }),
   z.object({ type: z.literal('text.delta'), text: z.string() }),

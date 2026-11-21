@@ -30,7 +30,11 @@ export function threadEvents(
     for (const thread of threads.list(bot.id)) {
       const line = threadLine(thread, bot.id)
       record?.(bot.id, chatId, line, thread.createdAt)
-      publish({ event: 'chat', chatId, data: { type: 'thread', threadId: thread.id, name: line.name, detail: line.detail } })
+      publish({
+        event: 'chat',
+        chatId,
+        data: { type: 'thread', threadId: thread.id, name: line.name, detail: line.detail, ...(thread.failure ? { failure: thread.failure } : {}) }
+      })
     }
   }
 }

@@ -55,22 +55,31 @@ test('a run given a model creates its session on that model, else on the bot’s
   expect(creates[1]).toMatchObject({ provider: 'cheap', model: 'small-1' })
 })
 
+/** A connection whose one run ends with this receipt. */
+const endingWith = (receipt: object) => async () =>
+  ({
+    request: async (method: string) => {
+      if (method === 'config.get') return { value: 'off' }
+      if (method === 'session.create') return { session_id: 'live', stored_session_id: 'stored' }
+      if (method === 'prompt.submit') return { admission_id: 'receipt' }
+      if (method === 'prompt.receipt') return receipt
+      return { display_messages: [] }
+    },
+    close: () => {}
+  }) as unknown as HermesSocket
+
 test('an uncertain engine outcome is surfaced as failed instead of automatically repeating side effects', async () => {
-  const connect = async () =>
-    ({
-      request: async (method: string) => {
-        if (method === 'config.get') return { value: 'off' }
-        if (method === 'session.create') return { session_id: 'live', stored_session_id: 'stored' }
-        if (method === 'prompt.submit') return { admission_id: 'receipt' }
-        if (method === 'prompt.receipt') return { status: 'unknown' }
-        return { display_messages: [] }
-      },
-      close: () => {}
-    }) as unknown as HermesSocket
-  expect(await runRoutine('native-id', 'task', { workspace: '/test', runId: 'one', onChat: () => {} }, connect)).toMatchObject({
+  expect(await runRoutine('native-id', 'task', { workspace: '/test', runId: 'one', onChat: () => {} }, endingWith({ status: 'unknown' }))).toMatchObject({
     status: 'failed',
-    text: expect.stringContaining('not retried')
+    text: expect.stringContaining('not retried'),
+    unknownReceipt: true
   })
+})
+
+test('a run that ended in failure, as the engine knows it, is failed without the unknown-receipt mark', async () => {
+  const result = await runRoutine('native-id', 'task', { workspace: '/test', runId: 'two', onChat: () => {} }, endingWith({ status: 'terminal', outcome: 'failed' }))
+  expect(result.status).toBe('failed')
+  expect(result).not.toHaveProperty('unknownReceipt')
 })
 
 test('a reply resumes the initiating context and queues one hidden admission with a durable baseline', async () => {

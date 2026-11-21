@@ -1,4 +1,5 @@
 import { afterAll, expect, test } from 'bun:test'
+import { threadEvents } from '../../server/http/thread-events'
 import { delegationFixture, removeFixtureFolders } from './delegation-fixture'
 
 afterAll(removeFixtureFolders)
@@ -81,4 +82,19 @@ test('a stopped exchange stays stopped when a later notice cannot be delivered, 
   await g.delegation.delegate('a', { requestId: 'again', tasks: [{ exchangeId: failed, task: 'Try once more' }] })
   expect(g.store.get(failed)).toMatchObject({ status: 'waiting' })
   expect(g.store.get(failed).failure).toBeUndefined()
+})
+
+test('the thread event in the receiver’s conversation carries the reason of a failed task, and nothing for a task that did not fail', async () => {
+  const f = delegationFixture()
+  const id = await hand(f)
+  await f.settle()
+  const events = () => {
+    const sent: any[] = []
+    threadEvents(f.store, { list: () => [{ id: 'b' }] }, { mainChat: () => 'b-main' }, frame => sent.push(frame))
+    return sent.filter(frame => frame.event === 'chat').map(frame => frame.data)
+  }
+  expect(events()).toEqual([{ type: 'thread', threadId: id, name: 'message from', detail: 'A' }])
+  f.runs[0].finish('boom', [], 'failed')
+  await f.settle()
+  expect(events()).toEqual([{ type: 'thread', threadId: id, name: 'message from', detail: 'A', failure: 'the turn ended in an error' }])
 })

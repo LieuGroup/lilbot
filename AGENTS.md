@@ -434,7 +434,7 @@ Visual specs: "Work between bots" in [docs/screens.md](docs/screens.md).
 - "Working together" (`threads/working-together.tsx`): the roster's top section and the rail's group slots, only while a
   bot in `bots.list` has `groups`. Members and the leader come from each bot's `groups`; a row opens
   `/bots/<leader>?thread=<group>`. Row states ("Leading a group", "In a group", "In a group · <activity>") are in
-  `bots/row-state.ts`: a member's live activity in `bots.list` is its usual `activity`, combined with its `groups`.
+  `bots/row-state.ts`: a member's live activity in `bots.list` is what it does in its group (`groups[].activity`), else its usual `activity`, combined with its `groups`.
 - Opening sets `?thread=<id>` on `/bots/$botId` (tab links and the panel's auto-open keep it with `search: true`). The
   view covers the conversation column while the conversation stays mounted, `invisible` and inert: its connection
   and scroll position are unchanged. On a phone, opening from the details panel goes to the conversation first.
@@ -442,8 +442,8 @@ Visual specs: "Work between bots" in [docs/screens.md](docs/screens.md).
 - Stop (a running task's or group's line and its view) asks first, then calls `threads.cancel`; asked threads have no
   Stop. Any participant's line can stop a group.
 - Files passed in a group, and the files its leader kept, show as chips that download through the same route as an
-  exchange's (`ThreadService.file`). The kept files of a group closed before #178 have no recorded hash and so no download
-  (they are in the leader's Library).
+  exchange's (`ThreadService.file`). A group closed before #178 has no recorded hash for its kept files, so their chips' links
+  answer "File missing or unavailable" (the files are in the leader's Library).
 - Oscar never writes in an exchange: no composer.
 
 ### Conversation scroll (AI Elements' Message Scroller)
@@ -567,10 +567,10 @@ Visual specs: "Work between bots" in [docs/screens.md](docs/screens.md).
   engine receipt), the receiving bot or the bot that handed it over is gone, the request or answer was too long or
   withheld by the safety check, the message limit. Never an exception's text, a run's output or bot text. A stopped
   exchange stays stopped; a follow-up clears the failure. The task line reads "Failed · <failure>" (older failures have
-  none and read "Failed · <bot> could not be reached"). The `thread` chat event carries no state, so it carries no failure.
-- Who is shown working: a handed-over task marks both bots (delegating bot and receiver) while the receiver runs; in a group
-  only the member taking a point, and the leader during its own turns (a round's replies, the end notice). The leader's row
-  between those turns reads "Leading a group" (idle), not working and not "waiting" (that status means waiting for Oscar).
+  none and read "Failed · <bot> could not be reached"); its state still comes from `threads.list`. The `thread` chat event
+  also carries `failure` while the thread has one (never on the stored tool line, which history records once).
+- The leader's row between its own turns in a group reads "Leading a group" (idle), not working and not "waiting" (that
+  status means waiting for Oscar); the working marks are chosen in `ThreadRunner.mark`.
 - `bots.list` gives a bot working on a task another bot handed it `workingFor` (exchange id and the delegating bot's
   name), from the deliveries running now (`thread-roster.ts`, with the running groups); the roster row reads "For
   <bot> · <activity>". Each of a bot's `groups` entries adds `activity` while its own turn in that group runs and a tool
@@ -580,8 +580,8 @@ Visual specs: "Work between bots" in [docs/screens.md](docs/screens.md).
   events), merged at the HTTP edge, never written as fake user messages. The screens are in "Work between bots"
   under Web app.
 - Hidden session aliases are persisted before submission and excluded from after-chat reviews, also after restart.
-  Thread activity sets working/finished on both bots without unread; only the asking bot's visible answer to Oscar can
-  mark it unread. Status and activity changes push a plain `threads.changed`; the per-bot chat lines are rebuilt only
+  Thread activity sets working/finished without unread (on both bots of an exchange; in a group, on the member taking a
+  point and on the leader only for its own turns); only the asking bot's visible answer to Oscar can mark it unread. Status and activity changes push a plain `threads.changed`; the per-bot chat lines are rebuilt only
   when exchanges are added or settle.
 - Limits are in `thread-limits.ts`: depth 3, 20 messages per thread with the answer reserved, 20,000 characters per
   request, 6 deliveries running at once (measured on the dev gateway), 8 exchanges under way per delegating bot. A
