@@ -3,7 +3,7 @@
  *  session, on a cheaper model with only its memory tools, whether anything in those turns belongs
  *  in memory. LilBot runs no model itself: the review is a session of the bot's own engine. */
 import type { BotModel } from '../../shared/bot-schema'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { backgroundFailure } from '../background'
 import type { BotEngine } from '../engines/bot-engine'
 import type { PendingSummary, PendingTurn, ReviewQueue } from './review-queue'

@@ -1,7 +1,7 @@
 /** Giving Oscar a file: the Library's own `LibraryService.give`, with the conversation (and routine run) taken from LilBot's records
  *  of the call, never from an argument. */
 import { GiveFileInput } from '../../shared/library-schema'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { actionTool, type McpTool } from './mcp-tool'
 import type { SystemDeps } from './system-deps'
 

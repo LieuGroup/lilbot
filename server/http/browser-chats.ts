@@ -1,5 +1,6 @@
 import type { ChatEvent } from '../../shared/chat-schema'
-import { type EventFrame, LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
+import type { EventFrame } from '../../shared/protocol'
 import type { ActivityService } from '../activity/activity-service'
 import type { AttachmentService } from '../attachments/attachment-service'
 import type { BotService } from '../bots/bot-service'

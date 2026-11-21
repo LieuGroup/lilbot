@@ -1,6 +1,7 @@
 /** The browser's connection to the LilBot server: typed requests, chat events, automatic reconnect. */
 import type { ChatEvent } from '../../../shared/chat-schema'
-import { LilBotError, type Method, type Params, type Results } from '../../../shared/protocol'
+import { LilBotError } from '../../../shared/lilbot-error'
+import type { Method, Params, Results } from '../../../shared/protocol'
 
 type Pending = { resolve: (value: any) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
 type ChatListener = (event: ChatEvent) => void

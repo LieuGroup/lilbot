@@ -1,6 +1,6 @@
 /** What a bot is told when a delegation reaches it. Bot text is untrusted data: always JSON-quoted in a named fence. */
 import type { ChatItem } from '../../shared/chat-schema'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { BotThread } from '../../shared/thread-schema'
 import { fenced, memoryRefusal } from '../memory/memory-safety'
 import type { FileRow } from './thread-files'

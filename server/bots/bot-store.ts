@@ -1,7 +1,7 @@
 /** Durable bot identity and its engine binding. Engine data is imported once, never refreshed over it. */
 import type { Database } from 'bun:sqlite'
 import type { BotIdentity } from '../../shared/bot-schema'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 
 export type BotRecord = BotIdentity & { instructions: string; engineId: string; engineBotId: string }
 type Row = {

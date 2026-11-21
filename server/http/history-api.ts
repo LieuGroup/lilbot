@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { EngineApiOptions } from './engine-api'
 
 const Search = z.object({ query: z.string().trim().min(1).max(500), limit: z.number().int().min(1).max(50).default(20) })

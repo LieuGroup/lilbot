@@ -2,7 +2,7 @@
 import { constants as C } from 'node:fs'
 import { type FileHandle, mkdir, open, unlink } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 
 export const MAX_BYTES = 20 * 1024 * 1024
 export const MAX_FILES = 10

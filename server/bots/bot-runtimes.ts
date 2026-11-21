@@ -1,6 +1,6 @@
 /** Resolves LilBot ids to runtime ids. The database always wins over an engine's copy. */
 import type { BotCreateInput, BotUpdateInput } from '../../shared/bot-schema'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { BotEngine, McpConnection, RuntimeState } from '../engines/bot-engine'
 import type { BotRecord, BotStore } from './bot-store'
 import { importBots } from './runtime-import'

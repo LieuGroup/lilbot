@@ -2,7 +2,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { signInMessage } from '../connections/t3-grant'
 import { deployNotice, deployStatus } from '../deploy/deploy-notice'
 import { type McpTool, readTool } from './mcp-tool'

@@ -2,7 +2,7 @@
  *  new version or a change, and report a review. The caller is always the authenticated bot. A review is a work item, made
  *  through the work board's own rules, so it is checked like any other number Oscar decides on. */
 import { type Goal, type GoalDetail, GoalInput, type GoalProposal, GoalReadInput, type GoalReview } from '../../shared/goal-schema'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { WorkReadInput } from '../../shared/work-schema'
 import { evidenceTexts, refuseUnsafe } from '../work/work-rules'
 import type { WorkService } from '../work/work-service'

@@ -3,7 +3,7 @@ import { expect, test } from 'bun:test'
 import { BotRuntimes } from '../../server/bots/bot-runtimes'
 import { BotStore } from '../../server/bots/bot-store'
 import { openDatabase } from '../../server/database/database'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { detail, fakeEngine, fakeService } from '../helpers/fake-engine'
 
 test('imports all identity fields once, concurrently and across service restarts', async () => {

@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { updateSession, wireEffort } from '../../../server/engines/hermes/hermes-session-settings'
 import type { HermesSocket } from '../../../server/engines/hermes/hermes-socket'
-import { LilBotError } from '../../../shared/protocol'
+import { LilBotError } from '../../../shared/lilbot-error'
 
 type Call = [string, any]
 

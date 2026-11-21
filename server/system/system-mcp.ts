@@ -5,7 +5,7 @@
  *  says who is calling. Each tool calls the same service function the screen uses, so the rules and
  *  `bots.changed` pushes are the same, and every change a tool makes is logged against the calling bot. */
 import { ZodError } from 'zod'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { connectionCaller } from '../connections/connection-keys'
 import { type JsonRpc, rpcError, rpcResult, toolError } from '../connections/mcp-json-rpc'
 import { inputSchema, type McpTool } from './mcp-tool'

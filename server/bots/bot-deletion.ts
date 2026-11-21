@@ -1,5 +1,5 @@
 import type { BotDeleteInput } from '../../shared/bot-delete-schema'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { MemoryService } from '../memory/memory-service'
 import type { BotPrefsStore } from './bot-prefs-store'
 import type { BotRuntimes } from './bot-runtimes'

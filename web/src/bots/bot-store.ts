@@ -1,7 +1,7 @@
 /** The bot list and sections shared by the roster and the pages, plus the connection state. */
 import { create } from 'zustand'
 
-import { Bot, type Section } from '../../../shared/bot-schema'
+import type { Bot, BotSetup, Section } from '../../../shared/bot-schema'
 import { activitySince } from '../activity/activity-since'
 import { lilbot, messageOf } from '../app/lilbot-socket'
 
@@ -15,8 +15,8 @@ interface BotStore {
   error: string
   deploymentNotice?: string
   load: () => Promise<void>
-  /** Put a created or edited bot into the list without another round trip. */
-  upsert: (bot: Bot) => void
+  /** Put a created or edited bot into the list without another round trip; a bot's Setup fields stay out of the list. */
+  upsert: (bot: Bot & Partial<BotSetup>) => void
 }
 
 export const useBotStore = create<BotStore>((set, get) => ({
@@ -36,8 +36,7 @@ export const useBotStore = create<BotStore>((set, get) => ({
     }
   },
   upsert: bot => {
-    // Parsing keeps exactly the roster fields, so a field added to Bot can never be forgotten here.
-    const summary = Bot.parse(bot)
+    const { instructions, abilities, memoryConnected, ...summary } = bot
     const bots = get().bots
     set({ bots: bots.some(existing => existing.id === summary.id) ? bots.map(existing => (existing.id === summary.id ? summary : existing)) : [...bots, summary] })
   }

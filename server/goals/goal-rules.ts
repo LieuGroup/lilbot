@@ -1,6 +1,6 @@
 /** The rules every goal follows, whoever acts on it. Pure: no database, no engine. */
 import type { Goal, GoalReview, GoalState, GoalTarget, GoalTargetInput } from '../../shared/goal-schema'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { RoutineSchedule } from '../../shared/routine-schema'
 import type { WorkSummary } from '../../shared/work-schema'
 import { pointerOf } from '../work/work-rules'

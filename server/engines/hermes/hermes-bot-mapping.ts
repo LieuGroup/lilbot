@@ -1,6 +1,6 @@
 /** Legacy identity import and runtime capabilities from Hermes profiles. */
 import type { Ability, BotIdentity, BotModel, ModelCapability, ModelProvider } from '../../../shared/bot-schema'
-import { LilBotError } from '../../../shared/protocol'
+import { LilBotError } from '../../../shared/lilbot-error'
 import type { EngineBotDetail } from '../bot-engine'
 
 export const DEFAULT_PROFILE = 'default'

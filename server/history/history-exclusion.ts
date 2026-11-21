@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 
 export interface ExclusionPreview {
   already: boolean

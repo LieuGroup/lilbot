@@ -3,7 +3,7 @@ import { BotStore } from '../../server/bots/bot-store'
 import { openDatabase } from '../../server/database/database'
 import { defaultReviewSettings, MemoryReviewer } from '../../server/memory/memory-reviewer'
 import { ReviewQueue } from '../../server/memory/review-queue'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { fakeEngine } from '../helpers/fake-engine'
 
 test('a missing bot loses all queued turns, logs once, and is not retried', async () => {

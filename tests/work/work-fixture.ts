@@ -16,7 +16,7 @@ import { WorkLinks } from '../../server/work/work-links'
 import { WorkService } from '../../server/work/work-service'
 import { type StoredItem, WorkStore } from '../../server/work/work-store'
 import type { BotModel } from '../../shared/bot-schema'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 
 type Bot = { id: string; name: string }
 const BOTS: Bot[] = ['a', 'b', 'c'].map(id => ({ id, name: id.toUpperCase() }))

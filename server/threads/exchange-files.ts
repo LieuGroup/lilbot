@@ -4,7 +4,7 @@
 import { constants as C } from 'node:fs'
 import { open, unlink } from 'node:fs/promises'
 import { basename, isAbsolute, normalize, relative } from 'node:path'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { MAX_BYTES, MAX_FILES, openFolder, writeAttachment } from '../attachments/attachment-files'
 import type { ThreadFiles } from './thread-files'
 

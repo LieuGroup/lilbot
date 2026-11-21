@@ -2,7 +2,7 @@
  *  point, says each next point (to all or to named members) and closes it with an outcome; a member attaches files to
  *  its reply; anyone in the group reads its status. Rounds run through the outbox (`group-rounds.ts`), endings through
  *  `group-end.ts`. The caller is always the key's bot. */
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { type BotThread, GroupInput } from '../../shared/thread-schema'
 import { checkFiles, stageFiles } from './exchange-files'
 import type { GroupEnding, GroupHost } from './group-end'

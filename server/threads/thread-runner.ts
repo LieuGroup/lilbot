@@ -1,7 +1,7 @@
 /** The durable outbox: runs each delivery in its bot's hidden session, keeps the exchange's status, and records what
  *  comes back. Transport failures retry the same engine admission, never a fresh turn. */
 import type { ChatItem } from '../../shared/chat-schema'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { backgroundFailure } from '../background'
 import { botLine } from '../devices/origin-line'
 import type { RoutineOptions } from '../engines/bot-engine'

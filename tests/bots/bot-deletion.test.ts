@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { existsSync } from 'node:fs'
 import { mkdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { fakeService } from '../helpers/fake-engine'
 
 for (const files of ['archive', 'delete'] as const) {

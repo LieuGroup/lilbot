@@ -1,6 +1,6 @@
 /** Handing work to other bots from LilBot's MCP server: one task per bot, several at once, with files both ways.
  *  Built on the same exchanges as `ThreadService.ask`; control over them is `delegation-control.ts`. */
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { AttachInput, DelegateInput } from '../../shared/thread-schema'
 import { type CopiedFile, checkFiles, copyFile, removeCopy, stageFiles } from './exchange-files'
 import { THREAD_LIMITS } from './thread-limits'

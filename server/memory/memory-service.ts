@@ -1,7 +1,8 @@
 /** LilBot's memory, engine-neutral: what may be saved, who sees what, and what a bot is shown at
  *  the start of a turn. An engine adapter (the Hermes memory provider) only calls these. */
+
+import { LilBotError } from '../../shared/lilbot-error'
 import { defaultScope, factText, type MemoryFact, type MemoryKind, type MemoryScope } from '../../shared/memory-schema'
-import { LilBotError } from '../../shared/protocol'
 import { memoryRefusal } from './memory-safety'
 import type { MemoryStore } from './memory-store'
 

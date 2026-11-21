@@ -4,7 +4,7 @@ import type { Database } from 'bun:sqlite'
 
 import { Avatar, defaultAvatar } from '../../shared/avatar'
 import type { BotPrefs, Section } from '../../shared/bot-schema'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 
 interface PrefsRow {
   bot_id: string

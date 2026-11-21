@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { WorkCheckRunner } from '../../server/work/work-check-runner'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { check, finish, fixture, proof, refusal, saw } from './work-check-fixture'
 
 test('a level 2 item is not done when its owner finishes: another bot LilBot chose checks it in a hidden session', async () => {

@@ -1,5 +1,5 @@
 /** Memory setup belongs to the bot service, with stable ids on the app side of the binding. */
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { backgroundFailure } from '../background'
 import type { MemoryConnection } from '../engines/bot-engine'
 import type { MemoryService } from '../memory/memory-service'

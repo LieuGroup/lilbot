@@ -1,7 +1,7 @@
 /** Exchanges between bots: asking (`ask`, for sessions that loaded plug-in 0.9.x through the engine API), reading (bots and
  *  Oscar), and stopping (the delegating bot or Oscar). Running the deliveries is `thread-runner.ts`; the delegation tools on
  *  LilBot's MCP server are `delegation-service.ts`. Given a group host, it also runs temporary groups (`group-service.ts`). */
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { type BotThread, ThreadAsk } from '../../shared/thread-schema'
 import { readAttachment } from '../attachments/attachment-files'
 import { backgroundFailure } from '../background'

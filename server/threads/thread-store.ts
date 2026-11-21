@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { BotThread, ThreadMessage } from '../../shared/thread-schema'
 import { THREAD_LIMITS } from './thread-limits'
 

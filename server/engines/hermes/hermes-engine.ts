@@ -2,7 +2,7 @@
 import type { ActivityEvent } from '../../../shared/activity-schema'
 import type { BotIdentity, BotModel } from '../../../shared/bot-schema'
 import type { ChatEvent } from '../../../shared/chat-schema'
-import { LilBotError } from '../../../shared/protocol'
+import { LilBotError } from '../../../shared/lilbot-error'
 import type { ActivityCursor, BotEngine, ChatOptions, McpConnection, MemoryConnection, ReviewOptions, RuntimeBinding, RuntimeIdentity, SessionChange } from '../bot-engine'
 import { watchHermesActivity } from './hermes-activity'
 import { adapterHash, applied, hashOf } from './hermes-applied'

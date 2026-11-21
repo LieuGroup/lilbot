@@ -17,7 +17,7 @@ import { MemoryStore } from '../../server/memory/memory-store'
 import { ReviewQueue } from '../../server/memory/review-queue'
 import type { BotIdentity, ModelProvider } from '../../shared/bot-schema'
 import type { ChatEvent } from '../../shared/chat-schema'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 
 export const bot: BotIdentity = { id: 'b1', name: 'Bot One', function: '', model: null, reasoningEffort: null, isDefault: false, permissionMode: 'full-access' }
 export const detail: EngineBotDetail = { ...bot, instructions: '', abilities: [], memoryConnected: false }

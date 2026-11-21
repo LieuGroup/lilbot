@@ -3,7 +3,7 @@ import { openChat } from '../../../server/engines/hermes/hermes-chat'
 import type { HermesSocket } from '../../../server/engines/hermes/hermes-socket'
 import type { SpareSockets } from '../../../server/engines/hermes/hermes-spare-sockets'
 import type { ChatEvent } from '../../../shared/chat-schema'
-import { LilBotError } from '../../../shared/protocol'
+import { LilBotError } from '../../../shared/lilbot-error'
 
 const notFound = () => new LilBotError('hermes_not_found', 'Hermes refused the request (not found).')
 

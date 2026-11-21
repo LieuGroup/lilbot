@@ -1,6 +1,6 @@
 /** Switches a stored conversation to another model or reasoning effort from its next message, through `session.mutate`.
  *  Hermes keeps a change made during a turn and applies it at the turn's end. */
-import { LilBotError } from '../../../shared/protocol'
+import { LilBotError } from '../../../shared/lilbot-error'
 import type { SessionChange } from '../bot-engine'
 import { DEFAULT_PROFILE } from './hermes-bot-mapping'
 import { HermesSocket } from './hermes-socket'

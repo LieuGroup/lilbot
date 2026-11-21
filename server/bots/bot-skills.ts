@@ -1,6 +1,6 @@
 /** What the skills screens do: the library as one bot sees it, that bot's own switches, and each engine's
  *  "Include this engine's skills" switch, which applies to every bot. */
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { SkillEngine } from '../../shared/skills-schema'
 import { backgroundFailure } from '../background'
 import type { BotEngine } from '../engines/bot-engine'

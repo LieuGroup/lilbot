@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { Routine, RoutineCreate, RoutineRun } from '../../shared/routine-schema'
 import { nextRun, scheduleText } from './routine-schedule'
 

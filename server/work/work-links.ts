@@ -1,6 +1,6 @@
 /** How other work hangs on the board: work handed to another bot inside an item becomes that bot's child item, a
  *  stopped exchange drops it, and a deleted bot's unfinished items are dropped. Nothing is ever removed. */
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { WorkOrigin } from '../../shared/work-schema'
 import type { WorkAnswers } from './work-answers'
 import { isFinal, titleOf } from './work-rules'

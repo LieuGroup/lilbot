@@ -1,6 +1,6 @@
 /** One preparation flight per bot. A bot whose preparation fails settles as unavailable and is tried
  *  again after growing pauses; nothing stays pending and one bot's failure never stops another's. */
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { BotRecord } from './bot-store'
 
 const RETRY_MS: readonly number[] = [5_000, 15_000, 45_000, 120_000]
