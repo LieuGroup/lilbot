@@ -2,7 +2,8 @@
  *  Decided by the session, never by time: a webhook session and the sessions the engine continued it in stay narrow for
  *  as long as they exist, whether the run is under way, settled, or the engine works on its transcript later (Hermes'
  *  background review forks share the session's id). A call that names its session (memory, plug-ins) is looked up; an
- *  MCP call carries none, so it is matched to its own tool start (`CallingChats.starts`, by its arguments or request id).
+ *  MCP call carries none, so it is matched to exactly one tool start, its own (`CallingChats.take`: the oldest one with its
+ *  arguments or request id that no other call has taken).
  *  It fails closed: a call that cannot be placed, or whose session's lineage cannot be read, counts as a webhook run's.
  *  Calls of a bot that never had a webhook run are never held. */
 import type { WebhookCapability } from '../../shared/webhook-schema'
@@ -15,10 +16,7 @@ const FRESH_MS = 15_000
 /** What a session that cannot be placed may do: nothing beyond the narrow set. */
 const UNPLACED: WebhookCapability[] = []
 
-/** What every one of the runs may do. */
-const common = (lists: WebhookCapability[][]) => lists.reduce((all, list) => all.filter(item => list.includes(item)), lists[0] ?? [])
-
-export function webhookCallers(store: Pick<WebhookStore, 'runForChat' | 'hasRuns'>, rootOf: SessionRoot, calls: Pick<CallingChats, 'starts' | 'waitMs'>) {
+export function webhookCallers(store: Pick<WebhookStore, 'runForChat' | 'hasRuns'>, rootOf: SessionRoot, calls: Pick<CallingChats, 'take' | 'waitMs'>) {
   /** The session's webhook run (null: none), also after the engine compressed it; undefined while its lineage is unreadable. */
   const runOf = (botId: string, chatId: string) => {
     const direct = store.runForChat(botId, chatId)
@@ -47,11 +45,8 @@ export function webhookCallers(store: Pick<WebhookStore, 'runForChat' | 'hasRuns
       const requestId = typeof args.requestId === 'string' ? args.requestId : null
       const asked = Date.now()
       for (;;) {
-        const own = calls.starts(botId, tool, asked - FRESH_MS).filter(start => start.args === key || (requestId !== null && start.requestId === requestId))
-        if (own.length) {
-          const allowed = own.map(start => forChat(botId, start.chatId)).filter(list => list !== null)
-          return allowed.length ? common(allowed) : null
-        }
+        const own = calls.take(botId, tool, asked - FRESH_MS, key, requestId)
+        if (own !== null) return forChat(botId, own)
         if (Date.now() - asked >= calls.waitMs) {
           console.warn(`[webhook-session] ${tool}: no tool start seen; treated as a webhook run's call`)
           return UNPLACED

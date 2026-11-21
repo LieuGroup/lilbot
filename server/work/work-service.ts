@@ -90,14 +90,14 @@ export class WorkService {
     refuseUnsafe([input.title, input.done, input.question, input.result, input.reason, ...(input.evidence ?? []).flatMap(evidenceTexts)])
     if (this.checks.isCheckChat(chatId)) throw new LilBotError('work_check_session', 'This session is a check: give your verdict, do not open or report on items here.')
     const session = this.host.session(callerId, chatId)
-    webhookRefusal(session.origin, input)
+    webhookRefusal(session.origin, input, this.store, callerId)
     const [checkers, checkModel] = input.status === 'done' ? await Promise.all([this.host.checkers(), this.host.checkModel(callerId)]) : [[], null]
     const { saved, created } = this.store.db.transaction(() => {
       const opened = input.itemId ? null : this.open(caller, input, chatId, session)
       const item = this.store.get(input.itemId ?? opened!.id)
       if (!item) throw new LilBotError('work_missing', 'No work item has that id.')
       if (item.ownerId !== callerId) throw new LilBotError('work_forbidden', 'Only the bot that owns an item reports on it.')
-      webhookRefusal(session.origin, input, item)
+      webhookRefusal(session.origin, input, this.store, callerId, item)
       const unchanged = { saved: { item, asked: null, ended: null }, created: false }
       if (isFinal(item.status) && input.status === item.status) return unchanged
       // While its check is open the owner's work stays as it was checked; the report that finished it is a retry.

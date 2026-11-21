@@ -92,3 +92,37 @@ test('a run reads files and folders in its own folder, never outside it', async 
   expect((await f.call('b1', 'lilbot_workspace_read', { path: `../${other.id}` })).error).toBeDefined()
   expect((await f.call('b1', 'lilbot_workspace_read', { path: '/etc/passwd' })).error).toBeDefined()
 })
+
+test('300 waiting messages: Oscar’s next message carries only the newest three, each cut, and the count; all are taken', async () => {
+  const f = await withRun()
+  const add = f.database.query("INSERT INTO webhook_runs (id, webhook_id, bot_id, created_at, status, message, message_state) VALUES (?, ?, 'b1', ?, 'completed', ?, 'shown')")
+  for (let n = 0; n < 300; n++) add.run(`old-${n}`, f.hook.id, 10 + n, `Message ${n} ${'x'.repeat(4000)}`)
+  const note = f.webhookRuns.messages.pending('b1')!
+  expect(note.text.length).toBeLessThan(5_000)
+  expect(note.text).toContain('297 earlier webhook messages')
+  expect(note.text).toContain('Message 299')
+  expect(note.text).not.toContain('Message 296 ')
+  note.taken()
+  expect(f.webhookRuns.messages.pending('b1')).toBeNull()
+})
+
+test('a webhook leaves its bot at most five messages a day, whatever its runs', async () => {
+  const f = await withRun()
+  const add = f.database.query("INSERT INTO webhook_runs (id, webhook_id, bot_id, created_at, status) VALUES (?, ?, 'b1', ?, 'running')")
+  for (let n = 0; n < 6; n++) add.run(`run-${n + 2}`, f.hook.id, Date.now())
+  for (let n = 0; n < 5; n++) f.webhookRuns.messages.send(`run-${n + 2}`, `News ${n}`)
+  expect(() => f.webhookRuns.messages.send('run-7', 'One more')).toThrow('5 messages today')
+})
+
+test('every bot reads a webhook run’s item text fenced as outside data; other items stay plain', async () => {
+  const f = await withRun()
+  const plain = (await f.call('b1', 'lilbot_work', { requestId: 'p', title: 'Plain task', kind: 'note' })).data
+  expect(plain.title).toBe('Plain task')
+  f.callFrom(RUN_CHAT)
+  const fromRun = (await f.call('b1', 'lilbot_work', { requestId: 'r', title: 'Label issue 7', kind: 'note' })).data
+  f.callFrom('b1-main')
+  const listed = (await f.call('b1', 'lilbot_work_list', {})).data.items as { id: string; title: string }[]
+  expect(listed.find(item => item.id === fromRun.id)?.title).toContain('<webhook-work-item>')
+  expect(listed.find(item => item.id === plain.id)?.title).toBe('Plain task')
+  expect((await f.call('b1', 'lilbot_work_list', { itemId: fromRun.id })).data.title).toContain('<webhook-work-item>')
+})

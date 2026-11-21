@@ -79,3 +79,12 @@ test('plug-in calls are judged by the session they name, for as long as it exist
   expect(refusalFor(f.webhookRuns.callers.forChat('b1', RUN_CHAT), 'skill_manage', [])).toContain('No webhook run can use it')
   expect(refusalFor(f.webhookRuns.callers.forChat('b1', 'b1-main'), 'skill_manage', [])).toBeNull()
 })
+
+test('each call is matched to one start: a run’s identical call refuses only itself, and an unreported one cannot pass on another’s start', async () => {
+  const f = await withRun()
+  f.calls.saw('b1', RUN_CHAT, 'mcp__lilbot_system__lilbot_about', {}, 'run-call')
+  f.calls.saw('b1', 'b1-main', 'mcp__lilbot_system__lilbot_about', {}, 'main-call')
+  expect((await f.call('b1', 'lilbot_about', {}, false)).error).toContain('A webhook run cannot use lilbot_about')
+  expect((await f.call('b1', 'lilbot_about', {}, false)).data.you.id).toBe('b1')
+  expect((await f.call('b1', 'lilbot_about', {}, false)).error).toContain('A webhook run cannot use lilbot_about')
+})

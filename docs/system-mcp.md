@@ -255,8 +255,8 @@ marks a `lilbot_work_list` call with `mine: false`, `goals`, `goalId` or another
 matched to its session (the bot's own list and items answer at once).
 
 Before a call runs, `runRefusal` asks `webhooks/webhook-callers.ts` which session made it, by the session and never by
-time: only for a bot that has had a webhook run, the call is matched to its own `tool.start` report (`CallingChats.starts`,
-by arguments or request id, waiting up to 5 seconds). A webhook run's session, or one the engine continued it in, gives
+time: only for a bot that has had a webhook run, the call is matched to exactly one `tool.start` report, its own
+(`CallingChats.take`: the oldest with its arguments or request id that no other call took, waiting up to 5 seconds). A webhook run's session, or one the engine continued it in, gives
 that webhook's groups for as long as it exists; another session's call passes; a call never seen, or an unreadable
 lineage, counts as a webhook run's (it fails closed). `tools/list` carries no session, so a narrow run still sees every
 tool's listing line; a refusal comes back as an ordinary result (`{"refused": ...}`) saying why, never as a tool error,

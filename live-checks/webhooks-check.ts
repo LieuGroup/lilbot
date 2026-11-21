@@ -147,7 +147,7 @@ try {
   assert.deepEqual(narrow.fetched, [], 'a narrow run fetched a page')
   assert.ok(frames.some(({ frame }) => frame.event === 'webhooks.changed'))
   console.log(
-    `ok: a narrow run had no web tools, read its folder, finished its work item, asked Oscar, left its bot a message and was refused lilbot_bot_create, a computer, lilbot_about and every bot's items; toolsets ${narrow.toolsets.join(', ')}; ${narrow.tools.length} tools; usage ${JSON.stringify(narrow.usage)}`
+    `ok: a narrow run had no web tools, read its folder, finished its work item, asked Oscar, left its bot a message and was refused lilbot_bot_create, a computer, lilbot_about and every bot's items; toolsets ${narrow.toolsets.join(', ')}; ${narrow.tools.length} tools, beyond LilBot's own server: ${narrow.tools.filter(name => !name.startsWith('mcp__lilbot_system__')).join(', ')}; usage ${JSON.stringify(narrow.usage)}`
   )
   const message = (db.query('SELECT message FROM webhook_runs WHERE id = ?').get(run.id) as { message: string | null }).message
   const after = await afterRun({ call, db, token, port, botId: bot.id, nativeId, frames }, { id: run.id, chatId: run.chatId, message })

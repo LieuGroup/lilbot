@@ -53,6 +53,8 @@ interface Seen {
   requestId: string | null
   at: number
   claimed: boolean
+  /** Taken by a gate (`take`), apart from `claimed`: one call is matched by the gate and by `find`. */
+  gated: boolean
 }
 
 export const NOT_SEEN = 'LilBot could not tell which of your conversations made this call. Make the same call again in a moment, from your own conversation (not a sub-agent).'
@@ -69,7 +71,7 @@ export class CallingChats {
     for (const [i, call] of called(tool, args).entries()) {
       if (!call.name.includes('lilbot_')) continue
       const requestId = typeof call.args.requestId === 'string' ? call.args.requestId : null
-      const entry = { botId, chatId, tool: call.name, args: argsKey(call.args), requestId, at: now, claimed: false }
+      const entry = { botId, chatId, tool: call.name, args: argsKey(call.args), requestId, at: now, claimed: false, gated: false }
       const key = callId ? `${botId}\n${callId}\n${i}\n${entry.tool}\n${entry.args}` : null
       if (!key || !this.seen.some(s => s.key === key)) this.seen.push({ ...entry, key })
     }
@@ -95,6 +97,15 @@ export class CallingChats {
       }
       await Bun.sleep(50)
     }
+  }
+
+  /** For a gate: the session of this call's own start, the oldest start of `tool` since `since` with these arguments
+   *  (`argsKey`) or request id that no gate has taken, taken now. Null while none is seen. */
+  take(botId: string, tool: string, since: number, args: string, requestId: string | null): string | null {
+    const own = this.seen.find(s => !s.gated && s.botId === botId && s.at >= since && names(s.tool, tool) && (s.args === args || (requestId !== null && s.requestId === requestId)))
+    if (!own) return null
+    own.gated = true
+    return own.chatId
   }
 
   /** The bot's sessions that started a call of `tool` since `since`, newest first, with the arguments as `argsKey` gives

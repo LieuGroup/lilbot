@@ -71,3 +71,11 @@ test('dropping a webhook run’s working item ends its turn and tells no session
   expect(w.interrupted).toEqual([{ botId: 'a', chatId: RUN_CHAT }])
   expect(w.delivered).toEqual([])
 })
+
+test('a webhook run links no goal and opens at most three items; a retry of one it opened still answers', async () => {
+  const w = withRun()
+  await expect(w.act({ title: 'For the goal', kind: 'note', goalId: 'g1' })).rejects.toThrow('does not work for goals')
+  for (const requestId of ['i1', 'i2', 'i3']) await w.work.act('a', { requestId, title: `Item ${requestId}`, kind: 'note' })
+  await expect(w.act({ title: 'One more', kind: 'note' })).rejects.toThrow('at most 3 items')
+  expect((await w.work.act('a', { requestId: 'i3', title: 'Item i3', kind: 'note' })).title).toBe('Item i3')
+})

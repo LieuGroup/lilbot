@@ -63,8 +63,12 @@ export async function afterRun(c: Context, run: Run) {
   assert.ok(history.includes(`webhook-message:${run.id}`), 'the message is not shown in the main conversation')
   assert.ok(!history.includes('webhook-run-message'), 'the message ran as a turn in the main conversation')
 
-  // 4. Oscar's next message: the main conversation's tool passes (matched to its own start) and the bot gets the message,
+  // 4. Oscar's next message, with 300 older messages also waiting (what one leaked address leaves in 15 hours without the
+  //    daily cap): it still goes through, its tool passes (matched to its own start), and the bot gets only the newest few,
   //    which the after-chat review never sees.
+  const hook = (c.db.query('SELECT webhook_id AS id FROM webhook_runs WHERE id = ?').get(run.id) as { id: string }).id
+  const flood = c.db.query("INSERT INTO webhook_runs (id, webhook_id, bot_id, created_at, status, message, message_state) VALUES (?, ?, ?, ?, 'completed', ?, 'shown')")
+  for (let n = 0; n < 300; n++) flood.run(`flood-${n}`, hook, c.botId, 1000 + n, `Flood ${n} ${'x'.repeat(4000)}`)
   const sent = Date.now()
   await c.call('chat.send', { chatId: main, text: 'Call lilbot_section_create once with the name "Main check", then reply done.' })
   await waitFor(
@@ -76,9 +80,11 @@ export async function afterRun(c: Context, run: Run) {
   assert.ok(created, "the main conversation's lilbot_section_create was refused")
   const started = c.frames.find(({ at, frame }) => at > sent && frame.data?.type === 'tool.started' && String(frame.data.name).includes('section_create'))
   assert.equal((c.db.query('SELECT message_state AS s FROM webhook_runs WHERE id = ?').get(run.id) as { s: string }).s, 'read')
+  assert.equal((c.db.query("SELECT COUNT(*) AS n FROM webhook_runs WHERE id LIKE 'flood-%' AND message_state = 'read'").get() as { n: number }).n, 300)
+  c.db.query("DELETE FROM webhook_runs WHERE id LIKE 'flood-%'").run()
   const reviewed = c.db.query('SELECT user_text AS text FROM review_turns WHERE bot_id = ? AND chat_id = ?').all(c.botId, main) as { text: string }[]
   assert.ok(reviewed.length > 0, "Oscar's turn did not reach the review queue")
-  assert.ok(!reviewed.some(row => row.text.includes('webhook-run-message') || (run.message && row.text.includes(run.message))), 'the message reached the memory review')
+  assert.ok(!reviewed.some(row => /webhook-run-message|Flood \d/.test(row.text) || (run.message && row.text.includes(run.message))), 'a message reached the memory review')
 
   // 5. Nothing came from the run's session meanwhile: no skill, no computer request, no change but the main one's.
   assert.equal(skills(), skillsBefore, 'a skill was written after the run')

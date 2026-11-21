@@ -1296,9 +1296,11 @@ signature scheme, and an address. Any sender may call one (Oscar, 2026-11-20).
   answer could. Skills stay readable (`skills_list`, `skill_view`): Hermes adds the skills plug-in back, and
   `lilbot-work` tells the run how to use the board. The folder read covers `attachments/`, `exchanges/` and `groups/`
   too. The bot's note (its system prompt, with the names of the computers) is the same in every session.
-- Work (`work/webhook-items.ts`): a run reports only on the items its own run opened; it names no check level, so its
-  items get their kind's level, and an item a bot would check (level 2) is checked by Oscar instead: a checker repeats
-  the owner's commands and opens its links, which the run wrote. An item of a webhook run never resumes the run's
+- Work (`work/webhook-items.ts`): a run opens at most three items and reports only on those; it names no check level and
+  links no goal, so its items get their kind's level, and an item a bot would check (level 2) is checked by Oscar
+  instead: a checker repeats the owner's commands and opens its links, which the run wrote. Every bot reads the text of a
+  webhook run's items (title, done, question, result, drop reason, evidence) fenced as `<webhook-work-item>`, wherever it
+  appears in `lilbot_work` and `lilbot_work_list` answers (lists, an item in full, its children, a goal's items). An item of a webhook run never resumes the run's
   session (`work-answers.ts`): Oscar's answer or send-back goes to the bot's main conversation with the item fenced as
   `<webhook-work-item>`; a drop ends a running turn and tells no session; a failed bot check (an older item) tells none.
 - **Decided by the session, never by time** (#12 review, finding 1): a webhook run's session, and every session the
@@ -1314,8 +1316,9 @@ signature scheme, and an address. Any sender may call one (Oscar, 2026-11-20).
   - LilBot refuses at the call what a run's session may not do (`webhooks/webhook-callers.ts`), because Hermes adds the
     computers and skills plug-ins back to any session and LilBot's own server lists every tool (`tools/list` has no
     session). A call that names its session is looked up: the memory adapter's, and the computers and skills
-    adapters', which send Hermes' `session_id` (`x-lilbot-session`). An MCP call is matched to its own tool start
-    (`CallingChats.starts`, by its arguments or request id, waiting up to 5 seconds). A call that cannot be placed (no
+    adapters', which send Hermes' `session_id` (`x-lilbot-session`). An MCP call is matched to exactly one tool start,
+    its own (`CallingChats.take`: the oldest one with its arguments or request id that no other call took, waiting up
+    to 5 seconds), so a run's identical call cannot get Oscar's refused, nor pass on his start. A call that cannot be placed (no
     start seen, no session named, an unreadable lineage) counts as a webhook run's: it fails closed. A bot that never
     had a webhook run is never held. Every `lilbot_*` tool is in `RUN_TOOLS` or a group (`system/run-access.ts`,
     tested). The T3 bridge refuses its tools without `coding`; the engine API refuses plug-in computer tools without
@@ -1328,15 +1331,30 @@ signature scheme, and an address. Any sender may call one (Oscar, 2026-11-20).
   - Other sessions: a webhook run never makes Oscar's calls wait a fixed time. For a bot that has had webhook runs, a
     main-conversation call outside the narrow set waits only until its own start is reported (usually already there)
     and is refused, retryably, only when none is seen in 5 seconds, as `lilbot_work`'s own matching already does (#174).
+    Measured: 1 to 5 ms with the chat open in a browser, 0.75 to 1 s without (the activity observer polls every second),
+    for good once a bot has had a webhook run. A sub-agent's calls of those tools report no start of their own and are
+    refused after 5 seconds.
     An MCP server entry of its own for webhook sessions would remove the matching, but Hermes gives every enabled
     server to every normal session and cannot enable one for some sessions only (`_merge_mcp_servers`), so it would
     change every normal session.
-- The run's message (`webhook-messages.ts`, `lilbot_webhook_message`, matched to its run by `requestId`): once per run,
-  at most 4,000 characters, checked like an event (both scans), saved on the run. It never starts a turn: it is shown
+- The run's message (`webhook-messages.ts`, `lilbot_webhook_message`, matched to its run by `requestId`): once per run
+  and at most five per webhook a day, at most 4,000 characters, checked like an event (both scans), saved on the run. It never starts a turn: it is shown
   as a `webhook message` line in the bot's main conversation (the bot turns unread; state `shown`), and the bot gets it
   only with Oscar's next message there, as model-only text after the origin line (`TurnNotes`, state `read`): a LilBot
-  notice and the message fenced as `<webhook-run-message>`. Both memory paths drop these fences before a review sees the
+  notice and the message fenced as `<webhook-run-message>`. One message of his carries only the newest three, each cut
+  to 1,000 characters, and the count of the rest (taken too, left to the Webhooks list), so waiting messages never push
+  his send past what the engine takes (Hermes refuses `api_text` over 1,000,000 characters; 300 waiting 4,000-character
+  messages did before). Both memory paths drop these fences before a review sees the
   turn (`withoutWebhookNotes`: the after-chat queue and the save before compressing).
+- Not gated: Hermes' background skill review of the bot's main conversation, after a turn that carried a webhook
+  message or Oscar's answer to a webhook item (fenced). Its skill write names the main session, as the bot's own
+  `skill_manage` does, so LilBot cannot tell which turn it reviews; turning the review off for bots with webhooks
+  (`skills.creation_nudge_interval: 0`) would change Oscar's chats, which is his call. The text reaches it fenced and
+  only after Oscar acted.
+- Production tool set (read from `~/.hermes` files, 2026-11-21): the one configured profile (`default`) enables only the
+  `lilbot-skills-v1` and `lilbot-computers-v1` plug-ins, the same two LilBot adds to every bot, so a narrow run gets the
+  same plug-in tools as on dev (`check:webhooks` prints them); its `revenuecat` and `paper` MCP servers are left out by
+  the session's toolsets.
 - Kept: the stored event string only until its run settles, but the run's own engine transcript (opened by
   `webhooks.openRun`) and its result keep what the bot saw and said.
 - Bot tools (LilBot's MCP server, the caller's own webhooks only): `lilbot_webhook_create` (request-id idempotency;
