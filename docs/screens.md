@@ -1,8 +1,7 @@
 # Screens
 
-Visual specs for the built web screens. The decided behaviour (scroll rules, menus, deletion, panel) is in
-`AGENTS.md` under "Web app"; this file holds sizes, copy and the Paper frame each screen follows. Colours, type scale
-and icon sizes follow the Stack rules in `AGENTS.md`.
+Visual specs and client behaviour for the built web screens. Core UI stack rules (shadcn/ui, AI Elements, colours, font,
+type scale, bundle budget) are in `AGENTS.md` under "Stack" and "Web app".
 
 ## Layout (`app/router.tsx`)
 
@@ -329,3 +328,181 @@ half a second after `threads.changed`). Bot and file names are plain text everyw
   download and close. The Library has its own viewer (`library/library-viewer.tsx`) with the design's details line and
   footer.
 - "Model cannot see images": a tinted note under the message with a "Change model" link to the Setup tab.
+
+## Web app behaviour
+
+Client routing, state, caching and interaction rules for the screens above.
+
+### Shell, rail, menus, details panel, avatars and model picker
+
+- Shell: on a wide screen three columns: roster, conversation, details panel. The roster search filters names and
+  functions, hidden bots included. On top, tiles, only once a bot is pinned: the primary bot with a star, then pinned
+  bots in pin order (`pinnedAt` from `bots.list`, the same on every device), sharing the width at most three to a line;
+  a pinned bot leaves its section, and a hidden one stays in Hidden. With nothing pinned, the primary is an ordinary
+  first row. Then the user's sections, then collapsed "Unassigned" and "Hidden" groups (with no sections, bots are
+  listed plainly). The group holding the open bot stays open; open groups are remembered per browser. Grouping is
+  `bots/roster-groups.ts`.
+- Rail: on a wide screen the roster collapses to a 64px rail of avatars in the same order (closed groups left out),
+  remembered per browser (`bots/roster-view.ts`); the rail is a lazy chunk. Phones never show it.
+- Bot menu (`bots/bot-menu-rules.ts` decides the items): opened from a row's or tile's "more" button or a right-click
+  on a row, tile or rail avatar. The primary bot's menu has only Mark as read/unread, Name and avatar and "Change
+  primary bot" (a submenu of the other bots; only the mark moves): it is always the first tile, so pin, section and hide
+  would change nothing, and it cannot be deleted. The engine's default bot has no Delete.
+- Delete dialog: starts from `bots.deleteDefaults.get`, read on every open; "Change defaults" closes it and opens
+  Settings on Bots; deleting the open bot returns to the app's start.
+- Details panel: each tab is the route `/bots/$botId/$tab`; `/bots/$botId` is a layout route, so the chat column stays
+  mounted and connected while tabs open, change and close. At 1280px and wider the panel opens on Activity by itself
+  unless the user closed it (remembered per browser); opening another bot keeps the open tab. On a phone it opens
+  only from the toggle and covers the chat. To add a tab: an entry in `DETAILS_TABS` (`bots/details-tabs.ts`) and a
+  lazy entry in `tabContent`, whose component takes `{ botId }` and wraps its body in `ui/panel.tsx`.
+- Avatars: ten vector cover shapes and twelve colours for cover and face. Shape and cover default from the bot's id;
+  a missing face colour reads as ink without rewriting the row. Create and the bot menu's "Name and avatar"
+  (`bots/edit-avatar-dialog.tsx`) use the same three picker rows.
+- Model picker: a pill in the composer after the attach button shows "model · Effort", or the model alone for a model
+  the engine says does not reason (`bots/model-pill.tsx`, writing to `bots/model-picker-target.ts`); it opens the Model
+  Selector menu upward (`bots/model-menu.tsx`, a lazy chunk): "Find a model" (Base UI's menu filter), models grouped by provider with a tick on the current one
+  (`ModelChoices`, shared with Setup's field), then a "Reasoning effort" row with a submenu (`bots/effort-choices.tsx`:
+  Default, Off, Minimal to Max for every reasoning model; "Off" hidden when `canDisableReasoning` is false, marked "if
+  the model allows" when null), and "Changes <bot>'s model and effort, from the next message." Choosing saves at once
+  with `bots.update`, also while the bot works; the pill shows a spinner meanwhile, a refusal puts the saved value back
+  with a red note in the composer. When the engine sends another level than the one chosen (`effectiveReasoningEffort`)
+  the pill shows an info mark and the row reads "<chosen>, sent as <sent>"; never for Off against Default, which the
+  engine reports alike (`bots/reasoning-effort.ts`). A switch the engine holds back (`confirm_required`) keeps the saved
+  choice and shows a plain note: "This long conversation keeps its model until New session; new conversations use the
+  new one." The saved model reads "Choose a model" in red only once `models.list` has loaded without it. The engine's
+  list is fetched once per connection (`bots/model-list.ts`). Setup shows the same model and effort (with "Sent as ..."
+  under it) and reloads when they change.
+
+### Skills (`web/src/skills/`, #137)
+
+- A "Skills" section in the Setup tab (in its lazy chunk) replaces the old read-only skills line; Abilities keeps
+  Toolsets and Connectors. `skills/skill-store.ts` reads `skills.list` for the bots on screen, again on `skills.changed`
+  and reconnect. A skill an engine's switch excludes (`excluded`) is not part of the library, so it is left out of the
+  list, the count and search, as in `bots.get`. Wording is `skills/skill-lines.ts` only (pure, tested).
+- The switch saves at once with `skills.setEnabled`; a refusal puts it back with "Could not switch <skill> off. Try
+  again." There is no form to write or edit a skill: bots write them.
+- A row opens the skill with `?skill=<name>` on `/bots/$botId`: it replaces the Setup tab's content (avatar and tabs stay)
+  as a lazy chunk; changing tab or closing the panel drops it. "Written by" comes from `origin`: a bot's name, "You",
+  "Imported" (an engine's skill, also after a bot edited it) or "LilBot".
+- Skill text is untrusted. `skills/skill-file-text.tsx` draws a `.md` file with react-markdown (no raw HTML, images
+  dropped so nothing is fetched, only http(s) links stay links and open in a new tab; SKILL.md's frontmatter is left out
+  since the name and description show above) and any other file as plain text.
+- The engine's "Include this engine's skills" switch (#140) has no approved screen yet (`needs-ui`): Paper "19 Plugged
+  in" frame 4, with rows grouped by origin, waits for Oscar. `SkillRow` is its own part so that grouping can go on top.
+
+### Routines (`web/src/routines/`, #53)
+
+- They live in the Activity tab ("Routines" card, in its lazy chunk); there is no Routines tab and no form: routines are
+  made by asking the bot. `routines/routine-store.ts` reads `routines.list` (and `goals.list` to know which routine
+  reviews a goal) for the bots on screen, again on `routines.changed`, `goals.changed` and reconnect. Wording is
+  `routines/routine-lines.ts` only (pure, tested).
+- A row opens one routine with `?routine=<id>` on `/bots/$botId`: it replaces the whole details panel (avatar and tabs
+  included) on the Activity tab, as a lazy chunk; changing tab or closing the panel drops it. The switch pauses and
+  resumes (`routines.pause`/`resume`, shown at once and put back on refusal); the bin asks first, then `routines.delete`.
+- A goal's review routine (a goal whose `routineId` is this routine) says "For your goal" and shows the goal's words. It
+  has no switch and no Delete: LilBot's goal tick puts its state back within seconds (see [goals.md](goals.md)), so a
+  control would silently undo itself. It follows the goal.
+- A run row opens its transcript with `?run=<id>`, the same column swap as an opened exchange (one of the two at a time):
+  the conversation stays mounted, `invisible` and inert. The run's chat (`routines.openRun`) is kept in the view's own
+  state, never the bot's chat slot, followed live while it runs, and closed (`chat.close`) when the view goes. Its only
+  user message is LilBot's wrapper prompt, so user messages are left out and "The routine asked" shows the routine's
+  words. A run not started yet has no transcript and is not a link.
+
+### Webhooks (`web/src/webhooks/`, #138)
+
+- A "Webhooks" section in the Activity tab, under Routines (in its lazy chunk), hidden while the bot has none or the
+  read fails (the helper door off refuses every read). No form: webhooks are made by asking the bot.
+  `webhooks/webhook-store.ts` reads `webhooks.list` for the bots on screen, again on `webhooks.changed` and reconnect
+  (`app/watched-reads.ts`, shared with routines and skills). Wording is `webhooks/webhook-lines.ts` only (pure, tested).
+- A row opens one webhook with `?webhook=<id>`, in place of the whole details panel like a routine (opening one closes
+  the other). The switch pauses and resumes (`webhooks.pause`/`resume`); the bin asks first, then `webhooks.delete`.
+- The address is never in list data, on screen, in a store or a log: "Copy" calls `webhooks.address` on the click and
+  hands it to the clipboard as a pending `ClipboardItem` (so Safari keeps the click's permission), `writeText` where
+  that is missing. The button says "Copied" or "Could not copy" for two seconds.
+- A run row opens its transcript with `?webhookRun=<id>` in the conversation column, like a routine run
+  (`routines/run-transcript.tsx`, `webhooks.openRun`): "The webhook asked" shows the task; LilBot's prompt with the
+  events is left out like a routine's. `thread`, `run` and `webhookRun` are one column view at a time (`withoutColumn`).
+- Not built, waiting for an approved design: Oscar's capability groups (`webhooks.setCapabilities`; Paper "17" frames 7
+  to 9 are drawn, not approved) and any drawing of a run's message to its bot beyond the plain `webhook message` tool
+  line the history already shows in the conversation.
+
+### Library (`web/src/library/`, #54)
+
+- The Library tab reads `library.list` for one filter (All, Media, or Files: `kinds: ['file', 'page']`, since pages are
+  listed with files) and again on `library.changed` for its bot and on reconnect, keeping as many items as were shown;
+  "Show more" reads the next page. Groups (Today, This week from Monday, Older) and every line are worked out on the
+  device, in its time zone (`library/library-lines.ts`, pure and tested).
+- An image or a page opens the viewer (a lazy chunk over the app); any other file, sound and video included, downloads
+  with the file's own name; a missing file does nothing. Thumbnails are the image itself (`<img>`, lazy).
+- Pages are bot text, never live HTML on LilBot's origin: Markdown is drawn by React with no raw HTML, images shown as
+  their words and links opening a new window; an HTML page goes into an `<iframe sandbox="">` (no scripts, forms,
+  pop-ups or same origin) whose `srcdoc` starts with a policy refusing every request but inline styles and `data:`
+  images. Both read the bytes from the download route; pages over 2 MB only download.
+- "Show in chat" opens the routine run (`?run=`) or the bot's conversation the item came from; the data names the chat,
+  not the message. A webhook run's file reads "Given in the chat" (its session is recorded as the conversation).
+- "Browse the whole workspace" opens `?folder=/<path>` on the Library tab, which replaces the whole panel like a routine
+  (`library/workspace-view.tsx`, a lazy chunk); tab links drop it. It is read-only: `library.workspace` gives names and
+  sizes, and the download route serves only given items.
+
+### Work between bots (`web/src/threads/`, #65, #135, #136)
+
+- A `tool` item with `threadId` draws as a bordered line from the bot's `threads.list` (`threads/thread-store.ts`, read
+  for the bots on screen and again half a second after `threads.changed`); an exchange not read yet, or a group, keeps
+  the plain tool line. With a `batchId` it is a handed-over task, without one an asked thread; the delegating side is
+  the first participant. Tasks of one batch share one card at the first line; the other lines draw nothing and their
+  rows hide. Wording lives in `threads/thread-lines.ts` and, for groups, `threads/group-lines.ts` only.
+- A group's line (`threads/group-line.tsx`) is drawn in the leader's and every member's conversation from that bot's
+  `threads.list`, with its state from `group` (rounds, replies, how it ended); the wording for an end other than a close
+  is LilBot's own, never the server's `end.outcome`. A group runs until `group.end` is set, whatever its status.
+- The line, the opened view, the group view (loaded from the opened view), the stop dialog and "Working together"
+  are lazy chunks; the chat's first load carries only the `ChatItem` switch, `?thread=` handling and the check whether
+  any bot has `groups`.
+- "Working together" (`threads/working-together.tsx`): the roster's top section and the rail's group slots, only while a
+  bot in `bots.list` has `groups`. Members and the leader come from each bot's `groups`; a row opens
+  `/bots/<leader>?thread=<group>`. Row states ("Leading a group", "In a group", "In a group · <activity>") are in
+  `bots/row-state.ts`: a member's live activity in `bots.list` is what it does in its group (`groups[].activity`), else
+  its usual `activity`, combined with its `groups`.
+- Opening sets `?thread=<id>` on `/bots/$botId` (tab links and the panel's auto-open keep it with `search: true`). The
+  view covers the conversation column while the conversation stays mounted, `invisible` and inert: its connection
+  and scroll position are unchanged. On a phone, opening from the details panel goes to the conversation first.
+  "Back to chat" drops the parameter; each bot button opens that bot's chat.
+- Stop (a running task's or group's line and its view) asks first, then calls `threads.cancel`; asked threads have no
+  Stop. Any participant's line can stop a group.
+- Files passed in a group, and the files its leader kept, show as chips that download through the same route as an
+  exchange's (`ThreadService.file`). A group closed before #178 has no recorded hash for its kept files, so their chips'
+  links answer "File missing or unavailable" (the files are in the leader's Library).
+- Oscar never writes in an exchange: no composer.
+
+### Conversation scroll (AI Elements' Message Scroller)
+
+- It opens at its latest message (also after a reload or resume). A sent message moves up and the reply grows below
+  it (Oscar's choice); the list follows the reply only while the reader stays at the end.
+- Only messages sent while the list is open are scroll anchors: the scroller jumps to any anchor it did not see arrive
+  (`chat/scroll-anchors.ts`). Rows are counted by position in the conversation (`ChatView.first` plus the index), and
+  each transcript load (`ChatView.load`) moves the end of what counts as arrived, so earlier parts loading above never
+  become anchors.
+- Rows are memoised and keyed by that position, so a streamed chunk redraws only the last row, an earlier part redraws
+  none below it, and a reloaded transcript keeps unchanged item objects (`reuseItems` in `history/history-view.ts`).
+- A chat this page has not shown appears from `chat.history` (a database read) while `chat.open` attaches; the message
+  box takes typing meanwhile and sends once the chat is open. The list first draws the latest 20 rows, then the
+  earlier ones in a transition that yields to typing; the view stays in place as they arrive above.
+- Queued messages show as dashed bubbles, the activity line as a shimmering Trace line (not Reasoning: we get a
+  status, not thinking text), tool use as Trace lines.
+
+### Conversation history on screen (`web/src/history/`)
+
+- The main conversation is one continuous history across sessions, built from the snapshot's `history` page; other
+  chats, such as a routine run, show only their own transcript.
+- It opens on its latest part. Scrolling within one screen of the top (or a conversation that fits the screen)
+  fetches the next earlier part with `chat.history` and its cursor, one part at a time, drawn in a transition.
+- The "Loading earlier messages" line is an overlay, never a row: the scroller keeps the reader's place only when the
+  first row is still there and has moved down, so the first row is always a message while more can load.
+- Day lines go between two rows on different local days, never above the earliest loaded row unless it is the very
+  start. The very start shows only when the server sends `start` (import complete). While the import runs, a
+  `history.changed` push for this bot, with the reader at the top, reads the earliest part again (at most every three
+  seconds) and adds only rows older than those shown.
+- New session: the header button adds a divider at once and keeps the conversation; the new session's snapshot
+  replaces it with the saved divider.
+- Reopening or reconnecting keeps earlier parts already loaded when the new latest part shares a row with them
+  (`withLatest`); rows that arrived live are replaced by their saved copies. `MessageList` is keyed by bot, so a new
+  session never remounts the scroller.

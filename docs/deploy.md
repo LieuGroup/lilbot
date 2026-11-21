@@ -5,6 +5,9 @@ The deploy rules (only `bun run deploy` restarts production, how rollback works,
 
 ## How a release is built
 
+`~/code/LilBot` and T3 worktrees are development source only: editing or pulling there does not change production.
+Nobody edits release folders.
+
 Verification records the exact commit in the checkout's Git directory; a dirty checkout runs the checks but gets no
 deploy marker. Deploy exports that commit with `git archive` (no working tree or untracked files), installs its
 locked dependencies and builds its web app in a staging folder, then renames it to `~/lilbot/releases/<commit>`. A
@@ -18,13 +21,18 @@ disconnects.
 ## Copies and status files
 
 - Database copies are in `<data>/deploy/backups/<id>/` (`lilbot.db` and `version.json`), made with SQLite's online
-  backup API, which folds committed `-wal` pages into a self-contained copy using the live database's locking/`-shm`
-  state. Restore happens with the unit stopped and removes stale WAL/SHM files. Up to a minute of data may be lost
-  (accepted).
+  backup API (never raw-copy `lilbot.db`, `-wal` and `-shm` independently), which folds committed `-wal` pages into a
+  self-contained copy using the live database's locking/`-shm` state. Restore happens with the unit stopped and removes
+  stale WAL/SHM files. Up to a minute of data may be lost (accepted). The data directory is never replaced: keys,
+  `engine-token`, `t3-grant.json`, other secrets, workspaces and engine sessions stay in place. Back up
+  `computer-server-key.pem` securely alongside the database copies.
 - The last three release folders and three database copies are kept; the active release is never pruned.
 - `<data>/deploy/job.json` records the current outcome; `history/<id>.json` keeps outcomes and masked journal lines;
-  `notice.json` holds the last failure. A healthy deploy does not erase failure history; a person may remove
-  `notice.json` after acknowledging it.
+  `notice.json` holds the last failure. `bun run deploy --status` tells the deploying bot the result on its resumed
+  turn. The last failure is a notice the app fetches on reconnect and every bot's next memory context includes; no agent
+  loop, developer bot or notification system for it. A healthy deploy does not erase failure history; a person may
+  remove `notice.json` after acknowledging it.
+- Migrations and new plug-in versions ship with a normal deploy; existing data imports after it.
 
 ## Overrides
 
@@ -58,10 +66,11 @@ database copy, and preserve every key. Only after confirming health may a person
 normal deployment. Nothing removes a stale lock automatically.
 
 The watchdog's rollback clears `compression.checkpoint_required` (#148) itself before the previous release starts
-(`rollback-profiles.ts`): a release from before memory adapter 0.13.0 cannot take the save, so a flag left on would stop
-its bots from ever shortening a long conversation. It reads the bound, non-deleted bots from the restored database and
-runs Hermes with the service unit's `HERMES_HOME`, `LILBOT_HERMES_BIN`, `LILBOT_ENV` and `PATH`; in development only on
-`dev-` profiles under the development home, in production never on them. `job.logs` gets one line with counts. If it says
+(`server/deploy/rollback-profiles.ts`): a release from before memory adapter 0.13.0 cannot take the save, so a flag left
+on would stop its bots from ever shortening a long conversation. It reads the bound, non-deleted bots from the restored
+database and runs Hermes with the service unit's `HERMES_HOME`, `LILBOT_HERMES_BIN`, `LILBOT_ENV` and `PATH`; in
+development only on `dev-` profiles under the development home, in production never on them. `job.logs` gets one line
+with counts (`[rollback] memory save flag cleared for N bots`). If it says
 some could not be checked or cleared, clear those by hand: `hermes -p <profile> config set
 compression.checkpoint_required false` (the default bot: without `-p`). During the rollback itself a cached Hermes agent may
 still run adapter 0.13.0 against the older server, which refuses its request: one turn may then stop with Hermes' own
