@@ -65,15 +65,15 @@ try {
   db.query("INSERT INTO bots(id, name, function, instructions, engine_id, engine_bot_id) VALUES ('rollback-check', 'Rollback check', '', '', 'hermes', ?)").run(profile)
   db.close()
   const key = await readFile(join(f.data, 'computer-server-key.pem'), 'utf8')
-  const services = await f.read('server/app-services.ts')
+  const main = await f.read('server/main.ts')
   assert.equal(await Bun.file(join(f.link, '.git')).exists(), false, 'Releases must be clean exports, not working trees')
   // Typechecks and tests pass; actual startup fails after a schema/data change.
-  const failing = services.replace(
-    'const activity = new ActivityService',
-    "if (process.env.LILBOT_DATA_DIR) {\ndatabase.exec(\"INSERT INTO deployment_marker VALUES ('failed version'); PRAGMA user_version=999\")\nthrow new Error('deploy-check deliberate startup failure; password=do-not-record-me')\n}\nconst activity = new ActivityService"
+  const failing = main.replace(
+    'const engine = new HermesEngine(',
+    "if (process.env.LILBOT_DATA_DIR) {\nnew (await import('bun:sqlite')).Database(join(DATA_DIR, 'lilbot.db')).exec(\"INSERT INTO deployment_marker VALUES ('failed version'); PRAGMA user_version=999\")\nthrow new Error('deploy-check deliberate startup failure; password=do-not-record-me')\n}\nconst engine = new HermesEngine("
   )
-  assert.notEqual(failing, services, 'the start-up line the broken commit edits has moved')
-  await f.edit('server/app-services.ts', failing)
+  assert.notEqual(failing, main, 'the start-up line the broken commit edits has moved')
+  await f.edit('server/main.ts', failing)
   const broken = await f.commit('test: deliberately broken startup')
   await f.verify()
   const started = Date.now()
