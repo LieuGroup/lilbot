@@ -14,6 +14,7 @@ import { WorkCheckRunner } from '../../server/work/work-check-runner'
 import { WorkLinks } from '../../server/work/work-links'
 import { WorkService } from '../../server/work/work-service'
 import { type StoredItem, WorkStore } from '../../server/work/work-store'
+import type { BotModel } from '../../shared/bot-schema'
 import { LilBotError } from '../../shared/protocol'
 
 type Bot = { id: string; name: string }
@@ -40,8 +41,10 @@ export function workFixture(options: { database?: Database; requireBot?: (id: st
     pushes: 0,
     /** The bots that could check an item now. */
     checkers: BOTS,
-    /** Check runs started: the checking bot, its prompt and run id. `finish` settles the next one. */
-    runs: [] as { botId: string; prompt: string; runId: string }[],
+    /** The different model a same-bot check runs on (null: the bot's own). */
+    checkModel: null as BotModel | null,
+    /** Check runs started: the checking bot, its prompt, run id and model. `finish` settles the next one. */
+    runs: [] as { botId: string; prompt: string; runId: string; model?: BotModel }[],
     activity: [] as [string, boolean][]
   }
   const threadStore = new ThreadStore(database)
@@ -57,6 +60,7 @@ export function workFixture(options: { database?: Database; requireBot?: (id: st
         return bot
       }),
     checkers: async () => state.checkers,
+    checkModel: async () => state.checkModel,
     callingChat: async botId => (state.chats.has(botId) ? state.chats.get(botId)! : `${botId}-main`),
     session: workSessions(threadStore, routineStore, webhookStore, (_bot, chat) => (state.roots.has(chat) ? state.roots.get(chat)! : chat)),
     libraryTitle: (botId, itemId) => state.library.get(`${botId}:${itemId}`) ?? null,
@@ -87,8 +91,8 @@ export function workFixture(options: { database?: Database; requireBot?: (id: st
   const run = { result: Promise.resolve({ status: 'completed' }) as Promise<{ status: string }> }
   const checkRuns = new WorkCheckRunner(
     work,
-    async (botId, prompt, runId, onChat) => {
-      state.runs.push({ botId, prompt, runId })
+    async (botId, prompt, runId, onChat, model) => {
+      state.runs.push({ botId, prompt, runId, model })
       onChat(`${runId}-session`)
       return run.result
     },

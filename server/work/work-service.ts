@@ -1,8 +1,8 @@
 /** What a bot does on the board, through LilBot's MCP server: open an item and report on its own items. The caller is
  *  always the authenticated bot; where the call came from is worked out from LilBot's own records, never an argument. */
+import type { BotModel } from '../../shared/bot-schema'
 import { LilBotError } from '../../shared/protocol'
 import { type WorkAsker, WorkInput, type WorkItem, type WorkOrigin, WorkReadInput } from '../../shared/work-schema'
-import { chooseChecker, NO_CHECKER, OSCAR, reviewQuestion, underItem } from './work-check-rules'
 import { WorkCheckStore } from './work-check-store'
 import { WorkChecks } from './work-checks'
 import { WorkLevelStore } from './work-levels'
@@ -19,6 +19,9 @@ export interface WorkHost {
   requireBot(id: string): Promise<Bot>
   /** The bots that could check an item now (any bot not deleted whose runtime is ready or being prepared). */
   checkers(): Promise<Bot[]>
+  /** The model the bot's own fresh check session runs on, when no other bot can check: the configured review model if it
+   *  differs from the bot's own, else null (the bot's own). */
+  checkModel(botId: string): Promise<BotModel | null>
   /** The bot's session that made this call (matched by its request id), or null. */
   callingChat(botId: string, requestId: string): Promise<string | null>
   session(botId: string, chatId: string): SessionOrigin
@@ -36,7 +39,7 @@ export interface WorkHost {
 }
 export type Actor = { by: 'bot' | 'oscar' | 'lilbot'; via: WorkOrigin | null }
 /** One report: a new definition, evidence and a move to another status, applied in that order. */
-export type Report = Pick<Partial<WorkInput>, 'done' | 'evidence' | 'requestId'> & { move?: Move; checkers?: Bot[] }
+export type Report = Pick<Partial<WorkInput>, 'done' | 'evidence' | 'requestId'> & { move?: Move; checkers?: Bot[]; checkModel?: BotModel | null }
 export type Saved = { item: StoredItem; asked: number | null; ended: number | null }
 
 export class WorkService {
@@ -81,7 +84,7 @@ export class WorkService {
     if (!input.itemId && chatId && this.checks.isCheckChat(chatId))
       throw new LilBotError('work_check_session', 'This session is a check: give your verdict, do not open items here.')
     const session = chatId ? this.host.session(callerId, chatId) : null
-    const checkers = input.status === 'done' ? await this.host.checkers() : []
+    const [checkers, checkModel] = input.status === 'done' ? await Promise.all([this.host.checkers(), this.host.checkModel(callerId)]) : [[], null]
     const { saved, created } = this.store.db.transaction(() => {
       const opened = input.itemId ? null : this.open(caller, input, chatId, session)
       const item = this.store.get(input.itemId ?? opened!.id)
@@ -93,7 +96,12 @@ export class WorkService {
       if (this.checks.byRequest(item.id, input.requestId)) return unchanged
       const open = this.checks.open(item.id)
       if (open) {
-        const who = open.by.kind === 'oscar' ? "This item waits for Oscar's check" : `LilBot asked ${open.by.name} to check this item`
+        const who =
+          open.by.kind === 'oscar'
+            ? "This item waits for Oscar's check"
+            : open.sameBot
+              ? 'LilBot started a fresh session of you to check this item'
+              : `LilBot asked ${open.by.name} to check this item`
         throw new LilBotError('work_checking', `${who}; nothing more can be reported on it until the check ends. You will hear if it comes back.`)
       }
       const change = levelChange(item, input, kind => this.levels.floor(kind, callerId))
@@ -103,7 +111,7 @@ export class WorkService {
       const starts = !input.status && opened?.fresh && (input.done || (change.checkLevel ?? item.checkLevel) === 0)
       const status = input.status ?? (starts ? 'working' : undefined)
       const move = status && { status, question: input.question, result: input.result, reason: input.reason }
-      return { saved: this.report(item, { ...input, move, checkers }, change, { by: 'bot', via: session?.origin ?? null }), created: !!opened?.created }
+      return { saved: this.report(item, { ...input, move, checkers, checkModel }, change, { by: 'bot', via: session?.origin ?? null }), created: !!opened?.created }
     })()
     this.after(saved)
     if (created && saved.item.origin.kind === 'conversation') this.host.line(saved.item)
@@ -163,7 +171,7 @@ export class WorkService {
     const level = change.checkLevel ?? item.checkLevel
     if (move)
       Object.assign(change, transition({ ...item, kind: change.kind ?? item.kind, checkLevel: level }, move, change.done ?? item.done, item.evidenceCount + entries.length, at))
-    if (change.status === 'done' && level >= 2) Object.assign(change, this.hold(item, level, report, at))
+    if (change.status === 'done' && level >= 2) Object.assign(change, this.checking.hold(item, level, report, at))
     const open = change.status && isFinal(change.status) && this.checks.open(item.id)
     if (open) this.checks.settle(open.id, 'dropped', null, null, at)
     if (change.done) log('defined', null, change.done)
@@ -174,15 +182,6 @@ export class WorkService {
     if (Object.keys(change).length || entries.length) this.store.update(item.id, change, at)
     const leaving = item.status === 'needs_oscar' && !!change.status && change.status !== 'needs_oscar'
     return { item: this.store.get(item.id)!, asked: change.status === 'needs_oscar' ? number : null, ended: leaving ? number : null }
-  }
-
-  /** A finished level 2 item waits for a second bot's check, chosen by LilBot; at level 3, or with no other bot, for
-   *  Oscar's. The choice is saved with the item's move, before any check runs. */
-  private hold(item: StoredItem, level: number, report: Report, at: number): ItemChange {
-    const excluded = underItem(item, id => this.store.children(id))
-    const bot = level === 2 ? chooseChecker(report.checkers ?? [], excluded, this.checks.checkersOf(item.id), this.checks.load()) : null
-    this.checks.add(item.id, bot ? { kind: 'bot', ...bot } : OSCAR, report.requestId ?? null, level === 2 && !bot ? NO_CHECKER : null, at)
-    return bot ? { status: 'checking', finishedAt: null } : { status: 'needs_oscar', question: reviewQuestion(level), finishedAt: null }
   }
 
   /** Once a report is saved: the bot's waiting state while an item needs Oscar, and the push to the board. */

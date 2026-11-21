@@ -138,6 +138,14 @@ test('every new session gets the effort: chats, routine runs and bot threads; a 
   expect(f.created.slice(3).map(session => session.reasoningEffort)).toEqual([undefined, undefined])
 })
 
+test('a run given another model starts without the bot’s effort, like the memory review', async () => {
+  const f = await withMainChat()
+  await f.service.updateBot({ botId: 'b1', reasoningEffort: 'xhigh' })
+  await f.service.runRoutine('b1', 'task', { runId: 'own', onChat: () => {} })
+  await f.service.runRoutine('b1', 'task', { runId: 'other', model: PLAIN, onChat: () => {} })
+  expect(f.created.slice(-2).map(session => session.reasoningEffort)).toEqual(['xhigh', undefined])
+})
+
 test('what the engine says it sends is exposed for the main conversation only, and a change is pushed once', async () => {
   const f = fakeService({})
   f.models.value = providers

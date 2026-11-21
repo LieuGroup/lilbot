@@ -1,5 +1,6 @@
 /** All SQL for the checks of finished items and the hidden sessions checking bots work in. Rows are never deleted. */
 import type { Database } from 'bun:sqlite'
+import type { BotModel } from '../../shared/bot-schema'
 import type { WorkCheck } from '../../shared/work-check-schema'
 
 type Row = {
@@ -14,6 +15,8 @@ type Row = {
   note: string | null
   request_id: string | null
   verdict_request: string | null
+  same_bot: number
+  checker_model: string | null
   created_at: number
   settled_at: number | null
 }
@@ -22,7 +25,7 @@ export type StoredCheck = WorkCheck & { id: string; itemId: string; requestId: s
 
 /** The latest check of each item, as one JSON column for the item queries. */
 export const LATEST_CHECK = `(SELECT json_object('round', c.round, 'checker_kind', c.checker_kind, 'checker_id', c.checker_id, 'checker_name', c.checker_name,
-  'state', c.state, 'text', c.text, 'note', c.note, 'created_at', c.created_at, 'settled_at', c.settled_at) FROM work_checks c WHERE c.item_id = w.id ORDER BY c.round DESC LIMIT 1)`
+  'state', c.state, 'text', c.text, 'note', c.note, 'same_bot', c.same_bot, 'checker_model', c.checker_model, 'created_at', c.created_at, 'settled_at', c.settled_at) FROM work_checks c WHERE c.item_id = w.id ORDER BY c.round DESC LIMIT 1)`
 
 export function checkOf(row: Omit<Row, 'id' | 'item_id' | 'request_id' | 'verdict_request'>): WorkCheck {
   return {
@@ -31,6 +34,8 @@ export function checkOf(row: Omit<Row, 'id' | 'item_id' | 'request_id' | 'verdic
     state: row.state,
     text: row.text,
     note: row.note,
+    sameBot: !!row.same_bot,
+    model: row.checker_model ? (JSON.parse(row.checker_model) as BotModel) : null,
     at: row.created_at,
     settledAt: row.settled_at
   }
@@ -40,13 +45,15 @@ const stored = (row: Row): StoredCheck => ({ ...checkOf(row), id: row.id, itemId
 export class WorkCheckStore {
   constructor(readonly db: Database) {}
 
-  /** Starts the next check of an item, by a bot or by Oscar. */
-  add(itemId: string, by: WorkCheck['by'], requestId: string | null, note: string | null, at: number): StoredCheck {
+  /** Starts the next check of an item, by a bot (`same` its own owner, on `model`) or by Oscar. */
+  add(itemId: string, by: WorkCheck['by'], requestId: string | null, note: string | null, at: number, same?: { model: BotModel | null }): StoredCheck {
     const { round } = this.db.query('SELECT coalesce(max(round), 0) + 1 AS round FROM work_checks WHERE item_id = ?').get(itemId) as { round: number }
     const id = `${itemId}:check:${round}`
     this.db
-      .query("INSERT INTO work_checks(id, item_id, round, checker_kind, checker_id, checker_name, state, note, request_id, created_at) VALUES (?,?,?,?,?,?,'checking',?,?,?)")
-      .run(id, itemId, round, by.kind, by.id, by.name, note, requestId, at)
+      .query(
+        "INSERT INTO work_checks(id, item_id, round, checker_kind, checker_id, checker_name, state, note, request_id, same_bot, checker_model, created_at) VALUES (?,?,?,?,?,?,'checking',?,?,?,?,?)"
+      )
+      .run(id, itemId, round, by.kind, by.id, by.name, note, requestId, same ? 1 : 0, same?.model ? JSON.stringify(same.model) : null, at)
     return this.get(id)!
   }
   get(id: string): StoredCheck | null {

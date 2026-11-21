@@ -46,6 +46,8 @@ export interface RoutineOptions {
   origin?: TurnOrigin
   /** Start the run's session with only these toolsets (webhook runs, `server/webhooks/webhook-access.ts`). */
   toolsets?: string[]
+  /** The model a new session runs on (a same-bot check, see `server/work/`); without it, the bot's own. */
+  model?: BotModel
 }
 
 export interface ChatOptions {

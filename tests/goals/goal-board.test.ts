@@ -48,7 +48,7 @@ test('a review is a work item with the reading as evidence, checked as a figure;
   expect(review.evidence[0].pointer).toMatchObject({ value: '7', source: '/w/a/notes.txt' })
   expect(review.result).toContain('Number: lines in notes.txt is 7 (previous 3, baseline 3, target 10')
   expect(review.result).toContain('Work: Wrote the lines I said (items for the goal: 0 done, 1 under way')
-  f.state.checkers = []
+  f.work.levels.set('figure', undefined, 3)
   const met = await f.progress(goal.id, 10)
   expect(met.latest).toMatchObject({ met: true, previous: 7, work: { open: 1 } })
   await f.reviews.tick()

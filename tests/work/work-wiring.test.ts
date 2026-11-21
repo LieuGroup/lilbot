@@ -12,10 +12,11 @@ import { CallingChats } from '../../server/threads/calling-chats'
 import { ThreadStore } from '../../server/threads/thread-store'
 import { WebhookStore } from '../../server/webhooks/webhook-store'
 import { WorkBoard } from '../../server/work/work-board'
+import type { BotModel } from '../../shared/bot-schema'
 import type { EventFrame } from '../../shared/protocol'
 import { fakeService } from '../helpers/fake-engine'
 
-function wired() {
+function wired(reviewModel: BotModel | null = null) {
   const fake = fakeService()
   const frames: EventFrame[] = []
   const history = new HistoryStore(fake.database)
@@ -32,6 +33,7 @@ function wired() {
     workspaces: new Workspaces(fake.root),
     history,
     calls,
+    reviewModel,
     publish: frame => frames.push(frame)
   })
   const board = new WorkBoard(work.work, work.answers, { oscarAnswer: () => {}, dropped: () => async () => {} })
@@ -93,6 +95,32 @@ test('a level 2 check runs as a new hidden session of another bot, which shows a
   expect(runs).toEqual([{ botId: expect.not.stringMatching(/^b1$/), chatId: undefined, hidden: true, runId: `check-${item.id}:check:1` }])
   expect(f.work.checks.isCheckChat('check-session')).toBe(true)
   expect(f.activity.state(checking.check!.by.id!).status).toBe('working')
+})
+
+test('with no other bot, the check is a new hidden session of the owner on the review model when it differs from the bot’s own', async () => {
+  for (const [reviewModel, expected] of [
+    [
+      { provider: 'cheap', model: 'small-1' },
+      { provider: 'cheap', model: 'small-1' }
+    ],
+    [null, undefined]
+  ] as const) {
+    const f = wired(reviewModel)
+    const runs: { botId: string; chatId?: string; hidden?: boolean; model?: unknown }[] = []
+    f.engine.runRoutine = async (botId, _prompt, options) => {
+      runs.push({ botId, chatId: options.chatId, hidden: options.hiddenInput, model: options.model })
+      options.onChat('same-bot-session')
+      return new Promise(() => {})
+    }
+    const item = await f.work.act('b1', { requestId: 'r1', title: 'Post the update', kind: 'outside', done: 'the post is up' })
+    const proof = [{ proves: 'the post is up', url: 'https://example.com/post' }]
+    const checking = await f.work.act('b1', { requestId: 'r2', itemId: item.id, status: 'done', result: 'Posted', evidence: proof })
+    expect(checking).toMatchObject({ status: 'checking', check: { by: { kind: 'bot', id: 'b1' }, sameBot: true, model: expected ?? null } })
+    f.checks.tick()
+    await Bun.sleep(5)
+    expect(runs).toEqual([{ botId: 'b1', chatId: undefined, hidden: true, model: expected }])
+    expect(f.work.checks.isCheckChat('same-bot-session')).toBe(true)
+  }
 })
 
 for (const [name, folder] of [

@@ -1,13 +1,16 @@
 ---
 name: lilbot-check
-description: Use when LilBot asks you to check another bot's work item before it counts as done. How to reproduce the claim from the real thing without changing anything, what counts as proof, and how to give your verdict with lilbot_work.
+description: Use when LilBot asks you to check a work item before it counts as done (another bot's, or your own in a fresh session). How to reproduce the claim from the real thing without changing anything, what counts as proof, and how to give your verdict with lilbot_work.
 ---
 
-# Checking another bot's work
+# Checking a finished item
 
 LilBot asks you, not the owner, to check a finished item. You get its "done" definition, its claim (the result)
 and the owner's evidence, as data. Your job is to find out whether the claim is true, from the real thing.
 You do not redo the work, fix it or finish it.
+
+When no other bot could check, the owner is you: this is a new session that remembers none of that work. Check
+it as hard as someone else's, and never assume you did it right.
 
 ## 1. Read only, change nothing
 

@@ -5,10 +5,10 @@ import { LilBotError } from '../../shared/protocol'
 import type { WorkCheck } from '../../shared/work-check-schema'
 import { WorkInput, type WorkItem } from '../../shared/work-schema'
 import { failedNotice, sentBackNotice } from './work-check-prompts'
-import { afterCheck, OSCAR } from './work-check-rules'
+import { afterCheck, checkerLabel, chooseChecker, OSCAR, OSCAR_QUESTION, sameBotNote, underItem } from './work-check-rules'
 import type { StoredCheck } from './work-check-store'
 import { evidenceTexts, pointerOf, refuseUnsafe } from './work-rules'
-import type { Actor, Saved, WorkService } from './work-service'
+import type { Actor, Report, Saved, WorkService } from './work-service'
 import type { ItemChange, StoredItem } from './work-store'
 
 const LILBOT: Actor = { by: 'lilbot', via: null }
@@ -25,6 +25,24 @@ export class WorkChecks {
     return this.work.checks
   }
 
+  /** A finished level 2 item waits for a second bot's check, chosen by LilBot; when no other bot is eligible, for a fresh
+   *  session of its owner; at level 3, for Oscar's. The choice is saved with the item's move, before any check runs. */
+  hold(item: StoredItem, level: number, report: Report, at: number): ItemChange {
+    const requestId = report.requestId ?? null
+    if (level >= 3) {
+      this.checks.add(item.id, OSCAR, requestId, null, at)
+      return { status: 'needs_oscar', question: OSCAR_QUESTION, finishedAt: null }
+    }
+    const excluded = underItem(item, id => this.store.children(id))
+    const bot = chooseChecker(report.checkers ?? [], excluded, this.checks.checkersOf(item.id), this.checks.load())
+    if (bot) this.checks.add(item.id, { kind: 'bot', ...bot }, requestId, null, at)
+    else {
+      const model = report.checkModel ?? null
+      this.checks.add(item.id, { kind: 'bot', id: item.ownerId, name: item.ownerName }, requestId, sameBotNote(model), at, { model })
+    }
+    return { status: 'checking', finishedAt: null }
+  }
+
   /** The verdict of the bot LilBot asked, given from the check session LilBot started, with its own evidence. */
   async verdict(callerId: string, raw: WorkInput): Promise<WorkItem> {
     const input = WorkInput.parse(raw)
@@ -34,9 +52,11 @@ export class WorkChecks {
     if (!itemId || !verdict) throw new LilBotError('work_verdict', 'Give your verdict with the itemId LilBot asked you to check.')
     const chatId = await this.work.host.callingChat(callerId, input.requestId)
     const saved = this.store.db.transaction(() => {
-      if (this.checks.byVerdict(itemId, callerId, input.requestId)) return null
       const item = this.store.get(itemId)
       const check = this.checks.open(itemId)
+      // A retry repeats a verdict already given. While a check of this same bot is open, the same request id (a bot that checks
+      // twice, as the owner of a same-bot check does) is its new verdict.
+      if (check?.by.id !== callerId && this.checks.byVerdict(itemId, callerId, input.requestId)) return null
       if (item?.status !== 'checking' || check?.by.id !== callerId)
         throw new LilBotError('work_forbidden', 'Only the bot LilBot asked to check this item gives a verdict, while its check is open.')
       if (!chatId || this.checks.checkOfChat(chatId) !== check.id)
@@ -74,12 +94,12 @@ export class WorkChecks {
     const log = (kind: 'checked' | 'status', status: StoredItem['status'] | null, line: string | null) =>
       this.store.log(item.id, { at, by: actor.by, kind, status, text: line, via: actor.via })
     this.checks.settle(check.id, state, text, verdictRequest, at)
-    log('checked', null, `${check.by.name}: ${state.replace('_', ' ')}${text ? `. ${text}` : ''}`.slice(0, 2000))
-    const next = afterCheck(state, this.checks.failures(item.id), check.by.name)
+    log('checked', null, `${checkerLabel(check)}: ${state.replace('_', ' ')}${text ? `. ${text}` : ''}`.slice(0, 2000))
+    const next = afterCheck(state, this.checks.failures(item.id), checkerLabel(check))
     const change: ItemChange = { status: next.status, question: next.question ?? null }
     if (next.status === 'done') change.finishedAt = at
     if (next.status === 'needs_oscar') this.checks.add(item.id, OSCAR, null, null, at)
-    if (next.toOwner) this.work.host.tell(`check-${check.id}`, item, state === 'sent_back' ? sentBackNotice(item, text ?? '') : failedNotice(item, check.by.name, text ?? ''))
+    if (next.toOwner) this.work.host.tell(`check-${check.id}`, item, state === 'sent_back' ? sentBackNotice(item, text ?? '') : failedNotice(item, check, text ?? ''))
     const number = log('status', next.status, next.question ?? null)
     this.store.update(item.id, change, at)
     return { item: this.store.get(item.id)!, asked: next.status === 'needs_oscar' ? number : null, ended: item.status === 'needs_oscar' ? number : null }

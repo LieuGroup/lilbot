@@ -18,8 +18,8 @@ LilBot refuses a level below it and never lets it go down later.
 - `file`, `computer`, `code` (level 1): a file or report, a change on a computer, a code change. You read the
   real result yourself and attach the evidence.
 - `deploy`, `outside` (a message or post that leaves the system), `spending`, `figure` (a number Oscar will
-  decide on) (level 2): another bot, chosen by LilBot, reproduces your claim before the item is done.
-- Raise the level for anything hard to undo (deleting data, a change others depend on): 2 for a second bot,
+  decide on) (level 2): another bot, chosen by LilBot (a fresh session of you when none is eligible), reproduces your claim before the item is done.
+- Raise the level for anything hard to undo (deleting data, a change others depend on): 2 for a second check,
   3 when Oscar must look himself.
 
 ## 2. Write "done" before you start
@@ -55,10 +55,10 @@ evidence; show the part of an output that proves the point.
 - `needs_oscar` with exactly one question when only Oscar can decide: say what you need and the choices. You are
   marked unread; carry on with other work. His answer arrives as a new turn.
 - `done` with a result: one or two sentences on what came of it and where it is. One call can add the evidence
-  and finish. At level 2 the item then shows `checking` while another bot reproduces your claim; you can report
-  nothing more on it meanwhile. Verified, it is done. Not verified, it comes back to you once with what the
-  checker saw: fix the work and finish again; a second failure goes to Oscar. At level 3, or when no other bot
-  can check, it waits for Oscar, who passes it or sends it back.
+  and finish. At level 2 the item then shows `checking` while another bot reproduces your claim (a new session of you
+  when no other bot is eligible); you can report nothing more on it meanwhile. Verified, it is done. Not
+  verified, it comes back to you once with what the checker saw: fix the work and finish again; a second
+  failure goes to Oscar. At level 3 it waits for Oscar, who passes it or sends it back.
 - `failed` with what went wrong and what you tried; `dropped` with the reason. Nothing is deleted.
 - Oscar can drop an item, and items handed over under it: LilBot tells you in the session the item belongs to. Stop
   that work at once, report nothing more on it (the board refuses it) and say in one line that you stopped.

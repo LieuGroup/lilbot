@@ -1,6 +1,7 @@
 import { GOAL_TABLES } from './goal-tables'
 import { GROUP_TABLES } from './group-tables'
 import { WEBHOOK_TABLES } from './webhook-tables'
+import { WORK_CHECK_COLUMNS } from './work-check-columns'
 
 /** LilBot's schema: every step it has shipped, in order; `database.ts` applies the steps a file has not seen. Never edit a shipped step: add one. */
 export const migrations: string[] = [
@@ -161,8 +162,7 @@ export const migrations: string[] = [
    CREATE UNIQUE INDEX IF NOT EXISTS message_origins_row ON message_origins(bot_id, row_id) WHERE row_id IS NOT NULL;`,
   // The user's reasoning effort per bot; null follows the engine's default.
   `ALTER TABLE bots ADD COLUMN reasoning_effort TEXT;`,
-  // Delegation (#132): the batch a task came from and a parent work item (#141, unused yet), files passed with a
-  // message (a copy is null until it reaches its recipient) and groups a bot waits on. Every statement is repeatable.
+  // Delegation (#132): the batch a task came from, a parent work item (#141), files passed with a message and groups a bot waits on. Every statement is repeatable.
   `CREATE TABLE IF NOT EXISTS thread_links(thread_id TEXT PRIMARY KEY, batch_id TEXT, parent_id TEXT);
    CREATE INDEX IF NOT EXISTS thread_links_batch ON thread_links(batch_id) WHERE batch_id IS NOT NULL;
    CREATE INDEX IF NOT EXISTS thread_links_parent ON thread_links(parent_id) WHERE parent_id IS NOT NULL;
@@ -186,8 +186,7 @@ export const migrations: string[] = [
    CREATE TABLE IF NOT EXISTS work_answers(id TEXT PRIMARY KEY, item_id TEXT NOT NULL, bot_id TEXT NOT NULL, chat_id TEXT, text TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending');`,
   // Webhooks (#12), in its own file, like temporary groups (#133) and goals (#143) after check levels.
   WEBHOOK_TABLES,
-  // Check levels (#142): each item's kind and its kind's default level, the checks of finished items, the hidden sessions
-  // of checking bots, and Oscar's default levels per kind (bot_id '' for every bot).
+  // Check levels (#142): each item's kind and default level, the checks of finished items, their hidden sessions, and Oscar's default levels (bot_id '' is every bot).
   `ALTER TABLE work_items ADD COLUMN kind TEXT;
    ALTER TABLE work_items ADD COLUMN default_level INTEGER;
    CREATE TABLE IF NOT EXISTS work_checks(id TEXT PRIMARY KEY, item_id TEXT NOT NULL, round INTEGER NOT NULL, checker_kind TEXT NOT NULL, checker_id TEXT, checker_name TEXT NOT NULL,
@@ -196,5 +195,6 @@ export const migrations: string[] = [
    CREATE TABLE IF NOT EXISTS work_check_chats(chat_id TEXT PRIMARY KEY, check_id TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS work_levels(kind TEXT NOT NULL, bot_id TEXT NOT NULL, level INTEGER NOT NULL, PRIMARY KEY(kind, bot_id));`,
   GROUP_TABLES,
-  GOAL_TABLES
+  GOAL_TABLES,
+  WORK_CHECK_COLUMNS
 ]

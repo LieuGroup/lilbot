@@ -32,6 +32,29 @@ test('recovery reuses create/submit identities, uses full access, and reads a du
   expect(aliases).toEqual(['stored', 'live', 'stored', 'live'])
 })
 
+test('a run given a model creates its session on that model, else on the bot’s own', async () => {
+  const creates: any[] = []
+  const connect = async () =>
+    ({
+      request: async (method: string, params: any) => {
+        if (method === 'config.get') return { value: 'off' }
+        if (method === 'session.create') {
+          creates.push(params)
+          return { session_id: 'live', stored_session_id: 'stored' }
+        }
+        if (method === 'prompt.submit') return { admission_id: 'receipt' }
+        if (method === 'prompt.receipt') return { status: 'terminal', outcome: 'completed' }
+        return { display_messages: [] }
+      },
+      close: () => {}
+    }) as unknown as HermesSocket
+  await runRoutine('native-id', 'task', { workspace: '/test', runId: 'own', onChat: () => {} }, connect)
+  await runRoutine('native-id', 'task', { workspace: '/test', runId: 'other', model: { provider: 'cheap', model: 'small-1' }, onChat: () => {} }, connect)
+  expect(creates[0]).not.toHaveProperty('model')
+  expect(creates[0]).not.toHaveProperty('provider')
+  expect(creates[1]).toMatchObject({ provider: 'cheap', model: 'small-1' })
+})
+
 test('an uncertain engine outcome is surfaced as failed instead of automatically repeating side effects', async () => {
   const connect = async () =>
     ({
