@@ -164,6 +164,10 @@ export class ThreadStore {
   pendingWork(threadId: string): string[] {
     return (this.db.query(`SELECT id FROM thread_deliveries WHERE threadId=? AND ${WORK} AND status!='done'`).all(threadId) as { id: string }[]).map(r => r.id)
   }
+  /** A redirect that did not reach the running turn waits for the receiver's next step. */
+  redirectWaiting(threadId: string) {
+    return !!this.db.query("SELECT 1 FROM thread_deliveries WHERE threadId=? AND kind='redirect' AND status='pending'").get(threadId)
+  }
   steered(threadId: string): Delivery[] {
     return this.db.query("SELECT * FROM thread_deliveries WHERE threadId=? AND status='steered' ORDER BY rowid").all(threadId) as Delivery[]
   }

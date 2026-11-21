@@ -28,7 +28,8 @@ interface MessageRowsProps {
  *  conversation, which stays the same as the list grows at either end. */
 const ChatRow = memo(function ChatRow({ item, position, anchor, botId }: { item: MessageItem; position: number; anchor: boolean; botId: string }) {
   return (
-    <MessageScrollerItem messageId={String(position)} scrollAnchor={anchor}>
+    // A task drawn in its batch's card leaves its own row empty: hidden, so it takes no gap.
+    <MessageScrollerItem messageId={String(position)} scrollAnchor={anchor} className="empty:hidden">
       <ChatItem item={item} botId={botId} />
     </MessageScrollerItem>
   )

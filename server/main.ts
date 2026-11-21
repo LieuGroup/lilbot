@@ -125,7 +125,7 @@ const websocket: WebSocketHandler<SocketData> = {
   }
 }
 
-const browserRoutes = appRoutes(library, DIST, ALLOWED_HOSTS, 'hermes', attachments, downloads)
+const browserRoutes = appRoutes(library, DIST, ALLOWED_HOSTS, 'hermes', attachments, downloads, threads)
 const server = Bun.serve<SocketData>({
   development: false,
   error: plainServerError,
@@ -153,7 +153,7 @@ const server = Bun.serve<SocketData>({
   },
   websocket
 })
-const accessServer = ACCESS ? startAccessDoor(ACCESS, appRoutes(library, DIST, new Set([ACCESS.host]), 'hermes', attachments, downloads), websocket) : undefined
+const accessServer = ACCESS ? startAccessDoor(ACCESS, appRoutes(library, DIST, new Set([ACCESS.host]), 'hermes', attachments, downloads, threads), websocket) : undefined
 
 // LilBot's own skills, restored at every start if they differ.
 for (const [name, folder] of [

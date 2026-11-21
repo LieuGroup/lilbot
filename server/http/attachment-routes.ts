@@ -2,6 +2,17 @@ import { LilBotError } from '../../shared/protocol'
 import type { AttachmentService } from '../attachments/attachment-service'
 import { socketAllowed } from './socket-guard'
 
+/** A file always downloads, never renders on LilBot's origin. The name is the sender's text, so it is encoded. */
+export function downloadHeaders(name: string, mime: string) {
+  return {
+    'Content-Type': mime,
+    'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name).replace(/'/g, '%27')}`,
+    'X-Content-Type-Options': 'nosniff',
+    'Content-Security-Policy': "sandbox; default-src 'none'",
+    'Cache-Control': 'no-store'
+  }
+}
+
 export async function attachmentRoute(request: Request, hosts: Set<string>, service: AttachmentService) {
   if (!socketAllowed(request, hosts) || request.headers.get('sec-fetch-site') === 'cross-site') return new Response('Forbidden', { status: 403 })
   const parts = new URL(request.url).pathname.split('/')
@@ -12,15 +23,7 @@ export async function attachmentRoute(request: Request, hosts: Set<string>, serv
     if (request.method === 'PUT') return Response.json(await service.upload(botId, id, request), { headers: { 'Cache-Control': 'no-store' } })
     if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 })
     const file = await service.content(botId, id)
-    return new Response(file.data, {
-      headers: {
-        'Content-Type': file.mime,
-        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.name).replace(/'/g, '%27')}`,
-        'X-Content-Type-Options': 'nosniff',
-        'Content-Security-Policy': "sandbox; default-src 'none'",
-        'Cache-Control': 'no-store'
-      }
-    })
+    return new Response(file.data, { headers: downloadHeaders(file.name, file.mime) })
   } catch (error) {
     return Response.json(
       { error: error instanceof LilBotError ? { code: error.code, message: error.message } : { code: 'unavailable', message: 'File missing or unavailable.' } },

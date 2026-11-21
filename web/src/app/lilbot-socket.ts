@@ -91,6 +91,11 @@ class LilBotSocket {
     return this.onPush('devices.changed', () => listener())
   }
 
+  /** Told when an exchange between bots started, moved or ended. It names no bot, and comes with every tool call in one. */
+  onThreadsChanged(listener: () => void) {
+    return this.onPush('threads.changed', () => listener())
+  }
+
   /** Told when the history import brought in more of a bot's conversation. */
   onHistoryChanged(listener: (botId: string) => void) {
     return this.onPush('history.changed', frame => listener(frame.botId))

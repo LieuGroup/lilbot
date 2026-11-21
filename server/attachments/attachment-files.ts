@@ -79,8 +79,9 @@ export async function writeAttachment(root: string, name: string, body: Readable
   }
 }
 
-export async function readAttachment(root: string, name: string, hash: string) {
-  const folder = await openFolder(root, ['attachments'])
+/** Reads `name` in `folder` below `root` (the bot's attachments, or an exchange's copies) and checks it against its hash. */
+export async function readAttachment(root: string, name: string, hash: string, parts = ['attachments']) {
+  const folder = await openFolder(root, parts)
   let file: FileHandle | undefined
   try {
     file = await open(`/proc/self/fd/${folder.fd}/${name}`, C.O_RDONLY | C.O_NOFOLLOW | C.O_NONBLOCK)
@@ -95,7 +96,7 @@ export async function readAttachment(root: string, name: string, hash: string) {
     }
     const bytes = data.subarray(0, size)
     if (new Bun.CryptoHasher('sha256').update(bytes).digest('hex') !== hash) throw new Error('Attachment changed')
-    return { data: bytes, path: join(root, 'attachments', name) }
+    return { data: bytes, path: join(root, ...parts, name) }
   } finally {
     await file?.close()
     await folder.close()

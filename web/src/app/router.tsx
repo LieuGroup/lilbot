@@ -6,10 +6,12 @@ import { BotSidebar } from '../bots/bot-sidebar'
 import { useBotStore } from '../bots/bot-store'
 import { detailsOpenByDefault, useDetailsTab } from '../bots/details-tabs'
 import { ChatColumn } from '../chat/chat-column'
+import { threadSearch, useOpenThreadId } from '../threads/open-thread'
 
 // Pages with forms and menus load on first use, so opening the app and its chat stays light.
 // The details panel's tabs load the same way (see bot-details-panel.tsx).
 const BotCreatePage = lazy(() => import('../bots/bot-create-page').then(module => ({ default: module.BotCreatePage })))
+const ThreadView = lazy(() => import('../threads/thread-view'))
 
 /** Three columns on a wide screen: the roster on the page tint, the conversation on white, the
  *  details panel on the tint again, divided by a hairline. Phone: the roster is the home screen
@@ -32,18 +34,30 @@ function AppShell() {
 
 /** A bot's screen: the conversation, with the details panel beside it when a tab is open. The
  *  conversation stays mounted (and connected) while tabs change. A wide screen opens the panel
- *  by itself unless the user closed it; on a phone an open panel covers the conversation. */
+ *  by itself unless the user closed it; on a phone an open panel covers the conversation. An
+ *  exchange between bots opens over the conversation, which stays mounted, connected and
+ *  scrolled where it was underneath. */
 function BotLayout() {
   const { botId } = useParams({ from: '/bots/$botId' })
   const tab = useDetailsTab()
+  const thread = useOpenThreadId()
   const navigate = useNavigate()
   useEffect(() => {
-    if (!tab && detailsOpenByDefault()) void navigate({ to: '/bots/$botId/$tab', params: { botId, tab: 'activity' }, replace: true })
+    if (!tab && detailsOpenByDefault()) void navigate({ to: '/bots/$botId/$tab', params: { botId, tab: 'activity' }, search: true, replace: true })
   }, [botId, tab, navigate])
   return (
     <div className="flex h-full min-w-0">
-      <div className={`${tab ? 'hidden md:flex' : 'flex'} min-w-0 flex-1 flex-col`}>
-        <ChatColumn botId={botId} />
+      <div className={`${tab ? 'hidden md:flex' : 'flex'} relative min-w-0 flex-1 flex-col`}>
+        <div className={`flex min-h-0 flex-1 flex-col ${thread ? 'invisible' : ''}`} inert={!!thread}>
+          <ChatColumn botId={botId} />
+        </div>
+        {thread && (
+          <div className="absolute inset-0 flex flex-col bg-card">
+            <Suspense>
+              <ThreadView key={thread} botId={botId} threadId={thread} />
+            </Suspense>
+          </div>
+        )}
       </div>
       {tab && (
         <aside className="flex w-full flex-none flex-col bg-background md:w-[332px] md:border-l md:border-hairline">
@@ -73,7 +87,7 @@ const homeRoute = createRoute({
 })
 const rosterRoute = createRoute({ getParentRoute: () => rootRoute, path: '/bots', component: () => null })
 const newBotRoute = createRoute({ getParentRoute: () => rootRoute, path: '/bots/new', component: BotCreatePage })
-const botRoute = createRoute({ getParentRoute: () => rootRoute, path: '/bots/$botId', component: BotLayout })
+const botRoute = createRoute({ getParentRoute: () => rootRoute, path: '/bots/$botId', component: BotLayout, validateSearch: threadSearch })
 const botChatRoute = createRoute({ getParentRoute: () => botRoute, path: '/', component: () => null })
 /** Activity, Library, Memory or Setup in the details panel. */
 const botTabRoute = createRoute({ getParentRoute: () => botRoute, path: '$tab', component: BotDetailsPanel })

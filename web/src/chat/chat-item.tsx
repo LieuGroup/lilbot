@@ -1,5 +1,5 @@
 import { CheckIcon, LoaderCircleIcon, XIcon } from 'lucide-react'
-import { memo } from 'react'
+import { lazy, memo, Suspense } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -9,6 +9,9 @@ import { Trace, TraceIcon, TraceLine, TraceTitle } from '@/ui/trace'
 import { ImageNote, SentAttachments } from '../attachments/message-attachments'
 import { thisDeviceId } from '../devices/this-device'
 import type { MessageItem } from './chat-state'
+
+// An exchange with another bot draws as a bordered line with its live state; it loads with the first one.
+const ThreadLine = lazy(() => import('../threads/thread-line'))
 
 /** One transcript item drawn with the AI Elements patterns: Message and Bubble for turns, a Tool
  *  trace line for tool use. Memoised: a streamed chunk changes only the last item, so earlier
@@ -48,23 +51,11 @@ export const ChatItem = memo(function ChatItem({ item, botId, queued = false }: 
         </Message>
       )
     case 'tool':
+      if (!item.threadId) return <ToolTrace item={item} />
       return (
-        <Trace>
-          <TraceLine status={item.failed ? 'error' : item.running ? 'running' : undefined} className="text-[13px]/5 data-[status=running]:text-foreground">
-            <TraceIcon className="size-[13px] [&_svg]:size-[13px]!">
-              {item.failed ? (
-                <XIcon strokeWidth={2.5} />
-              ) : item.running ? (
-                <LoaderCircleIcon className="animate-spin text-primary" strokeWidth={2.5} />
-              ) : (
-                <CheckIcon className="text-foreground/50" strokeWidth={2} />
-              )}
-            </TraceIcon>
-            <TraceTitle>
-              {item.name} {item.detail && <code className="font-mono text-xs">{item.detail}</code>}
-            </TraceTitle>
-          </TraceLine>
-        </Trace>
+        <Suspense fallback={<div className="h-[52px] rounded-[10px] ring-1 ring-hairline" />}>
+          <ThreadLine botId={botId} threadId={item.threadId} fallback={<ToolTrace item={item} />} />
+        </Suspense>
       )
     case 'error':
       return (
@@ -74,3 +65,25 @@ export const ChatItem = memo(function ChatItem({ item, botId, queued = false }: 
       )
   }
 })
+
+/** A tool the bot used, as one Trace line: spinner while it runs, a check or a cross after. */
+function ToolTrace({ item }: { item: Extract<MessageItem, { kind: 'tool' }> }) {
+  return (
+    <Trace>
+      <TraceLine status={item.failed ? 'error' : item.running ? 'running' : undefined} className="text-[13px]/5 data-[status=running]:text-foreground">
+        <TraceIcon className="size-[13px] [&_svg]:size-[13px]!">
+          {item.failed ? (
+            <XIcon strokeWidth={2.5} />
+          ) : item.running ? (
+            <LoaderCircleIcon className="animate-spin text-primary" strokeWidth={2.5} />
+          ) : (
+            <CheckIcon className="text-foreground/50" strokeWidth={2} />
+          )}
+        </TraceIcon>
+        <TraceTitle>
+          {item.name} {item.detail && <code className="font-mono text-xs">{item.detail}</code>}
+        </TraceTitle>
+      </TraceLine>
+    </Trace>
+  )
+}

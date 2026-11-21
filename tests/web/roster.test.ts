@@ -79,6 +79,8 @@ test('each activity status maps to its row state and words', () => {
   const state = (activity?: NonNullable<Parameters<typeof bot>[1]>['activity']) => rowState(bot('b', { function: 'Ships builds', activity }))
   expect(state({ status: 'working', text: 'Running commands' })).toEqual({ tone: 'working', text: 'Running commands', unread: false })
   expect(state({ status: 'working', text: '' }).text).toBe('Working')
+  const handed = { ...bot('b', { activity: { status: 'working', text: '' } }), workingFor: { threadId: 't', name: 'FillLight Bot' } }
+  expect(rowState(handed).text).toBe('For FillLight Bot · Working')
   expect(state({ status: 'waiting', text: 'Waiting for Oscar', unread: true })).toEqual({ tone: 'waiting', text: 'Waiting for you', unread: true })
   expect(state({ status: 'finished', text: 'Finished' })).toEqual({ tone: 'finished', text: 'Finished', unread: false })
   expect(state({ status: 'failed', text: 'Failed', unread: true })).toEqual({ tone: 'failed', text: 'Failed', unread: true })

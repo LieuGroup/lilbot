@@ -125,6 +125,8 @@ export interface BotThread {
   activity: string | null
   startedAt: number | null
   endedAt: number | null
+  /** In a view, while it runs: a redirect waits for the receiver's next step (it did not reach the running turn). */
+  redirecting?: true
   stoppedBy: { kind: 'bot' | 'oscar'; id: string | null; name: string; at: number } | null
   /** Present when the thread is a temporary group rather than an exchange between two bots. */
   group?: ThreadGroup

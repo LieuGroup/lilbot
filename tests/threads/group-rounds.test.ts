@@ -32,8 +32,8 @@ test('members reply to a point in parallel, each in its own hidden session, and 
   expect(f.runs[0].prompt).toContain('"Suggest one name each."')
   expect(f.runs[0].prompt).toContain('for everyone')
   expect(f.store.isInternal(f.runs[0].chatId)).toBe(true)
-  expect(f.threads.roster().get('b')).toEqual([{ id: started.groupId, purpose: 'Pick a name', round: 1, roundCap: 6, leading: false }])
-  expect(f.threads.roster().get('a')?.[0].leading).toBe(true)
+  expect(f.threads.roster().get('b')?.groups).toEqual([{ id: started.groupId, purpose: 'Pick a name', round: 1, roundCap: 6, leading: false }])
+  expect(f.threads.roster().get('a')?.groups?.[0].leading).toBe(true)
   expect((await f.threads.open('a', started.groupId)).group!.members!.map(m => m.state)).toEqual(['idle', 'working', 'working'])
 
   f.runs[0].finish('Name: Pelican')

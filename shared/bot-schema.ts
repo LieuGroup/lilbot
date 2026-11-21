@@ -47,6 +47,9 @@ export type BotPrefs = z.infer<typeof BotPrefs>
 /** A running temporary group the bot is in, for the roster's "Working together" section and its row state. */
 export const BotGroup = z.object({ id: z.string(), purpose: z.string(), round: z.number(), roundCap: z.number(), leading: z.boolean() })
 export type BotGroup = z.infer<typeof BotGroup>
+/** The exchange a bot is working on now for another bot, and that bot's name. */
+export const BotWorkingFor = z.object({ threadId: z.string(), name: z.string() })
+export type BotWorkingFor = z.infer<typeof BotWorkingFor>
 
 /** What lists and headers need. */
 export const Bot = BotIdentity.extend({
@@ -59,6 +62,8 @@ export const Bot = BotIdentity.extend({
   activity: BotActivity.optional(),
   /** Running groups it leads or is in; absent when none. */
   groups: z.array(BotGroup).optional(),
+  /** Set while it works on a task another bot handed it. */
+  workingFor: BotWorkingFor.optional(),
   prefs: BotPrefs,
   /** The bot's own folder on the shared computer; its chats work there. */
   workspace: z.string(),
