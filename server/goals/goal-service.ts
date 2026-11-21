@@ -130,7 +130,8 @@ export class GoalService {
       throw new LilBotError('goal_progress', 'A review needs goalId, value (as you read it now), did and evidence of how you read it.')
     const goal = requireAgreed(this.store.get(input.goalId), callerId)
     if (this.store.reviewByRequest(goal.id, input.requestId)) return this.view(goal.id)
-    const session = this.work.host.session(callerId, await this.work.host.callingChat(callerId, 'lilbot_goal', input.requestId))
+    const chatId = await this.work.host.callingChat(callerId, 'lilbot_goal', input.requestId)
+    const session = this.work.host.session(callerId, chatId)
     if (session.origin.kind !== 'routine_run' || session.askedBy?.id !== goal.routineId)
       throw new LilBotError(
         'goal_review_session',
@@ -148,16 +149,20 @@ export class GoalService {
     const work = workCounts(this.work.store.list({ goalId: goal.id, limit: 200 }).filter(item => !reviewed.has(item.id)))
     const review: Omit<GoalReview, 'itemId'> = { at, value: input.value, ...compared, did: input.did, work }
     const reading = { proves: `${goal.target.measure} for this review`, value: String(input.value), source: goal.target.source, readAt: new Date(at).toISOString() }
-    const item = await this.work.act(callerId, {
-      requestId: input.requestId,
-      title: reviewTitle(goal),
-      kind: 'figure',
-      done: reviewDone(goal),
-      goalId: goal.id,
-      evidence: [reading, ...input.evidence],
-      status: 'done',
-      result: reviewResult(goal, review)
-    })
+    const item = await this.work.actFrom(
+      callerId,
+      {
+        requestId: input.requestId,
+        title: reviewTitle(goal),
+        kind: 'figure',
+        done: reviewDone(goal),
+        goalId: goal.id,
+        evidence: [reading, ...input.evidence],
+        status: 'done',
+        result: reviewResult(goal, review)
+      },
+      chatId
+    )
     const event = this.store.db.transaction(() => {
       if (!this.store.addReview(goal.id, input.requestId, { ...review, itemId: item.id })) return 0
       this.store.update(goal.id, {}, at)

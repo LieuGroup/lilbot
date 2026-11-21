@@ -4,8 +4,8 @@ import { checkClient } from './check-client'
 import { deleteProfile, startServer } from './check-process'
 /** `bun run check:work`: on an isolated dev server a temporary bot asked for a small real task opens a work item with a
  *  "done" definition, adds evidence and finishes it, and the item shows in `work.list`; marking an item done without
- *  evidence is refused (by the bot's own attempt and by a direct call with its key); a task it hands to a second
- *  temporary bot inside an item appears as that bot's child item. Costs a handful of model calls; cleanup in `finally`. */
+ *  evidence is refused by the bot's own attempt, and a direct call with its key, which no session made, is refused too;
+ *  a task it hands to a second temporary bot inside an item appears as that bot's child item. Costs a handful of model calls; cleanup in `finally`. */
 import { Database } from 'bun:sqlite'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -100,7 +100,7 @@ try {
   console.log(`ok: "${full.title}" done with ${full.evidence.length} evidence entr(ies): ${JSON.stringify(full.evidence[0].pointer).slice(0, 160)}`)
   console.log(`   definition: ${full.done.slice(0, 160)}; context tokens on that turn: ${first.contextTokens ?? 'not reported'}`)
 
-  // 2. Done without evidence is refused: by the bot's own attempt, and by a direct call with its key.
+  // 2. Done without evidence is refused by the bot's own attempt; a direct call with its key, which no session made, is refused.
   const refusalTurn = await ask(
     main.chatId,
     'Open a new work item titled "Refusal test" of kind file with a done definition, then immediately try to mark it done (with a result) without adding any evidence. Do not add evidence. Reply REFUSAL_REPORT and what LilBot answered.',
@@ -119,10 +119,11 @@ try {
       params: { name: 'lilbot_work', arguments: { requestId: 'direct', itemId: refusalItem.id, status: 'done', result: 'x' } }
     })
   }).then(r => r.json())
+  // No session reported starting this call, so LilBot cannot tell where it came from and refuses it (#174).
   assert.equal(direct.result.isError, true)
-  assert.match(direct.result.content[0].text, /evidence/)
+  assert.match(direct.result.content[0].text, /Make the same call again/)
   assert.equal((await call('work.open', { itemId: refusalItem.id })).status, refusalItem.status)
-  console.log(`ok: done without evidence refused; the bot reported: ${refusalTurn.text.slice(0, 160)}`)
+  console.log(`ok: done without evidence refused; a call no session made is refused too; the bot reported: ${refusalTurn.text.slice(0, 160)}`)
 
   // 3. Work handed to a second bot inside an item becomes that bot's child item.
   await ask(

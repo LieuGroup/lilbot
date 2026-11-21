@@ -224,6 +224,10 @@ with adapter 0.12.0 (`lilbot_give_file`).
 MCP requests carry no session (checked live: two sessions of one bot send identical requests, `_meta` holds only a
 progress token). A tool that needs the calling conversation takes a `requestId` and resolves it from the engine's
 `tool.start` reports (`server/threads/calling-chats.ts`, which traces `lilbot_delegate`, `lilbot_work`, `lilbot_group`, `lilbot_goal` and `lilbot_give_file`).
+Each start is matched to one call only (same tool and request id, close in time); a call no start is seen for, or two
+sessions could have made, is refused and retried, never credited to the main conversation (#174). While a bot has a check
+running, `system/check-access.ts` holds its changing calls until their start is seen and refuses those from a check
+session: a check only reads and gives its verdict.
 
 Judgment calls: a memory tool may name another bot's panel (as Oscar can on the screens), but only a fact in that
 panel can be named, by the short id a bot sees; the default is the calling bot's own. Another bot's private facts can

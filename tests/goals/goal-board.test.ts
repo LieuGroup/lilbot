@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { CallingChats } from '../../server/threads/calling-chats'
 import { goalFixture } from './goal-fixture'
 
 async function agreed() {
@@ -133,4 +134,12 @@ test("a deleted bot's goals end with it", async () => {
   const { f, goal } = await agreed()
   f.goals.forgetBot('a')
   expect(f.goals.view(goal.id)).toMatchObject({ state: 'dropped', dropReason: 'The bot was deleted.', botName: 'A' })
+})
+
+test('a review matched to its routine run becomes its work item in the same call, with no second start to match (#174)', async () => {
+  const f = goalFixture({ calls: new CallingChats(300) })
+  const goal = await f.goalBoard.agree((await f.propose()).id)
+  const reviewed = await f.progress(goal.id, 7)
+  expect(reviewed.latest).toMatchObject({ value: 7, moved: 'toward' })
+  expect(f.work.view(reviewed.latest!.itemId)).toMatchObject({ kind: 'figure', origin: { kind: 'routine_run' } })
 })

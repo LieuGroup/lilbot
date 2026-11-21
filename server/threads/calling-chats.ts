@@ -55,8 +55,8 @@ interface Seen {
   claimed: boolean
 }
 
-export const NOT_SEEN = 'LilBot could not tell which of your conversations made this call. Make the same call again in a moment.'
-const refused = () => new LilBotError('session_unknown', NOT_SEEN)
+export const NOT_SEEN = 'LilBot could not tell which of your conversations made this call. Make the same call again in a moment, from your own conversation (not a sub-agent).'
+const TWO = 'Two of your conversations made this call with the same requestId at once, so LilBot cannot tell them apart. Make it again with a new requestId.'
 
 export class CallingChats {
   private seen: Seen[] = []
@@ -81,8 +81,8 @@ export class CallingChats {
     for (;;) {
       const own = this.seen.filter(s => !s.claimed && s.botId === botId && s.requestId === requestId && s.at >= asked - EARLY_MS && names(s.tool, tool))
       if (new Set(own.map(s => s.chatId)).size > 1) {
-        console.warn(`[calling-session] ${tool}: two sessions made this call; refused`)
-        throw refused()
+        console.warn(`[calling-session] ${tool}: two sessions could have made this call; refused`)
+        throw new LilBotError('session_unknown', TWO)
       }
       if (own.length) {
         own[0].claimed = true
@@ -91,7 +91,7 @@ export class CallingChats {
       }
       if (Date.now() - asked >= this.waitMs) {
         console.warn(`[calling-session] ${tool}: no tool start seen in ${this.waitMs} ms; refused`)
-        throw refused()
+        throw new LilBotError('session_unknown', NOT_SEEN)
       }
       await Bun.sleep(50)
     }

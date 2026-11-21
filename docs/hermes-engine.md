@@ -171,8 +171,12 @@ own `cronjob` tool stays on, so the adapter's system-prompt rules tell the bot t
 - `stopRun` and `steerRun` open a fresh socket, `session.resume` the hidden session (`omit_messages`) for its live id and
   `execution_generation`, then call `session.interrupt` or `session.steer`; a stale generation is looked up once more.
   Idle sessions answer "not running". Findings: [docs/threads.md](threads.md#engine-findings-dev-gateway-2026-11-20).
-- `onToolCall` reports every `tool.start` (name and declared `args`) seen on LilBot's own sockets: open chats, the
-  routine runner's socket (the only place a hidden session's events appear) and the activity observer's replay.
+- `onToolCall` reports every `tool.start` (`tool_id`, name and declared `args`) seen on LilBot's own sockets: open chats,
+  the routine runner's socket (the only place a hidden session's events appear) and the activity observer's replay. The
+  replay reports only calls still under way: nothing from a session that is not running on its first read or after a
+  reset, and no start whose `tool.complete` is in the same batch (a call LilBot matched was answered before it completed).
+  Measured on dev (#174, 60 calls): the start arrived before the MCP request in all but one case, median 4 ms, at most 3.0 s
+  before; the latest was 4 ms after.
 
 ## Computers plug-in (`computers-adapter/`, `lilbot-computers-v1`)
 

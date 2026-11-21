@@ -78,9 +78,14 @@ export class WorkService {
   async act(callerId: string, raw: WorkInput): Promise<WorkItem> {
     const input = WorkInput.parse(raw)
     if (input.verdict) return this.checking.verdict(callerId, input)
+    return this.actFrom(callerId, input, await this.host.callingChat(callerId, 'lilbot_work', input.requestId))
+  }
+
+  /** The same, from the session `chatId` that made the call: a call's start is matched once, so a goal's review gives its own. */
+  async actFrom(callerId: string, raw: WorkInput, chatId: string): Promise<WorkItem> {
+    const input = WorkInput.parse(raw)
     const caller = await this.host.requireBot(callerId)
     refuseUnsafe([input.title, input.done, input.question, input.result, input.reason, ...(input.evidence ?? []).flatMap(evidenceTexts)])
-    const chatId = await this.host.callingChat(callerId, 'lilbot_work', input.requestId)
     if (this.checks.isCheckChat(chatId)) throw new LilBotError('work_check_session', 'This session is a check: give your verdict, do not open or report on items here.')
     const session = this.host.session(callerId, chatId)
     const [checkers, checkModel] = input.status === 'done' ? await Promise.all([this.host.checkers(), this.host.checkModel(callerId)]) : [[], null]

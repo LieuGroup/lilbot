@@ -1,5 +1,7 @@
 /** Hermes' own view of a conversation, read over connections of the check's own: which model answered each turn, what
  *  the session reports, what compaction announced. Lets a check prove behaviour LilBot's chat events do not carry. */
+import { Database } from 'bun:sqlite'
+import { join } from 'node:path'
 import { HermesSocket } from '../server/engines/hermes/hermes-socket'
 import { type RestartServer, waitFor } from './restart-server'
 
@@ -10,6 +12,18 @@ export interface Answer {
   window: number
   compressions: number
   text: string
+}
+
+/** What Hermes sent the model as the user's turns of these sessions, injected context included (`api_content`: the
+ *  memory block rides there, not in the system prompt). Read from the profile's own state file. */
+export function sentToModel(native: string, chats: string[]) {
+  const state = new Database(join(process.env.HERMES_HOME!, 'profiles', native, 'state.db'), { readonly: true })
+  try {
+    const rows = state.query(`SELECT content, api_content FROM messages WHERE role = 'user' AND session_id IN (${chats.map(() => '?').join(',')})`).all(...chats) as any[]
+    return rows.map(row => String(row.api_content ?? row.content ?? '')).join('\n')
+  } finally {
+    state.close()
+  }
 }
 
 /** The session's `info`: model, provider, reasoning_effort, reasoning_effort_wire, context_length. */

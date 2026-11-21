@@ -556,9 +556,12 @@ Visual specs: "Work between bots" in [docs/screens.md](docs/screens.md).
 - The receiver works in its own hidden session with its own instructions, memory, skills, workspace and full access;
   follow-ups reuse it. The delegating bot returns at once; the answer is queued as a hidden input into the exact
   originating session, even if Oscar has since started a new chat. Nested delegation resumes the parent exchange, which
-  then reports to its requester. MCP calls carry no session, so `calling-chats.ts` matches the call's `requestId`
-  against the `tool.start` events the engine reports (`BotEngine.onToolCall`); a call no hidden run reported is the
-  bot's main conversation.
+  then reports to its requester. MCP calls carry no session, so `calling-chats.ts` matches each call to its own
+  `tool.start` (`BotEngine.onToolCall`, with the engine's call id): same bot, tool and `requestId`, seen at most 15
+  seconds before the call or within 5 seconds after, and not matched to another call yet. A call whose start is not
+  seen in time, or that two sessions could have made, is refused with a retryable error (`session_unknown`), never
+  guessed (#174). The activity observer reports only calls still under way: none from an idle session, none that
+  completed in the same replay. A goal's review passes its matched session on to the work board (`actFrom`).
 - Status per exchange: `waiting` (accepted, not started), `working` (with the receiver's live activity line, in memory,
   and run time from `startedAt`), `finished`, `failed`, `cancelled` (with `stoppedBy`: the bot or Oscar).
 - Control is the delegating bot's only: status, cancel, redirect, wait. Cancel interrupts the receiver's hidden session
@@ -739,13 +742,21 @@ skill (`server/work/check-skill/`, installed like `lilbot-work`).
   (`WorkHost.checkModel`, `differentModel`; a bot with no model of its own counts as different), else on the bot's own,
   and the check's `note` says which. The choice is saved with the check (`same_bot`, `checker_model`, `WorkCheck.sameBot`
   and `model`), so Oscar's screens can show it, and a restart reuses it. A run with another model starts without the
-  bot's reasoning effort (like the memory review). Limit: the fresh session still loads the bot's LilBot memory block
-  (lasting facts and recent journal entries, a plug-in `prefetch` for every session), which may mention the work; LilBot
-  cannot strip it.
+  bot's reasoning effort (like the memory review).
 - The check runs as a new hidden session of the checker (`work-check-runner.ts`, run id `check-<check id>`, both session
   ids saved before the prompt in `work_check_chats`, so it is excluded from history, activity and both memory reviews).
-  The prompt gives the done definition, claim and the owner's evidence in a `work-claim` JSON fence, and the owner's
-  folder. Read-only is by instruction only (full access, like routines). Retries and restarts reuse the run id.
+  The prompt gives the done definition, claim and the owner's evidence in a `work-claim` JSON fence, the owner's folder
+  and the verdict's request id (`verdict-<check id>`). Retries and restarts reuse the run id.
+- A check session, same-bot or a second bot's, gets no memory and changes nothing but its verdict (#174;
+  `work/check-sessions.ts`, by both saved ids and the compression lineage). The engine API answers its memory context
+  with an empty block (no deployment notice either) and refuses its recall, writes, forgets and conversation search, by
+  the session id the adapter sends; with no session id, while a check of that bot runs. It starts with only
+  `CHECK_TOOLSETS` (web, vision, terminal, file, skills, `lilbot_system`: no memory, scheduling, delegation or coding).
+  LilBot's MCP server refuses it every changing `lilbot_*` call and `lilbot_memory_list`; only reads and the verdict
+  pass (`system/check-access.ts`: while a bot checks, its calls are matched to their starts by request id or
+  arguments; one not seen in time is refused). Files and the terminal can still write: read-only stays an instruction
+  there. Refusals log fixed labels (`[check-session]`, `[work-check] verdict refused: <code>`, a check that ended
+  without a verdict with its end status and whether it was a same-bot check).
 - The verdict comes only through `lilbot_work` (`verdict`, `result`, the checker's own evidence) from the assigned bot,
   from that check session (`work_check_chats`): for a same-bot check the owner's main and every other session are refused,
   though it is the same bot. `verified`: done. `not_verified`: back to `working`, the owner told once through
@@ -859,8 +870,8 @@ production only through it.
 
 `server/library/` owns delivered items (`shared/library-schema.ts`). A bot delivers with `lilbot_give_file` (path, title,
 `requestId`; LilBot's MCP server, #113), which needs a title and the conversation the call came from. That comes from
-LilBot's records of the call (`giveFrom` in `app-work.ts`: the `requestId` matched against the engine's tool starts, as
-for `lilbot_delegate` and `lilbot_work`), never from an argument: a routine run's two session aliases and a session the
+LilBot's records of the call (`giveFrom` in `app-work.ts`: the call matched to its own tool start, as for
+`lilbot_delegate` and `lilbot_work`; refused when none is seen), never from an argument: a routine run's two session aliases and a session the
 engine continued after compressing it resolve to the persisted run id of that bot (`workSessions`), a webhook run's
 session is recorded as the conversation, and a lineage that cannot be read refuses and gives nothing. Each call is
 logged in `system_changes`. The adapter's `give_file` ended with adapter 0.12.0; the engine API's `/engine/library/give`
@@ -1355,17 +1366,19 @@ profiles, isolated directories, cleanup in `finally`. Most cost a few model call
   attaches a file, the lead closes and keeps it (Library, archive, journal facts) and the outcome reaches its
   conversation; a second group is stopped by Oscar; a third ends by itself at the round limit. Nothing is delivered twice.
 - `bun run check:work`: a temporary bot asked for a small real task opens an item, defines done, adds evidence and
-  finishes it (seen in `work.list`); done without evidence is refused, by the bot's attempt and a direct call with its
-  key; a task it hands to a second bot inside an item becomes that bot's child item, which the helper finishes.
+  finishes it (seen in `work.list`); done without evidence is refused by the bot's attempt, and a direct call with its
+  key, which no session made, is refused too; a task it hands to a second bot inside an item becomes that bot's child
+  item, which the helper finishes.
 - `bun run check:work-drop`: two temporary bots, with the dev server SIGKILLed right after a drop and after an answer. Oscar
   drops an item mid-work: its turn ends, the bot is told once and says so. Dropping a parent drops the child and stops its
   exchange as Oscar. Oscar answers the child's question: the helper continues in the exchange and the lead gets the outcome
   once in its own conversation; the lead reads the question and answer with `lilbot_work_list`.
-- `bun run check:checks`: with one temporary bot (review model Haiku), an item below its kind's default is refused; a true
-  level 2 claim is verified by a fresh hidden session of the same bot (recorded as a same-bot check on the review model,
-  which Hermes confirms the session ran on, outside the history), and a false one comes back not verified with what the
-  checker saw, returns to the owner, then waits for Oscar. The owner's own session cannot give the verdict, skip or answer
-  the check. With a second bot, that bot checks instead.
+- `bun run check:checks`: a `lilbot_work` call no session made is refused. With one temporary bot (review model Haiku), a
+  true level 2 claim is verified by a fresh hidden session of the same bot (recorded as a same-bot check on the review
+  model, which Hermes confirms the session ran on, outside the history), whose verdict reuses the request id the owner
+  finished with; what that session sent the model has no memory block and its tools no memory, while the owner's turn
+  had the planted fact. A false one (the file changes after the owner finishes) comes back not verified with what the
+  checker saw, returns to the owner, then waits for Oscar. With a second bot, that bot checks instead, without memory too.
 - `bun run check:goals`: a temporary bot told in chat to grow notes.txt in its folder to 10 lines proposes a goal with a
   baseline read from the file; nothing exists for it before `goals.agree`; after it, the review routine (90 s through the
   routine test override, not one of the bot's five) and goal work items appear; the first review is a `figure` item from

@@ -40,7 +40,8 @@ in groups `point` (the leader's point for one member) and `round` (a round's rep
   that submitted the run receives their events live, `tool.start` with full `args`. That socket feeds the activity line
   and `BotEngine.onToolCall`.
 - **MCP:** Hermes' MCP client sends no session id or header per conversation. With tool search on, a call may arrive as
-  `tool_call({ name, arguments })`; `calling-chats.ts` reads both shapes.
+  `tool_call({ name, arguments })` or `tool_call({ calls: [...] })`; `calling-chats.ts` reads both shapes. Each start
+  is matched to one call; a call whose start is not seen in 5 seconds is refused, never given the main conversation.
 
 ## Concurrency (dev gateway, 12 cores, trivial hidden turns, 2026-11-20)
 
