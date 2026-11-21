@@ -1,11 +1,8 @@
+import { waitFor } from './wait-for'
+
 /** Bounded requests and turns let the caller's finally always clean up. */
 export async function eventually(check: () => Promise<boolean>, timeout = 30_000) {
-  const end = Date.now() + timeout
-  while (Date.now() < end) {
-    if (await check()) return
-    await Bun.sleep(100)
-  }
-  throw new Error('Condition timed out')
+  await waitFor(check, Boolean, { timeout, interval: 100, error: 'Condition timed out' })
 }
 export async function browser(port: number) {
   const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`)

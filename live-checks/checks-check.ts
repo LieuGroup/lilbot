@@ -3,6 +3,7 @@ import { devPort } from '../scripts/dev-paths'
 import { checkClient } from './check-client'
 import { deleteProfile, startServer } from './check-process'
 import { engineView, sentToModel } from './engine-observer'
+import { waitFor } from './wait-for'
 /** `bun run check:checks`: check levels on an isolated dev server with temporary bots, review model Haiku. A `lilbot_work`
  *  call no session made is refused. With one bot, a true level 2 claim is verified by a fresh hidden session of the same
  *  bot (a same-bot check on the review model, outside the conversation history) whose verdict reuses the request id the
@@ -41,13 +42,8 @@ const server = startServer(env)
 let client: Awaited<ReturnType<typeof checkClient>> | undefined
 let db: Database | undefined
 const call = (method: string, params = {}) => client!.call(method, params)
-async function until<T>(read: () => Promise<T> | T, ok: (value: T) => boolean, what: string, timeout = 400_000, every = 1000): Promise<T> {
-  for (const end = Date.now() + timeout; Date.now() < end; await Bun.sleep(every)) {
-    const value = await read()
-    if (ok(value)) return value
-  }
-  throw new Error(`Timed out waiting for ${what}`)
-}
+const until = <T>(read: () => Promise<T> | T, ok: (value: T) => boolean, label: string, timeout = 400_000, interval = 1000): Promise<T> =>
+  waitFor(read, ok, { label, timeout, interval })
 const settled = (itemId: string) =>
   until(
     () => call('work.open', { itemId }),

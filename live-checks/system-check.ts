@@ -2,6 +2,7 @@ import { devScratch } from '../scripts/dev-env'
 import { devPort } from '../scripts/dev-paths'
 import { checkClient } from './check-client'
 import { deleteProfile, startServer } from './check-process'
+import { waitFor } from './wait-for'
 /** `bun run check:system`: on an isolated dev server, a temporary bot whose instructions never mention LilBot is asked
  *  what it runs in, which version and how it would change LilBot, and answers from the note and tools. It then pins
  *  and creates bots through its `lilbot_*` tools. Never touches the live service or real bots; costs a few model
@@ -55,16 +56,18 @@ async function ask(botId: string, text: string) {
   const chat = await call('chat.new', { botId })
   const start = events.length
   await call('chat.send', { chatId: chat.chatId, text })
-  for (let i = 0; i < 480; i++) {
-    const mine = events
-      .slice(start)
-      .filter(frame => frame.event === 'chat' && frame.chatId === chat.chatId)
-      .map(frame => frame.data)
-    const done = mine.find(event => event.type === 'turn.finished')
-    if (done) return { text: String(done.text), tools: mine.filter(event => event.type === 'tool.started').map(event => String(event.name)), tokens: done.contextTokens as number }
-    await Bun.sleep(500)
-  }
-  throw new Error('The turn did not finish in time.')
+  const { mine, done } = await waitFor(
+    () => {
+      const mine = events
+        .slice(start)
+        .filter(frame => frame.event === 'chat' && frame.chatId === chat.chatId)
+        .map(frame => frame.data)
+      return { mine, done: mine.find(event => event.type === 'turn.finished') }
+    },
+    ({ done }) => Boolean(done),
+    { timeout: 240_000, interval: 500, error: 'The turn did not finish in time.' }
+  )
+  return { text: String(done.text), tools: mine.filter(event => event.type === 'tool.started').map(event => String(event.name)), tokens: done.contextTokens as number }
 }
 
 async function systemPrompt(profile: string) {

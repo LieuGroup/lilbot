@@ -2,6 +2,7 @@ import { devScratch } from '../scripts/dev-env'
 import { checkClient } from './check-client'
 import { startServer, deleteProfile } from './check-process'
 import { devPort } from '../scripts/dev-paths'
+import { waitFor as pollFor } from './wait-for'
 /** Isolated end-to-end check. Never start against an unrestricted roster or the live service. */
 import { Database } from 'bun:sqlite'
 import assert from 'node:assert/strict'
@@ -29,15 +30,8 @@ const HELPER =
   'You are a helper in a live check. When another bot asks for a calculation, use terminal to calculate it, then answer concisely. Use lilbot_delegate only when a task tells you to hand work on. When Oscar talks directly to you, answer him directly without involving any other bot.'
 const events: any[] = []
 let call!: Awaited<ReturnType<typeof checkClient>>['call']
-async function waitFor<T>(read: () => Promise<T>, matches: (v: T) => boolean, timeout = 240_000): Promise<T> {
-  const end = Date.now() + timeout
-  while (Date.now() < end) {
-    const value = await read()
-    if (matches(value)) return value
-    await Bun.sleep(500)
-  }
-  throw new Error('Threads live check timed out')
-}
+const waitFor = <T>(read: () => Promise<T>, matches: (v: T) => boolean, timeout = 240_000): Promise<T> =>
+  pollFor(read, matches, { timeout, interval: 500, error: 'Threads live check timed out' })
 async function connect() {
   await waitFor(
     () =>

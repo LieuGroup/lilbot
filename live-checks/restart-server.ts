@@ -1,21 +1,15 @@
 import { startServer, deleteProfile } from './check-process'
 import { devPort } from '../scripts/dev-paths'
 import { devScratch } from '../scripts/dev-paths'
+import { waitFor as pollFor } from './wait-for'
 /** Process and socket harness for restart-check and groups-check. Never connects to the live LilBot service. */
 import { Database } from 'bun:sqlite'
 import assert from 'node:assert/strict'
 import { rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-export async function waitFor<T>(label: string, read: () => Promise<T>, matches: (value: T) => boolean, timeout = 240_000): Promise<T> {
-  const end = Date.now() + timeout
-  while (Date.now() < end) {
-    const value = await read()
-    if (matches(value)) return value
-    await Bun.sleep(250)
-  }
-  throw new Error(`Restart check timed out: ${label}`)
-}
+export const waitFor = <T>(label: string, read: () => Promise<T>, matches: (value: T) => boolean, timeout = 240_000): Promise<T> =>
+  pollFor(read, matches, { timeout, interval: 250, error: `Restart check timed out: ${label}` })
 
 /** Match useChat's bounded reopen attempts after transient engine/startup refusals.
  * Only for opening existing conversations, never sending a prompt or creating work. */

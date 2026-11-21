@@ -2,6 +2,7 @@
  *  given, what its calls cost and what its page fetches returned. For `webhooks-check.ts`; reads only fields `hermes-contract.test.ts` lists. */
 import { createHmac } from 'node:crypto'
 import { HermesSocket } from '../server/engines/hermes/hermes-socket'
+import { waitFor as pollFor } from './wait-for'
 
 export interface SessionTools {
   toolsets: string[]
@@ -65,15 +66,8 @@ export const has = (session: SessionTools, names: string[]) => names.filter(name
 export const fromServer = (session: SessionTools, server: string) => session.tools.filter(name => name.startsWith(`mcp__${server}__`))
 
 /** Reads until `matches`, every half second, for at most `timeout`. */
-export const waitFor = async <T>(read: () => Promise<T> | T, matches: (value: T) => boolean, timeout = 300_000): Promise<T> => {
-  const end = Date.now() + timeout
-  while (Date.now() < end) {
-    const value = await read()
-    if (matches(value)) return value
-    await Bun.sleep(500)
-  }
-  throw new Error(`Timed out waiting for the webhook check: ${String(matches).slice(0, 120)}`)
-}
+export const waitFor = <T>(read: () => Promise<T> | T, matches: (value: T) => boolean, timeout = 300_000): Promise<T> =>
+  pollFor(read, matches, { timeout, interval: 500, error: `Timed out waiting for the webhook check: ${String(matches).slice(0, 120)}` })
 
 export const serverUp = (port: number) =>
   waitFor(

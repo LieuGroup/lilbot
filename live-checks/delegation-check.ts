@@ -2,6 +2,7 @@ import { devScratch } from '../scripts/dev-env'
 import { devPort } from '../scripts/dev-paths'
 import { checkClient } from './check-client'
 import { deleteProfile, startServer } from './check-process'
+import { waitFor } from './wait-for'
 /** `bun run check:delegation`: on an isolated dev server a temporary lead bot hands two tasks to two temporary helpers
  *  in one `lilbot_delegate` call, one with a file. While both work, the lead reads their status, redirects one
  *  mid-command (steer) and stops the other (interrupt); the first answer comes back with a file into the lead's
@@ -31,13 +32,7 @@ let client: Awaited<ReturnType<typeof checkClient>> | undefined
 let db: Database | undefined
 const events: any[] = []
 const call = (method: string, params = {}) => client!.call(method, params)
-async function until<T>(read: () => Promise<T> | T, ok: (value: T) => boolean, what: string, timeout = 300_000): Promise<T> {
-  for (const end = Date.now() + timeout; Date.now() < end; await Bun.sleep(500)) {
-    const value = await read()
-    if (ok(value)) return value
-  }
-  throw new Error(`Timed out waiting for ${what}`)
-}
+const until = <T>(read: () => Promise<T> | T, ok: (value: T) => boolean, label: string, timeout = 300_000): Promise<T> => waitFor(read, ok, { label, timeout, interval: 500 })
 try {
   await until(
     () =>

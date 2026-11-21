@@ -2,6 +2,7 @@ import { devScratch } from '../scripts/dev-env'
 import { checkClient } from './check-client'
 import { startServer, deleteProfile } from './check-process'
 import { devPort } from '../scripts/dev-paths'
+import { waitFor } from './wait-for'
 /** Real protocol and download check, isolated from the live service and all existing bots. */
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -84,13 +85,7 @@ try {
   const denied = await fetch(`http://127.0.0.1:${port}${url}`, { headers: { origin: 'https://evil.example' } })
   if (denied.status !== 403) throw new Error('Cross origin download was accepted')
   console.log('A routine run gives a file from its own hidden session')
-  const poll = async <T>(read: () => Promise<T>, done: (value: T) => boolean, what: string): Promise<T> => {
-    for (const end = Date.now() + 240_000; Date.now() < end; await Bun.sleep(500)) {
-      const value = await read()
-      if (done(value)) return value
-    }
-    throw new Error(`Timed out waiting for ${what}`)
-  }
+  const poll = <T>(read: () => Promise<T>, done: (value: T) => boolean, label: string): Promise<T> => waitFor(read, done, { label, timeout: 240_000, interval: 500 })
   const routineTurn = new Promise<any>((resolve, reject) => {
     finish = resolve
     setTimeout(() => reject(new Error('Routine turn timed out')), 120000).unref()

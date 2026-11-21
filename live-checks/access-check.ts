@@ -1,6 +1,7 @@
 import { devScratch } from '../scripts/dev-env'
 import { startServer } from './check-process'
 import { devPort } from '../scripts/dev-paths'
+import { waitFor } from './wait-for'
 /** Isolated app/Access integration. No real profiles, service changes, or Cloudflare credentials. */
 import assert from 'node:assert/strict'
 import { rmSync } from 'node:fs'
@@ -85,16 +86,20 @@ try {
     LILBOT_SKIP_MEMORY_SETUP: '1',
     LILBOT_REVIEW: 'off'
   })
-  let ready = false
-  for (let i = 0; i < 200; i++) {
-    ready = await fetch(`http://127.0.0.1:${privatePort}/api/health`)
-      .then(r => r.ok)
-      .catch(() => false)
-    if (ready) break
-    if (child.exitCode !== null) throw new Error('Isolated server exited before startup')
-    await Bun.sleep(100)
-  }
-  assert.ok(ready, 'Isolated server did not start')
+  await waitFor(
+    async () => {
+      if (
+        await fetch(`http://127.0.0.1:${privatePort}/api/health`)
+          .then(r => r.ok)
+          .catch(() => false)
+      )
+        return true
+      if (child!.exitCode !== null) throw new Error('Isolated server exited before startup')
+      return false
+    },
+    Boolean,
+    { timeout: 20_000, interval: 100, error: 'Isolated server did not start' }
+  )
   const home = await fetch(base, { headers: auth })
   assert.equal(home.status, 200)
   const html = await home.text()

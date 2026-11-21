@@ -2,6 +2,7 @@ import { devScratch } from '../scripts/dev-env'
 import { devPort } from '../scripts/dev-paths'
 import { checkClient } from './check-client'
 import { deleteProfile, startServer } from './check-process'
+import { waitFor } from './wait-for'
 /** `bun run check:work`: on an isolated dev server a temporary bot asked for a small real task opens a work item with a
  *  "done" definition, adds evidence and finishes it, and the item shows in `work.list`; marking an item done without
  *  evidence is refused by the bot's own attempt, and a direct call with its key, which no session made, is refused too;
@@ -33,13 +34,7 @@ let client: Awaited<ReturnType<typeof checkClient>> | undefined
 let db: Database | undefined
 const events: any[] = []
 const call = (method: string, params = {}) => client!.call(method, params)
-async function until<T>(read: () => Promise<T> | T, ok: (value: T) => boolean, what: string, timeout = 300_000): Promise<T> {
-  for (const end = Date.now() + timeout; Date.now() < end; await Bun.sleep(500)) {
-    const value = await read()
-    if (ok(value)) return value
-  }
-  throw new Error(`Timed out waiting for ${what}`)
-}
+const until = <T>(read: () => Promise<T> | T, ok: (value: T) => boolean, label: string, timeout = 300_000): Promise<T> => waitFor(read, ok, { label, timeout, interval: 500 })
 /** Sends Oscar's message and waits for the reply that contains `marker`. */
 async function ask(chatId: string, text: string, marker: string) {
   const from = events.length

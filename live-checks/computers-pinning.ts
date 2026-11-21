@@ -6,6 +6,7 @@ import { ComputerStore } from '../server/computers/computer-store'
 import { loadServerKey } from '../server/computers/server-key'
 import { openDatabase } from '../server/database/database'
 import { startPublicDoor } from '../server/http/public-door'
+import { waitFor } from './wait-for'
 
 /** A second real door has the helper's public key but a different server key. */
 export async function checkPinning(binary: string, root: string, config: string, identity: Identity, publicKey: string) {
@@ -32,9 +33,7 @@ export async function checkPinning(binary: string, root: string, config: string,
   }
   const helper = Bun.spawn([binary, 'run'], { env: { ...process.env, LILBOT_HELPER_CONFIG_DIR: config }, stdout: 'ignore', stderr: 'inherit' })
   try {
-    const until = Date.now() + 10_000
-    while (!attempts && Date.now() < until) await Bun.sleep(100)
-    if (!attempts) throw new Error('Pinning test never reached second server')
+    await waitFor(() => attempts, Boolean, { timeout: 10_000, interval: 100, error: 'Pinning test never reached second server' })
     await Bun.sleep(750)
     if (existsSync(output) || service.store.pending(identity.id)[0]?.status !== 'running') throw new Error('Helper trusted a different server key')
     console.log('PASS: pinned helper refused work from a second door with a different server key')

@@ -1,5 +1,6 @@
 import { devScratch } from '../scripts/dev-env'
 import { startServer, deleteProfile } from './check-process'
+import { waitFor } from './wait-for'
 /** Two browser-protocol clients on an isolated server and temporary profiles. */
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -24,16 +25,14 @@ const start = async () => {
     LILBOT_SKIP_MEMORY_SETUP: '1',
     LILBOT_REVIEW: 'off'
   })
-  for (let i = 0; i < 100; i++) {
-    if (
-      await fetch(`http://127.0.0.1:${port}/api/health`)
+  await waitFor(
+    () =>
+      fetch(`http://127.0.0.1:${port}/api/health`)
         .then(r => r.ok)
-        .catch(() => false)
-    )
-      return
-    await Bun.sleep(100)
-  }
-  throw new Error('server did not start')
+        .catch(() => false),
+    Boolean,
+    { timeout: 10_000, interval: 100, error: 'server did not start' }
+  )
 }
 const client = async () => {
   const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`)
