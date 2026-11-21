@@ -186,7 +186,8 @@ the path; a browser cannot open a server folder).
   routine's (`run-list.tsx`): "Today 14:12 · 3 events" (the run's first event; "1 event"), the result on two lines, red
   with "Failed: " when failed, a chevron. Under it, 12px muted: "Events that arrive close together are handled in one run.
   The address is a secret: anyone who has it can wake this bot."
-- Delete (`delete-webhook-dialog.tsx`, frame 6): the routine dialog's shell (`routines/confirm-delete-dialog.tsx`):
+- Delete (`delete-webhook-dialog.tsx`, frame 6): the routine dialog's shell (`routines/confirm-delete-dialog.tsx`, 432px,
+  padding 24, gap 20, where the frame draws 332/20/16, so both delete dialogs stay alike):
   "Delete this webhook?", "Its address stops working at once, and its past runs are removed. <service> will keep calling it
   until the bot or you remove it there.", Cancel and a red "Delete". Back to the Activity tab after.
 - A run (`webhook-run-view.tsx`), in the conversation column like a routine run (`routines/run-transcript.tsx`): the 16px

@@ -55,7 +55,7 @@ export async function deleteWebhook(botId: string, id: string) {
  *  given its pending text at once, so Safari still counts the click as the gesture that allows the write. */
 export async function copyAddress(botId: string, id: string) {
   const address = lilbot.call('webhooks.address', { botId, id }).then(answer => answer.address)
-  if (typeof ClipboardItem !== 'undefined' && ClipboardItem.supports?.('text/plain'))
+  if (typeof ClipboardItem !== 'undefined' && ClipboardItem.supports?.('text/plain') !== false)
     return navigator.clipboard.write([new ClipboardItem({ 'text/plain': address.then(text => new Blob([text], { type: 'text/plain' })) })])
   return navigator.clipboard.writeText(await address)
 }
