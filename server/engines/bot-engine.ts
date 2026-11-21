@@ -16,10 +16,7 @@ export interface MemoryConnection {
 }
 
 /** Notes an engine kept in its own memory before the bot was connected to LilBot's. */
-export interface LegacyNotes {
-  aboutUser: string[]
-  ownNotes: string[]
-}
+export type LegacyNotes = { aboutUser: string[]; ownNotes: string[] }
 
 /** Where a turn came from, given by LilBot beside the user's text and never part of it. `line` is what the model is told
  *  for this turn only; `device` is what LilBot stores with a user message (a routine run or another bot has none). */
@@ -81,12 +78,13 @@ export interface SessionChange {
 }
 
 export type RuntimeBinding = { id: string; engineBotId: string }
-/** A tool call an engine saw start in one of its chats, with the call's arguments. */
+/** A tool call an engine saw start in one of its chats, with the call's arguments and the engine's own id for the call. */
 export interface ToolCallSeen {
   engineBotId: string
   chatId: string
   tool: string
   args: unknown
+  callId?: string
 }
 export type ActivityCursor = (botId: string, chatId: string) => string | undefined
 

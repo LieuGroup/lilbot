@@ -62,7 +62,7 @@ export function createThreads(deps: ThreadDeps) {
     give: async (botId, path, title, chatId) => {
       await deps.library.give(botId, { path, title, chatId })
     },
-    callingChat: (botId, requestId) => calls.find(botId, requestId),
+    callingChat: (botId, requestId) => calls.find(botId, 'lilbot_group', requestId),
     rootOf: deps.rootOf,
     work,
     rosterChanged: deps.botsChanged
@@ -89,9 +89,9 @@ export function createThreads(deps: ThreadDeps) {
   engine.onToolCall?.(call => {
     const bot = store.list().find(b => b.engineId === engine.id && b.engineBotId === call.engineBotId)
     if (!bot) return
-    calls.saw(bot.id, call.chatId, call.tool, call.args)
+    calls.saw(bot.id, call.chatId, call.tool, call.args, call.callId)
     threads.runner.sawTool(call.chatId, toolActivity(call.tool))
   })
-  const hand = new DelegationService(threads, host, (botId, requestId) => calls.find(botId, requestId), work)
+  const hand = new DelegationService(threads, host, (botId, requestId) => calls.find(botId, 'lilbot_delegate', requestId), work)
   return { threads, delegation: { hand, control: new DelegationControl(threads, host), groups: threads.groups! } }
 }

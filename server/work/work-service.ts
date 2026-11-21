@@ -22,8 +22,8 @@ export interface WorkHost {
   /** The model the bot's own fresh check session runs on, when no other bot can check: the configured review model if it
    *  differs from the bot's own, else null (the bot's own). */
   checkModel(botId: string): Promise<BotModel | null>
-  /** The bot's session that made this call (matched by its request id), or null. */
-  callingChat(botId: string, requestId: string): Promise<string | null>
+  /** The bot's session that made this call of `tool` (matched by its request id); refuses when that cannot be known. */
+  callingChat(botId: string, tool: 'lilbot_work' | 'lilbot_goal', requestId: string): Promise<string>
   session(botId: string, chatId: string): SessionOrigin
   /** The title of the bot's own Library item, or null. */
   libraryTitle(botId: string, itemId: string): string | null
@@ -78,12 +78,16 @@ export class WorkService {
   async act(callerId: string, raw: WorkInput): Promise<WorkItem> {
     const input = WorkInput.parse(raw)
     if (input.verdict) return this.checking.verdict(callerId, input)
+    return this.actFrom(callerId, input, await this.host.callingChat(callerId, 'lilbot_work', input.requestId))
+  }
+
+  /** The same, from the session `chatId` that made the call: a call's start is matched once, so a goal's review gives its own. */
+  async actFrom(callerId: string, raw: WorkInput, chatId: string): Promise<WorkItem> {
+    const input = WorkInput.parse(raw)
     const caller = await this.host.requireBot(callerId)
     refuseUnsafe([input.title, input.done, input.question, input.result, input.reason, ...(input.evidence ?? []).flatMap(evidenceTexts)])
-    const chatId = await this.host.callingChat(callerId, input.requestId)
-    if (!input.itemId && chatId && this.checks.isCheckChat(chatId))
-      throw new LilBotError('work_check_session', 'This session is a check: give your verdict, do not open items here.')
-    const session = chatId ? this.host.session(callerId, chatId) : null
+    if (this.checks.isCheckChat(chatId)) throw new LilBotError('work_check_session', 'This session is a check: give your verdict, do not open or report on items here.')
+    const session = this.host.session(callerId, chatId)
     const [checkers, checkModel] = input.status === 'done' ? await Promise.all([this.host.checkers(), this.host.checkModel(callerId)]) : [[], null]
     const { saved, created } = this.store.db.transaction(() => {
       const opened = input.itemId ? null : this.open(caller, input, chatId, session)
@@ -106,12 +110,12 @@ export class WorkService {
       }
       const change = levelChange(item, input, kind => this.levels.floor(kind, callerId))
       if (input.title && input.title !== item.title) change.title = input.title
-      if (!item.chatId && chatId) change.chatId = chatId
+      if (!item.chatId) change.chatId = chatId
       // Opening with a definition (or at level 0) starts the work.
       const starts = !input.status && opened?.fresh && (input.done || (change.checkLevel ?? item.checkLevel) === 0)
       const status = input.status ?? (starts ? 'working' : undefined)
       const move = status && { status, question: input.question, result: input.result, reason: input.reason }
-      return { saved: this.report(item, { ...input, move, checkers, checkModel }, change, { by: 'bot', via: session?.origin ?? null }), created: !!opened?.created }
+      return { saved: this.report(item, { ...input, move, checkers, checkModel }, change, { by: 'bot', via: session.origin }), created: !!opened?.created }
     })()
     this.after(saved)
     if (created && saved.item.origin.kind === 'conversation') this.host.line(saved.item)
@@ -120,10 +124,9 @@ export class WorkService {
 
   /** The item an open call names. A retry finds the first one; the item LilBot opened for an exchange or a group
    *  member's part (no definition yet) is the one its bot opens, and gives its kind. `fresh`: opened by this call. */
-  private open(caller: { id: string; name: string }, input: WorkInput, chatId: string | null, session: SessionOrigin | null) {
+  private open(caller: { id: string; name: string }, input: WorkInput, chatId: string, session: SessionOrigin) {
     const prior = this.store.byRequest(caller.id, input.requestId)
     if (prior) return { id: prior.id, created: false, fresh: false }
-    if (!chatId || !session) throw new LilBotError('no_conversation', 'LilBot could not tell which conversation this came from. Try again.')
     const ours = this.store.prepared(caller.id, session.origin)
     if (ours && !isFinal(ours.status) && !ours.done) return { id: ours.id, created: false, fresh: true }
     if (!input.title) throw new LilBotError('work_no_title', 'Give a title to open an item, or an itemId to report on one.')

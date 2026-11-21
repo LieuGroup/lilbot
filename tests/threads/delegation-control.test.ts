@@ -156,13 +156,20 @@ test('a wait whose last task was stopped ends with a short notice', async () => 
   expect(notice?.prompt).toContain('all 2 tasks you were waiting for are in')
 })
 
-test('the calling conversation is the one whose tool call carried the request id, else the main one', async () => {
-  const calls = new CallingChats(botId => `${botId}-main`, 150)
-  calls.saw('a', 'hidden-1', 'mcp__lilbot_system__lilbot_delegate', { requestId: 'one' })
-  calls.saw('a', 'hidden-2', 'tool_call', { name: 'mcp__lilbot_system__lilbot_delegate', arguments: '{"requestId":"two"}' })
-  calls.saw('a', 'hidden-3', 'terminal', { requestId: 'three' })
-  expect(await calls.find('a', 'one')).toBe('hidden-1')
-  expect(await calls.find('a', 'two')).toBe('hidden-2')
-  expect(await calls.find('a', 'three')).toBe('a-main')
-  expect(await calls.find('b', 'one')).toBe('b-main')
+test('answers return to the session that made the call: a request id another tool used is not taken, and a call nothing reported hands out nothing (#174)', async () => {
+  const calls = new CallingChats(300)
+  const f = delegationFixture({ calls })
+  const task = { requestId: 'r', tasks: [{ to: 'b', task: 'Task for B' }] }
+  // Oscar's conversation used the same request id for the work board a moment ago.
+  calls.saw('a', 'a-main', 'mcp__lilbot_system__lilbot_work', { requestId: 'r' }, 'w1')
+  const pending = f.delegation.delegate('a', task)
+  setTimeout(() => calls.saw('a', 'a-routine-run', 'mcp__lilbot_system__lilbot_delegate', task, 'd1'), 50)
+  await pending
+  await f.settle()
+  f.runs[0].finish('B is done')
+  await f.settle()
+  await f.settle()
+  expect(f.runs.filter(r => r.botId === 'a').map(r => r.options.chatId)).toEqual(['a-routine-run'])
+  await expect(f.delegation.delegate('a', { ...task, requestId: 'unseen' })).rejects.toThrow('Make the same call again')
+  expect(f.store.open('a')).toBe(0)
 })

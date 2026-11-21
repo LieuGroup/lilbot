@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { Workspaces } from '../../server/bots/workspaces'
 import { openDatabase } from '../../server/database/database'
 import type { RoutineOptions } from '../../server/engines/bot-engine'
+import type { CallingChats } from '../../server/threads/calling-chats'
 import { DelegationControl } from '../../server/threads/delegation-control'
 import { DelegationService, type DelegationWork } from '../../server/threads/delegation-service'
 import type { GroupHost, GroupWork } from '../../server/threads/group-end'
@@ -56,7 +57,8 @@ export function groupHostFor(root: string, work?: GroupWork, refuse: (text: stri
   return { host, chats, journal, given, pushes }
 }
 
-/** `database` and `work` join it to a work board; `changed` hears every exchange change; `limits` and `refuse` shape groups. */
+/** `database` and `work` join it to a work board; `changed` hears every exchange change; `limits` and `refuse` shape groups;
+ *  `calls` matches each call to the tool starts reported to it, as the server does. */
 export function delegationFixture(
   options: {
     database?: Database
@@ -66,6 +68,7 @@ export function delegationFixture(
     touched?: (roster?: boolean) => void
     limits?: GroupLimits
     refuse?: (text: string) => boolean
+    calls?: CallingChats
   } = {}
 ) {
   const root = mkdtempSync(join(tmpdir(), 'lilbot-delegation-'))
@@ -106,8 +109,15 @@ export function delegationFixture(
     }
   }
   const group = groupHostFor(root, options.work, options.refuse)
+  const { calls } = options
+  if (calls) group.host.callingChat = (botId, requestId) => calls.find(botId, 'lilbot_group', requestId)
   const threads = new ThreadService(store, host, options.changed, options.activity, options.touched, group.host, options.limits)
-  const hand = new DelegationService(threads, host, botId => group.host.callingChat(botId, ''), options.work)
+  const hand = new DelegationService(
+    threads,
+    host,
+    (botId, requestId) => (calls ? calls.find(botId, 'lilbot_delegate', requestId) : group.host.callingChat(botId, '')),
+    options.work
+  )
   const control = new DelegationControl(threads, host)
   const delegation = {
     delegate: hand.delegate.bind(hand),

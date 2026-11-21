@@ -37,12 +37,16 @@ export class WorkCheckRunner {
       this.activity(botId, check.id, true)
       void this.run(
         botId,
-        checkPrompt(item, this.work.store.evidence(item.id), this.folder(item.ownerId), check.sameBot),
+        checkPrompt(item, this.work.store.evidence(item.id), this.folder(item.ownerId), check),
         `check-${check.id}`,
         chatId => this.work.checks.attach(check.id, chatId),
         check.model ?? undefined
       )
-        .then(result => this.work.checking.ended(check.id, `The check ended (${result.status}) without a verdict.`))
+        .then(result => {
+          if (this.work.checks.get(check.id)?.state === 'checking')
+            console.warn(`[work-check] check ended without a verdict (${result.status}, ${check.sameBot ? 'same bot' : 'second bot'})`)
+          this.work.checking.ended(check.id, `The check ended (${result.status}) without a verdict.`)
+        })
         .catch(error => {
           if (error instanceof LilBotError && error.code === 'bot_not_found') return this.work.checking.ended(check.id, `${check.by.name} is no longer available to check it.`)
           this.retryAt.set(check.id, Date.now() + RETRY_MS)

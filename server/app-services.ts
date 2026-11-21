@@ -145,29 +145,25 @@ export function createAppServices(
     connections: botId => [t3Connection(`http://127.0.0.1:${PORT}`, token, botId, t3Grants.generation()), system.connection(botId)],
     systemNote: systemNote(facts)
   })
-  const calls = new CallingChats(botId => prefs.mainChat(botId))
+  const calls = new CallingChats()
   const runs = { threadStore, routineStore, webhookStore, rootOf, goalStore: new GoalStore(database), reviewModel: reviewSettingsFrom(process.env).model ?? null }
-  const { work, links, answers, checks } = createWork({ database, engine, store, prefs, bots, ...runs, libraryStore, workspaces, activity, history: history.store, calls, publish })
+  const workDeps = { database, engine, store, prefs, bots, ...runs, libraryStore, workspaces, activity, history: history.store, calls, publish }
+  const { work, links, answers, checks, checkSessions } = createWork(workDeps)
   const threadDeps = { engine, store, prefs, bots, workspaces, history, activity, threadStore, calls, work: links, memory, library, root: WORKSPACES_DIR, rootOf, publish }
   const { threads, delegation } = createThreads({ ...threadDeps, botsChanged, memoryChanged })
   const routines = new RoutineService(routineStore, bots, () => publish({ event: 'routines.changed' }), routineSettings(process.env))
   const { goals, boards } = createGoals({ goalStore: runs.goalStore, work, answers, threads, routines, activity, store, publish, repeat })
   const giveFile = giveFrom(library, calls, threadStore, routineStore, webhookStore, rootOf)
   const webhooks = new WebhookService(webhookStore, bots, token, HOOK_ORIGIN, () => publish({ event: 'webhooks.changed' }))
-  const deps = { ...facts, bots, activity, memory, memoryChanged, delegation, work, goals, routines, giveFile, webhooks, changes: new SystemChanges(database) }
-  const system = createSystemServer({ ...deps, engineToken: token, port: PORT })
+  const deps = { ...facts, bots, activity, memory, memoryChanged, delegation, work, goals, routines, giveFile, webhooks, calls, checkSessions }
+  const system = createSystemServer({ ...deps, changes: new SystemChanges(database), engineToken: token, port: PORT })
   watchT3SignIn(
     t3Grants,
     () => publish({ event: 'connections.changed' }),
     () => bots.refreshConnections()
   )
-  const t3Bridge = createT3Bridge({
-    upstream: process.env.LILBOT_T3_MCP_URL ?? T3_DEFAULT_MCP_URL,
-    grants: t3Grants,
-    engineToken: token,
-    port: PORT,
-    botIds: () => store.list().map(bot => bot.id)
-  })
+  const botIds = () => store.list().map(bot => bot.id)
+  const t3Bridge = createT3Bridge({ upstream: process.env.LILBOT_T3_MCP_URL ?? T3_DEFAULT_MCP_URL, grants: t3Grants, engineToken: token, port: PORT, botIds })
   repeat('threads', 1000, () => threads.tick())
   repeat('work answers', 1000, () => answers.tick())
   repeat('work checks', 1000, () => checks.tick())
@@ -194,7 +190,8 @@ export function createAppServices(
     onMemoryChanged: memoryChanged,
     adapterVersion: MEMORY_ADAPTER_VERSION,
     reviewer,
-    hiddenChat
+    hiddenChat,
+    inCheck: checkSessions.refusal
   })
   return { bots, store, skills, library, computers, devices, attachments, t3Grants, t3Bridge, system, engineApi, activity, routines, threads, boards, webhooks, hiddenChat }
 }

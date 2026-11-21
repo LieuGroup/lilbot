@@ -31,8 +31,8 @@ export interface GroupHost {
   journal(botId: string, text: string, chatId: string | null): void
   /** Gives a file in the bot's own folder to its Library. */
   give(botId: string, path: string, title: string, chatId: string): Promise<void>
-  /** The bot's session that made this call (matched by its request id), or null. */
-  callingChat(botId: string, requestId: string): Promise<string | null>
+  /** The bot's session that made this call (matched by its request id); refuses when that cannot be known. */
+  callingChat(botId: string, requestId: string): Promise<string>
   /** The session a chat's compression lineage began as; null when it cannot be read just now. */
   rootOf(botId: string, chatId: string): string | null
   work?: GroupWork

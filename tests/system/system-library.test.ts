@@ -14,7 +14,7 @@ const give = (f: Awaited<ReturnType<typeof withFile>>, args: Record<string, unkn
 
 test('a bot gives a file from its own folder; the item is its own, in the conversation the call came from, and the change is logged', async () => {
   const f = await withFile()
-  f.calls.saw('b1', 'b1-earlier', 'mcp__lilbot_system__lilbot_give_file', { requestId: 'r1' })
+  f.from.set('b1', 'b1-earlier')
   const { data } = await give(f)
   expect(data).toMatchObject({ title: 'Result', kind: 'file', size: 11, url: `/api/library/b1/${data.id}` })
   const page = await f.library.list({ botId: 'b1' })
@@ -22,15 +22,14 @@ test('a bot gives a file from its own folder; the item is its own, in the conver
   expect(f.changes.recent(1).map(({ tool, target, fields }) => ({ tool, target, fields }))).toEqual([{ tool: 'lilbot_give_file', target: data.id, fields: 'path, title' }])
 })
 
-test('a call nothing reported comes from the main conversation; tool search wrapping the call is matched too', async () => {
+test('a call no session reported starting is refused and gives nothing (#174); tool search wrapping the call is matched', async () => {
   const f = await withFile()
-  await give(f)
-  f.calls.saw('b1', 'b1-wrapped', 'tool_call', { name: 'lilbot_give_file', arguments: JSON.stringify({ requestId: 'r2' }) })
-  await give(f, { requestId: 'r2', title: 'Second' })
-  expect((await f.library.list({ botId: 'b1' })).items.map(item => [item.title, item.chatId]).sort()).toEqual([
-    ['Result', 'b1-main'],
-    ['Second', 'b1-wrapped']
-  ])
+  const args = { path: 'result.txt', title: 'Result', requestId: 'r1' }
+  expect((await f.call('b1', 'lilbot_give_file', args, false)).error).toContain('Make the same call again')
+  expect((await f.library.list({ botId: 'b1' })).total).toBe(0)
+  f.calls.saw('b1', 'b1-wrapped', 'tool_call', { name: 'lilbot_give_file', arguments: JSON.stringify(args) })
+  await f.call('b1', 'lilbot_give_file', args, false)
+  expect((await f.library.list({ botId: 'b1' })).items.map(item => [item.title, item.chatId])).toEqual([['Result', 'b1-wrapped']])
 })
 
 test('no argument names a chat, a routine run or another bot: the key and the call decide', async () => {
@@ -54,7 +53,7 @@ test('a routine run gives from either of its session aliases, and from a session
     ['b', 'stored-alias'],
     ['c', 'continued']
   ]) {
-    f.calls.saw('b1', chat, 'mcp__lilbot_system__lilbot_give_file', { requestId })
+    f.from.set('b1', chat)
     await give(f, { requestId, title: chat })
   }
   const items = (await f.library.list({ botId: 'b1' })).items
@@ -76,7 +75,7 @@ test('a webhook run, even continued after compressing, gives with its own sessio
     ['a', 'hook-session'],
     ['b', 'hook-continued']
   ]) {
-    f.calls.saw('b1', chat, 'mcp__lilbot_system__lilbot_give_file', { requestId })
+    f.from.set('b1', chat)
     expect((await give(f, { requestId, title: chat })).data.id).toBeDefined()
   }
   expect((await f.library.list({ botId: 'b1' })).items.map(item => [item.chatId, item.routineRunId]).sort()).toEqual([
@@ -93,11 +92,11 @@ test('another bot’s routine session gives nothing to that run; a lineage that 
   f.routineStore.attach(run.id, 'b1-routine-session', Date.now())
   await f.workspaces.ensure(other.id)
   await writeFile(join(f.workspaces.pathFor(other.id), 'result.txt'), 'x')
-  f.calls.saw(other.id, 'b1-routine-session', 'mcp__lilbot_system__lilbot_give_file', { requestId: 'r1' })
+  f.from.set(other.id, 'b1-routine-session')
   await f.call(other.id, 'lilbot_give_file', { path: 'result.txt', title: 'Not that run', requestId: 'r1' })
   expect((await f.library.list({ botId: other.id })).items[0].routineRunId).toBeNull()
   f.roots.set('unreadable', null)
-  f.calls.saw('b1', 'unreadable', 'mcp__lilbot_system__lilbot_give_file', { requestId: 'r2' })
+  f.from.set('b1', 'unreadable')
   expect((await give(f, { requestId: 'r2' })).error).toContain('Try again in a moment')
   expect((await f.library.list({ botId: 'b1' })).total).toBe(0)
 })

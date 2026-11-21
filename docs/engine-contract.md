@@ -70,7 +70,8 @@ conversations, reaches LilBot through MCP, and keeps a thin adapter for the few 
   An engine need not show MCP `instructions`, and must not repeat the note on every turn.
 - [ ] If the engine defers or searches tools, say so here: Hermes' Tool Search defers every MCP tool behind
   `tool_search` / `tool_describe` / `tool_call`, so a call can arrive as `tool_call({ name, arguments })`
-  (`server/threads/calling-chats.ts` reads both shapes).
+  (`server/threads/calling-chats.ts` reads both shapes). Report every tool call starting with the engine's own call id;
+  a LilBot call whose start is never reported is refused.
 
 ## 5. The thin adapter: what MCP cannot do
 

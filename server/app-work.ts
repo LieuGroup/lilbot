@@ -23,8 +23,9 @@ import type { RoutineStore } from './routines/routine-store'
 import type { CallingChats } from './threads/calling-chats'
 import type { ThreadStore } from './threads/thread-store'
 import type { WebhookStore } from './webhooks/webhook-store'
+import { checkSessions } from './work/check-sessions'
 import { WorkAnswers } from './work/work-answers'
-import { differentModel } from './work/work-check-rules'
+import { CHECK_TOOLSETS, differentModel } from './work/work-check-rules'
 import { WorkCheckRunner } from './work/work-check-runner'
 import { WorkLinks } from './work/work-links'
 import { type SessionOrigin, WorkService } from './work/work-service'
@@ -107,8 +108,7 @@ export function workSessions(threadStore: ThreadStore, routineStore: RoutineStor
 export function giveFrom(library: LibraryService, calls: CallingChats, ...sessions: Parameters<typeof workSessions>) {
   const session = workSessions(...sessions)
   return async (botId: string, { path, title, requestId }: z.infer<typeof GiveFileInput>) => {
-    const chatId = await calls.find(botId, requestId)
-    if (!chatId) throw new LilBotError('session_unknown', 'LilBot cannot tell which conversation this came from just now. Try again in a moment.')
+    const chatId = await calls.find(botId, 'lilbot_give_file', requestId)
     const { origin } = session(botId, chatId)
     return library.give(botId, { path, title, chatId, routineRunId: origin.kind === 'routine_run' ? origin.id : undefined })
   }
@@ -137,7 +137,7 @@ export function createWork({
     requireBot: id => bots.requireBot(id),
     checkers: async () => (await bots.listBots()).filter(bot => bot.runnable || bot.runtimePending).map(({ id, name }) => ({ id, name })),
     checkModel: async botId => differentModel((await bots.requireBot(botId)).model, reviewModel),
-    callingChat: (botId, requestId) => calls.find(botId, requestId),
+    callingChat: (botId, tool, requestId) => calls.find(botId, tool, requestId),
     session: workSessions(threadStore, routineStore, webhookStore, rootOf),
     libraryTitle: (botId, itemId) => libraryStore.get(botId, itemId)?.title ?? null,
     checkGoal: (botId, goalId) => requireAgreed(goalStore.get(goalId), botId),
@@ -162,11 +162,11 @@ export function createWork({
   )
   const checks = new WorkCheckRunner(
     work,
-    (botId, prompt, runId, onChat, model) => bots.runRoutine(botId, prompt, { runId, hiddenInput: true, onChat, model, origin: { line: boardLine } }),
+    (botId, prompt, runId, onChat, model) => bots.runRoutine(botId, prompt, { runId, hiddenInput: true, onChat, model, toolsets: CHECK_TOOLSETS, origin: { line: boardLine } }),
     (botId, checkId, working) => {
       if (store.exists(botId)) activity.observe({ botId, chatId: `check:${checkId}`, key: `${checkId}:${working}:${Date.now()}`, status: working ? 'working' : 'finished' })
     },
     botId => workspaces.pathFor(botId)
   )
-  return { work, answers, checks, links: new WorkLinks(work, answers) }
+  return { work, answers, checks, links: new WorkLinks(work, answers), checkSessions: checkSessions(work.checks, rootOf) }
 }
