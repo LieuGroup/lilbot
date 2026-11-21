@@ -17,8 +17,8 @@ LilBot is not signed in, call or quote it, tell Oscar exactly what it says, and 
 ## Before you launch
 
 1. Read `~/code/home/AGENTS.md`. It decides which machine does the work, where repositories live
-   (`~/code/<project>`), and which model and reasoning effort to use (UI work: Claude Opus;
-   other coding: GPT Sol; effort high by default). Follow it; do not repeat it to Oscar.
+   (`~/code/<project>`), and which model and reasoning effort to use. Follow it; do not repeat it
+   to Oscar.
 2. Find the project with `t3_project_list` (`t3_project_read` for details). Work for another
    machine goes to that machine's environment: `t3_environment_links` gives its `environmentId`.
    If the repository is not registered, follow the home rules: clone with `t3_project_clone`
