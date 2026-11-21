@@ -13,6 +13,7 @@ import { botSearch, useBotSearch, useOpenThreadId } from '../threads/open-thread
 const BotCreatePage = lazy(() => import('../bots/bot-create-page').then(module => ({ default: module.BotCreatePage })))
 const ThreadView = lazy(() => import('../threads/thread-view'))
 const RunView = lazy(() => import('../routines/run-view'))
+const WebhookRunView = lazy(() => import('../webhooks/webhook-run-view'))
 
 /** Three columns on a wide screen: the roster on the page tint, the conversation on white, the
  *  details panel on the tint again, divided by a hairline. Phone: the roster is the home screen
@@ -36,14 +37,15 @@ function AppShell() {
 /** A bot's screen: the conversation, with the details panel beside it when a tab is open. The
  *  conversation stays mounted (and connected) while tabs change. A wide screen opens the panel
  *  by itself unless the user closed it; on a phone an open panel covers the conversation. An
- *  exchange between bots, or a routine run, opens over the conversation, which stays mounted,
+ *  exchange between bots, or a routine or webhook run, opens over the conversation, which stays mounted,
  *  connected and scrolled where it was underneath. */
 function BotLayout() {
   const { botId } = useParams({ from: '/bots/$botId' })
   const tab = useDetailsTab()
   const thread = useOpenThreadId()
   const run = useBotSearch('run')
-  const covered = !!(thread || run)
+  const webhookRun = useBotSearch('webhookRun')
+  const covered = !!(thread || run || webhookRun)
   const navigate = useNavigate()
   useEffect(() => {
     if (!tab && detailsOpenByDefault()) void navigate({ to: '/bots/$botId/$tab', params: { botId, tab: 'activity' }, search: true, replace: true })
@@ -56,7 +58,15 @@ function BotLayout() {
         </div>
         {covered && (
           <div className="absolute inset-0 flex flex-col bg-card">
-            <Suspense>{thread ? <ThreadView key={thread} botId={botId} threadId={thread} /> : run && <RunView key={run} botId={botId} runId={run} />}</Suspense>
+            <Suspense>
+              {thread ? (
+                <ThreadView key={thread} botId={botId} threadId={thread} />
+              ) : run ? (
+                <RunView key={run} botId={botId} runId={run} />
+              ) : (
+                webhookRun && <WebhookRunView key={webhookRun} botId={botId} runId={webhookRun} />
+              )}
+            </Suspense>
           </div>
         )}
       </div>

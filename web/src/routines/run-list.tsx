@@ -1,18 +1,20 @@
 import { CheckIcon, ChevronRightIcon, LoaderCircleIcon, SquareIcon, XIcon } from 'lucide-react'
 import { Fragment, useState } from 'react'
 import type { RoutineRun } from '../../../shared/routine-schema'
-import { sessionTime } from '../history/history-labels'
-import { useRunNavigation } from './open-routine'
+import { useColumnNavigation } from '../threads/open-thread'
 import { runLine } from './routine-lines'
 
 const FIRST = 5
 const MORE = 10
 
-/** The "Runs" card: newest first, each with its state, when it was due and its result; a row opens the run's transcript in
- *  the conversation column. A run that has not started has no transcript yet. */
-export function RunList({ botId, runs }: { botId: string; runs: RoutineRun[] }) {
+type Run = Pick<RoutineRun, 'id' | 'chatId' | 'status' | 'result'>
+
+/** The "Runs" card of a routine or a webhook: newest first, each with its state, its title (when it was due, or when its
+ *  events came and how many) and its result; a row opens the run's transcript in the conversation column (`column`). A run
+ *  that has not started has no transcript yet. */
+export function RunList<T extends Run>({ botId, runs, title, column }: { botId: string; runs: T[]; title: (run: T) => string; column: 'run' | 'webhookRun' }) {
   const [shown, setShown] = useState(FIRST)
-  const { open } = useRunNavigation(botId)
+  const { open } = useColumnNavigation(botId, column)
   return (
     <section className="flex flex-col gap-1.5">
       <h3 className="px-2 text-xs/4 text-muted-foreground">Runs</h3>
@@ -31,7 +33,7 @@ export function RunList({ botId, runs }: { botId: string; runs: RoutineRun[] }) 
               >
                 <RunIcon status={run.status} />
                 <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="text-[13px]/[18px] font-medium">{sessionTime(run.dueAt)}</span>
+                  <span className="text-[13px]/[18px] font-medium">{title(run)}</span>
                   <span className={`line-clamp-2 text-xs/4 break-words ${run.status === 'failed' ? 'text-destructive' : 'text-muted-foreground'}`}>{runLine(run)}</span>
                 </span>
                 {run.chatId && <ChevronRightIcon aria-hidden className="h-[18px] w-3.5 flex-none text-foreground/40" strokeWidth={1.75} />}
