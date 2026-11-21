@@ -37,7 +37,9 @@ test('a rollback clears the flag only where it is set, for bound bots that are n
     db.close()
     const log = join(root, 'calls.log')
     const hermes = join(root, 'hermes')
-    writeFileSync(hermes, `#!/bin/sh\necho "$HERMES_HOME $@" >> '${log}'\n[ "$2" = dev-on ] && [ "$4" = get ] && echo True\nexit 0\n`, { mode: 0o755 })
+    writeFileSync(hermes, `#!/bin/sh\necho "$HERMES_HOME $@" >> '${log}'\n[ "$2" = dev-on ] && [ "$4" = get ] && echo "Hermes notice: a banner" && echo True\nexit 0\n`, {
+      mode: 0o755
+    })
     const printed = `LILBOT_ENV=development HERMES_HOME=${dev.HERMES_HOME} LILBOT_HERMES_BIN=${hermes}`
     expect(await clearCheckpointFlags(database, printed)).toEqual({ cleared: 1, failed: 0 })
     expect(readFileSync(log, 'utf8').trim().split('\n')).toEqual([

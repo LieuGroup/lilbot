@@ -52,7 +52,8 @@ export async function clearCheckpointFlags(database: string, printed: string | n
   const run = (args: string[]) => command([hermes, ...args], undefined, 30_000, { ...base, ...env })
   for (const profile of rollbackProfiles(profiles, env)) {
     try {
-      if ((await run([...profile, 'config', 'get', 'compression.checkpoint_required'])).trim().toLowerCase() !== 'true') continue
+      // The value is the last line: anything Hermes prints before it is not the setting.
+      if ((await run([...profile, 'config', 'get', 'compression.checkpoint_required'])).trim().split('\n').at(-1)?.trim().toLowerCase() !== 'true') continue
       await run([...profile, 'config', 'set', 'compression.checkpoint_required', 'false'])
       result.cleared++
     } catch {
