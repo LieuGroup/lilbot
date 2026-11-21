@@ -125,13 +125,34 @@ manifest on `MessageCompletePayload` or `TranscriptMessage`.
 ## T3 Code connection (`hermes-connections.ts`)
 
 - The connection is the profile MCP server `lilbot_t3`, managed with `mcp.servers.list/remove/add` and `reload.mcp`
-  only when it changed; other servers in the profile are untouched. The per-bot bridge key lives in the profile's
-  `.env`.
+  only when it changed. LilBot owns the profile's servers named `lilbot_*` and nothing else: one it no longer supplies is
+  removed, and any other server (Oscar's `revenuecat` and `paper`) is never changed or removed, even on a name match. The
+  per-bot bridge key lives in the profile's `.env`.
 - Hermes keeps a server's tool list until its settings change, so the URL carries the sign-in state
   (`?signin=<issued-at|signed-out>`). When a sign-in appears, expires or is revoked, the server notices within five
   seconds and re-prepares every bot (remove, `reload.mcp`, add, `reload.mcp`).
 - If an unrelated inherited server fails that reload, preparation succeeds only when `mcp.servers.status` confirms
   every requested LilBot connection is connected.
+
+## MCP services bots add (`lilbot_c_<name>`, #187)
+
+- One profile MCP server per service, named `lilbot_c_<name>`, pointing at LilBot's route
+  `/engine/connections/<id>/mcp?v=<sign-in>` with the bot's per-service key in `.env`. The service's address and token
+  never reach the profile. `tools.include` is the tool list LilBot read, or `connection_status` alone while signed out.
+  These servers are `optional`: when one does not connect, the reload is accepted as long as `lilbot_t3` and
+  `lilbot_system` are connected, so a dead service never makes a bot unavailable. Hermes' own `mcp.servers.oauth.*` and
+  token store are never used.
+- Applying to open chats (`applyToChats`, `BotEngine.applyConnections`): `reload.mcp {confirm, session_id}` for each
+  chat, after the profile's preparation, in the same per-profile queue. Measured on the dev gateway (#187 verification,
+  Hermes 0.23.1): a live idle chat answers `session: applied` and its next message has the change, at no cache cost (Tool
+  Search keeps the model's tool array unchanged); a running turn answers `busy` (LilBot asks again once it ends); a chat
+  that is not live gets no `session` and reads the config at its next resume (routine runs and bot threads, which are
+  resumed per message). Adding one server reconnects only that server; changing an existing one (a sign-in, an expiry)
+  reconnects only it and aborts a call in flight to it, which is why LilBot reconfigures on a timer after the answer.
+  Removal reaches an open chat at once. The turn that added a service never sees its tools. `message` in the result is
+  human text and is never parsed. `reload.mcp` without `confirm` answers `confirm_required`; `always` is never sent.
+- Resuming a chat to apply a change (close and reopen, or `session.resume` on another connection) re-sends the whole
+  conversation uncached (about 53,500 tokens on a 52,000-token chat in the verification), so it is never used for this.
 
 ## LilBot system connection (`lilbot_system`)
 
