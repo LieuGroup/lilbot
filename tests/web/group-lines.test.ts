@@ -107,12 +107,21 @@ test('the view: subtitle, round dividers, pending replies and the outcome card',
   const answered = group({
     members: [
       { id: 'lead', state: 'working', activity: 'Reading replies' },
-      ...group()
-        .group.members!.slice(1)
-        .map(m => ({ ...m, state: 'idle' as const }))
+      { id: 'footy', state: 'replied', activity: null },
+      { id: 'heard', state: 'replied', activity: null },
+      { id: 'eng', state: 'idle', activity: null }
     ]
   })
-  expect(pendingReplies(answered).map(row => row.text)).toEqual(['FillLight Bot · Reading replies', 'Footy President Bot · Waiting to start', 'HeardBack Bot · Waiting to start'])
+  expect(pendingReplies(answered).map(row => row.text)).toEqual(['FillLight Bot · Reading replies', 'Footy President Bot replied', 'HeardBack Bot replied'])
+  // Addressed and not started yet.
+  const waiting = group({
+    members: [
+      { id: 'lead', state: 'idle', activity: null },
+      { id: 'footy', state: 'replied', activity: null },
+      { id: 'heard', state: 'waiting', activity: null }
+    ]
+  })
+  expect(pendingReplies(waiting).at(-1)).toMatchObject({ text: 'HeardBack Bot · Waiting to start', tone: null })
   expect(pendingReplies(ended('closed'))).toEqual([])
   expect(outcomeCard(ended('closed', 'Release moves to Friday.'), now)).toEqual({ title: 'Outcome', stats: '2 rounds · 6 turns · 11 min', text: 'Release moves to Friday.' })
   expect(outcomeCard(ended('stopped', 'Stopped by Oscar in round 2.'), now)).toMatchObject({
