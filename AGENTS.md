@@ -441,8 +441,9 @@ Visual specs: "Work between bots" in [docs/screens.md](docs/screens.md).
   "Back to chat" drops the parameter; each bot button opens that bot's chat.
 - Stop (a running task's or group's line and its view) asks first, then calls `threads.cancel`; asked threads have no
   Stop. Any participant's line can stop a group.
-- Files passed in a group, and the files its leader kept, show as chips without a link: `ThreadService.file` does not
-  serve group files yet.
+- Files passed in a group, and the files its leader kept, show as chips that download through the same route as an
+  exchange's (`ThreadService.file`). The kept files of a group closed before #178 have no recorded hash and so no download
+  (they are in the leader's Library).
 - Oscar never writes in an exchange: no composer.
 
 ### Conversation scroll (AI Elements' Message Scroller)
@@ -556,11 +557,25 @@ Visual specs: "Work between bots" in [docs/screens.md](docs/screens.md).
   same persisted transcript, including the other bot's tool rows and files per message. A delivered copy downloads
   from `/api/threads/<bot id>/<thread id>/<message id>/<n>` (`ThreadService.file`): the bot must be a participant,
   the copy is read from the recipient's folder without following links and checked against the hash taken when it
-  was copied; files in groups are not served there yet. A running exchange's view has `redirecting` while a redirect
+  was copied. In a group the bot must be one of its participants (leader or member) and the thread must own the file:
+  a file passed in it is read from its shared folder, else from the archive once it has ended (never creating a folder),
+  and a file the leader kept (recorded under `keptId`, with its hash, when the group ends) from the leader's own folder.
+  A running exchange's view has `redirecting` while a redirect
   did not reach the running turn and waits for the receiver's next step.
+- A failed exchange carries `failure` (in `threads.list` and `threads.open`), a short fixed phrase chosen from what LilBot
+  knows (`thread-failure.ts`): the receiver's turn ended in an error, LilBot could not confirm how it ended (an unknown
+  engine receipt), the receiving bot or the bot that handed it over is gone, the request or answer was too long or
+  withheld by the safety check, the message limit. Never an exception's text, a run's output or bot text. A stopped
+  exchange stays stopped; a follow-up clears the failure. The task line reads "Failed · <failure>" (older failures have
+  none and read "Failed · <bot> could not be reached"). The `thread` chat event carries no state, so it carries no failure.
+- Who is shown working: a handed-over task marks both bots (delegating bot and receiver) while the receiver runs; in a group
+  only the member taking a point, and the leader during its own turns (a round's replies, the end notice). The leader's row
+  between those turns reads "Leading a group" (idle), not working and not "waiting" (that status means waiting for Oscar).
 - `bots.list` gives a bot working on a task another bot handed it `workingFor` (exchange id and the delegating bot's
   name), from the deliveries running now (`thread-roster.ts`, with the running groups); the roster row reads "For
-  <bot> · <activity>".
+  <bot> · <activity>". Each of a bot's `groups` entries adds `activity` while its own turn in that group runs and a tool
+  call has been seen in it (the runner's live line; a tool call in a group also pushes `bots.changed`): "In a group ·
+  <activity>".
 - Main conversations get one `tool` reference with `threadId` per exchange (in snapshots and idempotent `thread` chat
   events), merged at the HTTP edge, never written as fake user messages. The screens are in "Work between bots"
   under Web app.

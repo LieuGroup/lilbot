@@ -45,7 +45,15 @@ export const BotPrefs = z.object({
 export type BotPrefs = z.infer<typeof BotPrefs>
 
 /** A running temporary group the bot is in, for the roster's "Working together" section and its row state. */
-export const BotGroup = z.object({ id: z.string(), purpose: z.string(), round: z.number(), roundCap: z.number(), leading: z.boolean() })
+export const BotGroup = z.object({
+  id: z.string(),
+  purpose: z.string(),
+  round: z.number(),
+  roundCap: z.number(),
+  leading: z.boolean(),
+  /** What the bot is doing in this group right now, while its turn there runs and a tool call has been seen. */
+  activity: z.string().optional()
+})
 export type BotGroup = z.infer<typeof BotGroup>
 /** The exchange a bot is working on now for another bot, and that bot's name. */
 export const BotWorkingFor = z.object({ threadId: z.string(), name: z.string() })

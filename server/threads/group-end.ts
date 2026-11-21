@@ -3,8 +3,9 @@
  *  conversation and each member gets a private journal entry. What follows (stopping turns, dropping members' work
  *  items, archiving the folder) is retried until it is done. */
 import { LilBotError } from '../../shared/protocol'
-import type { ExchangeFile, GroupEnd } from '../../shared/thread-schema'
+import type { GroupEnd } from '../../shared/thread-schema'
 import { backgroundFailure } from '../background'
+import { type KeptFile, recordKept } from './group-files'
 import { archiveGroupFolder, groupArchive } from './group-folder'
 import { endPrompt, endReason, filesLine, journalTexts, newsFor } from './group-prompts'
 import { endId, type GroupStore } from './group-store'
@@ -57,7 +58,7 @@ export class GroupEnding {
   ) {}
 
   /** Ends the group, inside the caller's transaction. False when it had ended already. */
-  end(groupId: string, how: GroupEnd, outcome = '', extra: { stoppedBy?: { kind: 'oscar'; id: null; name: string }; kept?: ExchangeFile[] } = {}) {
+  end(groupId: string, how: GroupEnd, outcome = '', extra: { stoppedBy?: { kind: 'oscar'; id: null; name: string }; kept?: KeptFile[] } = {}) {
     const thread = this.store.get(groupId)
     const g = thread.group!
     if (g.end) return false
@@ -66,7 +67,7 @@ export class GroupEnding {
     // The leader's turn that closes the group counts; turns that end after it do not.
     if (how === 'closed' && running.some(d => d.kind === 'round')) g.turns += 1
     g.end = { how, at, outcome: how === 'closed' ? outcome : endReason(how, thread, this.limits) }
-    if (extra.kept) g.kept = extra.kept
+    if (extra.kept) g.kept = recordKept(this.files, groupId, extra.kept)
     Object.assign(thread, { status: how === 'stopped' ? 'cancelled' : how === 'failed' ? 'failed' : 'finished', endedAt: at })
     if (extra.stoppedBy) thread.stoppedBy = { ...extra.stoppedBy, at }
     const leader = thread.participants[0]

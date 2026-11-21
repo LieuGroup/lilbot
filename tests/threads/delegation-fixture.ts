@@ -13,17 +13,17 @@ import { DelegationService, type DelegationWork } from '../../server/threads/del
 import type { GroupHost, GroupWork } from '../../server/threads/group-end'
 import type { GroupLimits } from '../../server/threads/thread-limits'
 import { ThreadService } from '../../server/threads/thread-service'
-import { ThreadStore } from '../../server/threads/thread-store'
+import { type Delivery, ThreadStore } from '../../server/threads/thread-store'
 import type { ChatItem } from '../../shared/chat-schema'
 import { LilBotError } from '../../shared/protocol'
 
-type Result = { status: string; text: string; items?: ChatItem[] }
+type Result = { status: string; text: string; items?: ChatItem[]; unknownReceipt?: true }
 interface Run {
   botId: string
   prompt: string
   options: RoutineOptions
   chatId: string
-  finish(text?: string, before?: ChatItem[], status?: string): void
+  finish(text?: string, before?: ChatItem[], status?: string, extra?: Partial<Result>): void
 }
 
 const roots: string[] = []
@@ -58,7 +58,15 @@ export function groupHostFor(root: string, work?: GroupWork, refuse: (text: stri
 
 /** `database` and `work` join it to a work board; `changed` hears every exchange change; `limits` and `refuse` shape groups. */
 export function delegationFixture(
-  options: { database?: Database; work?: DelegationWork & GroupWork; changed?: () => void; limits?: GroupLimits; refuse?: (text: string) => boolean } = {}
+  options: {
+    database?: Database
+    work?: DelegationWork & GroupWork
+    changed?: () => void
+    activity?: (botId: string, d: Delivery, working: boolean) => void
+    touched?: (roster?: boolean) => void
+    limits?: GroupLimits
+    refuse?: (text: string) => boolean
+  } = {}
 ) {
   const root = mkdtempSync(join(tmpdir(), 'lilbot-delegation-'))
   roots.push(root)
@@ -85,7 +93,7 @@ export function delegationFixture(
           prompt,
           options,
           chatId,
-          finish: (text = 'done', before = [], status = 'completed') => resolve({ status, text, items: [...before, { kind: 'assistant', text }] })
+          finish: (text = 'done', before = [], status = 'completed', extra = {}) => resolve({ status, text, items: [...before, { kind: 'assistant', text }], ...extra })
         })
       }),
     stopRun: async (_botId: string, chatId: string) => {
@@ -98,7 +106,7 @@ export function delegationFixture(
     }
   }
   const group = groupHostFor(root, options.work, options.refuse)
-  const threads = new ThreadService(store, host, options.changed, undefined, undefined, group.host, options.limits)
+  const threads = new ThreadService(store, host, options.changed, options.activity, options.touched, group.host, options.limits)
   const hand = new DelegationService(threads, host, botId => group.host.callingChat(botId, ''), options.work)
   const control = new DelegationControl(threads, host)
   const delegation = {

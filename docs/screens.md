@@ -36,7 +36,8 @@ and icon sizes follow the Stack rules in `AGENTS.md`.
   dot while offline). The deployment failure notice shows only in the open roster.
 - Row (52px), one line from `bots/row-state.ts`: working (blue spinner and the activity text, "For <bot> · <activity>"
   while it works on a task another bot handed it, from `workingFor` on `bots.list`; "In a group · <activity>" or
-  "Leading a group · <activity>" while it works and is in a running group), "Waiting for you", finished (green check),
+  "Leading a group · <activity>" while it works and is in a running group, the activity being the bot's own turn in that
+  group, from `groups[].activity`, else its general one), "Waiting for you", finished (green check),
   failed (red cross), or, idle, "Leading a group" / "In a group" (no mark) while it is in a running group, else the
   bot's function (no message preview in the data yet). A handed-over task wins over a group (that is the turn running
   now); waiting for Oscar and an unavailable runtime win over both. The drawing's "· 2 tasks out" has no data and is
@@ -142,8 +143,8 @@ half a second after `threads.changed`). Bot and file names are plain text everyw
     delivered" (red), "Stopped at the N-message limit".
   - Handed over (it has a `batchId`): "<bot> · <task>" / "From <bot> · <task>" (task: the request's first line, cut);
     "Waiting to start", "<activity> · <run time> · N files sent", "Redirected · picks it up at its next step" (while a
-    redirect waits for the receiver's next step: `redirecting` on the view), "Finished · <run time> · N files back", "Failed · <bot> could not be reached"
-    (red; the server keeps no reason), "Stopped by you · after <run time>", "Stopped by <bot>" (stopped: muted title).
+    redirect waits for the receiver's next step: `redirecting` on the view), "Finished · <run time> · N files back", "Failed · <reason>"
+    (red; the server's short fixed `failure`, else "Failed · <bot> could not be reached" for older failures), "Stopped by you · after <run time>", "Stopped by <bot>" (stopped: muted title).
     The receiver's line says "N files received, N sent back".
   - Tasks of one call share one card: a header "Handed out N tasks" / "M of N finished" (12px muted, padding 8/12),
     then the rows divided by `foreground/6`. The card is drawn at the batch's first line; the others' rows are empty
@@ -184,8 +185,8 @@ half a second after `threads.changed`). Bot and file names are plain text everyw
     pill on `bg-card` with a hairline ring; scrolls sideways on a phone) and "Round N of <roundCap>" at the right.
   - Discussion, gap 16: a centred divider between hairlines opens each round at its point, "Round N · to everyone ·
     10:10" or "to Footy and HeardBack" (the chips' names). Messages as in a task; the leader's carry "leader"
-    in place of the time (its round's divider has it), "leader · 10:21" on a message outside a round. File chips have
-    no link: the server does not serve group files yet.
+    in place of the time (its round's divider has it), "leader · 10:21" on a message outside a round. File chips download
+    like an exchange's; so do the kept files in the outcome card.
   - While a round runs, under the discussion (indented 26px, gap 8): each bot the round is for, and the leader once it
     works on the replies: 16px avatar, "<bot> replied" with a green check, "<bot> · <activity>" with the spinner (from
     `group.members[].activity`), or "<bot> · Waiting to start".

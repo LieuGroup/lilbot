@@ -167,7 +167,7 @@ export interface BotEngine {
     botId: string,
     prompt: string,
     options: RoutineOptions & ChatOptions
-  ): Promise<{ status: 'completed' | 'failed' | 'stopped'; text: string; items?: import('../../shared/chat-schema').ChatItem[] }>
+  ): Promise<{ status: 'completed' | 'failed' | 'stopped'; text: string; items?: import('../../shared/chat-schema').ChatItem[]; unknownReceipt?: true }>
   /** The session a compressed conversation began as, when the engine continues a long session under a new id (the chat
    *  itself when it is not such a continuation); null when it cannot tell. Engines that never do this leave it out. */
   compressionRoot?(botId: string, chatId: string): string | null

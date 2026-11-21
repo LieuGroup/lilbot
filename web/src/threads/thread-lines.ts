@@ -77,7 +77,7 @@ export function lineState(thread: BotThread, botId: string, now: number): LineSt
     if (running(thread)) return plain(`${to.name} is working on it`, 'working')
     return plain(`Answered · ${plural(thread.messages.length, 'message')}`)
   }
-  if (thread.status === 'failed' || thread.state === 'failed') return { ...plain(`Failed · ${to.name} could not be reached`), failed: true }
+  if (thread.status === 'failed' || thread.state === 'failed') return { ...plain(`Failed · ${thread.failure ?? `${to.name} could not be reached`}`), failed: true }
   if (redirected(thread)) return plain('Redirected · picks it up at its next step', 'working')
   if (thread.status === 'waiting') return plain('Waiting to start')
   if (thread.status === 'working') return plain(joined(thread.activity || 'Working', runTime(thread, now), filesLine(thread, botId)), 'working')
