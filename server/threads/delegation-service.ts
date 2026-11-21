@@ -2,9 +2,9 @@
  *  Built on the same exchanges as `ThreadService.ask`; control over them is `delegation-control.ts`. */
 import { LilBotError } from '../../shared/lilbot-error'
 import { AttachInput, DelegateInput } from '../../shared/thread-schema'
-import { type CopiedFile, checkFiles, copyFile, removeCopy, stageFiles } from './exchange-files'
+import { refuseUnsafe } from '../memory/memory-safety'
+import { checkFiles, stageFiles, withCopies } from './exchange-files'
 import { THREAD_LIMITS } from './thread-limits'
-import { refuseUnsafe } from './thread-prompts'
 import type { ThreadHost, ThreadService } from './thread-service'
 
 export interface DelegationHost extends ThreadHost {
@@ -83,16 +83,13 @@ export class DelegationService {
   ) {
     const newId = t.exchangeId ?? crypto.randomUUID()
     const toRoot = await this.host.folder(target.id)
-    const copies: CopiedFile[] = []
-    let recorded = false
-    try {
-      for (const file of t.files ?? []) copies.push(await copyFile(t.root, file, toRoot, ['exchanges', newId]))
-      return this.store.accept(
+    return withCopies(t.root, t.files ?? [], toRoot, ['exchanges', newId], (copies, keep) =>
+      this.store.accept(
         caller,
         target,
         { requestId: t.requestId, text: t.task, chatId: t.chatId, threadId: t.exchangeId, newId, batchId: t.batchId, parentId: t.exchangeId ? null : t.parentId },
         (messageId, thread) => {
-          recorded = true
+          keep()
           if (!t.exchangeId && t.parentId) this.work?.child(t.parentId, { id: thread.id, owner: target, asker: caller, task: t.task })
           for (const [n, c] of copies.entries())
             this.threads.files.add({
@@ -108,9 +105,7 @@ export class DelegationService {
             })
         }
       )
-    } finally {
-      if (!recorded) for (const c of copies) await removeCopy(toRoot, c.copy).catch(() => {})
-    }
+    )
   }
 
   /** The other participant of an exchange this bot takes part in. */

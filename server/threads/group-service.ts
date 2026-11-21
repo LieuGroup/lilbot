@@ -4,15 +4,15 @@
  *  `group-end.ts`. The caller is always the key's bot. */
 import { LilBotError } from '../../shared/lilbot-error'
 import { type BotThread, GroupInput } from '../../shared/thread-schema'
-import { checkFiles, stageFiles } from './exchange-files'
+import { refuseUnsafe } from '../memory/memory-safety'
+import { checkFiles, stageFiles, withCopies } from './exchange-files'
 import type { GroupEnding, GroupHost } from './group-end'
-import { keepFiles, withCopies } from './group-files'
+import { keepFiles } from './group-files'
 import { groupFolder, makeGroupFolder } from './group-folder'
 import { openRound } from './group-open'
 import { type GroupStore, memberItemId } from './group-store'
 import { botStatus } from './group-view'
 import { type GroupLimits, THREAD_LIMITS } from './thread-limits'
-import { refuseUnsafe } from './thread-prompts'
 import type { ThreadHost, ThreadService } from './thread-service'
 
 type Bot = { id: string; name: string }
@@ -72,9 +72,9 @@ export class GroupService {
     const id = crypto.randomUUID()
     const folder = groupFolder(this.host.root, id)
     await makeGroupFolder(this.host.root, id)
-    await withCopies(folder, root, input.files ?? [], copies =>
+    await withCopies(root, input.files ?? [], folder, [], (copies, keep) =>
       this.store.db.transaction(() => {
-        if (this.groups.byRequest(caller.id, requestId)) return false
+        if (this.groups.byRequest(caller.id, requestId)) return
         const at = Date.now()
         const participants = [caller, ...members].map(({ id, name }) => ({ id, name }))
         const group = { purpose, roundCap: this.limits.rounds, rounds: [], turns: 0, lastAt: at, end: null, kept: [], folder, seen: {} }
@@ -98,7 +98,7 @@ export class GroupService {
         const items = parentId ? members.map(m => ({ id: memberItemId(id, m.id), owner: m, asker: caller, task: purpose, groupId: id })) : []
         if (parentId) this.host.work!.groupChildren(parentId, items)
         openRound(this.threads, thread, to, text, requestId, copies, chatId, this.limits)
-        return true
+        keep()
       })()
     )
     this.pushed()
@@ -139,12 +139,12 @@ export class GroupService {
     const root = await this.folder(caller.id)
     await checkFiles(root, input.files ?? [])
     const source = this.groups.row(thread.id)!.source_chat
-    await withCopies(g.folder, root, input.files ?? [], copies =>
+    await withCopies(root, input.files ?? [], g.folder, [], (copies, keep) =>
       this.store.db.transaction(() => {
         const now = this.store.get(thread.id)
-        if (now.group!.end || now.group!.rounds.some(r => r.requestId === requestId) || busy()) return false
+        if (now.group!.end || now.group!.rounds.some(r => r.requestId === requestId) || busy()) return
         openRound(this.threads, now, to, text, requestId, copies, source, this.limits)
-        return true
+        keep()
       })()
     )
     this.pushed()

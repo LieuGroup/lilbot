@@ -2,8 +2,9 @@
  *  `ThreadService.cancel` Oscar's `threads.cancel` uses, recorded as stopped by the bot. */
 import { LilBotError } from '../../shared/lilbot-error'
 import { type BotThread, RedirectInput } from '../../shared/thread-schema'
+import { refuseUnsafe } from '../memory/memory-safety'
 import type { DelegationHost } from './delegation-service'
-import { refuseUnsafe, steerText } from './thread-prompts'
+import { steerText } from './thread-prompts'
 import type { ThreadService } from './thread-service'
 import { FINAL } from './thread-store'
 
