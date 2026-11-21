@@ -10,7 +10,7 @@ import { reviewDone, reviewResult, reviewTitle } from './goal-prompts'
 import { checkRhythm, compare, isFinalGoal, requireAgreed, targetOf, WEEKLY, workCounts } from './goal-rules'
 import type { GoalChange, GoalStore, StoredGoal } from './goal-store'
 
-export interface GoalHost {
+interface GoalHost {
   /** While a goal waits for Oscar its bot shows as waiting and turns unread (unless he is viewing); `on` false ends it. */
   waiting(botId: string, goalId: string, key: string, on: boolean): void
   /** A notice for the goal's bot, delivered once as a hidden turn in its main conversation (`id` keeps it once). */

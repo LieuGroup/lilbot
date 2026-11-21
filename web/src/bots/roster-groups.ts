@@ -1,7 +1,7 @@
 /** How the roster is split into groups. Pure, so the order can be tested without a browser. */
 import type { Bot, Section } from '../../../shared/bot-schema'
 
-export interface RosterGroups {
+interface RosterGroups {
   /** The top of the roster: the primary bot, then pinned bots in the order they were pinned. */
   top: Bot[]
   /** Whether the top shows as tiles: only once a bot is pinned. Alone, the primary is an ordinary row. */

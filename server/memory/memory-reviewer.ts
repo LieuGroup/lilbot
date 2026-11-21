@@ -8,7 +8,7 @@ import { backgroundFailure } from '../background'
 import type { BotEngine } from '../engines/bot-engine'
 import type { PendingSummary, PendingTurn, ReviewQueue } from './review-queue'
 
-export interface ReviewSettings {
+interface ReviewSettings {
   enabled: boolean
   /** Review once this many turns are waiting. */
   turns: number

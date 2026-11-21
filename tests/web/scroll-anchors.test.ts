@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { isScrollAnchor, loadedTranscript, updateLoaded } from '../../web/src/chat/scroll-anchors'
+import { isScrollAnchor, loadedTranscript, updateLoaded } from '../../web/src/chat/message-rows'
 
 test('in an empty chat, the first message sent pins the list', () => {
   let loaded = loadedTranscript(0, 0, 1)

@@ -11,7 +11,7 @@ import { useModelProviders } from './model-list'
 import { ModelSelector } from './model-selector'
 import { capabilityOf, effortLabel, reasons, sentDiffers } from './reasoning-effort'
 
-export interface BotFormValues {
+interface BotFormValues {
   name: string
   function: string
   instructions: string

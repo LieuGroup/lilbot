@@ -5,7 +5,7 @@ import type { HistoryItem, HistoryPage } from '../../../shared/history-schema'
 import type { ChatView, ViewItem } from '../chat/chat-state'
 
 /** The parts of `ChatView` that come from the history. */
-export type HistoryFields = Pick<ChatView, 'items' | 'first' | 'older' | 'oldestFrom' | 'start' | 'importing'>
+type HistoryFields = Pick<ChatView, 'items' | 'first' | 'older' | 'oldestFrom' | 'start' | 'importing'>
 
 const historyItems = (rows: readonly HistoryItem[]): ViewItem[] => rows.map(row => ({ ...row.item, id: row.id, at: row.at }))
 

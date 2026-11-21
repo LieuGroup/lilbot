@@ -3,7 +3,7 @@
  *  and private). Append-only; a deleted bot's rows stay, with the name it had. All SQL for the table is here. */
 import type { Database } from 'bun:sqlite'
 
-export interface SystemChange {
+interface SystemChange {
   at: number
   botId: string
   botName: string

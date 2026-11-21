@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
-import { FALLBACK_AFTER_MS, needsCode, phaseOf } from '../../web/src/computers/add-phase'
 import { buildLabel, detectSystem, installerSteps } from '../../web/src/computers/add-this-system'
-import { installCommand } from '../../web/src/computers/install-command'
+import { installCommand } from '../../web/src/computers/command-line-dialog'
+import { FALLBACK_AFTER_MS, needsCode, phaseOf } from '../../web/src/computers/use-add-attempt'
 
 const T0 = 1_000_000_000_000
 const TEN_MINUTES = 10 * 60_000

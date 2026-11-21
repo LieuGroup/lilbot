@@ -15,7 +15,7 @@ const FORGOTTEN_SHOWN = 30
 /** Bots refer to a fact by the first characters of its id. */
 const SHORT_ID = 8
 
-export interface WriteRequest {
+interface WriteRequest {
   botId: string
   kind: MemoryKind
   scope?: MemoryScope

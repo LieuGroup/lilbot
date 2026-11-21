@@ -3,7 +3,7 @@
 import { toolNames } from './mcp-address'
 import { boundedFetch, cappedText, rpcMessages, Unreachable } from './mcp-http'
 
-export type Probe = { kind: 'ok'; tools: string[] } | { kind: 'sign_in'; challenge: string } | { kind: 'refused' } | { kind: 'unreachable' }
+type Probe = { kind: 'ok'; tools: string[] } | { kind: 'sign_in'; challenge: string } | { kind: 'refused' } | { kind: 'unreachable' }
 
 const PROTOCOL = '2025-06-18'
 const PAGES = 10

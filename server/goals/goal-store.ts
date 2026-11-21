@@ -25,7 +25,7 @@ type Row = {
 type ReviewRow = { at: number; value: number; previous: number; moved: GoalReview['moved']; met: number; stalled: number; did: string; work: string; item_id: string }
 /** A goal as stored: `routineSeq` numbers the review routines LilBot made for it, for each one's request id. */
 export type StoredGoal = Goal & { routineSeq: number }
-export type NewGoal = Pick<Goal, 'id' | 'botId' | 'botName' | 'text' | 'agreement' | 'target' | 'review'> & { requestId: string; at: number }
+type NewGoal = Pick<Goal, 'id' | 'botId' | 'botName' | 'text' | 'agreement' | 'target' | 'review'> & { requestId: string; at: number }
 export type GoalChange = Partial<
   Pick<StoredGoal, 'state' | 'agreement' | 'target' | 'review' | 'proposal' | 'oscar' | 'routineId' | 'routineSeq' | 'dropReason' | 'agreedAt' | 'finishedAt'>
 >

@@ -4,7 +4,7 @@ import { assertDevAttachment } from './hermes-environment'
 /** Asks Hermes for one attach grant: the gateway WebSocket URL plus a single-use ticket (30 s life).
  *  This is the path Hermes documents for local clients: `hermes gateway attach --json`. */
 
-export interface HermesGrant {
+interface HermesGrant {
   url: string
   protocols: string[]
 }

@@ -34,7 +34,7 @@ export function whenNext(at: number, now = Date.now(), time = true) {
   return time ? `${day} ${clockTime(at)}` : day
 }
 
-export type RoutineTone = 'running' | 'failed' | 'paused' | 'plain'
+type RoutineTone = 'running' | 'failed' | 'paused' | 'plain'
 
 /** A routine's second line in the list: running now, else paused, else a failed last run, else its schedule and next run. */
 export function routineLine(routine: Routine, now = Date.now()): { text: string; tone: RoutineTone } {

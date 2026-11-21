@@ -10,7 +10,7 @@ export interface RoutineHost {
   runRoutine(botId: string, prompt: string, options: RoutineOptions): Promise<{ status: 'completed' | 'failed' | 'stopped'; text: string }>
   openChat(botId: string, chatId: string, onEvent: (event: ChatEvent) => void, requireExisting?: boolean): Promise<OpenChat>
 }
-export interface RoutineSettings {
+interface RoutineSettings {
   minIntervalSeconds: number
   selfCreatedCap: number
 }

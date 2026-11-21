@@ -23,7 +23,7 @@ import { ThreadWaits } from './thread-waits'
 export interface ThreadHost extends RunnerHost {
   listBots(): Promise<{ id: string; name: string }[]>
 }
-export type StoppedBy = { kind: 'bot'; id: string; name: string } | { kind: 'oscar'; id: null; name: 'Oscar' }
+type StoppedBy = { kind: 'bot'; id: string; name: string } | { kind: 'oscar'; id: null; name: 'Oscar' }
 
 export class ThreadService {
   readonly runner: ThreadRunner

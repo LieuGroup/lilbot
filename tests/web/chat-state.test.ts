@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import { failureLine } from '../../web/src/chat/chat-item'
 import { applyChatEvent, chatFromSnapshot, emptyChat } from '../../web/src/chat/chat-state'
-import { failureLine } from '../../web/src/chat/failure-lines'
 import { withSentMessage, withUserMessage } from '../../web/src/chat/user-messages'
 import { play, texts } from './chat-helpers'
 

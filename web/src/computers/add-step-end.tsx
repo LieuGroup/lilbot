@@ -1,8 +1,35 @@
+import { useEffect, useState } from 'react'
 import { Button } from '@/ui/button'
 import { Notice } from '@/ui/notice'
 import { Switch } from '@/ui/switch'
+import { lilbot, messageOf } from '../app/lilbot-socket'
 import { Badge, CancelButton, Footer, Heading, QuietLink, TEXT_BUTTON } from './add-dialog-parts'
-import { useMainChoice } from './use-main-choice'
+import { useComputers } from './use-computers'
+
+function useMainChoice(computerId: string | undefined) {
+  const { computers } = useComputers()
+  const [choice, setChoice] = useState<{ previous: string | null; on: boolean } | null>(null)
+  const [error, setError] = useState('')
+
+  const apply = (computer: string | null) => {
+    setError('')
+    lilbot.call('computers.setMain', { computer }).catch(failure => setError(messageOf(failure)))
+  }
+
+  useEffect(() => {
+    if (!computers || !computerId || choice) return
+    const previous = computers.find(computer => computer.main)?.id ?? null
+    setChoice({ previous, on: previous === null || previous === computerId })
+    if (previous === null) apply(computerId)
+  }, [computers, computerId, choice])
+
+  const toggle = (on: boolean) => {
+    if (!choice || !computerId) return
+    setChoice({ ...choice, on })
+    apply(on ? computerId : choice.previous === computerId ? null : choice.previous)
+  }
+  return { on: choice?.on ?? false, ready: choice !== null, error, toggle }
+}
 
 /** Step 3: the computer is online, and this browser is tied to it. */
 export function ConnectedStep({ name, computerId, machine, onDone }: { name: string; computerId?: string; machine: string; onDone: () => void }) {

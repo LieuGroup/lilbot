@@ -3,7 +3,7 @@ import type { Bot } from '../../../shared/bot-schema'
 
 export type RowTone = 'working' | 'waiting' | 'finished' | 'failed' | 'idle'
 
-export interface RowState {
+interface RowState {
   tone: RowTone
   /** The second line: what the bot is doing, or its function when it is idle. */
   text: string

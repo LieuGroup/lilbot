@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react'
 
-import { DeployNotice } from '../deploy/deploy-notice'
+import { Notice } from '@/ui/notice'
 import { loadBotMenu } from './bot-menu-target'
 import { useBotStore } from './bot-store'
 import { useDetailsTab, useOpenBotId } from './details-tabs'
@@ -79,7 +79,11 @@ function OpenRoster() {
           </ul>
         )}
       </div>
-      <DeployNotice notice={deploymentNotice} />
+      {deploymentNotice && (
+        <div className="px-2 pb-2">
+          <Notice tone="error">{deploymentNotice}</Notice>
+        </div>
+      )}
       <RosterFooter connected={connected} />
       <RosterOverlays />
     </nav>

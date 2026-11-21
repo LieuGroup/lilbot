@@ -34,7 +34,7 @@ type Row = {
 }
 /** An item as stored: its summary, its text and the session it was opened in. */
 export type StoredItem = WorkSummary & { done: string; result: string; dropReason: string | null; chatId: string | null }
-export type NewItem = Omit<StoredItem, 'question' | 'result' | 'dropReason' | 'evidenceCount' | 'check' | 'createdAt' | 'updatedAt' | 'startedAt' | 'finishedAt'> & {
+type NewItem = Omit<StoredItem, 'question' | 'result' | 'dropReason' | 'evidenceCount' | 'check' | 'createdAt' | 'updatedAt' | 'startedAt' | 'finishedAt'> & {
   requestId: string | null
   at: number
 }
@@ -42,7 +42,7 @@ export type NewItem = Omit<StoredItem, 'question' | 'result' | 'dropReason' | 'e
 export type ItemChange = Partial<
   Omit<StoredItem, 'id' | 'ownerId' | 'ownerName' | 'askedBy' | 'origin' | 'parentId' | 'goalId' | 'evidenceCount' | 'check' | 'createdAt' | 'updatedAt'>
 >
-export interface ListFilter {
+interface ListFilter {
   ownerId?: string
   goalId?: string
   status?: WorkStatus[]
