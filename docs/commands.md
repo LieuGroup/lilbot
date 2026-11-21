@@ -118,3 +118,13 @@ Every `check:*` and `bun live-checks/*.ts` follows the development rules in `AGE
 - `bun live-checks/library-check.ts`: a temporary bot told only to deliver a file gives it through `lilbot_give_file`
   (a `system_changes` row names the item), then push, list, separate workspace and download; then a routine run it
   created gives a file from its hidden session and the item records that run.
+- `bun live-checks/activity-check.ts`: two browser clients on an isolated server verify Hermes' live activity observer
+  (working, `Running commands`, settle to idle), unviewed unread surviving SIGKILL/restart, `chat.open` clearing unread,
+  manual `activity.setUnread`, and hidden `reviewMemory` changing neither activity nor unread.
+- `bun live-checks/delete-check.ts`: zero model calls; tests all four `bots.delete` combinations (`archive`/`delete`
+  files × `forget`/`keep` private memories) and `bots.deleteDefaults.set` against real Hermes profile deletion,
+  verifying capability 403 refusal, idempotent retry, DB cleanup and `bots.changed`/`memory.changed` pushes.
+- `bun live-checks/startup-latency-check.ts`: zero model calls; measures cold/warm `bots.list` latency and parallel
+  startup preparation of 1 and 5 fresh, never-prepared bots within the 90 s bound ([hermes-engine.md](hermes-engine.md)).
+- `bun live-checks/startup-memory-check.ts`: zero model calls; runs `server/main.ts` with `LILBOT_SKIP_MEMORY_SETUP=0`
+  to verify startup upgrades an outdated memory adapter on a bound profile while leaving an unbound profile untouched.
