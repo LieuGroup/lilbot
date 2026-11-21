@@ -81,7 +81,7 @@ export async function copyFile(fromRoot: string, source: string, toRoot: string,
 }
 
 /** Removes a copy that was never recorded (a retried or refused request), through the folder's descriptor. */
-export async function removeCopy(root: string, copy: string) {
+async function removeCopy(root: string, copy: string) {
   const parts = copy.split('/')
   const name = parts.pop()
   const folder = await openFolder(root, parts)
@@ -89,6 +89,20 @@ export async function removeCopy(root: string, copy: string) {
     await unlink(`/proc/self/fd/${folder.fd}/${name}`)
   } finally {
     await folder.close()
+  }
+}
+
+/** Copies `files` from `fromRoot` into `folder` below `toRoot` before `use` runs; copies not marked via `keep` are removed. */
+export async function withCopies<T>(fromRoot: string, files: string[], toRoot: string, folder: string[], use: (copies: CopiedFile[], keep: () => void) => T): Promise<T> {
+  const copies: CopiedFile[] = []
+  let kept = false
+  try {
+    for (const file of files) copies.push(await copyFile(fromRoot, file, toRoot, folder))
+    return use(copies, () => {
+      kept = true
+    })
+  } finally {
+    if (!kept) for (const c of copies) await removeCopy(toRoot, c.copy).catch(() => {})
   }
 }
 

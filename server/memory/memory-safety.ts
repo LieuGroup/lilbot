@@ -1,6 +1,7 @@
 /** What may not be stored as a memory fact. A fact is shown to bots on every future turn, so one
  *  that carries instructions for the model, or a secret, would do harm for as long as it lives.
  *  The same idea as Hermes' scan of its own memory files. */
+import { LilBotError } from '../../shared/lilbot-error'
 
 const SLASH = String.raw`(?:\\{0,16}\/|%(?:25){0,3}2F|&#0{0,4}47;|&#x0{0,4}2f;|&sol;|\uFF0F|\u2215)`
 /** A webhook's address, which is its secret (`server/webhooks/webhook-address.ts`), in the common encodings: escaped,
@@ -67,6 +68,18 @@ export const outsideReason = (text: string): string | null => unsafeReason(text)
 export function memoryRefusal(text: string): string | null {
   const reason = unsafeReason(text)
   return reason ? `That was not saved: ${reason}. Save plain facts about the user or the work, never instructions or secrets.` : null
+}
+
+/** Checks one or more texts with `memoryRefusal`, throwing `LilBotError(code, ...)` when any is refused. */
+export function refuseUnsafe(
+  texts: string | (string | undefined)[],
+  code: 'unsafe_text' | 'unsafe_message' = 'unsafe_message',
+  replace: [string, string] = ['not saved', 'not sent']
+) {
+  for (const text of Array.isArray(texts) ? texts : [texts]) {
+    const refusal = text && memoryRefusal(text)
+    if (refusal) throw new LilBotError(code, refusal.replace(replace[0], replace[1]))
+  }
 }
 
 const unit = (code: number) => `\\u${code.toString(16).padStart(4, '0')}`

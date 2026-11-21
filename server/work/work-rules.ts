@@ -2,19 +2,15 @@
 import { LilBotError } from '../../shared/lilbot-error'
 import { KIND_NAMES, type WorkKind } from '../../shared/work-check-schema'
 import { type EvidenceInput, type EvidencePointer, FINAL_WORK, type WorkStatus } from '../../shared/work-schema'
-import { memoryRefusal } from '../memory/memory-safety'
+import { refuseUnsafe as checkUnsafe } from '../memory/memory-safety'
 import type { ItemChange, StoredItem } from './work-store'
 
 export const isFinal = (status: WorkStatus) => FINAL_WORK.includes(status)
 
 /** Work text is shown to Oscar and read by other bots: the memory checks apply (no secrets, hidden characters or
  *  instructions to a model). */
-export function refuseUnsafe(texts: (string | undefined)[]) {
-  for (const text of texts) {
-    const refusal = text && memoryRefusal(text)
-    if (refusal) throw new LilBotError('unsafe_text', refusal.replace('Save plain facts about the user or the work', 'Describe the work in plain words'))
-  }
-}
+export const refuseUnsafe = (texts: (string | undefined)[]) =>
+  checkUnsafe(texts, 'unsafe_text', ['Save plain facts about the user or the work', 'Describe the work in plain words'])
 export const evidenceTexts = (e: EvidenceInput) => [e.proves, e.url, e.command, e.output, e.value, e.source]
 
 /** Exactly one real thing per entry: a Library item, a link, a command with its output, or a number with its source. */

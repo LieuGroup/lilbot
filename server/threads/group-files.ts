@@ -4,23 +4,11 @@ import { basename } from 'node:path'
 import { LilBotError } from '../../shared/lilbot-error'
 import { type BotThread, type ExchangeFile, keptId } from '../../shared/thread-schema'
 import { readAttachment } from '../attachments/attachment-files'
-import { type CopiedFile, copyFile, removeCopy } from './exchange-files'
+import { copyFile } from './exchange-files'
 import type { FileRow, ThreadFiles } from './thread-files'
 
 /** A kept file as copied: what the screens see, and the hash and source that let its download be checked. */
 export type KeptFile = ExchangeFile & { sha256: string; source: string }
-
-/** Copies the bot's files into the group folder before `record` runs; copies it did not record are removed. */
-export async function withCopies(folder: string, root: string, files: string[], record: (copies: CopiedFile[]) => boolean) {
-  const copies: CopiedFile[] = []
-  let recorded = false
-  try {
-    for (const file of files) copies.push(await copyFile(root, file, folder, []))
-    recorded = record(copies)
-  } finally {
-    if (!recorded) for (const c of copies) await removeCopy(folder, c.copy).catch(() => {})
-  }
-}
 
 /** Each kept file (by its name in the group folder or its sender's name for it), all checked before any is copied into
  *  `groups/<group id>/` in the leader's folder and given to its Library. */

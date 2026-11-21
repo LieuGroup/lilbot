@@ -1,10 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 
 import { openDatabase } from '../../server/database/database'
-import { memoryRefusal, outsideReason } from '../../server/memory/memory-safety'
+import { memoryRefusal, outsideReason, refuseUnsafe } from '../../server/memory/memory-safety'
 import { MemoryService } from '../../server/memory/memory-service'
 import { MemoryStore } from '../../server/memory/memory-store'
-import { refuseUnsafe } from '../../server/threads/thread-prompts'
 
 describe('what may not be stored', () => {
   const refused = [
