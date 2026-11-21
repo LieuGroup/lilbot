@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
-import { AVATAR_COLORS, AVATAR_SHAPES, Avatar, defaultAvatar } from '../../shared/avatar'
+import { AVATAR_COLORS, AVATAR_SHAPES, defaultAvatar } from '../../shared/avatar'
+import { Avatar } from '../../shared/bot-schema'
 
 test('avatar schema supplies ink only for missing face colour', () => {
   expect(Avatar.parse({ shape: 'circle', color: 'bone' })).toEqual({ shape: 'circle', color: 'bone', faceColor: 'ink' })

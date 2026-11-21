@@ -4,7 +4,7 @@
 import { z } from 'zod'
 
 import { BotActivity } from './activity-schema'
-import { Avatar } from './avatar'
+import { AVATAR_COLORS, AVATAR_SHAPES } from './avatar'
 
 export const PermissionMode = z.enum(['approval-required', 'auto-accept-edits', 'auto', 'full-access'])
 export type PermissionMode = z.infer<typeof PermissionMode>
@@ -31,6 +31,8 @@ export const BotIdentity = z.object({
   isDefault: z.boolean()
 })
 export type BotIdentity = z.infer<typeof BotIdentity>
+
+export const Avatar = z.object({ shape: z.enum(AVATAR_SHAPES), color: z.enum(AVATAR_COLORS), faceColor: z.enum(AVATAR_COLORS).default('ink') })
 
 /** The user's own settings for a bot. They never change the bot itself. */
 export const BotPrefs = z.object({
