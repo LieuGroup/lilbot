@@ -6,7 +6,7 @@
  *  the Webhooks list). Bounded so outside senders cannot flood Oscar's chat: `DAILY` messages per webhook a day, and one
  *  of his messages carries at most `CARRIED`, each cut to `NOTE_CHARS`, so a send never grows past what the engine takes. */
 import type { Database } from 'bun:sqlite'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { backgroundFailure } from '../background'
 import type { TurnNotes } from '../bots/bot-conversations'
 import { fenceJson, outsideReason } from '../memory/memory-safety'

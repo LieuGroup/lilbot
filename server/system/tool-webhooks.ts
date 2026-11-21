@@ -1,7 +1,7 @@
 /** Webhook tools: a bot makes and manages its own webhooks with the functions the screens use (`webhooks.*`). The
  *  address, and a signing secret LilBot makes, come back only from create and new-address; the list never has them. */
 import { z } from 'zod'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { WebhookCreate } from '../../shared/webhook-schema'
 import { fenced } from '../memory/memory-safety'
 import { MESSAGE_CHARS } from '../webhooks/webhook-messages'

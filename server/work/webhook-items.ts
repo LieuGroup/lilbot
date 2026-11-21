@@ -3,7 +3,7 @@
  *  anything it claims at level 2 or above is checked by Oscar, never by a bot, because a checker repeats the owner's
  *  commands and opens its links, which the run wrote; and every bot reads its items' text fenced as outside data
  *  (`fenceRunText`). Its items' answers and notices never resume the run's session (`work-answers.ts`). */
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { WorkInput, WorkOrigin } from '../../shared/work-schema'
 import { fenced } from '../memory/memory-safety'
 import type { StoredItem, WorkStore } from './work-store'

@@ -1,4 +1,4 @@
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { EngineApiOptions } from './engine-api'
 
 /** The thread routes kept for sessions that loaded adapter 0.9.x (`ask_bot`, `list_bots`). Caller comes from the
