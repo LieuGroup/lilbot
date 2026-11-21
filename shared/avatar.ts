@@ -1,11 +1,11 @@
 /** Bot avatars: a cover shape, cover colour and face colour from fixed lists. LilBot draws its own shapes. */
-import { z } from 'zod'
 
 export const AVATAR_SHAPES = ['circle', 'squircle', 'square', 'hexagon', 'diamond', 'shield', 'pill', 'triangle', 'star', 'drop'] as const
 export const AVATAR_COLORS = ['slate', 'brown', 'red', 'orange', 'yellow', 'green', 'teal', 'blue', 'violet', 'pink', 'bone', 'ink'] as const
 
-export const Avatar = z.object({ shape: z.enum(AVATAR_SHAPES), color: z.enum(AVATAR_COLORS), faceColor: z.enum(AVATAR_COLORS).default('ink') })
-export type Avatar = z.infer<typeof Avatar>
+type AvatarShape = (typeof AVATAR_SHAPES)[number]
+type AvatarColor = (typeof AVATAR_COLORS)[number]
+export type Avatar = { shape: AvatarShape; color: AvatarColor; faceColor: AvatarColor }
 
 /** Every bot always has an avatar: without a chosen one, its id picks a stable shape and colour. */
 export function defaultAvatar(botId: string): Avatar {

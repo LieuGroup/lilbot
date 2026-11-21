@@ -2,8 +2,8 @@
  *  main conversation. All SQL for these tables lives here. */
 import type { Database } from 'bun:sqlite'
 
-import { Avatar, defaultAvatar } from '../../shared/avatar'
-import type { BotContext, BotPrefs, Section } from '../../shared/bot-schema'
+import { defaultAvatar } from '../../shared/avatar'
+import { Avatar, type BotContext, type BotPrefs, type Section } from '../../shared/bot-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import type { ContextReport } from '../engines/bot-engine'
 
