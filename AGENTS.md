@@ -602,9 +602,9 @@ Visual specs: "Work between bots" in [docs/screens.md](docs/screens.md).
 - Before Hermes shortens a conversation, LilBot reviews every user and assistant word of it for memory (#148; Hermes'
   pre-compress checkpoint v2, `/engine/history/save`). `memory/memory-checkpoint.ts` cuts it into passes of about
   100,000 characters on message boundaries, oldest first, three at a time, each a hidden memory-only review of the same
-  bot on `LILBOT_REVIEW_MODEL` under the normal memory rules, and answers only once every pass finished. A reviewed piece
-  is remembered per bot while the server runs, so a retry or the next shortening reviews only what is new, and a second
-  save of the same conversation waits for the first. LilBot's own sessions, their continuations and review sessions
+  bot on `LILBOT_REVIEW_MODEL` under the normal memory rules, and answers only once every pass finished. Reviewed pieces
+  are remembered per bot in SQLite (bounded, pruned oldest first, cleared on bot deletion), so a retry, restart or the
+  next shortening reviews only what is new, and a second save of the same conversation waits for the first. LilBot's own sessions, their continuations and review sessions
   answer `skipped` (complete, nothing reviewed); an unreadable lineage is refused, never skipped. Webhook notes are
   taken out of the evidence first (`withoutWebhookNotes`).
 - Every bot connected to LilBot memory is fail-closed (`compression.checkpoint_required`, set and cleared with the
