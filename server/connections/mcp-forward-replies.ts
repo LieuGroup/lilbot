@@ -1,11 +1,19 @@
-/** What the services' route says itself, and what it does to a service's answers: the bot is told what a missing sign-in
- *  means, sees only the tools LilBot gave its engine, and reads every tool result as outside data in a fence. */
-import { fenced } from '../memory/memory-safety'
+/** What the services' route says itself, and how it rebuilds every answer from an outside service: drops server-to-client
+ *  requests (sampling/elicitation), enforces exact media types and strict SSE/JSON parsing, fences every tools/call output
+ *  inside `<outside-service-output>`, strips `_meta`/`structuredContent`/raw errors, and sanitizes tool metadata. */
+import { fenced, memoryRefusal } from '../memory/memory-safety'
 import type { StoredConnection } from './mcp-connection-store'
-import { type JsonRpc, signedOutReply } from './mcp-json-rpc'
+import { mediaTypeOf, parseSseData } from './mcp-http'
+import { type JsonRpc, rpcError, rpcResult, signedOutReply, toolError } from './mcp-json-rpc'
 import { STATUS_TOOL } from './mcp-service-connection'
 
 export const OUTPUT_FENCE = 'outside-service-output'
+const MAX_DESCRIPTION_CHARS = 500
+const MAX_SCHEMA_BYTES = 8 * 1024
+const SAFE_SCHEMA = { type: 'object', properties: {} }
+
+const isObject = (value: unknown): value is Record<string, any> => !!value && typeof value === 'object' && !Array.isArray(value)
+const isServerRequest = (msg: Record<string, any>) => typeof msg.method === 'string' && msg.id !== undefined
 
 function explanation(connection: StoredConnection): string {
   const why = connection.state === 'sign_in_expired' ? `LilBot's sign-in to ${connection.name} expired or was refused.` : `${connection.name} needs Oscar to sign in.`
@@ -18,47 +26,165 @@ export const serviceSignedOut = (message: JsonRpc, connection: StoredConnection)
     description: `${connection.name} is not signed in yet. Call this to learn what to tell Oscar.`
   })
 
-/** Every JSON-RPC message of an answer: JSON, or each server-sent event's data. Unparsable parts pass unchanged. */
-function eachMessage(body: string, contentType: string, change: (message: any) => void): string {
-  const one = (text: string) => {
-    try {
-      const message = JSON.parse(text)
-      change(message)
-      return JSON.stringify(message)
-    } catch {
-      return text
+export const serviceGenericError = (message: JsonRpc, name: string) => {
+  const text = `${name} returned an error.`
+  return message.method === 'tools/call' ? toolError(message.id, text) : rpcError(message.id, -32000, text)
+}
+
+function sanitizeTool(tool: Record<string, any>) {
+  const rawDesc = typeof tool.description === 'string' ? tool.description : ''
+  const description = memoryRefusal(rawDesc) ? 'Tool from outside service.' : rawDesc.slice(0, MAX_DESCRIPTION_CHARS)
+  let inputSchema: Record<string, unknown> = SAFE_SCHEMA
+  if (isObject(tool.inputSchema)) {
+    const serialized = JSON.stringify(tool.inputSchema)
+    if (Buffer.byteLength(serialized, 'utf8') <= MAX_SCHEMA_BYTES && !memoryRefusal(serialized)) inputSchema = tool.inputSchema
+  }
+  return { name: String(tool.name), description, inputSchema }
+}
+
+function rebuildCallItem(item: unknown, service: string) {
+  if (isObject(item) && (item.type === 'image' || item.type === 'audio') && typeof item.data === 'string' && typeof item.mimeType === 'string') {
+    return { type: item.type, data: item.data, mimeType: item.mimeType }
+  }
+  if (isObject(item) && typeof item.text === 'string') {
+    return { type: 'text', text: fenced(OUTPUT_FENCE, { service, text: item.text }) }
+  }
+  if (isObject(item) && item.type === 'resource' && isObject(item.resource) && typeof item.resource.text === 'string') {
+    const uri = typeof item.resource.uri === 'string' ? { uri: item.resource.uri } : {}
+    return { type: 'text', text: fenced(OUTPUT_FENCE, { service, ...uri, text: item.resource.text }) }
+  }
+  return { type: 'text', text: fenced(OUTPUT_FENCE, { service, item }) }
+}
+
+function rebuildCallResult(result: Record<string, any>, service: string) {
+  const content = Array.isArray(result.content) ? result.content.map(item => rebuildCallItem(item, service)) : []
+  if (result.structuredContent !== undefined) {
+    content.push({ type: 'text', text: fenced(OUTPUT_FENCE, { service, structured: result.structuredContent }) })
+  }
+  return { content, ...(result.isError === true ? { isError: true } : {}) }
+}
+
+function rebuildMessage(
+  msg: Record<string, any>,
+  request: JsonRpc,
+  service: string,
+  allowed: ReadonlySet<string>,
+  onListed: (tools: unknown[]) => void
+): Record<string, unknown> | null | 'invalid' {
+  if (isServerRequest(msg)) return null
+  if (typeof msg.method === 'string') {
+    if (msg.method !== 'notifications/progress' || !isObject(msg.params)) return null
+    const params: Record<string, unknown> = {}
+    if (msg.params.progressToken !== undefined) params.progressToken = msg.params.progressToken
+    if (typeof msg.params.progress === 'number') params.progress = msg.params.progress
+    if (typeof msg.params.total === 'number') params.total = msg.params.total
+    return { jsonrpc: '2.0', method: 'notifications/progress', params }
+  }
+  if (msg.error !== undefined) {
+    const code = isObject(msg.error) && typeof msg.error.code === 'number' ? msg.error.code : -32000
+    return { jsonrpc: '2.0', id: msg.id ?? null, error: { code, message: `${service} returned an error.` } }
+  }
+  if (!isObject(msg.result)) return 'invalid'
+  if (request.method === 'tools/list' && Array.isArray(msg.result.tools)) {
+    if (!msg.result.nextCursor) onListed(msg.result.tools)
+    const tools = msg.result.tools.filter((tool: unknown) => isObject(tool) && allowed.has(tool.name)).map(sanitizeTool)
+    return { jsonrpc: '2.0', id: msg.id ?? null, result: { tools, ...(typeof msg.result.nextCursor === 'string' ? { nextCursor: msg.result.nextCursor } : {}) } }
+  }
+  if (request.method === 'tools/call') {
+    return { jsonrpc: '2.0', id: msg.id ?? null, result: rebuildCallResult(msg.result, service) }
+  }
+  if (request.method === 'initialize') {
+    const capabilities = isObject(msg.result.capabilities) && msg.result.capabilities.tools ? { tools: {} } : {}
+    const serverInfo = isObject(msg.result.serverInfo)
+      ? { name: String(msg.result.serverInfo.name ?? service).slice(0, 128), version: String(msg.result.serverInfo.version ?? '').slice(0, 64) }
+      : undefined
+    return {
+      jsonrpc: '2.0',
+      id: msg.id ?? null,
+      result: {
+        ...(typeof msg.result.protocolVersion === 'string' ? { protocolVersion: msg.result.protocolVersion } : {}),
+        capabilities,
+        ...(serverInfo ? { serverInfo } : {})
+      }
     }
   }
-  if (!contentType.includes('text/event-stream')) return one(body)
-  return body
-    .split(/\r?\n\r?\n/)
-    .map(event => {
-      const lines = event.split(/\r?\n/)
-      const data = lines.filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart())
-      if (!data.length) return event
-      return [...lines.filter(line => !line.startsWith('data:')), `data: ${one(data.join('\n'))}`].join('\n')
-    })
-    .join('\n\n')
+  return { jsonrpc: '2.0', id: msg.id ?? null, result: {} }
 }
 
-/** A tools/list answer with only `allowed`, and the tools the service listed when that is its whole list (no next page). */
+function parseUpstream(body: string, media: string): { messages: Record<string, any>[]; wasArray: boolean } | null {
+  if (media === 'application/json') {
+    try {
+      const value = JSON.parse(body)
+      if (Array.isArray(value)) return value.length && value.every(isObject) ? { messages: value, wasArray: true } : null
+      return isObject(value) ? { messages: [value], wasArray: false } : null
+    } catch {
+      return null
+    }
+  }
+  const chunks = parseSseData(body)
+  if (!chunks.length) return null
+  const messages: Record<string, any>[] = []
+  for (const chunk of chunks) {
+    try {
+      const value = JSON.parse(chunk)
+      if (!isObject(value)) return null
+      messages.push(value)
+    } catch {
+      return null
+    }
+  }
+  return { messages, wasArray: false }
+}
+
+/** Rebuilds a 2xx upstream MCP answer (JSON or SSE), refusing unparseable/unexpected content and dropping server requests. */
+export function rebuildResponse(
+  body: string,
+  contentType: string,
+  request: JsonRpc,
+  connection: StoredConnection,
+  allowed: ReadonlySet<string>
+): { body: string; contentType: string; listed: unknown[] | null } | { error: Response } {
+  const media = mediaTypeOf(contentType)
+  if (media !== 'application/json' && media !== 'text/event-stream') return { error: serviceGenericError(request, connection.name) }
+  const parsed = parseUpstream(body, media)
+  if (!parsed) return { error: serviceGenericError(request, connection.name) }
+  let listed: unknown[] | null = null
+  const rebuilt: Record<string, unknown>[] = []
+  for (const msg of parsed.messages) {
+    const next = rebuildMessage(msg, request, connection.name, allowed, tools => (listed = tools))
+    if (next === 'invalid') return { error: serviceGenericError(request, connection.name) }
+    if (next) rebuilt.push(next)
+  }
+  if (!rebuilt.length) return { error: serviceGenericError(request, connection.name) }
+  if (media === 'text/event-stream')
+    return { body: rebuilt.map(item => `event: message\ndata: ${JSON.stringify(item)}\n\n`).join(''), contentType: 'text/event-stream; charset=utf-8', listed }
+  return { body: JSON.stringify(parsed.wasArray ? rebuilt : rebuilt[0]), contentType: 'application/json; charset=utf-8', listed }
+}
+
+/** Filters a trusted bridge's tools/list answer (T3 Code) to `allowed`, in JSON or SSE. */
 export function listedTools(body: string, contentType: string, allowed: ReadonlySet<string>): { body: string; listed: unknown[] | null } {
   let listed: unknown[] | null = null
-  const out = eachMessage(body, contentType, message => {
-    if (!Array.isArray(message?.result?.tools)) return
-    if (!message.result.nextCursor) listed = message.result.tools
-    message.result.tools = message.result.tools.filter((tool: any) => allowed.has(tool?.name))
-  })
-  return { body: out, listed }
-}
-
-/** A tools/call answer whose text is fenced as data from the service: what it says is never Oscar's instruction. */
-export function fencedResult(body: string, contentType: string, name: string): string {
-  return eachMessage(body, contentType, message => {
-    const content = message?.result?.content
-    if (!Array.isArray(content)) return
-    message.result.content = content.map((item: any) =>
-      item?.type === 'text' && typeof item.text === 'string' ? { ...item, text: fenced(OUTPUT_FENCE, { service: name, text: item.text }) } : item
-    )
-  })
+  const filter = (msg: any) => {
+    if (!Array.isArray(msg?.result?.tools)) return msg
+    if (!msg.result.nextCursor) listed = msg.result.tools
+    return { ...msg, result: { ...msg.result, tools: msg.result.tools.filter((tool: any) => allowed.has(tool?.name)) } }
+  }
+  const media = mediaTypeOf(contentType)
+  if (media === 'text/event-stream') {
+    const out = parseSseData(body)
+      .map(chunk => {
+        try {
+          return `event: message\ndata: ${JSON.stringify(filter(JSON.parse(chunk)))}\n\n`
+        } catch {
+          return ''
+        }
+      })
+      .join('')
+    return { body: out, listed }
+  }
+  try {
+    return { body: JSON.stringify(filter(JSON.parse(body))), listed }
+  } catch {
+    return { body: JSON.stringify(rpcResult(null, { tools: [] })), listed }
+  }
 }

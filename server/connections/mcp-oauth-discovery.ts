@@ -69,15 +69,22 @@ export async function discover(service: URL, challenge: string): Promise<AuthSer
   if (typeof meta.issuer !== 'string' || canonical(endpointOf(meta.issuer, service)) !== canonical(issuer)) throw refuse('The sign-in server describes itself as another one.')
   if (!Array.isArray(meta.code_challenge_methods_supported) || !meta.code_challenge_methods_supported.includes('S256'))
     throw refuse('The service’s sign-in does not offer the protection LilBot requires (PKCE with S256).')
-  const scopes =
-    param(challenge, 'scope') ?? (Array.isArray(resourceMeta?.scopes_supported) ? resourceMeta.scopes_supported.filter((s: unknown) => typeof s === 'string').join(' ') : '')
+  const sameOrigin = (raw: unknown) => {
+    const url = endpointOf(raw, service)
+    if (url.origin !== issuer.origin) throw refuse('The sign-in server points to an endpoint on another origin.')
+    return url.href
+  }
+  const authorizationEndpoint = sameOrigin(meta.authorization_endpoint)
+  const tokenEndpoint = sameOrigin(meta.token_endpoint)
+  const registrationEndpoint = meta.registration_endpoint ? sameOrigin(meta.registration_endpoint) : undefined
+  const scope = param(challenge, 'scope')
   return {
     issuer: meta.issuer,
-    authorizationEndpoint: endpointOf(meta.authorization_endpoint, service).href,
-    tokenEndpoint: endpointOf(meta.token_endpoint, service).href,
-    ...(meta.registration_endpoint ? { registrationEndpoint: endpointOf(meta.registration_endpoint, service).href } : {}),
+    authorizationEndpoint,
+    tokenEndpoint,
+    ...(registrationEndpoint ? { registrationEndpoint } : {}),
     resource,
-    ...(scopes ? { scope: scopes } : {}),
+    ...(scope ? { scope } : {}),
     issRequired: meta.authorization_response_iss_parameter_supported === true
   }
 }

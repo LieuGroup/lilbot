@@ -230,9 +230,11 @@ error pages and answer errors with a plain 500.
   from the other two), `LILBOT_ACCESS_HOST` (hostname, no scheme or port), `LILBOT_ACCESS_TEAM`
   (`<team>.cloudflareaccess.com`, no scheme), `LILBOT_ACCESS_AUD` and `LILBOT_ACCESS_EMAIL` (service environment
   only). Missing or invalid settings
-  stop startup before any listener opens. It serves the same app, browser routes and `/ws` as the private app, plus one
-  route only it has: GET `/api/connections/callback`, where a service's sign-in returns (Oscar's decision on #187; nothing
-  else was opened). It runs only after the Access checks below, takes `code`, `state`, `iss` and `error`, sets no
+  stop startup before any listener opens. It serves the same app, browser routes and `/ws` as the private app. One
+  opt-in route exists only on this listener when `LILBOT_ACCESS_CALLBACK_ENABLED=1` (off by default; the paste fallback
+  works without it): GET `/api/connections/callback`, where a service's sign-in returns (Oscar's decision on #187;
+  nothing else was opened). When off, that path answers with a plain 404 (`no-store`) and never falls through to the app
+  shell. When on, it runs only after the Access checks below, takes `code`, `state`, `iss` and `error`, sets no
   cookie, shows a plain page (no-store, `default-src 'none'`, no referrer) and never logs its address.
   - Every HTTP request and socket handshake needs an RS256 Access JWT in `Cf-Access-Jwt-Assertion`; only `/ws`
     upgrades also accept the `CF_Authorization` cookie, and a present header wins over a cookie.
@@ -597,6 +599,14 @@ Visual specs: "Work between bots" in [docs/screens.md](docs/screens.md).
 - `chat.open`/`chat.new` keep their snapshot shape: `items` holds the latest 100 records without session dividers (for
   old clients); additive `history` holds the page (`shared/history-schema.ts`). The active session id remains
   `snapshot.chatId`; a new session keeps earlier history.
+- Per-turn usage, bot context and compaction markers (#180): `turn.finished` and stored `assistant` history items carry
+  additive `usage` (`TurnUsage`: `inputTokens`, `cacheReadTokens`, `cacheWriteTokens`, `outputTokens`, `contextTokens`,
+  `contextWindow`; counts only, no prices, omitted when the engine reports nothing), persisted in `history_turn_usage`
+  and merged on import/re-import. `Bot.context` (`{ used, window }`) tracks the main conversation's current occupancy
+  against its model's window in `bot_context`, surfaced on `bots.list`, `bots.get` and `ChatSnapshot.context` with no
+  extra on-demand engine round trips. Declared engine compaction rows (`row_kind: 'compaction'`) store as `compaction`
+  items (`author: 'system'`) with `compactedMessages`, `summary`, and `beforeTokens`/`afterTokens` (from live
+  compaction counts in `history_compactions` or shrinking neighbor turns).
 - A session divider (`session:<id>`) marks where a session began. Pages (`HistoryStore.page`) leave out the divider of
   a session with no user or assistant message, unless it is the bot's main session (just after New session). The rule
   is applied when a page is built, so stored dividers (older ones included) and re-imported rows follow it, and nothing
@@ -613,9 +623,9 @@ Visual specs: "Work between bots" in [docs/screens.md](docs/screens.md).
 - Before Hermes shortens a conversation, LilBot reviews every user and assistant word of it for memory (#148; Hermes'
   pre-compress checkpoint v2, `/engine/history/save`). `memory/memory-checkpoint.ts` cuts it into passes of about
   100,000 characters on message boundaries, oldest first, three at a time, each a hidden memory-only review of the same
-  bot on `LILBOT_REVIEW_MODEL` under the normal memory rules, and answers only once every pass finished. A reviewed piece
-  is remembered per bot while the server runs, so a retry or the next shortening reviews only what is new, and a second
-  save of the same conversation waits for the first. LilBot's own sessions, their continuations and review sessions
+  bot on `LILBOT_REVIEW_MODEL` under the normal memory rules, and answers only once every pass finished. Reviewed pieces
+  are remembered per bot in SQLite (bounded, pruned oldest first, cleared on bot deletion), so a retry, restart or the
+  next shortening reviews only what is new, and a second save of the same conversation waits for the first. LilBot's own sessions, their continuations and review sessions
   answer `skipped` (complete, nothing reviewed); an unreadable lineage is refused, never skipped. Webhook notes are
   taken out of the evidence first (`withoutWebhookNotes`).
 - Every bot connected to LilBot memory is fail-closed (`compression.checkpoint_required`, set and cleared with the
@@ -1080,11 +1090,14 @@ list, sign-in and tokens live in LilBot, so changing engine changes none of it. 
   Oscar. No dynamic registration: refused for now (API keys are #63). A link is not a secret.
 - The sign-in: authorisation code with PKCE, `state` and the resource indicator (RFC 8707) on authorize, token and
   refresh. The return address is `https://<LILBOT_ACCESS_HOST>/api/connections/callback`, from configuration, never a
-  request's Host; without the Access door no sign-in can start (services that need none still work). A sign-in is
+  request's Host; without the Access door no sign-in can start (services that need none still work). The callback route
+  itself is off by default (`LILBOT_ACCESS_CALLBACK_ENABLED=1` opts in); the paste fallback works without it. A sign-in is
   spent by the first answer naming its `state` (valid or not), works only within ten minutes of the `add` or `sign_in`
-  that started it, and a new one voids the one before; `iss` is checked against the issuer when sent, and required
-  when the server promises it. The fallback: Oscar pastes the address his browser ended on and the bot passes it with
-  `finish`; it must be LilBot's return address exactly and is validated like the callback. That address carries a
+  that started it (`sign_in` is refused while connected), and a new one voids the one before; `iss` is checked against the
+  issuer when sent, and required when the server promises it. OAuth endpoints must share their issuer's origin. The
+  fallback: Oscar pastes the address his browser ended on and the bot passes it with `finish`; it must be LilBot's return
+  address exactly, match the flow's calling bot and conversation, appear in one of Oscar's own visible user messages in
+  that conversation, and is validated like the callback. That address carries a
   one-use code, useless without the PKCE verifier only LilBot holds and spent at once; it passes through the
   conversation (and so its copy) until the cards (#69) take the paste, and is kept out of `system_changes` (field names
   only) and LilBot's logs.

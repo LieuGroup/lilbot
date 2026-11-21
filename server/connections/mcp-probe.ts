@@ -31,7 +31,7 @@ export async function probe(address: URL, token?: string): Promise<Probe> {
     }
     session = response.headers.get('mcp-session-id') ?? session
     if (!('id' in message)) return null
-    const answer = rpcMessages(await cappedText(response), response.headers.get('content-type') ?? '').find(item => item?.id === message.id)
+    const answer = rpcMessages(await cappedText(response), response.headers.get('content-type') ?? '').find(item => item?.id === message.id && typeof item?.method !== 'string')
     if (!answer?.result) throw new Unreachable('no result')
     return answer.result
   }

@@ -6,6 +6,7 @@ import { ActivityService } from './activity/activity-service'
 import { ActivityStore } from './activity/activity-store'
 import { createConnections } from './app-connections'
 import { createGoals } from './app-goals'
+import { createMemory } from './app-memory'
 import { createThreads } from './app-threads'
 import { createWebhooks, webhookMessages } from './app-webhooks'
 import { createWork, giveFrom } from './app-work'
@@ -33,10 +34,6 @@ import { HistoryStore } from './history/history-store'
 import { createEngineApi, engineToken } from './http/engine-api'
 import { LibraryService } from './library/library-service'
 import { LibraryStore } from './library/library-store'
-import { MemoryReviewer, reviewSettingsFrom } from './memory/memory-reviewer'
-import { MemoryService } from './memory/memory-service'
-import { MemoryStore } from './memory/memory-store'
-import { ReviewQueue } from './memory/review-queue'
 import { RoutineScheduler } from './routines/routine-scheduler'
 import { RoutineService, routineSettings } from './routines/routine-service'
 import { RoutineStore } from './routines/routine-store'
@@ -63,6 +60,8 @@ export function createAppServices(
     HOOK_ORIGIN: string | undefined
     /** The Access door's hostname: services' sign-ins return there. */
     ACCESS_HOST: string | undefined
+    /** Whether GET `/api/connections/callback` is mounted on the Access door. */
+    ACCESS_CALLBACK_ENABLED?: boolean
     publish: (frame: EventFrame) => void
     botsChanged: () => void
   }
@@ -72,7 +71,8 @@ export function createAppServices(
   const workspaces = new Workspaces(WORKSPACES_DIR)
   const database = openDatabase(join(DATA_DIR, 'lilbot.db'))
   const activity = new ActivityService(new ActivityStore(database), botsChanged)
-  const memory = new MemoryService(new MemoryStore(database))
+  const mem = createMemory(database)
+  const memory = mem.memory
   const memoryChanged = () => publish({ event: 'memory.changed' })
   const token = engineToken(DATA_DIR)
   const store = new BotStore(database)
@@ -87,7 +87,6 @@ export function createAppServices(
   )
   repeat('computers', 1000, () => computers.tick())
   const devices = createDevices(database, computers, publish)
-  const reviewQueue = new ReviewQueue(database)
   const routineStore = new RoutineStore(database)
   const libraryStore = new LibraryStore(database)
   const webhookStore = new WebhookStore(database)
@@ -140,7 +139,7 @@ export function createAppServices(
       webhookStore.forgetBot(botId)
       computers.forgetBot(botId)
       activity.forgetBot(botId)
-      reviewQueue.forgetBot(botId)
+      mem.forgetBot(botId)
       links.forgetBot(botId)
       goals.forgetBot(botId)
     },
@@ -155,12 +154,13 @@ export function createAppServices(
     if (store.exists(event.botId)) activity.observe(event)
   }
   const { webhooks, webhookRuns, gates } = createWebhooks({ webhookStore, messages, bots, rootOf, calls, token, origin: HOOK_ORIGIN, observeRun, publish, repeat })
-  const redirectUri = ACCESS_HOST ? `https://${ACCESS_HOST}${CALLBACK_PATH}` : undefined
-  const connDeps = { database, dataDir: DATA_DIR, port: PORT, engineToken: token, redirectUri, engine, store, prefs, bots, calls, t3Grants, t3Refusal: gates.t3Refusal }
-  const mcp = createConnections({ ...connDeps, publish, repeat })
-  const runs = { threadStore, routineStore, webhookStore, rootOf, goalStore: new GoalStore(database), reviewModel: reviewSettingsFrom(process.env).model ?? null }
+  const runs = { threadStore, routineStore, webhookStore, rootOf, goalStore: new GoalStore(database), reviewModel: mem.reviewModel }
   const workDeps = { database, engine, store, prefs, bots, ...runs, libraryStore, workspaces, activity, history: history.store, calls, publish }
   const { work, links, answers, checks, checkSessions } = createWork(workDeps)
+  const redirectUri = ACCESS_HOST ? `https://${ACCESS_HOST}${CALLBACK_PATH}` : undefined
+  const connBase = { database, dataDir: DATA_DIR, port: PORT, engineToken: token, redirectUri, callbackEnabled: settings.ACCESS_CALLBACK_ENABLED ?? false }
+  const connServices = { engine, store, prefs, bots, history: history.store, calls, t3Grants, t3Refusal: gates.t3Refusal, serviceRefusal: gates.serviceRefusal(checkSessions) }
+  const mcp = createConnections({ ...connBase, ...connServices, publish, repeat })
   const threadDeps = { engine, store, prefs, bots, workspaces, history, activity, threadStore, calls, work: links, memory, library, root: WORKSPACES_DIR, rootOf, publish }
   const { threads, delegation } = createThreads({ ...threadDeps, botsChanged, memoryChanged })
   const routines = new RoutineService(routineStore, bots, () => publish({ event: 'routines.changed' }), routineSettings(process.env))
@@ -174,11 +174,10 @@ export function createAppServices(
   repeat('work checks', 1000, () => checks.tick())
   const routineScheduler = new RoutineScheduler(routines, observeRun)
   repeat('routines', 1000, () => routineScheduler.tick())
-  const reviewer = new MemoryReviewer(reviewQueue, bots, reviewSettingsFrom(process.env), Date.now, id => store.exists(id))
-  repeat('memory reviewer', 20_000, () => reviewer.tick())
+  const reviewer = mem.startReviewer(bots, store, repeat)
 
-  const apiServices = { history, computers, bots, skills, routines, library, threads, reviewer, chatKind, adapterVersion: MEMORY_ADAPTER_VERSION }
-  const apiHooks = { deploymentNotice: () => deployNotice(DATA_DIR), botExists: (id: string) => store.exists(id), onMemoryChanged: memoryChanged, inCheck: checkSessions.refusal }
-  const engineApi = createEngineApi(memory, token, PORT, { ...apiServices, ...apiHooks, ...gates })
+  const apiCore = { history, computers, bots, skills, routines, library, threads, reviewer, checkpointStore: mem.checkpointStore }
+  const apiHooks = { chatKind, adapterVersion: MEMORY_ADAPTER_VERSION, deploymentNotice: () => deployNotice(DATA_DIR), botExists: (id: string) => store.exists(id) }
+  const engineApi = createEngineApi(memory, token, PORT, { ...apiCore, ...apiHooks, onMemoryChanged: memoryChanged, inCheck: checkSessions.refusal, ...gates })
   return { bots, store, skills, library, computers, devices, attachments, t3Grants, mcp, system, engineApi, activity, routines, threads, boards, webhooks, hiddenChat }
 }

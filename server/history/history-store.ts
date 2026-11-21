@@ -2,6 +2,7 @@ import type { Database } from 'bun:sqlite'
 import type { ChatEvent, ChatItem } from '../../shared/chat-schema'
 import type { HistoryItem, HistoryPage, SessionReason } from '../../shared/history-schema'
 import { LilBotError } from '../../shared/lilbot-error'
+import { HistoryMetaStore } from './history-meta-store'
 
 interface HistorySession {
   bot: string
@@ -23,7 +24,10 @@ const notExcluded = (bot: string, session: string) => `NOT EXISTS (SELECT 1 FROM
 
 /** SQLite owns stable display rows and an event journal written before forwarding each live event. */
 export class HistoryStore {
-  constructor(readonly db: Database) {}
+  readonly meta: HistoryMetaStore
+  constructor(readonly db: Database) {
+    this.meta = new HistoryMetaStore(db)
+  }
   excluded(bot: string, session: string) {
     return !!this.db.query('SELECT 1 FROM history_exclusions WHERE bot=? AND session=?').get(bot, session)
   }
@@ -43,9 +47,10 @@ export class HistoryStore {
       .transaction(() => {
         // Checked under the write lock, so an exclusion committed meanwhile is never undone by a late page.
         if (this.excluded(bot, session)) return
+        const enriched = this.meta.mergeRows(bot, session, rows)
         const insert = this.db.query(`INSERT INTO history_items(bot,session,id,at,position,item,text) VALUES(?,?,?,?,?,?,?)
         ON CONFLICT(bot,id) DO UPDATE SET item=excluded.item,text=excluded.text`)
-        for (const row of rows) {
+        for (const row of enriched) {
           const text = 'text' in row.item ? row.item.text : ''
           insert.run(bot, session, row.id, row.at, row.order, JSON.stringify(row.item), text)
         }
@@ -54,9 +59,11 @@ export class HistoryStore {
       .immediate()
   }
   event(bot: string, session: string, event: ChatEvent, key: string = crypto.randomUUID()) {
+    const now = Date.now()
     this.db
       .query(`INSERT OR IGNORE INTO history_events(bot,session,at,event,key) SELECT ?1,?2,?3,?4,?5 WHERE ${notExcluded('?1', '?2')}`)
-      .run(bot, session, Date.now(), JSON.stringify(event), key)
+      .run(bot, session, now, JSON.stringify(event), key)
+    if (event.type === 'turn.finished' && !this.excluded(bot, session)) this.meta.recordTurn(bot, session, event, now)
   }
   progress(bot: string): HistoryPage['import'] {
     const p = this.db.query(`SELECT count(*) sessions,coalesce(sum(complete),0) completed FROM history_sessions s WHERE bot=? AND ${notExcluded('s.bot', 's.id')}`).get(bot) as {
@@ -109,7 +116,8 @@ export class HistoryStore {
     const last = rows.at(-1)
     const items: HistoryItem[] = rows.reverse().map(row => {
       const item = JSON.parse(row.item)
-      return { id: row.id, sessionId: row.session_id, at: row.at, author: item.kind === 'user' ? 'user' : item.kind === 'session' ? 'system' : 'bot', item }
+      const author = item.kind === 'user' ? 'user' : item.kind === 'session' || item.kind === 'compaction' ? 'system' : 'bot'
+      return { id: row.id, sessionId: row.session_id, at: row.at, author, item }
     })
     const progress = this.progress(bot)
     return {
@@ -141,10 +149,20 @@ export class HistoryStore {
       ORDER BY rank LIMIT ?`)
       .all(terms, bot, limit)
   }
+  /** Whether Oscar sent a visible user message in `(bot, session)` containing `needle`. Hidden prompts, tool output and assistant turns never match. */
+  hasUserMessageContaining(bot: string, session: string, needle: string): boolean {
+    if (!needle) return false
+    const inEvents = this.db
+      .query(`SELECT 1 FROM history_events WHERE bot=? AND session=? AND json_extract(event,'$.type')='user.message' AND instr(json_extract(event,'$.text'),?)>0 LIMIT 1`)
+      .get(bot, session, needle)
+    if (inEvents) return true
+    return !!this.db.query(`SELECT 1 FROM history_items WHERE bot=? AND session=? AND json_extract(item,'$.kind')='user' AND instr(text,?)>0 LIMIT 1`).get(bot, session, needle)
+  }
   forget(bot: string) {
     this.db.transaction(() => {
       for (const table of ['history_items', 'history_sessions', 'history_events', 'history_imports', 'history_exclusions'])
         this.db.query(`DELETE FROM ${table} WHERE bot=?`).run(bot)
+      this.meta.forget(bot)
     })()
   }
 }

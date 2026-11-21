@@ -23,6 +23,7 @@ import type { T3Grants } from './connections/t3-grant'
 import { watchT3SignIn } from './connections/t3-watch'
 import { connectionLine } from './devices/origin-line'
 import type { BotEngine } from './engines/bot-engine'
+import type { HistoryStore } from './history/history-store'
 import type { CallingChats } from './threads/calling-chats'
 
 interface ConnectionDeps {
@@ -32,13 +33,17 @@ interface ConnectionDeps {
   engineToken: string
   /** LilBot's sign-in return address on the Access door; without the door no sign-in can start. */
   redirectUri: string | undefined
+  /** Whether GET `/api/connections/callback` is mounted on the Access door. */
+  callbackEnabled: boolean
   engine: BotEngine
   store: BotStore
   prefs: BotPrefsStore
   bots: BotService
+  history: HistoryStore
   calls: CallingChats
   t3Grants: T3Grants
   t3Refusal: (botId: string, tool: string, args: unknown) => Promise<string | null>
+  serviceRefusal: (botId: string, tool: string, args: unknown) => Promise<string | null>
   publish: (frame: EventFrame) => void
   repeat: (name: string, interval: number, run: () => unknown) => unknown
 }
@@ -49,7 +54,25 @@ function signInWindow(env: Record<string, string | undefined>): number {
   return test ? Math.max(1, Number(test)) * 1000 : SIGN_IN_WINDOW_MS
 }
 
-export function createConnections({ database, dataDir, port, engineToken, redirectUri, engine, store, prefs, bots, calls, t3Grants, t3Refusal, publish, repeat }: ConnectionDeps) {
+export function createConnections({
+  database,
+  dataDir,
+  port,
+  engineToken,
+  redirectUri,
+  callbackEnabled,
+  engine,
+  store,
+  prefs,
+  bots,
+  history,
+  calls,
+  t3Grants,
+  t3Refusal,
+  serviceRefusal,
+  publish,
+  repeat
+}: ConnectionDeps) {
   const published = () => publish({ event: 'connections.changed' })
   const botIds = () => store.list().map(bot => bot.id)
   // A sign-in from `bun run t3:sign-in`, an expiry or a revocation changes which tools bots should see.
@@ -69,10 +92,13 @@ export function createConnections({ database, dataDir, port, engineToken, redire
       botName: id => store.get(id).name,
       botExists: id => store.exists(id),
       callingChat: (botId, requestId) => calls.find(botId, 'lilbot_connection', requestId),
+      userSentInChat: (botId, chatId, text) => history.hasUserMessageContaining(botId, chatId, text),
       signedIn: (botId, chatId, name, runId) => applier.signedIn(botId, chatId, name, runId),
       changed: soon
     },
-    redirectUri
+    redirectUri,
+    Date.now,
+    callbackEnabled
   )
   const applier: ConnectionApplier = new ConnectionApplier(
     {
@@ -92,7 +118,7 @@ export function createConnections({ database, dataDir, port, engineToken, redire
   return {
     services,
     t3Bridge: createT3Bridge({ upstream: process.env.LILBOT_T3_MCP_URL ?? T3_DEFAULT_MCP_URL, grants: t3Grants, engineToken, port, botIds, refusal: t3Refusal }),
-    forward: createServiceForward({ services, store: rows, credentials, keeper: new TokenKeeper(credentials), engineToken, port, botIds }),
+    forward: createServiceForward({ services, store: rows, credentials, keeper: new TokenKeeper(credentials), engineToken, port, botIds, refusal: serviceRefusal }),
     callback: connectionCallback(services),
     ready: (botId: string, chatId: string) => applier.ready(botId, chatId),
     connections: (botId: string) => serviceConnections(services, lilbotUrl, engineToken, botId)

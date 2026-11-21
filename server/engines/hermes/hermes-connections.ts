@@ -16,11 +16,15 @@ export function serverConfig(connection: McpConnection) {
     connect_timeout: 30,
     // LilBot's routes answer POST only; the content-type probe is not needed.
     skip_preflight: true,
+    // Outside MCP services must never trigger Hermes server-to-client sampling or elicitation.
+    sampling: { enabled: false },
+    elicitation: { enabled: false },
     tools: { include: [...connection.tools], resources: false, prompts: false }
   }
 }
 
 type Summary = { name?: unknown; url?: unknown; enabled?: unknown; tools?: { include?: unknown } }
+type RawServer = { sampling?: { enabled?: unknown }; elicitation?: { enabled?: unknown } }
 type StatusRow = { name?: unknown; connected?: unknown }
 type Rpc = Pick<HermesSocket, 'request'>
 const unavailable = (error: unknown) => error instanceof Error && error.message.includes('mcp servers unavailable')
@@ -29,6 +33,14 @@ async function listServers(socket: Rpc): Promise<Summary[]> {
   const listed = await socket.request('mcp.servers.list', {})
   return Array.isArray(listed.servers) ? listed.servers : []
 }
+
+async function rawServers(socket: Rpc): Promise<Record<string, RawServer>> {
+  const result = await socket.request('config.get', { key: 'full' })
+  const servers = (result?.config as { mcp_servers?: unknown } | null | undefined)?.mcp_servers
+  return servers && typeof servers === 'object' && !Array.isArray(servers) ? (servers as Record<string, RawServer>) : {}
+}
+
+const serverHardened = (raw: RawServer | undefined) => raw?.sampling?.enabled === false && raw?.elicitation?.enabled === false
 
 async function disconnectedConnections(socket: Rpc, connections: McpConnection[]): Promise<McpConnection[]> {
   if (!connections.length) return []
@@ -82,11 +94,14 @@ export async function reconnectDisconnected(socket: Rpc, connections: McpConnect
 export async function prepareConnections(socket: Rpc, connections: McpConnection[]): Promise<boolean> {
   const servers = await listServers(socket)
   const given = connections.filter(connection => OWNED.test(connection.name))
-  const stale = given.filter(connection => {
+  const basicMatch = (connection: McpConnection) => {
     const existing = servers.find(server => server.name === connection.name)
     const config = serverConfig(connection)
-    return !(existing?.url === config.url && existing.enabled !== false && JSON.stringify(existing.tools?.include) === JSON.stringify(config.tools.include))
-  })
+    return existing?.url === config.url && existing.enabled !== false && JSON.stringify(existing.tools?.include) === JSON.stringify(config.tools.include)
+  }
+  const candidates = given.filter(basicMatch)
+  const configured = candidates.length ? await rawServers(socket) : {}
+  const stale = given.filter(connection => !candidates.includes(connection) || !serverHardened(configured[connection.name]))
   const matching = given.filter(connection => !stale.includes(connection))
   const disconnected = matching.length ? await disconnectedConnections(socket, matching) : []
   const targets = [...stale, ...disconnected]

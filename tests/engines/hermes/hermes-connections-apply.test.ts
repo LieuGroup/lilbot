@@ -16,11 +16,13 @@ const service = (name: string, optional = true) => ({
 function socket(servers: Record<string, unknown>[], statuses?: Record<string, unknown>[]) {
   const calls: { method: string; params: any }[] = []
   const connected = statuses ?? servers.map(server => ({ name: server.name, connected: true }))
+  const mcpServers = Object.fromEntries(servers.map(server => [String(server.name), { sampling: { enabled: false }, elicitation: { enabled: false }, ...server }]))
   return {
     calls,
     request: async <T>(method: string, params?: any): Promise<T> => {
       calls.push({ method, params })
       if (method === 'mcp.servers.list') return { servers } as T
+      if (method === 'config.get') return { config: { mcp_servers: mcpServers } } as T
       if (method === 'mcp.servers.status') return { servers: connected } as T
       return { ok: true } as T
     }
@@ -39,6 +41,7 @@ test('LilBot owns only servers named lilbot_*: one it no longer supplies is remo
   expect(await prepareConnections(fake, [connection, { ...service('paper'), name: 'paper' }])).toBe(true)
   expect(fake.calls.map(call => `${call.method}:${call.params?.name ?? ''}`)).toEqual([
     'mcp.servers.list:',
+    'config.get:',
     'mcp.servers.status:',
     'mcp.servers.remove:lilbot_c_gone',
     'reload.mcp:'

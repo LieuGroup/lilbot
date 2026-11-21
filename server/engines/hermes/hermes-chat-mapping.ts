@@ -1,7 +1,8 @@
 /** Hermes session rows and events -> LilBot chat items and events. Only fields that Hermes' wire
- *  contract declares are read here; `tests/hermes-contract.test.ts` checks that they still exist. */
+ *  contract declares are read here; `tests/engines/hermes/hermes-contract.test.ts` checks that they still exist. */
 import type { ChatEvent, ChatItem } from '../../../shared/chat-schema'
 import type { HermesEvent } from './hermes-socket'
+import { rowIdFromComplete, type TurnUsageTracker } from './hermes-usage'
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '')
 
@@ -50,10 +51,11 @@ export function toolFailed(result: unknown): boolean {
 
 /** One Hermes event as zero or one LilBot event. Events LilBot does not show return null. `failedSave` says whether the
  *  session's memory save before compressing failed, which a failed turn then reports instead of the engine's text. */
-export function chatEventFrom(event: HermesEvent, failedSave?: () => boolean): ChatEvent | null {
+export function chatEventFrom(event: HermesEvent, failedSave?: () => boolean, track?: { tracker: TurnUsageTracker; nativeId: string }): ChatEvent | null {
   const { type, payload } = event
   switch (type) {
     case 'message.start':
+      track?.tracker.onTurnStart()
       return { type: 'turn.started' }
     case 'thinking.delta':
       return payload.text ? { type: 'activity', text: text(payload.text) } : null
@@ -66,10 +68,17 @@ export function chatEventFrom(event: HermesEvent, failedSave?: () => boolean): C
     case 'message.complete': {
       // Hermes' status is complete | error | interrupted.
       const status = payload.status === 'interrupted' ? 'stopped' : payload.status === 'error' ? 'failed' : 'completed'
-      const contextTokens = payload.usage?.context_used
-      const tokens = typeof contextTokens === 'number' ? { contextTokens } : {}
-      if (status === 'failed' && failedSave?.()) return { type: 'turn.finished', status, text: '', failure: 'memory_save', ...tokens }
-      return { type: 'turn.finished', status, text: text(payload.text), ...tokens }
+      const tracked = track?.tracker.onComplete(payload)
+      const contextTokens = tracked?.contextTokens ?? (typeof payload.usage?.context_used === 'number' ? payload.usage.context_used : undefined)
+      const rowId = track ? rowIdFromComplete(track.nativeId, payload) : undefined
+      const meta = {
+        ...(contextTokens !== undefined ? { contextTokens } : {}),
+        ...(tracked?.usage ? { usage: tracked.usage } : {}),
+        ...(rowId ? { rowId } : {}),
+        ...(tracked?.compacted ? { compacted: tracked.compacted } : {})
+      }
+      if (status === 'failed' && failedSave?.()) return { type: 'turn.finished', status, text: '', failure: 'memory_save', ...meta }
+      return { type: 'turn.finished', status, text: text(payload.text), ...meta }
     }
     case 'session.title':
       return payload.title ? { type: 'title', title: text(payload.title) } : null

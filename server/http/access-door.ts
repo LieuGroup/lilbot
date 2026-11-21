@@ -1,4 +1,5 @@
 import type { WebSocketHandler } from 'bun'
+import { CALLBACK_PATH } from '../connections/mcp-callback'
 import type { AccessSettings } from './access-settings'
 import { accessToken, accessVerifier } from './access-token'
 import type { appRoutes, SocketData } from './app-routes'
@@ -6,7 +7,7 @@ import { plainServerError } from './listener-safety'
 import { socketAllowed } from './socket-guard'
 
 /** No engine or helper handler is passed to this listener. `only` holds the routes the Access door alone serves (the
- *  connections' sign-in callback), reached like every other route only after the Access checks. */
+ *  connections' sign-in callback, when `callbackEnabled` is on), reached like every other route only after Access checks. */
 export function startAccessDoor(
   settings: AccessSettings,
   routes: ReturnType<typeof appRoutes>,
@@ -32,6 +33,9 @@ export function startAccessDoor(
           !(await verify(accessToken(request)))
         ) {
           return new Response('Forbidden', { status: 403, headers: { 'Cache-Control': 'no-store', 'Content-Type': 'text/plain' } })
+        }
+        if (path === CALLBACK_PATH && !settings.callbackEnabled) {
+          return new Response('Not found', { status: 404, headers: { 'Cache-Control': 'no-store', 'Content-Type': 'text/plain' } })
         }
         return await (Object.hasOwn(only, path) ? only[path](request) : routes(request, server))
       } catch {

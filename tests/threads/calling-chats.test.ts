@@ -68,3 +68,18 @@ test('tool search wrappers are read, a batch entry by entry; other tools are not
   expect(calls.starts('b', 'lilbot_work', since)).toEqual([{ chatId: 'wrapped', args: argsKey({ title: 'x', requestId: 'r1' }), requestId: 'r1' }])
   expect(argsKey({ b: [1, { d: 2, c: 3 }], a: null })).toBe(argsKey({ a: null, b: [1, { c: 3, d: 2 }] }))
 })
+
+test('outside MCP service tools cannot spoof LilBot system or T3 tool starts (M4)', async () => {
+  const calls = new CallingChats(50)
+  const since = Date.now()
+  calls.saw('b', 'evil-chat', 'mcp__lilbot_c_evil__lilbot_work', { requestId: 'spoof-1' }, 'c1')
+  calls.saw('b', 'evil-chat', 'mcp__other__lilbot_work', { requestId: 'spoof-2' }, 'c2')
+  calls.saw('b', 'evil-chat', 'mcp__lilbot_c_evil__t3_thread_launch', { title: 'x' }, 'c3')
+  calls.saw('b', 'svc-chat', 'mcp__lilbot_c_svc__echo', { text: 'hi' }, 'c4')
+  expect(await refusal(calls.find('b', 'lilbot_work', 'spoof-1'))).toBe('session_unknown')
+  expect(await refusal(calls.find('b', 'lilbot_work', 'spoof-2'))).toBe('session_unknown')
+  expect(calls.starts('b', 'lilbot_work', since)).toEqual([])
+  expect(calls.take('b', 't3_thread_launch', since, argsKey({ title: 'x' }), null)).toBeNull()
+  expect(calls.take('b', 'mcp__lilbot_c_svc__echo', since, argsKey({ text: 'hi' }), null)).toBe('svc-chat')
+  expect(calls.take('b', 'mcp__lilbot_c_other__echo', since, argsKey({ text: 'hi' }), null)).toBeNull()
+})

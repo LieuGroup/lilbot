@@ -93,7 +93,7 @@ test('Access failures return a plain 500 without error details', async () => {
   }
 })
 
-test('the sign-in callback is the one route only the Access door has, reached only after its checks; the services’ routes stay refused there', async () => {
+test('the sign-in callback is off by default (404, no app shell fallthrough) and only mounted on Access when opted in', async () => {
   const fake = fakeAccess()
   const seen: string[] = []
   const root = mkdtempSync(join(homedir(), 'agent-tmp', 'access-unit-'))
@@ -103,10 +103,18 @@ test('the sign-in callback is the one route only the Access door has, reached on
     seen.push(new URL(request.url).search)
     return new Response('Signed in')
   }
-  const server = startAccessDoor(fake.settings, routes, { message() {} }, { '/api/connections/callback': callback })
-  const get = (path: string, headers: Record<string, string>) => fetch(new URL(path, server.url), { headers: { host: fake.settings.host, ...headers } })
+  const offServer = startAccessDoor(fake.settings, routes, { message() {} }, { '/api/connections/callback': callback })
+  const onServer = startAccessDoor({ ...fake.settings, callbackEnabled: true }, routes, { message() {} }, { '/api/connections/callback': callback })
+  const get = (srv: typeof offServer, path: string, headers: Record<string, string>) => fetch(new URL(path, srv.url), { headers: { host: fake.settings.host, ...headers } })
   try {
     const path = '/api/connections/callback?code=c&state=s'
+    // Default off: plain 404 with no-store even with a valid Access JWT, never falling through to App shell or callback.
+    const disabled = await get(offServer, path, { 'Cf-Access-Jwt-Assertion': token(), 'sec-fetch-site': 'cross-site' })
+    expect(disabled.status).toBe(404)
+    expect(disabled.headers.get('cache-control')).toBe('no-store')
+    expect(disabled.headers.get('content-type')).toBe('text/plain')
+    expect(await disabled.text()).not.toContain('App shell')
+    expect(seen).toEqual([])
     const refusals: Record<string, string>[] = [
       {},
       { 'Cf-Access-Jwt-Assertion': token({ exp: 1 }) },
@@ -114,22 +122,23 @@ test('the sign-in callback is the one route only the Access door has, reached on
       { 'Cf-Access-Jwt-Assertion': token(), host: 'evil.example' }
     ]
     for (const headers of refusals) {
-      expect((await get(path, headers)).status).toBe(403)
+      expect((await get(onServer, path, headers)).status).toBe(403)
     }
     expect(seen).toEqual([])
-    const ok = await get(path, { 'Cf-Access-Jwt-Assertion': token(), 'sec-fetch-site': 'cross-site' })
+    const ok = await get(onServer, path, { 'Cf-Access-Jwt-Assertion': token(), 'sec-fetch-site': 'cross-site' })
     expect(ok.status).toBe(200)
     expect(await ok.text()).toBe('Signed in')
     expect(seen).toEqual(['?code=c&state=s'])
     for (const refused of ['/engine/connections/1/mcp', `/engine/connections/${crypto.randomUUID()}/mcp`]) {
-      expect((await get(refused, { 'Cf-Access-Jwt-Assertion': token() })).status).toBe(403)
+      expect((await get(onServer, refused, { 'Cf-Access-Jwt-Assertion': token() })).status).toBe(403)
     }
     // The private app's routes do not have it: there the path is only the app shell.
     expect(
       await (await routes(new Request(`http://${fake.settings.host}/api/connections/callback?code=c&state=s`, { headers: { host: fake.settings.host } }), {} as any))?.text()
     ).toContain('App shell')
   } finally {
-    server.stop(true)
+    offServer.stop(true)
+    onServer.stop(true)
     fake.server.stop(true)
     rmSync(root, { recursive: true, force: true })
   }

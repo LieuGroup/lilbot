@@ -22,6 +22,10 @@ test('lilbot_connection adds, signs in through a pasted address and removes; lil
   ])
 
   const landed = (await fetch(asking.signInLink, { redirect: 'manual' })).headers.get('location')!
+  // Refused until Oscar's own visible user message in the same conversation contains the callback address.
+  f.history.event('b1', 'b1-main', { type: 'turn.finished', status: 'completed', text: landed })
+  expect((await f.call('b1', 'lilbot_connection', { action: 'finish', address: landed, requestId: 'a3-no-user' })).error).toContain('does not finish a sign-in')
+  f.history.event('b1', 'b1-main', { type: 'user.message', messageId: 'u1', text: `Here it is: ${landed}`, attachments: [], images: { support: 'unknown', imageCount: 0 } })
   const finished = (await f.call('b1', 'lilbot_connection', { action: 'finish', address: landed, requestId: 'a3' })).data
   expect(finished).toMatchObject({ id: asking.id, state: 'connected', tools: 1 })
   expect(f.signedIn).toEqual([{ botId: 'b1', chatId: 'b1-main', name: 'oauthy' }])

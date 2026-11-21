@@ -1,6 +1,6 @@
 import type { ChatEvent } from '../../../shared/chat-schema'
 import { LilBotError } from '../../../shared/lilbot-error'
-import type { ChatOptions, OpenChat } from '../bot-engine'
+import type { ChatOptions, ContextReport, OpenChat } from '../bot-engine'
 import { prepareAttachments } from './hermes-attachments'
 import { DEFAULT_PROFILE } from './hermes-bot-mapping'
 import { chatEventFrom, itemsFromRows, sessionLostEvents } from './hermes-chat-mapping'
@@ -10,6 +10,7 @@ import { wireEffort } from './hermes-session-settings'
 import { type HermesEvent, HermesSocket } from './hermes-socket'
 import type { SpareSockets } from './hermes-spare-sockets'
 import { reportToolCall } from './hermes-tool-calls'
+import { contextFromInfo, TurnUsageTracker } from './hermes-usage'
 
 const CLIENT = { name: 'lilbot', version: '0.2.0' }
 const notFound = (error: unknown) => error instanceof LilBotError && error.code === 'hermes_not_found'
@@ -27,8 +28,12 @@ export async function openChat(
   let storedId = ''
   let generation: number | null = null
   let closed = false
+  const usage = new TurnUsageTracker()
   const reportEffort = (effort: string | null | undefined) => {
     if (effort !== undefined) options.onEffort?.(effort)
+  }
+  const reportContext = (context: ContextReport | undefined) => {
+    if (context) options.onContext?.(context)
   }
 
   // Hermes binds a session to the profile its connection was attached with (checked live:
@@ -45,9 +50,22 @@ export async function openChat(
     }
     if (event.executionGeneration !== undefined) generation = event.executionGeneration
     // A change picked during a turn takes effect when the turn ends and is announced here.
-    if (event.type === 'session.info') reportEffort(wireEffort(event.payload))
+    if (event.type === 'session.info') {
+      reportEffort(wireEffort(event.payload))
+      reportContext(contextFromInfo(event.payload))
+    }
+    if (event.type === 'session.usage') {
+      reportContext(usage.onSessionUsage(event.payload))
+      return
+    }
     reportToolCall(profile, event.sessionId ?? sessionId, event.type, event.payload)
-    const mapped = chatEventFrom(event, () => saveFailed(profile, [storedId, sessionId]))
+    const mapped = chatEventFrom(event, () => saveFailed(profile, [storedId, sessionId]), { tracker: usage, nativeId: botId })
+    if (mapped?.type === 'turn.finished' && mapped.usage && (mapped.usage.contextTokens !== undefined || mapped.usage.contextWindow !== undefined)) {
+      reportContext({
+        ...(mapped.usage.contextTokens !== undefined ? { used: mapped.usage.contextTokens } : {}),
+        ...(mapped.usage.contextWindow !== undefined ? { window: mapped.usage.contextWindow } : {})
+      })
+    }
     if (mapped) onEvent(mapped)
   }
   const onSocketClose = () => {
@@ -91,7 +109,16 @@ export async function openChat(
     })
     sessionId = session.session_id
     storedId = session.stored_session_id ?? sessionId
+    const resumed = Boolean(chatId && !refused)
     reportEffort(wireEffort(session.info))
+    let initialContext = usage.seedInfo(session.info, !resumed)
+    // Seed live cumulative cache/token counters only when the session has prior calls, so cold/empty opens stay one round trip.
+    if (resumed && typeof session.info?.usage?.calls === 'number' && session.info.usage.calls > 0) {
+      const stats = await socket.request('session.stats', { session_id: sessionId }).catch(() => undefined)
+      const fromStats = usage.seedStats(stats)
+      if (fromStats) initialContext = { ...initialContext, ...fromStats }
+    }
+    reportContext(initialContext)
     if (typeof session.execution_generation === 'number') generation = session.execution_generation
     spares.refill(profile)
 
@@ -105,6 +132,7 @@ export async function openChat(
         title: typeof session.info?.title === 'string' ? session.info.title : '',
         running: session.running === true,
         workspace: typeof session.info?.cwd === 'string' ? session.info.cwd : '',
+        ...(initialContext?.used !== undefined ? { context: { used: initialContext.used, window: initialContext.window ?? null } } : {}),
         items: itemsFromRows(session.display_messages, at => saveFailed(profile, [storedId, sessionId], at))
       },
       send: async (text, options) => {

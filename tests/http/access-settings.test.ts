@@ -22,6 +22,10 @@ test('enabled Access requires every setting, and validates ports and team/host w
     expect(() => accessSettings({ ...accessEnv, LILBOT_ACCESS_HOST: host }, 3370, 3372)).toThrow()
   }
   expect(accessSettings(accessEnv, 3370, 3372)?.certsUrl.href).toBe('https://test-team.cloudflareaccess.com/cdn-cgi/access/certs')
+  expect(accessSettings(accessEnv, 3370, 3372)?.callbackEnabled).toBe(false)
+  expect(accessSettings({ ...accessEnv, LILBOT_ACCESS_CALLBACK_ENABLED: '0' }, 3370, 3372)?.callbackEnabled).toBe(false)
+  expect(accessSettings({ ...accessEnv, LILBOT_ACCESS_CALLBACK_ENABLED: '1' }, 3370, 3372)?.callbackEnabled).toBe(true)
+  expect(() => accessSettings({ ...accessEnv, LILBOT_ACCESS_CALLBACK_ENABLED: 'yes' }, 3370, 3372)).toThrow('LILBOT_ACCESS_CALLBACK_ENABLED')
 })
 
 test('local key override requires isolated paths, the exact sentinel and a loopback URL', () => {

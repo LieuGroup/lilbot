@@ -63,6 +63,7 @@ const { bots, store, skills, hiddenChat, library, computers, devices, attachment
     // `helperSettings` below refuses a helper URL that is not the door's HTTPS origin.
     HOOK_ORIGIN: PUBLIC_ENABLED && process.env.LILBOT_HELPER_URL ? new URL(process.env.LILBOT_HELPER_URL).origin : undefined,
     ACCESS_HOST: ACCESS?.host,
+    ACCESS_CALLBACK_ENABLED: ACCESS?.callbackEnabled ?? false,
     publish: frame => publish(EVERYONE, JSON.stringify(frame)),
     botsChanged
   })
@@ -160,9 +161,14 @@ const server = Bun.serve<SocketData>({
   },
   websocket
 })
-// The sign-in callback is the one route only the Access door has (#187).
+// The sign-in callback is mounted on the Access door only when opted in (`LILBOT_ACCESS_CALLBACK_ENABLED=1`).
 const accessServer = ACCESS
-  ? startAccessDoor(ACCESS, appRoutes(library, DIST, new Set([ACCESS.host]), 'hermes', attachments, downloads, threads), websocket, { [CALLBACK_PATH]: mcp.callback })
+  ? startAccessDoor(
+      ACCESS,
+      appRoutes(library, DIST, new Set([ACCESS.host]), 'hermes', attachments, downloads, threads),
+      websocket,
+      ACCESS.callbackEnabled ? { [CALLBACK_PATH]: mcp.callback } : {}
+    )
   : undefined
 
 // LilBot's own skills, restored at every start if they differ.

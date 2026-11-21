@@ -11,7 +11,7 @@ import { openDatabase } from '../../server/database/database'
 
 export const REDIRECT = 'https://bot.example.com/api/connections/callback'
 
-export function connectionsFixture(redirectUri: string | null = REDIRECT) {
+export function connectionsFixture(redirectUri: string | null = REDIRECT, callbackEnabled = false) {
   const root = mkdtempSync(join(tmpdir(), 'lilbot-connections-'))
   afterAll(() => rmSync(root, { recursive: true, force: true }))
   const database = openDatabase(join(root, 'lilbot.db'))
@@ -22,6 +22,8 @@ export function connectionsFixture(redirectUri: string | null = REDIRECT) {
   const flows = new SignInFlows(undefined, now)
   const signedIn: { botId: string; chatId: string; name: string; runId: string }[] = []
   const bots = new Set(['bot-a', 'bot-b'])
+  const chatOf = new Map<string, string>()
+  const userMessages: { botId: string; chatId: string; text: string }[] = []
   let changes = 0
   const services = new McpConnections(
     store,
@@ -30,12 +32,14 @@ export function connectionsFixture(redirectUri: string | null = REDIRECT) {
     {
       botName: id => (id === 'bot-a' ? 'Alpha' : 'Beta'),
       botExists: id => bots.has(id),
-      callingChat: async botId => `${botId}-main`,
+      callingChat: async botId => chatOf.get(botId) ?? `${botId}-main`,
+      userSentInChat: (botId, chatId, text) => userMessages.some(msg => msg.botId === botId && msg.chatId === chatId && msg.text.includes(text)),
       signedIn: (botId, chatId, name, runId) => signedIn.push({ botId, chatId, name, runId }),
       changed: () => changes++
     },
     redirectUri ?? undefined,
-    now
+    now,
+    callbackEnabled
   )
   /** What Oscar's browser does with a sign-in link: the service approves and sends it to LilBot's return address. */
   const browse = async (link: string) => {
@@ -45,5 +49,6 @@ export function connectionsFixture(redirectUri: string | null = REDIRECT) {
     return location
   }
   const callback = (location: string) => services.complete(returnOf(location, redirectUri ?? REDIRECT))
-  return { root, database, clock, store, credentials, services, signedIn, bots, browse, callback, changes: () => changes }
+  const userSays = (botId: string, text: string, chatId = chatOf.get(botId) ?? `${botId}-main`) => userMessages.push({ botId, chatId, text })
+  return { root, database, clock, store, credentials, services, signedIn, bots, chatOf, userSays, browse, callback, changes: () => changes }
 }

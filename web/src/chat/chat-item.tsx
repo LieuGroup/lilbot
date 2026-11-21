@@ -59,6 +59,8 @@ export const ChatItem = memo(function ChatItem({ item, botId, queued = false }: 
           <ThreadLine botId={botId} threadId={item.threadId} fallback={<ToolTrace item={item} />} />
         </Suspense>
       )
+    case 'compaction':
+      return null
     case 'error':
       return item.reason ? <ErrorBubble text={failureLine(item.reason, useBotStore.getState().bots.find(bot => bot.id === botId)?.name)} /> : <ErrorBubble text={item.text} />
   }

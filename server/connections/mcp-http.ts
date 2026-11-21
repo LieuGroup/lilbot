@@ -1,15 +1,18 @@
-/** Every request LilBot itself makes to a service a bot added: bounded in time and size, never following a redirect (a
- *  service could send LilBot, with a token, somewhere else). Bodies are read as text only up to a cap. */
+/** Every request LilBot itself makes to a service a bot added: bounded in time and size, checked against SSRF before
+ *  connecting, never following a redirect (a service could send LilBot, with a token, somewhere else). */
+import { assertPublicAddress, isLoopbackHost } from './mcp-net'
 
 const SIGN_IN_TIMEOUT_MS = 10_000
 const CAP = 1 << 20
 
 export class Unreachable extends Error {}
 
-/** Answers a redirect as itself; a network failure or a timeout is `Unreachable`. */
-export async function boundedFetch(url: URL | string, init: RequestInit, timeoutMs = SIGN_IN_TIMEOUT_MS): Promise<Response> {
+/** Answers a redirect as itself; a network failure, timeout or blocked non-public IP is `Unreachable`. */
+export async function boundedFetch(url: URL | string, init: RequestInit, timeoutMs = SIGN_IN_TIMEOUT_MS, allowLoopback?: boolean): Promise<Response> {
+  const target = url instanceof URL ? url : new URL(url)
   try {
-    return await fetch(url, { ...init, redirect: 'manual', signal: AbortSignal.timeout(timeoutMs) })
+    await assertPublicAddress(target, allowLoopback ?? isLoopbackHost(target.hostname))
+    return await fetch(target, { ...init, redirect: 'manual', signal: AbortSignal.timeout(timeoutMs) })
   } catch {
     throw new Unreachable('unreachable')
   }
@@ -44,25 +47,41 @@ export async function jsonBody(response: Response): Promise<Record<string, any> 
   }
 }
 
+/** The exact media-type prefix of a Content-Type header (lowercased, without parameters). */
+export const mediaTypeOf = (contentType: string) => (contentType.split(';', 1)[0] ?? '').trim().toLowerCase()
+
+/** Extracts each SSE event's `data` payload, treating `\r\n`, `\n` and bare `\r` as line ends per the SSE spec. */
+export function parseSseData(body: string): string[] {
+  const events: string[] = []
+  let data: string[] = []
+  const flush = () => {
+    if (data.length) events.push(data.join('\n'))
+    data = []
+  }
+  for (const line of body.replace(/\r\n|\r/g, '\n').split('\n')) {
+    if (line === '') {
+      flush()
+    } else if (line.startsWith('data:')) {
+      const rest = line.slice(5)
+      data.push(rest.startsWith(' ') ? rest.slice(1) : rest)
+    }
+  }
+  flush()
+  return events
+}
+
 /** The JSON-RPC messages of a Streamable HTTP answer: one JSON body, or the `data:` of each server-sent event. */
 export function rpcMessages(body: string, contentType: string): any[] {
   const parse = (text: string) => {
     try {
-      return [JSON.parse(text)]
+      const value = JSON.parse(text)
+      return Array.isArray(value) ? value : [value]
     } catch {
       return []
     }
   }
-  if (!contentType.includes('text/event-stream')) return parse(body).flat()
-  return body
-    .split(/\r?\n\r?\n/)
-    .map(event =>
-      event
-        .split(/\r?\n/)
-        .filter(line => line.startsWith('data:'))
-        .map(line => line.slice(5).trimStart())
-        .join('\n')
-    )
-    .filter(Boolean)
-    .flatMap(parse)
+  const type = mediaTypeOf(contentType)
+  if (type === 'text/event-stream') return parseSseData(body).flatMap(parse)
+  if (type === 'application/json') return parse(body)
+  return []
 }

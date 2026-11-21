@@ -89,12 +89,14 @@ test('a wrong state, an error answer, a late answer and an old link are refused'
   expect(await f.callback(await f.browse(newest.signInLink))).toMatchObject({ state: 'connected' })
 })
 
-test('the paste fallback takes only LilBot’s own return address, and a retry of the same finish gets the same answer', async () => {
+test('the paste fallback takes only LilBot’s own return address from Oscar’s message, and a retry of the same finish gets the same answer', async () => {
   const f = connectionsFixture()
   const result = await added(f)
   const location = await f.browse(result.signInLink)
   const elsewhere = location.replace('https://bot.example.com/', 'https://evil.example.com/')
+  f.userSays('bot-a', elsewhere)
   await expect(f.services.finish('bot-a', { address: elsewhere, requestId: 'f0' })).rejects.toThrow('does not finish a sign-in')
+  f.userSays('bot-a', `Here is the address: ${location}`)
   const done = await f.services.finish('bot-a', { address: location, requestId: 'f1' })
   expect(done).toMatchObject({ id: result.id, state: 'connected' })
   expect(await f.services.finish('bot-a', { address: location, requestId: 'f1' })).toEqual(done)

@@ -1,10 +1,11 @@
 /** The save before an engine shortens a long conversation (#148). The engine hands over the conversation's own words,
  *  user and assistant text oldest first, and may not shorten it until LilBot has reviewed all of them for memory. LilBot
  *  reviews them in passes of about PASS_CHARS, each a hidden memory review of the same bot, a few at a time, and answers
- *  only once every pass finished: a failure keeps the conversation long and the engine asks again later. A reviewed piece
- *  is remembered while this process runs, so a retry, or the next shortening of the same conversation (which hands over
- *  its start and its kept recent part again), reviews only what is new. */
+ *  only once every pass finished: a failure keeps the conversation long and the engine asks again later. Reviewed pieces
+ *  are remembered per bot in LilBot's database, so a retry, restart, or the next shortening of the same conversation
+ *  (which hands over its start and its kept recent part again) reviews only what is new. */
 import { createHash } from 'node:crypto'
+import { type CheckpointStore, inMemoryCheckpointStore } from './memory-checkpoint-store'
 
 export interface Evidence {
   role: 'user' | 'assistant'
@@ -15,7 +16,6 @@ export interface Evidence {
 export const PASS_CHARS = 100_000
 /** Passes of one save running at once, so a long conversation is covered within the engine's wait. */
 const AT_ONCE = 3
-const REMEMBERED = 50_000
 
 type Piece = Evidence & { key: string }
 
@@ -51,12 +51,14 @@ export function checkpointPrompt(pieces: Evidence[], index: number, count: numbe
 }
 
 export class MemoryCheckpoint {
-  private reviewed = new Set<string>()
   /** The save running for each conversation: a second one for it (Hermes' hygiene pass and the agent, or a retry)
    *  waits and then reviews only what the first did not. */
   private running = new Map<string, Promise<number>>()
 
-  constructor(private review: (botId: string, prompt: string) => Promise<void>) {}
+  constructor(
+    private review: (botId: string, prompt: string) => Promise<void>,
+    private store: CheckpointStore = inMemoryCheckpointStore()
+  ) {}
 
   /** Reviews whatever of the evidence was not reviewed yet. Resolves with the number of passes once all finished; rejects
    *  with the first failure once the passes already running have settled (those that finished still count next time). */
@@ -72,7 +74,7 @@ export class MemoryCheckpoint {
   }
 
   private async passes(botId: string, evidence: Evidence[]): Promise<number> {
-    const passes = checkpointPasses(botId, evidence, key => this.reviewed.has(key))
+    const passes = checkpointPasses(botId, evidence, key => this.store.has(botId, key))
     const failures: unknown[] = []
     let next = 0
     const run = async () => {
@@ -80,8 +82,10 @@ export class MemoryCheckpoint {
         const index = next++
         try {
           await this.review(botId, checkpointPrompt(passes[index], index + 1, passes.length))
-          if (this.reviewed.size > REMEMBERED) this.reviewed.clear()
-          for (const piece of passes[index]) this.reviewed.add(piece.key)
+          this.store.record(
+            botId,
+            passes[index].map(piece => piece.key)
+          )
         } catch (error) {
           failures.push(error)
         }

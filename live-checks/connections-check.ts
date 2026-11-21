@@ -1,10 +1,8 @@
 import { devScratch } from '../scripts/dev-env'
 import { deleteProfile } from './check-process'
 import { devPort } from '../scripts/dev-paths'
-/** `check:connections` (#187): a temporary bot on an isolated dev server with the Access door on local test keys connects two
- *  throwaway loopback MCP services, one with its own OAuth server, and uses them in the same conversation, never a new
- *  session. Sign-in through the Access route and by pasting the address; refused callbacks; refresh, expiry and repair;
- *  unreachable; removal; and a search that finds the tokens only in LilBot's store. */
+/** `check:connections` (#187): isolated dev server + Access door on local test keys; connects plain & OAuth MCP services
+ *  in one conversation, verifies default-off callback 404, opt-in callback, paste fallback, M3, refresh, expiry, removal & token isolation. */
 import assert from 'node:assert/strict'
 import { readFileSync, rmSync, statSync } from 'node:fs'
 import { join } from 'node:path'
@@ -49,23 +47,27 @@ try {
   })
   const profileConfig = () => readFileSync(join(skillHome(nativeId), 'config.yaml'), 'utf8')
   const othersBefore = servers(profileConfig()).filter(name => !name.startsWith('lilbot_'))
-  child = await startCheckServer(
-    {
-      ...accessEnv,
-      LILBOT_PORT: String(port),
-      LILBOT_ACCESS_PORT: String(accessPort),
-      LILBOT_ACCESS_TEST_CERTS_URL: keys.settings.certsUrl.href,
-      LILBOT_PUBLIC_PORT: String(free([port, accessPort])),
-      LILBOT_DATA_DIR: scratch,
-      LILBOT_WORKSPACES_DIR: join(scratch, 'workspaces'),
-      LILBOT_SKILLS_DIR: join(scratch, 'skills'),
-      LILBOT_BOT_IDS: nativeId,
-      LILBOT_SKIP_MEMORY_SETUP: '1',
-      LILBOT_REVIEW: 'off',
-      LILBOT_CONNECTION_TEST_SIGN_IN_SECONDS: '20'
-    },
-    log
-  )
+  const baseEnv = {
+    ...accessEnv,
+    LILBOT_PORT: String(port),
+    LILBOT_ACCESS_PORT: String(accessPort),
+    LILBOT_ACCESS_TEST_CERTS_URL: keys.settings.certsUrl.href,
+    LILBOT_PUBLIC_PORT: String(free([port, accessPort])),
+    LILBOT_DATA_DIR: scratch,
+    LILBOT_WORKSPACES_DIR: join(scratch, 'workspaces'),
+    LILBOT_SKILLS_DIR: join(scratch, 'skills'),
+    LILBOT_BOT_IDS: nativeId,
+    LILBOT_SKIP_MEMORY_SETUP: '1',
+    LILBOT_REVIEW: 'off',
+    LILBOT_CONNECTION_TEST_SIGN_IN_SECONDS: '20'
+  }
+  child = await startCheckServer(baseEnv, log)
+  const offCb = await openOnAccess(accessPort, `https://${accessEnv.LILBOT_ACCESS_HOST}/api/connections/callback?code=c&state=s`)
+  assert.ok(offCb.status === 404 && !offCb.text.includes('<!doctype html>'), 'default-off callback must be plain 404')
+  pass('Access callback route is 404 by default (no app-shell fallthrough)')
+  child.kill()
+  await child.exited
+  child = await startCheckServer({ ...baseEnv, LILBOT_ACCESS_CALLBACK_ENABLED: '1' }, log)
   const chat = await conversation(port)
   close = () => chat.client.socket.close()
   const status = async (name: string) => (await statusOf(port, scratch, chat.botId)).find(row => row.name === name)
@@ -98,24 +100,28 @@ try {
   pass('sign-in link, browser on another device through the Access route, "connected" turn, tool used in the same conversation')
   pass('a callback without an Access login (refused by the door), a wrong state and a reused callback are refused')
 
-  const fresh = linkIn(await chat.say('Give me a fresh sign-in link for oauthcheck, exactly as LilBot returns it.'), oauth.server.port!)
-  assert.ok(fresh, 'no fresh link')
-  const late = await signInPage(fresh)
-  await Bun.sleep(21_000)
-  assert.equal((await openOnAccess(accessPort, late)).status, 400, 'a callback after the sign-in window was accepted')
-  assert.equal((await status('oauthcheck'))?.state, 'connected')
-  pass('a callback after the sign-in window (20 s on this server, 10 minutes in production) is refused')
+  const denied = await chat.say('Call lilbot_connection with action sign_in for oauthcheck now and tell me what LilBot answered.')
+  assert.ok((await status('oauthcheck'))?.state === 'connected' && !linkIn(denied, oauth.server.port!), 'sign_in allowed while connected')
+  pass('sign_in while already connected is refused (M3)')
 
   oauth.expireAccess()
   const refreshes = oauth.counts.refreshGrants
-  assert.ok((await chat.say('Use the oauthcheck tool with the text again and tell me exactly what it returned.')).includes('OAUTH_CHECK_again'))
-  assert.ok(oauth.counts.refreshGrants > refreshes, 'LilBot did not refresh the token')
+  assert.ok(
+    (await chat.say('Use the oauthcheck tool with the text again and tell me exactly what it returned.')).includes('OAUTH_CHECK_again') && oauth.counts.refreshGrants > refreshes
+  )
   pass('an expired access token is refreshed by LilBot and the call goes through')
 
   oauth.revoke()
   await chat.say('Use the oauthcheck tool with the text expired and tell me what happened.')
   assert.equal((await status('oauthcheck'))?.state, 'sign_in_expired')
-  const repairLink = linkIn(await chat.say('Give me a fresh sign-in link for oauthcheck, exactly as LilBot returns it.'), oauth.server.port!)
+  const lateLink = linkIn(await chat.say('Give me a fresh sign-in link for oauthcheck, exactly as LilBot returns it.'), oauth.server.port!)
+  assert.ok(lateLink, 'no fresh link while expired')
+  const late = await signInPage(lateLink)
+  await Bun.sleep(21_000)
+  assert.equal((await openOnAccess(accessPort, late)).status, 400, 'a callback after the sign-in window was accepted')
+  pass('a callback after the sign-in window (20 s on this server, 10 minutes in production) is refused')
+
+  const repairLink = linkIn(await chat.say('Give me another fresh sign-in link for oauthcheck, exactly as LilBot returns it.'), oauth.server.port!)
   assert.ok(repairLink, 'no repair link')
   const pasted = await signInPage(repairLink)
   const pastedAt = Date.now()
@@ -123,7 +129,7 @@ try {
   assert.equal((await status('oauthcheck'))?.state, 'connected')
   await chat.lilbotReply(pastedAt, finished)
   assert.ok((await chat.say('Use the oauthcheck tool with the text repaired and tell me exactly what it returned.')).includes('OAUTH_CHECK_repaired'))
-  pass('a refused token shows sign_in_expired; a new sign_in, finished by pasting the final address with the callback blocked, repairs it')
+  pass('a refused token shows sign_in_expired; a new sign_in, finished by pasting the final address, repairs it')
 
   const plainPort = plain.server.port!
   plain.stop()

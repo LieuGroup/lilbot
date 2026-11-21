@@ -9,6 +9,7 @@ import { McpConnections } from '../../server/connections/mcp-connections'
 import { McpCredentials } from '../../server/connections/mcp-credentials'
 import { SignInFlows } from '../../server/connections/mcp-sign-in'
 import { GoalService } from '../../server/goals/goal-service'
+import { HistoryStore } from '../../server/history/history-store'
 import { LibraryService } from '../../server/library/library-service'
 import { LibraryStore } from '../../server/library/library-store'
 import { RoutineService } from '../../server/routines/routine-service'
@@ -90,6 +91,7 @@ export function systemFixture() {
     { waiting: () => {}, tell: (id, goal, prompt) => work.answers.notify(id, goal.id, goal.botId, prompt), changed: () => {} },
     60
   )
+  const history = new HistoryStore(fake.database)
   const signedIn: { botId: string; chatId: string; name: string }[] = []
   const connections = new McpConnections(
     new McpConnectionStore(fake.database),
@@ -99,6 +101,7 @@ export function systemFixture() {
       botName: id => fake.store.get(id).name,
       botExists: id => fake.store.exists(id),
       callingChat: (botId, requestId) => calls.find(botId, 'lilbot_connection', requestId),
+      userSentInChat: (botId, chatId, text) => history.hasUserMessageContaining(botId, chatId, text),
       signedIn: (botId, chatId, name) => signedIn.push({ botId, chatId, name }),
       changed: () => {}
     },
@@ -170,6 +173,7 @@ export function systemFixture() {
     roots,
     webhooks,
     connections,
+    history,
     signedIn,
     webhookRuns,
     shown,

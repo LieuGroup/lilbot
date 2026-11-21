@@ -51,6 +51,13 @@ export class SignInFlows {
     return link.href
   }
 
+  /** Inspects the live flow `state` names without spending it. Null when absent or expired. */
+  peek(state: string | undefined): Flow | null {
+    const flow = state ? this.flows.get(state) : undefined
+    if (!flow) return null
+    return this.now() - flow.startedAt <= this.windowMs ? flow : null
+  }
+
   /** Spends the flow `state` names. Null when there is none, it was spent, or its ten minutes are over. */
   take(state: string | undefined): Flow | null {
     const flow = state ? this.flows.get(state) : undefined
