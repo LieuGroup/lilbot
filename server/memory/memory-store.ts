@@ -37,7 +37,7 @@ const MINE = `(scope = 'shared' OR bot_id = $botId)`
 /** Of those, the ones a bot is shown and can recall: not forgotten, not paused, not expired. */
 const VISIBLE = `forgotten_at IS NULL AND paused = 0 AND (expires_at IS NULL OR expires_at > $now) AND ${MINE}`
 
-export interface NewFact {
+interface NewFact {
   id: string
   botId: string
   kind: MemoryKind

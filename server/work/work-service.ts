@@ -16,7 +16,7 @@ export interface SessionOrigin {
   askedBy: WorkAsker | null
 }
 type Bot = { id: string; name: string }
-export interface WorkHost {
+interface WorkHost {
   requireBot(id: string): Promise<Bot>
   /** The bots that could check an item now (any bot not deleted whose runtime is ready or being prepared). */
   checkers(): Promise<Bot[]>

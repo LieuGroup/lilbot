@@ -3,8 +3,32 @@ import type { AddThisStatus, AddThisSystem, HelperDownload } from '../../../shar
 import { lilbot, messageOf } from '../app/lilbot-socket'
 import { useNow } from '../app/use-now'
 import { thisDeviceId } from '../devices/this-device'
-import { needsCode, phaseOf } from './add-phase'
 import { handOver } from './helper-handover'
+
+/** The helper door is rarely quiet this long when the installer is open: offer the link and the pasted line. */
+export const FALLBACK_AFTER_MS = 30_000
+
+type Phase = 'name' | 'waiting' | 'fallback' | 'registered' | 'connected' | 'expired' | 'unsupported' | 'unavailable'
+
+interface AttemptFacts {
+  refused: 'system' | 'unavailable' | null
+  attempt: { expiresAt: number; startedAt: number } | null
+  status: Pick<AddThisStatus, 'state'> | null
+  now: number
+}
+
+/** Which screen of "Add this computer" an attempt is on. Pure. */
+export function phaseOf({ refused, attempt, status, now }: AttemptFacts): Phase {
+  if (refused) return refused === 'system' ? 'unsupported' : 'unavailable'
+  if (!attempt) return 'name'
+  if (status?.state === 'connected') return 'connected'
+  if (status?.state === 'registered') return 'registered'
+  if (status?.state === 'expired' || now >= attempt.expiresAt) return 'expired'
+  return now - attempt.startedAt >= FALLBACK_AFTER_MS ? 'fallback' : 'waiting'
+}
+
+/** The code is needed only while the helper has not registered. */
+export const needsCode = (phase: Phase) => phase === 'waiting' || phase === 'fallback'
 
 interface Attempt {
   attemptId: string

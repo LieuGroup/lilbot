@@ -51,7 +51,7 @@ export function modelLabel(groups: ModelGroup[], current: BotModel | null): stri
   return groups.flatMap(group => group.options).find(option => option.key === key)?.label ?? current?.model ?? 'Choose a model'
 }
 
-export interface ModelPillView {
+interface ModelPillView {
   label: string
   /** The effort's name after the model; null for a model that does not reason. */
   effort: string | null

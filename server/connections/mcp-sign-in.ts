@@ -6,7 +6,7 @@ import type { AuthServer, OAuthClient } from './mcp-oauth-discovery'
 
 export const SIGN_IN_WINDOW_MS = 10 * 60_000
 
-export interface Flow {
+interface Flow {
   connectionId: string
   verifier: string
   startedAt: number

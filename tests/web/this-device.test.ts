@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { DeviceName } from '../../shared/device-schema'
-import { deviceLine } from '../../web/src/devices/device-line'
 import { deviceNameOf } from '../../web/src/devices/device-name'
+import { deviceLine } from '../../web/src/devices/this-device-card'
 
 const facts = (userAgent: string, platform = '', maxTouchPoints = 0) => ({ userAgent, platform, maxTouchPoints })
 const CHROME_MAC = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'

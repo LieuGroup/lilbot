@@ -19,7 +19,7 @@ export function ago(at: number, now = Date.now()) {
 
 const lastEventText = (webhook: Webhook, now = Date.now()) => (webhook.lastEventAt === null ? 'no events yet' : `last event ${ago(webhook.lastEventAt, now)}`)
 
-export type WebhookTone = 'running' | 'failed' | 'paused' | 'plain'
+type WebhookTone = 'running' | 'failed' | 'paused' | 'plain'
 
 /** A webhook's second line in the list: a run under way, else paused, else a failed last run, else its source and last
  *  event ("GitHub · last event 2 hours ago"). */

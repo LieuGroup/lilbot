@@ -1,10 +1,4 @@
-import { GOAL_TABLES } from './goal-tables'
-import { GROUP_TABLES } from './group-tables'
-import { HISTORY_USAGE_TABLES } from './history-usage-tables'
-import { MCP_CONNECTION_TABLES } from './mcp-connection-tables'
-import { MEMORY_CHECKPOINT_TABLES } from './memory-checkpoint-tables'
-import { WEBHOOK_ACCESS, WEBHOOK_TABLES } from './webhook-tables'
-import { WORK_CHECK_COLUMNS } from './work-check-columns'
+import * as tables from './table-definitions'
 
 /** LilBot's schema: every shipped step, in order. Never edit a shipped step: add one. */
 export const migrations: string[] = [
@@ -180,7 +174,7 @@ export const migrations: string[] = [
    CREATE TABLE IF NOT EXISTS work_evidence(id TEXT PRIMARY KEY, item_id TEXT NOT NULL, proves TEXT NOT NULL, pointer TEXT NOT NULL, by_id TEXT NOT NULL, at INTEGER NOT NULL); CREATE INDEX IF NOT EXISTS work_evidence_item ON work_evidence(item_id);
    CREATE TABLE IF NOT EXISTS work_events(id INTEGER PRIMARY KEY AUTOINCREMENT, item_id TEXT NOT NULL, at INTEGER NOT NULL, by_kind TEXT NOT NULL, kind TEXT NOT NULL, status TEXT, text TEXT, via_kind TEXT, via_id TEXT); CREATE INDEX IF NOT EXISTS work_events_item ON work_events(item_id, id);
    CREATE TABLE IF NOT EXISTS work_answers(id TEXT PRIMARY KEY, item_id TEXT NOT NULL, bot_id TEXT NOT NULL, chat_id TEXT, text TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending');`,
-  WEBHOOK_TABLES,
+  tables.WEBHOOK_TABLES,
   `ALTER TABLE work_items ADD COLUMN kind TEXT;
    ALTER TABLE work_items ADD COLUMN default_level INTEGER;
    CREATE TABLE IF NOT EXISTS work_checks(id TEXT PRIMARY KEY, item_id TEXT NOT NULL, round INTEGER NOT NULL, checker_kind TEXT NOT NULL, checker_id TEXT, checker_name TEXT NOT NULL,
@@ -188,11 +182,11 @@ export const migrations: string[] = [
    CREATE INDEX IF NOT EXISTS work_checks_open ON work_checks(state) WHERE state = 'checking';
    CREATE TABLE IF NOT EXISTS work_check_chats(chat_id TEXT PRIMARY KEY, check_id TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS work_levels(kind TEXT NOT NULL, bot_id TEXT NOT NULL, level INTEGER NOT NULL, PRIMARY KEY(kind, bot_id));`,
-  GROUP_TABLES,
-  GOAL_TABLES,
-  WORK_CHECK_COLUMNS,
-  WEBHOOK_ACCESS,
-  MEMORY_CHECKPOINT_TABLES,
-  HISTORY_USAGE_TABLES,
-  MCP_CONNECTION_TABLES
+  tables.GROUP_TABLES,
+  tables.GOAL_TABLES,
+  tables.WORK_CHECK_COLUMNS,
+  tables.WEBHOOK_ACCESS,
+  tables.MEMORY_CHECKPOINT_TABLES,
+  tables.HISTORY_USAGE_TABLES,
+  tables.MCP_CONNECTION_TABLES
 ]

@@ -4,7 +4,7 @@ import { create } from 'zustand'
 
 import { type ChatView, emptyChat } from './chat-state'
 
-export interface ChatSlot {
+interface ChatSlot {
   view: ChatView
   /** The chat is open on the server and can take messages. */
   ready: boolean

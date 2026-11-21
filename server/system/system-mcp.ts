@@ -12,7 +12,7 @@ import { inputSchema, type McpTool } from './mcp-tool'
 import type { SystemChanges } from './system-changes'
 import { SYSTEM_KEY_PURPOSE } from './system-connection'
 
-export interface SystemMcpOptions {
+interface SystemMcpOptions {
   engineToken: string
   port: number
   /** Current (not deleted) bots. */

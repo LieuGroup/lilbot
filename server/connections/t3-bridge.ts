@@ -9,7 +9,7 @@ import { scopedRequestId, t3SignedOut } from './t3-bridge-replies'
 import { T3_KEY_PURPOSE, T3_STATUS_TOOL, T3_TOOLS } from './t3-connection'
 import { signInMessage, type T3Grants } from './t3-grant'
 
-export interface T3BridgeOptions {
+interface T3BridgeOptions {
   /** T3 Code's MCP URL, normally `http://127.0.0.1:3773/mcp`. */
   upstream: string
   grants: T3Grants

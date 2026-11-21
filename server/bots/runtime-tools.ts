@@ -8,7 +8,7 @@ import { files } from '../skills/skill-files'
 import type { SkillsService } from '../skills/skills-service'
 import type { BotRecord } from './bot-store'
 
-export interface ToolSources {
+interface ToolSources {
   skills?: SkillsService
   connection?: MemoryConnection
   connections?: (botId: string) => McpConnection[]

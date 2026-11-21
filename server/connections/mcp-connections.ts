@@ -15,7 +15,7 @@ import { returnOf, type SignInFlows, type SignInReturn } from './mcp-sign-in'
 const MAX_SERVICES = 20
 const NEXT = 'Its tools reach you, and every other bot, from your next message in this conversation (not in this turn).'
 
-export interface ConnectionsHost {
+interface ConnectionsHost {
   botName(botId: string): string
   botExists(botId: string): boolean
   callingChat(botId: string, requestId: string): Promise<string>

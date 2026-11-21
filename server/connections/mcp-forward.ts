@@ -14,7 +14,7 @@ import { type JsonRpc, oneMessage, refusedResult, rpcError, rpcResult, toolError
 import { SERVICE_PATH, SERVICE_TIMEOUT_SECONDS, STATUS_TOOL, serviceKeyPurpose } from './mcp-service-connection'
 import type { TokenKeeper } from './mcp-token-keeper'
 
-export interface ServiceForwardOptions {
+interface ServiceForwardOptions {
   services: McpConnections
   store: McpConnectionStore
   credentials: McpCredentials

@@ -6,11 +6,21 @@ import remarkGfm from 'remark-gfm'
 import { Bubble, BubbleContent } from '@/ui/bubble'
 import { Message, MessageContent, MessageFooter } from '@/ui/message'
 import { Trace, TraceIcon, TraceLine, TraceTitle } from '@/ui/trace'
+import type { ChatItem as ChatItemData } from '../../../shared/chat-schema'
 import { ImageNote, SentAttachments } from '../attachments/message-attachments'
 import { useBotStore } from '../bots/bot-store'
 import { thisDeviceId } from '../devices/this-device'
 import type { MessageItem } from './chat-state'
-import { failureLine } from './failure-lines'
+
+type Failure = NonNullable<Extract<ChatItemData, { kind: 'error' }>['reason']>
+
+/** LilBot's own words for a turn that failed for a reason LilBot knows, in place of the engine's text. */
+export function failureLine(reason: Failure, botName: string | undefined): string {
+  switch (reason) {
+    case 'memory_save':
+      return `${botName || 'The bot'} couldn't save its memory before shortening this long conversation, so it stopped instead of forgetting anything. Send your message again in a moment.`
+  }
+}
 
 // An exchange with another bot draws as a bordered line with its live state; it loads with the first one.
 const ThreadLine = lazy(() => import('../threads/thread-line'))

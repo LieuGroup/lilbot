@@ -4,7 +4,7 @@
 import { lookup as dnsLookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
 
-export type LookupFn = (hostname: string, options: { all: true }) => Promise<{ address: string; family: number }[]>
+type LookupFn = (hostname: string, options: { all: true }) => Promise<{ address: string; family: number }[]>
 
 let lookupImpl: LookupFn = (hostname, options) => dnsLookup(hostname, options)
 

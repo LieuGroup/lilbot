@@ -4,7 +4,7 @@
 import type { Database } from 'bun:sqlite'
 import type { Delivery } from './thread-store'
 
-export interface GroupRow {
+interface GroupRow {
   thread_id: string
   leader_id: string
   request_id: string

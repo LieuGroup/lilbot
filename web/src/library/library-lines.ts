@@ -12,7 +12,7 @@ export const FILTERS = [
 ] as const satisfies readonly { id: string; label: string; kinds: readonly LibraryKind[] | undefined }[]
 export type LibraryFilter = (typeof FILTERS)[number]['id']
 
-export type LibraryGroup = 'Today' | 'This week' | 'Older'
+type LibraryGroup = 'Today' | 'This week' | 'Older'
 
 const startOfDay = (at: number) => new Date(at).setHours(0, 0, 0, 0)
 /** Monday 00:00 of the week `now` is in. */

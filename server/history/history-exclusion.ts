@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite'
 import { LilBotError } from '../../shared/lilbot-error'
 
-export interface ExclusionPreview {
+interface ExclusionPreview {
   already: boolean
   kinds: Record<string, number>
   events: number

@@ -12,7 +12,7 @@ const EARLY_MS = 15_000
 /** Minimum grace window for exact-arg matching before falling back to a lone unmatched start (tools without requestId). */
 const FALLBACK_GRACE_MS = 500
 /** The tools that need to know their calling conversation. Engines may prefix the name with the server's. */
-export type CallingTool = 'lilbot_delegate' | 'lilbot_work' | 'lilbot_group' | 'lilbot_goal' | 'lilbot_give_file' | 'lilbot_webhook_message' | 'lilbot_connection'
+type CallingTool = 'lilbot_delegate' | 'lilbot_work' | 'lilbot_group' | 'lilbot_goal' | 'lilbot_give_file' | 'lilbot_webhook_message' | 'lilbot_connection'
 
 /** Matches a LilBot-owned server prefix or exact tool name, never an outside `lilbot_c_*` or third-party server. */
 const names = (name: string, tool: string) => {

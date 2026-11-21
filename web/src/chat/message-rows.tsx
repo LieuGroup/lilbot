@@ -6,7 +6,21 @@ import { dayKey } from '../history/history-labels'
 import { DateLine, SessionDivider, StartMarker } from '../history/history-marks'
 import { ChatItem } from './chat-item'
 import type { MessageItem, ViewItem } from './chat-state'
-import { isScrollAnchor, loadedTranscript, updateLoaded } from './scroll-anchors'
+
+interface LoadedTranscript {
+  load: number
+  end: number
+}
+
+export const loadedTranscript = (first: number, count: number, load: number): LoadedTranscript => ({ load, end: first + count })
+
+/** Opening or reopening the chat loads the transcript again (a new `load`); live events and
+ *  earlier parts keep it. The first message sent into an empty chat arrives live, so it is a pin. */
+export function updateLoaded(loaded: LoadedTranscript, first: number, count: number, load: number): LoadedTranscript {
+  return load !== loaded.load ? loadedTranscript(first, count, load) : loaded
+}
+
+export const isScrollAnchor = (loaded: LoadedTranscript, position: number, kind: string) => kind === 'user' && position >= loaded.end
 
 interface MessageRowsProps {
   botId: string

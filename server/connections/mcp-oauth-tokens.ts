@@ -11,7 +11,7 @@ export interface Tokens {
   expiresAt: number | null
 }
 
-export type TokenAnswer = { kind: 'ok'; tokens: Tokens } | { kind: 'refused' } | { kind: 'unreachable' }
+type TokenAnswer = { kind: 'ok'; tokens: Tokens } | { kind: 'refused' } | { kind: 'unreachable' }
 
 async function tokenRequest(server: AuthServer, client: OAuthClient, fields: Record<string, string>, now: number): Promise<TokenAnswer> {
   const body = new URLSearchParams({ ...fields, resource: server.resource, client_id: client.clientId })

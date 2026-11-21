@@ -6,7 +6,7 @@ import { configDir } from './identity'
 
 const label = 'info.lilbot.helper'
 const xml = (s: string) => s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')
-export type UninstallStep = { args: string[]; required?: boolean } | { remove: string }
+type UninstallStep = { args: string[]; required?: boolean } | { remove: string }
 
 /** Everything is best effort and the step that stops the running helper comes last, so a failure cannot leave a
  *  half-removed service restarting a helper that has no identity (the helper may be the process being stopped). */

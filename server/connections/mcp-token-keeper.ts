@@ -6,7 +6,7 @@ import { refreshTokens } from './mcp-oauth-tokens'
 /** Refresh this long before the service's own expiry. */
 const EARLY_MS = 30_000
 
-export type Usable = { kind: 'ok'; token: string } | { kind: 'none' } | { kind: 'unreachable' }
+type Usable = { kind: 'ok'; token: string } | { kind: 'none' } | { kind: 'unreachable' }
 
 export class TokenKeeper {
   private refreshing = new Map<string, Promise<Usable>>()

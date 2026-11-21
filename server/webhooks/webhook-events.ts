@@ -5,7 +5,7 @@ import type { Database } from 'bun:sqlite'
 import { WEBHOOK_LIMITS } from './webhook-limits'
 import type { EventView } from './webhook-payload'
 
-export interface DeliveryKeys {
+interface DeliveryKeys {
   deliveryId: string | null
   bodyHash: string | null
 }

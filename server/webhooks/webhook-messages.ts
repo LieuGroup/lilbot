@@ -21,7 +21,7 @@ const DAY_MS = 86_400_000
 const TAG = 'webhook-run-message'
 const NOTE = '[LilBot notice, not from Oscar: a run of your webhook'
 /** Shows the message in the bot's main conversation (opened, with no turn, if it has none yet); false when it cannot. */
-export type ShowMessage = (botId: string, runId: string, source: string, text: string) => Promise<boolean>
+type ShowMessage = (botId: string, runId: string, source: string, text: string) => Promise<boolean>
 
 type Row = { id: string; bot_id: string; message: string; source: string }
 
