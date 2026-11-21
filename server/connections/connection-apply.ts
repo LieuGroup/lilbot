@@ -95,7 +95,8 @@ export class ConnectionApplier {
           if (chatId && !this.pending.has(key)) this.pending.set(key, { botId: bot.id, chatId, since: this.now() })
         }
       }
-      if (this.applied === next) await this.applyPending()
+      // Only apply once no newer generation arrived while `refresh()` was in flight.
+      if (this.applied === this.generation()) await this.applyPending()
     } catch {
       backgroundFailure('connections')
     }
@@ -114,10 +115,12 @@ export class ConnectionApplier {
         )
       } catch {
         backgroundFailure('connections apply')
-        for (const [, entry] of mine) entry.retryAt = this.now() + RETRY_MS
+        for (const [key, entry] of mine) if (this.pending.get(key) === entry) entry.retryAt = this.now() + RETRY_MS
         continue
       }
       for (const [key, entry] of mine) {
+        // A sign-in may have replaced this entry while `apply` was in flight: keep it for the next pass.
+        if (this.pending.get(key) !== entry) continue
         const state = results.find(result => result.chatId === entry.chatId)?.state ?? 'not_open'
         if (state === 'busy' && this.now() - entry.since < GIVE_UP_MS) continue
         this.pending.delete(key)

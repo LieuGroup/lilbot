@@ -90,3 +90,50 @@ test('a message sent the moment the turn ended waits for the change to be applie
   await f.applier.ready('b', 'b-main')
   expect(f.log.slice(before)).toHaveLength(1)
 })
+
+test('a sign-in arriving while an earlier apply or refresh is in flight is not dropped and notifies only after its own apply', async () => {
+  const f = fixture()
+  let onApply: (() => void) | undefined
+  let onRefresh: (() => void) | undefined
+  const host = (f.applier as any).host as ApplyHost
+  const baseApply = host.apply
+  const baseRefresh = host.refresh
+  host.apply = async (engineBotId, chatIds) => {
+    const out = await baseApply(engineBotId, chatIds)
+    const hook = onApply
+    onApply = undefined
+    hook?.()
+    return out
+  }
+  host.refresh = async () => {
+    await baseRefresh()
+    const hook = onRefresh
+    onRefresh = undefined
+    hook?.()
+  }
+
+  // Case 1: sign-in arrives while an earlier `apply` (from `add`) is in flight.
+  f.state.generation = 'g1'
+  onApply = () => {
+    f.state.generation = 'g2'
+    f.applier.signedIn('a', 'a-main', 'oauth', 'connection-o-1')
+  }
+  await f.applier.tick()
+  expect(f.log.filter(line => line.startsWith('tell'))).toEqual([])
+  await f.applier.tick()
+  await Bun.sleep(0)
+  expect(f.log.filter(line => line.startsWith('tell'))).toEqual([`tell a a-main connection-o-1 ${connectedPrompt('oauth').slice(0, 30)}`])
+
+  // Case 2: sign-in arrives while an earlier `refresh` is in flight: must refresh g4 before notifying.
+  const before = f.log.length
+  f.state.generation = 'g3'
+  onRefresh = () => {
+    f.state.generation = 'g4'
+    f.applier.signedIn('a', 'a-main', 'oauth', 'connection-o-2')
+  }
+  await f.applier.tick()
+  expect(f.log.slice(before)).toEqual(['refresh'])
+  await f.applier.tick()
+  await Bun.sleep(0)
+  expect(f.log.slice(before)).toEqual(['refresh', 'refresh', 'apply dev-a a-main', `tell a a-main connection-o-2 ${connectedPrompt('oauth').slice(0, 30)}`, 'apply dev-b b-main'])
+})
