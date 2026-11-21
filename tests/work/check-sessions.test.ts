@@ -8,7 +8,8 @@ import { HistoryStore } from '../../server/history/history-store'
 import { createEngineApi } from '../../server/http/engine-api'
 import { MemoryService } from '../../server/memory/memory-service'
 import { MemoryStore } from '../../server/memory/memory-store'
-import { checkSessions, NO_MEMORY } from '../../server/work/check-sessions'
+import type { SkillsService } from '../../server/skills/skills-service'
+import { checkSessions, NO_MEMORY, NO_SKILLS } from '../../server/work/check-sessions'
 import { WorkCheckStore } from '../../server/work/work-check-store'
 
 /** A check of bot `b` under way in session `check-live` (also known as `check-stored`), and what the engine reads. */
@@ -29,16 +30,17 @@ test('a check session is known by either id and after compressing; an unreadable
   expect(sessions.isCheck('b', 'b-main')).toBe(false)
   roots.set('unreadable', null)
   expect(sessions.isCheck('b', 'unreadable')).toBe(true)
-  expect(sessions.memoryRefusal('b', undefined)).toBe(NO_MEMORY)
-  expect(sessions.memoryRefusal('other', undefined)).toBeNull()
+  expect(sessions.refusal('b', undefined, 'memory')).toBe(NO_MEMORY)
+  expect(sessions.refusal('b', 'b-main', 'memory')).toBeNull()
+  expect(sessions.refusal('other', undefined, 'memory')).toBeNull()
   checks.settle(check.id, 'verified', 'seen', null, 2)
   expect(sessions.isCheck('b', 'unreadable')).toBe(false)
-  expect(sessions.memoryRefusal('b', undefined)).toBeNull()
+  expect(sessions.refusal('b', undefined, 'memory')).toBeNull()
   expect(sessions.isCheck('b', 'check-live')).toBe(true)
 })
 
-test('the engine API gives a check session an empty memory block and refuses its recall, writes, forgets and conversation search', async () => {
-  const { database, sessions } = checking()
+test('the engine API gives a check session an empty memory block and refuses its recall, writes, forgets, conversation search and skill changes', async () => {
+  const { database, checks, check, sessions } = checking()
   const memory = new MemoryService(new MemoryStore(database), () => Date.UTC(2026, 10, 21))
   memory.write({ botId: 'b', kind: 'profile', text: 'Oscar wants the report by Friday', author: 'bot', via: 'chat' })
   const history = new HistoryStore(database)
@@ -54,7 +56,8 @@ test('the engine API gives a check session an empty memory block and refuses its
     bots: { listBots: async () => [{ id: 'b' }] } as unknown as BotService,
     botExists: id => id === 'b',
     deploymentNotice: () => 'the last deploy failed',
-    memoryRefusal: sessions.memoryRefusal
+    skills: { write: () => ({ written: true }) } as unknown as SkillsService,
+    inCheck: sessions.refusal
   })
   const post = async (path: string, body: Record<string, unknown>) => {
     const reply = await api(
@@ -79,4 +82,9 @@ test('the engine API gives a check session an empty memory block and refuses its
     expect(await post(path, { ...inCheck, ...body })).toEqual({ status: 422, body: { error: NO_MEMORY } })
   expect((await post('/engine/history/search', { chatId: 'b-main', query: 'report' })).body.matches).toHaveLength(1)
   expect(memory.recall('b', 'checked')).toEqual([])
+  // A skill change names no session, so none is made while the bot checks.
+  const skill = { name: 'notes', action: 'create', content: '---\nname: notes\ndescription: Notes\n---\nWrite notes.' }
+  expect(await post('/engine/skills/write', skill)).toEqual({ status: 422, body: { error: NO_SKILLS } })
+  checks.settle(check.id, 'verified', 'seen', null, 2)
+  expect(await post('/engine/skills/write', skill)).toEqual({ status: 200, body: { written: true } })
 })

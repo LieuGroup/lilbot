@@ -191,7 +191,7 @@ export function createAppServices(
     adapterVersion: MEMORY_ADAPTER_VERSION,
     reviewer,
     hiddenChat,
-    memoryRefusal: checkSessions.memoryRefusal
+    inCheck: checkSessions.refusal
   })
   return { bots, store, skills, library, computers, devices, attachments, t3Grants, t3Bridge, system, engineApi, activity, routines, threads, boards, webhooks, hiddenChat }
 }

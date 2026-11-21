@@ -5,6 +5,7 @@
 import type { WorkCheckStore } from './work-check-store'
 
 export const NO_MEMORY = 'This session is a check: it has no memory and no earlier conversations. Check the claim from the real thing.'
+export const NO_SKILLS = 'A check of yours is under way, and a skill change cannot say which session it comes from: skills are not changed meanwhile. Try again once it ends.'
 
 /** `rootOf`: the session a chat's compression lineage began as, null while it cannot be read (`bots/hidden-chats.ts`). */
 export function checkSessions(checks: Pick<WorkCheckStore, 'checkOfChat' | 'running'>, rootOf: (botId: string, chatId: string) => string | null) {
@@ -20,9 +21,12 @@ export function checkSessions(checks: Pick<WorkCheckStore, 'checkOfChat' | 'runn
   return {
     checking,
     isCheck,
-    /** Why this memory call is refused (its session is a check), or null. An engine that names no session gets memory
-     *  only while the bot checks nothing. */
-    memoryRefusal: (botId: string, chatId: string | undefined) => ((chatId ? isCheck(botId, chatId) : checking(botId)) ? NO_MEMORY : null)
+    /** Why this memory call or skill change is refused because it may come from a check session, or null. A call that
+     *  names no session (skill changes never do) is refused only while the bot checks. */
+    refusal(botId: string, chatId: string | undefined, use: 'memory' | 'skills'): string | null {
+      if (!(chatId ? isCheck(botId, chatId) : checking(botId))) return null
+      return use === 'memory' ? NO_MEMORY : NO_SKILLS
+    }
   }
 }
 

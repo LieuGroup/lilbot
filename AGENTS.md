@@ -750,7 +750,8 @@ skill (`server/work/check-skill/`, installed like `lilbot-work`).
 - A check session, same-bot or a second bot's, gets no memory and changes nothing but its verdict (#174;
   `work/check-sessions.ts`, by both saved ids and the compression lineage). The engine API answers its memory context
   with an empty block (no deployment notice either) and refuses its recall, writes, forgets and conversation search, by
-  the session id the adapter sends; with no session id, while a check of that bot runs. It starts with only
+  the session id the adapter sends; with no session id, while a check of that bot runs. Skill changes name no session,
+  so the skills plug-in's writes are refused while a check of that bot runs. It starts with only
   `CHECK_TOOLSETS` (web, vision, terminal, file, skills, `lilbot_system`: no memory, scheduling, delegation or coding).
   LilBot's MCP server refuses it every changing `lilbot_*` call and `lilbot_memory_list`; only reads and the verdict
   pass (`system/check-access.ts`: while a bot checks, its calls are matched to their starts by request id or

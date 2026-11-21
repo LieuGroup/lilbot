@@ -49,8 +49,8 @@ export interface EngineApiOptions {
   reviewer?: MemoryReviewer
   /** Routine, thread and webhook sessions and their compression children: never reviewed, before or after compressing. */
   hiddenChat?: (botId: string, chatId: string) => boolean
-  /** Why this session may not see or change memory or search conversations (a check session), or null. */
-  memoryRefusal?: (botId: string, chatId: string | undefined) => string | null
+  /** Why a call that may come from a check session (no memory, no changes) may not use memory or change skills, or null. */
+  inCheck?: (botId: string, chatId: string | undefined, use: 'memory' | 'skills') => string | null
 }
 
 export function createEngineApi(memory: MemoryService, token: string, port: number, options: EngineApiOptions) {
@@ -98,7 +98,7 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
         if (!caller || !options.bots || !options.botExists(caller.id)) return json(403, { error: 'Unknown bot credential.' })
         if (pathname.startsWith('/engine/history/')) {
           const body = await request.json()
-          const refused = pathname === '/engine/history/search' && options.memoryRefusal?.(caller.id, typeof body?.chatId === 'string' ? body.chatId : undefined)
+          const refused = pathname === '/engine/history/search' && options.inCheck?.(caller.id, typeof body?.chatId === 'string' ? body.chatId : undefined, 'memory')
           return refused ? json(422, { error: refused }) : json(200, await historyApi(caller.id, pathname.slice('/engine/history/'.length), body, options))
         }
         if (pathname.startsWith('/engine/threads/')) {
@@ -127,7 +127,8 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
             if (!options.skills.offered(caller.id).some(s => s.name === name)) return json(403, { error: 'Skill disabled or missing.' })
             return json(200, { content: options.skills.read(name)[String(body.file_path ?? 'SKILL.md')] })
           }
-          if (pathname.endsWith('/write')) return json(200, options.skills.write(SkillWrite.parse(body), caller.id))
+          const refused = pathname.endsWith('/write') && options.inCheck?.(caller.id, undefined, 'skills')
+          if (pathname.endsWith('/write')) return refused ? json(422, { error: refused }) : json(200, options.skills.write(SkillWrite.parse(body), caller.id))
           return json(404, { error: 'Unknown skill operation.' })
         }
         if (pathname.startsWith('/engine/routines/')) {
@@ -154,8 +155,7 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
         staleBots.add(body.botId)
         console.error(`[engine-api] bot ${body.botId} runs memory adapter ${version ?? 'unknown'}, LilBot ships ${options.adapterVersion}. Reconnect it and restart the engine.`)
       }
-      // A check sees no memory: an empty block (no deployment notice either), and every other memory call refused.
-      const refused = route !== '/engine/memory/turn' && options.memoryRefusal?.(body.botId, body.chatId)
+      const refused = route !== '/engine/memory/turn' && options.inCheck?.(body.botId, body.chatId, 'memory')
       if (refused) return route === '/engine/memory/context' ? json(200, { text: '', shown: 0, total: 0 }) : json(422, { error: refused })
       switch (route) {
         case '/engine/memory/context': {
