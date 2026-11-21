@@ -1,4 +1,5 @@
 /** `systemFixture` with one webhook of bot b1 and a run of it in `RUN_CHAT`, still running unless `settle` ends it. */
+import { until } from '../helpers/until'
 import { systemFixture } from './system-fixture'
 
 export const RUN_CHAT = 'webhook-run-chat'
@@ -12,5 +13,11 @@ export async function withRun() {
   const settle = () => f.database.query("UPDATE webhook_runs SET status = 'completed' WHERE id = 'run-1'").run()
   /** The next calls of b1 come from this session (the engine reports their starts there). */
   const callFrom = (chat: string) => f.from.set('b1', chat)
-  return { ...f, hook, settle, callFrom }
+  /** `messages.tick()`, then waits until every message it began to show has been shown. */
+  const showing = (f.webhookRuns.messages as unknown as { showing: Set<string> }).showing
+  const tickMessages = async () => {
+    f.webhookRuns.messages.tick()
+    await until(() => showing.size === 0)
+  }
+  return { ...f, hook, settle, callFrom, tickMessages }
 }

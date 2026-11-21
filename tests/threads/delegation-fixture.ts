@@ -17,6 +17,7 @@ import { ThreadService } from '../../server/threads/thread-service'
 import { type Delivery, ThreadStore } from '../../server/threads/thread-store'
 import type { ChatItem } from '../../shared/chat-schema'
 import { LilBotError } from '../../shared/lilbot-error'
+import { until } from '../helpers/until'
 
 type Result = { status: string; text: string; items?: ChatItem[]; unknownReceipt?: true }
 interface Run {
@@ -24,6 +25,7 @@ interface Run {
   prompt: string
   options: RoutineOptions
   chatId: string
+  finished: boolean
   finish(text?: string, before?: ChatItem[], status?: string, extra?: Partial<Result>): void
 }
 
@@ -91,13 +93,18 @@ export function delegationFixture(
       new Promise<Result>(resolve => {
         const chatId = options.chatId ?? `${botId}-hidden-${runs.length}`
         options.onChat(chatId)
-        runs.push({
+        const run: Run = {
           botId,
           prompt,
           options,
           chatId,
-          finish: (text = 'done', before = [], status = 'completed', extra = {}) => resolve({ status, text, items: [...before, { kind: 'assistant', text }], ...extra })
-        })
+          finished: false,
+          finish: (text = 'done', before = [], status = 'completed', extra = {}) => {
+            run.finished = true
+            resolve({ status, text, items: [...before, { kind: 'assistant', text }], ...extra })
+          }
+        }
+        runs.push(run)
       }),
     stopRun: async (_botId: string, chatId: string) => {
       stops.push(chatId)
@@ -127,9 +134,13 @@ export function delegationFixture(
     redirect: control.redirect.bind(control),
     wait: control.wait.bind(control)
   }
+  /** One tick, then waits until each delivery in flight has finished or waits in a run the test has not finished: the work LilBot
+   *  does between runs (preparing a prompt, copying files, recording a reply) is done. A reply that work queues starts on the next. */
   const settle = async () => {
     threads.tick()
-    await Bun.sleep(20)
+    const inFlight = [...threads.runner.running.values()]
+    const parked = (d: Delivery) => runs.some(run => run.options.runId === `thread-${d.id}` && !run.finished)
+    await until(() => inFlight.every(d => !threads.runner.running.has(d.id) || parked(d)))
   }
   const groups = threads.groups!
   /** Deletes a bot from the fixture's engine. */
