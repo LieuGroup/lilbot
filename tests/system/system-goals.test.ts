@@ -1,5 +1,4 @@
 import { expect, test } from 'bun:test'
-import { CallingChats } from '../../server/threads/calling-chats'
 import { addBot, systemFixture } from './system-fixture'
 
 const target = {
@@ -30,11 +29,18 @@ test('a bot proposes a goal with its own key and reads it with lilbot_work_list;
   expect((await f.call(other.id, 'lilbot_work', { requestId: 'w', title: 'Help', kind: 'note', goalId: id })).error).toContain('No goal of yours')
 })
 
-test("a goal call is traced to the session that made it, so a review is credited to its routine run and a goal to Oscar's conversation", async () => {
-  const calls = new CallingChats(() => 'main', 0)
-  calls.saw('a', 'routine-run-session', 'mcp__lilbot_system__lilbot_goal', { requestId: 'review-1' })
-  calls.saw('a', 'hidden', 'tool_call', { name: 'mcp__lilbot_system__lilbot_goal', arguments: '{"requestId":"review-2"}' })
-  expect(await calls.find('a', 'review-1')).toBe('routine-run-session')
-  expect(await calls.find('a', 'review-2')).toBe('hidden')
-  expect(await calls.find('a', 'unknown')).toBe('main')
+test("a goal is proposed only from the session that made the call: a routine run's earlier start with the same request id is not taken, and a call nothing reported is refused (#174)", async () => {
+  const f = systemFixture()
+  f.routineStore.create('b1', { requestId: 'daily', description: 'Check sales', schedule: { kind: 'interval', seconds: 600 }, createdBy: 'oscar' }, 0, 5)
+  const [run] = f.routineStore.claimDue(Date.now() + 1_000_000)
+  f.routineStore.attach(run.id, 'run-session', Date.now())
+  const propose = { action: 'propose', requestId: 'g1', text: 'Grow notes.txt', agreement, target }
+  f.from.set('b1', 'run-session')
+  expect((await f.call('b1', 'lilbot_goal', propose)).error).toContain("A goal is Oscar's")
+  f.from.delete('b1')
+  const late = f.call('b1', 'lilbot_goal', propose, false)
+  setTimeout(() => f.calls.saw('b1', 'b1-main', 'mcp__lilbot_system__lilbot_goal', propose, 'late'), 50)
+  expect((await late).data).toMatchObject({ botId: 'b1', state: 'proposed' })
+  expect((await f.call('b1', 'lilbot_goal', { ...propose, requestId: 'g2' }, false)).error).toContain('Make the same call again')
+  expect((await f.call('b1', 'lilbot_work_list', { goals: true })).data.goals).toHaveLength(1)
 })

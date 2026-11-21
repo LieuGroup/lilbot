@@ -1,5 +1,6 @@
 /** LilBot's own MCP server, assembled: the tools, the key check, and the connection every bot is given. */
 
+import { checkRefusal } from './check-access'
 import { systemConnection, toolsVersion } from './system-connection'
 import type { SystemDeps } from './system-deps'
 import { createSystemMcp } from './system-mcp'
@@ -46,7 +47,8 @@ export function createSystemServer(deps: SystemDeps & { engineToken: string; por
       bots: () => deps.store.list(),
       tools,
       changes: deps.changes,
-      instructions: INSTRUCTIONS
+      instructions: INSTRUCTIONS,
+      refusal: checkRefusal(tools, deps.checkSessions, deps.calls)
     }),
     connection: (botId: string) => systemConnection(url, deps.engineToken, botId, names, version)
   }

@@ -24,7 +24,8 @@ test('with no other bot, a fresh hidden session of the owner checks a level 2 it
   }
   expect(await give('a-main')).toBe('work_forbidden')
   expect(await give('a-another-session')).toBe('work_forbidden')
-  expect(await give(null)).toBe('work_forbidden')
+  expect(await give(null)).toBe('session_unknown')
+  f.state.chats.delete('a')
   expect(await refusal(f.work.act('a', { requestId: 'again', itemId: item.id, status: 'done', result: 'Really', evidence: [proof] }))).toBe('work_checking')
   expect(f.work.view(item.id).status).toBe('checking')
   f.state.chats.set('a', `check-${item.id}:check:1-session`)

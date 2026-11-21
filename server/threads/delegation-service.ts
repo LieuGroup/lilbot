@@ -24,8 +24,8 @@ export class DelegationService {
   constructor(
     private threads: ThreadService,
     private host: DelegationHost,
-    /** The caller's conversation that made this call, where answers return. */
-    private callingChat: (botId: string, requestId: string) => Promise<string | null>,
+    /** The caller's conversation that made this call, where answers return; refuses when that cannot be known. */
+    private callingChat: (botId: string, requestId: string) => Promise<string>,
     private work?: DelegationWork
   ) {}
   private get store() {
@@ -38,7 +38,6 @@ export class DelegationService {
     const ids = input.tasks.map((_, i) => `${input.requestId}:${i}`)
     const fresh = input.tasks.filter((_, i) => !this.store.delivery(`${callerId}:${ids[i]}`))
     const chatId = fresh.length ? await this.callingChat(callerId, input.requestId) : null
-    if (fresh.length && !chatId) throw new LilBotError('no_conversation', 'LilBot could not tell which conversation this came from. Try again from a conversation.')
     // Everything is checked before any task is handed out, so a refusal hands out nothing.
     const targets = await Promise.all(
       input.tasks.map(t =>

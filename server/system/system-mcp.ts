@@ -21,6 +21,8 @@ export interface SystemMcpOptions {
   changes: SystemChanges
   /** What an engine that shows an MCP server's instructions tells the model about these tools. */
   instructions: string
+  /** Why the calling session may not make this call (a check session, `check-access.ts`), or null. */
+  refusal: (botId: string, tool: string, args: unknown) => Promise<string | null>
 }
 
 const SERVER_INFO = { name: 'LilBot', version: '1.0.0' }
@@ -44,6 +46,8 @@ export function createSystemMcp(options: SystemMcpOptions) {
   async function call(caller: { id: string; name: string }, message: JsonRpc) {
     const tool = tools.get(message.params?.name)
     if (!tool) return toolError(message.id, `${String(message.params?.name)} is not a LilBot tool.`)
+    const refused = await options.refusal(caller.id, tool.name, message.params?.arguments)
+    if (refused) return toolError(message.id, refused)
     try {
       const args = tool.input.parse(message.params?.arguments ?? {}) as Record<string, unknown>
       const result = await tool.run(caller.id, args)

@@ -69,8 +69,7 @@ export class GoalService {
     const prior = this.store.byRequest(caller.id, input.requestId)
     if (prior) return this.view(prior.id)
     if (!input.text || !input.agreement || !input.target) throw new LilBotError('goal_incomplete', "A new goal needs Oscar's words (text), the agreement and the target.")
-    const chatId = await this.work.host.callingChat(caller.id, input.requestId)
-    if (!chatId) throw new LilBotError('no_conversation', 'LilBot could not tell which conversation this came from. Try again.')
+    const chatId = await this.work.host.callingChat(caller.id, 'lilbot_goal', input.requestId)
     if (this.work.checks.isCheckChat(chatId) || this.work.host.session(caller.id, chatId).origin.kind !== 'conversation')
       throw new LilBotError('goal_not_oscars', "A goal is Oscar's: propose one only from his own words, in your conversation with him.")
     const at = this.now()
@@ -131,9 +130,8 @@ export class GoalService {
       throw new LilBotError('goal_progress', 'A review needs goalId, value (as you read it now), did and evidence of how you read it.')
     const goal = requireAgreed(this.store.get(input.goalId), callerId)
     if (this.store.reviewByRequest(goal.id, input.requestId)) return this.view(goal.id)
-    const chatId = await this.work.host.callingChat(callerId, input.requestId)
-    const session = chatId ? this.work.host.session(callerId, chatId) : null
-    if (session?.origin.kind !== 'routine_run' || session.askedBy?.id !== goal.routineId)
+    const session = this.work.host.session(callerId, await this.work.host.callingChat(callerId, 'lilbot_goal', input.requestId))
+    if (session.origin.kind !== 'routine_run' || session.askedBy?.id !== goal.routineId)
       throw new LilBotError(
         'goal_review_session',
         "Reviews run only in the goal's review routine, on its rhythm. To tell Oscar where it stands now, read the measure and say so: that is not a review."

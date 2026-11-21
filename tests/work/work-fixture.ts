@@ -6,6 +6,7 @@ import { openDatabase } from '../../server/database/database'
 import { requireAgreed } from '../../server/goals/goal-rules'
 import { GoalStore } from '../../server/goals/goal-store'
 import { RoutineStore } from '../../server/routines/routine-store'
+import { type CallingChats, NOT_SEEN } from '../../server/threads/calling-chats'
 import { ThreadStore } from '../../server/threads/thread-store'
 import { WebhookStore } from '../../server/webhooks/webhook-store'
 import { WorkAnswers } from '../../server/work/work-answers'
@@ -28,10 +29,11 @@ const noExchanges = {
   dropped: () => async () => {}
 }
 
-export function workFixture(options: { database?: Database; requireBot?: (id: string) => Promise<Bot> } = {}) {
+/** `calls` matches each call to the tool starts reported to it, as the server does; without it `state.chats` says. */
+export function workFixture(options: { database?: Database; requireBot?: (id: string) => Promise<Bot>; calls?: CallingChats } = {}) {
   const database = options.database ?? openDatabase(':memory:')
   const state = {
-    /** The session each bot's next call comes from; by default its main conversation. */
+    /** The session each bot's next call comes from; by default its main conversation (null: no tool start was seen). */
     chats: new Map<string, string | null>(),
     /** Compression continuations: a session id to the one it began as (null: the lineage cannot be read). */
     roots: new Map<string, string | null>(),
@@ -61,7 +63,12 @@ export function workFixture(options: { database?: Database; requireBot?: (id: st
       }),
     checkers: async () => state.checkers,
     checkModel: async () => state.checkModel,
-    callingChat: async botId => (state.chats.has(botId) ? state.chats.get(botId)! : `${botId}-main`),
+    callingChat: async (botId, tool, requestId) => {
+      if (options.calls) return options.calls.find(botId, tool, requestId)
+      const chat = state.chats.has(botId) ? state.chats.get(botId) : `${botId}-main`
+      if (!chat) throw new LilBotError('session_unknown', NOT_SEEN)
+      return chat
+    },
     session: workSessions(threadStore, routineStore, webhookStore, (_bot, chat) => (state.roots.has(chat) ? state.roots.get(chat)! : chat)),
     libraryTitle: (botId, itemId) => state.library.get(`${botId}:${itemId}`) ?? null,
     checkGoal: (botId, goalId) => requireAgreed(goalStore.get(goalId), botId),

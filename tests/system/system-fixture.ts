@@ -18,6 +18,7 @@ import { ThreadService } from '../../server/threads/thread-service'
 import { ThreadStore } from '../../server/threads/thread-store'
 import { WebhookService } from '../../server/webhooks/webhook-service'
 import { WebhookStore } from '../../server/webhooks/webhook-store'
+import { checkSessions } from '../../server/work/check-sessions'
 import type { T3ConnectionStatus } from '../../shared/connections-schema'
 import { fakeService } from '../helpers/fake-engine'
 import { groupHostFor } from '../threads/delegation-fixture'
@@ -55,17 +56,20 @@ export function systemFixture() {
     undefined,
     () => 1_700_000_000_000
   )
-  const work = workFixture({ database: fake.database, requireBot: id => fake.service.requireBot(id) })
-  const threads = new ThreadService(threadStore, host, undefined, undefined, undefined, groupHostFor(fake.root, work.links).host)
-  /** The conversation each bot's next call comes from (default: its main one) and the compression continuations (a session to the one it began as; null: unreadable). */
-  const calls = new CallingChats(botId => `${botId}-main`, 0)
+  /** The engine's report of each call: the conversation each bot's calls come from (default: its main one), and the
+   *  compression continuations (a session to the one it began as; null: unreadable). */
+  const calls = new CallingChats(300)
+  const from = new Map<string, string>()
   const roots = new Map<string, string | null>()
+  const rootOf = (_bot: string, chat: string) => (roots.has(chat) ? roots.get(chat)! : chat)
+  const work = workFixture({ database: fake.database, requireBot: id => fake.service.requireBot(id), calls })
+  const threads = new ThreadService(threadStore, host, undefined, undefined, undefined, groupHostFor(fake.root, work.links).host)
   const library = new LibraryService(
     new LibraryStore(fake.database),
     id => workspaces.pathFor(id),
     id => fake.store.exists(id)
   )
-  const giveFile = giveFrom(library, calls, threadStore, routineStore, webhookStore, (_bot, chat) => (roots.has(chat) ? roots.get(chat)! : chat))
+  const giveFile = giveFrom(library, calls, threadStore, routineStore, webhookStore, rootOf)
   const goals = new GoalService(
     work.goalStore,
     work.work,
@@ -88,6 +92,8 @@ export function systemFixture() {
     goals,
     giveFile,
     webhooks,
+    calls,
+    checkSessions: checkSessions(work.work.checks, rootOf),
     changes,
     dataDir: fake.root,
     engineToken: TOKEN,
@@ -104,8 +110,10 @@ export function systemFixture() {
   const as = (botId: string) => ({ authorization: `Bearer ${connectionKey(TOKEN, SYSTEM_KEY_PURPOSE, botId)}` })
   const rpc = (botId: string, method: string, params?: unknown, headers: Record<string, string> = {}) =>
     request({ jsonrpc: '2.0', id: 1, method, params }, { ...as(botId), ...headers })
-  /** The decoded answer of a tool call: its JSON data, or the refusal text. */
-  async function call(botId: string, name: string, args: Record<string, unknown> = {}) {
+  /** The decoded answer of a tool call: its JSON data, or the refusal text. Unless `reported` is false the engine reports
+   *  the call starting in the bot's conversation (`from`) first, as Hermes does. */
+  async function call(botId: string, name: string, args: Record<string, unknown> = {}, reported = true) {
+    if (reported) calls.saw(botId, from.get(botId) ?? `${botId}-main`, `mcp__lilbot_system__${name}`, args, crypto.randomUUID())
     const result = (await (await rpc(botId, 'tools/call', { name, arguments: args })).json()).result
     const text: string = result.content[0].text
     return result.isError ? { error: text } : { data: JSON.parse(text) }
@@ -124,6 +132,7 @@ export function systemFixture() {
     workspaces,
     library,
     calls,
+    from,
     roots,
     webhooks,
     rosterPushes: fake.changes,

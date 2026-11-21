@@ -62,7 +62,6 @@ export class GroupService {
     if (new Set(members.map(m => m.id)).size !== members.length || members.length > this.limits.members)
       throw new LilBotError('group_members', `Name 2 to ${this.limits.members} different bots as members.`)
     const chatId = await this.host.callingChat(caller.id, requestId)
-    if (!chatId) throw new LilBotError('no_conversation', 'LilBot could not tell which conversation this came from. Try again from a conversation.')
     const depth = this.depthFrom(caller.id, chatId)
     if (this.groups.leading(caller.id) >= this.limits.perBot)
       throw new LilBotError('group_limit', `You already lead ${this.limits.perBot} running groups. Close one before starting another.`)

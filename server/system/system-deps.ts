@@ -11,10 +11,12 @@ import type { GoalService } from '../goals/goal-service'
 import type { LibraryService } from '../library/library-service'
 import type { MemoryService } from '../memory/memory-service'
 import type { RoutineService } from '../routines/routine-service'
+import type { CallingChats } from '../threads/calling-chats'
 import type { DelegationControl } from '../threads/delegation-control'
 import type { DelegationService } from '../threads/delegation-service'
 import type { GroupService } from '../threads/group-service'
 import type { WebhookService } from '../webhooks/webhook-service'
+import type { CheckSessions } from '../work/check-sessions'
 import type { WorkService } from '../work/work-service'
 import type { SystemChanges } from './system-changes'
 
@@ -41,6 +43,9 @@ export interface SystemDeps extends SystemFacts {
   /** Gives a file to the bot's Library from the conversation the call came from (`giveFrom` in `app-work.ts`). */
   giveFile: (botId: string, input: z.infer<typeof GiveFileInput>) => ReturnType<LibraryService['give']>
   webhooks: WebhookService
+  /** Which session made a call, and which sessions are checks: a check session only reads and gives its verdict. */
+  calls: CallingChats
+  checkSessions: CheckSessions
   changes: SystemChanges
   dataDir: string
 }

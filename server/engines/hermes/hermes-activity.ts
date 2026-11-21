@@ -7,7 +7,7 @@ import { type ActivityReplayState, type ActivityUpdate, applyActivityReplay, rep
 import type { RuntimeBinding } from '../bot-engine'
 import { chatEventFrom } from './hermes-chat-mapping'
 import { HermesSocket } from './hermes-socket'
-import { reportToolCall } from './hermes-tool-calls'
+import { reportReplay } from './hermes-tool-calls'
 
 type Cursor = (botId: string, chatId: string) => string | undefined
 type Observer = { socket?: HermesSocket; retryAt: number; failures: number; sessions: Map<string, ActivityReplayState> }
@@ -46,7 +46,7 @@ export function watchHermesActivity(
         const reset = replayNeedsReset(previous, replay.replay_epoch, replay.truncated)
         // One full read re-baselines a gap/epoch change; do not loop if the buffer is itself truncated.
         if (reset) replay = await socket.request('session.events.since', { session_id: chatId, last_sequence: 0, replay_epoch: replay.replay_epoch })
-        for (const event of replay.events) reportToolCall(engineBotId === 'default' ? '' : engineBotId, chatId, event.type, event.payload)
+        reportReplay(engineBotId === 'default' ? '' : engineBotId, chatId, replay.events, (!previous || reset) && !row.running)
         if (conversationEvent)
           for (const event of replay.events) {
             const mapped = chatEventFrom(event)

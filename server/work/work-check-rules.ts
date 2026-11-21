@@ -5,6 +5,10 @@ import type { WorkStatus } from '../../shared/work-schema'
 
 type Bot = { id: string; name: string }
 export const OSCAR = { kind: 'oscar', id: null, name: 'Oscar' } as const
+/** What a check session starts with (engine toolsets): reading the web, images, files and command output, skills (the
+ *  lilbot-check skill) and LilBot's own tools, which refuse it everything but reads and the verdict (`system/check-access.ts`).
+ *  Not memory, scheduling, delegation or coding. Files and the terminal can still write: read-only stays an instruction. */
+export const CHECK_TOOLSETS = ['web', 'vision', 'terminal', 'file', 'skills', 'lilbot_system']
 /** The question a level 3 item asks Oscar. */
 export const OSCAR_QUESTION = 'Check the result and its evidence, then pass it or send it back.'
 

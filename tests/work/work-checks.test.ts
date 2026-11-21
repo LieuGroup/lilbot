@@ -11,7 +11,7 @@ test('a level 2 item is not done when its owner finishes: another bot LilBot cho
   await Bun.sleep(1)
   expect(f.state.runs).toEqual([{ botId: 'b', prompt: expect.stringContaining('<work-claim>'), runId: `check-${item.id}:check:1` }])
   expect(f.state.runs[0].prompt).toContain('"claim":"Version 7 is live","evidence":[{"proves":"The site shows version 7"')
-  expect(f.state.runs[0].prompt).toContain(`lilbot_work: itemId ${item.id}, verdict`)
+  expect(f.state.runs[0].prompt).toContain(`lilbot_work: requestId "verdict-${item.id}:check:1", itemId ${item.id}, verdict`)
   expect(f.state.runs[0].prompt).toContain('where its relative paths start: "/workspaces/a"')
   expect(f.work.checks.isCheckChat(`check-${item.id}:check:1-session`)).toBe(true)
   expect(f.state.activity).toEqual([['b', true]])
