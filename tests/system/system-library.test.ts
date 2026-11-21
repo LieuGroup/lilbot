@@ -64,13 +64,16 @@ test('a routine run gives from either of its session aliases, and from a session
   ])
 })
 
-test('a webhook run, even continued after compressing, gives with its own session recorded and no routine run', async () => {
+test('a webhook run, even continued after compressing, gives only once Oscar adds shell, with its own session recorded and no routine run', async () => {
   const f = await withFile()
   const hook = f.webhookStore.create('b1', { requestId: 'gh', description: 'Triage new issues', source: 'GitHub', createdBy: 'oscar' }, null, 0)
   f.webhookStore.events.add(hook.id, { deliveryId: null, bodyHash: null }, { item: '{}', size: 2, refusal: null }, 0)
   const [run] = f.webhookStore.claimDue(60_000)
   f.webhookStore.attach(run.id, 'hook-session', 60_000)
   f.roots.set('hook-continued', 'hook-session')
+  f.calls.saw('b1', 'hook-session', 'mcp__lilbot_system__lilbot_give_file', { requestId: 'narrow' })
+  expect((await give(f, { requestId: 'narrow', title: 'narrow' })).error).toContain('A webhook run cannot use lilbot_give_file')
+  f.webhookStore.setCapabilities('b1', hook.id, ['shell'])
   for (const [requestId, chat] of [
     ['a', 'hook-session'],
     ['b', 'hook-continued']

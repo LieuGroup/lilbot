@@ -51,11 +51,13 @@ const methods: Record<string, Uses> = {
   // Operations `model` ({model, provider, reasoning}) and `reasoning` ({effort}); their payloads are not in the schema, so `check:reasoning` exercises both.
   'session.mutate': { table: 'x-canonical-methods', sends: ['session_id', 'request_id', 'expected_revision', 'expected_generation', 'operation', 'payload'], reads: ['revision'] },
   'session.transcript': { table: 'x-canonical-methods', sends: ['session_id', 'cursor', 'limit', 'order'], reads: ['rows', 'next_cursor', 'reset'] },
-  'session.info': { table: 'x-canonical-methods', sends: ['session_id'], reads: ['system_prompt'] },
+  // `enabled_toolsets`, `usage` and `tools.show`: what `check:webhooks` reads of a webhook run's session.
+  'session.info': { table: 'x-canonical-methods', sends: ['session_id'], reads: ['system_prompt', 'enabled_toolsets', 'usage'] },
+  'tools.show': { table: 'methods', sends: ['session_id'], reads: ['sections', 'total'] },
   'session.resume': {
     table: 'x-canonical-methods',
     sends: ['session_id', 'source', 'display_projection', 'omit_messages'],
-    reads: ['session_id', 'stored_session_id', 'display_messages', 'running', 'execution_generation', 'revision', 'info']
+    reads: ['session_id', 'stored_session_id', 'display_messages', 'messages', 'running', 'execution_generation', 'revision', 'info']
   },
   'prompt.submit': { table: 'x-canonical-methods', sends: ['session_id', 'text', 'input_id', 'display_kind', 'queued', 'attachments', 'api_text'], reads: ['admission_id'] },
   'image.attach_bytes': { table: 'x-canonical-methods', sends: ['session_id', 'content_base64'], reads: ['attached', 'path', 'mime'] },

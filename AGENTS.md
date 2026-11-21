@@ -268,8 +268,8 @@ What a bot is and who owns each part.
 - Each bot has one permission mode, stored with its identity: `full-access` by default. The protocol names
   `approval-required`, `auto-accept-edits`, `auto` and `full-access`; only full access is supported now. Engines declare
   supported modes, and unsupported choices fail before saving. LilBot applies the mode on creation, once per bot at
-  startup, on mode changes, chats and reviews, repairing drift. Routine runs currently use full access (`yolo`); when
-  other modes exist, routine and webhook runs must use the bot's mode. There are no approval cards. LilBot bots do not
+  startup, on mode changes, chats and reviews, repairing drift. Routine runs currently use full access (`yolo`); webhook
+  runs are narrow (see Webhooks). When other modes exist, routine and webhook runs must use the bot's mode. There are no approval cards. LilBot bots do not
   follow the home rule requiring approval for App Store Connect or submissions to Apple. They may still ask task
   questions, and engine hard stops remain.
 - The user chooses one primary bot (in Setup) and can still talk to any bot directly. The choice lives in LilBot's
@@ -1269,26 +1269,60 @@ signature scheme, and an address. Any sender may call one (Oscar, 2026-11-20).
   no payload; a run of only withheld events records a failed run and never wakes the bot. Preparing any body up to the
   cap takes tens of milliseconds (`tests/webhooks/webhook-limits.test.ts` times it), and a minute's budget of the
   costliest shapes sent at once never holds the event loop for long (`webhook-burst.test.ts`). The rules are a heuristic:
-  paraphrase passes, which is why what a run may do matters.
+  paraphrase passes, which is why runs are narrow.
 - Runs: a burst ends after 5 seconds without a new event or once its first event waited a minute. A run takes the
   oldest waiting events up to 48,000 characters (about 12,000 to 16,000 tokens; a typical GitHub `pull_request` event
   is 21,700) and 20 events; the rest wait. A webhook never overlaps itself, runs at most once a minute and 20 times an
   hour, and at most two webhook runs go at once across bots. Runs reuse the routines' machinery: persisted before
   dispatch, `RoutineScheduler`, `BotEngine.runRoutine` (hidden session, run id `webhook-<id>`, receipts, retry after 30
   seconds), activity and unread, sessions in `webhook_chats`.
-- What a run may do is chosen in one place, `webhook-access.ts`: today every toolset with full access, like a routine
-  run. Narrowing it is Oscar's decision (#12 security review, finding 3): set `toolsets` there (the engine starts the
-  run's session with only those) and the prompt's sentence beside it. Its single caller is deliberate. A narrowed list
-  leaves out `memory`: with it Hermes offers the memory tools, and a run could write shared facts past both reviews.
+- What a run may do (Oscar, #12 finding 3): narrow by default. It reads its bot's folder (`lilbot_workspace_read`) and
+  its bot's own work items, updates them (`lilbot_work`), sends its bot one message, and its result is its report. No
+  web, commands, file writes, memory, computers, T3 Code, bot creation, delegation or groups, routines or webhook
+  management, unless Oscar adds that group to the webhook: `capabilities` (`web`, `shell`, `computers`, `coding`,
+  `bots`, `delegation`, `memory`, `routines`, `webhooks`), set only with `webhooks.setCapabilities` (no bot tool); a run
+  gets exactly those on top, read at each call and run. Whatever its groups, a run never reads another bot's work
+  items or any goal (`lilbot_work_list` with `mine: false`, `goals`, `goalId` or another bot's `itemId` is refused;
+  `readsBeyondOwn` in `system/run-access.ts`). `lilbot_about` (the other bots, computers, T3, deploy, the change log)
+  needs `bots` and `lilbot_status` needs `computers` or `coding`: a run needs none of it (its folder read is relative,
+  its work calls take no ids), and a refusal from the one tested list cannot drift the way a trimmed answer could. Skills
+  stay readable (`skills_list`, `skill_view`): Hermes adds the skills plug-in back, and `lilbot-work` tells the run how
+  to use the board. The bot's note (its system prompt, with the names of the computers) is the same in every session. `shell` or `computers` amounts to full access: either reads the engine token and the profile's keys,
+  and the leader is a computer. Two layers, both chosen from one list:
+  - `webhook-access.ts` starts the run's session with only `lilbot_system` plus each group's engine toolsets (web:
+    `web`; shell: `terminal`, `code_execution`, `file`; computers: `lilbot_computers`; coding: `lilbot_t3`; memory:
+    `memory`).
+    Naming one MCP server leaves the others out. Hermes' `file` toolset is read and write together and has no
+    per-session write root, so a narrow run reads with `lilbot_workspace_read` instead. Without `memory` the engine's
+    memory tools and `search_conversations` are gone too. `lilbot_give_file` is in `shell` (a run can only give a file
+    it could write); `lilbot_goal` is refused to every run (Oscar's list names the work board, not goals).
+  - LilBot refuses at the call what a run may not do, because Hermes adds the computers and skills plug-ins back to any
+    session and LilBot's own server lists every tool (`tools/list` has no session). `webhooks/webhook-callers.ts`
+    matches a call to the engine's `tool.start` reports (`CallingChats.starts`): only while one of the bot's runs is
+    under way, after 250 ms, by name and arguments over the last 10 seconds; a webhook session (or its compression
+    child) gives its run's groups, an identical call from another session passes, and no report within three seconds or
+    an unreadable lineage counts as the run's (fail closed). Every `lilbot_*` tool is in `RUN_TOOLS` or a group
+    (`system/run-access.ts`, tested). The T3 bridge refuses its tools without `coding`; the engine API refuses plug-in
+    computer tools without `computers` and `skill_manage` always (by tool name, since plug-ins reshape arguments), and,
+    by the session the memory adapter names, memory reads and writes and `give_file` without `memory` (the memory block
+    comes back empty).
+- The run's message (`webhook-messages.ts`, `lilbot_webhook_message`, matched to its run by `requestId`): once per run,
+  at most 4,000 characters, checked like an event (both scans), saved on the run, then sent like a new bot's greeting: the
+  main conversation is opened (made the first time) and the message sent hidden with a stable input id
+  (`webhook-message-<run id>`, retried after 30 seconds), fenced as
+  `<webhook-run-message>` and labelled outside data. It is an ordinary main-conversation turn: the full-access bot acts
+  on it with its own judgement and the after-chat review sees it, so the fence is the only guard between the run's text
+  and the main bot.
 - Kept: the stored event string only until its run settles, but the run's own engine transcript (opened by
   `webhooks.openRun`) and its result keep what the bot saw and said.
 - Bot tools (LilBot's MCP server, the caller's own webhooks only): `lilbot_webhook_create` (request-id idempotency;
   at most five webhooks a bot, whoever asked, since `createdBy` is the bot's word), `lilbot_webhooks_list` (each run's
   result fenced as outside data: a model wrote it after reading the events),
-  `lilbot_webhook_pause`, `lilbot_webhook_resume`, `lilbot_webhook_delete`, `lilbot_webhook_new_address`. Nothing is in
-  the Hermes plug-ins.
-- Browser methods: `webhooks.list` (newest 50 runs with their event counts), `pause`, `resume`, `delete`, `openRun`
-  (a tracked chat snapshot), `address` (Copy), push `webhooks.changed`. Screens: #138.
+  `lilbot_webhook_pause`, `lilbot_webhook_resume`, `lilbot_webhook_delete`, `lilbot_webhook_new_address`, and from a
+  run `lilbot_webhook_message`. Nothing is in the Hermes plug-ins.
+- Browser methods: `webhooks.list` (newest 50 runs with their event counts and messages; each webhook's
+  `capabilities`), `pause`, `resume`, `delete`, `openRun` (a tracked chat snapshot), `address` (Copy),
+  `setCapabilities`, push `webhooks.changed`. Screens: #138.
 - Without `LILBOT_PUBLIC_ENABLED=1` and `LILBOT_HELPER_URL`, creating a webhook is refused (no outside service could
   reach it).
 
@@ -1428,8 +1462,13 @@ profiles, isolated directories, cleanup in `finally`. Most cost a few model call
   reached once that check is done.
 - `bun run check:routines`: create from chat, a real file-writing run, open history, pause, restart, resume, delete.
 - `bun run check:webhooks`: a dev server with its own helper door on loopback and a temporary bot whose webhook is made
-  through its MCP tool: a signed event wakes it and the result is recorded and opens; a repeat, an unsigned and a
-  wrongly signed event do nothing; a burst of three is one run; pause refuses, resume accepts, delete ends the address.
+  through its MCP tool: a signed event wakes it; a repeat, an unsigned and a wrongly signed event do nothing. The narrow
+  run reads a file in its folder, finishes a work item and messages its bot; its tries at `lilbot_bot_create`,
+  `computer_exec`, `lilbot_about` and `lilbot_work_list` with `mine: false` are refused (no bot, no change logged, no
+  computer request); direct calls of those during the run are refused and allowed after it; its session's real tools
+  (`session.info`, `tools.show`) lack the web, shell, file writes, memory and T3. Given `web`, `shell` and `coding`, a
+  run gains exactly those, and its stored `web_extract` output holds the fetched page. A burst of three is one run;
+  pause refuses, resume accepts, delete ends the address.
 - `bun run check:restart`: SIGKILLs only its own second server mid-turn; chat, routine and thread side-effect counters
   must stay at one. Confirms its profiles are gone with `hermes profile list`. Then `restart-session-check.ts`: two
   deploy-like restarts (SIGTERM, 30 seconds away), one with a changed tool list, an empty session another client opens

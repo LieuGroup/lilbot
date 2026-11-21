@@ -18,6 +18,7 @@ import type { MemoryReviewer } from '../memory/memory-reviewer'
 import type { MemoryService } from '../memory/memory-service'
 import type { RoutineService } from '../routines/routine-service'
 import { computerApi } from './computer-api'
+import { lockedMemory } from './engine-run-gate'
 import { historyApi } from './history-api'
 import { forBot, memoryRoutes as routes } from './memory-protocol'
 import { routineApi } from './routine-api'
@@ -51,6 +52,9 @@ export interface EngineApiOptions {
   hiddenChat?: (botId: string, chatId: string) => boolean
   /** Why a call that may come from a check session (no memory, no changes) may not use memory or change skills, or null. */
   inCheck?: (botId: string, chatId: string | undefined, use: 'memory' | 'skills') => string | null
+  /** Webhook runs (`engine-run-gate.ts`): a session that may not use memory or give files, and why a plug-in call is refused. */
+  memoryLocked?: (botId: string, chatId: string | undefined) => boolean
+  pluginRefusal?: (botId: string, pathname: string, request: Request) => Promise<string | null>
 }
 
 export function createEngineApi(memory: MemoryService, token: string, port: number, options: EngineApiOptions) {
@@ -76,6 +80,7 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
         if (!caller || !options.botExists(caller.id)) return json(403, { error: 'Unknown bot credential.' })
         const input = LibraryGiveInput.safeParse(await request.json())
         if (!input.success) return json(400, { error: 'Invalid file delivery.' })
+        if (options.memoryLocked?.(caller.id, input.data.chatId)) return json(422, { error: 'A webhook run cannot give files. Put what matters in your result.' })
         if (!options.library) return json(503, { error: 'Library unavailable.' })
         const routineRunId = input.data.chatId ? options.routines?.store.runForChat(caller.id, input.data.chatId) : undefined
         const item = await options.library.give(caller.id, { ...input.data, routineRunId })
@@ -96,10 +101,12 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
         const capability = request.headers.get('x-lilbot-bot-capability') ?? ''
         const caller = (await options.bots?.listBots())?.find(bot => matchesCapability(token, bot.id, capability))
         if (!caller || !options.bots || !options.botExists(caller.id)) return json(403, { error: 'Unknown bot credential.' })
+        const refused = await options.pluginRefusal?.(caller.id, pathname, request)
+        if (refused) return json(422, { error: refused })
         if (pathname.startsWith('/engine/history/')) {
           const body = await request.json()
-          const refused = pathname === '/engine/history/search' && options.inCheck?.(caller.id, typeof body?.chatId === 'string' ? body.chatId : undefined, 'memory')
-          return refused ? json(422, { error: refused }) : json(200, await historyApi(caller.id, pathname.slice('/engine/history/'.length), body, options))
+          const inCheck = pathname === '/engine/history/search' && options.inCheck?.(caller.id, typeof body?.chatId === 'string' ? body.chatId : undefined, 'memory')
+          return inCheck ? json(422, { error: inCheck }) : json(200, await historyApi(caller.id, pathname.slice('/engine/history/'.length), body, options))
         }
         if (pathname.startsWith('/engine/threads/')) {
           if (!options.threads) return json(503, { error: 'Threads unavailable.' })
@@ -157,6 +164,7 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
       }
       const refused = route !== '/engine/memory/turn' && options.inCheck?.(body.botId, body.chatId, 'memory')
       if (refused) return route === '/engine/memory/context' ? json(200, { text: '', shown: 0, total: 0 }) : json(422, { error: refused })
+      if (route !== '/engine/memory/turn' && options.memoryLocked?.(body.botId, body.chatId)) return lockedMemory(route)
       switch (route) {
         case '/engine/memory/context': {
           const context = memory.contextBlock(body.botId)

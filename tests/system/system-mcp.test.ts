@@ -40,7 +40,9 @@ const EXPECTED_TOOLS = [
   'lilbot_webhook_pause',
   'lilbot_webhook_resume',
   'lilbot_webhook_delete',
-  'lilbot_webhook_new_address'
+  'lilbot_webhook_new_address',
+  'lilbot_webhook_message',
+  'lilbot_workspace_read'
 ]
 
 test('only engine processes on this machine with a current bot’s own system key get in', async () => {

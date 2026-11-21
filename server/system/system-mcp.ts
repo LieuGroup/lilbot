@@ -21,7 +21,7 @@ export interface SystemMcpOptions {
   changes: SystemChanges
   /** What an engine that shows an MCP server's instructions tells the model about these tools. */
   instructions: string
-  /** Why the calling session may not make this call (a check session, `check-access.ts`), or null. */
+  /** Why the calling session may not make this call (a check session, `check-access.ts`; a webhook run, `run-access.ts`), or null. */
   refusal: (botId: string, tool: string, args: unknown) => Promise<string | null>
 }
 

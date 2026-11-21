@@ -16,6 +16,8 @@ export interface T3BridgeOptions {
   port: number
   /** Non-deleted LilBot bot ids. */
   botIds: () => string[]
+  /** Why the calling session may not make this call (a webhook run without coding), or null. */
+  refusal: (botId: string, tool: string, args: unknown) => Promise<string | null>
   fetch?: typeof fetch
 }
 
@@ -80,6 +82,8 @@ export function createT3Bridge(options: T3BridgeOptions) {
           ]
         })
       if (!ALLOWED.has(name)) return signedIn ? toolError(message.id, `${String(name)} is not available to LilBot bots.`) : signedOutReply(message, explanation())
+      const refused = await options.refusal(botId, name, message.params.arguments)
+      if (refused) return toolError(message.id, refused)
       const args = message.params.arguments
       if (args && typeof args.clientRequestId === 'string') args.clientRequestId = scopedRequestId(botId, args.clientRequestId)
     }

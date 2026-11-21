@@ -94,6 +94,7 @@ export class BrowserSession {
     'webhooks.resume': ({ botId, id }) => requireService(this.webhooks, 'Webhooks are unavailable.').pause(botId, id, false),
     'webhooks.delete': ({ botId, id }) => requireService(this.webhooks, 'Webhooks are unavailable.').delete(botId, id),
     'webhooks.address': ({ botId, id }) => requireService(this.webhooks, 'Webhooks are unavailable.').currentAddress(botId, id),
+    'webhooks.setCapabilities': ({ botId, id, capabilities }) => requireService(this.webhooks, 'Webhooks are unavailable.').setCapabilities(botId, id, capabilities),
     'webhooks.openRun': ({ botId, runId }, afterResponse) =>
       this.chats.track(afterResponse, onEvent => requireService(this.webhooks, 'Webhooks are unavailable.').openRun(botId, runId, onEvent)),
     'library.list': input => requireService(this.library, 'Library is unavailable.').list(input),

@@ -29,7 +29,7 @@ beforeEach(() => {
   received = []
   bots = ['bot-a', 'bot-b']
   grants = new T3Grants(join(dir, `${crypto.randomUUID()}.json`))
-  bridge = createT3Bridge({ upstream: 'http://t3.test/mcp', grants, engineToken: TOKEN, port: PORT, botIds: () => bots, fetch: upstream })
+  bridge = createT3Bridge({ upstream: 'http://t3.test/mcp', grants, engineToken: TOKEN, port: PORT, botIds: () => bots, refusal: async () => null, fetch: upstream })
 })
 const signIn = () => grants.save({ accessToken: 'the-grant', expiresAt: Date.now() + 86_400_000, issuedAt: Date.now(), scope: '', label: 'LilBot' })
 
@@ -126,6 +126,7 @@ test('an unreachable T3 Code is a tool error, and the status tool confirms a wor
     engineToken: TOKEN,
     port: PORT,
     botIds: () => bots,
+    refusal: async () => null,
     fetch: (async () => {
       throw new Error('connection refused')
     }) as unknown as typeof fetch
@@ -141,4 +142,20 @@ test('a single passing refusal does not revoke the sign-in', async () => {
   const result = await (await post(call('t3_thread_read', { threadId: 't' }))).json()
   expect(result.result.content[0].text).toContain('Try again')
   expect(grants.status().state).toBe('connected')
+})
+
+test('a call the session may not make (a webhook run without coding) is refused before T3 is called', async () => {
+  signIn()
+  bridge = createT3Bridge({
+    upstream: 'http://t3.test/mcp',
+    grants,
+    engineToken: TOKEN,
+    port: PORT,
+    botIds: () => bots,
+    refusal: async (bot, tool) => (bot === 'bot-a' && tool === 't3_thread_launch' ? 'A webhook run cannot use t3_thread_launch.' : null),
+    fetch: upstream
+  })
+  const result = await (await post(call('t3_thread_launch', { title: 'x' }))).json()
+  expect(result.result).toEqual({ content: [{ type: 'text', text: 'A webhook run cannot use t3_thread_launch.' }], isError: true })
+  expect(received).toEqual([])
 })

@@ -16,6 +16,8 @@ import { DelegationControl } from '../../server/threads/delegation-control'
 import { DelegationService } from '../../server/threads/delegation-service'
 import { ThreadService } from '../../server/threads/thread-service'
 import { ThreadStore } from '../../server/threads/thread-store'
+import { webhookCallers } from '../../server/webhooks/webhook-callers'
+import { WebhookMessages } from '../../server/webhooks/webhook-messages'
 import { WebhookService } from '../../server/webhooks/webhook-service'
 import { WebhookStore } from '../../server/webhooks/webhook-store'
 import { checkSessions } from '../../server/work/check-sessions'
@@ -70,6 +72,13 @@ export function systemFixture() {
     id => fake.store.exists(id)
   )
   const giveFile = giveFrom(library, calls, threadStore, routineStore, webhookStore, rootOf)
+  // Which calls come from webhook runs (matched to the tool calls `calls.saw` was told started), and the messages runs sent.
+  const sent: { botId: string; prompt: string; runId: string }[] = []
+  const webhookRuns = {
+    callers: webhookCallers(webhookStore, rootOf, (botId, tool, since) => calls.starts(botId, tool, since), 400),
+    messages: new WebhookMessages(fake.database, async (botId, prompt, runId) => sent.push({ botId, prompt, runId })),
+    callingChat: (botId: string, requestId: string) => calls.find(botId, 'lilbot_webhook_message', requestId)
+  }
   const goals = new GoalService(
     work.goalStore,
     work.work,
@@ -91,9 +100,11 @@ export function systemFixture() {
     routines,
     goals,
     giveFile,
+    library,
     webhooks,
     calls,
     checkSessions: checkSessions(work.work.checks, rootOf),
+    webhookRuns,
     changes,
     dataDir: fake.root,
     engineToken: TOKEN,
@@ -135,6 +146,8 @@ export function systemFixture() {
     from,
     roots,
     webhooks,
+    webhookRuns,
+    sent,
     rosterPushes: fake.changes,
     request,
     as,

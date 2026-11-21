@@ -10,7 +10,7 @@ const KEEP_MS = 120_000
 /** How long before its request a call's own start may have been seen: an older one belongs to an earlier call. */
 const EARLY_MS = 15_000
 /** The tools that need to know their calling conversation. Engines may prefix the name with the server's. */
-export type CallingTool = 'lilbot_delegate' | 'lilbot_work' | 'lilbot_group' | 'lilbot_goal' | 'lilbot_give_file'
+export type CallingTool = 'lilbot_delegate' | 'lilbot_work' | 'lilbot_group' | 'lilbot_goal' | 'lilbot_give_file' | 'lilbot_webhook_message'
 
 /** `mcp__lilbot_system__lilbot_work` names `lilbot_work`; `lilbot_work_list` does not. */
 const names = (name: string, tool: string) => name === tool || (name.endsWith(tool) && !/[a-z0-9]/i.test(name.charAt(name.length - tool.length - 1)))
