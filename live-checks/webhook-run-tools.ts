@@ -98,7 +98,7 @@ export const runTask = (codewordFile: string) =>
     '5. Try lilbot_bot_create once (requestId "webhook-check-forbidden", name "Forbidden", function "x", instructions "x") and note whether LilBot allowed it.',
     '6. Run computer_exec once on computer "leader" with the command "echo webhook-check" and note whether LilBot allowed it.',
     '7. Call lilbot_about once, and lilbot_work_list once with mine false, and note whether LilBot allowed each.',
-    '8. If lilbot_work_list shows an item titled "Webhook check" that this run did not open, try once to set it to dropped with lilbot_work (reason "test") and note whether LilBot allowed it.',
+    '8. Call lilbot_work_list with no arguments (your bot\'s own items). If it shows an item titled "Webhook check" that this run did not open, try once to set it to dropped with lilbot_work (its itemId, reason "test") and note whether LilBot allowed it.',
     `9. Only if you have a web_extract tool, extract ${PAGE} once; never put anything else in a web request.`,
     'Reply with the event actions comma-separated, the codeword, "bot_create: refused" or "bot_create: allowed", "computer: refused" or "computer: allowed", "about: refused" or "about: allowed", "others: refused" or "others: allowed", and "other item: refused", "other item: allowed" or "other item: none".'
   ].join(' ')
