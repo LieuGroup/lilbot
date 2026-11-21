@@ -142,9 +142,9 @@ export class RestartServer {
     for (const row of this.db?.query('SELECT engine_bot_id FROM bots').all() ?? []) this.natives.add((row as { engine_bot_id: string }).engine_bot_id)
   }
 
-  async crash() {
-    // Kill only the child we spawned, without giving it a graceful shutdown path.
-    this.process?.kill('SIGKILL')
+  /** Stops only the child we spawned: by default with no graceful shutdown path; SIGTERM stops it as a deploy does. */
+  async crash(signal: 'SIGKILL' | 'SIGTERM' = 'SIGKILL') {
+    this.process?.kill(signal)
     await this.process?.exited
     this.process = undefined
     this.socket?.close()

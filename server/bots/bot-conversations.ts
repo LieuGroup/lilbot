@@ -57,12 +57,13 @@ export class BotConversations {
       return send(text, options)
     }
     chat.snapshot.botId = botId
+    if (chat.resumeRefused) console.warn(`[chat] conversation could not be resumed; started a new session (${chat.resumeRefused})`)
     if (fresh || (!chatId && chat.snapshot.chatId !== main)) this.prefs.setMainChat(botId, chat.snapshot.chatId)
     isMain = chat.snapshot.chatId === this.prefs.mainChat(botId)
     if (isMain && reported !== undefined) this.sessions.noteEffective(botId, reported)
     if (this.history && useHistory) {
       try {
-        await this.history.latest(bot, chat.snapshot)
+        await this.history.latest(bot, chat.snapshot, chat.resumeRefused ? 'not_resumed' : undefined)
       } catch (error) {
         chat.close()
         throw error

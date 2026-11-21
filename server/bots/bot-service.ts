@@ -261,7 +261,7 @@ export class BotService {
   async historyPage(botId: string, cursor?: string, limit?: number) {
     await this.requireBot(botId)
     if (!this.history) throw new LilBotError('unavailable', 'History is unavailable.')
-    return this.history.store.page(botId, cursor, limit)
+    return this.history.store.page(botId, cursor, limit, this.prefs.mainChat(botId))
   }
 
   isMainChat(botId: string, chatId: string) {

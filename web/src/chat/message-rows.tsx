@@ -62,7 +62,7 @@ export function MessageRows({ botId, botName, avatar, items, first, drawFrom, st
     const item = items[index]
     const position = first + index
     if (item.kind === 'session') {
-      rows.push(<SessionDivider key={position} at={timeOf(item)} botName={index === newest ? botName : undefined} />)
+      rows.push(<SessionDivider key={position} at={timeOf(item)} reason={item.reason} botName={index === newest ? botName : undefined} />)
       continue
     }
     if (startsDay(items, index, start !== null)) rows.push(<DateLine key={`day-${position}`} at={timeOf(item)} />)

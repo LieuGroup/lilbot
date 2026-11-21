@@ -12,7 +12,7 @@
     "lint": "biome check .",
     "format": "biome check --write .",
     "test": "bun test tests",
-    "check:restart": "bun live-checks/restart-check.ts",
+    "check:restart": "bun live-checks/restart-check.ts && bun live-checks/restart-session-check.ts",
     "check:threads": "bun live-checks/threads-check.ts",
     "check:delegation": "bun live-checks/delegation-check.ts",
     "check:groups": "bun live-checks/groups-check.ts",
