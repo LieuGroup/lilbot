@@ -76,7 +76,7 @@ export function systemFixture() {
   const shown: { botId: string; runId: string; source: string; text: string }[] = []
   const webhookRuns = {
     callers: webhookCallers(webhookStore, rootOf, calls),
-    messages: new WebhookMessages(fake.database, (botId, runId, source, text) => shown.push({ botId, runId, source, text }) > 0),
+    messages: new WebhookMessages(fake.database, async (botId, runId, source, text) => shown.push({ botId, runId, source, text }) > 0),
     callingChat: (botId: string, requestId: string) => calls.find(botId, 'lilbot_webhook_message', requestId)
   }
   const goals = new GoalService(

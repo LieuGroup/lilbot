@@ -20,12 +20,22 @@ import type { WebhookStore } from './webhooks/webhook-store'
 
 /** A run's message to its bot, as a notice: a line in the bot's main conversation that turns it unread, and the text the
  *  bot gets with Oscar's next message there (`BotServiceOptions.turnNotes`). No model turn. */
-export function webhookMessages(database: Database, store: BotStore, prefs: BotPrefsStore, history: HistoryStore, activity: ActivityService, publish: (frame: EventFrame) => void) {
+export function webhookMessages(
+  database: Database,
+  { store, prefs, history, activity, bots }: { store: BotStore; prefs: BotPrefsStore; history: HistoryStore; activity: ActivityService; bots: () => BotService },
+  publish: (frame: EventFrame) => void
+) {
+  /** The bot's main conversation, opened (made, the first time) without a turn when it has none yet. */
+  const mainOf = async (botId: string) => {
+    const chat = await bots().openChat(botId, undefined, () => {})
+    chat.close()
+    return chat.snapshot.chatId
+  }
   return new WebhookMessages(
     database,
-    (botId, runId, source, text) => {
-      const main = prefs.mainChat(botId)
-      if (!main || !store.exists(botId)) return false
+    async (botId, runId, source, text) => {
+      if (!store.exists(botId)) return false
+      const main = prefs.mainChat(botId) ?? (await mainOf(botId))
       history.reference(botId, main, { kind: 'tool', toolId: `webhook-message:${runId}`, name: 'webhook message', detail: `${source}: ${text}`, running: false }, Date.now())
       publish({ event: 'history.changed', botId })
       activity.setUnread(botId, true)

@@ -242,8 +242,8 @@ Cost, measured on the dev gateway by `check:webhooks` (run 2026-11-21, its seven
 
 Without `web` a narrow session has two tools fewer (`web_search`, `web_extract`) than when the web was in the narrow set.
 
-Every bot pays for the two new tools in every session: 283 characters of listing lines (about 70 tokens a turn) and
-642 characters of full `tools/list`. A full-access run had every toolset of the profile, including every other MCP
+Every bot pays for the two new tools in every session: their listing lines (about 70 tokens a turn) and their full
+`tools/list` entries. A full-access run had every toolset of the profile, including every other MCP
 server (production, from its config: RevenueCat and Paper as well as T3 Code); a narrow one has none of them.
 
 Every tool is either open to a narrow webhook run (`RUN_TOOLS` in `system/run-access.ts`: the guide, the work board, the
@@ -252,14 +252,17 @@ run's message, the folder read) or in a capability group Oscar adds per webhook 
 `coding`, the groups whose facts they show), or refused to every webhook run (`NO_RUN_TOOLS`: `lilbot_goal`); a test fails
 when a new tool is in none of them. A run reads only its own bot's work items, whatever its groups: `readsBeyondOwn`
 marks a `lilbot_work_list` call with `mine: false`, `goals`, `goalId` or another bot's `itemId`, and only such a call is
-matched to its session (the bot's own list and items answer at once); a run's call is refused. Before a call runs, `runRefusal` asks `webhooks/webhook-callers.ts` whether a webhook run
-made it: only when one of the caller's runs is under way, it waits 250 ms for the engine's report, then matches the call to
-the `tool.start` reports of the last 10 seconds by name and arguments (`argsKey`). A report from a webhook run session (or
-its compression child) gives that run's groups; an identical call reported by another session is allowed; nothing within
-three seconds, or an unreadable lineage, counts as the run's (it fails closed). `tools/list` carries no session, so a
-narrow run still sees every tool's listing line; refused calls say why. The T3 bridge (`coding`) and the engine API
-(computers and `skill_manage` from the plug-ins, matched by tool name since plug-ins reshape arguments; memory, and the
-older adapters' `give_file`, by the session they name) refuse the same way.
+matched to its session (the bot's own list and items answer at once).
+
+Before a call runs, `runRefusal` asks `webhooks/webhook-callers.ts` which session made it, by the session and never by
+time: only for a bot that has had a webhook run, the call is matched to its own `tool.start` report (`CallingChats.starts`,
+by arguments or request id, waiting up to 5 seconds). A webhook run's session, or one the engine continued it in, gives
+that webhook's groups for as long as it exists; another session's call passes; a call never seen, or an unreadable
+lineage, counts as a webhook run's (it fails closed). `tools/list` carries no session, so a narrow run still sees every
+tool's listing line; a refusal comes back as an ordinary result (`{"refused": ...}`) saying why, never as a tool error,
+because Hermes pauses the whole server for about a minute after three errors in a row. The T3 bridge (`coding`) refuses
+the same way; the engine API decides plug-in calls (computers, `skill_manage`, the routes only older adapters call) and
+memory by the session the adapter names.
 
 Judgment calls: a memory tool may name another bot's panel (as Oscar can on the screens), but only a fact in that
 panel can be named, by the short id a bot sees; the default is the calling bot's own. Another bot's private facts can

@@ -38,6 +38,20 @@ export async function sessionTools(nativeId: string, chatId: string): Promise<Se
   }
 }
 
+/** How many messages the session's stored transcript holds: a session that took another turn has more. */
+export async function messageCount(nativeId: string, chatId: string) {
+  const socket = await HermesSocket.connect(
+    nativeId,
+    () => {},
+    () => {}
+  )
+  try {
+    return ((await socket.request('session.resume', { session_id: chatId, source: 'tool', display_projection: false, omit_messages: false })).messages as unknown[]).length
+  } finally {
+    socket.close()
+  }
+}
+
 /** Tool names a session must not have, by the engine toolset they come from. */
 export const ENGINE_TOOLS = {
   web: ['web_search', 'web_extract'],
@@ -73,17 +87,20 @@ export const serverUp = (port: number) =>
 
 /** A public page with fixed text, so a fetch is seen in the engine's own tool result, not the model's words. */
 export const PAGE = 'https://example.com'
-/** The webhook's task: every run tries what a narrow run is refused, and fetches only when it has the web. */
+/** The webhook's task: every run tries what a narrow run is refused, leaves Oscar one question, and fetches only when it
+ *  has the web. */
 export const runTask = (codewordFile: string) =>
   [
     `For the events: 1. Read ${codewordFile} in your folder with lilbot_workspace_read; it holds a codeword.`,
-    '2. Open one work item with lilbot_work at check level 0, titled "Webhook check", with requestId "open-" and the event actions joined by "-"; then finish it as done with the event actions as its result, with requestId "done-" and the same actions.',
-    '3. Send your bot one message with lilbot_webhook_message: "Webhook actions: " and the actions.',
-    '4. Try lilbot_bot_create once (requestId "webhook-check-forbidden", name "Forbidden", function "x", instructions "x") and note whether LilBot allowed it.',
-    '5. Run computer_exec once on computer "leader" with the command "echo webhook-check" and note whether LilBot allowed it.',
-    '6. Call lilbot_about once, and lilbot_work_list once with mine false, and note whether LilBot allowed each.',
-    `7. Only if you have a web_extract tool, extract ${PAGE} once; never put anything else in a web request.`,
-    'Reply with the event actions comma-separated, the codeword, "bot_create: refused" or "bot_create: allowed", "computer: refused" or "computer: allowed", "about: refused" or "about: allowed", and "others: refused" or "others: allowed".'
+    '2. Open one work item with lilbot_work, kind note, titled "Webhook check", with requestId "open-" and the event actions joined by "-"; then finish it as done with the event actions as its result, with requestId "done-" and the same actions.',
+    '3. Open a second item, kind note, titled "Webhook question", with requestId "ask-" and the actions; then set it to needs_oscar with the question "Which label should the issue get?", with requestId "asked-" and the actions.',
+    '4. Leave your bot one message with lilbot_webhook_message: "Webhook actions: " and the actions.',
+    '5. Try lilbot_bot_create once (requestId "webhook-check-forbidden", name "Forbidden", function "x", instructions "x") and note whether LilBot allowed it.',
+    '6. Run computer_exec once on computer "leader" with the command "echo webhook-check" and note whether LilBot allowed it.',
+    '7. Call lilbot_about once, and lilbot_work_list once with mine false, and note whether LilBot allowed each.',
+    '8. If lilbot_work_list shows an item titled "Webhook check" that this run did not open, try once to set it to dropped with lilbot_work (reason "test") and note whether LilBot allowed it.',
+    `9. Only if you have a web_extract tool, extract ${PAGE} once; never put anything else in a web request.`,
+    'Reply with the event actions comma-separated, the codeword, "bot_create: refused" or "bot_create: allowed", "computer: refused" or "computer: allowed", "about: refused" or "about: allowed", "others: refused" or "others: allowed", and "other item: refused", "other item: allowed" or "other item: none".'
   ].join(' ')
 
 /** Delivers a GitHub-style issues event to the address, signed with the secret, a wrong one or not at all. */

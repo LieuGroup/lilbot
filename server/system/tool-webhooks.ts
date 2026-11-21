@@ -15,7 +15,7 @@ export function webhookTools({ webhooks, webhookRuns }: SystemDeps): McpTool[] {
   return [
     actionTool(
       'lilbot_webhook_message',
-      'Only in a webhook run: send your bot one short message in its main conversation, for news it should know or pass on to Oscar. It arrives as outside data. Once per run.',
+      'Only in a webhook run: leave your bot one short message, for news it should know or pass on to Oscar. Oscar sees it in its main conversation; the bot gets it, as outside data, with his next message there. Once per run.',
       z.object({ requestId: z.string().min(1).max(200), text: z.string().trim().min(1).max(MESSAGE_CHARS) }),
       async (caller, { requestId, text }) => {
         const run = webhookRuns.callers.run(caller, (await webhookRuns.callingChat(caller, requestId)) ?? '')

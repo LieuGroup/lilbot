@@ -125,7 +125,7 @@ export function createAppServices(
     botId => publish({ event: 'history.changed', botId })
   )
   repeat('history', 1000, () => history.tick())
-  const messages = webhookMessages(database, store, prefs, history.store, activity, publish)
+  const messages = webhookMessages(database, { store, prefs, history: history.store, activity, bots: () => bots }, publish)
   const bots = new BotService(engine, store, prefs, workspaces, memory, {
     skills,
     history,
