@@ -1,7 +1,7 @@
 /** Oscar's side of goals: the list, one goal, and his answers (agree, adjust, pause, drop). Each decision is saved with its
  *  notice to the bot in one transaction; the review routine follows it (`GoalRoutines`, retried on its tick). */
 import { type GoalEvent, goalMethods } from '../../shared/goal-schema'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { RoutineSchedule } from '../../shared/routine-schema'
 import { backgroundFailure } from '../background'
 import { isFinal, refuseUnsafe } from '../work/work-rules'

@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { BotUpdateInput, type ModelProvider, ReasoningEffort } from '../../shared/bot-schema'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { fakeService } from '../helpers/fake-engine'
 
 const THINKS = { provider: 'p', model: 'thinks' }

@@ -1,6 +1,6 @@
 /** Why an exchange failed (#170): fixed words chosen from what LilBot knows (which step failed, whose bot is gone), never an
  *  exception's text, a run's output or anything a bot wrote, so they hold no secret and read the same from both sides. */
-import type { LilBotError } from '../../shared/protocol'
+import type { LilBotError } from '../../shared/lilbot-error'
 import type { BotThread } from '../../shared/thread-schema'
 import { THREAD_LIMITS } from './thread-limits'
 import { type Delivery, isWork, type ThreadStore } from './thread-store'

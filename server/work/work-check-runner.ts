@@ -2,7 +2,7 @@
  *  run id is stable, so a retry after a transport failure or a restart reaches the same engine admission instead of a
  *  second check. */
 import type { BotModel } from '../../shared/bot-schema'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { backgroundFailure } from '../background'
 import { checkPrompt } from './work-check-prompts'
 import type { WorkService } from './work-service'

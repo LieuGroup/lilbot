@@ -2,7 +2,7 @@
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { LilBotError } from '../../../shared/protocol'
+import { LilBotError } from '../../../shared/lilbot-error'
 
 export async function deleteRuntime(id: string) {
   // A previous attempt can remove the folder but fail to settle the gateway's routing identity.

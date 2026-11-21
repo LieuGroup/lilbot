@@ -1,5 +1,5 @@
 /** A second boundary inside the adapter, in addition to separate gateway state. */
-import { LilBotError } from '../../../shared/protocol'
+import { LilBotError } from '../../../shared/lilbot-error'
 
 export function allowedProfile(id: string, environment = process.env.LILBOT_ENV): boolean {
   return id.startsWith('dev-') === (environment === 'development')

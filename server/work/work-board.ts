@@ -1,5 +1,5 @@
 /** Oscar's side of the board: the list, an item, the daily brief, dropping an item and answering a question. */
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { WorkKind } from '../../shared/work-check-schema'
 import { type WorkBrief, WorkListInput } from '../../shared/work-schema'
 import { backgroundFailure } from '../background'

@@ -2,7 +2,7 @@
  *  adds to the transcript, and when a round is complete. Every step runs in one transaction with fixed delivery ids, so
  *  a restart never repeats a round's replies or loses one. */
 import type { ChatItem } from '../../shared/chat-schema'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { BotThread, ThreadMessage } from '../../shared/thread-schema'
 import { copyFile } from './exchange-files'
 import type { GroupEnding } from './group-end'

@@ -1,7 +1,7 @@
 import type { z } from 'zod'
 import type { Attachment, AttachmentFile, AttachmentMessage } from '../../shared/attachment-schema'
 import type { ChatItem, ChatSnapshot } from '../../shared/chat-schema'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { OpenChat, TurnOrigin } from '../engines/bot-engine'
 import { MAX_BYTES, MAX_FILES, readAttachment, writeAttachment } from './attachment-files'
 import type { AttachmentStore, StoredAttachment } from './attachment-store'

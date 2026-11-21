@@ -1,6 +1,6 @@
 /** The delegating bot's control over work it handed out: status, stop, redirect and wait. Stopping is the same
  *  `ThreadService.cancel` Oscar's `threads.cancel` uses, recorded as stopped by the bot. */
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { type BotThread, RedirectInput } from '../../shared/thread-schema'
 import type { DelegationHost } from './delegation-service'
 import { refuseUnsafe, steerText } from './thread-prompts'

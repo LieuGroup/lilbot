@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { BotRuntimes } from '../../server/bots/bot-runtimes'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { fakeService } from '../helpers/fake-engine'
 
 test('concurrent startup prepares once; repeated roster, detail and preference reads use the snapshot', async () => {

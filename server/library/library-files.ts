@@ -2,7 +2,7 @@
 import { constants } from 'node:fs'
 import { lstat, open, realpath } from 'node:fs/promises'
 import { isAbsolute, relative, resolve } from 'node:path'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 
 export const MAX_FILE_BYTES = 50 * 1024 * 1024
 const inside = (path: string) => path !== '..' && !path.startsWith('../') && !isAbsolute(path)

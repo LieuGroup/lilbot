@@ -1,4 +1,4 @@
-import { LilBotError } from '../../../shared/protocol'
+import { LilBotError } from '../../../shared/lilbot-error'
 import { assertDevAttachment } from './hermes-environment'
 
 /** Asks Hermes for one attach grant: the gateway WebSocket URL plus a single-use ticket (30 s life).

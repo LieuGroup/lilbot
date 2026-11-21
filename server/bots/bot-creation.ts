@@ -2,7 +2,7 @@
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { BotCreateInput } from '../../shared/bot-schema'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { memoryRefusal } from '../memory/memory-safety'
 import type { BotService } from './bot-service'
 import type { BotRecord, BotStore } from './bot-store'

@@ -188,13 +188,3 @@ export type EventFrame =
   | { event: 'computers.changed' }
   /** A device was renamed or tied to a computer (here or in another tab): fetch `devices.current` again. */
   | { event: 'devices.changed' }
-
-/** An error whose message is safe and useful to show to the user. */
-export class LilBotError extends Error {
-  constructor(
-    public code: string,
-    message: string
-  ) {
-    super(message)
-  }
-}

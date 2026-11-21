@@ -1,7 +1,7 @@
 /** Files in a temporary group: the leader's and members' files are copied into the group folder, and on close the
  *  leader keeps some by copying them into its own folder, where its Library can point at them after the archive. */
 import { basename } from 'node:path'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { type BotThread, type ExchangeFile, keptId } from '../../shared/thread-schema'
 import { readAttachment } from '../attachments/attachment-files'
 import { type CopiedFile, copyFile, removeCopy } from './exchange-files'

@@ -1,7 +1,7 @@
 /** What a bot's model and reasoning effort mean for its conversations: the effort a new session starts with, what an edit does to
  *  the open main conversation, and the level the engine says it really sends there. */
 import type { BotModel, BotUpdateInput, ModelProvider, ReasoningEffort } from '../../shared/bot-schema'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { BotEngine, SessionChange } from '../engines/bot-engine'
 import type { BotPrefsStore } from './bot-prefs-store'
 import type { BotRecord } from './bot-store'

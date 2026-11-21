@@ -1,7 +1,7 @@
 /** Webhooks, their runs and the sessions those runs used (`webhooks`, `webhook_runs`, `webhook_chats`). A deleted
  *  webhook stays as a tombstone so a repeated create request cannot bring it back. */
 import type { Database } from 'bun:sqlite'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { Webhook, WebhookCreate, WebhookRun } from '../../shared/webhook-schema'
 import { newAddressNonce } from './webhook-address'
 import { WebhookEvents } from './webhook-events'

@@ -2,7 +2,7 @@
  *  persisted before dispatch, one hidden full-access session per run (`BotEngine.runRoutine`), receipts, activity
  *  and unread through `RoutineScheduler`, and its session kept out of history and the after-chat review. */
 import type { ChatEvent } from '../../shared/chat-schema'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { type Webhook, type WebhookAddress, WebhookCreate, type WebhookRun } from '../../shared/webhook-schema'
 import { webhookLine } from '../devices/origin-line'
 import type { RoutineHost } from '../routines/routine-service'

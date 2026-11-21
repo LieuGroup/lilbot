@@ -1,7 +1,7 @@
 /** Routine tools: a bot schedules work for itself with the functions the screens use (`routines.*`). One tool for the
  *  steps and one to read, so a bot pays two listing lines a turn instead of five. */
 import { z } from 'zod'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { RoutineActionInput, RoutineCreate } from '../../shared/routine-schema'
 import { actionTool, type McpTool, readTool } from './mcp-tool'
 import type { SystemDeps } from './system-deps'

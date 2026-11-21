@@ -1,4 +1,4 @@
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { ComputerStore } from './computer-store'
 
 /** The main computer: the one bots use when a message comes from a device that is not a computer. At most one: the table

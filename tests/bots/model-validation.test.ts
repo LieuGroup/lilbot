@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { fakeService } from '../helpers/fake-engine'
 
 test('refused model edits save nothing and leave the runtime available', async () => {

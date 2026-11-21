@@ -1,7 +1,7 @@
 /** What a bot does on the board, through LilBot's MCP server: open an item and report on its own items. The caller is
  *  always the authenticated bot; where the call came from is worked out from LilBot's own records, never an argument. */
 import type { BotModel } from '../../shared/bot-schema'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { type WorkAsker, WorkInput, type WorkItem, type WorkOrigin, WorkReadInput } from '../../shared/work-schema'
 import { WorkCheckStore } from './work-check-store'
 import { WorkChecks } from './work-checks'

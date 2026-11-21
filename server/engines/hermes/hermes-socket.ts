@@ -1,5 +1,5 @@
 /** One JSON-RPC connection to the Hermes gateway for one profile. */
-import { LilBotError } from '../../../shared/protocol'
+import { LilBotError } from '../../../shared/lilbot-error'
 import { attachToHermes } from './hermes-attach'
 
 export interface HermesEvent {

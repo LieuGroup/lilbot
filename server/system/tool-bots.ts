@@ -2,7 +2,7 @@
  *  the screen of the same name uses (`bots.list`, `bots.get`, `bots.update`, `bots.setPrimary`, `models.list`). */
 import { z } from 'zod'
 import { BotUpdateInput } from '../../shared/bot-schema'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { BotCreationInput } from '../bots/bot-creation'
 import { memoryRefusal } from '../memory/memory-safety'
 import { actionTool, type McpTool, readTool } from './mcp-tool'

@@ -11,7 +11,7 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger
 } from '@/ui/dropdown-menu'
-import { LilBotError } from '../../../shared/protocol'
+import { LilBotError } from '../../../shared/lilbot-error'
 import { lilbot, messageOf } from '../app/lilbot-socket'
 import { useBotStore } from './bot-store'
 import { EffortChoices } from './effort-choices'

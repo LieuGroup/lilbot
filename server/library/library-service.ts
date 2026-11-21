@@ -2,7 +2,7 @@ import { readdir } from 'node:fs/promises'
 import { basename, extname } from 'node:path'
 import type { z } from 'zod'
 import { LibraryGiveInput, LibraryListInput, type LibraryPage, type WorkspaceEntry } from '../../shared/library-schema'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { MAX_FILE_BYTES, openWorkspaceFile } from './library-files'
 import type { LibraryStore } from './library-store'
 

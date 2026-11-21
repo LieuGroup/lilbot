@@ -6,7 +6,7 @@
  *  steps run back to back, all against the same origin (T3 derives issuer and resource from it). */
 import { createHash, randomBytes } from 'node:crypto'
 import { networkInterfaces } from 'node:os'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { T3Grant } from './t3-grant'
 
 /** Loopback redirects are accepted on any port and never visited: the redirect comes back as JSON. */

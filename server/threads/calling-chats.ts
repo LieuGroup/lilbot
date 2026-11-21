@@ -4,7 +4,7 @@
  *  runs are reported by the socket that submitted them, almost at once; visible sessions (the main conversation) by the
  *  chat that has them open or the activity observer, within a second or two. A call whose start is not seen in time, or
  *  that two sessions could have made, is refused with a retryable error: it is never guessed. */
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 
 const KEEP_MS = 120_000
 /** How long before its request a call's own start may have been seen: an older one belongs to an earlier call. */

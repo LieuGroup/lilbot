@@ -2,7 +2,7 @@
  *  quiet, its leader unreachable). The end is one transaction, once: the outcome is queued for the leader's own
  *  conversation and each member gets a private journal entry. What follows (stopping turns, dropping members' work
  *  items, archiving the folder) is retried until it is done. */
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { GroupEnd } from '../../shared/thread-schema'
 import { backgroundFailure } from '../background'
 import { type KeptFile, recordKept } from './group-files'

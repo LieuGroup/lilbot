@@ -1,5 +1,5 @@
 /** The rules every report on a work item passes, whoever makes it. Pure: no database, no engine. */
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { KIND_NAMES, type WorkKind } from '../../shared/work-check-schema'
 import { type EvidenceInput, type EvidencePointer, FINAL_WORK, type WorkStatus } from '../../shared/work-schema'
 import { memoryRefusal } from '../memory/memory-safety'

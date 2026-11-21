@@ -1,5 +1,5 @@
 import type { ChatEvent } from '../../../shared/chat-schema'
-import { LilBotError } from '../../../shared/protocol'
+import { LilBotError } from '../../../shared/lilbot-error'
 import type { ChatOptions, OpenChat } from '../bot-engine'
 import { prepareAttachments } from './hermes-attachments'
 import { DEFAULT_PROFILE } from './hermes-bot-mapping'

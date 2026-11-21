@@ -16,7 +16,7 @@ import type { GroupLimits } from '../../server/threads/thread-limits'
 import { ThreadService } from '../../server/threads/thread-service'
 import { type Delivery, ThreadStore } from '../../server/threads/thread-store'
 import type { ChatItem } from '../../shared/chat-schema'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 
 type Result = { status: string; text: string; items?: ChatItem[]; unknownReceipt?: true }
 interface Run {

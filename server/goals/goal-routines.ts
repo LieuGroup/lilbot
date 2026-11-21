@@ -3,7 +3,7 @@
  *  request), so it is not one of the five routines a bot may make for itself; one the bot paused or deleted with its own
  *  routine tools is put back on the next tick. The tick also marks a goal reached once a review that met the target was
  *  checked and done, never on the bot's number alone. */
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { Routine } from '../../shared/routine-schema'
 import { backgroundFailure } from '../background'
 import type { RoutineService } from '../routines/routine-service'

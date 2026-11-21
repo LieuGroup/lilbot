@@ -1,7 +1,7 @@
 /** Stop or steer a running hidden session from a fresh connection. `session.resume` gives the live session and its
  *  execution generation; checked live on the dev gateway, both calls work from a second socket while another one
  *  waits on the run's receipt (interrupt ends a turn within about a second, even inside a long command). */
-import { LilBotError } from '../../../shared/protocol'
+import { LilBotError } from '../../../shared/lilbot-error'
 import { DEFAULT_PROFILE } from './hermes-bot-mapping'
 import { HermesSocket } from './hermes-socket'
 

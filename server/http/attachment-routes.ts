@@ -1,4 +1,4 @@
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { AttachmentService } from '../attachments/attachment-service'
 import { socketAllowed } from './socket-guard'
 

@@ -1,6 +1,6 @@
 /** Sessions the engine runs for a bot without a browser: routine and thread runs, and the after-chat memory review.
  *  A run starts with the bot's reasoning effort; the review, and a run given another model, keep their own model and are not given it. */
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { ReviewOptions, RoutineOptions } from '../engines/bot-engine'
 import type { BotRuntimes } from './bot-runtimes'
 import type { SessionSettings } from './bot-session-settings'

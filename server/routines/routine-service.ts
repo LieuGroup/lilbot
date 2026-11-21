@@ -1,5 +1,5 @@
 import type { ChatEvent } from '../../shared/chat-schema'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { RoutineCreate, type RoutineRun } from '../../shared/routine-schema'
 import { routineLine } from '../devices/origin-line'
 import type { OpenChat, RoutineOptions } from '../engines/bot-engine'

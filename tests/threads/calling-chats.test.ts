@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { argsKey, CallingChats } from '../../server/threads/calling-chats'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 
 const WORK = 'mcp__lilbot_system__lilbot_work'
 const refusal = (promise: Promise<unknown>) => promise.then(() => null).catch(error => (error instanceof LilBotError ? error.code : String(error)))

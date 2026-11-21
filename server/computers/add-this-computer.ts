@@ -3,7 +3,7 @@
  *  through the helper door) are unchanged. */
 import { codeId } from '../../helper/frame-auth'
 import type { AddThisStart, AddThisStatus, AddThisSystem } from '../../shared/computer-add-schema'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { ComputerService } from './computer-service'
 import type { HelperDownloads } from './helper-downloads'
 

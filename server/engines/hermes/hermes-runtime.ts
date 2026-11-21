@@ -1,5 +1,5 @@
 /** Applies app-owned settings without storing LilBot's display name in a Hermes profile. */
-import { LilBotError } from '../../../shared/protocol'
+import { LilBotError } from '../../../shared/lilbot-error'
 import type { EngineBotDetail, RuntimeIdentity } from '../bot-engine'
 import { DEFAULT_PROFILE } from './hermes-bot-mapping'
 import { runtimePrefix } from './hermes-environment'

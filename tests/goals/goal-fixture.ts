@@ -5,7 +5,7 @@ import { GoalRoutines } from '../../server/goals/goal-routines'
 import { GoalService } from '../../server/goals/goal-service'
 import { RoutineService } from '../../server/routines/routine-service'
 import type { CallingChats } from '../../server/threads/calling-chats'
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import { workFixture } from '../work/work-fixture'
 
 export const DUE = '2099-01-01'

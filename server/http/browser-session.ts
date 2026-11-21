@@ -1,7 +1,8 @@
 /** One browser connection: checks each request, runs it on the bot service, and forwards chat events. */
 import type { z } from 'zod'
 import type { ConnectionsStatus } from '../../shared/connections-schema'
-import { type EventFrame, LilBotError, type Method, methods, RequestFrame, type ResponseFrame, type Results } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
+import { type EventFrame, type Method, methods, RequestFrame, type ResponseFrame, type Results } from '../../shared/protocol'
 import type { ActivityService } from '../activity/activity-service'
 import { type AttachmentService, attachmentLimits } from '../attachments/attachment-service'
 import type { BotService } from '../bots/bot-service'

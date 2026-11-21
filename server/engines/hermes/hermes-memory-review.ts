@@ -1,4 +1,4 @@
-import { LilBotError } from '../../../shared/protocol'
+import { LilBotError } from '../../../shared/lilbot-error'
 import type { ReviewOptions } from '../bot-engine'
 import { DEFAULT_PROFILE } from './hermes-bot-mapping'
 import { ensureFullAccess } from './hermes-permissions'

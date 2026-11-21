@@ -1,8 +1,8 @@
 /** Memory tools: what Oscar does in a bot's Memory panel, except forgetting (screen only). A fact is named by the
  *  short id the bot sees, and only facts in that bot's own panel can be named. */
 import { z } from 'zod'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { MemoryFact } from '../../shared/memory-schema'
-import { LilBotError } from '../../shared/protocol'
 import { endOfDay, expiryDay } from '../memory/memory-expiry'
 import { shortId } from '../memory/memory-service'
 import { actionTool, type McpTool, readTool } from './mcp-tool'

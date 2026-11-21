@@ -1,7 +1,7 @@
 /** How the check of a finished level 2 or 3 item ends: the checking bot's verdict, Oscar's pass or send-back (from
  *  `work-board.ts`), or a check that could not run; and where the item goes after each. `WorkService.report` starts every
  *  check; the bot's run is `work-check-runner.ts`. */
-import { LilBotError } from '../../shared/protocol'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { WorkCheck } from '../../shared/work-check-schema'
 import { WorkInput, type WorkItem } from '../../shared/work-schema'
 import { failedNotice, sentBackNotice } from './work-check-prompts'
