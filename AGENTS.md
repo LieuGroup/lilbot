@@ -1490,11 +1490,11 @@ profiles, isolated directories, cleanup in `finally`. Most cost a few model call
 - `bun run check:history`: continuous history, paging and search, tool lines after reload and new session, backfill of
   tool rows into a copy that lost them; kills only its own server mid-import, repeats the import without duplicates; a
   requested compaction is refused while the bot is fail-closed.
-- `bun run check:checkpoint`: a temporary bot whose profile compacts just above its conversation: the agent's own compaction of
-  some 270,000 characters runs only after a review in passes, which saves a fact from the first message; the gateway's
-  hygiene pre-pass (forced by a low message limit on that profile) saves first too; with LilBot stopped, a turn sent
-  straight to the engine is not shortened, and the first message after LilBot is back shortens it with the save. Prints
-  passes, seconds and review tokens.
+- `bun run check:checkpoint`: a temporary bot whose profile compacts at 90,000 tokens: the agent's own compaction of some
+  270,000 characters runs only after a review in passes, which saves a fact from the first message; with LilBot stopped,
+  turns sent straight to the engine are refused and not shortened (each turn's reply is printed); the first message
+  after LilBot is back shortens it with the save; the gateway's hygiene pre-pass (forced by a low message limit on that
+  profile) saves first too. Prints passes, seconds and review tokens.
 - `bun run check:threads`: a temporary bot hands work to another with `lilbot_delegate` and the answer returns; a receiver hands
   it on to a third from its hidden session; the engine API's legacy `threads/ask` still answers idempotently, with its limits.
 - `bun run check:delegation`: a temporary lead hands two tasks to two helpers in one call, one with a file; then it
