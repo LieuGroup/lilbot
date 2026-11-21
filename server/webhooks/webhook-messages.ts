@@ -14,9 +14,9 @@ import { folded } from './webhook-decode'
 
 export const MESSAGE_CHARS = 4_000
 /** Messages one webhook may leave in a day, and how many of the newest one of Oscar's messages carries, and how long. */
-export const DAILY = 5
-export const CARRIED = 3
-export const NOTE_CHARS = 1_000
+const DAILY = 5
+const CARRIED = 3
+const NOTE_CHARS = 1_000
 const DAY_MS = 86_400_000
 const TAG = 'webhook-run-message'
 const NOTE = '[LilBot notice, not from Oscar: a run of your webhook'

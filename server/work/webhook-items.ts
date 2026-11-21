@@ -9,7 +9,7 @@ import { fenced } from '../memory/memory-safety'
 import type { StoredItem, WorkStore } from './work-store'
 
 /** The items one run may open: its own work and a question for Oscar, with one to spare. */
-export const RUN_ITEMS = 3
+const RUN_ITEMS = 3
 /** An item's fields a webhook run wrote. */
 const RUN_TEXT = ['title', 'done', 'question', 'result', 'dropReason', 'evidence'] as const
 
