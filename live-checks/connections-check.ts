@@ -30,7 +30,11 @@ let nativeId = ''
 let child: ReturnType<typeof Bun.spawn> | undefined
 let close = () => {}
 const pass = (text: string) => console.log(`PASS: ${text}`)
-const servers = (config: string) => [...config.matchAll(/^ {2}([A-Za-z0-9_-]+):$/gm)].map(match => match[1])
+/** The names in the profile's `mcp_servers:` block (two-space keys until the next top-level key). */
+const servers = (config: string) => {
+  const block = config.split(/^mcp_servers:\s*$/m)[1]?.split(/^\S/m)[0] ?? ''
+  return [...block.matchAll(/^ {2}([A-Za-z0-9_-]+):/gm)].map(match => match[1])
+}
 
 try {
   nativeId = await engine.createRuntime({
@@ -128,6 +132,7 @@ try {
   plain = serviceFixture({ oauth: false, marker: 'PLAIN_CHECK_', port: plainPort })
   await chat.say('Remove the plaincheck connection with lilbot_connection. Reply in one sentence.')
   assert.equal(await status('plaincheck'), undefined)
+  for (let i = 0; servers(profileConfig()).includes('lilbot_c_plaincheck') && i < 30; i++) await Bun.sleep(500)
   assert.ok(!servers(profileConfig()).includes('lilbot_c_plaincheck'), 'the engine still has the removed service')
   const gone = await chat.say('Call the plaincheck echo tool with the text gone. If you have no such tool, reply NO_TOOL.')
   assert.equal(plain.counts.toolCalls, 0, 'the removed service was still called')

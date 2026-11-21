@@ -89,8 +89,8 @@ test('the receiver attaches files to its answer; they reach the delegating bot w
   await expect(f.delegation.attach('c', { exchangeId: id, files: ['chart.png'] })).rejects.toThrow('while you work')
   await f.delegation.attach('b', { exchangeId: id, files: ['chart.png'] })
   f.runs[0].finish('Here is the chart')
-  await f.settle()
-  await f.settle()
+  // Copying the answer's file takes longer than one tick on a busy machine.
+  for (let i = 0; i < 100 && !f.runs[1]; i++) await f.settle()
   const answer = f.runs[1]
   expect(answer.botId).toBe('a')
   const path = /exchanges\/\S+-chart\.png/.exec(answer.prompt)![0]
