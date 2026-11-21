@@ -6,6 +6,7 @@ import { backgroundFailure } from '../../background'
 import { type ActivityReplayState, type ActivityUpdate, applyActivityReplay, replayNeedsReset, replayPosition } from '../activity-replay'
 import type { RuntimeBinding } from '../bot-engine'
 import { chatEventFrom } from './hermes-chat-mapping'
+import { saveFailed } from './hermes-memory-saves'
 import { HermesSocket } from './hermes-socket'
 import { reportReplay } from './hermes-tool-calls'
 
@@ -49,7 +50,7 @@ export function watchHermesActivity(
         reportReplay(engineBotId === 'default' ? '' : engineBotId, chatId, replay.events, (!previous || reset) && !row.running)
         if (conversationEvent)
           for (const event of replay.events) {
-            const mapped = chatEventFrom(event)
+            const mapped = chatEventFrom(event, () => saveFailed(engineBotId, [chatId]))
             if (mapped) conversationEvent(botId, chatId, mapped, `${replay.replay_epoch}:${event.seq}`)
           }
         const updates: ActivityUpdate[] = replay.events.map((event: any) => ({

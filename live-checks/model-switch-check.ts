@@ -59,8 +59,8 @@ try {
     `switch at ${big.context} tokens to a ${small.window}-token window was accepted; the next turn compacted first (${big.context} -> ${small.context} tokens), ${small.model} answered "${small.text.trim()}" from the summary`
   )
 
-  // Which compaction ran decides whether LilBot's save-before-compress hook (a hidden review session of the bot) ran. Recorded, not asserted:
-  // Hermes' gateway "session hygiene" compacts before the agent starts and loads no memory plug-in, so it skips the hook.
+  // Which compaction ran, and whether LilBot's save before compressing (a hidden review session of the bot) ran first. Recorded, not asserted
+  // here: both paths take the save since the bot is fail-closed (#148), which `check:checkpoint` asserts.
   const reviews = async () => {
     const db = new Database(join(homedir(), 'lilbot-dev/hermes/profiles', native, 'state.db'), { readonly: true })
     try {

@@ -7,8 +7,10 @@ import { Bubble, BubbleContent } from '@/ui/bubble'
 import { Message, MessageContent, MessageFooter } from '@/ui/message'
 import { Trace, TraceIcon, TraceLine, TraceTitle } from '@/ui/trace'
 import { ImageNote, SentAttachments } from '../attachments/message-attachments'
+import { useBotStore } from '../bots/bot-store'
 import { thisDeviceId } from '../devices/this-device'
 import type { MessageItem } from './chat-state'
+import { failureLine } from './failure-lines'
 
 // An exchange with another bot draws as a bordered line with its live state; it loads with the first one.
 const ThreadLine = lazy(() => import('../threads/thread-line'))
@@ -58,13 +60,17 @@ export const ChatItem = memo(function ChatItem({ item, botId, queued = false }: 
         </Suspense>
       )
     case 'error':
-      return (
-        <Bubble variant="destructive" role="alert" className="max-w-full">
-          <BubbleContent>{item.text}</BubbleContent>
-        </Bubble>
-      )
+      return item.reason ? <ErrorBubble text={failureLine(item.reason, useBotStore.getState().bots.find(bot => bot.id === botId)?.name)} /> : <ErrorBubble text={item.text} />
   }
 })
+
+function ErrorBubble({ text }: { text: string }) {
+  return (
+    <Bubble variant="destructive" role="alert" className="max-w-full">
+      <BubbleContent>{text}</BubbleContent>
+    </Bubble>
+  )
+}
 
 /** A tool the bot used, as one Trace line: spinner while it runs, a check or a cross after. */
 function ToolTrace({ item }: { item: Extract<MessageItem, { kind: 'tool' }> }) {

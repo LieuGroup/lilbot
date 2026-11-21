@@ -153,7 +153,9 @@ describe.skipIf(!installed)('Hermes wire contract', () => {
   })
 
   test('thread transcript fields remain declared', () => {
-    expect(['role', 'text', 'tool_call_id', 'name', 'context', 'content'].filter(key => !fields(contract.components.schemas.TranscriptMessage).has(key))).toEqual([])
+    expect(
+      ['role', 'text', 'tool_call_id', 'name', 'context', 'content', 'display_kind', 'timestamp'].filter(key => !fields(contract.components.schemas.TranscriptMessage).has(key))
+    ).toEqual([])
   })
 
   test('usage still reports the context size', () => {
