@@ -5,6 +5,7 @@ import { Database } from 'bun:sqlite'
 import assert from 'node:assert/strict'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { botCapability } from '../server/bots/bot-capability'
 import { HermesSocket } from '../server/engines/hermes/hermes-socket'
 import { observeChat } from './engine-observer'
 import { type RestartServer, waitFor } from './restart-server'
@@ -126,11 +127,21 @@ export async function checkpointBot(server: RestartServer, review: string) {
     }
     return assert.fail('no compaction was attempted')
   }
+  const save = async (messages: { role: 'user' | 'assistant'; text: string }[]) => {
+    const token = readFileSync(join(server.root, 'engine-token'), 'utf8').trim()
+    const response = await fetch(`http://127.0.0.1:${server.port}/engine/history/save`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'x-lilbot-bot-capability': botCapability(token, bot.id), 'content-type': 'application/json' },
+      body: JSON.stringify({ chatId: main.chatId, messages })
+    })
+    assert.equal(response.status, 200, `history/save failed: ${response.status}`)
+    return (await response.json()) as { saved: boolean; passes?: number; skipped?: boolean }
+  }
   const close = () => {
     engine?.close()
     watching.close()
   }
-  return { bot, main, watching, config, facts, logs, report, crossing, compacting, direct, close }
+  return { bot, main, watching, config, facts, logs, reviews, report, save, crossing, compacting, direct, close }
 }
 
 /** Local time as Hermes writes it in its logs. */
