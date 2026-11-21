@@ -4,6 +4,7 @@ import { LilBotError } from '../../../shared/lilbot-error'
 import type { SessionChange } from '../bot-engine'
 import { DEFAULT_PROFILE } from './hermes-bot-mapping'
 import { HermesSocket } from './hermes-socket'
+import { contextFromInfo } from './hermes-usage'
 
 /** The level a session reports it sends; null when it sends none (Hermes reports an empty string); undefined when the report does not carry it. */
 export function wireEffort(info: Record<string, any> | undefined): string | null | undefined {
@@ -66,5 +67,7 @@ async function mutate(socket: Pick<HermesSocket, 'request'>, chatId: string, cha
   if (model && !(await apply('model', { model: model.model, provider: model.provider, ...(level ? { reasoning: level } : {}) }))) return null
   if (reasoningEffort !== undefined && !(model && level) && !(await apply('reasoning', { effort: reasoningEffort }))) return null
   const session = await resume()
-  return session ? { effort: wireEffort(session.info) ?? null } : null
+  if (!session) return null
+  const context = contextFromInfo(session.info)
+  return { effort: wireEffort(session.info) ?? null, ...(context ? { context } : {}) }
 }

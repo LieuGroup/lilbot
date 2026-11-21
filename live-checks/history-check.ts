@@ -1,8 +1,9 @@
 import '../scripts/dev-env'
-import assert from 'node:assert/strict'
 import { Database } from 'bun:sqlite'
+import assert from 'node:assert/strict'
 import { join } from 'node:path'
 import { HermesSocket } from '../server/engines/hermes/hermes-socket'
+import { assertBotContext, assertTurnUsage, checkCompactionMarker } from './history-compaction'
 import { RestartServer, waitFor } from './restart-server'
 
 const server = await RestartServer.create()
@@ -13,19 +14,26 @@ try {
   async function turn(chatId: string, text: string) {
     const start = server.events.length
     await server.call('chat.send', { chatId, text })
-    await waitFor(
+    const frames = await waitFor(
       'turn completion',
       async () => server.events.slice(start),
       frames => frames.some(f => f.event === 'chat' && f.chatId === chatId && f.data.type === 'turn.finished'),
       180_000
     )
+    return frames.find(f => f.event === 'chat' && f.chatId === chatId && f.data.type === 'turn.finished')?.data
   }
   const first = await server.call('chat.new', { botId: bot.id })
-  await turn(first.chatId, 'The calibration code is orchid-copper-731. Reply OK. Do not save it to memory.')
-  await turn(first.chatId, 'Run terminal with date, then terminal with pwd, then reply SECOND.')
+  const turn1 = await turn(first.chatId, 'The calibration code is orchid-copper-731. Reply OK. Do not save it to memory.')
+  assertTurnUsage(turn1, 'turn 1')
+  const turn2 = await turn(first.chatId, 'Run terminal with date, then terminal with pwd, then reply SECOND.')
+  assertTurnUsage(turn2, 'turn 2')
+  assert.ok((turn2.usage.cacheReadTokens ?? 0) + (turn2.usage.cacheWriteTokens ?? 0) > 0, `turn 2 reported no cache tokens: ${JSON.stringify(turn2.usage)}`)
+  await assertBotContext(server, bot.id, 'positive')
+  console.log(`ok: live per-turn usage and bot context (${JSON.stringify(turn2.usage)})`)
   async function toolsAfterReload() {
     await server.call('chat.close', { chatId: first.chatId })
     const snapshot = await server.call('chat.open', { botId: bot.id })
+    assert.ok(snapshot.context?.used > 0 && snapshot.context?.window > 0, `chat.open missing context: ${JSON.stringify(snapshot.context)}`)
     const tools = snapshot.items.filter((item: any) => item.kind === 'tool')
     assert.ok(tools.filter((item: any) => item.name === 'terminal').length >= 2, 'Reload lost terminal lines')
     return tools
@@ -33,6 +41,7 @@ try {
   await toolsAfterReload()
   await server.call('chat.close', { chatId: first.chatId })
   const second = await server.call('chat.new', { botId: bot.id })
+  await assertBotContext(server, bot.id, 'zero')
   await turn(second.chatId, 'Reply THIRD.')
   await turn(second.chatId, 'Use search_conversations to find the calibration code from our earlier conversation and report it.')
   assert.ok(
@@ -108,6 +117,12 @@ try {
     p => p.import.complete
   )
   assert.deepEqual((await server.call('chat.open', { botId: bot.id })).history.items, repaired, 'Re-import duplicated or changed rows')
+  assert.ok(
+    repaired.filter((r: any) => r.item.kind === 'assistant' && r.item.usage?.outputTokens > 0 && r.item.usage?.contextTokens > 0).length >= 3,
+    'Per-turn usage was lost across restart or forced re-import'
+  )
+  await assertBotContext(server, bot.id, 'positive')
+  console.log('ok: per-turn usage and bot context survived restart and forced re-import')
   // Exclude the older session: the operator command, then a restart and a forced re-import must not bring it back.
   assert.ok(server.root.includes('/lilbot-dev/runs/'), 'The command must only target a dev run folder')
   const exclude = (...extra: string[]) =>
@@ -169,6 +184,7 @@ try {
   } finally {
     socket.close()
   }
+  await checkCompactionMarker(server, bot.id, turn)
 } finally {
   await server.cleanup()
 }

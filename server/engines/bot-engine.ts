@@ -46,13 +46,20 @@ export interface RoutineOptions {
   model?: BotModel
 }
 
+/** Partial or full context report from an engine. */
+export interface ContextReport {
+  used?: number
+  window?: number | null
+}
+
 export interface ChatOptions {
-  /** The bot's folder; the chat works there. */
   workspace: string
   /** Given to a session the engine creates; a resumed session keeps its own. */
   reasoningEffort?: ReasoningEffort
-  /** Told what the engine says it really sends for this chat: when it opens, and whenever that changes. Null: none. */
+  /** Effective reasoning effort reported by the engine (null: none). */
   onEffort?: (effort: string | null) => void
+  /** Context size and model window reported by the engine. */
+  onContext?: (context: ContextReport) => void
   /** Explicit history must not silently become a new conversation. */
   omitMessages?: boolean
   requireExisting?: boolean
@@ -144,21 +151,15 @@ export interface BotEngine {
   /** Refuse an unavailable model before an identity edit is saved. Must not apply the old identity. */
   validateModel(model: BotModel): Promise<void>
   listModels(): Promise<ModelProvider[]>
-  /** Switch a stored conversation to the model and effort from its next message, also while it is working. Resolves with the
-   *  level the engine now says it sends (null: none), or null when the conversation no longer exists. Throws
-   *  `confirm_required` when the engine wants a confirmation first and changed nothing. */
-  updateSession(botId: string, chatId: string, change: SessionChange): Promise<{ effort: string | null } | null>
-  /** Open a new chat (`chatId` null) or continue a stored one. A stored chat that no longer exists
-   *  is replaced by a new one; the snapshot says which chat was opened. Events arrive until `close()`. */
+  /** Switch a stored conversation's model or effort from its next message. Throws `confirm_required` if held back. */
+  updateSession(botId: string, chatId: string, change: SessionChange): Promise<{ effort: string | null; context?: ContextReport } | null>
+  /** Open a new chat (`chatId` null) or continue a stored one. Events arrive until `close()`. */
   openChat(botId: string, chatId: string | null, options: ChatOptions, onEvent: (event: ChatEvent) => void): Promise<OpenChat>
-  /** Makes the bot read and write LilBot's memory instead of the engine's own, from its next
-   *  session on. Returns the notes the engine had, so LilBot can keep them. */
+  /** Switch the bot to LilBot memory from its next session; returns legacy engine notes. */
   connectMemory(botId: string, connection: MemoryConnection): Promise<LegacyNotes>
-  /** Upgrades connected adapters only for LilBot's non-deleted bindings (native ids). Returns
-   *  updated native ids. Start-up passes must never discover their own set of profiles. */
+  /** Upgrade connected adapters only for LilBot's non-deleted native bindings. */
   refreshMemory(botIds: string[]): Promise<string[]>
-  /** Runs `prompt` as a hidden session of the bot with only its memory tools, and resolves when
-   *  the bot has finished. Used by the after-chat memory review. */
+  /** Run `prompt` as a hidden memory-only session for the after-chat review. */
   reviewMemory(botId: string, prompt: string, options: ReviewOptions): Promise<void>
   /** Run or recover one scheduled task, using runId as a durable execution identity. */
   runRoutine(

@@ -1,5 +1,6 @@
 import { GOAL_TABLES } from './goal-tables'
 import { GROUP_TABLES } from './group-tables'
+import { HISTORY_USAGE_TABLES } from './history-usage-tables'
 import { WEBHOOK_ACCESS, WEBHOOK_TABLES } from './webhook-tables'
 import { WORK_CHECK_COLUMNS } from './work-check-columns'
 
@@ -152,8 +153,7 @@ export const migrations: string[] = [
   // "Add this computer" attempts: which computer registered with the attempt's install code.
   `CREATE TABLE IF NOT EXISTS computer_attempts(id TEXT PRIMARY KEY,code_id TEXT NOT NULL UNIQUE,expires_at INTEGER NOT NULL,computer_id TEXT);
    CREATE INDEX IF NOT EXISTS computer_attempt_expiry ON computer_attempts(expires_at);`,
-  // "My computer" (#115): the main computer (one row at most), devices, the device an add attempt started on, and the origin of plain chat
-  // messages until the history importer has matched them to their rows. Every statement is repeatable, like the older steps whose tests start from an upgraded file.
+  // "My computer" (#115): main computer, devices, add-attempt device and plain message origins. Every statement is repeatable.
   `CREATE TABLE IF NOT EXISTS main_computer(only INTEGER PRIMARY KEY CHECK(only = 1), computer_id TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS computer_attempt_devices(code_id TEXT PRIMARY KEY, device_id TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS devices(id TEXT PRIMARY KEY, name TEXT NOT NULL, computer_id TEXT, created_at INTEGER NOT NULL, last_seen INTEGER NOT NULL);
@@ -169,8 +169,7 @@ export const migrations: string[] = [
    CREATE TABLE IF NOT EXISTS thread_files(id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, message_id TEXT NOT NULL, sender TEXT NOT NULL, name TEXT NOT NULL, size INTEGER NOT NULL, sha256 TEXT, source TEXT NOT NULL, copy TEXT, at INTEGER NOT NULL);
    CREATE INDEX IF NOT EXISTS thread_files_thread ON thread_files(thread_id);
    CREATE TABLE IF NOT EXISTS thread_waits(id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, chat_id TEXT NOT NULL, thread_ids TEXT NOT NULL, delivery_id TEXT, done INTEGER NOT NULL DEFAULT 0);`,
-  // "Include this engine's skills" (#140): a switch per engine and the engine each imported skill came from. An engine that already has bots
-  // is on (nothing changes for an existing install); one added later has no row and starts off. Origins are filled only when one engine exists.
+  // "Include this engine's skills" (#140): per-engine switch and imported skill origins. Existing engines start on.
   `CREATE TABLE IF NOT EXISTS engine_skills(engine_id TEXT PRIMARY KEY, included INTEGER NOT NULL);
    INSERT OR IGNORE INTO engine_skills SELECT DISTINCT engine_id, 1 FROM bots;
    CREATE TABLE IF NOT EXISTS skill_origins(name TEXT PRIMARY KEY, engine_id TEXT NOT NULL);
@@ -196,5 +195,6 @@ export const migrations: string[] = [
   GROUP_TABLES,
   GOAL_TABLES,
   WORK_CHECK_COLUMNS,
-  WEBHOOK_ACCESS
+  WEBHOOK_ACCESS,
+  HISTORY_USAGE_TABLES
 ]

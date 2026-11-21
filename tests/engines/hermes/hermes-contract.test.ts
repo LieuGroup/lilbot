@@ -52,7 +52,12 @@ const methods: Record<string, Uses> = {
   'session.mutate': { table: 'x-canonical-methods', sends: ['session_id', 'request_id', 'expected_revision', 'expected_generation', 'operation', 'payload'], reads: ['revision'] },
   'session.transcript': { table: 'x-canonical-methods', sends: ['session_id', 'cursor', 'limit', 'order'], reads: ['rows', 'next_cursor', 'reset'] },
   // `enabled_toolsets`, `usage` and `tools.show`: what `check:webhooks` reads of a webhook run's session.
-  'session.info': { table: 'x-canonical-methods', sends: ['session_id'], reads: ['system_prompt', 'enabled_toolsets', 'usage'] },
+  'session.info': { table: 'x-canonical-methods', sends: ['session_id'], reads: ['system_prompt', 'enabled_toolsets', 'usage', 'context_length'] },
+  'session.stats': {
+    table: 'x-canonical-methods',
+    sends: ['session_id'],
+    reads: ['input_tokens', 'output_tokens', 'cache_read_tokens', 'cache_write_tokens', 'context_tokens', 'last_prompt_tokens', 'context_length', 'compression_count']
+  },
   'tools.show': { table: 'methods', sends: ['session_id'], reads: ['sections', 'total'] },
   'session.resume': {
     table: 'x-canonical-methods',
@@ -91,9 +96,20 @@ const events: Record<string, string[]> = {
   'message.delta': ['text'],
   'tool.start': ['tool_id', 'name', 'context', 'args'],
   'tool.complete': ['tool_id', 'result'],
-  'message.complete': ['status', 'text', 'usage'],
+  'message.complete': ['status', 'text', 'usage', 'persisted_turn'],
   'session.title': ['title'],
-  'session.info': ['model', 'provider', 'reasoning_effort', 'reasoning_effort_wire'],
+  'session.info': ['model', 'provider', 'reasoning_effort', 'reasoning_effort_wire', 'usage'],
+  'session.usage': [
+    'usage',
+    'input_tokens',
+    'output_tokens',
+    'cache_read_tokens',
+    'cache_write_tokens',
+    'context_tokens',
+    'last_prompt_tokens',
+    'context_length',
+    'compression_count'
+  ],
   error: ['message'],
   'session.reclaimed': []
 }
@@ -135,21 +151,23 @@ describe.skipIf(!installed)('Hermes wire contract', () => {
     expect(['reasoning', 'can_disable_reasoning'].filter(key => !fields(schemas.ModelCapabilities).has(key))).toEqual([])
   })
 
-  test('a session reports the effort it chose and the one it really sends', () => {
+  test('a session reports the effort it chose and the one it really sends, plus context window and usage', () => {
     const info = fields(contract.components.schemas.CanonicalSnapshotInfo)
-    expect(['model', 'provider', 'reasoning_effort', 'reasoning_effort_wire'].filter(key => !info.has(key))).toEqual([])
+    expect(['model', 'provider', 'reasoning_effort', 'reasoning_effort_wire', 'context_length', 'usage'].filter(key => !info.has(key))).toEqual([])
   })
 
   test('attachment input fields remain declared', () => {
     expect(['path', 'mime'].filter(key => !fields(contract.components.schemas.CanonicalAttachment).has(key))).toEqual([])
   })
 
-  test('history transcript fields remain declared', () => {
+  test('history transcript fields and compaction row kind remain declared', () => {
+    const rowSchema = contract.components.schemas.StoredTranscriptRow
     expect(
-      ['row_id', 'row_kind', 'timestamp', 'display_kind', 'role', 'text', 'tool_call_id', 'name', 'context', 'content'].filter(
-        key => !fields(contract.components.schemas.StoredTranscriptRow).has(key)
+      ['row_id', 'row_kind', 'timestamp', 'display_kind', 'role', 'text', 'tool_call_id', 'name', 'context', 'content', 'compacted_messages'].filter(
+        key => !fields(rowSchema).has(key)
       )
     ).toEqual([])
+    expect(rowSchema.properties?.row_kind?.enum ?? []).toContain('compaction')
   })
 
   test('thread transcript fields remain declared', () => {
@@ -158,8 +176,10 @@ describe.skipIf(!installed)('Hermes wire contract', () => {
     ).toEqual([])
   })
 
-  test('usage still reports the context size', () => {
-    expect(Object.keys(contract.components.schemas.Usage?.properties ?? {})).toContain('context_used')
+  test('usage and persisted_turn declare token, cache, context and assistant row fields', () => {
+    const usageFields = fields(contract.components.schemas.Usage)
+    expect(['input', 'output', 'cache_read', 'cache_write', 'context_used', 'context_max', 'compressions', 'calls'].filter(key => !usageFields.has(key))).toEqual([])
+    expect(fields(contract.components.schemas.PersistedTurn).has('final_assistant_row_id')).toBe(true)
   })
 
   test('message.complete status still has the values LilBot maps', () => {
