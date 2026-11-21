@@ -586,6 +586,14 @@ Visual specs: "Work between bots" in [docs/screens.md](docs/screens.md).
 - `chat.open`/`chat.new` keep their snapshot shape: `items` holds the latest 100 records without session dividers (for
   old clients); additive `history` holds the page (`shared/history-schema.ts`). The active session id remains
   `snapshot.chatId`; a new session keeps earlier history.
+- Per-turn usage, bot context and compaction markers (#180): `turn.finished` and stored `assistant` history items carry
+  additive `usage` (`TurnUsage`: `inputTokens`, `cacheReadTokens`, `cacheWriteTokens`, `outputTokens`, `contextTokens`,
+  `contextWindow`; counts only, no prices, omitted when the engine reports nothing), persisted in `history_turn_usage`
+  and merged on import/re-import. `Bot.context` (`{ used, window }`) tracks the main conversation's current occupancy
+  against its model's window in `bot_context`, surfaced on `bots.list`, `bots.get` and `ChatSnapshot.context` with no
+  extra on-demand engine round trips. Declared engine compaction rows (`row_kind: 'compaction'`) store as `compaction`
+  items (`author: 'system'`) with `compactedMessages`, `summary`, and `beforeTokens`/`afterTokens` (from live
+  compaction counts in `history_compactions` or shrinking neighbor turns).
 - A session divider (`session:<id>`) marks where a session began. Pages (`HistoryStore.page`) leave out the divider of
   a session with no user or assistant message, unless it is the bot's main session (just after New session). The rule
   is applied when a page is built, so stored dividers (older ones included) and re-imported rows follow it, and nothing

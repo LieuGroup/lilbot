@@ -111,7 +111,7 @@ export class BotService {
             .then(this.changed)
             .catch(() => this.changed())
         },
-        (botId, chatId, event, key) => this.history?.record(botId, chatId, event, key)
+        (botId, chatId, event, key) => this.conversations.observe(botId, chatId, event, key)
       ) ?? (() => {})
     )
   }
@@ -128,9 +128,10 @@ export class BotService {
     await this.runtimes.load()
     const identities = this.runtimes.store.list()
     const prefs = this.prefs.prefsFor(identities.map(bot => bot.id))
+    const contexts = this.sessions.contextsFor()
     const primaryId = this.primaryId(identities)
     return identities.map(identity => ({
-      ...this.identity(identity),
+      ...this.identity(identity, contexts.get(identity.id)),
       runnable: this.runtimes.snapshot(identity) !== null,
       runtimePending: this.runtimes.pending(identity),
       isPrimary: identity.id === primaryId,
@@ -221,26 +222,22 @@ export class BotService {
     return this.botMemory.connectAll()
   }
 
-  listModels(): Promise<ModelProvider[]> {
+  async listModels(): Promise<ModelProvider[]> {
     return this.engine.listModels()
   }
-
   listSections(): Section[] {
     return this.prefs.sections()
   }
-
   createSection(name: string): Section {
     const section = this.prefs.createSection(name)
     this.changed()
     return section
   }
-
   renameSection(sectionId: string, name: string): Section {
     const section = this.prefs.renameSection(sectionId, name)
     this.changed()
     return section
   }
-
   deleteSection(sectionId: string) {
     this.prefs.deleteSection(sectionId)
     this.changed()
@@ -278,9 +275,10 @@ export class BotService {
     return { ...this.identity(bot), runnable: this.runtimes.snapshot(bot) !== null, runtimePending: this.runtimes.pending(bot), ...this.own(bot) }
   }
 
-  private identity(bot: BotRecord) {
+  private identity(bot: BotRecord, context = this.sessions.contextFor(bot.id)) {
     const { id, name, function: fn, model, reasoningEffort, isDefault, permissionMode } = bot
-    return { id, name, function: fn, model, reasoningEffort, effectiveReasoningEffort: this.sessions.effectiveFor(id), isDefault, permissionMode }
+    const base = { id, name, function: fn, model, reasoningEffort, effectiveReasoningEffort: this.sessions.effectiveFor(id), isDefault, permissionMode }
+    return context ? { ...base, context } : base
   }
 
   private own(identity: BotRecord): Pick<Bot, 'isPrimary' | 'prefs' | 'workspace'> {

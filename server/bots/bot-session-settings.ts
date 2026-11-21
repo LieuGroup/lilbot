@@ -1,8 +1,9 @@
 /** What a bot's model and reasoning effort mean for its conversations: the effort a new session starts with, what an edit does to
  *  the open main conversation, and the level the engine says it really sends there. */
-import type { BotModel, BotUpdateInput, ModelProvider, ReasoningEffort } from '../../shared/bot-schema'
+import type { BotContext, BotModel, BotUpdateInput, ModelProvider, ReasoningEffort } from '../../shared/bot-schema'
+import type { ChatEvent } from '../../shared/chat-schema'
 import { LilBotError } from '../../shared/lilbot-error'
-import type { BotEngine, SessionChange } from '../engines/bot-engine'
+import type { BotEngine, ContextReport, SessionChange } from '../engines/bot-engine'
 import type { BotPrefsStore } from './bot-prefs-store'
 import type { BotRecord } from './bot-store'
 
@@ -35,6 +36,32 @@ export class SessionSettings {
     this.changed()
   }
 
+  contextFor(botId: string): BotContext | undefined {
+    return this.prefs.context(botId)
+  }
+
+  contextsFor(): Map<string, BotContext> {
+    return this.prefs.contextsFor()
+  }
+
+  noteContext(botId: string, chatId: string, report: ContextReport) {
+    if (this.prefs.mainChat(botId) !== chatId) return
+    if (this.prefs.setContext(botId, chatId, report)) this.changed()
+  }
+
+  resetContext(botId: string, chatId: string) {
+    if (this.prefs.mainChat(botId) !== chatId) return
+    if (this.prefs.resetContextForChat(botId, chatId)) this.changed()
+  }
+
+  noteContextFromEvent(botId: string, chatId: string, event: ChatEvent) {
+    if (event.type !== 'turn.finished') return
+    const used = event.usage?.contextTokens ?? event.contextTokens
+    const window = event.usage?.contextWindow
+    if (used === undefined && window === undefined) return
+    this.noteContext(botId, chatId, { ...(used !== undefined ? { used } : {}), ...(window !== undefined ? { window } : {}) })
+  }
+
   forget(botId: string) {
     this.effective.delete(botId)
     this.unapplied.delete(botId)
@@ -61,7 +88,10 @@ export class SessionSettings {
       try {
         const result = await this.engine.updateSession(bot.engineBotId, chatId, change)
         this.unapplied.delete(bot.id)
-        if (result) this.noteEffective(bot.id, result.effort)
+        if (result) {
+          this.noteEffective(bot.id, result.effort)
+          if (result.context) this.noteContext(bot.id, chatId, result.context)
+        }
       } catch (error) {
         // A switch the engine holds back is an answer, not a failure to retry: the choice stays saved and the level still applies.
         if (!(error instanceof LilBotError && error.code === 'confirm_required')) {
