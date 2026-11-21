@@ -126,7 +126,7 @@ choices as the delete dialog, saved at once with `bots.deleteDefaults.set`. Gene
 ## Details panel (`bots/bot-details-panel.tsx`)
 
 Avatar, name and pill tabs. Activity shows the live state (with how long, only when this browser saw it start:
-`activity/activity-since.ts`), "With other bots" (below), "Routines" (below) and the workspace folder (click copies
+`activity/activity-since.ts`), "With other bots" (below), "Routines" and "Webhooks" (below) and the workspace folder (click copies
 the path; a browser cannot open a server folder).
 
 ## Skills (Paper "17 Skills and webhooks" frames 1 to 3, `web/src/skills/`)
@@ -170,6 +170,28 @@ the path; a browser cannot open a server folder).
   bot's text, the shimmering activity line while it runs. Foot, 12/16 muted and centred: "A finished run is read-only.
   To follow up, go back to the chat." (while it runs: "The run is still working. It is read-only: to follow up, go back
   to the chat."). No composer.
+
+## Webhooks (Paper "17 Skills and webhooks" frames 4 to 6, `web/src/webhooks/`)
+
+- Section (`webhooks-card.tsx`, frame 4), under Routines, only while the bot has webhooks: a 12px "Webhooks" label with
+  the count, then one hairline card. Row (padding 10/12, gap 12, `foreground/6` lines): the task on one line (13/18 500,
+  truncated; muted when paused), a 12/16 line and the ink switch. Lines: "GitHub · last event 2 hours ago" ("just now",
+  "5 min ago", "1 hour ago", "on Thu 19 Nov" after a day), "Paused · GitHub · no events yet", and, like a routine's,
+  "Running now · GitHub" with the blue spinner while a run waits or runs, "Last run failed · GitHub · last event ..." in
+  red. Under the card, 12px muted: "Ask <bot> in the chat to watch something."
+- One webhook (`webhook-detail.tsx`, frame 5), in place of the whole panel: the routine's 52px bar with "‹ Activity" and
+  the bin; the full task (14/21 500) with the switch; a facts card: From (the service), Last event ("Today 14:12" or "No
+  events yet"), Created ("You asked for it" or "<bot> made it") and Address with an outlined "Copy" (12/16 500, padding
+  4/10, radius 8, `foreground/12` ring; the row's padding 7/8/7/12). The address itself is never drawn. Then "Runs" as a
+  routine's (`run-list.tsx`): "Today 14:12 · 3 events" (the run's first event; "1 event"), the result on two lines, red
+  with "Failed: " when failed, a chevron. Under it, 12px muted: "Events that arrive close together are handled in one run.
+  The address is a secret: anyone who has it can wake this bot."
+- Delete (`delete-webhook-dialog.tsx`, frame 6): the routine dialog's shell (`routines/confirm-delete-dialog.tsx`):
+  "Delete this webhook?", "Its address stops working at once, and its past runs are removed. <service> will keep calling it
+  until the bot or you remove it there.", Cancel and a red "Delete". Back to the Activity tab after.
+- A run (`webhook-run-view.tsx`), in the conversation column like a routine run (`routines/run-transcript.tsx`): the 16px
+  webhook mark, "Webhook run" and "Today 14:12 · 3 events", "Back to chat", then "The webhook asked" with the task, the
+  tool lines and the bot's text, and the same read-only foot.
 
 ## Library (Paper "08 Library", `web/src/library/`)
 

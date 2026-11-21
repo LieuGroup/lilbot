@@ -1,5 +1,5 @@
 import { ChevronLeftIcon, Trash2Icon } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Button } from '@/ui/button'
 import { Fact } from '@/ui/fact'
 import { iconButton } from '@/ui/icon-button'
@@ -70,9 +70,11 @@ export default function WebhookDetail({ botId, webhookId }: { botId: string; web
 /** "Address" with Copy: the address is fetched on the click and written to the clipboard; the button says what happened. */
 function AddressRow({ botId, id }: { botId: string; id: string }) {
   const [label, setLabel] = useState('Copy')
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const show = (text: string) => {
     setLabel(text)
-    setTimeout(() => setLabel('Copy'), 2000)
+    clearTimeout(timer.current)
+    timer.current = setTimeout(() => setLabel('Copy'), 2000)
   }
   const copy = () =>
     copyAddress(botId, id).then(
