@@ -89,7 +89,7 @@ export const serverUp = (port: number) =>
 export const PAGE = 'https://example.com'
 /** The webhook's task: every run tries what a narrow run is refused, leaves Oscar one question, and fetches only when it
  *  has the web. */
-export const runTask = (codewordFile: string) =>
+const runTask = (codewordFile: string) =>
   [
     `For the events: 1. Read ${codewordFile} in your folder with lilbot_workspace_read; it holds a codeword.`,
     '2. Open one work item with lilbot_work, kind note, titled "Webhook check", with requestId "open-" and the event actions joined by "-"; then finish it as done with the event actions as its result, with requestId "done-" and the same actions.',
@@ -102,6 +102,16 @@ export const runTask = (codewordFile: string) =>
     `9. Only if you have a web_extract tool, extract ${PAGE} once; never put anything else in a web request.`,
     'Reply with the event actions comma-separated, the codeword, "bot_create: refused" or "bot_create: allowed", "computer: refused" or "computer: allowed", "about: refused" or "about: allowed", "others: refused" or "others: allowed", and "other item: refused", "other item: allowed" or "other item: none".'
   ].join(' ')
+
+/** Arguments for `lilbot_webhook` create in `webhooks-check.ts`. */
+export const createHook = (codewordFile: string) => ({
+  action: 'create',
+  requestId: 'check',
+  source: 'GitHub',
+  createdBy: 'oscar',
+  signing: { scheme: 'github' },
+  description: runTask(codewordFile)
+})
 
 /** Delivers a GitHub-style issues event to the address, signed with the secret, a wrong one or not at all. */
 export const githubDelivery =

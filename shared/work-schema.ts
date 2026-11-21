@@ -115,31 +115,17 @@ export const WorkInput = z.object({
   requestId: z.string().min(1).max(100),
   itemId: itemId.optional(),
   title: text(200).optional(),
-  done: text(2000).optional().describe('How you will know it is done, written before starting'),
-  kind: z
-    .enum(KIND_NAMES)
-    .optional()
-    .describe('At open. Default levels: reply, note 0; file, computer, code 1; deploy, outside (leaves the system), spending, figure (a number Oscar decides on) 2'),
-  level: z
-    .number()
-    .int()
-    .min(0)
-    .max(3)
-    .optional()
-    .describe(
-      "At least the kind's default; raise it for anything hard to undo, never lower. 0 no check, 1 you check the real result, 2 another bot reproduces it (a fresh session of you if none is eligible), 3 Oscar"
-    ),
-  asked: z.enum(['oscar', 'self']).optional().describe('Who asked, in a conversation (default oscar)'),
-  goalId: itemId.optional().describe('At open: the agreed goal of yours this work is for'),
+  done: text(2000).optional().describe('Done criteria, written before starting'),
+  kind: z.enum(KIND_NAMES).optional().describe('At open. Defaults: reply/note=0; file/computer/code=1; deploy/outside/spending/figure=2'),
+  level: z.number().int().min(0).max(3).optional().describe('>= kind default (raise if hard to undo, never lower). 0 none, 1 self, 2 bot check, 3 Oscar'),
+  asked: z.enum(['oscar', 'self']).optional().describe('Who asked (default oscar)'),
+  goalId: itemId.optional().describe('At open: your agreed goal id'),
   status: z.enum(['working', 'needs_oscar', 'done', 'failed', 'dropped']).optional(),
   question: text(1000).optional(),
   evidence: z.array(EvidenceInput).max(10).optional(),
   result: text(4000).optional(),
   reason: text(1000).optional(),
-  verdict: z
-    .enum(['verified', 'not_verified', 'could_not_check'])
-    .optional()
-    .describe('Only when LilBot asked you to check the item: with result (what you saw, or why not) and evidence')
+  verdict: z.enum(['verified', 'not_verified', 'could_not_check']).optional().describe('Check verdict (with result and evidence)')
 })
 export type WorkInput = z.infer<typeof WorkInput>
 

@@ -95,9 +95,9 @@ const lines = z.array(text(300)).max(10)
 const GoalAgreementInput = z.object({ alone: lines.min(1), needsOscar: lines, cannotInfluence: lines })
 const GoalTargetInput = z.object({
   measure: text(200).describe('What is counted'),
-  source: text(500).describe('Where you read it: a path, page or command'),
-  baseline: z.number().describe('The value you read from the source now'),
-  evidence: EvidenceInput.describe('How you read the baseline'),
+  source: text(500).describe('Where read: path, page or command'),
+  baseline: z.number().describe('Current value from source'),
+  evidence: EvidenceInput.describe('Baseline reading proof'),
   value: z.number(),
   due: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 })
@@ -109,15 +109,15 @@ export const GoalInput = z.object({
   action: z.enum(['propose', 'progress']),
   requestId: z.string().min(1).max(100),
   goalId: goalId.optional(),
-  text: text(2000).optional().describe("A new goal: Oscar's words"),
+  text: text(2000).optional().describe("Oscar's words (new goal)"),
   agreement: GoalAgreementInput.optional(),
   target: GoalTargetInput.optional(),
-  review: RoutineSchedule.optional().describe('Review rhythm, default weekly'),
-  drop: z.boolean().optional().describe('Propose dropping an agreed goal'),
-  why: text(1000).optional().describe('Why the change'),
-  value: z.number().optional().describe('progress: the measure as you read it now'),
-  did: text(2000).optional().describe('progress: what you did of what you said you would'),
-  evidence: z.array(EvidenceInput).min(1).max(5).optional().describe('progress: how you read the value')
+  review: RoutineSchedule.optional().describe('Review schedule (default weekly)'),
+  drop: z.boolean().optional().describe('Propose drop'),
+  why: text(1000).optional().describe('Reason for change'),
+  value: z.number().optional().describe('progress: current value'),
+  did: text(2000).optional().describe('progress: work done'),
+  evidence: z.array(EvidenceInput).min(1).max(5).optional().describe('progress: reading proof')
 })
 export type GoalInput = z.infer<typeof GoalInput>
 

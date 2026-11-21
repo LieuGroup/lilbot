@@ -1,45 +1,34 @@
-/** Delegation tools: hand work to other bots and keep control of it. Each calls `DelegationService` or
- *  `DelegationControl`, which use the
- *  same exchanges, stop and records as the screens (`threads.list`, `threads.open`, `threads.cancel`). */
-import { z } from 'zod'
-import { AttachInput, DelegateInput, RedirectInput } from '../../shared/thread-schema'
-import { actionTool, type McpTool, readTool } from './mcp-tool'
+/** Delegation tools: hand work to other bots (`lilbot_delegate`) and control it or attach reply files
+ *  (`lilbot_delegation`). Status calls are reads (no change record, allowed in check sessions), like `lilbot_group`. */
+import { LilBotError } from '../../shared/lilbot-error'
+import { AttachInput, DelegateInput, DelegationActionInput, RedirectInput } from '../../shared/thread-schema'
+import { actionTool, type McpTool } from './mcp-tool'
 import type { SystemDeps } from './system-deps'
 
-const exchangeId = z.string().min(1).max(100)
-const Pick = z.object({ exchangeIds: z.array(exchangeId).max(20).optional(), batchId: z.string().max(100).optional() })
-
 export function delegationTools({ delegation: { hand, control } }: SystemDeps): McpTool[] {
+  const controlTool = actionTool(
+    'lilbot_delegation',
+    'Control work you handed out, or attach files to an exchange answer. action: status (exchangeIds/batchId), cancel (exchangeId), redirect (exchangeId, requestId, message), wait (exchangeIds/batchId), attach (receiver: exchangeId, files).',
+    DelegationActionInput,
+    async (caller, { action, exchangeId, exchangeIds, batchId, requestId, message, files }) => {
+      const pick = { exchangeIds: exchangeIds ?? (exchangeId ? [exchangeId] : undefined), batchId }
+      if (action === 'status') return control.status(caller, pick)
+      if (action === 'wait') return control.wait(caller, pick)
+      if (action === 'cancel') {
+        if (!exchangeId) throw new LilBotError('exchange_id_missing', 'Give the exchangeId to cancel.')
+        return control.cancel(caller, exchangeId)
+      }
+      if (action === 'redirect') return control.redirect(caller, RedirectInput.parse({ requestId, exchangeId, message }))
+      return hand.attach(caller, AttachInput.parse({ exchangeId, files }))
+    }
+  )
   return [
     actionTool(
       'lilbot_delegate',
-      'Hand work to other bots: each does it for real as itself, with full access (commands, files, coding through T3 Code, routines, computers). One task per bot; several run at once, one exchange each, as one batch. Attach files from your folder by path. Answers come back later as new turns here: never poll. Reuse requestId only when retrying.',
+      'Hand work to other bots (one task per bot, full access, run in parallel). Each task is an exchange in one batch; attach workspace files by path. Answers arrive as new turns: never poll. Reuse requestId only on retry.',
       DelegateInput,
       (caller, input) => hand.delegate(caller, input)
     ),
-    readTool(
-      'lilbot_delegation_status',
-      'Work you handed out: waiting, working (what the bot is doing, for how long), finished, failed or cancelled, the files passed and the latest answer. By exchange or batch; by default what is under way and the latest.',
-      Pick,
-      (caller, pick) => control.status(caller, pick)
-    ),
-    actionTool(
-      'lilbot_delegation_cancel',
-      'Stop work you handed out. The other bot stops at once; a late answer stays in the record and is not sent to you.',
-      z.object({ exchangeId }),
-      (caller, { exchangeId }) => control.cancel(caller, exchangeId)
-    ),
-    actionTool(
-      'lilbot_delegation_redirect',
-      'Change the course of work you handed out without starting over: the other bot gets your message at its next step, or with its next turn.',
-      RedirectInput,
-      (caller, input) => control.redirect(caller, input)
-    ),
-    actionTool('lilbot_delegation_wait', 'Be told once all these exchanges are in. Returns at once; each answer still arrives on its own.', Pick, (caller, pick) =>
-      control.wait(caller, pick)
-    ),
-    actionTool('lilbot_delegation_attach', 'Send files from your folder back with your answer, while you work on an exchange another bot gave you.', AttachInput, (caller, input) =>
-      hand.attach(caller, input)
-    )
+    { ...controlTool, readOnly: (args: DelegationActionInput) => args.action === 'status' }
   ]
 }

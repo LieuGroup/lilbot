@@ -8,6 +8,8 @@ sys.path.insert(0, str(Path.home() / '.hermes/hermes-agent'))
 spec = importlib.util.spec_from_file_location('computers_adapter', Path(__file__).resolve().parents[1] / 'server/engines/hermes/computers-adapter/__init__.py')
 adapter = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(adapter)
+assert adapter.VERSION == '1.1.0', adapter.VERSION
+assert 'version: 1.1.0' in (Path(__file__).resolve().parents[1] / 'server/engines/hermes/computers-adapter/plugin.yaml').read_text()
 handlers = {}
 class Context:
     def register_tool(self, **tool):
