@@ -129,6 +129,23 @@ Avatar, name and pill tabs. Activity shows the live state (with how long, only w
 `activity/activity-since.ts`), "With other bots" (below), "Routines" (below) and the workspace folder (click copies
 the path; a browser cannot open a server folder).
 
+## Skills (Paper "17 Skills and webhooks" frames 1 to 3, `web/src/skills/`)
+
+- Section (`skills-section.tsx`, frame 1), in the Setup tab between Workspace and Abilities: a 12px "Skills" label with
+  "14 · 2 off" at the right ("14" with none off, "1 of 14" while searching), a "Find a skill" box (32px, 10 radius,
+  hairline, 14px search icon; filters names and descriptions), then one hairline card with a row per skill
+  (`skill-row.tsx`: padding 10/12, gap 12, `foreground/6` lines): the name (13/18 500), the description on one line
+  (12/16 muted, cut) and the ink switch. A switched-off row has a muted name and reads "Off for <bot>". A refused switch
+  puts it back and shows a 12px red line under the card: "Could not switch <skill> off. Try again." Under the card, 12px
+  muted: "All bots share these skills. A switch here only affects <bot>, from its next session. Ask a bot in chat to
+  write or improve one." Nothing found (frame 3): no card, 13/20 muted "No skill matches “<text>”. Ask a bot to write
+  one."
+- One skill (`skill-detail.tsx`, frame 2, `?skill=`), in place of the Setup tab's content: "‹ Skills" (13/18 500), the
+  name (16/22 600) and the full description (13/20 muted) with the same switch, a facts card (Written by, Last changed
+  "Today 14:24", "For <bot>": On/Off), the files as 12px monospace pill tabs (SKILL.md first, the selected one on
+  `foreground/6`, wrapping on a phone), the selected file in a hairline card (`skill-file-text.tsx`: markdown headings
+  14/600 and 13/600, body 13/20; other files as 12px monospace text), and "Read-only here. Ask a bot to change it."
+
 ## Routines (Paper "07 Routines", `web/src/routines/`)
 
 - Card (`routines-card.tsx`, panel 1): a 12px "Routines" label with the count, then one hairline card. Row (padding
