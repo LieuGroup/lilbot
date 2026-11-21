@@ -8,7 +8,7 @@ export function goalTools({ goals }: SystemDeps): McpTool[] {
   return [
     actionTool(
       'lilbot_goal',
-      "When Oscar gives you an outcome to reach, propose a goal agreement and a measured target for him to agree, then report reviews. propose: Oscar's words (text), the agreement (what you do alone, need from him, cannot influence) and the target with a baseline you read from its source now; with goalId, a new version or a change (why). progress: on an agreed goal, the value you read now, did and evidence. Guide topic goals.",
+      'Propose a goal agreement and target for Oscar, or report a review. propose: text, agreement, target (with live baseline); with goalId, revise or change (why). progress: value, did, evidence. Guide: goals.',
       GoalInput,
       (caller, input) => goals.act(caller, input)
     )

@@ -1,6 +1,7 @@
 import { GOAL_TABLES } from './goal-tables'
 import { GROUP_TABLES } from './group-tables'
 import { HISTORY_USAGE_TABLES } from './history-usage-tables'
+import { MEMORY_CHECKPOINT_TABLES } from './memory-checkpoint-tables'
 import { WEBHOOK_ACCESS, WEBHOOK_TABLES } from './webhook-tables'
 import { WORK_CHECK_COLUMNS } from './work-check-columns'
 
@@ -150,7 +151,6 @@ export const migrations: string[] = [
    FROM (SELECT p.bot_id, ROW_NUMBER() OVER (ORDER BY COALESCE(b.name, p.bot_id) COLLATE NOCASE, p.bot_id) - 1 AS position
          FROM bot_prefs p LEFT JOIN bots b ON b.id = p.bot_id WHERE p.pinned = 1) AS ranked
    WHERE bot_prefs.bot_id = ranked.bot_id;`,
-  // "Add this computer" attempts: which computer registered with the attempt's install code.
   `CREATE TABLE IF NOT EXISTS computer_attempts(id TEXT PRIMARY KEY,code_id TEXT NOT NULL UNIQUE,expires_at INTEGER NOT NULL,computer_id TEXT);
    CREATE INDEX IF NOT EXISTS computer_attempt_expiry ON computer_attempts(expires_at);`,
   // "My computer" (#115): main computer, devices, add-attempt device and plain message origins. Every statement is repeatable.
@@ -160,7 +160,6 @@ export const migrations: string[] = [
    CREATE TABLE IF NOT EXISTS message_origins(id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, text TEXT NOT NULL, device_id TEXT NOT NULL, device_name TEXT NOT NULL, at INTEGER NOT NULL, row_id TEXT);
    CREATE INDEX IF NOT EXISTS message_origins_pending ON message_origins(bot_id, at) WHERE row_id IS NULL;
    CREATE UNIQUE INDEX IF NOT EXISTS message_origins_row ON message_origins(bot_id, row_id) WHERE row_id IS NOT NULL;`,
-  // The user's reasoning effort per bot; null follows the engine's default.
   `ALTER TABLE bots ADD COLUMN reasoning_effort TEXT;`,
   // Delegation (#132): the batch a task came from, a parent work item (#141), files passed with a message and groups a bot waits on. Every statement is repeatable.
   `CREATE TABLE IF NOT EXISTS thread_links(thread_id TEXT PRIMARY KEY, batch_id TEXT, parent_id TEXT);
@@ -196,5 +195,6 @@ export const migrations: string[] = [
   GOAL_TABLES,
   WORK_CHECK_COLUMNS,
   WEBHOOK_ACCESS,
+  MEMORY_CHECKPOINT_TABLES,
   HISTORY_USAGE_TABLES
 ]

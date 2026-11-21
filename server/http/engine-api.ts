@@ -13,6 +13,7 @@ import { matchesCapability } from '../bots/bot-capability'
 import { BotCreationInput } from '../bots/bot-creation'
 import type { BotService } from '../bots/bot-service'
 import type { LibraryService } from '../library/library-service'
+import type { CheckpointStore } from '../memory/memory-checkpoint-store'
 import { endOfDay } from '../memory/memory-expiry'
 import type { MemoryReviewer } from '../memory/memory-reviewer'
 import type { MemoryService } from '../memory/memory-service'
@@ -49,6 +50,8 @@ export interface EngineApiOptions {
   adapterVersion?: string
   /** Receives finished turns and knows which chats are reviews. Without it there is no review. */
   reviewer?: MemoryReviewer
+  /** Durable record of pre-compress pieces already reviewed for memory. */
+  checkpointStore?: CheckpointStore
   /** Routine, thread and webhook sessions and their compression children are never reviewed, before or after compressing. */
   chatKind?: import('../bots/hidden-chats').ChatKind
   /** Why a call that may come from a check session (no memory, no changes) may not use memory or change skills, or null. */

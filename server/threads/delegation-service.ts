@@ -72,7 +72,7 @@ export class DelegationService {
     return {
       exchanges,
       ...(parentId ? { itemId: parentId } : {}),
-      note: 'Each answer arrives later as a new turn in this conversation. Do not poll; use lilbot_delegation_wait to hear when all are in.'
+      note: 'Each answer arrives later as a new turn in this conversation. Do not poll; use lilbot_delegation (action wait) to hear when all are in.'
     }
   }
 

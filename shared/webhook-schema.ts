@@ -27,6 +27,11 @@ export const WebhookCreate = z.object({
   signing: WebhookSigning.optional()
 })
 export type WebhookCreate = z.infer<typeof WebhookCreate>
+/** The bot tool's one input: `action` picks the step; create takes the `WebhookCreate` fields, the others an `id`. */
+export const WebhookActionInput = WebhookCreate.partial().extend({
+  action: z.enum(['create', 'pause', 'resume', 'delete', 'new_address']),
+  id: z.string().min(1).optional()
+})
 
 export interface WebhookRun {
   id: string

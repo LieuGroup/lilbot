@@ -23,23 +23,14 @@ export const TOOL_GROUPS: Partial<Record<WebhookCapability, string[]>> = {
     'lilbot_delete_defaults_get',
     'lilbot_delete_defaults_set'
   ],
-  delegation: [
-    'lilbot_bots_list',
-    'lilbot_delegate',
-    'lilbot_delegation_status',
-    'lilbot_delegation_cancel',
-    'lilbot_delegation_redirect',
-    'lilbot_delegation_wait',
-    'lilbot_delegation_attach',
-    'lilbot_group'
-  ],
+  delegation: ['lilbot_bots_list', 'lilbot_delegate', 'lilbot_delegation', 'lilbot_group'],
   computers: ['lilbot_status'],
   coding: ['lilbot_status'],
   memory: ['lilbot_memory_list', 'lilbot_memory_pause', 'lilbot_memory_restore', 'lilbot_memory_expiry'],
   routines: ['lilbot_routine', 'lilbot_routines_list'],
   // A run can only give the Library a file it could write.
   shell: ['lilbot_give_file'],
-  webhooks: ['lilbot_webhook_create', 'lilbot_webhooks_list', 'lilbot_webhook_pause', 'lilbot_webhook_resume', 'lilbot_webhook_delete', 'lilbot_webhook_new_address']
+  webhooks: ['lilbot_webhook', 'lilbot_webhooks_list']
 }
 
 /** In no group: Oscar's list names the work board, not goals. */

@@ -5,6 +5,7 @@ import type { EventFrame } from '../shared/protocol'
 import { ActivityService } from './activity/activity-service'
 import { ActivityStore } from './activity/activity-store'
 import { createGoals } from './app-goals'
+import { createMemory } from './app-memory'
 import { createThreads } from './app-threads'
 import { createWebhooks, webhookMessages } from './app-webhooks'
 import { createWork, giveFrom } from './app-work'
@@ -33,10 +34,6 @@ import { HistoryStore } from './history/history-store'
 import { createEngineApi, engineToken } from './http/engine-api'
 import { LibraryService } from './library/library-service'
 import { LibraryStore } from './library/library-store'
-import { MemoryReviewer, reviewSettingsFrom } from './memory/memory-reviewer'
-import { MemoryService } from './memory/memory-service'
-import { MemoryStore } from './memory/memory-store'
-import { ReviewQueue } from './memory/review-queue'
 import { RoutineScheduler } from './routines/routine-scheduler'
 import { RoutineService, routineSettings } from './routines/routine-service'
 import { RoutineStore } from './routines/routine-store'
@@ -70,7 +67,8 @@ export function createAppServices(
   const workspaces = new Workspaces(WORKSPACES_DIR)
   const database = openDatabase(join(DATA_DIR, 'lilbot.db'))
   const activity = new ActivityService(new ActivityStore(database), botsChanged)
-  const memory = new MemoryService(new MemoryStore(database))
+  const mem = createMemory(database)
+  const memory = mem.memory
   const memoryChanged = () => publish({ event: 'memory.changed' })
   const token = engineToken(DATA_DIR)
   const store = new BotStore(database)
@@ -85,7 +83,6 @@ export function createAppServices(
   )
   repeat('computers', 1000, () => computers.tick())
   const devices = createDevices(database, computers, publish)
-  const reviewQueue = new ReviewQueue(database)
   const routineStore = new RoutineStore(database)
   const libraryStore = new LibraryStore(database)
   const webhookStore = new WebhookStore(database)
@@ -138,7 +135,7 @@ export function createAppServices(
       webhookStore.forgetBot(botId)
       computers.forgetBot(botId)
       activity.forgetBot(botId)
-      reviewQueue.forgetBot(botId)
+      mem.forgetBot(botId)
       links.forgetBot(botId)
       goals.forgetBot(botId)
     },
@@ -149,7 +146,7 @@ export function createAppServices(
     systemNote: systemNote(facts)
   })
   const calls = new CallingChats()
-  const runs = { threadStore, routineStore, webhookStore, rootOf, goalStore: new GoalStore(database), reviewModel: reviewSettingsFrom(process.env).model ?? null }
+  const runs = { threadStore, routineStore, webhookStore, rootOf, goalStore: new GoalStore(database), reviewModel: mem.reviewModel }
   const workDeps = { database, engine, store, prefs, bots, ...runs, libraryStore, workspaces, activity, history: history.store, calls, publish }
   const { work, links, answers, checks, checkSessions } = createWork(workDeps)
   const threadDeps = { engine, store, prefs, bots, workspaces, history, activity, threadStore, calls, work: links, memory, library, root: WORKSPACES_DIR, rootOf, publish }
@@ -176,8 +173,7 @@ export function createAppServices(
   repeat('work checks', 1000, () => checks.tick())
   const routineScheduler = new RoutineScheduler(routines, observeRun)
   repeat('routines', 1000, () => routineScheduler.tick())
-  const reviewer = new MemoryReviewer(reviewQueue, bots, reviewSettingsFrom(process.env), Date.now, id => store.exists(id))
-  repeat('memory reviewer', 20_000, () => reviewer.tick())
+  const reviewer = mem.startReviewer(bots, store, repeat)
 
   const engineApi = createEngineApi(memory, token, PORT, {
     history,
@@ -192,6 +188,7 @@ export function createAppServices(
     onMemoryChanged: memoryChanged,
     adapterVersion: MEMORY_ADAPTER_VERSION,
     reviewer,
+    checkpointStore: mem.checkpointStore,
     chatKind,
     inCheck: checkSessions.refusal,
     ...gates

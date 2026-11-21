@@ -40,6 +40,8 @@ try {
     "the first message's fact was not saved"
   )
   say("1. the first message's fact was saved before compaction")
+  const probe = [{ role: 'user' as const, text: 'Just confirming the pre-compress checkpoint record survives a restart.' }]
+  assert.deepEqual(await t.save(probe), { saved: true, passes: 1 })
 
   // 2. A deploy-like restart (SIGTERM, back 5 seconds later) while the turn that must compact is saving.
   await turn(fact('my favourite colour is teal'))
@@ -59,6 +61,10 @@ try {
   assert.ok(t.logs(paused, 'context compression done').length, 'not compacted')
   await waitFor('the teal fact', t.facts, all => all.some(f => /teal/i.test(f)), 30_000)
   say(`2. LilBot down ${(5 + restart).toFixed(1)} s (start-up ${restart.toFixed(1)} s): the turn took ${restarted.seconds.toFixed(1)} s, did not fail and compacted with the save`)
+  since = Date.now() / 1000
+  assert.deepEqual(await t.save(probe), { saved: true, passes: 0 })
+  assert.equal(t.reviews(since).count, 0, 'already-reviewed pieces were reviewed again after restart')
+  say('2b. after restart, already-reviewed pieces took 0 passes and 0 review sessions')
 
   // 3. LilBot down longer than the adapter's 90 seconds of retries.
   await turn(fact('my car is a green Volvo'))
