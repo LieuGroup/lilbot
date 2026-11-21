@@ -469,10 +469,12 @@ Visual specs (sizes, copy, Paper frames): [docs/screens.md](docs/screens.md).
 - `chat.open`/`chat.new` keep their snapshot shape: `items` holds the latest 100 records without session dividers (for
   old clients); additive `history` holds the page (`shared/history-schema.ts`). The active session id remains
   `snapshot.chatId`; a new session keeps earlier history.
-- A session divider (`session:<id>`) marks where a session began. It is drawn once the session holds a message, or at
-  once for the session being opened (New session). A session left behind without a message loses its divider; one that
-  never held a message, such as another client's empty session in the same profile, never gets one. A session LilBot
-  started because the engine could not resume the conversation carries `reason: not_resumed`, and the screen says so.
+- A session divider (`session:<id>`) marks where a session began. Pages (`HistoryStore.page`) leave out the divider of
+  a session with no user or assistant message, unless it is the bot's main session (just after New session). The rule
+  is applied when a page is built, so stored dividers (older ones included) and re-imported rows follow it, and nothing
+  is deleted: another client's empty session in the same profile, or a session left before anything was said, shows no
+  line. A session LilBot started because the engine could not resume the conversation carries `reason: not_resumed`,
+  and the screen says so.
 - `chat.history` pages are newest first, records within a page chronological. Cursors are bot-bound sort keys, so new
   messages do not shift old pages. `start` appears only on the oldest page after import completes; `null` is not a
   definitive beginning while import is pending. `history.changed {botId}` tells clients to refresh.

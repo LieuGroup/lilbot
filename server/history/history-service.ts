@@ -86,10 +86,7 @@ export class HistoryService {
     if (!source || !this.allowed(bot.id, snapshot.chatId)) return
     this.store.session(bot.id, snapshot.chatId, Date.now())
     const sessions = this.store.sessions(bot.id)
-    for (const session of sessions.slice(1)) {
-      const opened = session.id === snapshot.chatId
-      this.store.divider(bot.id, session.id, session.at, opened, opened ? reason : undefined)
-    }
+    for (const session of sessions.slice(1)) this.store.divider(bot.id, session.id, session.at, session.id === snapshot.chatId ? reason : undefined)
     const page = await source.source.read(snapshot.chatId, null, true)
     if (!this.allowed(bot.id, snapshot.chatId)) return
     this.store.write(bot.id, snapshot.chatId, this.project(bot.id, snapshot.chatId, page.rows))

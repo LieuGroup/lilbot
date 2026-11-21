@@ -10,6 +10,7 @@ interface HistorySession {
   cursor: string | null
   complete: number
 }
+type StoredRow = { id: string; at: number; position: number; item: string }
 export interface HistoryRow {
   id: string
   at: number
@@ -65,7 +66,8 @@ export class HistoryStore {
     const { items } = this.db.query('SELECT count(*) items FROM history_items WHERE bot=?').get(bot) as { items: number }
     return { ...p, items, complete: !!this.db.query('SELECT 1 FROM history_imports WHERE bot=?').get(bot) && p.sessions === p.completed }
   }
-  page(bot: string, cursor?: string, limit = 100): HistoryPage {
+  /** `main` is the bot's main session: its divider shows while it is still empty (just after New session). */
+  page(bot: string, cursor?: string, limit = 100, main?: string | null): HistoryPage {
     // Cursor holds the immutable session sort key and row position, never a mutable offset.
     let key: [number, string, number, number, string] | null = null
     if (cursor) {
@@ -86,15 +88,19 @@ export class HistoryStore {
         throw new LilBotError('invalid_cursor', 'This history cursor is invalid for this bot.')
       }
     }
-    const rows: { session_at: number; session_id: string; id: string; at: number; position: number; item: string }[] = []
+    const rows: (StoredRow & { session_at: number; session_id: string })[] = []
+    // A session without a user or assistant message (another client's empty session, one left behind) shows no
+    // divider. Decided here, when the page is built, so stored and re-imported rows follow the same rule.
+    const spoken = this.db.query(`SELECT 1 FROM history_items WHERE bot=? AND session=? AND json_extract(item,'$.kind') IN ('user','assistant') LIMIT 1`)
     // Seek within each session's index instead of sorting every row across a join.
     for (const session of this.sessions(bot).reverse()) {
       if (key && (session.at > key[0] || (session.at === key[0] && session.id > key[1]))) continue
       const within = key && session.at === key[0] && session.id === key[1] ? key.slice(2) : null
+      const silent = session.id !== main && !spoken.get(bot, session.id)
       const page = this.db
-        .query(`SELECT id,at,position,item FROM history_items WHERE bot=? AND session=?
+        .query(`SELECT id,at,position,item FROM history_items WHERE bot=? AND session=? ${silent ? 'AND id<>?' : ''}
         ${within ? 'AND (at,position,id)<(?,?,?)' : ''} ORDER BY at DESC,position DESC,id DESC LIMIT ?`)
-        .all(bot, session.id, ...(within ?? []), limit + 1 - rows.length) as { id: string; at: number; position: number; item: string }[]
+        .all(bot, session.id, ...(silent ? [`session:${session.id}`] : []), ...(within ?? []), limit + 1 - rows.length) as StoredRow[]
       rows.push(...page.map(row => ({ ...row, session_at: session.at, session_id: session.id })))
       if (rows.length > limit) break
     }
@@ -116,18 +122,12 @@ export class HistoryStore {
   reference(bot: string, session: string, item: Extract<ChatItem, { kind: 'tool' }>, at: number) {
     this.write(bot, session, [{ id: item.toolId, at, order: 0, item }])
   }
-  /** Where a session began: drawn once it holds a message, or at once for the conversation being opened. */
-  divider(bot: string, session: string, at: number, opened = false, reason?: SessionReason) {
+  /** Where a session began. A reason (given only while opening) replaces a plain divider discovery drew a moment earlier. */
+  divider(bot: string, session: string, at: number, reason?: SessionReason) {
     this.db
-      .query(`INSERT OR IGNORE INTO history_items(bot,session,id,at,position,item,text) SELECT ?1,?2,?3,?4,-1,?5,'' WHERE ${notExcluded('?1', '?2')}
-      AND (?6 OR EXISTS (SELECT 1 FROM history_items WHERE bot=?1 AND session=?2 AND id<>?3))`)
-      .run(bot, session, `session:${session}`, at, JSON.stringify({ kind: 'session', text: 'New session', ...(reason ? { reason } : {}) }), opened)
-  }
-  /** A session left without a single message keeps no divider. */
-  abandoned(bot: string, session: string) {
-    this.db
-      .query('DELETE FROM history_items WHERE bot=?1 AND id=?2 AND NOT EXISTS (SELECT 1 FROM history_items WHERE bot=?1 AND session=?3 AND id<>?2)')
-      .run(bot, `session:${session}`, session)
+      .query(`INSERT INTO history_items(bot,session,id,at,position,item,text) SELECT ?1,?2,?3,?4,-1,?5,'' WHERE ${notExcluded('?1', '?2')}
+      ON CONFLICT(bot,id) DO ${reason ? 'UPDATE SET item=excluded.item' : 'NOTHING'}`)
+      .run(bot, session, `session:${session}`, at, JSON.stringify({ kind: 'session', text: 'New session', ...(reason ? { reason } : {}) }))
   }
   search(bot: string, query: string, limit = 20) {
     const terms = query
