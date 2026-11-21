@@ -68,6 +68,7 @@ export class SessionSettings {
           this.unapplied.add(bot.id)
           throw error
         }
+        console.warn(`[bots] model switch held back by the engine (${bot.id}: ${error.code})`)
         if (change.model && change.reasoningEffort !== undefined)
           await this.engine.updateSession(bot.engineBotId, chatId, { reasoningEffort: change.reasoningEffort }).then(result => result && this.noteEffective(bot.id, result.effort))
         throw new LilBotError('confirm_required', KEPT_MODEL)
