@@ -8,6 +8,7 @@ import { rowState } from '../bots/row-state'
 import { StatusIcon } from '../bots/status-icon'
 import { RoutinesCard } from '../routines/routines-card'
 import { WithOtherBots } from '../threads/with-other-bots'
+import { WebhooksCard } from '../webhooks/webhooks-card'
 import { formatElapsed } from './activity-since'
 
 function Card({ title, children }: { title: string; children: ReactNode }) {
@@ -19,7 +20,7 @@ function Card({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
-/** The Activity tab: what the bot is doing now, its work with other bots, its routines, and its folder. */
+/** The Activity tab: what the bot is doing now, its work with other bots, its routines and webhooks, and its folder. */
 export function ActivityTab({ botId }: { botId: string }) {
   const bot = useBotStore(state => state.bots.find(candidate => candidate.id === botId))
   const since = useBotStore(state => state.since[botId])
@@ -54,6 +55,7 @@ export function ActivityTab({ botId }: { botId: string }) {
       </Card>
       <WithOtherBots botId={botId} />
       <RoutinesCard botId={botId} botName={bot.name} />
+      <WebhooksCard botId={botId} botName={bot.name} />
       <Card title="Workspace">
         <Button
           variant="ghost"

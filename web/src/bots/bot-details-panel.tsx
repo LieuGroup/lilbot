@@ -19,12 +19,14 @@ const tabContent: Record<DetailsTab, TabContent> = {
 }
 // One routine replaces the whole panel (avatar and tabs too) while it is open (`?routine=` on the Activity tab).
 const RoutineDetail = lazy(() => import('../routines/routine-detail'))
+// One webhook replaces the whole panel like a routine (`?webhook=` on the Activity tab).
+const WebhookDetail = lazy(() => import('../webhooks/webhook-detail'))
 // One skill replaces the Setup tab's content while it is open (`?skill=`).
 const SkillDetail = lazy(() => import('../skills/skill-detail'))
 // The bot's workspace folder replaces the whole panel like a routine (`?folder=` on the Library tab).
 const WorkspaceView = lazy(() => import('../library/workspace-view'))
-/** Leaving the tab, or the panel, closes an open routine, skill or folder. */
-const withoutViews = ({ routine: _routine, skill: _skill, folder: _folder, ...rest }: BotSearch) => rest
+/** Leaving the tab, or the panel, closes an open routine, webhook, skill or folder. */
+const withoutViews = ({ routine: _routine, webhook: _webhook, skill: _skill, folder: _folder, ...rest }: BotSearch) => rest
 
 /** The details panel beside the chat: the bot's avatar and name, then pill tabs. Each tab is its
  *  own route, so a link or a reload opens the same tab. On a phone it covers the chat. */
@@ -32,6 +34,7 @@ export function BotDetailsPanel() {
   const { botId, tab } = useParams({ from: '/bots/$botId/$tab' })
   const bot = useBotStore(state => state.bots.find(candidate => candidate.id === botId))
   const routine = useBotSearch('routine')
+  const webhook = useBotSearch('webhook')
   const skill = useBotSearch('skill')
   const folder = useBotSearch('folder')
   if (!isDetailsTab(tab)) return <Navigate to="/bots/$botId" params={{ botId }} replace />
@@ -40,6 +43,12 @@ export function BotDetailsPanel() {
     return (
       <Suspense>
         <RoutineDetail key={routine} botId={botId} routineId={routine} />
+      </Suspense>
+    )
+  if (tab === 'activity' && webhook)
+    return (
+      <Suspense>
+        <WebhookDetail key={webhook} botId={botId} webhookId={webhook} />
       </Suspense>
     )
   if (tab === 'library' && folder)

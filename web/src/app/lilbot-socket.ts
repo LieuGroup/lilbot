@@ -102,6 +102,11 @@ class LilBotSocket {
     return this.onPush('routines.changed', () => listener())
   }
 
+  /** Told when a webhook was made, changed or removed, or one of its runs was queued, started or ended. */
+  onWebhooksChanged(listener: () => void) {
+    return this.onPush('webhooks.changed', () => listener())
+  }
+
   /** Told when a skill was written or switched, or an engine's skills were included or excluded. */
   onSkillsChanged(listener: () => void) {
     return this.onPush('skills.changed', () => listener())

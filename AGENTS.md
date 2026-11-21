@@ -69,7 +69,9 @@ web/src/           The web app.
   library/           the Library tab, the bot's workspace folder view and the item viewer
   threads/           work between bots: the line in a conversation, the opened exchange or group, stop, "With other bots",
                      "Working together"
-  routines/          the Activity tab's Routines card, one routine (in place of the panel), a run's transcript
+  routines/          the Activity tab's Routines card, one routine (in place of the panel), a run's transcript; the run
+                     list, transcript and delete dialog webhooks reuse
+  webhooks/          the Activity tab's Webhooks section, one webhook (in place of the panel), a webhook run's transcript
   skills/            the Setup tab's Skills section: the list with each bot's switch, search, and one skill's reader
   computers/         the Settings > Computers page (list, remove, add this computer, add by command line)
   devices/           this browser's device id and name, and the "This device" block on the Computers page
@@ -104,9 +106,9 @@ memory with a Memory panel and after-chat review, every bot knowing its system (
 LilBot's own MCP tools, delegation between bots (several tasks at once, files, status, stop, redirect, wait), temporary
 groups of bots (rounds, a shared folder, an outcome; #133), the screens for asked threads, handed-over work and groups
 (#65, #135, #136: the line or card in a conversation, the opened exchange or group, stop, "With other bots", the roster's
-"Working together"), the Routines screens (#53), the Library screens (#54), and the
+"Working together"), the Routines screens (#53), the Library screens (#54), the Webhooks screens (#138), and the
 backends for routines, webhooks, threads, library, skills, computers, the work board with its check levels, goals and
-coding through T3 Code. Next: the Webhooks (#138), work board and goal screens, the check levels' track record and
+coding through T3 Code. Next: the webhook capability switches (Paper "17" frames 7 to 9, awaiting Oscar's approval), work board and goal screens, the check levels' track record and
 spot checks (#142), the nightly memory tidy-up and editing abilities. Reports are not built. Desktop (Tauri) and iOS (Expo) come after the
 web app.
 
@@ -456,6 +458,26 @@ Visual specs: "Routines" in [docs/screens.md](docs/screens.md).
   state, never the bot's chat slot, followed live while it runs, and closed (`chat.close`) when the view goes. Its only
   user message is LilBot's wrapper prompt, so user messages are left out and "The routine asked" shows the routine's
   words. A run not started yet has no transcript and is not a link.
+
+### Webhooks (`web/src/webhooks/`, #138)
+
+Visual specs: "Webhooks" in [docs/screens.md](docs/screens.md).
+
+- A "Webhooks" section in the Activity tab, under Routines (in its lazy chunk), hidden while the bot has none or the read
+  fails (the helper door off refuses every read). No form: webhooks are made by asking the bot.
+  `webhooks/webhook-store.ts` reads `webhooks.list` for the bots on screen, again on `webhooks.changed` and reconnect
+  (`app/watched-reads.ts`, shared with routines and skills). Wording is `webhooks/webhook-lines.ts` only (pure, tested).
+- A row opens one webhook with `?webhook=<id>`, in place of the whole details panel like a routine (opening one closes
+  the other). The switch pauses and resumes (`webhooks.pause`/`resume`); the bin asks first, then `webhooks.delete`.
+- The address is never in list data, on screen, in a store or a log: "Copy" calls `webhooks.address` on the click and
+  hands it to the clipboard as a pending `ClipboardItem` (so Safari keeps the click's permission), `writeText` where
+  that is missing. The button says "Copied" or "Could not copy" for two seconds.
+- A run row opens its transcript with `?webhookRun=<id>` in the conversation column, like a routine run
+  (`routines/run-transcript.tsx`, `webhooks.openRun`): "The webhook asked" shows the task; LilBot's prompt with the events
+  is left out like a routine's. `thread`, `run` and `webhookRun` are one column view at a time (`withoutColumn`).
+- Not built, waiting for an approved design: Oscar's capability groups (`webhooks.setCapabilities`; Paper "17" frames 7 to
+  9 are drawn, not approved) and any drawing of a run's message to its bot beyond the plain `webhook message` tool line
+  the history already shows in the conversation.
 
 ### Library (`web/src/library/`, #54)
 
@@ -1364,7 +1386,7 @@ signature scheme, and an address. Any sender may call one (Oscar, 2026-11-20).
   run `lilbot_webhook_message`. Nothing is in the Hermes plug-ins.
 - Browser methods: `webhooks.list` (newest 50 runs with their event counts and messages; each webhook's
   `capabilities`), `pause`, `resume`, `delete`, `openRun` (a tracked chat snapshot), `address` (Copy),
-  `setCapabilities`, push `webhooks.changed`. Screens: #138.
+  `setCapabilities`, push `webhooks.changed`. Screens: "Webhooks" under Web app (no screen for `setCapabilities` yet).
 - Without `LILBOT_PUBLIC_ENABLED=1` and `LILBOT_HELPER_URL`, creating a webhook is refused (no outside service could
   reach it).
 

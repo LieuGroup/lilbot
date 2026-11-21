@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/ui/dial
 import { iconButton } from '@/ui/icon-button'
 import type { LibraryItem } from '../../../shared/library-schema'
 import { useRunNavigation } from '../routines/open-routine'
-import type { BotSearch } from '../threads/open-thread'
+import { withoutColumn } from '../threads/open-thread'
 import { fileName, sourceLine, viewerLine, viewOf } from './library-lines'
 import { PagePreview } from './page-preview'
 
@@ -18,7 +18,7 @@ export default function LibraryViewer({ botId, item, onClose }: { botId: string;
   const showInChat = () => {
     onClose()
     if (item.routineRunId) void runs.open(item.routineRunId)
-    else if (window.matchMedia('(min-width: 768px)').matches) void navigate({ to: '.', search: ({ thread: _thread, run: _run, ...rest }: BotSearch) => rest })
+    else if (window.matchMedia('(min-width: 768px)').matches) void navigate({ to: '.', search: withoutColumn })
     else void navigate({ to: '/bots/$botId', params: { botId } })
   }
   return (

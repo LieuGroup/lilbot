@@ -5,7 +5,7 @@ import { type BotSearch, useColumnNavigation } from '../threads/open-thread'
 export function useRoutineNavigation() {
   const navigate = useNavigate()
   return {
-    open: (id: string) => navigate({ to: '.', search: (previous: BotSearch) => ({ ...previous, routine: id }) }),
+    open: (id: string) => navigate({ to: '.', search: ({ webhook: _webhook, ...previous }: BotSearch) => ({ ...previous, routine: id }) }),
     close: () => navigate({ to: '.', search: ({ routine: _closed, ...rest }: BotSearch) => rest })
   }
 }
