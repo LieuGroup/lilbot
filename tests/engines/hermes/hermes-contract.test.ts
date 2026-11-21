@@ -79,7 +79,7 @@ const methods: Record<string, Uses> = {
   'mcp.servers.status': { table: 'methods', sends: [], reads: ['servers'] },
   'mcp.servers.remove': { table: 'methods', sends: ['name'], reads: [] },
   'mcp.servers.add': { table: 'methods', sends: ['name', 'config', 'bearer_token'], reads: [] },
-  'reload.mcp': { table: 'methods', sends: ['confirm'], reads: [] },
+  'reload.mcp': { table: 'methods', sends: ['confirm'], reads: ['unavailable'] },
   'model.options': { table: 'methods', sends: [], reads: ['providers'] }
 }
 
