@@ -36,7 +36,11 @@ export const digest = (data: Record<string, string>) =>
     .digest('hex')
 export function metadata(text: string) {
   const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1]
-  const field = (key: string) => new RegExp(`^${key}:\\s*["']?([^\\r\\n"']+)`, 'm').exec(front ?? '')?.[1]?.trim()
+  const field = (key: string) => {
+    const value = new RegExp(`^${key}:[ \\t]*(.*)$`, 'm').exec(front ?? '')?.[1]?.trim()
+    const quote = value?.[0]
+    return value && (quote === '"' || quote === "'") && value.length > 1 && value.endsWith(quote) ? value.slice(1, -1).trim() : value
+  }
   const name = field('name')
   const description = field('description')
   if (!front || !name || !description) throw new LilBotError('invalid_skill', 'SKILL.md needs name and description frontmatter.')
