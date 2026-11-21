@@ -153,8 +153,8 @@ export class McpConnections {
     if (!connection) throw notFound()
     if (connection.addedById !== botId && this.host.botExists(connection.addedById))
       throw new LilBotError('connection_not_yours', `Only ${connection.addedBy}, which added ${connection.name}, can remove it. Ask that bot, or Oscar.`)
-    this.store.delete(connection.id)
     this.credentials.delete(connection.id)
+    this.store.delete(connection.id)
     this.flows.forget(connection.id)
     this.host.changed()
     return { id: connection.id, name: connection.name, removed: true, note: 'Its tools leave every bot from its next message.' }

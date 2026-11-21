@@ -146,8 +146,9 @@ describe.skipIf(!installed)('Hermes wire contract', () => {
     }
   })
 
-  test('reload.mcp names what it did to the calling chat', () => {
+  test('reload.mcp names what it did to the calling chat and mcp.servers.status rows declare connection state', () => {
     expect(contract.components.schemas.ReloadMcpSession.enum).toEqual(expect.arrayContaining(['applied', 'unchanged', 'busy']))
+    expect(['name', 'connected', 'status'].filter(key => !fields(contract.components.schemas.McpServerRuntimeRow).has(key))).toEqual([])
   })
 
   test('model inventory declares the provider fields used for validation and the per-model capabilities', () => {

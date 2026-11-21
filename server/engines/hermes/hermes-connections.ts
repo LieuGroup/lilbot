@@ -3,11 +3,23 @@
  *  is never changed or removed, even when a name matches. Call only on a socket attached to the intended profile.
  *  The bot's LilBot key goes to the profile's `.env` (Hermes' `bearer_token`); config.yaml keeps only the header template.
  *  After a change, `reload.mcp` connects it for the profile; `applyToChats` commits it to open chats in place. */
+import { createHash } from 'node:crypto'
 import { LilBotError } from '../../../shared/lilbot-error'
 import type { ConnectionsApplied, McpConnection } from '../mcp-connection'
 import type { HermesSocket } from './hermes-socket'
 
 const OWNED = /^lilbot_/
+const MAX_TOOL_NAME = 64
+const sanitize = (value: string) => value.replace(/[^A-Za-z0-9_]/g, '_')
+
+/** Hermes' MCP tool name (`tools/mcp_tool_schema.py` `mcp_prefixed_tool_name`): non-word chars become `_`, and names
+ *  over 64 chars are clamped with `_` + 8-char SHA-256 hex of the full sanitized name. */
+export function hermesMcpToolName(server: string, tool: string): string {
+  const full = `mcp__${sanitize(server)}__${sanitize(tool)}`
+  if (full.length <= MAX_TOOL_NAME) return full
+  const suffix = `_${createHash('sha256').update(full, 'utf8').digest('hex').slice(0, 8)}`
+  return `${full.slice(0, MAX_TOOL_NAME - suffix.length)}${suffix}`
+}
 
 export function serverConfig(connection: McpConnection) {
   return {

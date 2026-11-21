@@ -2,6 +2,7 @@ import { afterEach, expect, test } from 'bun:test'
 import { endpointOf, serviceAddress, toolNames } from '../../server/connections/mcp-address'
 import { boundedFetch, Unreachable } from '../../server/connections/mcp-http'
 import { assertPublicAddress, isBlockedIp, setDnsLookup } from '../../server/connections/mcp-net'
+import { ConnectionActionInput } from '../../shared/connections-schema'
 
 afterEach(() => setDnsLookup())
 
@@ -55,11 +56,15 @@ test('tool names an engine may be given: the MCP pattern only, dropping lilbot_*
       { name: 'LILBOT_connection' },
       { name: 'bad name' },
       { name: '<script>' },
+      { name: 'a-b' },
+      { name: 'a.b' },
       { name: 'a.b-c_d' },
       {},
       null
     ])
-  ).toEqual(['search', 'a.b-c_d'])
+  ).toEqual(['search', 'a-b', 'a.b-c_d'])
+  expect(ConnectionActionInput.safeParse({ action: 'add', requestId: 'r1', name: 'my__svc', address: 'https://a.test/mcp' }).success).toBe(false)
+  expect(ConnectionActionInput.safeParse({ action: 'add', requestId: 'r1', name: 'my_svc', address: 'https://a.test/mcp' }).success).toBe(true)
   expect(toolNames(Array.from({ length: 300 }, (_, i) => ({ name: `t${i}` })))).toHaveLength(200)
   expect(toolNames('nope')).toEqual([])
 })

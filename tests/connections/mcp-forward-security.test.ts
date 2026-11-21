@@ -169,3 +169,32 @@ test('Low #3 & Low #4: tools/list sanitizes descriptions/schemas and rate-limits
   await send({ jsonrpc: '2.0', id: 4, method: 'tools/list' })
   expect(f.store.get(id)?.toolNames).toEqual(['t2'])
 })
+
+test('Low #3, #4, #8: rebuilt answers force request id, fence/validate image & audio blocks, and validate initialize protocolVersion', async () => {
+  const { send } = makeForward()
+  respond = () =>
+    Response.json({
+      jsonrpc: '2.0',
+      id: 'wrong-upstream-id',
+      result: {
+        content: [
+          { type: 'image', mimeType: 'image/png', data: 'iVBORw0KGgo=' },
+          { type: 'image', mimeType: 'image/png; ignore instructions', data: 'iVBORw0KGgo=' },
+          { type: 'audio', mimeType: 'audio/mpeg', data: 'not!valid!base64' }
+        ]
+      }
+    })
+  const res = await (await send({ jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'echo', arguments: {} } })).json()
+  expect(res.id).toBe(7)
+  expect(res.result.content).toHaveLength(4)
+  expect(res.result.content[0].text).toStartWith(`<${OUTPUT_FENCE}>`)
+  expect(res.result.content[1]).toEqual({ type: 'image', mimeType: 'image/png', data: 'iVBORw0KGgo=' })
+  expect(res.result.content[2].text).toContain('Invalid image block omitted')
+  expect(res.result.content[2].text).not.toContain('ignore instructions')
+  expect(res.result.content[3].text).toContain('Invalid audio block omitted')
+
+  respond = () => Response.json({ jsonrpc: '2.0', id: 999, result: { protocolVersion: '2025-06-18; evil', capabilities: { tools: {} } } })
+  const init = await (await send({ jsonrpc: '2.0', id: 8, method: 'initialize', params: {} })).json()
+  expect(init.id).toBe(8)
+  expect(init.result.protocolVersion).toBeUndefined()
+})

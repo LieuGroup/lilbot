@@ -134,6 +134,8 @@ export interface BotEngine {
   /** Bring these open conversations in step with the connections last prepared, in place: from their next message, with
    *  their context and cache kept. A running turn is never changed (`busy`: LilBot asks again once it ends). */
   applyConnections?(engineBotId: string, chatIds: string[]): Promise<{ chatId: string; state: ConnectionsApplied }[]>
+  /** The name this engine reports in `onToolCall` for an MCP server's tool. */
+  mcpToolName?(server: string, tool: string): string
   userSkillPaths?(id: string): string[]
   /** Skills the engine offers by itself in this runtime, without the ones in `alwaysOnSkills`: the engine's own switch can hide these. */
   bundledSkills?(id: string): string[]

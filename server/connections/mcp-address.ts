@@ -35,9 +35,19 @@ export function endpointOf(raw: unknown, service: URL): URL {
   return url
 }
 
-/** The tool names a service listed that an engine may be given, in order, without repeats or `lilbot_*` spoofing. */
-export function toolNames(tools: unknown): string[] {
+/** The tool names a service listed that an engine may be given, in order, without repeats, `lilbot_*` spoofing, or cleaned-up collisions. */
+export function toolNames(tools: unknown, mapName?: (tool: string) => string): string[] {
   if (!Array.isArray(tools)) return []
-  const names = tools.map(tool => (tool && typeof tool === 'object' ? (tool as { name?: unknown }).name : undefined))
-  return [...new Set(names.filter((name): name is string => typeof name === 'string' && TOOL_NAME.test(name) && !/^lilbot_/i.test(name)))].slice(0, MAX_TOOLS)
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const tool of tools) {
+    const name = tool && typeof tool === 'object' ? (tool as { name?: unknown }).name : undefined
+    if (typeof name !== 'string' || !TOOL_NAME.test(name) || /^lilbot_/i.test(name)) continue
+    const key = mapName ? mapName(name) : name.replace(/[^A-Za-z0-9_]/g, '_')
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(name)
+    if (out.length >= MAX_TOOLS) break
+  }
+  return out
 }

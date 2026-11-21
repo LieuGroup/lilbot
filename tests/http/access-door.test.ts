@@ -129,6 +129,12 @@ test('the sign-in callback is off by default (404, no app shell fallthrough) and
     expect(ok.status).toBe(200)
     expect(await ok.text()).toBe('Signed in')
     expect(seen).toEqual(['?code=c&state=s'])
+    // Trailing-slash / sub-path variants under the callback path return 404 (never the app shell).
+    for (const srv of [offServer, onServer]) {
+      const slash = await get(srv, '/api/connections/callback/?code=c&state=s', { 'Cf-Access-Jwt-Assertion': token() })
+      expect(slash.status).toBe(404)
+      expect(await slash.text()).not.toContain('App shell')
+    }
     for (const refused of ['/engine/connections/1/mcp', `/engine/connections/${crypto.randomUUID()}/mcp`]) {
       expect((await get(onServer, refused, { 'Cf-Access-Jwt-Assertion': token() })).status).toBe(403)
     }

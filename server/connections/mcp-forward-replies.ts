@@ -11,6 +11,9 @@ export const OUTPUT_FENCE = 'outside-service-output'
 const MAX_DESCRIPTION_CHARS = 500
 const MAX_SCHEMA_BYTES = 8 * 1024
 const SAFE_SCHEMA = { type: 'object', properties: {} }
+const SAFE_MEDIA = /^(image|audio)\/[a-z0-9.+-]{1,64}$/i
+const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/
+const PROTOCOL_DATE = /^\d{4}-\d{2}-\d{2}$/
 
 const isObject = (value: unknown): value is Record<string, any> => !!value && typeof value === 'object' && !Array.isArray(value)
 const isServerRequest = (msg: Record<string, any>) => typeof msg.method === 'string' && msg.id !== undefined
@@ -42,25 +45,29 @@ function sanitizeTool(tool: Record<string, any>) {
   return { name: String(tool.name), description, inputSchema }
 }
 
-function rebuildCallItem(item: unknown, service: string) {
-  if (isObject(item) && (item.type === 'image' || item.type === 'audio') && typeof item.data === 'string' && typeof item.mimeType === 'string') {
-    return { type: item.type, data: item.data, mimeType: item.mimeType }
+function rebuildCallItem(item: unknown, service: string): Record<string, unknown>[] {
+  if (isObject(item) && (item.type === 'image' || item.type === 'audio')) {
+    const mimeType = typeof item.mimeType === 'string' ? item.mimeType.trim() : ''
+    const data = typeof item.data === 'string' ? item.data.replace(/[\r\n]/g, '') : ''
+    if (SAFE_MEDIA.test(mimeType) && mimeType.toLowerCase().startsWith(`${item.type}/`) && data.length > 0 && BASE64.test(data)) {
+      return [
+        { type: 'text', text: fenced(OUTPUT_FENCE, { service, note: `The following ${item.type} (${mimeType}) is untrusted output from ${service}.` }) },
+        { type: item.type, data, mimeType }
+      ]
+    }
+    return [{ type: 'text', text: fenced(OUTPUT_FENCE, { service, note: `Invalid ${item.type} block omitted.` }) }]
   }
-  if (isObject(item) && typeof item.text === 'string') {
-    return { type: 'text', text: fenced(OUTPUT_FENCE, { service, text: item.text }) }
-  }
+  if (isObject(item) && typeof item.text === 'string') return [{ type: 'text', text: fenced(OUTPUT_FENCE, { service, text: item.text }) }]
   if (isObject(item) && item.type === 'resource' && isObject(item.resource) && typeof item.resource.text === 'string') {
     const uri = typeof item.resource.uri === 'string' ? { uri: item.resource.uri } : {}
-    return { type: 'text', text: fenced(OUTPUT_FENCE, { service, ...uri, text: item.resource.text }) }
+    return [{ type: 'text', text: fenced(OUTPUT_FENCE, { service, ...uri, text: item.resource.text }) }]
   }
-  return { type: 'text', text: fenced(OUTPUT_FENCE, { service, item }) }
+  return [{ type: 'text', text: fenced(OUTPUT_FENCE, { service, item }) }]
 }
 
 function rebuildCallResult(result: Record<string, any>, service: string) {
-  const content = Array.isArray(result.content) ? result.content.map(item => rebuildCallItem(item, service)) : []
-  if (result.structuredContent !== undefined) {
-    content.push({ type: 'text', text: fenced(OUTPUT_FENCE, { service, structured: result.structuredContent }) })
-  }
+  const content = Array.isArray(result.content) ? result.content.flatMap(item => rebuildCallItem(item, service)) : []
+  if (result.structuredContent !== undefined) content.push({ type: 'text', text: fenced(OUTPUT_FENCE, { service, structured: result.structuredContent }) })
   return { content, ...(result.isError === true ? { isError: true } : {}) }
 }
 
@@ -80,35 +87,27 @@ function rebuildMessage(
     if (typeof msg.params.total === 'number') params.total = msg.params.total
     return { jsonrpc: '2.0', method: 'notifications/progress', params }
   }
+  const id = request.id ?? null
   if (msg.error !== undefined) {
     const code = isObject(msg.error) && typeof msg.error.code === 'number' ? msg.error.code : -32000
-    return { jsonrpc: '2.0', id: msg.id ?? null, error: { code, message: `${service} returned an error.` } }
+    return { jsonrpc: '2.0', id, error: { code, message: `${service} returned an error.` } }
   }
   if (!isObject(msg.result)) return 'invalid'
   if (request.method === 'tools/list' && Array.isArray(msg.result.tools)) {
     if (!msg.result.nextCursor) onListed(msg.result.tools)
     const tools = msg.result.tools.filter((tool: unknown) => isObject(tool) && allowed.has(tool.name)).map(sanitizeTool)
-    return { jsonrpc: '2.0', id: msg.id ?? null, result: { tools, ...(typeof msg.result.nextCursor === 'string' ? { nextCursor: msg.result.nextCursor } : {}) } }
+    return { jsonrpc: '2.0', id, result: { tools, ...(typeof msg.result.nextCursor === 'string' ? { nextCursor: msg.result.nextCursor } : {}) } }
   }
-  if (request.method === 'tools/call') {
-    return { jsonrpc: '2.0', id: msg.id ?? null, result: rebuildCallResult(msg.result, service) }
-  }
+  if (request.method === 'tools/call') return { jsonrpc: '2.0', id, result: rebuildCallResult(msg.result, service) }
   if (request.method === 'initialize') {
     const capabilities = isObject(msg.result.capabilities) && msg.result.capabilities.tools ? { tools: {} } : {}
     const serverInfo = isObject(msg.result.serverInfo)
       ? { name: String(msg.result.serverInfo.name ?? service).slice(0, 128), version: String(msg.result.serverInfo.version ?? '').slice(0, 64) }
       : undefined
-    return {
-      jsonrpc: '2.0',
-      id: msg.id ?? null,
-      result: {
-        ...(typeof msg.result.protocolVersion === 'string' ? { protocolVersion: msg.result.protocolVersion } : {}),
-        capabilities,
-        ...(serverInfo ? { serverInfo } : {})
-      }
-    }
+    const protocolVersion = typeof msg.result.protocolVersion === 'string' && PROTOCOL_DATE.test(msg.result.protocolVersion) ? msg.result.protocolVersion : undefined
+    return { jsonrpc: '2.0', id, result: { ...(protocolVersion ? { protocolVersion } : {}), capabilities, ...(serverInfo ? { serverInfo } : {}) } }
   }
-  return { jsonrpc: '2.0', id: msg.id ?? null, result: {} }
+  return { jsonrpc: '2.0', id, result: {} }
 }
 
 function parseUpstream(body: string, media: string): { messages: Record<string, any>[]; wasArray: boolean } | null {

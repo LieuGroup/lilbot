@@ -34,7 +34,7 @@ export function startAccessDoor(
         ) {
           return new Response('Forbidden', { status: 403, headers: { 'Cache-Control': 'no-store', 'Content-Type': 'text/plain' } })
         }
-        if (path === CALLBACK_PATH && !settings.callbackEnabled) {
+        if ((path === CALLBACK_PATH && !settings.callbackEnabled) || path.startsWith(`${CALLBACK_PATH}/`)) {
           return new Response('Not found', { status: 404, headers: { 'Cache-Control': 'no-store', 'Content-Type': 'text/plain' } })
         }
         return await (Object.hasOwn(only, path) ? only[path](request) : routes(request, server))

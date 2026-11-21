@@ -118,7 +118,17 @@ export function createConnections({
   return {
     services,
     t3Bridge: createT3Bridge({ upstream: process.env.LILBOT_T3_MCP_URL ?? T3_DEFAULT_MCP_URL, grants: t3Grants, engineToken, port, botIds, refusal: t3Refusal }),
-    forward: createServiceForward({ services, store: rows, credentials, keeper: new TokenKeeper(credentials), engineToken, port, botIds, refusal: serviceRefusal }),
+    forward: createServiceForward({
+      services,
+      store: rows,
+      credentials,
+      keeper: new TokenKeeper(credentials),
+      engineToken,
+      port,
+      botIds,
+      refusal: serviceRefusal,
+      toolName: engine.mcpToolName
+    }),
     callback: connectionCallback(services),
     ready: (botId: string, chatId: string) => applier.ready(botId, chatId),
     connections: (botId: string) => serviceConnections(services, lilbotUrl, engineToken, botId)

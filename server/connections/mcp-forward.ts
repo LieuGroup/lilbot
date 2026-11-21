@@ -25,6 +25,8 @@ export interface ServiceForwardOptions {
   botIds: () => string[]
   /** Defence-in-depth session gate (webhook runs, check sessions), or null when allowed. */
   refusal?: (botId: string, tool: string, args: unknown) => Promise<string | null>
+  /** Maps an MCP server and raw tool name to the name the engine reports in tool-call events. */
+  toolName?: (server: string, tool: string) => string
   now?: () => number
 }
 
@@ -34,10 +36,12 @@ const SETUP_TIMEOUT_MS = 10_000
 const BODY_CAP = 16 << 20
 const WORKED_EVERY_MS = 60_000
 const TOOLS_UPDATE_MIN_MS = 60_000
+const defaultToolName = (server: string, tool: string) => `mcp__${server}__${tool}`
 
 export function createServiceForward(options: ServiceForwardOptions) {
   const { services, store, credentials, keeper } = options
   const now = options.now ?? Date.now
+  const engineToolName = options.toolName ?? defaultToolName
   const loopback = new Set([`127.0.0.1:${options.port}`, `localhost:${options.port}`])
   const toolsUpdatedAt = new Map<string, number>()
 
@@ -89,7 +93,7 @@ export function createServiceForward(options: ServiceForwardOptions) {
       const name = message.params?.name
       if (name === STATUS_TOOL) return rpcResult(message.id, { content: [{ type: 'text', text: `${connection.name} is ${connection.state.replaceAll('_', ' ')}.` }] })
       if (!connection.toolNames.includes(name)) return toolError(message.id, `${String(name)} is not one of ${connection.name}'s tools in LilBot.`)
-      const refused = await options.refusal?.(botId, `mcp__${ENGINE_PREFIX}${connection.name}__${name}`, message.params?.arguments)
+      const refused = await options.refusal?.(botId, engineToolName(`${ENGINE_PREFIX}${connection.name}`, name), message.params?.arguments)
       if (refused) return refusedResult(message.id, refused)
     }
 
@@ -116,6 +120,7 @@ export function createServiceForward(options: ServiceForwardOptions) {
       if (response.status === 401) {
         await response.body?.cancel()
         if (signed) return expired(message, connection, sentToken)
+        store.setState(connection.id, 'needs_sign_in')
         const prompt = `${connection.name} now asks for a sign-in. Call lilbot_connection with action sign_in and id ${connection.id} for a link, give it to Oscar, and wait.`
         return message.method === 'tools/call' ? toolError(message.id, prompt) : rpcError(message.id, -32000, prompt)
       }
@@ -143,7 +148,7 @@ export function createServiceForward(options: ServiceForwardOptions) {
     const rebuilt = rebuildResponse(text, response.headers.get('content-type') ?? '', message, connection, new Set(connection.toolNames))
     if ('error' in rebuilt) return rebuilt.error
     if (message.method === 'tools/list' && rebuilt.listed && !message.params?.cursor) {
-      const names = toolNames(rebuilt.listed)
+      const names = toolNames(rebuilt.listed, tool => engineToolName(`${ENGINE_PREFIX}${connection.name}`, tool))
       const last = toolsUpdatedAt.get(connection.id)
       if (JSON.stringify(names) !== JSON.stringify(connection.toolNames) && (last === undefined || now() - last >= TOOLS_UPDATE_MIN_MS)) {
         toolsUpdatedAt.set(connection.id, now())
