@@ -7,7 +7,6 @@ import type { MessageOrigin } from '../../shared/device-schema'
 export type EngineBotDetail = BotIdentity & BotSetup
 export type RuntimeIdentity = BotIdentity & { instructions: string }
 export type RuntimeState = Pick<BotSetup, 'abilities' | 'memoryConnected'>
-
 /** Where an engine adapter on this machine reaches LilBot's memory. */
 export interface MemoryConnection {
   url: string
@@ -194,8 +193,7 @@ export interface EngineAttachment {
 export interface OpenChat {
   imageSupport?: 'supported' | 'unsupported' | 'unknown'
   snapshot: ChatSnapshot
-  /** The engine's code when the requested conversation could not be resumed, so a new one was started. */
-  resumeRefused?: string
+  resumeRefused?: string // the engine's code when the asked-for conversation could not be resumed and a new one started
   send(text: string, options?: { hidden?: boolean; inputId?: string; apiText?: string; attachments?: EngineAttachment[]; origin?: TurnOrigin }): Promise<void>
   stop(): Promise<void>
   close(): void
