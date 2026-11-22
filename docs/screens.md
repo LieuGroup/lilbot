@@ -46,8 +46,8 @@ type scale, bundle budget) are in `AGENTS.md` under "Stack" and "Web app".
   composer then says "Reconnecting...").
 - Chat header, one 52px line: name, function, new session and the details toggle.
 - Conversation column max 680px: bot text without a bubble (15/24), the user's message in a tinted bubble, tool lines
-  13px, a round composer in two rows: the text, then a plus button for files, the model pill and an ink send/stop
-  button (stop while the bot works and the box is empty with no files).
+  13px, a round composer in two rows: the text, then a plus button for files, the model pill, the context meter pill
+  and an ink send/stop button (stop while the bot works and the box is empty with no files).
 
 ## Model picker (`bots/model-pill.tsx`, `bots/model-menu.tsx`, Paper "14 Model picker")
 
@@ -308,6 +308,30 @@ half a second after `threads.changed`). Bot and file names are plain text everyw
   A session LilBot started because the engine could not resume the conversation adds "The previous session could not
   be resumed" under the time, in the same style. Only the newest has the line "<bot> starts fresh from here. It keeps
   its memory and can search what was said above."
+- Message cost and context size (Paper "21 Message cost and context size", #180; counts only, no prices, formatting in
+  `history/usage-format.ts`):
+  - Turn numbers (`history/turn-actions.tsx`, lazy `history/turn-usage-panel.tsx`, frames 1, 4, 5 and 6): under every
+    finished assistant reply once its turn finishes, two 28px icon buttons: Copy and a bar-chart mark
+    (`ChartNoAxesColumnIcon`; omitted on mid-turn text before a tool call when no usage is attached). Clicking the mark
+    opens a 300px popover on desktop (280px when empty) or a bottom sheet on phones (`history/usage-sheet.tsx`):
+    "This turn" with total tokens, a 6px segmented bar (desktop only; zero buckets omitted) and the four rows in order
+    — Read from cache (`foreground/20`), Written to cache (`foreground/50`), New input (`foreground`), Output
+    (`muted-foreground`) — with zero or unreported rows muted and no warning colour, then a hairline and "Context
+    after this turn" ("187,620 of 1,000,000", or count alone without a window). Older turns or engines with no numbers
+    read "No numbers were recorded for this turn." (or "Token breakdown was not recorded for this turn." when only the
+    context size was recorded).
+  - Context size (`history/context-meter.tsx`, lazy `history/context-popover.tsx`, frames 2, 5 and 6): a 28px pill
+    (`bg-foreground/6`) beside the model pill in the composer with a 16px ring and the percentage used (a dash until
+    the first turn reports a size, or compact count such as "187k" when the model limit is unknown). Hover or tap opens
+    a 300px popover upward on desktop (clicking while open from hover pins it; bottom sheet on phones) with "Context",
+    "N% used", an ink `Progress` bar, "187,620 of 1,000,000 tokens" (or count alone / "No size reported yet.") and
+    "What <bot> carries into its next reply. The engine shortens a long conversation by itself; a line marks where."
+  - Shortened line (`CompactionLine` in `history/history-marks.tsx`, frame 3): hairlines flanking a 14px inward chevron
+    mark and "Conversation shortened · 512,300 to 38,900 tokens" (falls back to after-size, message count, or
+    "Conversation shortened"). Shown both from persisted `compaction` rows and live from `turn.finished.compacted`
+    (inserted before the turn that triggered compaction).
+  - Setup context card (`history/setup-context-card.tsx`, frame 6): in the Setup tab under the model fields, a hairline
+    card showing "Context", "N% used", the ink `Progress` bar and exact token count, kept live from `bots.list`.
 
 ## Attachments (Paper "10 Attachments", `web/src/attachments/`)
 
@@ -506,3 +530,51 @@ Client routing, state, caching and interaction rules for the screens above.
 - Reopening or reconnecting keeps earlier parts already loaded when the new latest part shares a row with them
   (`withLatest`); rows that arrived live are replaced by their saved copies. `MessageList` is keyed by bot, so a new
   session never remounts the scroller.
+
+### Work, checks and goals (`web/src/work/`, `web/src/goals/`, Paper "20 Work: board, checks, goals", #141, #142, #143)
+
+- **Navigation (Frame 1):** "Work" sits at the top of the bot list (`work/work-nav-row.tsx`) and collapsed rail
+  (`work/work-rail-slot.tsx`, kept separate so Tooltip stays in the rail's lazy chunk) with a blue badge counting
+  `needs_oscar` work items plus goals with `waitsForOscar` (`work/work-badge-store.ts`). Routes `/work`, `/work/all`,
+  `/work/goals`, `/work/checks`, `/work/items/$itemId` and `/work/goals/$goalId` (`?review=`) load as lazy chunks.
+- **Today's brief (`/work`, Frame 1):** date heading, summary line, "Needs you" cards (inline Answer + Send for
+  questions, Look for Oscar checks and waiting goals), "Checks that failed" (items failed or sent back after
+  `not_verified` / `could_not_check`), and a collapsed "Done" card with `verified`, `self-checked` and `not checked`
+  pills that expands into the finished items. Roster bot rows keep real `bots.list` activity rather than the drawing's
+  per-bot item counts (not in `bots.list`).
+- **Result marks (`work/check-badge.tsx`, Frame 2):** green `Verified` appears only on level 2+ items `verified` by a
+  checker or `passed` by Oscar; `Not verified`, `Could not check`, `Self-checked`, `Not checked` and `Being checked`
+  are shared everywhere results show (`workBadge` in `work/work-lines.ts`, pure and tested).
+- **All work (`/work/all`, Frame 3):** "By status" / "By bot" toggle, bot and time window filters (Today, 7 days,
+  30 days, All time), recursive parent/child indentation (`nestItems` in `work/work-groups.ts`, clamped past depth 2,
+  with flat `Working` count), part counts and red `sent back` labels (covering both `not_verified` and Oscar's
+  `sent_back`), plus expandable overflow and Failed / Dropped sections.
+- **Item page (`/work/items/$itemId`, Frames 4–5):** top banner for every status (verified green result, Oscar's
+  `sent_back` or bot `not_verified` red banner based on the latest settled check, Level 3 or escalated Pass / Send
+  back… form showing `item.question`, inline question Answer, checking, working/open, failed, dropped), "Done means",
+  check level and kind reason, owner evidence partitioned from same-bot and multi-round check evidence (`library` via
+  `library.content`, `command`, safe `http(s)` `link`, `number`), settled checker cards (running checks are shown only
+  in the top banner), child parts, Drop… dialog with required reason, and links to parent, goal and origin
+  exchange/group/run/chat.
+- **Conversation lines (Frame 6):** `tool` items with `workItemId` load lazy `work/work-line.tsx` via `work.open`
+  ("Work · <title>" with status, cross-bot part progress and `CheckBadge`, opening `/work/items/$itemId`). Handed-over
+  exchanges in `threads/thread-line.tsx` gain the receiver item's `CheckBadge` (clicking the badge opens the item;
+  clicking the row opens the exchange).
+- **Checks tab (`/work/checks`, Frame 7):** default level selector for all nine backend `WorkKind` keys (`reply` and
+  `note` are separate rows matching `work.levels.get`, rather than combined), plus "Different for one bot" overrides
+  with Add dialog and reset to default. Track-record easing and the Spot checks switch from the drawing are omitted
+  because neither exists in the backend yet (#142).
+- **Goals (`web/src/goals/`, Frames 8–11):** pending goal agreements and proposed changes (including title in chat,
+  new target, new review rhythm formatted via `scheduleLabel`, new agreement, or drop proposal) appear inline at the
+  bottom of the bot's chat (`goals/goal-chat-cards.tsx`, loaded lazily when `waitsForOscar`, with Agree, Adjust… and
+  Not now; drop proposals require confirmation and transition cleanly to a collapsed `Dropped <date>` link).
+  `/work/goals` lists active goals (progress bars, waiting proposals on both agreed and paused goals, paused) and
+  reached/dropped goals below, counting `needs_oscar` items via a dedicated query. `/work/goals/$goalId` hides Resume
+  while a proposal waits on a paused goal, shows the 28px metric figure on the target progress card with real
+  verification provenance of the latest review item, "Did what it said" and "The number" tiles (showing `Moving toward
+  target` / `Stalled` / `Moving away` / `Unchanged` rather than a calculated pace), Needs you items (`Look` for Oscar
+  checks, `Answer` for questions), non-review work items and Reviews newest-first with `Next review <date>` read from
+  the goal's review routine (`routines.list`, falling back to `goal.reviewText`). Opening a review (`?review=<itemId>`,
+  Frame 10) shows chronological `review N`, any pending proposal on the latest review (target, review rhythm, agreement
+  or confirmed drop) with Agree / Reply…, and a link to its work item and evidence.
+

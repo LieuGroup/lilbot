@@ -6,7 +6,7 @@ import type { ChatView, UserItem, ViewItem } from './chat-state'
 export function withUserMessage(chat: ChatView, message: string | UserItem): ChatView {
   const item: UserItem = typeof message === 'string' ? { kind: 'user', text: message } : message
   if (chat.running) return { ...chat, queued: [...chat.queued, item] }
-  return { ...chat, items: [...chat.items, item], awaitingStart: true, running: true, activity: 'Sending...' }
+  return { ...chat, items: [...chat.items, item], awaitingStart: true, turnStart: chat.items.length, running: true, activity: 'Sending...' }
 }
 
 const isMessage = (id: string) => (item: ViewItem) => item.kind === 'user' && item.messageId === id

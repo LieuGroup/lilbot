@@ -35,16 +35,33 @@ interface MessageRowsProps {
   start: number | null
   /** `ChatView.load`: which load of the transcript this is. */
   load: number
+  /** Whether a turn is running right now, and where its items begin in `items`. */
+  running: boolean
+  turnStart: number | null
 }
 
 /** One message row. Memoised with its item, so a streamed chunk, a reloaded transcript or an earlier
  *  part loading above draws only the rows that changed. Its key and id are its position in the
  *  conversation, which stays the same as the list grows at either end. */
-const ChatRow = memo(function ChatRow({ item, position, anchor, botId }: { item: MessageItem; position: number; anchor: boolean; botId: string }) {
+const ChatRow = memo(function ChatRow({
+  item,
+  position,
+  anchor,
+  botId,
+  inTurn,
+  beforeTool
+}: {
+  item: MessageItem
+  position: number
+  anchor: boolean
+  botId: string
+  inTurn: boolean
+  beforeTool: boolean
+}) {
   return (
     // A task drawn in its batch's card leaves its own row empty: hidden, so it takes no gap.
     <MessageScrollerItem messageId={String(position)} scrollAnchor={anchor} className="empty:hidden">
-      <ChatItem item={item} botId={botId} />
+      <ChatItem item={item} botId={botId} inTurn={inTurn} beforeTool={beforeTool} />
     </MessageScrollerItem>
   )
 })
@@ -66,7 +83,7 @@ function newestDivider(items: ViewItem[]) {
 }
 
 /** The conversation's rows: the start marker, day lines, session dividers and messages. */
-export function MessageRows({ botId, botName, avatar, items, first, drawFrom, start, load }: MessageRowsProps) {
+export function MessageRows({ botId, botName, avatar, items, first, drawFrom, start, load, running, turnStart }: MessageRowsProps) {
   const loaded = useRef(loadedTranscript(first, items.length, load))
   loaded.current = updateLoaded(loaded.current, first, items.length, load)
   const newest = newestDivider(items)
@@ -80,7 +97,11 @@ export function MessageRows({ botId, botName, avatar, items, first, drawFrom, st
       continue
     }
     if (startsDay(items, index, start !== null)) rows.push(<DateLine key={`day-${position}`} at={timeOf(item)} />)
-    rows.push(<ChatRow key={position} item={item} position={position} anchor={isScrollAnchor(loaded.current, position, item.kind)} botId={botId} />)
+    const inTurn = running && turnStart !== null && index >= turnStart
+    const beforeTool = items[index + 1]?.kind === 'tool'
+    rows.push(
+      <ChatRow key={position} item={item} position={position} anchor={isScrollAnchor(loaded.current, position, item.kind)} botId={botId} inTurn={inTurn} beforeTool={beforeTool} />
+    )
   }
   return rows
 }

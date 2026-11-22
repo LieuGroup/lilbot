@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/ui/t
 import type { Bot } from '../../../shared/bot-schema'
 import { railGroups, rosterGroups } from '../../../shared/client/bots/roster-groups'
 import { loadSettings, openSettings } from '../settings/settings-store'
+import { WorkRailSlot } from '../work/work-rail-slot'
 import { AvatarMarks, botLabel } from './avatar-marks'
 import { BotLink, menuOnContext } from './bot-link'
 import { loadBotMenu } from './bot-menu-target'
@@ -35,6 +36,7 @@ export function RosterRail() {
       </div>
       <TooltipProvider delay={300}>
         <ul className="flex w-full flex-1 flex-col items-center gap-1 overflow-y-auto pt-1 pb-2">
+          <WorkRailSlot />
           {bots.some(bot => bot.groups?.length) && (
             <Suspense>
               <RailGroups />

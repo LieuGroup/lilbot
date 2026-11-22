@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 
 import { Notice } from '@/ui/notice'
 import { rosterGroups, searchBots } from '../../../shared/client/bots/roster-groups'
+import { WorkNavRow } from '../work/work-nav-row'
 import { loadBotMenu } from './bot-menu-target'
 import { useBotStore } from './bot-store'
 import { useDetailsTab, useOpenBotId } from './details-tabs'
@@ -53,6 +54,7 @@ function OpenRoster() {
           </ul>
         ) : (
           <ul className="flex flex-col gap-0.5">
+            <WorkNavRow />
             {bots.some(bot => bot.groups?.length) && (
               <Suspense>
                 <WorkingTogether />

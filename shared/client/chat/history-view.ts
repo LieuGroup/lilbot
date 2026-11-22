@@ -57,6 +57,8 @@ export function withOlder(chat: ChatView, page: HistoryPage, from: string | null
     ...chat,
     items: added.length > 0 ? [...added, ...chat.items] : chat.items,
     first: chat.first - added.length,
+    bareTurn: chat.bareTurn !== null ? chat.bareTurn + added.length : null,
+    turnStart: chat.turnStart !== null ? chat.turnStart + added.length : null,
     older: page.nextCursor,
     oldestFrom: from,
     start: page.start?.at ?? null,
