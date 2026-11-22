@@ -5,6 +5,7 @@ import { Separator } from '@/ui/separator'
 import type { Ability, BotDetail } from '../../../shared/bot-schema'
 import { LilBotError } from '../../../shared/lilbot-error'
 import { lilbot, messageOf } from '../app/lilbot-socket'
+import { SetupContextCard } from '../history/setup-context-card'
 import { SkillsSection } from '../skills/skills-section'
 import { BotForm } from './bot-form'
 import { useBotStore } from './bot-store'
@@ -85,6 +86,7 @@ export function BotSetupPanel({ botId }: { botId: string }) {
             key={`${bot.id}:${bot.name}:${modelKey(bot.model)}:${bot.reasoningEffort}`}
             initial={{ name: bot.name, function: bot.function, instructions: bot.instructions, model: bot.model, reasoningEffort: bot.reasoningEffort }}
             sentEffort={bot.effectiveReasoningEffort}
+            context={<SetupContextCard botId={botId} fallback={bot.context} />}
             submitLabel="Save changes"
             onSubmit={async values => {
               setKept(null)

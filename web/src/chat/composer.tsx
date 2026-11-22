@@ -16,6 +16,8 @@ interface ComposerProps {
   staged: StagedAttachments
   /** The bot's model pill, after the attach button. */
   model: ReactNode
+  /** The bot's context meter pill, beside the model pill. */
+  context?: ReactNode
   /** A short red note above the box, such as a refused model change. */
   note?: ReactNode
   /** Optional tasks dock resting flush on the top edge of the message box. */
@@ -28,7 +30,7 @@ interface ComposerProps {
  *  attach, the model pill and one round ink button: stop while
  *  the bot works and the box is empty, send otherwise (a message sent while it works waits its turn).
  *  Send waits until every staged file has uploaded; refused files are left behind. */
-export function Composer({ disabled, disabledHint, running, botName, staged, model, note, dock, onSend, onStop }: ComposerProps) {
+export function Composer({ disabled, disabledHint, running, botName, staged, model, context, note, dock, onSend, onStop }: ComposerProps) {
   const [text, setText] = useState('')
   const form = useRef<HTMLFormElement>(null)
   const picker = useRef<HTMLInputElement>(null)
@@ -106,6 +108,7 @@ export function Composer({ disabled, disabledHint, running, botName, staged, mod
               <PlusIcon strokeWidth={1.75} />
             </InputGroupButton>
             {model}
+            {context}
             <span className="flex-1" />
             {stopping ? (
               <InputGroupButton

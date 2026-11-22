@@ -14,6 +14,13 @@ const BotCreatePage = lazy(() => import('../bots/bot-create-page').then(module =
 const ThreadView = lazy(() => import('../threads/thread-view'))
 const RunView = lazy(() => import('../routines/run-view'))
 const WebhookRunView = lazy(() => import('../webhooks/webhook-run-view'))
+const WorkLayout = lazy(() => import('../work/work-layout'))
+const WorkTodayPage = lazy(() => import('../work/work-today-page'))
+const WorkAllPage = lazy(() => import('../work/work-all-page'))
+const WorkChecksPage = lazy(() => import('../work/work-checks-page'))
+const WorkItemPage = lazy(() => import('../work/work-item-page'))
+const GoalsTabPage = lazy(() => import('../goals/goals-tab-page'))
+const GoalPage = lazy(() => import('../goals/goal-page'))
 
 /** Three columns on a wide screen: the roster on the page tint, the conversation on white, the
  *  details panel on the tint again, divided by a hairline. Phone: the roster is the home screen
@@ -103,7 +110,29 @@ const botChatRoute = createRoute({ getParentRoute: () => botRoute, path: '/', co
 /** Activity, Library, Memory or Setup in the details panel. */
 const botTabRoute = createRoute({ getParentRoute: () => botRoute, path: '$tab', component: BotDetailsPanel })
 
-export const router = createRouter({ routeTree: rootRoute.addChildren([homeRoute, rosterRoute, newBotRoute, botRoute.addChildren([botChatRoute, botTabRoute])]) })
+/** Work board: Today's brief, All work, Goals, Checks, plus item and goal detail pages (Paper artboard 20). */
+const workRoute = createRoute({ getParentRoute: () => rootRoute, path: '/work', component: WorkLayout })
+const workTodayRoute = createRoute({ getParentRoute: () => workRoute, path: '/', component: WorkTodayPage })
+const workAllRoute = createRoute({ getParentRoute: () => workRoute, path: 'all', component: WorkAllPage })
+const workGoalsRoute = createRoute({ getParentRoute: () => workRoute, path: 'goals', component: GoalsTabPage })
+const workChecksRoute = createRoute({ getParentRoute: () => workRoute, path: 'checks', component: WorkChecksPage })
+const workItemRoute = createRoute({ getParentRoute: () => workRoute, path: 'items/$itemId', component: WorkItemPage })
+const workGoalRoute = createRoute({
+  getParentRoute: () => workRoute,
+  path: 'goals/$goalId',
+  component: GoalPage,
+  validateSearch: (search: Record<string, unknown>): { review?: string } => (typeof search.review === 'string' && search.review ? { review: search.review } : {})
+})
+
+export const router = createRouter({
+  routeTree: rootRoute.addChildren([
+    homeRoute,
+    rosterRoute,
+    newBotRoute,
+    botRoute.addChildren([botChatRoute, botTabRoute]),
+    workRoute.addChildren([workTodayRoute, workAllRoute, workGoalsRoute, workChecksRoute, workItemRoute, workGoalRoute])
+  ])
+})
 
 declare module '@tanstack/react-router' {
   interface Register {

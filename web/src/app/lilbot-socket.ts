@@ -112,7 +112,7 @@ class LilBotSocket {
     return this.onPush('skills.changed', () => listener())
   }
 
-  /** Told when any work item changed (opened, needs_oscar, answered, checked or dropped). */
+  /** Told when any work item or check level changed. */
   onWorkChanged(listener: () => void) {
     return this.onPush('work.changed', () => listener())
   }

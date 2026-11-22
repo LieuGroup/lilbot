@@ -7,6 +7,7 @@ import { iconButton } from '@/ui/icon-button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/ui/tooltip'
 import type { Bot } from '../../../shared/bot-schema'
 import { loadSettings, openSettings } from '../settings/settings-store'
+import { WorkRailSlot } from '../work/work-rail-slot'
 import { AvatarMarks, botLabel } from './avatar-marks'
 import { BotLink, menuOnContext } from './bot-link'
 import { loadBotMenu } from './bot-menu-target'
@@ -35,6 +36,7 @@ export function RosterRail() {
       </div>
       <TooltipProvider delay={300}>
         <ul className="flex w-full flex-1 flex-col items-center gap-1 overflow-y-auto pt-1 pb-2">
+          <WorkRailSlot />
           {bots.some(bot => bot.groups?.length) && (
             <Suspense>
               <RailGroups />
