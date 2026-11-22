@@ -7,10 +7,10 @@ import { Bubble, BubbleContent } from '@/ui/bubble'
 import { Message, MessageContent, MessageFooter } from '@/ui/message'
 import { Trace, TraceIcon, TraceLine, TraceTitle } from '@/ui/trace'
 import type { ChatItem as ChatItemData } from '../../../shared/chat-schema'
+import type { MessageItem } from '../../../shared/client/chat/chat-state'
 import { ImageNote, SentAttachments } from '../attachments/message-attachments'
 import { useBotStore } from '../bots/bot-store'
 import { thisDeviceId } from '../devices/this-device'
-import type { MessageItem } from './chat-state'
 
 type Failure = NonNullable<Extract<ChatItemData, { kind: 'error' }>['reason']>
 

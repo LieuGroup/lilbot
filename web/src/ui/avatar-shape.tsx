@@ -1,17 +1,6 @@
-import type { Avatar } from '../../../shared/avatar'
+import { AVATAR_METRICS, type Avatar } from '../../../shared/avatar'
 
-export const shapeMetrics: Record<Avatar['shape'], { cy: number; scale: number; r: number; dx: number; tab?: number }> = {
-  squircle: { cy: 36, scale: 0.72, r: 5.6, dx: 7.6, tab: 11 },
-  circle: { cy: 36, scale: 0.72, r: 5.6, dx: 7.6, tab: 11 },
-  square: { cy: 36, scale: 0.74, r: 5.6, dx: 7.6, tab: 12 },
-  hexagon: { cy: 36, scale: 0.7, r: 5.2, dx: 7.2, tab: 10 },
-  diamond: { cy: 36, scale: 0.66, r: 4.8, dx: 6.6 },
-  shield: { cy: 34, scale: 0.7, r: 5.2, dx: 7.2 },
-  pill: { cy: 36, scale: 0.76, r: 5.2, dx: 8.2, tab: 17 },
-  triangle: { cy: 45, scale: 0.66, r: 3.7, dx: 4.9 },
-  star: { cy: 37.5, scale: 1, r: 4.1, dx: 5.3 },
-  drop: { cy: 42, scale: 0.7, r: 5.2, dx: 7.2 }
-}
+export const shapeMetrics = AVATAR_METRICS
 
 export function AvatarShape({ shape }: { shape: Avatar['shape'] }) {
   switch (shape) {

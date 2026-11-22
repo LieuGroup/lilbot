@@ -2,10 +2,10 @@ import { memo, type ReactNode, useRef } from 'react'
 
 import { MessageScrollerItem } from '@/ui/message-scroller'
 import type { Avatar } from '../../../shared/avatar'
+import type { MessageItem, ViewItem } from '../../../shared/client/chat/chat-state'
 import { dayKey } from '../history/history-labels'
 import { DateLine, SessionDivider, StartMarker } from '../history/history-marks'
 import { ChatItem } from './chat-item'
-import type { MessageItem, ViewItem } from './chat-state'
 
 interface LoadedTranscript {
   load: number

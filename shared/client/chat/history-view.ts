@@ -1,8 +1,8 @@
 /** How the saved history's parts join the conversation on screen. Pure functions only.
  *  Rows from the history carry their stable `id` and time `at`; rows that arrived live have neither
  *  until the next load brings their saved copies. */
-import type { HistoryItem, HistoryPage } from '../../../shared/history-schema'
-import type { ChatView, ViewItem } from '../chat/chat-state'
+import type { HistoryItem, HistoryPage } from '../../history-schema'
+import type { ChatView, ViewItem } from './chat-state'
 
 /** The parts of `ChatView` that come from the history. */
 type HistoryFields = Pick<ChatView, 'items' | 'first' | 'older' | 'oldestFrom' | 'start' | 'importing'>

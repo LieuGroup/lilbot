@@ -28,9 +28,10 @@ The app is built around the bot, so the same names appear on every side: `bots`,
 server), `memory`, and one folder per feature.
 
 ```
-shared/            What the server and the web app agree on. Definitions only, no logic.
-  protocol.ts        every request the web app can make      <feature>-schema.ts   each feature's data
-  avatar.ts          avatar shapes and colours
+shared/            What the server and the clients agree on. Definitions only, apart from client/ (client logic both apps share).
+  protocol.ts        every request a client can make      <feature>-schema.ts   each feature's data
+  avatar.ts          avatar shapes and colours           avatar-colors.ts   their colour values
+  client/            Client logic both apps use: the socket, the chat transcript rules, this device's id
 
 server/            The LilBot server (runs on the leader).
   main.ts            Start-up: reads settings, picks the engine, starts listening.
@@ -79,6 +80,13 @@ web/src/           The web app.
   deploy/            last deployment failure notice
   settings/          the Settings dialog
   ui/                shadcn/ui parts (ours to edit) and our own small shared parts built from them
+
+ios/                The iPhone app (Expo, iOS only for now). Same feature folder names as web/src.
+  src/app/           the routes and start-up (Expo Router)
+  src/ui/            tokens, theme and the small parts drawn from them (avatar badge, text)
+  src/connection/    server settings, the socket and this install's device registration
+  src/bots/, chat/, duo/, settings/    roster, conversation, the folded/unfolded shell, settings
+  app.config.ts      development/preview/production variants (bundle id and name per variant)
 
 helper/            The standalone computer helper client.
 tests/             Automatic tests, in the same folders as the code they test.

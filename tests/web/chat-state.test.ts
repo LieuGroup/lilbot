@@ -1,8 +1,7 @@
 import { describe, expect, test } from 'bun:test'
-
+import { applyChatEvent, chatFromSnapshot, emptyChat } from '../../shared/client/chat/chat-state'
+import { withSentMessage, withUserMessage } from '../../shared/client/chat/user-messages'
 import { failureLine } from '../../web/src/chat/chat-item'
-import { applyChatEvent, chatFromSnapshot, emptyChat } from '../../web/src/chat/chat-state'
-import { withSentMessage, withUserMessage } from '../../web/src/chat/user-messages'
 import { play, texts } from './chat-helpers'
 
 describe('a normal turn', () => {

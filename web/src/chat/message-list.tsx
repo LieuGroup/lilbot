@@ -4,10 +4,10 @@ import { startTransition, useEffect, useRef, useState } from 'react'
 import { MessageScroller, MessageScrollerButton, MessageScrollerContent, MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport } from '@/ui/message-scroller'
 import { Trace, TraceIcon, TraceLine, TraceTitle } from '@/ui/trace'
 import type { Avatar } from '../../../shared/avatar'
+import type { ChatView } from '../../../shared/client/chat/chat-state'
 import { LoadingEarlier } from '../history/history-marks'
 import { useOlderHistory } from '../history/use-older-history'
 import { ChatItem } from './chat-item'
-import type { ChatView } from './chat-state'
 import { MessageRows } from './message-rows'
 
 interface MessageListProps {

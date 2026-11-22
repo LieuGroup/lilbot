@@ -2,7 +2,7 @@
  *  panel and the roster can all read it, and so it survives moving between screens. */
 import { create } from 'zustand'
 
-import { type ChatView, emptyChat } from './chat-state'
+import { type ChatView, emptyChat } from '../../../shared/client/chat/chat-state'
 
 interface ChatSlot {
   view: ChatView

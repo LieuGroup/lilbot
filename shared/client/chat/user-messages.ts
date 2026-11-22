@@ -1,6 +1,6 @@
 /** User messages in the chat view: sent from this page, confirmed by the server, or arriving from another device or
  *  tab. Pure functions only. */
-import type { AttachmentMessage } from '../../../shared/attachment-schema'
+import type { AttachmentMessage } from '../../attachment-schema'
 import type { ChatView, UserItem, ViewItem } from './chat-state'
 
 export function withUserMessage(chat: ChatView, message: string | UserItem): ChatView {

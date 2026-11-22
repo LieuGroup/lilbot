@@ -1,0 +1,39 @@
+/** The app's connection to the LilBot server: the shared client over this install's socket,
+ *  configured with the server address and the Access token Oscar pastes in once. */
+import { LilBotSocket, type ClientSocket } from '../../../shared/client/socket'
+import { useConnectionStore } from './store'
+
+/** "https://lilbot.example.com" or a bare host becomes the `/ws` address of that server. */
+export function socketUrl(base: string): string {
+  const trimmed = base.trim().replace(/\/+$/, '')
+  const http = /^https?:\/\//.test(trimmed) ? trimmed : `https://${trimmed}`
+  return `${http.replace(/^http/, 'ws')}/ws`
+}
+
+let socket: LilBotSocket | null = null
+
+/** The live socket, created on first use from the saved settings. Null until a server is set. */
+export function ensureSocket(): LilBotSocket | null {
+  const { settings } = useConnectionStore.getState()
+  if (!settings?.serverUrl) return null
+  if (!socket) {
+    const token = settings.accessToken.trim()
+    socket = new LilBotSocket({
+      url: () => socketUrl(settings.serverUrl),
+      // React Native's WebSocket takes headers as a third argument; its types only declare two.
+      createSocket: url => {
+        const RNWebSocket = WebSocket as unknown as new (address: string, protocols: null, options: { headers: Record<string, string> }) => ClientSocket
+        return new RNWebSocket(url, null, { headers: token ? { 'cf-access-jwt-assertion': token } : {} })
+      }
+    })
+  }
+  return socket
+}
+
+/** After the settings change: drop the old socket (no reconnect) so the next ensureSocket uses the new ones. */
+export function resetSocket() {
+  socket?.stop()
+  socket = null
+}
+
+export { socket as lilbotSocket }
