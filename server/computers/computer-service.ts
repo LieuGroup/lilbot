@@ -8,15 +8,21 @@ import type { ServerKey } from './server-key'
 import { payloadQueue } from './work-queue'
 import { workspaceFile } from './workspace-file'
 
-type Peer = { send: (frame: string) => unknown; ready?: () => boolean; pong?: string; close: (code?: number) => void; disconnect?: () => void; seen: number; sent: Set<string> }
+type Peer = {
+  send: (frame: string) => unknown
+  ready?: () => boolean
+  pong?: string
+  close: (code?: number) => void
+  disconnect?: () => void
+  activate?: (promoted?: boolean) => void
+  seen: number
+  sent: Set<string>
+}
 export class ComputerService {
   private queues = new Map<string, ReturnType<typeof payloadQueue>>()
   payload<T>(computer: string, action: () => T | Promise<T>) {
-    let queue = this.queues.get(computer)
-    if (!queue) {
-      queue = payloadQueue()
-      this.queues.set(computer, queue)
-    }
+    const queue = this.queues.get(computer) ?? payloadQueue()
+    this.queues.set(computer, queue)
     return queue(action)
   }
   readonly auth: ComputerAuth
@@ -27,14 +33,11 @@ export class ComputerService {
   private contenders = new Map<string, { peer: Peer; challenge: string; until: number }>()
   private changeTimer?: ReturnType<typeof setTimeout>
   private notify() {
-    if (!this.changeTimer)
-      this.changeTimer = setTimeout(
-        backgroundTask('computer changes', () => {
-          this.changeTimer = undefined
-          this.changed()
-        }),
-        100
-      )
+    const run = backgroundTask('computer changes', () => {
+      this.changeTimer = undefined
+      this.changed()
+    })
+    if (!this.changeTimer) this.changeTimer = setTimeout(run, 100)
   }
   private nextPrune = 0
   private local = new Map<string, AbortController>()
@@ -52,8 +55,8 @@ export class ComputerService {
   list() {
     return this.store.list().map(c => ({ ...c, lastSeen: c.id === 'leader' ? Date.now() : c.lastSeen, online: c.id === 'leader' || this.peers.has(c.id) }))
   }
-  connect(id: string, send: Peer['send'], close: Peer['close'], ready = () => true) {
-    const peer: Peer = { send, close, ready, seen: Date.now(), sent: new Set<string>() }
+  connect(id: string, send: Peer['send'], close: Peer['close'], ready = () => true, onActivate?: Peer['activate']) {
+    const peer: Peer = { send, close, ready, activate: onActivate, seen: Date.now(), sent: new Set<string>() }
     peer.disconnect = () => {
       if (this.peers.get(id) === peer) {
         this.peers.delete(id)
@@ -76,24 +79,25 @@ export class ComputerService {
       this.peers.set(id, peer)
       this.store.seen(id)
       this.notify()
+      peer.activate?.()
       this.dispatch(id)
     }
     return peer.disconnect
   }
   isPeer(id: string, disconnect?: () => void) {
-    return this.peers.get(id)?.disconnect === disconnect || this.contenders.get(id)?.peer.disconnect === disconnect
+    return this.isActivePeer(id, disconnect) || this.contenders.get(id)?.peer.disconnect === disconnect
+  }
+  isActivePeer(id: string, disconnect?: () => void) {
+    return this.peers.get(id)?.disconnect === disconnect
   }
   heartbeat(id: string, disconnect?: () => void, challenge?: string) {
     const peer = this.contenders.get(id)?.peer.disconnect === disconnect ? this.contenders.get(id)!.peer : this.peers.get(id)
     if (!peer) return
     peer.seen = Date.now()
     if (challenge) {
-      if (this.contenders.get(id)?.challenge !== challenge || peer.pong === challenge) {
-        peer.close(1008)
-        return
-      }
+      if (this.contenders.get(id)?.challenge !== challenge || peer.pong === challenge) return peer.close(1008)
       peer.pong = challenge
-    } else {
+    } else if (this.peers.get(id)?.disconnect === disconnect) {
       this.store.seen(id)
       peer.send(JSON.stringify({ type: 'heartbeat' }))
     }
@@ -111,6 +115,7 @@ export class ComputerService {
       } else if (candidate.peer.pong === candidate.challenge) {
         existing?.close(4000)
         this.peers.set(id, candidate.peer)
+        candidate.peer.activate?.(true)
       } else candidate.peer.close(4000)
       this.notify()
     }
@@ -239,10 +244,7 @@ export class ComputerService {
   }
   private runLocal(request: { id: string; status: string }) {
     if (this.local.has(request.id)) return
-    if (request.status === 'running') {
-      this.store.result('leader', request.id, { output: '', error: 'Leader restarted; outcome unknown. Not re-executed.' }, true)
-      return
-    }
+    if (request.status === 'running') return this.store.result('leader', request.id, { output: '', error: 'Leader restarted; outcome unknown. Not re-executed.' }, true)
     const operation = this.store.operation(request.id)
     const controller = new AbortController()
     this.store.running(request.id)
@@ -257,10 +259,7 @@ export class ComputerService {
     const input = ComputerCopy.parse(raw)
     this.require(bot, input.computer)
     return workspaceFile(this.workspace(bot), input.workspacePath, async file => {
-      if (input.direction === 'fromWorkspace') {
-        const data = await file.read()
-        return this.submit(bot, { ...input, operation: { kind: 'write', path: input.path, data, encoding: 'base64' } })
-      }
+      if (input.direction === 'fromWorkspace') return this.submit(bot, { ...input, operation: { kind: 'write', path: input.path, data: await file.read(), encoding: 'base64' } })
       const request = await this.submit(bot, { ...input, operation: { kind: 'read', path: input.path } })
       if (request.status !== 'completed' || !request.result || request.result.error) return request
       await file.write(request.result.output)

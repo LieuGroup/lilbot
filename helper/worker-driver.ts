@@ -1,0 +1,133 @@
+/** Engine-neutral coding-agent driver contract for the helper.
+ *  Adding a second coding agent (such as an ACP driver) is a second file implementing `WorkerDriver`. */
+import type { ChatItem, TurnUsage } from '../shared/chat-schema'
+import { WorkerAgentInfo, type WorkerDoneStatus, type WorkerDriverId, type WorkerEventFrame, type WorkerToolEvent } from '../shared/worker-frame-schema'
+import { claudeCodeDriver } from './worker-driver-claude'
+
+interface WorkerMcpEndpoint {
+  url: string
+  token: string
+}
+
+export interface WorkerStartRequest {
+  runId: string
+  sessionId?: string
+  cwd: string
+  model: string
+  reasoningEffort?: string
+  systemPrompt?: string
+  prompt: string
+  mcp?: WorkerMcpEndpoint
+}
+
+export interface WorkerProgressEvent {
+  sessionId?: string
+  activity?: string
+  tools?: WorkerToolEvent[]
+  textPreview?: string
+}
+
+export interface WorkerOutcome {
+  sessionId?: string
+  status: WorkerDoneStatus
+  text: string
+  items: ChatItem[]
+  usage?: TurnUsage
+  error?: string
+}
+
+export interface WorkerHandle {
+  steer(text: string): Promise<'steered' | 'not_running'>
+  stop(): void
+  done: Promise<WorkerOutcome>
+}
+
+export interface WorkerDriver {
+  readonly id: WorkerDriverId
+  detect(): Promise<WorkerAgentInfo | null>
+  start(request: WorkerStartRequest, onEvent: (event: WorkerProgressEvent) => void): WorkerHandle
+}
+
+export function defaultWorkerDrivers(): WorkerDriver[] {
+  return [claudeCodeDriver()]
+}
+
+export async function detectWorkerAgents(drivers: WorkerDriver[] = defaultWorkerDrivers()): Promise<WorkerAgentInfo[]> {
+  const found: WorkerAgentInfo[] = []
+  for (const driver of drivers) {
+    const info = await driver.detect().catch(() => null)
+    const parsed = info ? WorkerAgentInfo.safeParse(info) : null
+    if (parsed?.success && found.length < 4) found.push(parsed.data)
+  }
+  return found
+}
+
+/** Caches detected agents across reconnects and refreshes asynchronously on an interval without blocking the socket loop. */
+export async function createAgentProbe(drivers: WorkerDriver[] | undefined, onChange: (agents: WorkerAgentInfo[]) => void, intervalMs = 5 * 60_000) {
+  let agents = await detectWorkerAgents(drivers)
+  let nextAt = Date.now() + intervalMs
+  let busy = false
+  return {
+    current: () => agents,
+    refresh() {
+      if (busy || Date.now() < nextAt) return
+      busy = true
+      nextAt = Date.now() + intervalMs
+      void detectWorkerAgents(drivers)
+        .then(next => {
+          if (JSON.stringify(next) === JSON.stringify(agents)) return
+          agents = next
+          onChange(agents)
+        })
+        .finally(() => {
+          busy = false
+        })
+    }
+  }
+}
+
+/** Coalesces bursts of `WorkerProgressEvent` updates into at most one `WorkerEventFrame` per `coalesceMs`. */
+export function createEventCoalescer(runId: string, coalesceMs: number, emit: (frame: WorkerEventFrame) => void, onSession: (sessionId: string) => void) {
+  let pending: { sessionId?: string; activity?: string; textPreview?: string; tools: Map<string, WorkerToolEvent> } | undefined
+  let lastEmittedAt = 0
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let stopped = false
+
+  const flush = () => {
+    if (timer) clearTimeout(timer)
+    timer = undefined
+    if (!pending || stopped) return
+    const p = pending
+    pending = undefined
+    lastEmittedAt = Date.now()
+    emit({
+      type: 'worker.event',
+      runId,
+      ...(p.sessionId ? { sessionId: p.sessionId } : {}),
+      ...(p.activity ? { activity: p.activity } : {}),
+      ...(p.tools.size ? { tools: [...p.tools.values()].slice(0, 32) } : {}),
+      ...(p.textPreview ? { textPreview: p.textPreview } : {})
+    })
+  }
+
+  return {
+    push(event: WorkerProgressEvent) {
+      if (stopped) return
+      if (event.sessionId) onSession(event.sessionId)
+      if (!pending) pending = { tools: new Map() }
+      if (event.sessionId) pending.sessionId = event.sessionId
+      if (event.activity) pending.activity = event.activity
+      if (event.textPreview) pending.textPreview = event.textPreview
+      if (event.tools) for (const t of event.tools) if (pending.tools.has(t.toolId) || pending.tools.size < 32) pending.tools.set(t.toolId, t)
+      const elapsed = Date.now() - lastEmittedAt
+      if (elapsed >= coalesceMs) flush()
+      else if (!timer) timer = setTimeout(flush, coalesceMs - elapsed)
+    },
+    cancel() {
+      stopped = true
+      pending = undefined
+      if (timer) clearTimeout(timer)
+      timer = undefined
+    }
+  }
+}

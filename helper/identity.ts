@@ -3,6 +3,7 @@ import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir, hostname, platform } from 'node:os'
 import { join } from 'node:path'
 import { codeId, codeKey, registrationMac } from './frame-auth'
+import { detectWorkerAgents } from './worker-driver'
 
 export const configDir = process.env.LILBOT_HELPER_CONFIG_DIR || join(homedir(), '.config', 'lilbot-helper')
 export interface Identity {
@@ -34,7 +35,10 @@ export async function register(url: string, code: string) {
   const pair = generateKeyPairSync('ed25519')
   const privateKey = pair.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()
   const publicKey = pair.publicKey.export({ type: 'spki', format: 'pem' }).toString()
-  const body = { codeId: codeId(code), mac: '', publicKey, hello: { name: hostname(), os: platform(), home: homedir(), capabilities: ['exec', 'read', 'write', 'list', 'copy'] } }
+  const workerAgents = await detectWorkerAgents()
+  const capabilities = ['exec', 'read', 'write', 'list', 'copy', ...(workerAgents.length ? ['worker'] : [])]
+  const hello = { name: hostname(), os: platform(), home: homedir(), capabilities, ...(workerAgents.length ? { workerAgents } : {}) }
+  const body = { codeId: codeId(code), mac: '', publicKey, hello }
   body.mac = registrationMac(codeKey(code), publicKey, body.hello)
   const signature = sign(null, Buffer.from(JSON.stringify(body)), privateKey).toString('base64')
   const response = await fetch(`${url}/helper/register`, {
