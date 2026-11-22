@@ -1,13 +1,16 @@
 /** Manages coding-agent workers on this computer: concurrency cap, 350 ms event coalescing, per-run
  *  loopback MCP proxy, stop/steer, reconnect idempotency via SQLite journal, and teardown on revocation. */
 import type { Database } from 'bun:sqlite'
-import type { WorkerDoneFrame, WorkerEventFrame, WorkerLeaderFrame, WorkerStartFrame, WorkerToolEvent } from '../shared/worker-frame-schema'
-import { defaultWorkerDrivers, type WorkerDriver, type WorkerHandle, type WorkerProgressEvent } from './worker-driver'
+import type { WorkerDoneFrame, WorkerLeaderFrame, WorkerStartFrame } from '../shared/worker-frame-schema'
+import { cleanupStaleWorkerConfigs } from './worker-claude-env'
+import { createEventCoalescer, defaultWorkerDrivers, type WorkerDriver, type WorkerHandle } from './worker-driver'
 import {
   acknowledgeWorker,
+  boundWorkerDone,
   canAdmitWorker,
   finishWorkerRecord,
   getWorkerRun,
+  parseStoredDone,
   prepareWorkerJournal,
   startWorkerRecord,
   unacknowledgedWorkers,
@@ -22,13 +25,12 @@ interface ActiveWorker {
   runId: string
   handle?: WorkerHandle
   proxy?: WorkerMcpProxy
-  pending?: { sessionId?: string; activity?: string; textPreview?: string; tools: Map<string, WorkerToolEvent> }
-  lastEmittedAt: number
-  timer?: ReturnType<typeof setTimeout>
+  cancelEvents: () => void
 }
 
 export interface WorkerHostOptions {
   db: Database
+  configDir?: string
   send: (key: string, frame: unknown) => void
   emitNow: (frame: unknown) => boolean
   drivers?: WorkerDriver[]
@@ -51,6 +53,7 @@ export class WorkerHost {
     this.maxWorkers = options.maxWorkers ?? WORKERS_PER_COMPUTER
     this.coalesceMs = options.coalesceMs ?? WORKER_COALESCE_MS
     prepareWorkerJournal(options.db)
+    cleanupStaleWorkerConfigs(options.configDir)
   }
 
   activeCount() {
@@ -87,16 +90,22 @@ export class WorkerHost {
 
   stopAll() {
     for (const entry of this.active.values()) {
-      if (entry.timer) clearTimeout(entry.timer)
+      entry.cancelEvents()
       entry.proxy?.close()
       entry.handle?.stop()
     }
   }
 
-  private emitDone(frame: WorkerDoneFrame) {
-    finishWorkerRecord(this.options.db, frame)
-    this.sentDone.delete(frame.runId)
+  private emitDone(frame: WorkerDoneFrame, persist = true) {
+    const bounded = boundWorkerDone(frame)
+    if (!persist) return this.options.send(`worker-done:${bounded.runId}`, bounded)
+    finishWorkerRecord(this.options.db, bounded)
+    this.sentDone.delete(bounded.runId)
     this.flushPending()
+  }
+
+  private fail(runId: string, error: string, persist = true) {
+    this.emitDone({ type: 'worker.done', runId, status: 'failed', text: '', items: [], error }, persist)
   }
 
   private start(frame: WorkerStartFrame) {
@@ -104,73 +113,55 @@ export class WorkerHost {
     const existing = getWorkerRun(this.options.db, frame.runId)
     if (existing) {
       if (existing.done_frame) {
-        this.options.send(`worker-done:${frame.runId}`, JSON.parse(existing.done_frame))
+        this.options.send(`worker-done:${frame.runId}`, parseStoredDone(existing.done_frame, frame.runId))
         this.sentDone.add(frame.runId)
       }
       return
     }
-    if (this.active.size >= this.maxWorkers || !canAdmitWorker(this.options.db)) return this.fail(frame.runId, 'Worker capacity reached on this computer; try again later.')
+    if (this.active.size >= this.maxWorkers || !canAdmitWorker(this.options.db)) return this.fail(frame.runId, 'Worker capacity reached on this computer; try again later.', false)
     const driver = frame.driver ? this.drivers.find(d => d.id === frame.driver) : this.drivers[0]
-    if (!driver) return this.fail(frame.runId, 'Requested coding agent driver is not available on this computer.')
+    if (!driver) return this.fail(frame.runId, 'Requested coding agent driver is not available on this computer.', false)
 
-    startWorkerRecord(this.options.db, frame.runId, frame.sessionId)
-    const proxy = frame.mcpEnabled
-      ? startWorkerMcpProxy({
+    let proxy: WorkerMcpProxy | undefined
+    const coalescer = createEventCoalescer(
+      frame.runId,
+      this.coalesceMs,
+      ev => this.options.send(`worker-event:${frame.runId}`, ev),
+      sid => updateWorkerSession(this.options.db, frame.runId, sid)
+    )
+    const entry: ActiveWorker = { runId: frame.runId, cancelEvents: coalescer.cancel }
+    try {
+      startWorkerRecord(this.options.db, frame.runId, frame.sessionId)
+      if (frame.mcpEnabled) {
+        const { mcpRetryWindowMs: retryWindowMs, mcpRetryIntervalMs: retryIntervalMs, mcpCallTimeoutMs: callTimeoutMs } = this.options
+        proxy = startWorkerMcpProxy({
           send: (callId, body) => this.options.emitNow({ type: 'worker.mcp.request', runId: frame.runId, callId, body }),
-          retryWindowMs: this.options.mcpRetryWindowMs,
-          retryIntervalMs: this.options.mcpRetryIntervalMs,
-          callTimeoutMs: this.options.mcpCallTimeoutMs
+          retryWindowMs,
+          retryIntervalMs,
+          callTimeoutMs
         })
-      : undefined
-    const entry: ActiveWorker = { runId: frame.runId, proxy, lastEmittedAt: 0 }
-    this.active.set(frame.runId, entry)
-    const flushEvent = () => {
-      if (entry.timer) clearTimeout(entry.timer)
-      entry.timer = undefined
-      const p = entry.pending
-      if (!p || !this.active.has(frame.runId)) return
-      entry.pending = undefined
-      entry.lastEmittedAt = Date.now()
-      const eventFrame: WorkerEventFrame = {
-        type: 'worker.event',
-        runId: frame.runId,
-        ...(p.sessionId ? { sessionId: p.sessionId } : {}),
-        ...(p.activity ? { activity: p.activity } : {}),
-        ...(p.tools.size ? { tools: [...p.tools.values()].slice(0, 32) } : {}),
-        ...(p.textPreview ? { textPreview: p.textPreview } : {})
       }
-      this.options.send(`worker-event:${frame.runId}`, eventFrame)
-    }
-    const onEvent = (event: WorkerProgressEvent) => {
-      if (!this.active.has(frame.runId)) return
-      if (event.sessionId) updateWorkerSession(this.options.db, frame.runId, event.sessionId)
-      if (!entry.pending) entry.pending = { tools: new Map() }
-      const p = entry.pending
-      if (event.sessionId) p.sessionId = event.sessionId
-      if (event.activity) p.activity = event.activity
-      if (event.textPreview) p.textPreview = event.textPreview
-      if (event.tools) for (const tool of event.tools) p.tools.set(tool.toolId, tool)
-      const elapsed = Date.now() - entry.lastEmittedAt
-      if (elapsed >= this.coalesceMs) flushEvent()
-      else if (!entry.timer) entry.timer = setTimeout(flushEvent, this.coalesceMs - elapsed)
-    }
-    const handle = driver.start({ ...frame, mcp: proxy ? { url: proxy.url, token: proxy.token } : undefined }, onEvent)
-    entry.handle = handle
-    const settle = (outcome: Omit<WorkerDoneFrame, 'type' | 'runId'>) => {
-      if (entry.timer) clearTimeout(entry.timer)
-      entry.proxy?.close()
+      entry.proxy = proxy
+      this.active.set(frame.runId, entry)
+      const handle = driver.start({ ...frame, mcp: proxy ? { url: proxy.url, token: proxy.token } : undefined }, coalescer.push)
+      entry.handle = handle
+      const settle = (outcome: Omit<WorkerDoneFrame, 'type' | 'runId'>) => {
+        entry.cancelEvents()
+        entry.proxy?.close()
+        this.active.delete(frame.runId)
+        this.emitDone({ type: 'worker.done', runId: frame.runId, ...outcome })
+      }
+      void handle.done
+        .then(({ sessionId, status, text, items, usage, error }) =>
+          settle({ ...(sessionId ? { sessionId } : {}), status, text, items, ...(usage ? { usage } : {}), ...(error ? { error } : {}) })
+        )
+        .catch(() => settle({ status: 'failed', text: '', items: [], error: 'Worker failed unexpectedly.' }))
+    } catch {
+      entry.cancelEvents()
+      proxy?.close()
       this.active.delete(frame.runId)
-      this.emitDone({ type: 'worker.done', runId: frame.runId, ...outcome })
+      this.fail(frame.runId, 'Failed to start worker.')
     }
-    void handle.done
-      .then(({ sessionId, status, text, items, usage, error }) =>
-        settle({ ...(sessionId ? { sessionId } : {}), status, text, items, ...(usage ? { usage } : {}), ...(error ? { error } : {}) })
-      )
-      .catch(() => settle({ status: 'failed', text: '', items: [], error: 'Worker failed unexpectedly.' }))
-  }
-
-  private fail(runId: string, error: string) {
-    this.emitDone({ type: 'worker.done', runId, status: 'failed', text: '', items: [], error })
   }
 
   private stop(runId: string) {
@@ -178,9 +169,9 @@ export class WorkerHost {
     if (active) return active.handle?.stop()
     const stored = getWorkerRun(this.options.db, runId)
     if (stored?.done_frame) {
-      this.options.send(`worker-done:${runId}`, JSON.parse(stored.done_frame))
+      this.options.send(`worker-done:${runId}`, parseStoredDone(stored.done_frame, runId))
       this.sentDone.add(runId)
-    } else if (!stored) this.emitDone({ type: 'worker.done', runId, status: 'stopped', text: '', items: [] })
+    } else if (!stored) this.emitDone({ type: 'worker.done', runId, status: 'stopped', text: '', items: [] }, false)
   }
 
   private async steer(runId: string, text: string, steerId?: string) {

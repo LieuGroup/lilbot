@@ -297,16 +297,23 @@ macOS and Linux helpers are covered; Windows is not covered (process-group termi
   <session_id>`. Claude Code manages those files under its own home folder; LilBot never writes secrets into prompts
   and deletes each run's `0600` MCP config file in `finally`.
 - **Per-run loopback MCP proxy (`helper/worker-mcp-proxy.ts`):** binds `127.0.0.1:0` with a fresh random bearer token
-  verified in constant time, refuses `Origin` and non-loopback `Host` headers, caps bodies at 256 KiB, answers
-  `server/discover` cleanly, forwards JSON-RPC requests as signed `worker.mcp.request` frames over the helper's
-  existing WebSocket, retries briefly while disconnected (failing already-sent calls on disconnect to avoid duplicate
-  side effects), and stops immediately when the run ends. The bearer token is never logged or sent in any frame.
+  verified in constant time, refuses `Origin`, non-loopback `Host`, and paths other than `/mcp`, streams and caps bodies
+  at 256 KiB with an explicit idle timeout, caps concurrent in-flight calls at 16, answers `server/discover` cleanly,
+  forwards JSON-RPC requests as signed `worker.mcp.request` frames over the helper's existing WebSocket, retries briefly
+  while disconnected (failing already-sent calls with their original JSON-RPC id on disconnect to avoid duplicate side
+  effects), and stops immediately when the run ends. The bearer token is never logged or sent in any frame, and stale
+  per-run config files are wiped at helper startup.
+- **Same-user trust boundary:** two concurrent workers on one computer run as the same OS user with full permissions
+  (`--permission-mode bypassPermissions`), so one worker can read another concurrent worker's `worker-runs/*.mcp.json`
+  token file (and the helper's `identity.json`). That is inherent to the single-user, full-access machine model.
 - **Bounds, recovery and revocation:** workers are capped separately from commands (`WORKERS_PER_COMPUTER = 2`),
-  `worker.event` updates coalesce to at most one frame per 350 ms per run (server enforces 250 ms spacing and rejects
-  any frame whose `runId` was not started by the leader on that computer), `worker_runs` in `requests.db` prevents
-  duplicate spawns on reconnect and preserves unacknowledged `worker.done` outcomes, and a signed `revoked` frame stops
-  all active worker process groups (`SIGTERM`, escalating to `SIGKILL` after 2 s) and closes their proxies before
-  retiring the helper.
+  `systemPrompt` is bounded to 96 KiB UTF-8 (below Linux's 128 KiB single-argument limit), `worker.event` updates
+  coalesce to at most one frame per 350 ms per run, and the leader door enforces 250 ms event spacing, per-run MCP
+  request rate limits, a 1 MiB cap on `worker.done`, active-peer-only routing (rejecting unproven contender sockets),
+  and rejects any frame whose `runId` was not started by the leader on that computer. `worker_runs` in `requests.db`
+  prevents duplicate spawns on reconnect and preserves unacknowledged `worker.done` outcomes (strictly capped at 32
+  pending rows), and a signed `revoked` frame stops all active worker process groups (`SIGTERM`, escalating to
+  `SIGKILL` after 2 s, with a bounded stdout/stderr drain timeout) and closes their proxies before retiring the helper.
 
 ## Tests
 

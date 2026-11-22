@@ -10,7 +10,7 @@ import { outbound } from './outbound'
 import { boundResult } from './result-bounds'
 import { retire } from './retire'
 import { verifyFrame, verifyServer } from './server-trust'
-import { detectWorkerAgents } from './worker-driver'
+import { createAgentProbe } from './worker-driver'
 import { WorkerHost, type WorkerHostOptions } from './worker-host'
 
 type RunnerOptions = Omit<WorkerHostOptions, 'db' | 'send' | 'emitNow'> & { configDir?: string; retire?: () => Promise<void> }
@@ -60,7 +60,8 @@ export async function run(identity: Identity, signal: AbortSignal, options: Runn
     sender.control(key, frame)
     sender.flush()
   }
-  const workers = new WorkerHost({ ...options, db, send: sendWorker, emitNow: emit })
+  const workers = new WorkerHost({ ...options, configDir: dir, db, send: sendWorker, emitNow: emit })
+  const probe = await createAgentProbe(options.drivers, next => sendWorker('worker-capabilities', { type: 'worker.capabilities', agents: next }))
   const work = async (id: string, operation: ComputerOperation) => {
     const previous = db.query('SELECT result,finished_at FROM requests WHERE id=?').get(id) as { result: string | null; finished_at: number | null } | null
     if (previous) {
@@ -97,8 +98,7 @@ export async function run(identity: Identity, signal: AbortSignal, options: Runn
   signal.addEventListener('abort', stop)
   try {
     while (!signal.aborted && !revoked) {
-      const agents = await detectWorkerAgents(options.drivers)
-      if (signal.aborted || revoked) break
+      probe.refresh()
       await new Promise<void>(resolve => {
         const headers = connectionHeaders(identity)
         authenticated = false
@@ -120,6 +120,7 @@ export async function run(identity: Identity, signal: AbortSignal, options: Runn
                 sender.heartbeat()
                 nextHeartbeat = Date.now() + 10_000
               }
+              probe.refresh()
               sender.flush()
             }
           } catch {
@@ -136,7 +137,7 @@ export async function run(identity: Identity, signal: AbortSignal, options: Runn
               delay = 500
               serverKey = raw.publicKey
               clearTimeout(timeout)
-              sender.control('worker-capabilities', { type: 'worker.capabilities', agents })
+              sender.control('worker-capabilities', { type: 'worker.capabilities', agents: probe.current() })
               workers.onReconnect()
               sender.flush()
               return

@@ -6,7 +6,7 @@ import { HelperFrame } from '../../shared/computer-schema'
 import type { WorkerLeaderFrame } from '../../shared/worker-frame-schema'
 import { Registration } from '../computers/computer-auth'
 import type { ComputerService } from '../computers/computer-service'
-import { createWorkerSocketState, handleWorkerFrame, isWorkerFrame, type WorkerDoorBridge, type WorkerSocketState } from '../computers/worker-door'
+import { createWorkerSocketState, handleOversizedWorkerDone, handleWorkerFrame, isWorkerFrame, type WorkerDoorBridge, type WorkerSocketState } from '../computers/worker-door'
 import { HOOK_PATH } from '../webhooks/webhook-address'
 import { WEBHOOK_LIMITS } from '../webhooks/webhook-limits'
 import { addressGroup, byteBudget, connectionBudget, plainServerError, readLimited } from './listener-safety'
@@ -106,15 +106,17 @@ export function startPublicDoor(
           socket.close(4003)
           return
         }
+        socket.data.workerState = createWorkerSocketState()
+        socket.data.workerSend = frame => send(JSON.stringify(frame))
         socket.data.disconnect = computers.connect(
           socket.data.id,
           send,
           (code = 1001) => socket.close(code),
-          () => socket.getBufferedAmount() < 64_000
+          () => socket.getBufferedAmount() < 64_000,
+          () => {
+            if (socket.readyState === 1 && workers?.onConnect) socket.data.workerDisconnect = workers.onConnect(socket.data.id, socket.data.workerSend!)
+          }
         )
-        socket.data.workerState = createWorkerSocketState()
-        socket.data.workerSend = frame => send(JSON.stringify(frame))
-        if (socket.readyState === 1 && workers?.onConnect) socket.data.workerDisconnect = workers.onConnect(socket.data.id, socket.data.workerSend)
       },
       drain(socket) {
         computers.dispatch(socket.data.id)
@@ -132,13 +134,20 @@ export function startPublicDoor(
             const envelope = JSON.parse(String(message))
             if (!verifyHelperFrame(computers.auth.publicKey(socket.data.id)!, socket.data.id, socket.data.nonce, socket.data.sequence, envelope)) return socket.close(1007)
             socket.data.sequence++
-            const frame = HelperFrame.parse(JSON.parse(envelope.payload))
+            const payloadBytes = Buffer.byteLength(envelope.payload)
+            const rawFrame = JSON.parse(envelope.payload)
+            if (rawFrame && typeof rawFrame === 'object' && typeof rawFrame.type === 'string' && rawFrame.type.startsWith('worker.')) {
+              if (!computers.isActivePeer(socket.data.id, socket.data.disconnect)) return
+              if (handleOversizedWorkerDone(socket.data.id, rawFrame, payloadBytes, socket.data.workerState!, socket.data.workerSend!, workers)) return
+            }
+            const frame = HelperFrame.parse(rawFrame)
             if (frame.type === 'heartbeat') {
               if (!frame.challenge && arrivedAt - socket.data.heartbeatAt < 5000) return
               if (!frame.challenge) socket.data.heartbeatAt = arrivedAt
               computers.heartbeat(socket.data.id, socket.data.disconnect, frame.challenge)
             } else if (isWorkerFrame(frame)) {
-              if (!handleWorkerFrame(computers.store.db, socket.data.id, frame, socket.data.workerState!, arrivedAt, socket.data.workerSend!, workers)) socket.close(1008)
+              if (!handleWorkerFrame(computers.store.db, socket.data.id, frame, socket.data.workerState!, arrivedAt, payloadBytes, socket.data.workerSend!, workers))
+                socket.close(1008)
             } else {
               if (!frame.final) {
                 if (frame.result.output.length > 8192 || arrivedAt - (socket.data.progress!.get(frame.id) ?? 0) < 900) return

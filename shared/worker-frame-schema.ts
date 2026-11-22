@@ -3,6 +3,10 @@
 import { z } from 'zod'
 import { ChatItem, TurnUsage } from './chat-schema'
 
+export const WORKER_SYSTEM_PROMPT_MAX_BYTES = 96_000
+export const WORKER_DONE_MAX_BYTES = 1_048_576
+export const SAFE_WORKER_SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/
+
 export const WorkerDriverId = z.enum(['claude-code'])
 export type WorkerDriverId = z.infer<typeof WorkerDriverId>
 
@@ -30,7 +34,15 @@ export const WorkerDoneStatus = z.enum(['completed', 'stopped', 'failed', 'inter
 export type WorkerDoneStatus = z.infer<typeof WorkerDoneStatus>
 
 const runId = z.string().min(1).max(100)
-const sessionId = z.string().min(1).max(200)
+const sessionId = z.string().regex(SAFE_WORKER_SESSION_ID)
+const safeFlagValue = (max: number) =>
+  z
+    .string()
+    .trim()
+    .min(1)
+    .max(max)
+    .regex(/^[^\p{Cc}\p{Cf}]*$/u)
+    .refine(value => !value.startsWith('-'), 'Value cannot start with a dash.')
 
 /** Leader -> Helper worker frames. */
 export const WorkerStartFrame = z.object({
@@ -43,20 +55,13 @@ export const WorkerStartFrame = z.object({
     .min(1)
     .max(4096)
     .regex(/^[^\p{Cc}\p{Cf}]*$/u),
-  model: z
+  model: safeFlagValue(200),
+  reasoningEffort: safeFlagValue(32).optional(),
+  systemPrompt: z
     .string()
-    .trim()
-    .min(1)
-    .max(200)
-    .regex(/^[^\p{Cc}\p{Cf}]*$/u),
-  reasoningEffort: z
-    .string()
-    .trim()
-    .min(1)
-    .max(32)
-    .regex(/^[^\p{Cc}\p{Cf}]*$/u)
+    .max(WORKER_SYSTEM_PROMPT_MAX_BYTES)
+    .refine(value => Buffer.byteLength(value, 'utf8') <= WORKER_SYSTEM_PROMPT_MAX_BYTES, 'System prompt exceeds byte limit.')
     .optional(),
-  systemPrompt: z.string().max(200_000).optional(),
   prompt: z.string().min(1).max(500_000),
   mcpEnabled: z.boolean().default(true)
 })
