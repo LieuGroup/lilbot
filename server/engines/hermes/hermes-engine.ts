@@ -90,7 +90,7 @@ export class HermesEngine implements BotEngine {
   async applyIdentity(id: string, identity: RuntimeIdentity) {
     const detail = await this.getBot(id)
     await applied(id, null, '', async () => applyIdentity(await this.management.socket(), id, identity, detail))
-    return { abilities: detail.abilities, memoryConnected: detail.memoryConnected }
+    return { abilities: detail.abilities, memoryConnected: memoryInstalled(id, identity.id) }
   }
 
   async deleteRuntime(id: string) {
