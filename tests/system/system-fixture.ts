@@ -14,6 +14,7 @@ import { LibraryService } from '../../server/library/library-service'
 import { LibraryStore } from '../../server/library/library-store'
 import { RoutineService } from '../../server/routines/routine-service'
 import { RoutineStore } from '../../server/routines/routine-store'
+import { SkillsService } from '../../server/skills/skills-service'
 import { SystemChanges } from '../../server/system/system-changes'
 import { SYSTEM_KEY_PURPOSE } from '../../server/system/system-connection'
 import { createSystemServer } from '../../server/system/system-server'
@@ -77,6 +78,7 @@ export function systemFixture() {
     id => workspaces.pathFor(id),
     id => fake.store.exists(id)
   )
+  const skills = new SkillsService(join(fake.root, 'skills'), fake.database)
   const giveFile = giveFrom(library, calls, threadStore, routineStore, webhookStore, rootOf)
   // Which calls come from webhook runs' sessions, and the messages runs left (shown in the main conversation).
   const shown: { botId: string; runId: string; source: string; text: string }[] = []
@@ -117,6 +119,7 @@ export function systemFixture() {
     activity: fake.activity,
     memory: fake.memory,
     memoryChanged: () => state.memoryPushes++,
+    skills,
     delegation: { hand: new DelegationService(threads, host, async botId => `${botId}-main`, work.links), control: new DelegationControl(threads, host), groups: threads.groups! },
     work: work.work,
     routines,
@@ -168,6 +171,7 @@ export function systemFixture() {
     webhookStore,
     workspaces,
     library,
+    skills,
     calls,
     from,
     roots,
