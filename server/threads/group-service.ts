@@ -112,6 +112,7 @@ export class GroupService {
     const parent = this.store.context(callerId, chatId)?.thread_id ?? this.store.context(callerId, root)?.thread_id
     const thread = parent ? this.store.get(parent) : null
     if (thread?.group) throw new LilBotError('group_nested', 'No group inside a group. You may hand work to a single bot with lilbot_delegate.')
+    if (thread?.worker) throw new LilBotError('thread_worker_nested', 'A worker cannot start a group. Do the work yourself or report back.')
     if (thread && thread.depth + 1 > THREAD_LIMITS.depth) throw new LilBotError('thread_depth', 'Maximum thread depth reached. Report back to whoever asked you.')
     return thread ? thread.depth + 1 : 1
   }

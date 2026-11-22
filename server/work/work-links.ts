@@ -1,6 +1,7 @@
 /** How other work hangs on the board: work handed to another bot inside an item becomes that bot's child item, a
  *  stopped exchange drops it, and a deleted bot's unfinished items are dropped. Nothing is ever removed. */
 import { LilBotError } from '../../shared/lilbot-error'
+import type { WorkKind } from '../../shared/work-check-schema'
 import type { WorkOrigin } from '../../shared/work-schema'
 import type { WorkAnswers } from './work-answers'
 import { isFinal, titleOf } from './work-rules'
@@ -41,6 +42,14 @@ export class WorkLinks {
     this.work.host.changed()
   }
 
+  /** A `code` work item LilBot opens for every same-bot worker exchange (under `parentId` when one exists, else
+   *  top-level), at the bot's effective default check level for `code`. Runs inside the exchange's own transaction. */
+  workerChild(parentId: string | null, exchange: { id: string; owner: Bot; task: string }) {
+    const floor = this.work.levels.floor('code', exchange.owner.id)
+    this.prepare(parentId, { ...exchange, asker: exchange.owner }, { kind: 'exchange', id: exchange.id }, { kind: 'code', floor, self: true })
+    this.work.host.changed()
+  }
+
   /** Each member's own item for its part in a group started under `parentId`, asked by the leader; the member writes
    *  the "done" definition. Runs inside the group's own transaction. */
   groupChildren(parentId: string, items: { id: string; owner: Bot; asker: Bot; task: string; groupId: string }[]) {
@@ -53,8 +62,13 @@ export class WorkLinks {
     for (const item of this.store.unfinished({ originKind: 'group' })) if (item.origin.id === groupId) this.dropAs(item.id, reason)
   }
 
-  /** An item LilBot opens for work another bot asked for; a repeat adds nothing. */
-  private prepare(parentId: string, work: { id: string; owner: Bot; asker: Bot; task: string }, origin: WorkOrigin) {
+  /** An item LilBot opens for work another bot or a worker asked for; a repeat adds nothing. */
+  private prepare(
+    parentId: string | null,
+    work: { id: string; owner: Bot; asker: Bot; task: string },
+    origin: WorkOrigin,
+    preset?: { kind: WorkKind; floor: number; self?: boolean }
+  ) {
     const at = this.now()
     const created = this.store.create({
       id: work.id,
@@ -63,11 +77,11 @@ export class WorkLinks {
       requestId: null,
       title: titleOf(work.task),
       done: '',
-      kind: null,
-      checkLevel: 1,
-      defaultLevel: null,
+      kind: preset?.kind ?? null,
+      checkLevel: preset?.floor ?? 1,
+      defaultLevel: preset?.floor ?? null,
       status: 'open',
-      askedBy: { kind: 'bot', id: work.asker.id, name: work.asker.name },
+      askedBy: { kind: preset?.self ? 'self' : 'bot', id: work.asker.id, name: work.asker.name },
       origin,
       chatId: null,
       parentId,
