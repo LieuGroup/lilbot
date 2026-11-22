@@ -20,8 +20,9 @@ export function scanReferences(db: Database, oldId: string, probeId = '__probe__
   if (tableExists(db, 'memory_checkpoint_reviewed'))
     add('memory_checkpoint_reviewed.bot_id', db.query<{ n: number }, [string]>('SELECT count(*) AS n FROM memory_checkpoint_reviewed WHERE bot_id = ?').get(oldId)!.n)
 
-  const { deliveryIds, messageIds, workItemIds, checkIds } = buildIdMaps(db, oldId, probeId)
+  const { deliveryIds, remoteRunIds, messageIds, workItemIds, checkIds } = buildIdMaps(db, oldId, probeId)
   add('thread_deliveries.id', deliveryIds.size)
+  add('remote_worker_runs.run_id', remoteRunIds.size)
   if (tableExists(db, 'thread_files')) {
     for (const oldMsg of messageIds.keys()) {
       add('thread_files.message_id', db.query<{ n: number }, [string]>('SELECT count(*) AS n FROM thread_files WHERE message_id = ?').get(oldMsg)!.n)

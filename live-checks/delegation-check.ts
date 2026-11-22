@@ -109,8 +109,9 @@ try {
   assert.deepEqual([stopped.stoppedBy.kind, stopped.stoppedBy.name], ['bot', 'Delegation Lead'])
   console.log(`ok: the lead read status, redirected the reader mid-command, stopped the sleeper and waits for the batch: ${String(control[0].data.text).slice(0, 160)}`)
 
+  const afterControl = events.indexOf(control[0]) + 1
   const reported = await until(
-    () => events.filter(f => f.event === 'chat' && f.chatId === main.chatId && f.data.type === 'turn.finished' && String(f.data.text).includes('LEAD_REPORT')),
+    () => events.slice(afterControl).filter(f => f.event === 'chat' && f.chatId === main.chatId && f.data.type === 'turn.finished' && String(f.data.text).includes('LEAD_REPORT')),
     finished => finished.length > 0,
     'the lead’s report'
   )

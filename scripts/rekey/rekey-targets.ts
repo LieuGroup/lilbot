@@ -26,6 +26,7 @@ export const PLAIN_TARGETS: readonly PlainTarget[] = [
   { table: 'activity_cursors', column: 'bot_id' },
   { table: 'computer_bytes', column: 'bot_id' },
   { table: 'computer_requests', column: 'bot_id' },
+  { table: 'remote_worker_runs', column: 'bot_id' },
   { table: 'history_sessions', column: 'bot' },
   { table: 'history_imports', column: 'bot' },
   { table: 'history_items', column: 'bot' },
@@ -86,15 +87,17 @@ export function tableRowCounts(db: Database): Record<string, number> {
 export interface IdMaps {
   waitIds: Map<string, string>
   deliveryIds: Map<string, string>
+  remoteRunIds: Map<string, string>
   messageIds: Map<string, string>
   workItemIds: Map<string, string>
   checkIds: Map<string, string>
 }
 
-/** Maps composite wait, delivery, message, group work item, and check ids that embed `oldId`. */
+/** Maps composite wait, delivery, remote run, message, group work item, and check ids that embed `oldId`. */
 export function buildIdMaps(db: Database, oldId: string, newId: string): IdMaps {
   const waitIds = new Map<string, string>()
   const deliveryIds = new Map<string, string>()
+  const remoteRunIds = new Map<string, string>()
   const messageIds = new Map<string, string>()
   const workItemIds = new Map<string, string>()
   const checkIds = new Map<string, string>()
@@ -120,6 +123,12 @@ export function buildIdMaps(db: Database, oldId: string, newId: string): IdMaps 
       else if (row.kind === 'point' && row.id.startsWith(`group:${row.threadId}:`) && row.id.endsWith(`:${oldId}`))
         deliveryIds.set(row.id, `${row.id.slice(0, -oldId.length)}${newId}`)
     }
+  }
+  if (tableExists(db, 'remote_worker_runs')) {
+    for (const [oldD, newD] of deliveryIds)
+      if (db.query('SELECT 1 FROM remote_worker_runs WHERE run_id = ?').get(`thread-${oldD}`)) remoteRunIds.set(`thread-${oldD}`, `thread-${newD}`)
+    for (const row of db.query<{ run_id: string }, [string]>(`SELECT run_id FROM remote_worker_runs WHERE run_id LIKE ? ESCAPE '\\'`).all(`thread-${esc}:%`))
+      if (!remoteRunIds.has(row.run_id) && row.run_id.startsWith(`thread-${oldId}:`)) remoteRunIds.set(row.run_id, `thread-${newId}${row.run_id.slice(`thread-${oldId}`.length)}`)
   }
   for (const [oldD, newD] of deliveryIds) {
     messageIds.set(oldD, newD)
@@ -154,7 +163,7 @@ export function buildIdMaps(db: Database, oldId: string, newId: string): IdMaps 
       }
     }
   }
-  return { waitIds, deliveryIds, messageIds, workItemIds, checkIds }
+  return { waitIds, deliveryIds, remoteRunIds, messageIds, workItemIds, checkIds }
 }
 
 /** Counts active/in-flight work touching `botId` (counts only, never text). Non-empty map must refuse re-keying. */
@@ -165,6 +174,8 @@ export function inFlightCounts(db: Database, botId: string): Record<string, numb
   }
   if (tableExists(db, 'computer_requests'))
     add('computer_requests', db.query<{ n: number }, [string]>("SELECT count(*) AS n FROM computer_requests WHERE bot_id = ? AND status IN ('pending','running')").get(botId)!.n)
+  if (tableExists(db, 'remote_worker_runs'))
+    add('remote_worker_runs', db.query<{ n: number }, [string]>("SELECT count(*) AS n FROM remote_worker_runs WHERE bot_id = ? AND status = 'running'").get(botId)!.n)
   if (tableExists(db, 'routine_runs'))
     add('routine_runs', db.query<{ n: number }, [string]>("SELECT count(*) AS n FROM routine_runs WHERE bot_id = ? AND status IN ('pending','running')").get(botId)!.n)
   if (tableExists(db, 'webhook_runs'))
