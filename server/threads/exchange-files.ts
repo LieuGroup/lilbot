@@ -106,6 +106,31 @@ export async function withCopies<T>(fromRoot: string, files: string[], toRoot: s
   }
 }
 
+/** Copies files for every entry in a batch before `use` runs; copies not marked via `keep` are removed. */
+export async function withBatchCopies<T>(
+  fromRoot: string,
+  entries: { files: string[]; toRoot: string; folder: string[] }[],
+  use: (copies: CopiedFile[][], keep: () => void) => T
+): Promise<T> {
+  const all: { toRoot: string; copies: CopiedFile[] }[] = []
+  let kept = false
+  try {
+    for (const entry of entries) {
+      const copies: CopiedFile[] = []
+      all.push({ toRoot: entry.toRoot, copies })
+      for (const file of entry.files) copies.push(await copyFile(fromRoot, file, entry.toRoot, entry.folder))
+    }
+    return use(
+      all.map(entry => entry.copies),
+      () => {
+        kept = true
+      }
+    )
+  } finally {
+    if (!kept) for (const entry of all) for (const c of entry.copies) await removeCopy(entry.toRoot, c.copy).catch(() => {})
+  }
+}
+
 /** Files a bot attaches to the reply it is working on: checked now, recorded without a copy until the reply goes out. */
 export async function stageFiles(files: ThreadFiles, root: string, at: { threadId: string; messageId: string; sender: string }, inputs: string[]) {
   const staged = files.forMessage(at.messageId)

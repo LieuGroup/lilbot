@@ -63,7 +63,7 @@ export default function ThreadView({ botId, threadId }: { botId: string; threadI
       <footer className="flex flex-none flex-wrap items-center gap-x-3 gap-y-2 border-t border-hairline py-3 pr-4 pb-[calc(12px+env(safe-area-inset-bottom))] pl-6">
         <p className="min-w-40 flex-1 text-xs/4 text-muted-foreground">{task ? 'You watch this.' : 'You read threads.'} To steer, talk to either bot.</p>
         <div className="flex gap-1.5">
-          {thread.participants.map(participant => (
+          {(thread.worker ? [from] : thread.participants).map(participant => (
             <ChatButton key={participant.id} id={participant.id} name={participant.name} />
           ))}
         </div>

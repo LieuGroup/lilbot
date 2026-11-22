@@ -3,6 +3,12 @@
 import type { ChatItem } from '../../shared/chat-schema'
 import type { BotThread } from '../../shared/thread-schema'
 
+function taskTitle(thread: BotThread) {
+  const text = thread.messages[0]?.items.find(item => item.kind === 'assistant')?.text ?? ''
+  const line = (text.split('\n').find(part => part.trim()) ?? '').replace(/^[#>*\-\s]+/, '').trim()
+  return line.length > 120 ? `${line.slice(0, 119).trimEnd()}…` : line || 'Task'
+}
+
 export function threadLine(thread: BotThread, botId: string): Extract<ChatItem, { kind: 'tool' }> {
   const [first] = thread.participants
   const leads = first.id === botId
@@ -10,8 +16,8 @@ export function threadLine(thread: BotThread, botId: string): Extract<ChatItem, 
     kind: 'tool',
     toolId: `thread:${thread.id}`,
     threadId: thread.id,
-    name: thread.group ? (leads ? 'group' : `in ${first.name}'s group`) : leads ? 'message to' : 'message from',
-    detail: thread.group ? thread.group.purpose : thread.participants.find(p => p.id !== botId)!.name,
+    name: thread.group ? (leads ? 'group' : `in ${first.name}'s group`) : thread.worker ? 'worker' : leads ? 'message to' : 'message from',
+    detail: thread.group ? thread.group.purpose : thread.worker ? taskTitle(thread) : thread.participants.find(p => p.id !== botId)!.name,
     running: false
   }
 }

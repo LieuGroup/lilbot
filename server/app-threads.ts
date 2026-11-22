@@ -51,7 +51,8 @@ export function createThreads(deps: ThreadDeps) {
     runRoutine: (botId, prompt, options) => bots.runRoutine(botId, prompt, options),
     folder: botId => workspaces.ensure(botId),
     stopRun: async (botId, chatId) => (await engine.stopRun?.(native(botId), chatId)) ?? false,
-    steerRun: async (botId, chatId, text) => (await engine.steerRun?.(native(botId), chatId, text)) ?? 'not_running'
+    steerRun: async (botId, chatId, text) => (await engine.steerRun?.(native(botId), chatId, text)) ?? 'not_running',
+    validateModel: model => engine.validateModel(model)
   }
   const groupHost: GroupHost = {
     root: deps.root,
