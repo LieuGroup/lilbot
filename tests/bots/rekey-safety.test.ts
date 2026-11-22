@@ -20,17 +20,27 @@ test('CLI refuses unknown flags and missing explicit paths (no production defaul
 
 test('pre-flight refuses missing dirs, dangling symlinks, corrupt JSON, read-only files, and low disk space before touching anything', async () => {
   type Fix = ReturnType<typeof createRekeyFixture>
-  const cases: Array<[string, (f: Fix) => Partial<Parameters<typeof runRekey>[0]>, string]> = [
+  const cases: Array<[string, (f: Fix) => Partial<Parameters<typeof runRekey>[0]> | void, string]> = [
     ['missing workspaces dir', f => ({ workspacesDir: join(f.dataDir, 'missing-ws') }), 'workspaces directory does not exist'],
     ['missing hermes home', f => ({ hermesHome: join(f.dataDir, 'missing-h') }), 'Hermes home directory does not exist'],
-    ['dangling workspace symlink', f => (symlinkSync('/nonexistent/target', join(f.workspacesDir, 'target-uuid')), { to: 'target-uuid' }), 'symlink at new workspace'],
+    [
+      'dangling workspace symlink',
+      f => {
+        symlinkSync('/nonexistent/target', join(f.workspacesDir, 'target-uuid'))
+        return { to: 'target-uuid' }
+      },
+      'symlink at new workspace'
+    ],
     [
       'dangling Hermes symlink',
-      f => (rmSync(join(f.profileDir, 'lilbot-skills.json')), symlinkSync('/nonexistent/skills', join(f.profileDir, 'lilbot-skills.json')), {}),
+      f => {
+        rmSync(join(f.profileDir, 'lilbot-skills.json'))
+        symlinkSync('/nonexistent/skills', join(f.profileDir, 'lilbot-skills.json'))
+      },
       'symlink at lilbot-skills.json'
     ],
-    ['corrupt JSON', f => (writeFileSync(join(f.profileDir, 'lilbot-memory.json'), '{bad-json'), {}), 'invalid JSON'],
-    ['read-only JSON', f => (chmodSync(join(f.profileDir, 'lilbot-computers.json'), 0o400), {}), 'not readable and writable'],
+    ['corrupt JSON', f => writeFileSync(join(f.profileDir, 'lilbot-memory.json'), '{bad-json'), 'invalid JSON'],
+    ['read-only JSON', f => chmodSync(join(f.profileDir, 'lilbot-computers.json'), 0o400), 'not readable and writable'],
     ['low free space', () => ({ testHooks: { minDataBytes: Number.MAX_SAFE_INTEGER } }), 'Insufficient free disk space']
   ]
   for (const [name, mutate, match] of cases) {
@@ -38,7 +48,7 @@ test('pre-flight refuses missing dirs, dangling symlinks, corrupt JSON, read-onl
     try {
       const f = createRekeyFixture(root)
       await expect(
-        runRekey({ from: OLD_ID, dataDir: f.dataDir, workspacesDir: f.workspacesDir, hermesHome: f.hermesHome, clearMainChat: false, dryRun: false, ...mutate(f) }),
+        runRekey({ from: OLD_ID, dataDir: f.dataDir, workspacesDir: f.workspacesDir, hermesHome: f.hermesHome, clearMainChat: false, dryRun: false, ...(mutate(f) ?? {}) }),
         name
       ).rejects.toThrow(match)
       const db = new Database(f.dbPath, { readonly: true })
