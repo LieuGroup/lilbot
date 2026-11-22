@@ -1,16 +1,20 @@
-/** Sign-ins in progress (OAuth with PKCE, RFC 7636). Each is known by its `state` value, holds the verifier the code
- *  needs, lasts ten minutes and is spent by the first answer that names it, valid or not. They live in memory only: after
- *  a restart a bot asks for a new link. A new sign-in for a connection voids the one before. */
+/** Sign-ins in progress (OAuth with PKCE, RFC 7636). Each is known by its `state` value, binds to one sign-in card,
+ *  holds the verifier and link in memory only, lasts ten minutes and is spent by the first answer that names it, valid
+ *  or not. After a restart every waiting card expires. A new sign-in for a connection voids the one before. */
 import { createHash, randomBytes } from 'node:crypto'
 import type { AuthServer, OAuthClient } from './mcp-oauth-discovery'
 
 export const SIGN_IN_WINDOW_MS = 10 * 60_000
 
-interface Flow {
+export interface Flow {
+  cardId: string
   connectionId: string
   verifier: string
+  /** Built on demand for `connections.signIn.open` only; never persisted, broadcast or logged. */
+  link: string
   startedAt: number
-  /** Who asked, and from which conversation: it is told when the sign-in is done. */
+  expiresAt: number
+  /** Who asked, and from which conversation: it is told when the sign-in ends. */
   botId: string
   chatId: string
 }
@@ -30,13 +34,22 @@ export class SignInFlows {
     private now: () => number = Date.now
   ) {}
 
-  /** The link Oscar opens: the service's own sign-in page, asked for a code bound to this flow. */
-  start(connectionId: string, botId: string, chatId: string, server: AuthServer, client: OAuthClient, redirectUri: string): string {
+  /** Starts a fresh PKCE flow bound to `cardId`, voiding any earlier flow for `connectionId`. */
+  start(
+    cardId: string,
+    connectionId: string,
+    botId: string,
+    chatId: string,
+    server: AuthServer,
+    client: OAuthClient,
+    redirectUri: string
+  ): { link: string; startedAt: number; expiresAt: number } {
     this.forget(connectionId)
     const state = randomBytes(32).toString('base64url')
     const verifier = randomBytes(32).toString('base64url')
-    this.flows.set(state, { connectionId, verifier, startedAt: this.now(), botId, chatId })
-    const link = new URL(server.authorizationEndpoint)
+    const startedAt = this.now()
+    const expiresAt = startedAt + this.windowMs
+    const url = new URL(server.authorizationEndpoint)
     const params = {
       response_type: 'code',
       client_id: client.clientId,
@@ -47,15 +60,17 @@ export class SignInFlows {
       resource: server.resource,
       ...(server.scope ? { scope: server.scope } : {})
     }
-    for (const [key, value] of Object.entries(params)) link.searchParams.set(key, value)
-    return link.href
+    for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value)
+    const link = url.href
+    this.flows.set(state, { cardId, connectionId, verifier, link, startedAt, expiresAt, botId, chatId })
+    return { link, startedAt, expiresAt }
   }
 
   /** Inspects the live flow `state` names without spending it. Null when absent or expired. */
   peek(state: string | undefined): Flow | null {
     const flow = state ? this.flows.get(state) : undefined
     if (!flow) return null
-    return this.now() - flow.startedAt <= this.windowMs ? flow : null
+    return this.now() <= flow.expiresAt ? flow : null
   }
 
   /** Spends the flow `state` names. Null when there is none, it was spent, or its ten minutes are over. */
@@ -63,7 +78,36 @@ export class SignInFlows {
     const flow = state ? this.flows.get(state) : undefined
     if (!flow || !state) return null
     this.flows.delete(state)
-    return this.now() - flow.startedAt <= this.windowMs ? flow : null
+    return this.now() <= flow.expiresAt ? flow : null
+  }
+
+  /** The sign-in URL for `cardId` while its flow is live and unexpired, or null. */
+  linkForCard(cardId: string): string | null {
+    const now = this.now()
+    for (const [state, flow] of this.flows) {
+      if (flow.cardId !== cardId) continue
+      if (now <= flow.expiresAt) return flow.link
+      this.flows.delete(state)
+      return null
+    }
+    return null
+  }
+
+  hasCard(cardId: string): boolean {
+    return this.linkForCard(cardId) !== null
+  }
+
+  purgeExpired() {
+    const now = this.now()
+    for (const [state, flow] of this.flows) if (now > flow.expiresAt) this.flows.delete(state)
+  }
+
+  forgetCard(cardId: string) {
+    for (const [state, flow] of this.flows) if (flow.cardId === cardId) this.flows.delete(state)
+  }
+
+  forgetBot(botId: string) {
+    for (const [state, flow] of this.flows) if (flow.botId === botId) this.flows.delete(state)
   }
 
   forget(connectionId: string) {

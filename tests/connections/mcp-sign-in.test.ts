@@ -31,19 +31,23 @@ test('a service that needs no sign-in is connected at once, with its tools, and 
   await expect(f.services.add('bot-b', { name: 'plainy', address: plain.address, requestId: 'r2' })).rejects.toThrow('exists already')
 })
 
-test('a service that asks for a sign-in gives a PKCE link for the resource; the callback signs in once and tells the asking conversation', async () => {
+test('a service that asks for a sign-in places a card (no link in tool result); open returns the PKCE link and callback signs in once', async () => {
   const f = connectionsFixture()
   const result = await added(f)
-  const link = new URL(result.signInLink)
+  expect(result.signInLink).toBeUndefined()
+  expect(result.cardId).toBeTruthy()
+  const signInLink = f.linkFor(result.cardId)
+  const link = new URL(signInLink)
   expect(link.origin).toBe(new URL(oauth.address).origin)
   expect(link.searchParams.get('code_challenge_method')).toBe('S256')
   expect(link.searchParams.get('resource')).toBe(oauth.address)
   expect(link.searchParams.get('redirect_uri')).toBe(REDIRECT)
   expect(link.searchParams.get('state')?.length).toBeGreaterThanOrEqual(43)
+  expect(JSON.stringify(result)).not.toContain(link.searchParams.get('state')!)
   expect(serviceConnections(f.services, 'http://127.0.0.1:1', 't', 'bot-a')[0]).toMatchObject({ tools: ['connection_status'] })
   expect(serviceConnections(f.services, 'http://127.0.0.1:1', 't', 'bot-a')[0].url).toEndWith('?v=signed-out')
 
-  const location = await f.browse(result.signInLink)
+  const location = await f.browse(signInLink)
   expect(await f.callback(location)).toMatchObject({ name: 'oauthy', state: 'connected', tools: 1 })
   expect(f.signedIn).toEqual([{ botId: 'bot-a', chatId: 'bot-a-main', name: 'oauthy', runId: `connection-${result.id}-${f.clock.now}` }])
   expect(serviceConnections(f.services, 'http://127.0.0.1:1', 't', 'bot-a')[0]).toMatchObject({ tools: ['secret_word'] })
@@ -66,7 +70,7 @@ test('a service that asks for a sign-in gives a PKCE link for the resource; the 
 test('a wrong state, an error answer, a late answer and an old link are refused', async () => {
   const f = connectionsFixture()
   const first = await added(f)
-  const location = new URL(await f.browse(first.signInLink))
+  const location = new URL(await f.browse(f.linkFor(first.cardId)))
   const forged = new URL(location)
   forged.searchParams.set('state', 'not-the-state')
   expect(await f.callback(forged.href)).toBeNull()
@@ -77,28 +81,29 @@ test('a wrong state, an error answer, a late answer and an old link are refused'
   expect(await f.callback(location.href)).toBeNull()
 
   const fresh: any = await f.services.signIn('bot-a', { id: first.id, requestId: 's1' })
-  const late = await f.browse(fresh.signInLink)
+  const late = await f.browse(f.linkFor(fresh.cardId))
   f.clock.now += 10 * 60_000 + 1
   expect(await f.callback(late)).toBeNull()
 
   const old: any = await f.services.signIn('bot-a', { id: first.id, requestId: 's2' })
-  const oldLocation = await f.browse(old.signInLink)
+  const oldLocation = await f.browse(f.linkFor(old.cardId))
   const newest: any = await f.services.signIn('bot-a', { id: first.id, requestId: 's3' })
   expect(await f.callback(oldLocation)).toBeNull()
   f.clock.now += 10 * 60_000
-  expect(await f.callback(await f.browse(newest.signInLink))).toMatchObject({ state: 'connected' })
+  expect(await f.callback(await f.browse(f.linkFor(newest.cardId)))).toMatchObject({ state: 'connected' })
 })
 
 test('the paste fallback takes only LilBot’s own return address from Oscar’s message, and a retry of the same finish gets the same answer', async () => {
   const f = connectionsFixture()
   const result = await added(f)
-  const location = await f.browse(result.signInLink)
+  const location = await f.browse(f.linkFor(result.cardId))
   const elsewhere = location.replace('https://bot.example.com/', 'https://evil.example.com/')
   f.userSays('bot-a', elsewhere)
   await expect(f.services.finish('bot-a', { address: elsewhere, requestId: 'f0' })).rejects.toThrow('does not finish a sign-in')
   f.userSays('bot-a', `Here is the address: ${location}`)
   const done = await f.services.finish('bot-a', { address: location, requestId: 'f1' })
   expect(done).toMatchObject({ id: result.id, state: 'connected' })
+  expect(f.services.cards.get(result.cardId)?.state).toBe('connected')
   expect(await f.services.finish('bot-a', { address: location, requestId: 'f1' })).toEqual(done)
   await expect(f.services.finish('bot-a', { address: location, requestId: 'f2' })).rejects.toThrow('does not finish a sign-in')
 })
@@ -108,16 +113,16 @@ test('an `iss` that names another server is refused; one the server promised mus
   try {
     const f = connectionsFixture()
     const result: any = await f.services.add('bot-a', { name: 'issy', address: withIss.address, requestId: 'i1' })
-    const location = new URL(await f.browse(result.signInLink))
+    const location = new URL(await f.browse(f.linkFor(result.cardId)))
     const wrong = new URL(location)
     wrong.searchParams.set('iss', 'https://other.example.com')
     expect(await f.callback(wrong.href)).toBeNull()
     const again: any = await f.services.signIn('bot-a', { id: result.id, requestId: 'i2' })
-    const missing = new URL(await f.browse(again.signInLink))
+    const missing = new URL(await f.browse(f.linkFor(again.cardId)))
     missing.searchParams.delete('iss')
     expect(await f.callback(missing.href)).toBeNull()
     const last: any = await f.services.signIn('bot-a', { id: result.id, requestId: 'i3' })
-    expect(await f.callback(await f.browse(last.signInLink))).toMatchObject({ state: 'connected' })
+    expect(await f.callback(await f.browse(f.linkFor(last.cardId)))).toMatchObject({ state: 'connected' })
   } finally {
     withIss.stop()
   }
@@ -133,7 +138,7 @@ test('without the Access door there is no sign-in, but a service that needs none
 test('only the bot that added a service removes it (any bot once that bot is gone), and its credentials go with it', async () => {
   const f = connectionsFixture()
   const result = await added(f)
-  await f.callback(await f.browse(result.signInLink))
+  await f.callback(await f.browse(f.linkFor(result.cardId)))
   expect(f.credentials.get(result.id)?.tokens).toBeDefined()
   expect(() => f.services.remove('bot-b', result.id)).toThrow('Only Alpha')
   f.bots.delete('bot-a')

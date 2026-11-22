@@ -116,7 +116,7 @@ export class HistoryStore {
     const last = rows.at(-1)
     const items: HistoryItem[] = rows.reverse().map(row => {
       const item = JSON.parse(row.item)
-      const author = item.kind === 'user' ? 'user' : item.kind === 'session' || item.kind === 'compaction' ? 'system' : 'bot'
+      const author = item.kind === 'user' ? 'user' : item.kind === 'session' || item.kind === 'compaction' || item.kind === 'connection.sign_in' ? 'system' : 'bot'
       return { id: row.id, sessionId: row.session_id, at: row.at, author, item }
     })
     const progress = this.progress(bot)
@@ -129,6 +129,11 @@ export class HistoryStore {
   }
   reference(bot: string, session: string, item: Extract<ChatItem, { kind: 'tool' }>, at: number) {
     this.write(bot, session, [{ id: item.toolId, at, order: 0, item }])
+  }
+  /** Inserts or updates a service sign-in card in place in its conversation; never indexed in FTS (`text` stays empty). */
+  signInCard(bot: string, session: string, card: import('../../shared/connections-schema').ConnectionSignInCard) {
+    this.session(bot, session, card.createdAt)
+    this.write(bot, session, [{ id: `sign_in:${card.id}`, at: card.createdAt, order: 0, item: { kind: 'connection.sign_in', card } }])
   }
   /** Where a session began. A reason (given only while opening) replaces a plain divider discovery drew a moment earlier. */
   divider(bot: string, session: string, at: number, reason?: SessionReason) {

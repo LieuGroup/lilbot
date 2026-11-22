@@ -6,7 +6,7 @@ import { LilBotError } from '../../shared/lilbot-error'
 import type { AuthServer, OAuthClient } from './mcp-oauth-discovery'
 import type { Tokens } from './mcp-oauth-tokens'
 
-interface Credential {
+export interface Credential {
   server: AuthServer
   client: OAuthClient
   tokens?: Tokens

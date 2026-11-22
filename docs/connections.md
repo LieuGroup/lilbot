@@ -56,24 +56,78 @@ session. The list, sign-in and tokens live in LilBot, so changing engine changes
 - `add` probes the address (initialize, tools/list; ten seconds). It answers: connected with its tools, or the service
   asked for a sign-in (401): LilBot discovers its authorisation server (RFC 9728 protected-resource metadata from the
   401's `WWW-Authenticate` or the well-known path, then RFC 8414 or OpenID metadata, issuer checked), requires PKCE
-  S256, registers itself (RFC 7591, a public client with one redirect address) and returns a sign-in link the bot gives
-  Oscar. No dynamic registration: refused for now (API keys are #63). A link is not a secret.
+  S256, registers itself (RFC 7591, a public client with one redirect address) and places a sign-in card in the asking
+  conversation (see below). No dynamic registration: refused for now (API keys are #63).
 - The sign-in: authorisation code with PKCE, `state` and the resource indicator (RFC 8707) on authorize, token and
   refresh. The return address is `https://<LILBOT_ACCESS_HOST>/api/connections/callback`, from configuration, never a
   request's Host; without the Access door no sign-in can start (services that need none still work). The callback route
   itself is off by default (`LILBOT_ACCESS_CALLBACK_ENABLED=1` opts in); when off, that path answers with a plain 404
   (`no-store`) and never falls through to the app shell; when on, it runs only after Access checks, takes `code`,
   `state`, `iss` and `error`, sets no cookie, shows a plain page (`no-store`, `default-src 'none'`, no referrer) and
-  never logs its address. The paste fallback works without it.
-- A sign-in is spent by the first answer naming its `state` (valid or not), works only within ten minutes of the `add`
-  or `sign_in` that started it (`sign_in` is refused while connected), and a new one voids the one before; `iss` is
-  checked against the issuer when sent, and required when the server promises it. OAuth endpoints must share their
-  issuer's origin.
-- The paste fallback: Oscar pastes the address his browser ended on and the bot passes it with `finish`; it must be
-  LilBot's return address exactly, match the flow's calling bot and conversation, appear in one of Oscar's own visible
-  user messages in that conversation, and is validated like the callback. That address carries a one-use code, useless
-  without the PKCE verifier only LilBot holds and spent at once; it passes through the conversation (and so its copy)
-  until the cards (#69) take the paste, and is kept out of `system_changes` (field names only) and LilBot's logs.
+  never logs its address. The pasted-address flow works without it.
+- A sign-in is spent by the first answer naming its `state` (valid or not), works only within ten minutes of the `add`,
+  `sign_in` or `restart` that started it (`sign_in` is refused while connected or unreachable), and a new one voids the
+  one before; `iss` is checked against the issuer when sent, and required when the server promises it. OAuth endpoints
+  must share their issuer's origin.
+- Legacy bot paste fallback (`lilbot_connection` action `finish`): kept working for clients without the card. Oscar
+  pastes the address his browser ended on in chat and the bot passes it with `finish`; it must be LilBot's return
+  address exactly, match the flow's calling bot and conversation, appear in one of Oscar's own visible user messages in
+  that conversation, and is validated like the callback (also updating the matching sign-in card to `connected`). It is
+  kept out of `system_changes` (field names only) and LilBot's logs.
+
+### Sign-in cards in conversation (#216)
+
+When `add` or `sign_in` starts an OAuth flow, LilBot does **not** return a sign-in URL or OAuth `state` to the bot.
+Instead, it places a durable sign-in card in the asking conversation and returns `{ id, name, state, tools, cardId,
+address, signsInAt, note }`, telling the bot to wait for LilBot to notify it when Oscar finishes.
+
+- **Schema (`shared/connections-schema.ts`, `shared/chat-schema.ts`, table `connection_sign_in_cards`, migration 38):**
+  - `ChatItem`: `{ kind: 'connection.sign_in', card: ConnectionSignInCard }`, persisted in `history_items` under id
+    `sign_in:<card.id>` (with `author: 'system'` and empty FTS `text`) so it survives page reloads via `chat.open` /
+    `chat.history`.
+  - `ChatEvent`: `{ type: 'connection.sign_in', card: ConnectionSignInCard }`, pushed live over `{ event: 'chat', chatId,
+    data }` to every open browser viewing that conversation (alongside `history.changed`).
+  - `ConnectionSignInCard` fields: `id`, `connectionId`, `botId`, `chatId`, `serviceName`, `serviceAddress`,
+    `providerDomain` (`signsInAt`), `state` (`'waiting' | 'connected' | 'cancelled' | 'expired' | 'failed'`), optional
+    plain-text `reason`, optional plain-text `label`, `createdAt`, `expiresAt`, `settledAt`.
+  - **Never stored, broadcast or logged:** the sign-in URL, OAuth `state`, PKCE verifier and the callback address
+    pasted into the sign-in card stay in memory only (the pasted address is discarded immediately after
+    validation/exchange) and never enter SQLite, conversation history, broadcasts, bot tool results, model context,
+    memory or logs. (Only the legacy `finish` chat fallback for clients without the card uses Oscar's visible message
+    in chat.)
+  - Bot-provided `label` / `reason` are untrusted plain text (control characters stripped, length-capped, checked with
+    `memoryRefusal`). Failure `reason` strings are always fixed generic LilBot messages (never raw upstream OAuth
+    errors).
+- **Replacement, expiry and restart:**
+  - A second `add`/`sign_in` for the same connection while a card is `waiting` updates that waiting card in place when in
+    the same conversation (no duplicate card), or marks an earlier waiting card in another conversation `expired`, and
+    voids the prior in-memory flow. Removing a connection cancels its waiting cards.
+  - Sign-in cards can only be placed in a visible conversation with Oscar; calls from hidden sessions (routine runs,
+    bot-to-bot threads/groups, webhook runs, check sessions) are refused so background runs never drop cards into
+    invisible sessions or stall history import.
+  - When a waiting card's 10-minute window elapses (`LILBOT_CONNECTION_TEST_SIGN_IN_SECONDS` in dev checks) or after a
+    LilBot server restart (when in-memory flows are gone), the card transitions to `expired` (reconciled on the
+    1-second connections tick and before `chat.open`, `chat.history`, and card actions — never during service
+    construction before HTTP listeners bind), updating history and pushing to open browsers.
+- **Browser requests (Oscar's browser WebSocket protocol only; unreachable from bot MCP tools, `/engine/*` or the
+  helper door — on the leader itself, full-access bots with shell access already share the Unix user boundary):**
+  - `connections.signIn.open({ cardId })` → `{ url }`: returns the live sign-in URL on demand only while the card is
+    `waiting` and unexpired (same on-demand boundary as `webhooks.address`); never broadcast or stored.
+  - `connections.signIn.finish({ cardId, address })` → `ConnectionSignInCard`: validates the pasted callback address
+    strictly against `redirectUri`, `state`, `iss`, single-use **and** binds it to `cardId`'s pending flow (mismatched,
+    other-card, reused or expired addresses are refused without spending another card's flow). Exchanges the code,
+    probes the service, updates the card to `connected` (or `failed` with a generic plain reason), pushes to browsers,
+    and sends the bot its hidden turn (`"<name> is connected"` or failure notice).
+  - `connections.signIn.cancel({ cardId })` → `ConnectionSignInCard`: voids the in-memory flow, marks the card
+    `cancelled`, pushes to browsers, and sends the bot a hidden cancellation turn so it does not hang.
+  - `connections.signIn.restart({ cardId })` → `ConnectionSignInCard`: while `waiting`, or if `expired`/`failed` while
+    the service still needs sign-in, voids the previous flow, mints a fresh 10-minute flow for the same card (clearing
+    prior `reason`/`settledAt`), pushes to browsers, and returns the updated card (**not** the URL; the UI calls
+    `connections.signIn.open` on demand when Oscar clicks Sign in).
+- **Automatic callback & trust boundaries:**
+  - `GET /api/connections/callback` remains strictly on the Access door behind `LILBOT_ACCESS_CALLBACK_ENABLED=1` and
+    Access JWT/Host/Origin checks (never on the helper door or private listener). Completing or failing a flow through
+    it updates the matching sign-in card, pushes to open browsers, and sends the bot its hidden outcome turn.
 - Tokens and any client secret are only in `<data>/mcp-credentials.json` (0600, written whole and renamed). Never in a
   tool argument or result, chat, instructions, memory, the conversation copy, logs or an engine's settings: engines get
   LilBot's route and the bot's key (`HMAC(engine token, "mcp-service:<id>:<bot id>")`), so a refresh needs no engine

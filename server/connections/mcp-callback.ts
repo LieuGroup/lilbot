@@ -33,6 +33,6 @@ export function connectionCallback(services: McpConnections) {
     const done = await services.complete({ code: read('code'), state: read('state'), iss: read('iss'), error: read('error') })
     return done
       ? page('Signed in', `LilBot is connected to ${escapeHtml(done.name)}. You can close this page; your bot carries on in its conversation.`, 200)
-      : page('Sign-in not completed', 'This sign-in link is no longer valid. Ask your bot for a new one.', 400)
+      : page('Sign-in not completed', 'This sign-in link is no longer valid. Press Start again on the sign-in card, or ask your bot for a new one.', 400)
   }
 }

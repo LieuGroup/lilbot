@@ -1,6 +1,7 @@
 /** All SQL for `mcp_connections`: the services bots added, without any credential. */
 import type { Database } from 'bun:sqlite'
 import type { McpService, McpServiceState } from '../../shared/connections-schema'
+import { SignInCardStore } from './mcp-sign-in-cards'
 
 export interface StoredConnection extends McpService {
   addedById: string
@@ -91,5 +92,9 @@ export class McpConnectionStore {
 
   delete(id: string) {
     this.db.query('DELETE FROM mcp_connections WHERE id = ?').run(id)
+  }
+
+  cardStore(): SignInCardStore {
+    return new SignInCardStore(this.db)
   }
 }

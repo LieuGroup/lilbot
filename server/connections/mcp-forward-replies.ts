@@ -22,7 +22,7 @@ const isServerRequest = (msg: Record<string, any>) => typeof msg.method === 'str
 
 function explanation(connection: StoredConnection): string {
   const why = connection.state === 'sign_in_expired' ? `LilBot's sign-in to ${connection.name} expired or was refused.` : `${connection.name} needs Oscar to sign in.`
-  return `${why} Its tools are unavailable until he does. Call lilbot_connection with action sign_in and id ${connection.id} for a fresh link, give it to Oscar, and wait for LilBot to tell you he signed in.`
+  return `${why} Its tools are unavailable until he does. Call lilbot_connection with action sign_in and id ${connection.id}; LilBot places a sign-in card for Oscar and tells you when he finishes.`
 }
 
 export const serviceSignedOut = (message: JsonRpc, connection: StoredConnection) =>
