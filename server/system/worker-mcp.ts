@@ -5,6 +5,7 @@
 import { ZodError } from 'zod'
 import { LilBotError } from '../../shared/lilbot-error'
 import { WorkInput, type WorkItem } from '../../shared/work-schema'
+import { REMOTE_WORKER_EXCLUDED_SKILLS } from '../computers/remote-worker-prompt'
 import type { RemoteWorkerMcpContext } from '../computers/remote-worker-types'
 import type { JsonRpc } from '../connections/mcp-json-rpc'
 import { fenceRunText } from '../work/webhook-items'
@@ -93,6 +94,15 @@ export function createWorkerMcp(deps: Pick<SystemDeps, 'store' | 'work' | 'chang
         result = await tool.run(ctx.botId, parsedArgs)
         if (!memorySaves.has(ctx.runId) && memorySaves.size >= MAX_TRACKED_RUNS) memorySaves.delete(memorySaves.keys().next().value!)
         memorySaves.set(ctx.runId, count + 1)
+      } else if (name === 'lilbot_skill_read') {
+        if (typeof rawArgs.name === 'string' && REMOTE_WORKER_EXCLUDED_SKILLS.has(rawArgs.name))
+          return toolErr(msg.id, `Skill "${rawArgs.name}" is not available in a remote worker.`)
+        parsedArgs = tool.input.parse(rawArgs) as Record<string, unknown>
+        const raw = await tool.run(ctx.botId, parsedArgs)
+        result =
+          !parsedArgs.name && isRecord(raw) && Array.isArray(raw.skills)
+            ? { ...raw, skills: raw.skills.filter(s => !isRecord(s) || typeof s.name !== 'string' || !REMOTE_WORKER_EXCLUDED_SKILLS.has(s.name)) }
+            : raw
       } else {
         parsedArgs = tool.input.parse(rawArgs) as Record<string, unknown>
         result = await tool.run(ctx.botId, parsedArgs)

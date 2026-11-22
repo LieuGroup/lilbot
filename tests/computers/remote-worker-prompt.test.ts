@@ -84,6 +84,7 @@ test('assembleRemoteWorkerPrompt fits within 96 KiB, escapes section tags, and u
     )
     const skills = new SkillsService(join(dir, 'skills'), db)
     skills.provide('t3-coding', files(join(import.meta.dir, '../../server/connections/t3-coding-skill')))
+    skills.provide('ios-notes', { 'SKILL.md': '---\nname: ios-notes\ndescription: iOS build conventions.\n---\nUse xcodebuild.' })
     const rw = createRemoteWorkers({
       database: db,
       computers,
@@ -97,6 +98,8 @@ test('assembleRemoteWorkerPrompt fits within 96 KiB, escapes section tags, and u
     expect(built.ok).toBe(true)
     if (built.ok) {
       expect(built.systemPrompt).toContain('Stay sharp.')
+      expect(built.systemPrompt).toContain('Edit files and run commands directly')
+      expect(built.systemPrompt).toContain('ios-notes')
       expect(built.systemPrompt).not.toContain('/srv/leader')
       expect(built.systemPrompt).not.toContain('T3 Code')
       expect(built.systemPrompt).not.toContain('t3-coding')
