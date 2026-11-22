@@ -29,6 +29,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     userInterfaceStyle: 'automatic',
     ios: {
       bundleIdentifier: chosen.bundleIdentifier,
+      buildNumber: process.env.APP_BUILD_NUMBER ?? '1',
       supportsTablet: true,
       infoPlist: {
         NSAppTransportSecurity: { NSAllowsArbitraryLoads: variant === 'development' }
