@@ -12,7 +12,7 @@ interface GoalStore {
   error: string
 }
 
-export const useGoalStore = create<GoalStore>(() => ({
+const useGoalStore = create<GoalStore>(() => ({
   goals: [],
   loaded: false,
   byBot: {},
