@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { FlatList, KeyboardAvoidingView, Platform, Pressable, TextInput, View } from 'react-native'
 import type { ChatView, MessageItem } from '../../../shared/client/chat/chat-state'
+import { SendIcon } from '../ui/icon'
 import { useTheme } from '../ui/theme'
 import { AppText } from '../ui/text'
 import { radius } from '../ui/tokens'
@@ -53,7 +54,7 @@ interface ComposerProps {
   onStop: () => void
 }
 
-/** The message box: multiline text, Send when idle, Stop while the bot works. */
+/** The message box: multiline text, an icon Send when idle, Stop while the bot works. */
 export function Composer({ ready, running, onSend, onStop }: ComposerProps) {
   const theme = useTheme()
   const [text, setText] = useState('')
@@ -98,10 +99,8 @@ export function Composer({ ready, running, onSend, onStop }: ComposerProps) {
             <AppText variant="name">Stop</AppText>
           </Pressable>
         ) : (
-          <Pressable onPress={submit} disabled={!canSend} accessibilityLabel="Send" style={{ backgroundColor: canSend ? theme.primary : theme.muted, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10 }}>
-            <AppText variant="name" color={canSend ? theme.primaryForeground : theme.mutedForeground}>
-              Send
-            </AppText>
+          <Pressable onPress={submit} disabled={!canSend} accessibilityLabel="Send" accessibilityRole="button" accessibilityState={{ disabled: !canSend }} testID="send-button" style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: canSend ? theme.primary : theme.muted }}>
+            <SendIcon color={canSend ? theme.primaryForeground : theme.mutedForeground} />
           </Pressable>
         )}
       </View>
