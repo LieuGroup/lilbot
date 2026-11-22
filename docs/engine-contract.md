@@ -36,7 +36,8 @@ conversations, reaches LilBot through MCP, and keeps a thin adapter for the few 
   only, outside the stored text. `stop()` ends the running turn, `close()` releases the socket.
 - [ ] A resumed session keeps the model and effort it has. `updateSession` applies a model or effort edit from the next
   message, also while a turn runs, and answers `confirm_required` (changing nothing) when the engine holds a switch back.
-- [ ] Every session LilBot creates starts with the bot's reasoning effort (chats, routine runs, thread runs).
+- [ ] Every session LilBot creates starts with the bot's reasoning effort (chats, routine runs, thread runs), unless a
+  run passes an explicit `reasoningEffort` (used when its model thinks) or another `model` without one (left unset).
 - [ ] Attachments: images as the engine's own image input where it has one, other files as quoted workspace references.
   `imageSupport` is `supported | unsupported | unknown`, never a guess from model names.
 - [ ] Optional: `watchActivity` (live status and replay per bot), `conversations` (read-only transcript source for the

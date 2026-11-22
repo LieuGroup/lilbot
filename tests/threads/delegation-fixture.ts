@@ -15,6 +15,7 @@ import type { GroupHost, GroupWork } from '../../server/threads/group-end'
 import type { GroupLimits } from '../../server/threads/thread-limits'
 import { ThreadService } from '../../server/threads/thread-service'
 import { type Delivery, ThreadStore } from '../../server/threads/thread-store'
+import type { BotModel } from '../../shared/bot-schema'
 import type { ChatItem } from '../../shared/chat-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import { until } from '../helpers/until'
@@ -71,12 +72,14 @@ export function delegationFixture(
     limits?: GroupLimits
     refuse?: (text: string) => boolean
     calls?: CallingChats
+    rootOf?: (botId: string, chatId: string) => string | null
+    validateModel?: (model: BotModel) => Promise<void>
   } = {}
 ) {
   const root = mkdtempSync(join(tmpdir(), 'lilbot-delegation-'))
   roots.push(root)
   const workspaces = new Workspaces(root)
-  const store = new ThreadStore(options.database ?? openDatabase(':memory:'))
+  const store = new ThreadStore(options.database ?? openDatabase(':memory:'), options.rootOf)
   const bots = ['a', 'b', 'c', 'd'].map(id => ({ id, name: id.toUpperCase() }))
   const runs: Run[] = []
   const stops: string[] = []
@@ -113,9 +116,11 @@ export function delegationFixture(
     steerRun: async (_botId: string, chatId: string, text: string) => {
       steers.push({ chatId, text })
       return 'steered' as const
-    }
+    },
+    ...(options.validateModel ? { validateModel: options.validateModel } : {})
   }
   const group = groupHostFor(root, options.work, options.refuse)
+  if (options.rootOf) group.host.rootOf = options.rootOf
   const { calls } = options
   if (calls) group.host.callingChat = (botId, requestId) => calls.find(botId, 'lilbot_group', requestId)
   const threads = new ThreadService(store, host, options.changed, options.activity, options.touched, group.host, options.limits)

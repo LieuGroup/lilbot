@@ -110,7 +110,7 @@ export class SessionSettings {
   }
 
   /** Whether the model thinks. A model the engine does not list, or the engine's own default, is taken to think: the engine adapts. */
-  private async thinks(model: BotModel | null): Promise<boolean> {
+  async thinks(model: BotModel | null): Promise<boolean> {
     if (!model) return true
     try {
       for (const provider of await this.providers()) {

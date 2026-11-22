@@ -49,5 +49,5 @@ export class ThreadWaits {
 }
 
 function summary(threads: BotThread[], botId: string) {
-  return threads.map(t => `${t.participants.find(p => p.id !== botId)?.name ?? 'a bot'} ${t.status} (exchange ${t.id})`).join('; ')
+  return threads.map(t => `${t.worker ? 'worker' : (t.participants.find(p => p.id !== botId)?.name ?? 'a bot')} ${t.status} (exchange ${t.id})`).join('; ')
 }

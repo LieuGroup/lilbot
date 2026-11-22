@@ -81,9 +81,9 @@ export function workSessions(threadStore: ThreadStore, routineStore: RoutineStor
     if (exchange) {
       const thread = threadStore.get(exchange)
       const asker = thread.participants[0]
-      // In a group the leader asks its members; the leader's own group session is its own work.
+      // In a group the leader asks its members; the leader's own group session is its own work. A worker is its own bot's work.
       if (thread.group) return { origin: { kind: 'group', id: exchange }, askedBy: { kind: asker.id === botId ? 'self' : 'bot', id: asker.id, name: asker.name } }
-      return { origin: { kind: 'exchange', id: exchange }, askedBy: { kind: 'bot', id: asker.id, name: asker.name } }
+      return { origin: { kind: 'exchange', id: exchange }, askedBy: { kind: thread.worker ? 'self' : 'bot', id: asker.id, name: asker.name } }
     }
     const run = routineStore.runForChat(botId, chatId)
     if (run) {

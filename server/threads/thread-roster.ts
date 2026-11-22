@@ -12,7 +12,7 @@ export function botRoster(store: ThreadStore, groups: GroupStore | undefined, ru
     // A receiver's turn on a task it was handed; answers and notices run in the delegating bot's own sessions.
     if (d.kind !== 'request' && d.kind !== 'redirect' && d.kind !== 'oscar') continue
     const thread = store.get(d.threadId)
-    if (thread.group || thread.participants[1].id !== d.target) continue
+    if (thread.group || thread.worker || thread.participants[1].id !== d.target) continue
     out.set(d.target, { ...out.get(d.target), workingFor: { threadId: thread.id, name: thread.participants[0].name } })
   }
   return out
