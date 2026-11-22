@@ -3,13 +3,15 @@
 import type { BotModel } from '../../shared/bot-schema'
 import type { ChatItem, TurnUsage } from '../../shared/chat-schema'
 import { type WorkerAgentInfo, WorkerDoneFrame, type WorkerDoneStatus, type WorkerDriverId, WorkerEventFrame, type WorkerToolEvent } from '../../shared/worker-frame-schema'
+import { stripInvisibleLine, stripInvisibleText } from '../memory/memory-safety'
 
 const MAX_DONE_ITEMS = 500
 const MAX_DONE_TEXT = 500_000
 const MAX_ITEM_TEXT = 100_000
 const MAX_TOOL_RESULT = 2000
 const CLAUDE_MODEL = /^(claude[-_.]|opus$|sonnet$|haiku$)/i
-const SAFE_MODEL_CHARS = /^[^\p{Cc}\p{Cf}\s]+$/u
+const STRICT_WIRE_MODEL = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/
+const STRICT_RAW_MODEL = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/
 
 function safeSlice(text: string, max: number): string {
   if (text.length <= max) return text
@@ -21,17 +23,16 @@ function safeSlice(text: string, max: number): string {
   return text.slice(0, end)
 }
 
-/** Strips C0/C1 control characters (except tab and newline) and Unicode format characters, then bounds length. */
+/** Strips C0/C1 control chars (except tab/newline), format chars, and high variation selectors, then bounds length. */
 function cleanRemoteText(text: string, max: number): string {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: strip untrusted C0/C1 controls (except tab/newline) and Unicode format chars
-  const cleaned = text.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\p{Cf}]/gu, '')
+  const cleaned = stripInvisibleText(text)
   if (cleaned.length <= max) return cleaned
   return max > 14 ? `${safeSlice(cleaned, max - 14)} [truncated]` : safeSlice(cleaned, max)
 }
 
-/** Single-line cleaner: strips every control and Unicode format character, trims, and bounds length. */
+/** Single-line cleaner: strips every control, format, and high variation selector char, trims, and bounds length. */
 function cleanRemoteLine(text: string, max: number): string {
-  const cleaned = text.replace(/[\p{Cc}\p{Cf}]/gu, '').trim()
+  const cleaned = stripInvisibleLine(text).trim()
   if (cleaned.length <= max) return cleaned
   return max > 14 ? `${safeSlice(cleaned, max - 14)} [truncated]` : safeSlice(cleaned, max)
 }
@@ -120,6 +121,10 @@ export function sanitizeWorkerDone(raw: unknown): SanitizedWorkerDone | null {
     }
   }
   const text = cleanRemoteText(frame.text, MAX_DONE_TEXT)
+  if (text && !items.some(item => item.kind === 'assistant')) {
+    if (items.length >= MAX_DONE_ITEMS) items[MAX_DONE_ITEMS - 1] = { kind: 'assistant', text }
+    else items.push({ kind: 'assistant', text })
+  }
   const error = frame.error ? cleanRemoteLine(frame.error, 500) : undefined
   return {
     runId: frame.runId,
@@ -132,11 +137,12 @@ export function sanitizeWorkerDone(raw: unknown): SanitizedWorkerDone | null {
   }
 }
 
-/** Validates a remote working directory: absolute (`/…`) or home-relative (`~` / `~/…`), bounded, no control/format chars. */
+/** Validates a remote working directory: absolute (`/…`) or home-relative (`~` / `~/…`), no traversal or backslashes. */
 export function validateRemoteCwd(cwd: string): { ok: true; cwd: string } | { ok: false; message: string } {
   if (!cwd || cwd.length > 4096) return { ok: false, message: 'Folder path (cwd) must be between 1 and 4096 characters.' }
-  if (/[\p{Cc}\p{Cf}]/u.test(cwd)) return { ok: false, message: 'Folder path (cwd) cannot contain control or invisible formatting characters.' }
+  if (stripInvisibleLine(cwd) !== cwd) return { ok: false, message: 'Folder path (cwd) cannot contain control or invisible characters.' }
   if (cwd.trim() !== cwd) return { ok: false, message: 'Folder path (cwd) cannot start or end with whitespace.' }
+  if (cwd.includes('\\') || cwd.split('/').includes('..')) return { ok: false, message: 'Folder path (cwd) cannot contain backslashes or parent-directory (..) traversal.' }
   if (cwd !== '~' && !cwd.startsWith('~/') && !cwd.startsWith('/')) return { ok: false, message: 'Folder path (cwd) must be absolute (/...) or home-relative (~/...).' }
   return { ok: true, cwd }
 }
@@ -149,7 +155,7 @@ export function validateRemoteModel(
   if (!agents.length) return { ok: false, message: 'That computer does not advertise a coding agent.' }
   const raw = model?.model?.trim() ?? ''
   if (!raw) return { ok: false, message: 'Specify a model for this remote worker (no default model is set for remote computers).' }
-  if (raw.length > 200 || !SAFE_MODEL_CHARS.test(raw) || raw.startsWith('-')) return { ok: false, message: `Model "${cleanRemoteLine(raw, 80)}" is not a valid remote model name.` }
+  if (!STRICT_RAW_MODEL.test(raw)) return { ok: false, message: `Model "${cleanRemoteLine(raw, 80)}" is not a valid remote model name.` }
   const claude = agents.find(agent => agent.driver === 'claude-code')
   if (claude) {
     let wireModel = raw
@@ -157,7 +163,7 @@ export function validateRemoteModel(
       if (!raw.toLowerCase().startsWith('anthropic/')) return { ok: false, message: `Model "${raw}" cannot run on that computer's claude-code agent (Claude models only).` }
       wireModel = raw.slice('anthropic/'.length)
     }
-    if (!wireModel || wireModel.startsWith('-') || !CLAUDE_MODEL.test(wireModel))
+    if (!STRICT_WIRE_MODEL.test(wireModel) || !CLAUDE_MODEL.test(wireModel))
       return { ok: false, message: `Model "${raw}" cannot run on that computer's claude-code agent (Claude models only).` }
     return { ok: true, driver: 'claude-code', wireModel }
   }

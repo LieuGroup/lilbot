@@ -16,9 +16,8 @@ afterEach(() => {
   while (cleanups.length) cleanups.pop()!()
 })
 
-const HOSTILE_CHARS = ['\u0000', '\u0007', '\u001b', '\u007f', '\u200b', '\u200e', '\u202e', '\ufeff']
-// biome-ignore lint/suspicious/noControlCharactersInRegex: assert hostile control and format characters were stripped
-const CONTROL_RE = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\p{Cf}]/u
+const HOSTILE_CHARS = ['\u0000', '\u0007', '\u001b', '\u007f', '\u200b', '\u200e', '\u202e', '\ufeff', '\u{E0100}', '\u{E01EF}']
+const CONTROL_RE = /(?:\p{Cc}|\p{Cf}|[\u{E0100}-\u{E01EF}])/u
 
 const collector = (out: WorkerLeaderFrame[]) => (fr: WorkerLeaderFrame) => {
   out.push(fr)

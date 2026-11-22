@@ -21,7 +21,7 @@ async function callTool(f: ReturnType<typeof systemFixture>, ctx: ReturnType<typ
   return json.result.isError ? { error: text } : { data: JSON.parse(text) }
 }
 
-test('tools/list exposes only the explicit 7-tool allow-list and every other system tool is refused', async () => {
+test('tools/list exposes only the explicit 6-tool allow-list (no lilbot_status) and every other system tool is refused', async () => {
   const f = systemFixture()
   const ctx = makeCtx('b1', 'worker-1')
   const init = await rpc(f, ctx, 'initialize', { protocolVersion: '2025-06-18' })
@@ -30,6 +30,8 @@ test('tools/list exposes only the explicit 7-tool allow-list and every other sys
 
   const listed = (await rpc(f, ctx, 'tools/list')).json.result.tools.map((t: { name: string }) => t.name)
   expect([...listed].sort()).toEqual([...REMOTE_WORKER_TOOLS].sort())
+  expect(listed).not.toContain('lilbot_status')
+  expect(listed).toHaveLength(6)
 
   // Every non-allow-listed system tool (all 27 others) is refused with zero side effects.
   const allowed = new Set<string>(REMOTE_WORKER_TOOLS)
@@ -118,8 +120,8 @@ test('memory, skills, status, guide, deleted bot refusal, and malformed JSON-RPC
   expect((await callTool(f, ctx, 'lilbot_skill_read', { name: 'alpha' })).data.content).toContain('Alpha body')
   expect((await callTool(f, ctx, 'lilbot_skill_read', { name: 'disabled-one' })).error).toContain('disabled or missing')
 
-  // Status and guide work read-only.
-  expect((await callTool(f, ctx, 'lilbot_status', { area: 'computers' })).data).toHaveLength(2)
+  // lilbot_status is refused; lilbot_guide works read-only.
+  expect((await callTool(f, ctx, 'lilbot_status', { area: 'connections' })).error).toContain('is not allowed in a remote worker')
   expect((await callTool(f, ctx, 'lilbot_guide', {})).data.topics.length).toBeGreaterThan(0)
 
   // Malformed / oversized JSON-RPC handled cleanly.
@@ -130,5 +132,5 @@ test('memory, skills, status, guide, deleted bot refusal, and malformed JSON-RPC
 
   // Deleted bot refused on all tools.
   await f.service.deleteBot({ botId: other.id, files: 'delete', privateMemories: 'forget' })
-  expect((await callTool(f, makeCtx(other.id, 'w-del'), 'lilbot_status', { area: 'deploy' })).error).toContain('no longer available')
+  expect((await callTool(f, makeCtx(other.id, 'w-del'), 'lilbot_guide', {})).error).toContain('no longer available')
 })

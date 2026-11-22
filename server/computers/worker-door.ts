@@ -71,6 +71,16 @@ export function isWorkerFrame(frame: { type: string }): frame is WorkerHelperFra
   return frame.type.startsWith('worker.')
 }
 
+function deliverOversizedDone(computerId: string, runId: string, send: (frame: WorkerLeaderFrame) => boolean, bridge: WorkerDoorBridge) {
+  let acked = false
+  const trackSend = (frame: WorkerLeaderFrame) => {
+    if (frame.type === 'worker.ack' && frame.runId === runId) acked = true
+    return send(frame)
+  }
+  bridge.onFrame(computerId, { type: 'worker.done', runId, status: 'failed', text: '', items: [], error: 'Worker outcome exceeded size limit.' }, trackSend)
+  if (!acked) send({ type: 'worker.ack', runId })
+}
+
 /** Handles an oversized `worker.done` payload before running full Zod parsing on huge item arrays. */
 export function handleOversizedWorkerDone(
   computerId: string,
@@ -89,8 +99,7 @@ export function handleOversizedWorkerDone(
     if (bridge?.isSettledRun?.(computerId, runId)) send({ type: 'worker.ack', runId })
     return true
   }
-  bridge.onFrame(computerId, { type: 'worker.done', runId, status: 'failed', text: '', items: [], error: 'Worker outcome exceeded size limit.' }, send)
-  send({ type: 'worker.ack', runId })
+  deliverOversizedDone(computerId, runId, send, bridge)
   return true
 }
 
@@ -151,8 +160,7 @@ export function handleWorkerFrame(
     state.events.delete(frame.runId)
     state.mcp.delete(frame.runId)
     if (payloadBytes > WORKER_DONE_MAX_BYTES) {
-      bridge.onFrame(computerId, { type: 'worker.done', runId: frame.runId, status: 'failed', text: '', items: [], error: 'Worker outcome exceeded size limit.' }, send)
-      send({ type: 'worker.ack', runId: frame.runId })
+      deliverOversizedDone(computerId, frame.runId, send, bridge)
       return true
     }
   }
