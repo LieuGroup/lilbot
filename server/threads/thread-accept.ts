@@ -19,6 +19,9 @@ export interface Accept {
   worker?: boolean
   model?: BotModel
   reasoningEffort?: ReasoningEffort
+  computer?: string
+  computerName?: string
+  cwd?: string
 }
 type Bot = { id: string; name: string }
 export const WORK = "kind IN ('request','redirect','oscar')"
@@ -60,7 +63,10 @@ export function acceptDelivery(store: ThreadStore, caller: Bot, target: Bot, inp
           stoppedBy: null,
           ...(input.worker ? { worker: true as const } : {}),
           ...(input.model ? { model: input.model } : {}),
-          ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {})
+          ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
+          ...(input.computer ? { computer: input.computer } : {}),
+          ...(input.computerName ? { computerName: input.computerName } : {}),
+          ...(input.cwd ? { cwd: input.cwd } : {})
         }
     if (thread.group) throw new LilBotError('thread_forbidden', 'That is a group: use lilbot_group.')
     if (input.threadId && Boolean(thread.worker) !== Boolean(input.worker))

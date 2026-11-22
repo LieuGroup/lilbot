@@ -181,4 +181,12 @@ test('same-bot workers format titles, file counts, inline records, custom model 
     title: 'Started 2 workers',
     progress: '0 of 2 finished'
   })
+  // Remote worker shows its computer name in the row title, opened header, and Activity row.
+  const remote = { ...worker, computer: 'comp-1', computerName: 'Studio', cwd: '/work/app' }
+  expect(lineTitle(remote, 'lead')).toBe('Worker · Studio · Fix the export retry backoff')
+  expect(workerSubtitle(remote, { provider: 'anthropic', model: 'Opus 5.5' }, 'high')).toBe("FillLight Bot's worker · Studio")
+  expect(workerSubtitle(remote, { provider: 'anthropic', model: 'Sonnet 5.5' }, 'medium')).toBe("FillLight Bot's worker · Studio · Opus 5.5 · high")
+  expect(workerActivityRow(remote, now).state.text).toBe('Studio · Running commands · 4 min · 1 file sent')
+  expect(workerActivityRow({ ...remote, status: 'finished', endedAt: T0 + 6 * MIN }, now).state.text).toBe('Studio · Today 10:08')
+  expect(lineTitle({ ...remote, computerName: undefined }, 'lead')).toBe('Worker · comp-1 · Fix the export retry backoff')
 })

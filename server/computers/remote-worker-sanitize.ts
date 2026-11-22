@@ -120,6 +120,7 @@ export function sanitizeWorkerDone(raw: unknown): SanitizedWorkerDone | null {
     }
   }
   const text = cleanRemoteText(frame.text, MAX_DONE_TEXT)
+  if (text && !items.some(item => item.kind === 'assistant')) items.push({ kind: 'assistant', text })
   const error = frame.error ? cleanRemoteLine(frame.error, 500) : undefined
   return {
     runId: frame.runId,

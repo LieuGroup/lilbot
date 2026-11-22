@@ -6,8 +6,17 @@ import { THREAD_LIMITS } from './thread-limits'
 import { type Delivery, isWork, type ThreadStore } from './thread-store'
 import type { ThreadWaits } from './thread-waits'
 
+const REMOTE_FAILURE: Record<string, string> = {
+  offline: 'the computer went offline',
+  interrupted: 'the remote worker was interrupted',
+  prompt_too_large: 'the starting prompt exceeded the remote worker limit',
+  computer_removed: 'the computer was removed',
+  invalid_start: 'the remote worker start request was invalid'
+}
+
 /** The receiver's turn ended badly; with an unknown engine receipt LilBot cannot say how, and never ran it again. */
-export const turnFailure = (result: { unknownReceipt?: true }) => (result.unknownReceipt ? 'LilBot could not confirm how the turn ended' : 'the turn ended in an error')
+export const turnFailure = (result: { unknownReceipt?: true; failureReason?: string }) =>
+  (result.failureReason && REMOTE_FAILURE[result.failureReason]) || (result.unknownReceipt ? 'LilBot could not confirm how the turn ended' : 'the turn ended in an error')
 
 async function reasonFor(host: { requireBot(id: string): Promise<unknown> }, thread: BotThread, d: Delivery, error: LilBotError) {
   if (error.code === 'bot_not_found') {

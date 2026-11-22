@@ -47,6 +47,7 @@ export class DelegationControl {
       batchId: t.batchId,
       to: t.worker ? 'worker' : t.participants[1].name,
       ...(t.worker ? { worker: true as const } : {}),
+      ...(t.computer ? { computer: t.computerName ?? t.computer } : {}),
       status: t.status,
       activity: t.activity,
       runSeconds: t.startedAt ? Math.round(((t.endedAt ?? Date.now()) - t.startedAt) / 1000) : null,

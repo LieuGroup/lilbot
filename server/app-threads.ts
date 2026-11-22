@@ -2,6 +2,7 @@
  *  the Library, the work board and the browsers. */
 import type { EventFrame } from '../shared/protocol'
 import { type ActivityService, toolActivity } from './activity/activity-service'
+import type { RemoteWorkers } from './app-remote-workers'
 import type { BotPrefsStore } from './bots/bot-prefs-store'
 import type { BotService } from './bots/bot-service'
 import type { BotStore } from './bots/bot-store'
@@ -37,22 +38,40 @@ interface ThreadDeps {
   /** The workspaces folder, where each group's shared folder lives. */
   root: string
   rootOf: SessionRoot
+  remoteWorkers?: RemoteWorkers
   publish: (frame: EventFrame) => void
   botsChanged: () => void
   memoryChanged: () => void
 }
 
 export function createThreads(deps: ThreadDeps) {
-  const { engine, store, prefs, bots, workspaces, history, activity, threadStore, calls, work, publish } = deps
+  const { engine, store, prefs, bots, workspaces, history, activity, threadStore, calls, work, remoteWorkers, publish } = deps
   const native = (botId: string) => store.get(botId).engineBotId
   const host: DelegationHost = {
     requireBot: id => bots.requireBot(id),
     listBots: () => bots.listBots(),
-    runRoutine: (botId, prompt, options) => bots.runRoutine(botId, prompt, options),
+    runRoutine: (botId, prompt, options) =>
+      options.computer && options.cwd && options.threadId && remoteWorkers
+        ? remoteWorkers.runForBot(botId, prompt, {
+            runId: options.runId,
+            threadId: options.threadId,
+            chatId: options.chatId,
+            computer: options.computer,
+            cwd: options.cwd,
+            model: options.model,
+            reasoningEffort: options.reasoningEffort,
+            onChat: options.onChat
+          })
+        : bots.runRoutine(botId, prompt, options),
     folder: botId => workspaces.ensure(botId),
-    stopRun: async (botId, chatId) => (await engine.stopRun?.(native(botId), chatId)) ?? false,
-    steerRun: async (botId, chatId, text) => (await engine.steerRun?.(native(botId), chatId, text)) ?? 'not_running',
-    validateModel: model => engine.validateModel(model)
+    stopRun: async (botId, chatId) =>
+      chatId.startsWith('remote:') && remoteWorkers ? remoteWorkers.runner.stopByChat(botId, chatId) : ((await engine.stopRun?.(native(botId), chatId)) ?? false),
+    steerRun: async (botId, chatId, text) =>
+      chatId.startsWith('remote:') && remoteWorkers
+        ? remoteWorkers.runner.steerByChat(botId, chatId, text)
+        : ((await engine.steerRun?.(native(botId), chatId, text)) ?? 'not_running'),
+    validateModel: model => engine.validateModel(model),
+    ...(remoteWorkers ? { resolveRemoteWorker: remoteWorkers.resolveRemoteWorker, computerName: remoteWorkers.computerName } : {})
   }
   const groupHost: GroupHost = {
     root: deps.root,
@@ -93,6 +112,7 @@ export function createThreads(deps: ThreadDeps) {
     calls.saw(bot.id, call.chatId, call.tool, call.args, call.callId)
     threads.runner.sawTool(call.chatId, toolActivity(call.tool))
   })
+  remoteWorkers?.runner.onToolCall(call => threads.runner.sawTool(call.chatId, call.activity))
   const hand = new DelegationService(threads, host, (botId, requestId) => calls.find(botId, 'lilbot_delegate', requestId), work)
   return { threads, delegation: { hand, control: new DelegationControl(threads, host), groups: threads.groups! } }
 }

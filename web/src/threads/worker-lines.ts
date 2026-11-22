@@ -25,12 +25,13 @@ export function inlineState(thread: BotThread, waiting?: WorkSummary): LineState
   return { icon: 'finished', text: 'Finished', failed: false, stopped: false }
 }
 
-/** The opened worker's header subtitle: "<Bot>'s worker", adding custom model/effort only when overridden. */
+/** The opened worker's header subtitle: "<Bot>'s worker", adding remote computer and custom model/effort when set. */
 export function workerSubtitle(thread: BotThread, botModel?: BotModel | null, botEffort?: ReasoningEffort | null) {
   const base = `${sides(thread).from.name}'s worker`
+  const where = thread.computer ? (thread.computerName ?? thread.computer) : null
   const modelChanged = !!thread.model && (!botModel || thread.model.provider !== botModel.provider || thread.model.model !== botModel.model)
   const effortChanged = !!thread.reasoningEffort && (modelChanged || botEffort === undefined || thread.reasoningEffort !== botEffort)
-  return joined(base, modelChanged && thread.model!.model, effortChanged && thread.reasoningEffort)
+  return joined(base, where, modelChanged && thread.model!.model, effortChanged && thread.reasoningEffort)
 }
 
 /** The opened worker's footer sentence (Paper "22 Workers" frames 5 and 6). */
@@ -45,21 +46,24 @@ export function workerFooter(thread: BotThread) {
 /** One row of the Activity tab's "Workers" card (Paper "22 Workers" frame 7). */
 export function workerActivityRow(thread: BotThread, now: number, waiting?: WorkSummary): { title: string; state: LineState } {
   const title = taskTitle(thread)
+  const where = thread.computer ? (thread.computerName ?? thread.computer) : null
+  const withWhere = (state: LineState): LineState => (where ? { ...state, text: joined(where, state.text) } : state)
   if (waiting?.status === 'needs_oscar' && thread.status !== 'cancelled') {
     return {
       title,
-      state: { icon: 'waiting', text: isOpenOscarCheck(waiting) ? 'Waiting for your check' : joined('Waiting for you', waiting.question), failed: false, stopped: false }
+      state: withWhere({ icon: 'waiting', text: isOpenOscarCheck(waiting) ? 'Waiting for your check' : joined('Waiting for you', waiting.question), failed: false, stopped: false })
     }
   }
-  if (running(thread)) return { title, state: lineState(thread, sides(thread).from.id, now) }
+  if (running(thread)) return { title, state: withWhere(lineState(thread, sides(thread).from.id, now)) }
   const when = shortDate(thread.endedAt ?? thread.createdAt, now)
   if (thread.status === 'cancelled') {
     const stop = thread.stoppedBy
     const text = stop ? (stop.kind === 'oscar' ? 'Stopped by you' : `Stopped by ${stop.name}`) : 'Stopped'
-    return { title, state: { icon: null, text: `${when} · ${text}`, failed: false, stopped: true } }
+    return { title, state: withWhere({ icon: null, text: `${when} · ${text}`, failed: false, stopped: true }) }
   }
-  if (thread.state === 'limited') return { title, state: { icon: null, text: `${when} · Stopped at the ${thread.messages.length}-message limit`, failed: false, stopped: true } }
+  if (thread.state === 'limited')
+    return { title, state: withWhere({ icon: null, text: `${when} · Stopped at the ${thread.messages.length}-message limit`, failed: false, stopped: true }) }
   if (thread.status === 'failed' || thread.state === 'failed')
-    return { title, state: { icon: 'failed', text: joined(when, 'Failed', thread.failure), failed: true, stopped: false } }
-  return { title, state: { icon: 'finished', text: when, failed: false, stopped: false } }
+    return { title, state: withWhere({ icon: 'failed', text: joined(when, 'Failed', thread.failure), failed: true, stopped: false }) }
+  return { title, state: withWhere({ icon: 'finished', text: when, failed: false, stopped: false }) }
 }
