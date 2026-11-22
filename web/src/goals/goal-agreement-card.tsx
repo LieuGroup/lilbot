@@ -34,6 +34,8 @@ export function GoalAgreementCard({ goal, now, onAgreed, onDismiss }: { goal: Go
   }
 
   const p = goal.proposal
+  const showTarget = !p || !!p.target
+  const showAgreement = !p || !!p.agreement
   const target = p?.target ?? goal.target
   const agreement = p?.agreement ?? goal.agreement
   const reviewText = p?.review ? 'updated schedule' : goal.reviewText
@@ -80,19 +82,25 @@ export function GoalAgreementCard({ goal, now, onAgreed, onDismiss }: { goal: Go
         <p className="text-sm/[21px] font-medium text-destructive">Proposes dropping this goal.</p>
       ) : (
         <>
-          <div className="flex flex-col gap-0.5">
-            <span className="text-xs/4 text-muted-foreground">Target I propose</span>
-            <span className="text-[15px]/[22px] font-medium text-foreground">
-              {formatGoalNumber(target.value)} {target.measure} by {formatDueDate(target.due, true, now)}
-            </span>
-            <span className="text-xs/4 text-muted-foreground">
-              Now {formatGoalNumber(target.baseline.value)} · read from {target.source} {dayLabel(target.baseline.at, now)} · I report {reviewText}
-            </span>
-          </div>
-          <div className="h-px bg-hairline" />
-          <AgreementList label="I can do alone" items={agreement.alone} />
-          {agreement.needsOscar.length > 0 && <AgreementList label="I need from you" items={agreement.needsOscar} />}
-          {agreement.cannotInfluence.length > 0 && <AgreementList label="I cannot influence" items={agreement.cannotInfluence} />}
+          {showTarget && (
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs/4 text-muted-foreground">{p ? 'New target' : 'Target I propose'}</span>
+              <span className="text-[15px]/[22px] font-medium text-foreground">
+                {formatGoalNumber(target.value)} {target.measure} by {formatDueDate(target.due, true, now)}
+              </span>
+              <span className="text-xs/4 text-muted-foreground">
+                Now {formatGoalNumber(target.baseline.value)} · read from {target.source} {dayLabel(target.baseline.at, now)} · I report {reviewText}
+              </span>
+            </div>
+          )}
+          {showTarget && showAgreement && <div className="h-px bg-hairline" />}
+          {showAgreement && (
+            <>
+              <AgreementList label="I can do alone" items={agreement.alone} />
+              {agreement.needsOscar.length > 0 && <AgreementList label="I need from you" items={agreement.needsOscar} />}
+              {agreement.cannotInfluence.length > 0 && <AgreementList label="I cannot influence" items={agreement.cannotInfluence} />}
+            </>
+          )}
         </>
       )}
 
