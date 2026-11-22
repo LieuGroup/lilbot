@@ -1,6 +1,5 @@
-/** The client side of the LilBot protocol, shared by the web app and the iOS app: typed
- *  requests, chat events, automatic reconnect. Each client supplies its own socket factory
- *  (browser `WebSocket` on the web, React Native's on iOS) and the server's `/ws` address. */
+/** The client side of the LilBot protocol, shared by the web app and the iOS app: typed requests,
+ *  chat events, automatic reconnect. Each client supplies its socket factory and `/ws` address. */
 import type { ChatEvent } from '../chat-schema'
 import { LilBotError } from '../lilbot-error'
 import type { EventFrame, Method, Params, Results } from '../protocol'
@@ -109,59 +108,37 @@ export class LilBotSocket {
   }
 
   /** Told when bots, preferences or sections changed, here or on another device. */
-  onBotsChanged(listener: () => void) {
-    return this.onPush('bots.changed', () => listener())
-  }
+  onBotsChanged = (listener: () => void) => this.onPush('bots.changed', () => listener())
 
   /** Told when a fact was saved or forgotten, by a bot or in the app. */
-  onMemoryChanged(listener: () => void) {
-    return this.onPush('memory.changed', () => listener())
-  }
+  onMemoryChanged = (listener: () => void) => this.onPush('memory.changed', () => listener())
 
   /** Told when a computer was added, removed, or went online or offline. */
-  onComputersChanged(listener: () => void) {
-    return this.onPush('computers.changed', () => listener())
-  }
+  onComputersChanged = (listener: () => void) => this.onPush('computers.changed', () => listener())
 
   /** Told when a device was renamed or tied to a computer, here or in another tab. */
-  onDevicesChanged(listener: () => void) {
-    return this.onPush('devices.changed', () => listener())
-  }
+  onDevicesChanged = (listener: () => void) => this.onPush('devices.changed', () => listener())
 
   /** Told when an exchange between bots started, moved or ended. It names no bot, and comes with every tool call in one. */
-  onThreadsChanged(listener: () => void) {
-    return this.onPush('threads.changed', () => listener())
-  }
+  onThreadsChanged = (listener: () => void) => this.onPush('threads.changed', () => listener())
 
   /** Told when a routine was made, changed or removed, or one of its runs started or ended. */
-  onRoutinesChanged(listener: () => void) {
-    return this.onPush('routines.changed', () => listener())
-  }
+  onRoutinesChanged = (listener: () => void) => this.onPush('routines.changed', () => listener())
 
   /** Told when a webhook was made, changed or removed, or one of its runs was queued, started or ended. */
-  onWebhooksChanged(listener: () => void) {
-    return this.onPush('webhooks.changed', () => listener())
-  }
+  onWebhooksChanged = (listener: () => void) => this.onPush('webhooks.changed', () => listener())
 
   /** Told when a skill was written or switched, or an engine's skills were included or excluded. */
-  onSkillsChanged(listener: () => void) {
-    return this.onPush('skills.changed', () => listener())
-  }
+  onSkillsChanged = (listener: () => void) => this.onPush('skills.changed', () => listener())
 
   /** Told when any goal changed (its review routine among them). */
-  onGoalsChanged(listener: () => void) {
-    return this.onPush('goals.changed', () => listener())
-  }
+  onGoalsChanged = (listener: () => void) => this.onPush('goals.changed', () => listener())
 
   /** Told when the history import brought in more of a bot's conversation. */
-  onHistoryChanged(listener: (botId: string) => void) {
-    return this.onPush('history.changed', frame => listener(frame.botId))
-  }
+  onHistoryChanged = (listener: (botId: string) => void) => this.onPush('history.changed', frame => listener(frame.botId))
 
   /** Told when a bot gave a file to its Library. */
-  onLibraryChanged(listener: (botId: string) => void) {
-    return this.onPush('library.changed', frame => listener(frame.botId))
-  }
+  onLibraryChanged = (listener: (botId: string) => void) => this.onPush('library.changed', frame => listener(frame.botId))
 
   onConnection(listener: (connected: boolean) => void) {
     this.connectionListeners.add(listener)
