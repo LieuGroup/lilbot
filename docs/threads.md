@@ -226,8 +226,9 @@ below are this implementation's.
 - **Oscar on a member's item.** A member's child item is an ordinary item to the board (#160): his answer or drop reaches
   the member as a turn of its own in its group session, outside the discussion, and a drop interrupts the member's
   running turn, which then counts as its reply.
-- **Roster.** `bots.list` carries `groups` per bot instead of a new method, so the existing `bots.changed` push keeps the
-  roster's "Working together" section and members' row states current.
+- **Roster.** `bots.list` carries `groups`, `workingFor` (non-worker tasks only), and `workers` (`{ count, activity? }`
+  while a bot's own workers run, updated live on worker tool calls) per bot instead of new methods, so the existing
+  `bots.changed` push keeps the roster's "Working together" section and every row's live state current.
 
 ## Tool cost (#133, against main at de6f103, characters from `systemFixture`)
 

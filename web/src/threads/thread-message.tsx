@@ -5,26 +5,30 @@ import type { BotThread, ExchangeFile, ThreadMessage } from '../../../shared/thr
 import { formatBytes } from '../attachments/attachment-rules'
 import { ChatItem } from '../chat/chat-item'
 import { clockTime } from '../history/history-labels'
-import { ThreadAvatar } from './thread-avatar'
+import { OscarBadge, ThreadAvatar, WorkerBadge } from './thread-avatar'
 
 const tag = 'h-auto rounded-full bg-foreground/6 px-[7px] py-px text-xs/4 font-medium text-foreground'
 
-/** One message of an exchange or a group (Paper "18 Bots working together" frames 4, 5 and 9): the author's avatar, name and
- *  time, then its tool lines, text and files indented under the name. No bot gets a bubble. A message that came after a stop is
- *  greyed. In a group the leader is marked "leader"; its round's divider already gives the time of a point. */
-export function ThreadMessageRow({ botId, thread, message }: { botId: string; thread: BotThread; message: ThreadMessage }) {
+/** One message of an exchange, worker or group (Paper "18 Bots working together" frames 4, 5 and 9, "22 Workers" frames 5,
+ *  6 and 10): the author's avatar or worker/user badge, name and time, then its tool lines, text and files indented under
+ *  the name. A message that came after a stop is greyed. */
+export function ThreadMessageRow({ botId, thread, message, isFirst = false }: { botId: string; thread: BotThread; message: ThreadMessage; isFirst?: boolean }) {
   const late = message.withheld === true
+  const fromWorker = thread.worker === true && message.fromWorker === true
   const leader = thread.group && message.authorId === thread.participants[0].id
   const when = leader ? (message.round ? 'leader' : `leader · ${clockTime(message.createdAt)}`) : clockTime(message.createdAt)
+  const authorLabel = message.oscar ? 'You' : fromWorker ? 'Worker' : message.authorName
+  const showBrief = thread.worker === true && isFirst && !fromWorker && !message.oscar && !message.redirect
   return (
     <article className="flex flex-col gap-1">
-      <div className="flex min-w-0 items-center gap-2">
-        <ThreadAvatar id={message.authorId} name={message.authorName} size={18} />
-        <span className={`truncate text-[13px]/[18px] font-semibold ${late ? 'text-muted-foreground' : ''}`}>{message.authorName}</span>
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        {message.oscar ? <OscarBadge /> : fromWorker ? <WorkerBadge size={18} /> : <ThreadAvatar id={message.authorId} name={message.authorName} size={18} />}
+        <span className={`truncate text-[13px]/[18px] font-semibold ${late ? 'text-muted-foreground' : ''}`}>{authorLabel}</span>
         <span className="flex-none text-xs/4 text-muted-foreground">
           {when}
           {late && ' · came after the stop, not delivered'}
         </span>
+        {showBrief && <Badge className={tag}>Brief</Badge>}
         {message.redirect && <Badge className={tag}>Redirect</Badge>}
         {message.oscar && <Badge className={tag}>Your answer</Badge>}
       </div>
@@ -68,14 +72,14 @@ export function FileChip({ file, href }: { file: ExchangeFile; href: string | nu
   )
 }
 
-/** The receiver at work, under the last message: its avatar and name, then what it is doing. */
+/** The receiver or worker at work, under the last message: its badge or avatar, name, and live activity. */
 export function WorkingTail({ thread }: { thread: BotThread }) {
   const to = thread.participants[1]
   return (
     <div className="flex flex-col gap-1" role="status">
       <div className="flex items-center gap-2">
-        <ThreadAvatar id={to.id} name={to.name} size={18} />
-        <span className="truncate text-[13px]/[18px] font-semibold">{to.name}</span>
+        {thread.worker ? <WorkerBadge size={18} /> : <ThreadAvatar id={to.id} name={to.name} size={18} />}
+        <span className="truncate text-[13px]/[18px] font-semibold">{thread.worker ? 'Worker' : to.name}</span>
       </div>
       <div className="flex items-center gap-1.5 pl-[26px] text-[13px]/[18px]">
         <LoaderCircleIcon aria-hidden className="size-3 animate-spin text-primary" strokeWidth={3} />

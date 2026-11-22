@@ -8,6 +8,7 @@ import { rowState } from '../bots/row-state'
 import { StatusIcon } from '../bots/status-icon'
 import { RoutinesCard } from '../routines/routines-card'
 import { WithOtherBots } from '../threads/with-other-bots'
+import { WorkersCard } from '../threads/workers-card'
 import { WebhooksCard } from '../webhooks/webhooks-card'
 import { formatElapsed } from './activity-since'
 
@@ -53,6 +54,7 @@ export function ActivityTab({ botId }: { botId: string }) {
           </div>
         </div>
       </Card>
+      <WorkersCard botId={botId} />
       <WithOtherBots botId={botId} />
       <RoutinesCard botId={botId} botName={bot.name} />
       <WebhooksCard botId={botId} botName={bot.name} />

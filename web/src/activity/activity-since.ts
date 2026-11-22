@@ -3,7 +3,14 @@
  *  loaded has no known start and shows no duration. Pure. */
 import type { Bot } from '../../../shared/bot-schema'
 
-const stateKey = (bot: Bot | undefined) => (bot?.activity && bot.activity.status !== 'idle' ? `${bot.activity.status}:${bot.activity.text}` : '')
+const stateKey = (bot: Bot | undefined) => {
+  if (!bot) return ''
+  if (bot.activity && bot.activity.status !== 'idle') {
+    if (bot.activity.status === 'finished' && bot.workers?.count) return `workers:${bot.workers.count}:${bot.workers.activity ?? ''}`
+    return `${bot.activity.status}:${bot.activity.text}`
+  }
+  return bot.workers?.count ? `workers:${bot.workers.count}:${bot.workers.activity ?? ''}` : ''
+}
 
 export function activitySince(previous: Bot[], since: Record<string, number>, next: Bot[], now: number): Record<string, number> {
   const before = new Map(previous.map(bot => [bot.id, bot]))
