@@ -10,6 +10,7 @@ import { useBotStore } from '../bots/bot-store'
 import { rememberDetailsOpen, useDetailsTab } from '../bots/details-tabs'
 import { dismissModelNote, useModelPicker } from '../bots/model-picker-target'
 import { ModelPill } from '../bots/model-pill'
+import { TaskDockSlot } from '../threads/task-dock-slot'
 import { Composer } from './composer'
 import { MessageList } from './message-list'
 import { useChat } from './use-chat'
@@ -74,6 +75,7 @@ export function ChatColumn({ botId }: { botId: string }) {
         botName={name}
         staged={staged}
         model={<ModelPill botId={botId} disabled={!connected} />}
+        dock={<TaskDockSlot botId={botId} />}
         note={
           modelNote && (
             <ComposerNote label="Dismiss" tone={modelNote.tone} onDismiss={dismissModelNote}>

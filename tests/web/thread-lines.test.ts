@@ -1,6 +1,8 @@
 import { expect, test } from 'bun:test'
 import type { BotThread, ThreadMessage } from '../../shared/thread-schema'
+import type { WorkSummary } from '../../shared/work-schema'
 import { activityOrder, activityRow, batchOf, batchSummary, fileCounts, lineState, lineTitle, stopIndex, stripState, taskTitle } from '../../web/src/threads/thread-lines'
+import { inlineState, workerActivityRow, workerFooter, workerSubtitle } from '../../web/src/threads/worker-lines'
 
 const MIN = 60_000
 const T0 = new Date(2026, 10, 21, 10, 2).getTime()
@@ -117,4 +119,62 @@ test('the Activity card lists running ones first, then newest, with the state or
   expect(activityRow(old, 'lead', now).line).toBe('19 Nov · Fix the export queue')
   const limited = thread({ createdAt: T0 - 86_400_000, batchId: null, status: 'finished', state: 'limited' })
   expect(activityRow(limited, 'lead', now).line).toBe('Yesterday · Stopped at the 1-message limit')
+})
+
+test('same-bot workers format titles, file counts, inline records, custom model header, footer and Activity rows', () => {
+  const reply = message('lead', 'Fixed backoff.', T0 + 6 * MIN, { fromWorker: true, files: [file('lead')] })
+  const worker = thread({
+    participants: [lead, lead],
+    worker: true,
+    model: { provider: 'anthropic', model: 'Opus 5.5' },
+    reasoningEffort: 'high',
+    messages: [message('lead', 'Fix the export retry backoff', T0, { files: [file('lead')] }), reply]
+  })
+  expect(lineTitle(worker, 'lead')).toBe('Worker · Fix the export retry backoff')
+  expect(fileCounts(worker)).toEqual({ sent: 1, back: 1 })
+  expect(batchSummary([worker, { ...worker, id: 't2', status: 'finished' }])).toEqual({ title: 'Started 2 workers', progress: '1 of 2 finished' })
+  expect(batchSummary([worker, thread()])).toEqual({ title: 'Handed out 2 tasks', progress: '0 of 2 finished' })
+  expect(inlineState(worker)).toEqual({ icon: null, text: 'Started 10:02', failed: false, stopped: false })
+  expect(inlineState({ ...worker, status: 'finished' })).toEqual({ icon: 'finished', text: 'Finished', failed: false, stopped: false })
+  expect(inlineState({ ...worker, status: 'cancelled', stoppedBy: { kind: 'oscar', id: null, name: 'Oscar', at: now } })).toMatchObject({ text: 'Stopped by you', stopped: true })
+  expect(inlineState({ ...worker, status: 'failed' })).toEqual({ icon: null, text: 'Failed', failed: true, stopped: false })
+  // Header shows custom model/effort only when different from the bot's own.
+  expect(workerSubtitle(worker, { provider: 'anthropic', model: 'Sonnet 5.5' }, 'medium')).toBe("FillLight Bot's worker · Opus 5.5 · high")
+  expect(workerSubtitle(worker, { provider: 'anthropic', model: 'Opus 5.5' }, 'high')).toBe("FillLight Bot's worker")
+  expect(workerSubtitle({ ...worker, model: undefined, reasoningEffort: undefined }, { provider: 'anthropic', model: 'Sonnet 5.5' }, 'medium')).toBe("FillLight Bot's worker")
+  expect(workerSubtitle(worker, undefined, undefined)).toBe("FillLight Bot's worker · Opus 5.5 · high")
+  expect(workerFooter(worker)).toBe('You watch this worker. To steer it, tell FillLight Bot in its chat.')
+  expect(workerFooter({ ...worker, status: 'finished' })).toBe('This worker finished. Follow up with FillLight Bot in its chat.')
+  expect(workerFooter({ ...worker, status: 'cancelled' })).toBe('This worker stopped. Follow up with FillLight Bot in its chat.')
+  expect(workerFooter({ ...worker, status: 'failed' })).toBe('This worker failed. Follow up with FillLight Bot in its chat.')
+  // Activity card "Workers" row.
+  expect(workerActivityRow(worker, now)).toMatchObject({ title: 'Fix the export retry backoff', state: { icon: 'working', text: 'Running commands · 4 min · 1 file sent' } })
+  expect(workerActivityRow({ ...worker, status: 'finished', endedAt: T0 + 6 * MIN }, now)).toEqual({
+    title: 'Fix the export retry backoff',
+    state: { icon: 'finished', text: 'Today 10:08', failed: false, stopped: false }
+  })
+  const waiting: WorkSummary = {
+    id: worker.id,
+    title: 'Fix the export retry backoff',
+    ownerId: 'lead',
+    ownerName: 'FillLight Bot',
+    askedBy: { kind: 'self', id: 'lead', name: 'FillLight Bot' },
+    origin: { kind: 'exchange', id: worker.id },
+    parentId: null,
+    goalId: null,
+    kind: 'code',
+    checkLevel: 1,
+    defaultLevel: 1,
+    check: null,
+    status: 'needs_oscar',
+    question: 'Confirm empty-file behavior',
+    evidenceCount: 0,
+    createdAt: T0,
+    updatedAt: now,
+    startedAt: T0,
+    finishedAt: null
+  }
+  expect(workerActivityRow({ ...worker, status: 'finished' }, now, waiting).state).toMatchObject({ icon: 'waiting', text: 'Waiting for you · Confirm empty-file behavior' })
+  expect(inlineState({ ...worker, status: 'finished' }, waiting)).toEqual({ icon: 'waiting', text: 'Waiting for you', failed: false, stopped: false })
+  expect(stripState({ ...worker, status: 'finished' }, now, waiting)).toMatchObject({ icon: 'waiting', text: 'Waiting for you · Confirm empty-file behavior' })
 })

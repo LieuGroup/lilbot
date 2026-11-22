@@ -139,3 +139,15 @@ test('elapsed time reads in plain words', () => {
   expect(formatElapsed(4 * 60_000)).toBe('4 min')
   expect(formatElapsed(125 * 60_000)).toBe('2 h')
 })
+
+test('a bot running workers shows their count and live activity, never "For <own name>"', () => {
+  const one = { ...bot('a', { activity: { status: 'working', text: 'Working' } }), workers: { count: 1, activity: 'Running tests' } }
+  expect(rowState(one)).toEqual({ tone: 'working', text: '1 worker · Running tests', unread: false })
+  const quietOne = { ...bot('a'), workers: { count: 1 } }
+  expect(rowState(quietOne)).toEqual({ tone: 'working', text: '1 worker · Working', unread: false })
+  const two = { ...bot('a', { activity: { status: 'working', unread: true } }), workers: { count: 2 } }
+  expect(rowState(two)).toEqual({ tone: 'working', text: '2 workers running', unread: true })
+  // Waiting for Oscar still wins over background workers.
+  const waiting = { ...bot('a', { activity: { status: 'waiting', unread: true } }), workers: { count: 1, activity: 'Running tests' } }
+  expect(rowState(waiting)).toEqual({ tone: 'waiting', text: 'Waiting for you', unread: true })
+})

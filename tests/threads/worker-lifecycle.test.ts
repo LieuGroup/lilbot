@@ -117,3 +117,25 @@ test('every worker opens a code work item (with or without parent), supports nee
   expect(board.open(childId).status).toBe('dropped')
   expect(d.store.get(childId).status).toBe('cancelled')
 })
+
+test('roster reports running worker count and live single-worker activity, and pushes on worker tool calls', async () => {
+  const pushes: boolean[] = []
+  const f = delegationFixture({ touched: roster => roster !== undefined && pushes.push(roster) })
+  await f.delegation.delegate('a', { requestId: 'w1', tasks: [{ worker: true, task: 'Run tests' }] })
+  await f.settle()
+  expect(f.threads.roster().get('a')).toEqual({ workers: { count: 1 } })
+  f.threads.runner.sawTool(f.runs[0].chatId, 'Running commands')
+  expect(f.threads.roster().get('a')).toEqual({ workers: { count: 1, activity: 'Running commands' } })
+  expect(pushes).toEqual([true])
+  // Second concurrent worker switches roster to count-only ("2 workers running").
+  const second = await f.delegation.delegate('a', { requestId: 'w2', tasks: [{ worker: true, task: 'Check lint' }] })
+  await f.settle()
+  expect(f.threads.roster().get('a')).toEqual({ workers: { count: 2 } })
+  // Cancelling one drops it from the roster immediately, before its interrupted turn finishes unwinding.
+  await f.delegation.cancel('a', second.exchanges[0].exchangeId)
+  expect(f.threads.roster().get('a')).toEqual({ workers: { count: 1, activity: 'Running commands' } })
+  f.runs[0].finish('Tests passed')
+  f.runs[1].finish('Late after stop')
+  await f.settle()
+  expect(f.threads.roster().get('a')?.workers).toBeUndefined()
+})

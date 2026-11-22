@@ -34,11 +34,13 @@ type scale, bundle budget) are in `AGENTS.md` under "Stack" and "Web app".
   Foot: open roster, search (opens the roster with the search box focused), new bot, settings, the user (or a red
   dot while offline). The deployment failure notice shows only in the open roster.
 - Row (52px), one line from `bots/row-state.ts`: working (blue spinner and the activity text, "For <bot> · <activity>"
-  while it works on a task another bot handed it, from `workingFor` on `bots.list`; "In a group · <activity>" or
-  "Leading a group · <activity>" while it works and is in a running group, the activity being the bot's own turn in that
-  group, from `groups[].activity`, else its general one), "Waiting for you", finished (green check),
-  failed (red cross), or, idle, "Leading a group" / "In a group" (no mark) while it is in a running group, else the
-  bot's function (no message preview in the data yet). A handed-over task wins over a group (that is the turn running
+  while it works on a task another bot handed it, from `workingFor` on `bots.list`; "1 worker · <activity>" or
+  "<N> workers running" while its own workers run, from `workers` on `bots.list`, never "For <own name>";
+  "In a group · <activity>" or "Leading a group · <activity>" while it works and is in a running group, the activity
+  being the bot's own turn in that group, from `groups[].activity`, else its general one), "Waiting for you", finished
+  (green check), failed (red cross), or, idle, "Leading a group" / "In a group" (no mark) while it is in a running
+  group, else the bot's function (no message preview in the data yet). A handed-over task wins over a group (that is the
+  turn running now); waiting for Oscar wins over background workers.
   now); waiting for Oscar and an unavailable runtime win over both. The drawing's "· 2 tasks out" has no data and is
   not shown.
   Unread rows have a 600 name and a blue dot; on hover the "more" button replaces the dot.
@@ -125,7 +127,7 @@ choices as the delete dialog, saved at once with `bots.deleteDefaults.set`. Gene
 ## Details panel (`bots/bot-details-panel.tsx`)
 
 Avatar, name and pill tabs. Activity shows the live state (with how long, only when this browser saw it start:
-`activity/activity-since.ts`), "With other bots" (below), "Routines" and "Webhooks" (below) and the workspace folder (click copies
+`activity/activity-since.ts`), "Workers" and "With other bots" (below), "Routines" and "Webhooks" (below) and the workspace folder (click copies
 the path; a browser cannot open a server folder).
 
 ## Skills (Paper "17 Skills and webhooks" frames 1 to 3, `web/src/skills/`)
@@ -216,26 +218,30 @@ the path; a browser cannot open a server folder).
   hairline sheet (Markdown in `prose-chat`, HTML in a sandboxed frame). Footer (12/20 padding, 13/18): "Given in the chat,
   today 09:14" or "Given by a routine run, ..." muted, and "Show in chat" (500).
 
-## Work between bots (Paper "09 Bot threads", "18 Bots working together" frames 1 to 9, `web/src/threads/`)
+## Work between bots and workers (Paper "09 Bot threads", "18 Bots working together", "22 Workers", `web/src/threads/`)
 
-One pattern for asking (#65), handing over (#135) and temporary groups (#136). Wording is `threads/thread-lines.ts`
-and, for groups, `threads/group-lines.ts` (pure, tested; LilBot's own words, never the server's text for an end that was
-not a close), data `threads/thread-store.ts` (`threads.list` per bot on screen, read again
-half a second after `threads.changed`). Bot and file names are plain text everywhere.
+One pattern for asking (#65), handing over (#135), temporary groups (#136) and same-bot workers (Paper "22 Workers").
+Wording lives in `threads/thread-lines.ts`, `threads/worker-lines.ts`, `threads/dock-items.ts` and `threads/group-lines.ts`
+(pure, tested), data in `threads/thread-store.ts` (`threads.list` per bot on screen plus `work.list({ status: ['needs_oscar'] })`,
+read again on `threads.changed`, `work.changed` and reconnect). Bot and file names are plain text everywhere.
 
-- Line in a conversation (`threads/thread-line.tsx`, a lazy chunk): a bordered row (radius 10, `hairline` ring), padding
-  9/10/9/12, gap 10: the other bot's avatar (20px), a 13/18 500 title, a 12/16 state line with a 12px spinner or check,
-  "Stop" while it runs (12/16 500, radius 6, `foreground/12` ring), a 14px chevron at 40%. The whole row opens it.
-  - Asked: "Asked <bot>" / "<bot> asked this bot"; "<bot> is working on it", "Answered · N messages", "Could not be
-    delivered" (red), "Stopped at the N-message limit".
-  - Handed over (it has a `batchId`): "<bot> · <task>" / "From <bot> · <task>" (task: the request's first line, cut);
-    "Waiting to start", "<activity> · <run time> · N files sent", "Redirected · picks it up at its next step" (while a
-    redirect waits for the receiver's next step: `redirecting` on the view), "Finished · <run time> · N files back", "Failed · <reason>"
-    (red; the server's short fixed `failure`, else "Failed · <bot> could not be reached" for older failures), "Stopped by you · after <run time>", "Stopped by <bot>" (stopped: muted title).
-    The receiver's line says "N files received, N sent back".
-  - Tasks of one call share one card: a header "Handed out N tasks" / "M of N finished" (12px muted, padding 8/12),
-    then the rows divided by `foreground/6`. The card is drawn at the batch's first line; the others' rows are empty
-    and hidden (`empty:hidden`), so they take no gap.
+- Tasks dock (`threads/task-dock-slot.tsx`, `threads/task-dock.tsx` lazy, `threads/dock-items.ts`; Paper "22 Workers"
+  frames 1 to 4): sits flush on top of the composer's rounded message box (`bg-background`, top radius 14, `hairline`
+  border), leaving staged attachments, notes, model pill and the message box's own main-reply Stop untouched inside the
+  box. Lists everything this bot has in flight: its own workers (22px neutral corner-down-right badge, "Worker · <task>")
+  and tasks handed to other bots (22px bot avatar, "<Bot> · <task>"). Absent when nothing qualifies; shows at most 4 rows
+  and scrolls internally when more fit; collapses to one 36px live summary bar ("2 running · 1 finished · Worker, Server
+  Engineer" + "Show") remembered per bot in `localStorage`. Priority order is explicit: waiting on Oscar (`needs_oscar`
+  work item, with an ink "Answer" button opening lazy `threads/answer-work-dialog.tsx`), running (with "Stop"), failed
+  (stays until opened or dismissed with `×`), and finished (stays 2 minutes or until opened or dismissed, then leaves
+  automatically; reappears if the same exchange is later continued). Stopped rows leave at once. Two or more visible rows
+  from one `batchId` group under "Started N workers" (all-worker, omitting repeated "Worker · ") or "Handed out N tasks"
+  with "M of N finished".
+- Line in a conversation (`threads/thread-line.tsx`, lazy): quiet clickable single-line record (radius 10, `hairline`
+  ring, no Stop button — live progress and Stop live in the dock): 18px worker badge or other bot's avatar, 13/18 500
+  title ("Worker · <task>", "<Bot> · <task>", "From <Bot> · <task>", "Asked <Bot>"), compact right-hand state ("Started
+  10:02", green check "Finished", muted "Stopped by you", red "Failed"), and chevron. Tasks of one call share one card
+  ("Started N workers" or "Handed out N tasks" / "M of N finished") drawn at the batch's first line.
   - A group (`threads/group-line.tsx`, in the same chunk): every bot's avatar overlapping (20px, 5px overlap, at most
     five, each on a card-coloured plate), "Group · <purpose>" in the leader's conversation and "In <leader>'s group ·
     <purpose>" in a member's; "Round N · X of Y have replied" with the spinner while it runs ("Starting" before the first
@@ -243,27 +249,32 @@ half a second after `threads.changed`). Bot and file names are plain text everyw
     reached the N-round limit" / "reached the message limit" / "reached the time limit" / "went quiet" / "its leader
     could not be reached" (ended other than closed: muted title). Stop while it runs, in every participant's line. It
     stays in the conversation and opens the group long after it disbanded.
-- Stop (`threads/stop-thread-dialog.tsx`, lazy): "Stop this task?" (16/22 600), "<bot> stops working on it now.
-  <delegating bot> is told you stopped it, and what was said so far stays readable. Work a bot already did is not
-  undone." (13/20 muted), "Keep going" and "Stop task" (red). 400px, padding 20, radius 16. Calls `threads.cancel`.
-  A group: "Stop this group?", "All four bots stop working on it now. <leader> is told you stopped it, ..." (the
-  number of bots, leader included, in words up to five), "Stop group".
+- Stop (`threads/stop-thread-dialog.tsx`, lazy): confirms stopping a worker ("Stop this worker?", "This worker stops now.
+  <bot> is told you stopped it, and what happened so far stays readable. Files or commits already made are not undone.",
+  "Keep going", "Stop worker"), a task ("Stop this task?") or a group ("Stop this group?"), guarded against double-clicks.
+  400px, padding 20, radius 16. Calls `threads.cancel`.
 - Opened (`threads/thread-view.tsx`, lazy): over the conversation column (`?thread=<id>` on `/bots/$botId`); the
   conversation stays mounted, `invisible` and inert, so its socket and scroll position are kept.
-  - Header 52px, hairline under it: a task's title (14/20 600) with "<A> handed this to <B>" (12/16 muted), or "<A>
-    and <B>" for an asked thread; "Stop" (13/18 500, red text, `destructive/40` ring) while a task runs, and "Back to
-    chat" (`foreground/12` ring), which drops `thread` and keeps the tab.
+  - Header, hairline under it: a task's title (14/20 600) with "<Bot>'s worker" (appending custom model/effort only when
+    overridden from the bot's default) or "<A> handed this to <B>" (12/16 muted), or "<A> and <B>" for an asked thread;
+    "Stop" (13/18 500, red text, `destructive/40` ring) while a task runs, and "Back to chat" (`foreground/12` ring),
+    which drops `thread` and keeps the tab.
   - Status strip (tasks only), on the page tint with a hairline under it: the state with its mark ("Working ·
-    <activity> · <time>", "Finished · <time>", ...) and "N files passed" at the right (12px).
+    <activity> · <time>", "Finished · <time>", "Waiting for you · <question>", ...), "N files passed", and an ink
+    "Answer" button when waiting on Oscar's answer. Branch/PR chips and numeric Work #N badges from Paper "22 Workers"
+    are omitted because the backend does not expose branch, PR state or numeric work ids.
   - Messages, max 744px, gap 18, padding 16/24/20: a centred "Today 10:02 · started from <A>'s chat"; each message has
-    an 18px avatar, the name (13/18 600) and time (12px muted), a "Redirect" or "Your answer" tag (12/16 500,
+    an 18px avatar (`WorkerBadge` + "Worker" for `fromWorker`, `OscarBadge` + "You" for `oscar`, else the bot's avatar
+    and name), time (12px muted), "Brief" (first message of a worker), "Redirect" or "Your answer" tag (12/16 500,
     `foreground/6` pill), then its tool lines and text indented 26px. Files as chips under the message (16px file icon,
     13/18 500 name, 12px size, radius 10, hairline ring) that download from
     `/api/threads/<bot>/<thread>/<message>/<n>`; a file not delivered says so and has no link. After a stop, a centred
     "Stopped by you · 10:09" between hairlines, and later answers at 60% with "· came after the stop, not delivered".
-    While the receiver works: its avatar and name, then a spinner and its activity.
-  - Footer, hairline above: "You watch this. To steer, talk to either bot." ("You read threads." for an asked thread)
-    and a button to each bot's chat (a deleted bot's is disabled; its stored name still shows).
+    While the receiver or worker works: its avatar/badge and name, then a spinner and its activity.
+  - Footer, hairline above: for a worker, "You watch this worker. To steer it, tell <Bot> in its chat." (or "This worker
+    finished/stopped/failed. Follow up with <Bot> in its chat.") with a single button to `<Bot>`'s chat; for two-bot
+    exchanges, "You watch this. To steer, talk to either bot." with a button per participant (a deleted bot's is disabled;
+    its stored name still shows).
 - A group, opened (`threads/group-view.tsx`, its own lazy chunk loaded from the thread view; Paper frames 5 and 7):
   - Header: the purpose (14/20 600) with "Temporary group · led by <leader>", after the end "Group closed today 10:21 ·
     led by <leader>" ("stopped", "ended"); "Stop group" (red outline) only while it runs, and "Back to chat".
@@ -284,7 +295,10 @@ half a second after `threads.changed`). Bot and file names are plain text everyw
     discussion follows.
   - Footer: "You watch groups. To steer, tell the leader in its chat." with a button to the leader's chat; after the
     end "This group has disbanded. It stays readable from the line in <leader>'s chat and from its Activity tab."
-- "With other bots" in Activity (`threads/with-other-bots.tsx`): hidden when there are none; "N running" (else the
+- "Workers" (`threads/workers-card.tsx`, Paper "22 Workers" frame 7) and "With other bots" (`threads/with-other-bots.tsx`)
+  in Activity: "Workers" sits above "With other bots" and hides when the bot has no workers; it lists running and past
+  same-bot workers (running first, then newest) with task title, live activity/time or ended date/outcome, and opens the
+  worker view. "With other bots" lists only non-worker exchanges and groups (hidden when none); "N running" (else the
   count) at the right of its label; rows (avatar 20, 13/18 500 title, 12/16 line, chevron) "Asked <bot>", "<bot> asked
   this bot", "Handed to <bot>", "<bot> handed this bot work", with "Working · <task>" or "<date> · <task or ended
   state>", and groups: two other bots' avatars overlapping (16px), "Group · <purpose>", "Running · round N · N bots"

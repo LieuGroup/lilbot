@@ -18,6 +18,8 @@ interface ComposerProps {
   model: ReactNode
   /** A short red note above the box, such as a refused model change. */
   note?: ReactNode
+  /** Optional tasks dock resting flush on the top edge of the message box. */
+  dock?: ReactNode
   onSend: (text: string, attachments: Attachment[]) => void
   onStop: () => void
 }
@@ -26,7 +28,7 @@ interface ComposerProps {
  *  attach, the model pill and one round ink button: stop while
  *  the bot works and the box is empty, send otherwise (a message sent while it works waits its turn).
  *  Send waits until every staged file has uploaded; refused files are left behind. */
-export function Composer({ disabled, disabledHint, running, botName, staged, model, note, onSend, onStop }: ComposerProps) {
+export function Composer({ disabled, disabledHint, running, botName, staged, model, note, dock, onSend, onStop }: ComposerProps) {
   const [text, setText] = useState('')
   const form = useRef<HTMLFormElement>(null)
   const picker = useRef<HTMLInputElement>(null)
@@ -62,7 +64,8 @@ export function Composer({ disabled, disabledHint, running, botName, staged, mod
 
   return (
     <footer className="flex-none px-4 pb-[max(20px,env(safe-area-inset-bottom))] md:px-8">
-      <form ref={form} onSubmit={submit} className="mx-auto max-w-[680px]">
+      {dock && <div className="mx-auto max-w-[680px]">{dock}</div>}
+      <form ref={form} onSubmit={submit} className="relative z-10 mx-auto max-w-[680px]">
         <input
           ref={picker}
           type="file"

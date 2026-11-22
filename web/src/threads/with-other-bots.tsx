@@ -4,17 +4,17 @@ import { useNow } from '../app/use-now'
 import { groupActivityRow, isGroup } from './group-lines'
 import { useThreadNavigation } from './open-thread'
 import { AvatarStack, ThreadAvatar } from './thread-avatar'
-import { activityOrder, activityRow, otherName, running } from './thread-lines'
+import { activityOrder, activityRow, isWorker, otherName, running } from './thread-lines'
 import { useThreads } from './thread-store'
 
 /** The Activity tab's "With other bots" card (Paper "09 Bot threads" panel 3, "18 Bots working together" frame 3): every
  *  exchange this bot asked, was asked, handed out or was handed, and every group it led or was in, running ones first, then
- *  newest. A row opens it; this is where past groups stay findable besides the line in the conversation. */
+ *  newest. Same-bot workers live in their own "Workers" card above. */
 export function WithOtherBots({ botId }: { botId: string }) {
   const threads = useThreads(botId)
   const now = useNow(15_000)
   const { open } = useThreadNavigation(botId)
-  const list = activityOrder(threads ?? [])
+  const list = activityOrder((threads ?? []).filter(thread => !isWorker(thread)))
   if (list.length === 0) return null
   const busy = list.filter(running).length
   return (

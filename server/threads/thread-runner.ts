@@ -55,7 +55,7 @@ export class ThreadRunner {
     const d = [...this.running.values()].find(d => d.chatId === chatId)
     if (!d || this.lines.get(d.id) === line) return
     this.lines.set(d.id, line)
-    this.touched(!!this.groups?.groupOf(d))
+    this.touched(!!this.groups?.groupOf(d) || (isWork(d.kind) && !!this.store.get(d.threadId).worker))
   }
 
   private mark(d: Delivery, working: boolean) {

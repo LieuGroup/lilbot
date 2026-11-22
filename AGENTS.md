@@ -68,8 +68,8 @@ web/src/           The web app.
   attachments/       files in the composer and in sent messages, the drop area
   activity/, memory/ their details tabs
   library/           the Library tab, the bot's workspace folder view and the item viewer
-  threads/           work between bots: the line in a conversation, the opened exchange or group, stop, "With other bots",
-                     "Working together"
+  threads/           work between bots and workers: composer tasks dock, quiet conversation record, opened exchange/worker/group,
+                     stop and answer dialogs, Activity "Workers" and "With other bots", roster "Working together"
   routines/          the Activity tab's Routines card, one routine (in place of the panel), a run's transcript; the run
                      list, transcript and delete dialog webhooks reuse
   webhooks/          the Activity tab's Webhooks section, one webhook (in place of the panel), a webhook run's transcript
@@ -103,8 +103,8 @@ Rules that keep it this way:
 Built: roster, create bot, Setup panel (toolsets and connectors read-only; skills with per-bot switch and reader, #137),
 chat with live tool rows, stop and new session, continuous main conversation per bot across devices, three-column shell
 (Activity, Library, Memory, Setup), bot menu, delete confirmation, Settings, chat attachments, LilBot memory with panel
-and after-chat review, system note and LilBot MCP tools, delegation and temporary groups (#133) with screens (#65, #135,
-#136), Routines screens (#53), Library screens (#54), Webhooks screens (#138), and backends for routines, webhooks,
+and after-chat review, system note and LilBot MCP tools, delegation, same-bot workers and temporary groups (#133) with
+screens (#65, #135, #136, Paper "22 Workers"), Routines screens (#53), Library screens (#54), Webhooks screens (#138), and backends for routines, webhooks,
 threads, library, skills, computers/devices, work board with check levels, goals, T3 Code coding and bot-added MCP
 services (#187). Next: webhook capability switches (Paper "17" frames 7–9, awaiting Oscar's approval), work board and
 goal screens, check-level track record and spot checks (#142), nightly memory tidy-up and editing abilities. Reports are

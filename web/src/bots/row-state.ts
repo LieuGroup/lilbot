@@ -18,11 +18,11 @@ interface RowState {
 export function rowState(bot: Bot): RowState {
   const activity = bot.activity
   const unread = activity?.unread ?? false
+  if (activity?.status === 'waiting') return { tone: 'waiting', text: 'Waiting for you', unread }
+  if (bot.workers && bot.workers.count > 0 && !bot.workingFor) return { tone: 'working', text: workerText(bot.workers), unread }
   switch (activity?.status) {
     case 'working':
       return { tone: 'working', text: `${workingIn(bot)}${(!bot.workingFor && groupActivity(bot)) || activity.text || 'Working'}`, unread }
-    case 'waiting':
-      return { tone: 'waiting', text: 'Waiting for you', unread }
     case 'finished':
       return { tone: 'finished', text: 'Finished', unread }
     case 'failed':
@@ -30,6 +30,10 @@ export function rowState(bot: Bot): RowState {
     default:
       return { tone: 'idle', text: idleText(bot), unread }
   }
+}
+
+function workerText(workers: NonNullable<Bot['workers']>) {
+  return workers.count === 1 ? `1 worker · ${workers.activity || 'Working'}` : `${workers.count} workers running`
 }
 
 /** A task handed over wins over a group: that is the turn running now. */
