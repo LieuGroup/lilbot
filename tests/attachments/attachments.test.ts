@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from 'bun:test'
 import { mkdir, mkdtemp, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { MAX_BYTES, readAttachment, writeAttachment } from '../../server/attachments/attachment-files'
 import { AttachmentService } from '../../server/attachments/attachment-service'
@@ -14,7 +15,7 @@ afterEach(async () => {
   for (const fn of cleanup.splice(0).reverse()) await fn()
 })
 async function fixture() {
-  const root = await mkdtemp('/home/oscar/agent-tmp/lilbot-attachments-')
+  const root = await mkdtemp(join(tmpdir(), 'lilbot-attachments-'))
   cleanup.push(() => rm(root, { recursive: true, force: true }))
   const db = openDatabase(join(root, 'test.db'))
   cleanup.push(() => db.close())

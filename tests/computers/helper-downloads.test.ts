@@ -17,7 +17,7 @@ function downloads() {
   roots.push(dir)
   const settings = helperSettings({ LILBOT_HELPER_URL: 'https://door.example', LILBOT_ALLOWED_HOSTS: 'bot.tail.ts.net:8443' }, 3370, undefined, fingerprint)!
   const downloads = new HelperDownloads(dir, settings)
-  const sidecar = (file: string, size: number) =>
+  const sidecar = (size: number) =>
     JSON.stringify({ os: 'macos', arch: 'universal', sha256: 'a'.repeat(64), size, signed: true, link: true, version: '1', settings: settingsHash(settings) })
   return { dir, downloads, sidecar }
 }
@@ -25,7 +25,7 @@ function downloads() {
 test('a broken sidecar hides only its own build', () => {
   const d = downloads()
   writeFileSync(join(d.dir, 'good.zip'), 'good')
-  writeFileSync(join(d.dir, 'good.zip.json'), d.sidecar('good.zip', 4))
+  writeFileSync(join(d.dir, 'good.zip.json'), d.sidecar(4))
   writeFileSync(join(d.dir, 'broken.zip'), 'broken')
   writeFileSync(join(d.dir, 'broken.zip.json'), '{"os": "mac')
   writeFileSync(join(d.dir, 'nosidecar.zip'), 'x')
@@ -36,7 +36,7 @@ test('a broken sidecar hides only its own build', () => {
 test('a file that is not yet as large as its sidecar says (still being copied) is not offered or served', () => {
   const d = downloads()
   writeFileSync(join(d.dir, 'half.zip'), 'half')
-  writeFileSync(join(d.dir, 'half.zip.json'), d.sidecar('half.zip', 100))
+  writeFileSync(join(d.dir, 'half.zip.json'), d.sidecar(100))
   expect(d.downloads.offer(system)).toEqual([])
   expect(d.downloads.file('half.zip')).toBeNull()
   writeFileSync(join(d.dir, 'half.zip'), 'x'.repeat(100))
