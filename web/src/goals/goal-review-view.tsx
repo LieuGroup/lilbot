@@ -9,7 +9,9 @@ import type { GoalDetail, GoalReview } from '../../../shared/goal-schema'
 import type { WorkSummary } from '../../../shared/work-schema'
 import { messageOf } from '../app/lilbot-socket'
 import { dayLabel } from '../history/history-labels'
+import { scheduleLabel } from '../routines/routine-lines'
 import { CheckBadge } from '../work/check-badge'
+import { ConfirmDropProposalDialog } from './drop-goal-dialog'
 import { formatDueDate, formatGoalNumber, reviewNumberDetail } from './goal-lines'
 import { adjustGoal, agreeGoal } from './goal-store'
 
@@ -31,6 +33,7 @@ export function GoalReviewView({
   onClose: () => void
 }) {
   const [adjusting, setAdjusting] = useState(false)
+  const [confirmingDrop, setConfirmingDrop] = useState(false)
   const [reply, setReply] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -39,6 +42,7 @@ export function GoalReviewView({
   const workTotal = review.work.done + review.work.open + review.work.needsOscar + review.work.failed
 
   async function agree() {
+    if (busy) return
     setBusy(true)
     setError('')
     try {
@@ -113,7 +117,7 @@ export function GoalReviewView({
 
           {proposal && (
             <section className="flex flex-col gap-2.5 rounded-xl px-3.5 py-3 ring-1 ring-primary/35">
-              <div className="flex flex-col gap-0.5">
+              <div className="flex flex-col gap-1">
                 <h2 className="text-xs/4 text-muted-foreground">What I propose</h2>
                 <p className="text-[13px]/5 text-foreground">{proposal.why}</p>
                 {proposal.target && (
@@ -121,11 +125,19 @@ export function GoalReviewView({
                     New target: {formatGoalNumber(proposal.target.value)} {proposal.target.measure} by {formatDueDate(proposal.target.due, false, now)}
                   </p>
                 )}
+                {proposal.review && <p className="text-xs/4 text-muted-foreground">New review rhythm: {scheduleLabel(proposal.review)}</p>}
+                {proposal.agreement && (
+                  <div className="flex flex-col gap-0.5 pt-0.5 text-xs/4 text-muted-foreground">
+                    <p>I can do alone: {proposal.agreement.alone.join(' · ')}</p>
+                    {proposal.agreement.needsOscar.length > 0 && <p>I need from you: {proposal.agreement.needsOscar.join(' · ')}</p>}
+                    {proposal.agreement.cannotInfluence.length > 0 && <p>I cannot influence: {proposal.agreement.cannotInfluence.join(' · ')}</p>}
+                  </div>
+                )}
                 {proposal.drop && <p className="text-xs/4 font-medium text-destructive">Drop this goal</p>}
               </div>
               {!adjusting ? (
                 <div className="flex items-center gap-2">
-                  <Button onClick={agree} disabled={busy} className="h-8 rounded-lg px-3.5 text-[13px]/[18px] font-medium">
+                  <Button onClick={proposal.drop ? () => setConfirmingDrop(true) : agree} disabled={busy} className="h-8 rounded-lg px-3.5 text-[13px]/[18px] font-medium">
                     {busy ? 'Saving...' : proposal.drop ? 'Agree to drop' : 'Agree'}
                   </Button>
                   <Button variant="outline" onClick={() => setAdjusting(true)} disabled={busy} className="h-8 rounded-lg px-3 text-[13px]/[18px] font-medium">
@@ -163,6 +175,18 @@ export function GoalReviewView({
           </p>
         </div>
       </div>
+
+      {confirmingDrop && (
+        <ConfirmDropProposalDialog
+          text={goal.text}
+          why={proposal?.why}
+          onConfirm={async () => {
+            await agreeGoal(goal.id)
+            setConfirmingDrop(false)
+          }}
+          onClose={() => setConfirmingDrop(false)}
+        />
+      )}
     </div>
   )
 }

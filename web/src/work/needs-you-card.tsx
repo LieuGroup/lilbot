@@ -74,8 +74,7 @@ function QuestionCard({ item, now }: { item: WorkSummary; now: number }) {
 }
 
 function OscarCheckCard({ item }: { item: WorkSummary }) {
-  const reason =
-    item.checkLevel === 3 ? 'Waits for your check · Level 3' : item.check?.note ? `Waits for your check · ${item.check.note}` : 'Waits for your check · review evidence and decide'
+  const reason = item.checkLevel === 3 ? 'Waits for your check · Level 3' : item.question || item.check?.note || 'Waits for your check · review evidence and decide'
   return (
     <div className={`${ringBlue} flex items-center gap-2.5`}>
       <ThreadAvatar id={item.ownerId} name={item.ownerName} size={18} />

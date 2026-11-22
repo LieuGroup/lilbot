@@ -4,7 +4,7 @@ import { Notice } from '@/ui/notice'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/select'
 import { useNow } from '../app/use-now'
 import { useBotStore } from '../bots/bot-store'
-import { groupByBot, groupByStatus } from './work-lines'
+import { groupByBot, groupByStatus } from './work-groups'
 import { TreeRows, WorkRow } from './work-row'
 import { useWorkList } from './work-store'
 
@@ -99,7 +99,7 @@ export default function WorkAllPage() {
             </Section>
           )}
           {byStatus.working.length > 0 && (
-            <Section title={`Working · ${byStatus.working.reduce((n, r) => n + 1 + r.children.length, 0)}`}>
+            <Section title={`Working · ${byStatus.workingCount}`}>
               {byStatus.working.map(row => (
                 <TreeRows key={row.item.id} row={row} now={now} />
               ))}

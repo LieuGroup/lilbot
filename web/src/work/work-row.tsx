@@ -1,33 +1,33 @@
-/** One compact work item row for "All work" (with parent/child nesting) and expanded Done lists (Paper artboard 20, frame 3). */
+/** One compact work item row for "All work" (with recursive parent/child nesting) and expanded Done lists (Paper artboard 20, frame 3). */
 import { Link } from '@tanstack/react-router'
 import { LoaderCircleIcon } from 'lucide-react'
 import { Fragment } from 'react'
 import type { WorkSummary } from '../../../shared/work-schema'
 import { ThreadAvatar } from '../threads/thread-avatar'
 import { CheckBadge } from './check-badge'
-import { elapsedShort, type TreeRow } from './work-lines'
+import type { TreeRow } from './work-groups'
+import { elapsedShort } from './work-lines'
 
-export function TreeRows({ row, now }: { row: TreeRow; now: number }) {
+export function TreeRows({ row, now, depth = 0 }: { row: TreeRow; now: number; depth?: number }) {
   return (
     <Fragment>
-      <WorkRow item={row.item} now={now} emphasis parts={row.children.length} />
+      <WorkRow item={row.item} now={now} emphasis={depth === 0} depth={depth} parts={row.children.length} />
       {row.children.map(child => (
-        <WorkRow key={child.id} item={child} now={now} nested />
+        <TreeRows key={child.item.id} row={child} now={now} depth={depth + 1} />
       ))}
     </Fragment>
   )
 }
 
-export function WorkRow({ item, now, emphasis = false, nested = false, parts = 0 }: { item: WorkSummary; now: number; emphasis?: boolean; nested?: boolean; parts?: number }) {
+export function WorkRow({ item, now, emphasis = false, depth = 0, parts = 0 }: { item: WorkSummary; now: number; emphasis?: boolean; depth?: number; parts?: number }) {
   const active = item.status === 'open' || item.status === 'working' || item.status === 'checking'
-  const sentBack = active && item.check?.state === 'not_verified'
+  const sentBack = active && (item.check?.state === 'not_verified' || item.check?.state === 'sent_back')
+  const indent = depth === 0 ? 'pl-2' : depth === 1 ? 'pl-7' : 'pl-11'
   return (
     <Link
       to="/work/items/$itemId"
       params={{ itemId: item.id }}
-      className={`flex items-center gap-2 rounded-lg py-1.5 pr-2 outline-none transition-colors hover:bg-foreground/4 focus-visible:ring-2 focus-visible:ring-ring ${
-        nested ? 'pl-7' : 'pl-2'
-      }`}
+      className={`flex items-center gap-2 rounded-lg py-1.5 pr-2 outline-none transition-colors hover:bg-foreground/4 focus-visible:ring-2 focus-visible:ring-ring ${indent}`}
     >
       <span className="flex w-3 flex-none justify-center">
         {item.status === 'needs_oscar' ? (

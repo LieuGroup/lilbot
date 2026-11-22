@@ -21,6 +21,7 @@ export default function GoalChatCards({ botId }: { botId: string }) {
           key={goal.id}
           goal={goal}
           now={now}
+          showTitle
           onAgreed={saved => setAgreedIds(ids => (ids.includes(saved.id) ? ids : [...ids, saved.id]))}
           onDismiss={goal.waitsForOscar ? () => setDismissed(prev => ({ ...prev, [goal.id]: goal.updatedAt })) : undefined}
         />

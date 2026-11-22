@@ -22,7 +22,7 @@ function levelClass(level: number) {
 export default function WorkChecksPage() {
   const { levels, error } = useWorkLevels()
   const bots = useBotStore(state => state.bots)
-  const [savingKey, setSavingKey] = useState('')
+  const [savingKeys, setSavingKeys] = useState<Set<string>>(() => new Set())
   const [actionError, setActionError] = useState('')
   const [adding, setAdding] = useState(false)
 
@@ -42,14 +42,19 @@ export default function WorkChecksPage() {
 
   async function save(kind: WorkKind, level: number | null, botId?: string) {
     const key = `${kind}:${botId ?? ''}`
-    setSavingKey(key)
+    if (savingKeys.has(key)) return
+    setSavingKeys(prev => new Set(prev).add(key))
     setActionError('')
     try {
       await setWorkLevel(kind, level, botId)
     } catch (failure) {
       setActionError(messageOf(failure))
     } finally {
-      setSavingKey('')
+      setSavingKeys(prev => {
+        const next = new Set(prev)
+        next.delete(key)
+        return next
+      })
     }
   }
 
@@ -65,7 +70,7 @@ export default function WorkChecksPage() {
               <span className="text-[13px]/[18px] text-foreground">{kindLabel(entry.kind)}</span>
               <Select
                 value={String(entry.level)}
-                disabled={savingKey === `${entry.kind}:`}
+                disabled={savingKeys.has(`${entry.kind}:`)}
                 onValueChange={v => {
                   if (!v) return
                   void save(entry.kind, v === 'reset' ? null : Number(v))
@@ -125,7 +130,7 @@ export default function WorkChecksPage() {
                 </span>
                 <Select
                   value={String(entry.level)}
-                  disabled={savingKey === `${entry.kind}:${entry.botId}`}
+                  disabled={savingKeys.has(`${entry.kind}:${entry.botId}`)}
                   onValueChange={v => {
                     if (!v) return
                     void save(entry.kind, v === 'reset' ? null : Number(v), entry.botId)

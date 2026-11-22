@@ -36,7 +36,7 @@ export function DropWorkDialog({
   }
 
   return (
-    <Dialog open onOpenChange={open => !open && onClose()}>
+    <Dialog open onOpenChange={open => !open && !dropping && onClose()}>
       <DialogContent showCloseButton={false} className="w-[calc(100%-2rem)] max-w-[432px] gap-4 rounded-2xl bg-card p-6 sm:max-w-[432px]">
         <div className="flex flex-col gap-1.5">
           <DialogTitle className="text-base/[22px] font-semibold tracking-[-0.01em]">Drop this item?</DialogTitle>

@@ -1,5 +1,5 @@
 /** Live reads and Oscar's actions for the Work board and Check levels, refreshed on `work.changed` and reconnect. */
-import { useEffect } from 'react'
+import { type DependencyList, useEffect, useState } from 'react'
 import { create } from 'zustand'
 import type { WorkKind, WorkLevels } from '../../../shared/work-check-schema'
 import type { WorkBrief, WorkItem, WorkSummary } from '../../../shared/work-schema'
@@ -9,112 +9,110 @@ import { watchedReads } from '../app/watched-reads'
 interface WorkStore {
   brief: WorkBrief | null
   active: WorkSummary[]
+  needsOscar: WorkSummary[]
   list: WorkSummary[]
   listLoaded: boolean
   items: Record<string, WorkItem>
+  itemErrors: Record<string, string>
   byBot: Record<string, WorkSummary[]>
   levels: WorkLevels | null
-  error: string
 }
 
 const useWorkStore = create<WorkStore>(() => ({
   brief: null,
   active: [],
+  needsOscar: [],
   list: [],
   listLoaded: false,
   items: {},
+  itemErrors: {},
   byBot: {},
-  levels: null,
-  error: ''
+  levels: null
 }))
 
-function subscribeWork(load: () => Promise<void>) {
-  void load()
-  const offWork = lilbot.onWorkChanged(() => void load())
-  const offConn = lilbot.onConnection(connected => {
-    if (connected) void load()
-  })
-  return () => {
-    offWork()
-    offConn()
-  }
+/** Subscribes a read to `work.changed` and reconnect, guarded by `lilbot.connected` and a per-effect request sequence. */
+function useWorkQuery(run: () => Promise<Partial<WorkStore>>, deps: DependencyList, silent = false) {
+  const [error, setError] = useState('')
+  useEffect(() => {
+    let active = true
+    let seq = 0
+    const load = async () => {
+      const id = ++seq
+      try {
+        const patch = await run()
+        if (!active || id !== seq) return
+        useWorkStore.setState(patch)
+        if (!silent) setError('')
+      } catch (failure) {
+        if (!silent && active && id === seq) setError(messageOf(failure))
+      }
+    }
+    if (lilbot.connected) void load()
+    const offWork = lilbot.onWorkChanged(() => lilbot.connected && void load())
+    const offConn = lilbot.onConnection(connected => connected && void load())
+    return () => {
+      active = false
+      offWork()
+      offConn()
+    }
+  }, deps)
+  return error
 }
 
 export function useWorkBrief() {
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const [brief, active] = await Promise.all([
-          lilbot.call('work.brief', {}),
-          lilbot.call('work.list', { status: ['open', 'working', 'checking', 'needs_oscar', 'failed'], limit: 200 })
-        ])
-        useWorkStore.setState({ brief, active, error: '' })
-      } catch (error) {
-        useWorkStore.setState({ error: messageOf(error) })
-      }
-    }
-    return subscribeWork(load)
+  const error = useWorkQuery(async () => {
+    const [brief, active] = await Promise.all([
+      lilbot.call('work.brief', {}),
+      lilbot.call('work.list', { status: ['open', 'working', 'checking', 'needs_oscar', 'failed'], limit: 200 })
+    ])
+    return { brief, active }
   }, [])
-  const brief = useWorkStore(state => state.brief)
-  const active = useWorkStore(state => state.active)
-  const error = useWorkStore(state => state.error)
-  return { brief, active, error }
+  return { brief: useWorkStore(s => s.brief), active: useWorkStore(s => s.active), error }
 }
 
 export function useWorkList(botId: string | undefined, from: number | undefined) {
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const list = await lilbot.call('work.list', { botId: botId || undefined, from, limit: 200 })
-        useWorkStore.setState({ list, listLoaded: true, error: '' })
-      } catch (error) {
-        useWorkStore.setState({ error: messageOf(error) })
-      }
-    }
-    return subscribeWork(load)
+  const error = useWorkQuery(async () => {
+    const list = await lilbot.call('work.list', { botId: botId || undefined, from, limit: 200 })
+    return { list, listLoaded: true }
   }, [botId, from])
-  const list = useWorkStore(state => state.list)
-  const loaded = useWorkStore(state => state.listLoaded)
-  const error = useWorkStore(state => state.error)
-  return { list, loaded, error }
+  return { list: useWorkStore(s => s.list), loaded: useWorkStore(s => s.listLoaded), error }
 }
 
-export function useWorkItem(itemId: string) {
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const item = await lilbot.call('work.open', { itemId })
-        useWorkStore.setState(state => ({ items: { ...state.items, [itemId]: item }, error: '' }))
-      } catch (error) {
-        useWorkStore.setState({ error: messageOf(error) })
-      }
-    }
-    return subscribeWork(load)
-  }, [itemId])
-  const item = useWorkStore(state => state.items[itemId])
-  const error = useWorkStore(state => state.error)
-  return { item, error }
+/** Dedicated `needs_oscar` read for Goals tab counts (never overwrites All work's filtered list). */
+export function useNeedsOscarWork(): WorkSummary[] {
+  useWorkQuery(async () => ({ needsOscar: await lilbot.call('work.list', { status: ['needs_oscar'], limit: 200 }) }), [], true)
+  return useWorkStore(s => s.needsOscar)
 }
 
 export function useWorkLevels() {
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const levels = await lilbot.call('work.levels.get', {})
-        useWorkStore.setState({ levels, error: '' })
-      } catch (error) {
-        useWorkStore.setState({ error: messageOf(error) })
-      }
+  const error = useWorkQuery(async () => ({ levels: await lilbot.call('work.levels.get', {}) }), [])
+  return { levels: useWorkStore(s => s.levels), error }
+}
+
+const watchItem = watchedReads(
+  async itemId => {
+    if (!lilbot.connected) return
+    try {
+      const item = await lilbot.call('work.open', { itemId })
+      useWorkStore.setState(state => ({
+        items: { ...state.items, [itemId]: item },
+        itemErrors: { ...state.itemErrors, [itemId]: '' }
+      }))
+    } catch (failure) {
+      useWorkStore.setState(state => ({ itemErrors: { ...state.itemErrors, [itemId]: messageOf(failure) } }))
     }
-    return subscribeWork(load)
-  }, [])
-  const levels = useWorkStore(state => state.levels)
-  const error = useWorkStore(state => state.error)
-  return { levels, error }
+  },
+  [listener => lilbot.onWorkChanged(listener)]
+)
+
+export function useWorkItem(itemId: string) {
+  useEffect(() => watchItem(itemId), [itemId])
+  return { item: useWorkStore(s => s.items[itemId]), error: useWorkStore(s => s.itemErrors[itemId] ?? '') }
 }
 
 const watchBot = watchedReads(
   async botId => {
+    if (!lilbot.connected) return
     try {
       const items = await lilbot.call('work.list', { botId, limit: 200 })
       useWorkStore.setState(state => ({ byBot: { ...state.byBot, [botId]: items } }))
@@ -125,10 +123,10 @@ const watchBot = watchedReads(
   [listener => lilbot.onWorkChanged(listener)]
 )
 
-/** Per-bot work items for conversation Work lines and Thread verification badges. */
+/** Per-bot work items for Thread verification badges. */
 export function useBotWorkItems(botId: string): WorkSummary[] | undefined {
   useEffect(() => watchBot(botId), [botId])
-  return useWorkStore(state => state.byBot[botId])
+  return useWorkStore(s => s.byBot[botId])
 }
 
 function saveItem(item: WorkItem) {

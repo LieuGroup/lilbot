@@ -143,49 +143,7 @@ export function itemTimestamp(at: number, now = Date.now()) {
   return dayLabel(at, now)
 }
 
-export interface TreeRow {
-  item: WorkSummary
-  children: WorkSummary[]
-}
-
-/** Nests children whose parent is also in `items` directly under that parent, preserving order. */
-export function nestItems(items: WorkSummary[]): TreeRow[] {
-  const byId = new Set(items.map(i => i.id))
-  const children = new Map<string, WorkSummary[]>()
-  const roots: WorkSummary[] = []
-  for (const item of items) {
-    if (item.parentId && byId.has(item.parentId)) {
-      const list = children.get(item.parentId) ?? []
-      list.push(item)
-      children.set(item.parentId, list)
-    } else {
-      roots.push(item)
-    }
-  }
-  return roots.map(item => ({ item, children: children.get(item.id) ?? [] }))
-}
-
-export function groupByStatus(items: WorkSummary[]) {
-  return {
-    needsOscar: items.filter(i => i.status === 'needs_oscar'),
-    working: nestItems(items.filter(i => i.status === 'open' || i.status === 'working' || i.status === 'checking')),
-    done: items.filter(i => i.status === 'done'),
-    failed: items.filter(i => i.status === 'failed'),
-    dropped: items.filter(i => i.status === 'dropped')
-  }
-}
-
-export function groupByBot(items: WorkSummary[]) {
-  const groups = new Map<string, { botId: string; botName: string; items: WorkSummary[] }>()
-  for (const item of items) {
-    const group = groups.get(item.ownerId) ?? { botId: item.ownerId, botName: item.ownerName, items: [] }
-    group.items.push(item)
-    groups.set(item.ownerId, group)
-  }
-  return [...groups.values()].sort((a, b) => {
-    const aNeeds = a.items.filter(i => i.status === 'needs_oscar').length
-    const bNeeds = b.items.filter(i => i.status === 'needs_oscar').length
-    if (aNeeds !== bNeeds) return bNeeds - aNeeds
-    return a.botName.localeCompare(b.botName)
-  })
+/** Latest settled check on an item (ignoring an open `checking` check or a `dropped` check). */
+export function latestSettledCheck(checks: WorkCheck[]): WorkCheck | undefined {
+  return [...checks].reverse().find(c => c.state !== 'checking' && c.state !== 'dropped')
 }

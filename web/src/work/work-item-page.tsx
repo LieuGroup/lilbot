@@ -4,10 +4,11 @@ import { ChevronRightIcon } from 'lucide-react'
 import { useState } from 'react'
 import { Notice } from '@/ui/notice'
 import type { WorkCheck } from '../../../shared/work-check-schema'
-import { FINAL_WORK, type WorkItem } from '../../../shared/work-schema'
+import { type Evidence, FINAL_WORK, type WorkItem } from '../../../shared/work-schema'
 import { useNow } from '../app/use-now'
 import { DropWorkDialog } from './drop-work-dialog'
 import { EvidenceCard } from './evidence-card'
+import { partitionEvidence } from './work-groups'
 import { WorkItemBanner } from './work-item-banner'
 import { askedByLabel, checkerLabel, itemTimestamp, levelDescription, levelReason } from './work-lines'
 import { WorkRow } from './work-row'
@@ -40,8 +41,8 @@ export default function WorkItemPage() {
   }
 
   const canDrop = !FINAL_WORK.includes(item.status)
-  const ownerEvidence = item.evidence.filter(e => e.byId === item.ownerId)
-  const settledChecks = item.checks.filter(c => c.state !== 'checking' || c.by.kind !== 'oscar')
+  const evidence = partitionEvidence(item)
+  const settledChecks = item.checks.filter(c => c.state !== 'checking')
 
   const headerBtn =
     'rounded-lg px-2.5 py-[5px] text-[13px]/[18px] font-medium text-foreground ring-1 ring-foreground/12 outline-none hover:bg-foreground/4 focus-visible:ring-2 focus-visible:ring-ring'
@@ -86,17 +87,17 @@ export default function WorkItemPage() {
             <p className="text-xs/4 text-muted-foreground">{levelReason(item)}</p>
           </section>
 
-          {ownerEvidence.length > 0 && (
+          {evidence.owner.length > 0 && (
             <section className="flex flex-col gap-1.5">
               <h2 className="text-xs/4 text-muted-foreground">
-                Evidence from {item.ownerName} · {ownerEvidence.length}
+                Evidence from {item.ownerName} · {evidence.owner.length}
               </h2>
-              <EvidenceCard botId={item.ownerId} entries={ownerEvidence} now={now} />
+              <EvidenceCard botId={item.ownerId} entries={evidence.owner} now={now} />
             </section>
           )}
 
           {settledChecks.map(check => (
-            <CheckCard key={check.round} item={item} check={check} now={now} />
+            <CheckCard key={check.round} item={item} check={check} entries={evidence.byRound[check.round] ?? []} now={now} />
           ))}
 
           {item.children.length > 0 && (
@@ -129,14 +130,13 @@ export default function WorkItemPage() {
   )
 }
 
-function CheckCard({ item, check, now }: { item: WorkItem; check: WorkCheck; now: number }) {
+function CheckCard({ item, check, entries, now }: { item: WorkItem; check: WorkCheck; entries: Evidence[]; now: number }) {
   const ring =
     check.state === 'verified' || check.state === 'passed'
       ? 'ring-success/40'
       : check.state === 'not_verified' || check.state === 'could_not_check' || check.state === 'sent_back'
         ? 'ring-destructive/40'
         : 'ring-hairline'
-  const checkerEvidence = check.by.kind === 'bot' && check.by.id !== item.ownerId ? item.evidence.filter(e => e.byId === check.by.id) : []
   const foot =
     check.by.kind === 'oscar'
       ? `Checked by you · ${itemTimestamp(check.settledAt ?? check.at, now)}`
@@ -152,7 +152,7 @@ function CheckCard({ item, check, now }: { item: WorkItem; check: WorkCheck; now
       </h2>
       <div className={`flex flex-col gap-1.5 rounded-xl px-3 py-2.5 ring-1 ${ring}`}>
         {check.text && <p className="text-[13px]/5 whitespace-pre-wrap text-foreground">{check.text}</p>}
-        {checkerEvidence.length > 0 && <EvidenceCard botId={check.by.id ?? item.ownerId} entries={checkerEvidence} now={now} />}
+        {entries.length > 0 && <EvidenceCard botId={check.by.id ?? item.ownerId} entries={entries} now={now} />}
         <p className="text-xs/4 text-muted-foreground">{foot}</p>
       </div>
     </section>

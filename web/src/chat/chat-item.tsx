@@ -74,7 +74,7 @@ export const ChatItem = memo(function ChatItem({ item, botId, queued = false }: 
       if (item.workItemId)
         return (
           <Suspense fallback={<div className="h-[52px] rounded-[10px] ring-1 ring-hairline" />}>
-            <WorkLine botId={botId} workItemId={item.workItemId} fallback={<ToolTrace item={item} />} />
+            <WorkLine workItemId={item.workItemId} fallback={<ToolTrace item={item} />} />
           </Suspense>
         )
       return <ToolTrace item={item} />

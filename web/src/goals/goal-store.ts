@@ -1,5 +1,5 @@
 /** Live reads and Oscar's actions for Goals, refreshed on `goals.changed`, `work.changed` and reconnect. */
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { create } from 'zustand'
 import type { Goal, GoalDetail } from '../../../shared/goal-schema'
 import { lilbot, messageOf } from '../app/lilbot-socket'
@@ -9,21 +9,25 @@ interface GoalStore {
   loaded: boolean
   byBot: Record<string, Goal[]>
   details: Record<string, GoalDetail>
-  error: string
 }
 
 const useGoalStore = create<GoalStore>(() => ({
   goals: [],
   loaded: false,
   byBot: {},
-  details: {},
-  error: ''
+  details: {}
 }))
 
 function subscribeGoals(load: () => Promise<void>, alsoWork = false) {
-  void load()
-  const offGoals = lilbot.onGoalsChanged(() => void load())
-  const offWork = alsoWork ? lilbot.onWorkChanged(() => void load()) : null
+  if (lilbot.connected) void load()
+  const offGoals = lilbot.onGoalsChanged(() => {
+    if (lilbot.connected) void load()
+  })
+  const offWork = alsoWork
+    ? lilbot.onWorkChanged(() => {
+        if (lilbot.connected) void load()
+      })
+    : null
   const offConn = lilbot.onConnection(connected => {
     if (connected) void load()
   })
@@ -35,52 +39,78 @@ function subscribeGoals(load: () => Promise<void>, alsoWork = false) {
 }
 
 export function useAllGoals() {
+  const [error, setError] = useState('')
   useEffect(() => {
+    let active = true
+    let seq = 0
     const load = async () => {
+      const id = ++seq
       try {
         const goals = await lilbot.call('goals.list', {})
-        useGoalStore.setState({ goals, loaded: true, error: '' })
-      } catch (error) {
-        useGoalStore.setState({ error: messageOf(error) })
+        if (!active || id !== seq) return
+        useGoalStore.setState({ goals, loaded: true })
+        setError('')
+      } catch (failure) {
+        if (active && id === seq) setError(messageOf(failure))
       }
     }
-    return subscribeGoals(load)
+    const stop = subscribeGoals(load)
+    return () => {
+      active = false
+      stop()
+    }
   }, [])
   const goals = useGoalStore(state => state.goals)
   const loaded = useGoalStore(state => state.loaded)
-  const error = useGoalStore(state => state.error)
   return { goals, loaded, error }
 }
 
 export function useBotGoals(botId: string) {
   useEffect(() => {
+    let active = true
+    let seq = 0
     const load = async () => {
+      const id = ++seq
       try {
         const goals = await lilbot.call('goals.list', { botId })
-        useGoalStore.setState(state => ({ byBot: { ...state.byBot, [botId]: goals } }))
+        if (active && id === seq) useGoalStore.setState(state => ({ byBot: { ...state.byBot, [botId]: goals } }))
       } catch {
         // Keep last read.
       }
     }
-    return subscribeGoals(load)
+    const stop = subscribeGoals(load)
+    return () => {
+      active = false
+      stop()
+    }
   }, [botId])
   return useGoalStore(state => state.byBot[botId])
 }
 
 export function useGoalDetail(goalId: string) {
+  const [error, setError] = useState('')
   useEffect(() => {
+    let active = true
+    let seq = 0
+    setError('')
     const load = async () => {
+      const id = ++seq
       try {
         const detail = await lilbot.call('goals.open', { goalId })
-        useGoalStore.setState(state => ({ details: { ...state.details, [goalId]: detail }, error: '' }))
-      } catch (error) {
-        useGoalStore.setState({ error: messageOf(error) })
+        if (!active || id !== seq) return
+        useGoalStore.setState(state => ({ details: { ...state.details, [goalId]: detail } }))
+        setError('')
+      } catch (failure) {
+        if (active && id === seq) setError(messageOf(failure))
       }
     }
-    return subscribeGoals(load, true)
+    const stop = subscribeGoals(load, true)
+    return () => {
+      active = false
+      stop()
+    }
   }, [goalId])
   const goal = useGoalStore(state => state.details[goalId])
-  const error = useGoalStore(state => state.error)
   return { goal, error }
 }
 

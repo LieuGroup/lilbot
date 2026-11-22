@@ -6,18 +6,18 @@ import { Notice } from '@/ui/notice'
 import type { Goal } from '../../../shared/goal-schema'
 import { useNow } from '../app/use-now'
 import { ThreadAvatar } from '../threads/thread-avatar'
-import { useWorkList } from '../work/work-store'
+import { useNeedsOscarWork } from '../work/work-store'
 import { formatGoalNumber, goalProgress, shortDate, sortGoals } from './goal-lines'
 import { useAllGoals } from './goal-store'
 
 export default function GoalsTabPage() {
   const now = useNow(60_000)
   const { goals, loaded, error } = useAllGoals()
-  const { list: items } = useWorkList(undefined, undefined)
+  const items = useNeedsOscarWork()
 
   const needsByGoal: Record<string, number> = {}
   for (const item of items) {
-    if (item.goalId && item.status === 'needs_oscar') needsByGoal[item.goalId] = (needsByGoal[item.goalId] ?? 0) + 1
+    if (item.goalId) needsByGoal[item.goalId] = (needsByGoal[item.goalId] ?? 0) + 1
   }
 
   const { active, finished } = sortGoals(goals)
@@ -90,7 +90,12 @@ function GoalRow({ goal, needs, now }: { goal: Goal; needs: number; now: number 
             {goal.waitsForOscar ? 'Agreement waits for you' : 'Waiting for revised agreement'}
           </span>
         )}
-        {goal.state === 'paused' && <span className="text-xs/4 text-muted-foreground">Paused · {shortDate(goal.updatedAt, now)}</span>}
+        {goal.state === 'paused' && (
+          <span className="text-xs/4 text-muted-foreground">
+            Paused · {shortDate(goal.updatedAt, now)}
+            {goal.proposal && <span className="text-primary"> · change proposed</span>}
+          </span>
+        )}
         {goal.state === 'reached' && (
           <span className="inline-flex items-center gap-1 text-xs/4 text-success">
             <CheckIcon className="size-3" strokeWidth={2.5} aria-hidden />

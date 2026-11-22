@@ -1,7 +1,20 @@
 import { describe, expect, test } from 'bun:test'
 import type { Goal, GoalDetail, GoalReview } from '../../shared/goal-schema'
 import type { WorkSummary } from '../../shared/work-schema'
-import { daysLeftLabel, goalDeltaText, goalProgress, goalWorkStats, numberStatusText, readingProvenance, reviewNumberDetail, sortGoals } from '../../web/src/goals/goal-lines'
+import {
+  canResumeGoal,
+  daysLeftLabel,
+  goalCardMode,
+  goalDeltaText,
+  goalProgress,
+  goalWorkStats,
+  nextReviewLine,
+  numberStatusText,
+  orderedReviews,
+  readingProvenance,
+  reviewNumberDetail,
+  sortGoals
+} from '../../web/src/goals/goal-lines'
 
 function goal(overrides: Partial<Goal> = {}): Goal {
   return {
@@ -131,5 +144,35 @@ describe('goalProgress and delta', () => {
     const sorted = sortGoals([paused, done, agreed, waiting])
     expect(sorted.active.map(g => g.id)).toEqual(['w', 'a', 'p'])
     expect(sorted.finished.map(g => g.id)).toEqual(['r'])
+  })
+
+  test('gates Resume when a paused goal has a pending proposal and maps card modes safely', () => {
+    const dropProposal = { agreement: null, target: null, review: null, drop: true, why: 'Retired', at: 2000 }
+    expect(canResumeGoal(goal({ state: 'paused', proposal: null }))).toBe(true)
+    expect(canResumeGoal(goal({ state: 'paused', proposal: dropProposal }))).toBe(false)
+    expect(canResumeGoal(goal({ state: 'agreed', proposal: null }))).toBe(false)
+
+    expect(goalCardMode(goal({ state: 'proposed', waitsForOscar: true }))).toBe('proposal')
+    expect(goalCardMode(goal({ state: 'agreed', waitsForOscar: false }))).toBe('agreed')
+    expect(goalCardMode(goal({ state: 'dropped', waitsForOscar: false }))).toBe('dropped')
+    expect(goalCardMode(goal({ state: 'reached', waitsForOscar: false }))).toBe('reached')
+    expect(goalCardMode(goal({ state: 'paused', waitsForOscar: false }))).toBe('paused')
+    expect(goalCardMode(goal({ state: 'proposed', waitsForOscar: false }))).toBe('waiting_bot')
+  })
+
+  test('orders oldest-first reviews newest-first with chronological numbers and formats next review date', () => {
+    const r1 = review({ itemId: 'rev-1', at: 1_700_000_000_000, value: 1050 })
+    const r2 = review({ itemId: 'rev-2', at: 1_700_600_000_000, value: 1110 })
+    const ordered = orderedReviews([r1, r2])
+    expect(ordered.map(o => ({ id: o.review.itemId, index: o.index, isLatest: o.isLatest }))).toEqual([
+      { id: 'rev-2', index: 2, isLatest: true },
+      { id: 'rev-1', index: 1, isLatest: false }
+    ])
+
+    const g = goal({ reviewText: 'Mondays at 09:00' })
+    const nov22 = new Date(2026, 10, 22, 10, 0).getTime()
+    const nov23 = new Date(2026, 10, 23, 9, 0).getTime()
+    expect(nextReviewLine(g, nov23, nov22)).toBe('Next review Tomorrow')
+    expect(nextReviewLine(g, undefined, nov22)).toBe('Reviews Mondays at 09:00')
   })
 })

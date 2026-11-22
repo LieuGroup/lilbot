@@ -2,6 +2,7 @@
 import type { Goal, GoalDetail, GoalReview, GoalTarget } from '../../../shared/goal-schema'
 import type { WorkSummary } from '../../../shared/work-schema'
 import { dayLabel } from '../history/history-labels'
+import { whenNext } from '../routines/routine-lines'
 import { checkerLabel } from '../work/work-lines'
 
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -143,4 +144,38 @@ export function sortGoals(goals: Goal[]) {
     })
   const finished = goals.filter(g => g.state === 'reached' || g.state === 'dropped').sort((a, b) => b.updatedAt - a.updatedAt)
   return { active, finished }
+}
+
+/** A paused goal can only resume directly from the header when no proposal waits (otherwise `goals.agree` would apply/drop). */
+export const canResumeGoal = (goal: Pick<Goal, 'state' | 'proposal'>) => goal.state === 'paused' && !goal.proposal
+
+export type GoalCardMode = 'proposal' | 'agreed' | 'dropped' | 'reached' | 'paused' | 'waiting_bot'
+
+/** Display mode for GoalAgreementCard: only active waiting proposals show Agree / Adjust buttons. */
+export function goalCardMode(goal: Pick<Goal, 'state' | 'waitsForOscar'>): GoalCardMode {
+  if (goal.waitsForOscar) return 'proposal'
+  if (goal.state === 'agreed') return 'agreed'
+  if (goal.state === 'dropped') return 'dropped'
+  if (goal.state === 'reached') return 'reached'
+  if (goal.state === 'paused') return 'paused'
+  return 'waiting_bot'
+}
+
+export interface OrderedGoalReview {
+  review: GoalReview
+  /** 1-based chronological review number (oldest = 1, newest = reviews.length). */
+  index: number
+  isLatest: boolean
+}
+
+/** Server returns `goal.reviews` oldest-first (`ORDER BY id`); returns newest-first with chronological numbers and `isLatest`. */
+export function orderedReviews(reviews: GoalReview[]): OrderedGoalReview[] {
+  const last = reviews.length - 1
+  return reviews.map((review, idx) => ({ review, index: idx + 1, isLatest: idx === last })).reverse()
+}
+
+/** Footer row under a goal's Reviews list: next scheduled review date from its routine, else the rhythm text. */
+export function nextReviewLine(goal: Pick<Goal, 'review' | 'reviewText'>, nextRunAt: number | undefined, now = Date.now()): string {
+  if (nextRunAt !== undefined) return `Next review ${whenNext(nextRunAt, now, goal.review.kind === 'interval')}`
+  return `Reviews ${goal.reviewText}`
 }

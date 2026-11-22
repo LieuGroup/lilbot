@@ -14,6 +14,7 @@ export function OscarCheckBanner({ item }: { item: WorkItem }) {
   const [error, setError] = useState('')
 
   async function pass() {
+    if (busy) return
     setBusy(true)
     setError('')
     try {
@@ -45,7 +46,7 @@ export function OscarCheckBanner({ item }: { item: WorkItem }) {
     <div className="flex flex-col gap-2.5 rounded-xl px-3.5 py-3 ring-1 ring-primary/35">
       <span className="text-[13px]/[18px] font-semibold text-foreground">Waits for your check · Level {item.checkLevel}</span>
       {item.result && <p className="text-sm/[21px] whitespace-pre-wrap text-foreground">{item.result}</p>}
-      <p className="text-[13px]/5 text-muted-foreground">Look at the evidence below, then pass it or send it back with a reason.</p>
+      <p className="text-[13px]/5 text-muted-foreground">{item.question || 'Look at the evidence below, then pass it or send it back with a reason.'}</p>
       {!sendingBack ? (
         <div className="flex items-center gap-2">
           <Button onClick={pass} disabled={busy} className="h-8 rounded-lg px-3.5 text-[13px]/[18px] font-medium">

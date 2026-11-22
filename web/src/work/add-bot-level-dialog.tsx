@@ -29,7 +29,7 @@ export function AddBotLevelDialog({ bots, onSave, onClose }: { bots: Bot[]; onSa
   }
 
   return (
-    <Dialog open onOpenChange={open => !open && onClose()}>
+    <Dialog open onOpenChange={open => !open && !saving && onClose()}>
       <DialogContent showCloseButton={false} className="w-[calc(100%-2rem)] max-w-[400px] gap-4 rounded-2xl bg-card p-6 sm:max-w-[400px]">
         <div className="flex flex-col gap-1">
           <DialogTitle className="text-base/[22px] font-semibold tracking-[-0.01em]">Different for one bot</DialogTitle>

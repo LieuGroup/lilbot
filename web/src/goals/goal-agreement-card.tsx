@@ -8,16 +8,40 @@ import { Textarea } from '@/ui/textarea'
 import type { Goal } from '../../../shared/goal-schema'
 import { messageOf } from '../app/lilbot-socket'
 import { dayLabel } from '../history/history-labels'
-import { formatDueDate, formatGoalNumber, shortDate } from './goal-lines'
+import { scheduleLabel } from '../routines/routine-lines'
+import { ConfirmDropProposalDialog } from './drop-goal-dialog'
+import { formatDueDate, formatGoalNumber, goalCardMode, shortDate } from './goal-lines'
 import { adjustGoal, agreeGoal } from './goal-store'
 
-export function GoalAgreementCard({ goal, now, onAgreed, onDismiss }: { goal: Goal; now: number; onAgreed?: (goal: Goal) => void; onDismiss?: () => void }) {
+function collapsedSubtitle(goal: Goal, now: number): string {
+  const mode = goalCardMode(goal)
+  if (mode === 'agreed' && goal.agreedAt) return `Agreed ${shortDate(goal.agreedAt, now)}`
+  if (mode === 'dropped') return `Dropped ${shortDate(goal.finishedAt ?? goal.updatedAt, now)}`
+  if (mode === 'reached') return `Reached ${shortDate(goal.finishedAt ?? goal.updatedAt, now)}`
+  if (mode === 'paused') return `Paused ${shortDate(goal.updatedAt, now)}`
+  return `Waiting for ${goal.botName}`
+}
+
+export function GoalAgreementCard({
+  goal,
+  now,
+  showTitle = false,
+  onAgreed,
+  onDismiss
+}: {
+  goal: Goal
+  now: number
+  showTitle?: boolean
+  onAgreed?: (goal: Goal) => void
+  onDismiss?: () => void
+}) {
   const [adjusting, setAdjusting] = useState(false)
+  const [confirmingDrop, setConfirmingDrop] = useState(false)
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
-  if (!goal.waitsForOscar && goal.state === 'agreed' && goal.agreedAt) {
+  if (goalCardMode(goal) !== 'proposal') {
     return (
       <Link
         to="/work/goals/$goalId"
@@ -26,7 +50,7 @@ export function GoalAgreementCard({ goal, now, onAgreed, onDismiss }: { goal: Go
       >
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="truncate text-[13px]/[18px] font-medium text-foreground">{goal.text}</span>
-          <span className="text-xs/4 text-muted-foreground">Agreed {shortDate(goal.agreedAt, now)}</span>
+          <span className="text-xs/4 text-muted-foreground">{collapsedSubtitle(goal, now)}</span>
         </div>
         <ChevronRightIcon className="size-3.5 flex-none text-muted-foreground" strokeWidth={1.75} aria-hidden />
       </Link>
@@ -38,9 +62,10 @@ export function GoalAgreementCard({ goal, now, onAgreed, onDismiss }: { goal: Go
   const showAgreement = !p || !!p.agreement
   const target = p?.target ?? goal.target
   const agreement = p?.agreement ?? goal.agreement
-  const reviewText = p?.review ? 'updated schedule' : goal.reviewText
+  const reviewText = p?.review ? scheduleLabel(p.review) : goal.reviewText
 
   async function agree() {
+    if (busy) return
     setBusy(true)
     setError('')
     try {
@@ -76,6 +101,7 @@ export function GoalAgreementCard({ goal, now, onAgreed, onDismiss }: { goal: Go
         <span className="text-xs/4 text-muted-foreground">Waiting for you</span>
       </div>
 
+      {showTitle && <p className="text-sm/5 font-medium text-foreground">{goal.text}</p>}
       {p?.why && <p className="text-[13px]/5 text-foreground">{p.why}</p>}
 
       {p?.drop ? (
@@ -93,7 +119,13 @@ export function GoalAgreementCard({ goal, now, onAgreed, onDismiss }: { goal: Go
               </span>
             </div>
           )}
-          {showTarget && showAgreement && <div className="h-px bg-hairline" />}
+          {!showTarget && p?.review && (
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs/4 text-muted-foreground">New review rhythm</span>
+              <p className="text-[13px]/5 text-foreground">{reviewText}</p>
+            </div>
+          )}
+          {(showTarget || p?.review) && showAgreement && <div className="h-px bg-hairline" />}
           {showAgreement && (
             <>
               <AgreementList label="I can do alone" items={agreement.alone} />
@@ -106,7 +138,7 @@ export function GoalAgreementCard({ goal, now, onAgreed, onDismiss }: { goal: Go
 
       {!adjusting ? (
         <div className="flex flex-wrap items-center gap-2 pt-0.5">
-          <Button onClick={agree} disabled={busy} className="h-8 rounded-lg px-3.5 text-[13px]/[18px] font-medium">
+          <Button onClick={p?.drop ? () => setConfirmingDrop(true) : agree} disabled={busy} className="h-8 rounded-lg px-3.5 text-[13px]/[18px] font-medium">
             {busy ? 'Saving...' : p?.drop ? 'Agree to drop' : 'Agree'}
           </Button>
           <Button variant="outline" onClick={() => setAdjusting(true)} disabled={busy} className="h-8 rounded-lg px-3 text-[13px]/[18px] font-medium">
@@ -141,6 +173,19 @@ export function GoalAgreementCard({ goal, now, onAgreed, onDismiss }: { goal: Go
         </form>
       )}
       {error && <Notice tone="error">{error}</Notice>}
+
+      {confirmingDrop && (
+        <ConfirmDropProposalDialog
+          text={goal.text}
+          why={p?.why}
+          onConfirm={async () => {
+            const saved = await agreeGoal(goal.id)
+            setConfirmingDrop(false)
+            onAgreed?.(saved)
+          }}
+          onClose={() => setConfirmingDrop(false)}
+        />
+      )}
     </div>
   )
 }

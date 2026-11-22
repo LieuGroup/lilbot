@@ -3,16 +3,33 @@ import { Link } from '@tanstack/react-router'
 import { ChevronRightIcon, LoaderCircleIcon } from 'lucide-react'
 import { Fragment, useState } from 'react'
 import type { GoalDetail } from '../../../shared/goal-schema'
+import { useRoutines } from '../routines/routine-store'
 import { CheckBadge } from '../work/check-badge'
-import { daysLeftLabel, formatDueDate, formatGoalNumber, goalDeltaText, goalProgress, goalWorkStats, numberStatusText, readingProvenance, reviewRowText } from './goal-lines'
+import { isOscarCheck } from '../work/work-lines'
+import {
+  daysLeftLabel,
+  formatDueDate,
+  formatGoalNumber,
+  goalDeltaText,
+  goalProgress,
+  goalWorkStats,
+  nextReviewLine,
+  numberStatusText,
+  orderedReviews,
+  readingProvenance,
+  reviewRowText
+} from './goal-lines'
 
 export function GoalSections({ goal, now }: { goal: GoalDetail; now: number }) {
   const [showAllWork, setShowAllWork] = useState(false)
+  const routines = useRoutines(goal.botId)
   const stats = goalWorkStats(goal)
+  const reviews = orderedReviews(goal.reviews)
   const current = goal.latest?.value ?? goal.target.baseline.value
   const pct = goalProgress(goal)
   const latestReviewItem = goal.latest ? stats.reviewItem(goal.latest.itemId) : undefined
   const visibleWork = showAllWork ? stats.workItems : stats.workItems.slice(0, 5)
+  const nextRunAt = goal.routineId ? routines?.find(r => r.id === goal.routineId && !r.paused)?.nextRunAt : undefined
 
   return (
     <>
@@ -55,18 +72,30 @@ export function GoalSections({ goal, now }: { goal: GoalDetail; now: number }) {
       {stats.needsOscar.length > 0 && (
         <section className="flex flex-col gap-1.5">
           <h2 className="text-xs/4 text-muted-foreground">Needs you · {stats.needsOscar.length}</h2>
-          {stats.needsOscar.map(item => (
-            <div key={item.id} className="flex items-center gap-2 rounded-xl px-3 py-2.5 ring-1 ring-primary/35">
-              <span className="min-w-0 flex-1 text-[13px]/[18px] text-foreground">{item.question ? `${item.title}: ${item.question}` : item.title}</span>
-              <Link
-                to="/work/items/$itemId"
-                params={{ itemId: item.id }}
-                className="flex-none rounded-lg px-2.5 py-[5px] text-xs/4 font-medium text-foreground ring-1 ring-foreground/12 hover:bg-foreground/4"
-              >
-                {item.question ? 'Answer' : 'Look'}
-              </Link>
-            </div>
-          ))}
+          {stats.needsOscar.map(item => {
+            const oscarCheck = isOscarCheck(item)
+            const label = oscarCheck
+              ? item.checkLevel === 3
+                ? `${item.title} · waits for your check`
+                : item.question
+                  ? `${item.title} · ${item.question}`
+                  : item.title
+              : item.question
+                ? `${item.title}: ${item.question}`
+                : item.title
+            return (
+              <div key={item.id} className="flex items-center gap-2 rounded-xl px-3 py-2.5 ring-1 ring-primary/35">
+                <span className="min-w-0 flex-1 text-[13px]/[18px] text-foreground">{label}</span>
+                <Link
+                  to="/work/items/$itemId"
+                  params={{ itemId: item.id }}
+                  className="flex-none rounded-lg px-2.5 py-[5px] text-xs/4 font-medium text-foreground ring-1 ring-foreground/12 hover:bg-foreground/4"
+                >
+                  {oscarCheck ? 'Look' : 'Answer'}
+                </Link>
+              </div>
+            )
+          })}
         </section>
       )}
 
@@ -107,28 +136,28 @@ export function GoalSections({ goal, now }: { goal: GoalDetail; now: number }) {
       <section className="flex flex-col gap-1.5">
         <h2 className="text-xs/4 text-muted-foreground">Reviews</h2>
         <div className="flex flex-col rounded-xl ring-1 ring-hairline">
-          {goal.reviews.map((rev, index) => (
-            <Fragment key={rev.itemId}>
+          {reviews.map(({ review }, index) => (
+            <Fragment key={review.itemId}>
               {index > 0 && <div className="h-px bg-foreground/6" />}
               <Link
                 to="/work/goals/$goalId"
                 params={{ goalId: goal.id }}
-                search={{ review: rev.itemId }}
+                search={{ review: review.itemId }}
                 className="flex items-center gap-2 px-3 py-[9px] outline-none first:rounded-t-xl last:rounded-b-xl hover:bg-foreground/4 focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <span className="min-w-0 flex-1 truncate text-[13px]/[18px] text-foreground">{reviewRowText(rev, now)}</span>
-                <CheckBadge item={stats.reviewItem(rev.itemId)} />
+                <span className="min-w-0 flex-1 truncate text-[13px]/[18px] text-foreground">{reviewRowText(review, now)}</span>
+                <CheckBadge item={stats.reviewItem(review.itemId)} />
                 <ChevronRightIcon className="size-3.5 flex-none text-muted-foreground" strokeWidth={1.75} aria-hidden />
               </Link>
             </Fragment>
           ))}
           {goal.state === 'agreed' && (
             <>
-              {goal.reviews.length > 0 && <div className="h-px bg-foreground/6" />}
-              <div className="px-3 py-[9px] text-[13px]/[18px] text-muted-foreground">Reviews {goal.reviewText}</div>
+              {reviews.length > 0 && <div className="h-px bg-foreground/6" />}
+              <div className="px-3 py-[9px] text-[13px]/[18px] text-muted-foreground">{nextReviewLine(goal, nextRunAt, now)}</div>
             </>
           )}
-          {goal.reviews.length === 0 && goal.state !== 'agreed' && <div className="px-3 py-[9px] text-[13px]/[18px] text-muted-foreground">No reviews yet.</div>}
+          {reviews.length === 0 && goal.state !== 'agreed' && <div className="px-3 py-[9px] text-[13px]/[18px] text-muted-foreground">No reviews yet.</div>}
         </div>
       </section>
     </>

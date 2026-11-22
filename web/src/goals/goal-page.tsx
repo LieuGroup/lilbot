@@ -7,7 +7,7 @@ import { messageOf } from '../app/lilbot-socket'
 import { useNow } from '../app/use-now'
 import { DropGoalDialog } from './drop-goal-dialog'
 import { GoalAgreementCard } from './goal-agreement-card'
-import { goalMetaLine, goalWorkStats } from './goal-lines'
+import { canResumeGoal, goalMetaLine, goalWorkStats, orderedReviews } from './goal-lines'
 import { GoalReviewView } from './goal-review-view'
 import { GoalSections } from './goal-sections'
 import { agreeGoal, dropGoal, pauseGoal, useGoalDetail } from './goal-store'
@@ -43,16 +43,15 @@ export default function GoalPage() {
   }
 
   const stats = goalWorkStats(goal)
-  const openedReview = reviewId ? goal.reviews.find(r => r.itemId === reviewId) : undefined
+  const openedReview = reviewId ? orderedReviews(goal.reviews).find(entry => entry.review.itemId === reviewId) : undefined
   if (openedReview) {
-    const reviewIndex = goal.reviews.length - goal.reviews.findIndex(r => r.itemId === openedReview.itemId)
     return (
       <GoalReviewView
         goal={goal}
-        review={openedReview}
-        reviewIndex={reviewIndex}
-        reviewItem={stats.reviewItem(openedReview.itemId)}
-        isLatest={goal.reviews[0]?.itemId === openedReview.itemId}
+        review={openedReview.review}
+        reviewIndex={openedReview.index}
+        reviewItem={stats.reviewItem(openedReview.review.itemId)}
+        isLatest={openedReview.isLatest}
         now={now}
         onClose={() => void navigate({ to: '/work/goals/$goalId', params: { goalId }, search: {} })}
       />
@@ -64,7 +63,8 @@ export default function GoalPage() {
     'rounded-lg px-2.5 py-[5px] text-[13px]/[18px] font-medium text-foreground ring-1 ring-foreground/12 outline-none hover:bg-foreground/4 focus-visible:ring-2 focus-visible:ring-ring'
 
   async function togglePause() {
-    if (!goal) return
+    if (!goal || busy) return
+    if (goal.state === 'paused' && !canResumeGoal(goal)) return
     setBusy(true)
     setActionError('')
     try {
@@ -90,7 +90,7 @@ export default function GoalPage() {
               Pause
             </button>
           )}
-          {goal.state === 'paused' && (
+          {canResumeGoal(goal) && (
             <Button disabled={busy} onClick={togglePause} className="h-[30px] rounded-lg px-2.5 text-[13px]/[18px] font-medium">
               Resume
             </Button>

@@ -4,7 +4,7 @@ import type { WorkItem } from '../../../shared/work-schema'
 import { clockTime } from '../history/history-labels'
 import { CheckBadge } from './check-badge'
 import { OscarCheckBanner, QuestionBanner } from './work-item-actions'
-import { checkerLabel, droppedByLine, elapsedShort, isOscarCheck } from './work-lines'
+import { checkerLabel, droppedByLine, elapsedShort, isOscarCheck, latestSettledCheck } from './work-lines'
 
 export function WorkItemBanner({ item, now }: { item: WorkItem; now: number }) {
   if (item.status === 'done') return <DoneBanner item={item} />
@@ -40,15 +40,40 @@ export function WorkItemBanner({ item, now }: { item: WorkItem; now: number }) {
     )
   }
 
-  const failedCheck = [...item.checks].reverse().find(c => c.state === 'not_verified')
-  if (failedCheck) {
+  const latest = latestSettledCheck(item.checks)
+  if (latest?.state === 'sent_back') {
+    return (
+      <div className="flex flex-col gap-2 rounded-xl bg-destructive/8 px-3.5 py-3">
+        <div className="flex items-center gap-2">
+          <XIcon className="size-4 flex-none text-destructive" strokeWidth={2.4} aria-hidden />
+          <span className="text-[13px]/[18px] font-semibold text-destructive">Sent back by you</span>
+        </div>
+        <div className="flex flex-col gap-0.5 text-[13px]/5 text-foreground">
+          {item.result && (
+            <p>
+              <span className="text-muted-foreground">Claimed: </span>
+              {item.result}
+            </p>
+          )}
+          {latest.text && (
+            <p>
+              <span className="text-muted-foreground">Your note: </span>
+              {latest.text}
+            </p>
+          )}
+        </div>
+        <p className="text-xs/4 text-muted-foreground">{item.ownerName} is working on it again.</p>
+      </div>
+    )
+  }
+  if (latest?.state === 'not_verified') {
     const failures = item.checks.filter(c => c.state === 'not_verified').length
     return (
       <div className="flex flex-col gap-2 rounded-xl bg-destructive/8 px-3.5 py-3">
         <div className="flex items-center gap-2">
           <XIcon className="size-4 flex-none text-destructive" strokeWidth={2.4} aria-hidden />
           <span className="text-[13px]/[18px] font-semibold text-destructive">
-            Not verified by {checkerLabel(failedCheck, item.ownerName)} · sent back {failures === 1 ? 'once' : `${failures} times`}
+            Not verified by {checkerLabel(latest, item.ownerName)} · sent back {failures === 1 ? 'once' : `${failures} times`}
           </span>
         </div>
         <div className="flex flex-col gap-0.5 text-[13px]/5 text-foreground">
@@ -58,10 +83,10 @@ export function WorkItemBanner({ item, now }: { item: WorkItem; now: number }) {
               {item.result}
             </p>
           )}
-          {failedCheck.text && (
+          {latest.text && (
             <p>
               <span className="text-muted-foreground">The checker saw: </span>
-              {failedCheck.text}
+              {latest.text}
             </p>
           )}
         </div>

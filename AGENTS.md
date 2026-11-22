@@ -194,8 +194,8 @@ behaviour he can check in the app. Keep an eye on speed and memory; measure befo
     spinner; switches and primary buttons are ink (`bg-foreground`). Defined in `app/styles.css`; dark mode follows
     `prefers-color-scheme`; bot replies use `prose-chat`.
   - Font: Inter bundled in `app/fonts/` (~48 kB English subsets). Closed type scale: 12 meta/section, 13 previews/menus,
-    14 names, 15 chat, 16 panel/dialog titles; weights 400, 500, 600. Icons 16px at stroke 1.75 in 28px buttons
-    (`ui/icon-button.ts`).
+    14 names, 15 chat, 16 panel/dialog titles, plus 28 goal metric display; weights 400, 500, 600. Icons 16px at stroke
+    1.75 in 28px buttons (`ui/icon-button.ts`).
   - Bundle budget: chat's first load stays about 220 kB JS and 17 kB CSS (gzip -9, all files `dist/index.html`
     references). Import UI parts as `@/ui/<part>`; keep form pages, details tabs, bot menu/dialogs, Settings, model
     menu, image viewer and thread/routine/webhook/library detail views lazy.

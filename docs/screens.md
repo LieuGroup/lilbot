@@ -522,26 +522,35 @@ Client routing, state, caching and interaction rules for the screens above.
   checker or `passed` by Oscar; `Not verified`, `Could not check`, `Self-checked`, `Not checked` and `Being checked`
   are shared everywhere results show (`workBadge` in `work/work-lines.ts`, pure and tested).
 - **All work (`/work/all`, Frame 3):** "By status" / "By bot" toggle, bot and time window filters (Today, 7 days,
-  30 days, All time), parent/child indentation (`nestItems`) with part counts and `sent back` labels, plus expandable
-  overflow and Failed / Dropped sections.
-- **Item page (`/work/items/$itemId`, Frames 4–5):** top banner for every status (verified green result, sent-back red
-  comparison, Level 3 Pass / Send back… form, inline question Answer, checking, working/open, failed, dropped), "Done
-  means", check level and kind reason, owner evidence (`library` via `library.content`, `command`, safe `http(s)`
-  `link`, `number`), checker cards (including same-bot isolated check wording), child parts, Drop… dialog with required
-  reason, and links to parent, goal and origin exchange/group/run/chat.
-- **Conversation lines (Frame 6):** `tool` items with `workItemId` load lazy `work/work-line.tsx` ("Work · <title>"
-  with status, part progress and `CheckBadge`, opening `/work/items/$itemId`). Handed-over exchanges in
-  `threads/thread-line.tsx` gain the receiver item's `CheckBadge` (clicking the badge opens the item; clicking the row
-  opens the exchange).
+  30 days, All time), recursive parent/child indentation (`nestItems` in `work/work-groups.ts`, clamped past depth 2,
+  with flat `Working` count), part counts and red `sent back` labels (covering both `not_verified` and Oscar's
+  `sent_back`), plus expandable overflow and Failed / Dropped sections.
+- **Item page (`/work/items/$itemId`, Frames 4–5):** top banner for every status (verified green result, Oscar's
+  `sent_back` or bot `not_verified` red banner based on the latest settled check, Level 3 or escalated Pass / Send
+  back… form showing `item.question`, inline question Answer, checking, working/open, failed, dropped), "Done means",
+  check level and kind reason, owner evidence partitioned from same-bot and multi-round check evidence (`library` via
+  `library.content`, `command`, safe `http(s)` `link`, `number`), settled checker cards (running checks are shown only
+  in the top banner), child parts, Drop… dialog with required reason, and links to parent, goal and origin
+  exchange/group/run/chat.
+- **Conversation lines (Frame 6):** `tool` items with `workItemId` load lazy `work/work-line.tsx` via `work.open`
+  ("Work · <title>" with status, cross-bot part progress and `CheckBadge`, opening `/work/items/$itemId`). Handed-over
+  exchanges in `threads/thread-line.tsx` gain the receiver item's `CheckBadge` (clicking the badge opens the item;
+  clicking the row opens the exchange).
 - **Checks tab (`/work/checks`, Frame 7):** default level selector for all nine backend `WorkKind` keys (`reply` and
   `note` are separate rows matching `work.levels.get`, rather than combined), plus "Different for one bot" overrides
   with Add dialog and reset to default. Track-record easing and the Spot checks switch from the drawing are omitted
   because neither exists in the backend yet (#142).
-- **Goals (`web/src/goals/`, Frames 8–11):** pending goal agreements and proposed changes appear inline at the bottom
-  of the bot's chat (`goals/goal-chat-cards.tsx`, loaded lazily when `waitsForOscar`, with Agree, Adjust… and Not now;
-  transitions to "Agreed <date>" linking to the goal). `/work/goals` lists active goals (progress bars, waiting
-  proposals, paused) and reached/dropped goals below. `/work/goals/$goalId` shows Pause/Resume/Drop…, target progress
-  card with real verification provenance of the latest review item, "Did what it said" and "The number" tiles, Needs
-  you items, non-review work items and Reviews. Opening a review (`?review=<itemId>`, Frame 10) shows the report, any
-  pending proposal with Agree / Reply…, and a link to its work item and evidence.
+- **Goals (`web/src/goals/`, Frames 8–11):** pending goal agreements and proposed changes (including title in chat,
+  new target, new review rhythm formatted via `scheduleLabel`, new agreement, or drop proposal) appear inline at the
+  bottom of the bot's chat (`goals/goal-chat-cards.tsx`, loaded lazily when `waitsForOscar`, with Agree, Adjust… and
+  Not now; drop proposals require confirmation and transition cleanly to a collapsed `Dropped <date>` link).
+  `/work/goals` lists active goals (progress bars, waiting proposals on both agreed and paused goals, paused) and
+  reached/dropped goals below, counting `needs_oscar` items via a dedicated query. `/work/goals/$goalId` hides Resume
+  while a proposal waits on a paused goal, shows the 28px metric figure on the target progress card with real
+  verification provenance of the latest review item, "Did what it said" and "The number" tiles (showing `Moving toward
+  target` / `Stalled` / `Moving away` / `Unchanged` rather than a calculated pace), Needs you items (`Look` for Oscar
+  checks, `Answer` for questions), non-review work items and Reviews newest-first with `Next review <date>` read from
+  the goal's review routine (`routines.list`, falling back to `goal.reviewText`). Opening a review (`?review=<itemId>`,
+  Frame 10) shows chronological `review N`, any pending proposal on the latest review (target, review rhythm, agreement
+  or confirmed drop) with Agree / Reply…, and a link to its work item and evidence.
 
