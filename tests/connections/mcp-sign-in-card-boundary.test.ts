@@ -112,6 +112,17 @@ test('hidden chats cannot place sign-in cards or write hidden history_sessions; 
   expect(f.services.cards.get(added.cardId)?.state).toBe('cancelled')
   expect(f.signedIn).toHaveLength(0)
   expect(f.failed).toHaveLength(0)
+
+  // Starting an older expired card again while a newer card for the same connection is finishing is refused cleanly.
+  const first: any = await f.services.add('bot-a', { name: 'restart_race', address: oauth.address, requestId: 'rr1' })
+  const second: any = await f.services.signIn('bot-b', { id: first.id, requestId: 'rr2' })
+  expect(f.services.cards.get(first.cardId)?.state).toBe('expired')
+  const secondLanded = await f.browse(f.linkFor(second.cardId))
+  const inFlight = f.services.finishSignInCard(second.cardId, secondLanded)
+  await expect(f.services.restartSignIn(first.cardId)).rejects.toThrow('already finishing')
+  expect((await inFlight).state).toBe('connected')
+  expect(f.services.cards.get(first.cardId)?.state).toBe('expired')
+  expect(f.signedIn).toHaveLength(1)
 })
 
 test('helper door and private listener still do not mount /api/connections/callback', async () => {

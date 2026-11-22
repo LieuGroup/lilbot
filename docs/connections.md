@@ -90,9 +90,11 @@ address, signsInAt, note }`, telling the bot to wait for LilBot to notify it whe
   - `ConnectionSignInCard` fields: `id`, `connectionId`, `botId`, `chatId`, `serviceName`, `serviceAddress`,
     `providerDomain` (`signsInAt`), `state` (`'waiting' | 'connected' | 'cancelled' | 'expired' | 'failed'`), optional
     plain-text `reason`, optional plain-text `label`, `createdAt`, `expiresAt`, `settledAt`.
-  - **Never stored, broadcast or logged:** the sign-in URL, OAuth `state`, PKCE verifier and pasted callback address
-    stay in memory only (the pasted address is discarded immediately after validation/exchange) and never enter SQLite,
-    conversation history, broadcasts, bot tool results, model context, memory or logs.
+  - **Never stored, broadcast or logged:** the sign-in URL, OAuth `state`, PKCE verifier and the callback address
+    pasted into the sign-in card stay in memory only (the pasted address is discarded immediately after
+    validation/exchange) and never enter SQLite, conversation history, broadcasts, bot tool results, model context,
+    memory or logs. (Only the legacy `finish` chat fallback for clients without the card uses Oscar's visible message
+    in chat.)
   - Bot-provided `label` / `reason` are untrusted plain text (control characters stripped, length-capped, checked with
     `memoryRefusal`). Failure `reason` strings are always fixed generic LilBot messages (never raw upstream OAuth
     errors).

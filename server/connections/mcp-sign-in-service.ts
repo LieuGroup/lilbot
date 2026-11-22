@@ -92,8 +92,10 @@ export class SignInCardService {
   /** Mints a fresh flow for an existing waiting, expired or failed card, updating it in place. */
   restart(cardId: string, connection: StoredConnection, credential: Credential, redirectUri: string): ConnectionSignInCard {
     const card = this.requireRestartable(cardId)
+    const waiting = this.store.waitingForConnection(connection.id)
+    if (waiting.some(other => this.inFlight.has(other.id))) throw inProgress()
     const now = this.now()
-    for (const other of this.store.waitingForConnection(connection.id)) {
+    for (const other of waiting) {
       if (other.id !== card.id) this.save({ ...other, state: 'expired', settledAt: now })
     }
     const { expiresAt } = this.flows.start(card.id, connection.id, card.botId, card.chatId, credential.server, credential.client, redirectUri)

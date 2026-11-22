@@ -101,7 +101,7 @@ export function cardToolReply(connection: StoredConnection, card: ConnectionSign
       : `The card shows that the token goes to ${connection.address}.`
   const completion = callbackEnabled
     ? 'LilBot notifies you here when he finishes (automatically, or if he pastes the final address into the card).'
-    : 'After he signs in, his browser will land on a not-found or error page and he can paste that address into the sign-in card (or here in chat for action finish).'
+    : 'After he signs in, his browser will land on a not-found or error page and he can paste that address into the sign-in card.'
   return {
     id: connection.id,
     name: connection.name,
