@@ -109,7 +109,8 @@ export function dockEntries(items: DockItem[], allThreads: BotThread[], botId: s
 /** The dock row's title: omits the redundant "Worker · " prefix inside an all-worker batch (Frame 3). */
 export function dockRowTitle(item: DockItem, botId: string, inWorkerBatch: boolean): string {
   const title = taskTitle(item.thread)
-  if (item.thread.worker) return inWorkerBatch ? title : `Worker · ${title}`
+  const where = item.thread.computer ? (item.thread.computerName ?? item.thread.computer) : null
+  if (item.thread.worker) return inWorkerBatch ? joined(where, title) : joined('Worker', where, title)
   return `${otherName(item.thread, botId)} · ${title}`
 }
 

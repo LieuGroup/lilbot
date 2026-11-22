@@ -22,6 +22,7 @@ import { ThreadWaits } from './thread-waits'
 
 export interface ThreadHost extends RunnerHost {
   listBots(): Promise<{ id: string; name: string }[]>
+  computerName?(computerId: string): string | undefined
 }
 type StoppedBy = { kind: 'bot'; id: string; name: string } | { kind: 'oscar'; id: null; name: 'Oscar' }
 
@@ -74,8 +75,10 @@ export class ThreadService {
   /** The stored exchange with its files per message and the receiver's live activity line. */
   view(thread: BotThread): BotThread {
     const files = this.files.byMessage(thread.id)
+    const computerName = thread.computer ? (this.host.computerName?.(thread.computer) ?? thread.computerName) : undefined
     return {
       ...thread,
+      ...(computerName ? { computerName } : {}),
       activity: thread.status === 'working' && !thread.group ? this.runner.lineOf(this.runner.runningFor(thread.id)) : null,
       ...((thread.status === 'working' || thread.status === 'waiting') && this.store.redirectWaiting(thread.id) ? { redirecting: true as const } : {}),
       messages: thread.messages.map(m => (files.has(m.id) ? { ...m, files: files.get(m.id) } : m)),
@@ -176,12 +179,9 @@ export class ThreadService {
   dropped(threadId: string, reason: string) {
     const stop = this.stopping(threadId, { kind: 'oscar', id: null, name: 'Oscar' }, reason)
     if (stop) return stop.end
-    const thread = this.store.get(threadId)
-    this.tellDelegator(
-      thread,
-      `dropped:${threadId}`,
-      `Oscar dropped the work item of ${thread.worker ? `your worker (exchange ${threadId})` : `the task you handed to ${JSON.stringify(thread.participants[1].name)} (exchange ${threadId})`}, saying ${JSON.stringify(reason)}. Its work is no longer wanted.`
-    )
+    const t = this.store.get(threadId)
+    const what = t.worker ? `your worker (exchange ${threadId})` : `the task you handed to ${JSON.stringify(t.participants[1].name)} (exchange ${threadId})`
+    this.tellDelegator(t, `dropped:${threadId}`, `Oscar dropped the work item of ${what}, saying ${JSON.stringify(reason)}. Its work is no longer wanted.`)
     return async () => {}
   }
 

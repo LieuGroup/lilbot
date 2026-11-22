@@ -2,7 +2,7 @@
  *  `ThreadService.cancel` Oscar's `threads.cancel` uses, recorded as stopped by the bot. */
 import { LilBotError } from '../../shared/lilbot-error'
 import { type BotThread, RedirectInput } from '../../shared/thread-schema'
-import { refuseUnsafe } from '../memory/memory-safety'
+import { memoryRefusal, refuseUnsafe } from '../memory/memory-safety'
 import type { DelegationHost } from './delegation-service'
 import { steerText } from './thread-prompts'
 import type { ThreadService } from './thread-service'
@@ -41,12 +41,14 @@ export class DelegationControl {
   private summary(stored: BotThread) {
     const t = this.threads.view(stored)
     const answer = t.messages.filter(m => (t.worker ? m.fromWorker === true : m.authorId !== t.participants[0].id) && !m.withheld).at(-1)
-    const text = answer?.items.flatMap(i => (i.kind === 'assistant' ? [i.text] : [])).join('\n\n')
+    const raw = answer?.items.flatMap(i => (i.kind === 'assistant' ? [i.text] : [])).join('\n\n')
+    const text = t.status !== 'failed' && raw && !memoryRefusal(raw) ? raw : undefined
     return {
       exchangeId: t.id,
       batchId: t.batchId,
       to: t.worker ? 'worker' : t.participants[1].name,
       ...(t.worker ? { worker: true as const } : {}),
+      ...(t.computer ? { computer: t.computerName ?? t.computer } : {}),
       status: t.status,
       activity: t.activity,
       runSeconds: t.startedAt ? Math.round(((t.endedAt ?? Date.now()) - t.startedAt) / 1000) : null,

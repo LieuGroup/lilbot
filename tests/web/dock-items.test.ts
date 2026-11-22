@@ -166,4 +166,10 @@ test('batches group >=2 visible tasks with worker-only vs mixed headers and unwr
   const waiting = { w2: waitingWork('w2') }
   const waitingBatch = dockEntries(dockItems([w1, w2], lead.id, waiting, {}, now), [w1, w2], lead.id, waiting)
   expect(waitingBatch[0]).toMatchObject({ kind: 'batch', title: 'Started 2 workers', progress: '0 of 2 finished', allWorkers: true })
+
+  // Remote worker dock rows show the computer name both standalone and inside an all-worker batch.
+  const rw = makeThread('rw1', { worker: true, computer: 'c1', computerName: 'Studio', status: 'working' })
+  const [rwItem] = dockItems([rw], lead.id, {}, {}, now)
+  expect(dockRowTitle(rwItem, lead.id, false)).toBe('Worker · Studio · Task rw1')
+  expect(dockRowTitle(rwItem, lead.id, true)).toBe('Studio · Task rw1')
 })

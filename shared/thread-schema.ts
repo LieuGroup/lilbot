@@ -23,6 +23,8 @@ const delegateTask = z
     worker: z.literal(true).optional().describe('Start a fresh hidden worker session of yourself'),
     model: BotModel.optional().describe('Worker only: model for this worker session'),
     reasoningEffort: ReasoningEffort.optional().describe('Worker only: starting reasoning effort'),
+    computer: z.string().trim().min(1).max(100).optional().describe('Worker only: computer id or exact name to run on'),
+    cwd: z.string().min(1).max(4096).optional().describe('Remote worker only: absolute or ~/ folder path on that computer'),
     task: text,
     files: files.optional(),
     exchangeId: exchangeId.optional().describe('Continue this exchange')
@@ -32,6 +34,10 @@ const delegateTask = z
     if (t.to && t.exchangeId) ctx.addIssue({ code: 'custom', message: 'Give either to or exchangeId, not both.', path: ['to'] })
     if ((t.model || t.reasoningEffort) && (!t.worker || t.exchangeId))
       ctx.addIssue({ code: 'custom', message: 'model and reasoningEffort apply only when starting a new worker.', path: ['model'] })
+    if ((t.computer || t.cwd) && (!t.worker || t.exchangeId))
+      ctx.addIssue({ code: 'custom', message: 'computer and cwd apply only when starting a new worker.', path: ['computer'] })
+    if (t.cwd && !t.computer) ctx.addIssue({ code: 'custom', message: 'Give a computer when specifying cwd.', path: ['cwd'] })
+    if (t.computer && t.computer !== 'leader' && !t.cwd) ctx.addIssue({ code: 'custom', message: 'Give a folder (cwd) when starting a worker on another computer.', path: ['cwd'] })
   })
 
 /** One call hands tasks to other bots or starts same-bot workers; each task is its own exchange, all of them one batch. */
@@ -159,6 +165,12 @@ export interface BotThread {
   model?: BotModel
   /** Starting reasoning effort override for a worker. */
   reasoningEffort?: ReasoningEffort
+  /** Computer id this worker runs on, when not the leader. */
+  computer?: string
+  /** Display name of that computer (stored at start time, refreshed live in views). */
+  computerName?: string
+  /** Working folder on that computer. */
+  cwd?: string
   /** Present when the thread is a temporary group rather than an exchange between two bots. */
   group?: ThreadGroup
 }

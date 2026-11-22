@@ -9,7 +9,7 @@ import { GroupLine } from './group-line'
 import { useThreadNavigation } from './open-thread'
 import { StateText } from './state-text'
 import { ThreadAvatar, WorkerBadge } from './thread-avatar'
-import { batchOf, batchSummary, isWorker, lineTitle, otherName, taskTitle } from './thread-lines'
+import { batchOf, batchSummary, isWorker, joined, lineTitle, otherName, taskTitle } from './thread-lines'
 import { useThreads, useWaitingWork } from './thread-store'
 import { inlineState } from './worker-lines'
 
@@ -54,7 +54,8 @@ function ThreadRow({ botId, thread, inWorkerBatch, className = '' }: { botId: st
   const receiverWork = useBotWorkItems(receiverId)
   const workItem = receiverWork?.find(item => item.id === thread.id)
   const badge = workItem ? workBadge(workItem) : null
-  const title = thread.worker && inWorkerBatch ? taskTitle(thread) : lineTitle(thread, botId)
+  const where = thread.computer ? (thread.computerName ?? thread.computer) : null
+  const title = thread.worker && inWorkerBatch ? joined(where, taskTitle(thread)) : lineTitle(thread, botId)
   const state = inlineState(thread, waitingWork[thread.id])
   return (
     <div className={`relative flex items-center gap-2 py-[7px] pr-2.5 pl-2.5 hover:bg-foreground/4 ${className}`}>

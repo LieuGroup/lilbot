@@ -29,7 +29,15 @@ export function aboutTools({ bots, workspaces, computers, t3, t3Enabled, commit,
   const t3On = Boolean(t3Enabled)
   const guideTopics = topics()
   const computerRows = () =>
-    computers.list().map(computer => ({ id: computer.id, name: computer.name, os: computer.os, online: computer.online, main: computer.main, lastSeen: iso(computer.lastSeen) }))
+    computers.list().map(computer => ({
+      id: computer.id,
+      name: computer.name,
+      os: computer.os,
+      online: computer.online,
+      main: computer.main,
+      lastSeen: iso(computer.lastSeen),
+      ...(computer.workerAgents?.length ? { workerAgents: computer.workerAgents } : {})
+    }))
   const statusAreas = t3On ? (['t3', 'computers', 'deploy', 'connections'] as const) : (['computers', 'deploy', 'connections'] as const)
   return [
     readTool(

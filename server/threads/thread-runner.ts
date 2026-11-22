@@ -11,18 +11,19 @@ import type { GroupRounds } from './group-rounds'
 import { failExchange, turnFailure } from './thread-failure'
 import type { ThreadFiles } from './thread-files'
 import { canStartDelivery, isReply, THREAD_LIMITS } from './thread-limits'
-import { answerPrompt, replyText, workPrompt } from './thread-prompts'
+import { answerPrompt, replyText, workPrompt, workRunOptions } from './thread-prompts'
 import { isSoleRunningWorker } from './thread-roster'
 import { type Delivery, isWork, type ThreadStore } from './thread-store'
 import type { ThreadWaits } from './thread-waits'
 
-type RunResult = { status: string; text: string; items?: ChatItem[]; unknownReceipt?: true }
+type RunResult = { status: string; text: string; items?: ChatItem[]; unknownReceipt?: true; failureReason?: string }
+type ThreadRunOptions = RoutineOptions & { computer?: string; cwd?: string; threadId?: string }
 export interface RunnerHost {
   requireBot(id: string): Promise<{ id: string; name: string }>
-  runRoutine(botId: string, prompt: string, options: RoutineOptions): Promise<RunResult>
-  /** The bot's own folder, created if missing. Without it no files travel. */
+  runRoutine(botId: string, prompt: string, options: ThreadRunOptions): Promise<RunResult>
   folder?(botId: string): Promise<string>
   stopRun?(botId: string, chatId: string): Promise<boolean>
+  activeRemoteThreads?(computerId: string): Iterable<string>
 }
 const TERMINAL = ['bot_not_found', 'unsafe_message', 'thread_limit']
 /** Kinds whose text is LilBot's own prompt, any bot text in it already checked and fenced. */
@@ -72,7 +73,7 @@ export class ThreadRunner {
       return group ? `${group}\n${d.target}` : isReply(d.kind) ? `${d.threadId}\nreply` : d.threadId
     })
     for (const [index, d] of pending.entries()) {
-      if (!canStartDelivery(d, this.running.values(), id => !!this.store.get(id).worker)) continue
+      if (!canStartDelivery(d, this.running.values(), id => this.store.get(id), this.host.activeRemoteThreads)) continue
       if (!this.retries.ready(d.id) || lanes.slice(0, index).includes(lanes[index])) continue
       this.retries.run(
         d.id,
@@ -131,8 +132,7 @@ export class ThreadRunner {
     const result = await this.host.runRoutine(d.target, prompt, {
       runId: `thread-${d.id}`,
       chatId: toWork ? workSession : d.sourceChat,
-      ...(toWork && !workSession && thread.model ? { model: thread.model } : {}),
-      ...(toWork && !workSession && thread.reasoningEffort ? { reasoningEffort: thread.reasoningEffort } : {}),
+      ...workRunOptions(thread, toWork, workSession),
       onChat: id => {
         stillOn()
         this.store.attach(d, d.target, id, internal)
