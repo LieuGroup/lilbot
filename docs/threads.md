@@ -8,6 +8,7 @@ Rules and the short version are in `AGENTS.md` under "Threads". Code: `server/th
 | File | Does |
 |---|---|
 | `thread-store.ts` | `threads` (JSON transcript and status), `thread_links` (batch, parent), `thread_deliveries` (the outbox) |
+| `thread-accept.ts` | transactional acceptance of exchange deliveries: self, worker-nesting, depth and open caps |
 | `thread-runner.ts` | the outbox: runs each delivery in its bot's hidden session, keeps status, records answers |
 | `thread-service.ts` | `ask` (the engine API's legacy `threads/ask`, kept for sessions on adapter 0.9.x), reading (bots and Oscar), stopping (`stopping` is its database part, which the work board runs inside its own transaction), Oscar's answer and drop on a work item |
 | `delegation-service.ts` | the MCP tools: delegate in batches with files, status, redirect, wait, attach |

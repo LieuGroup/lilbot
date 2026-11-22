@@ -10,7 +10,7 @@ import { sendFiles } from './exchange-files'
 import type { GroupRounds } from './group-rounds'
 import { failExchange, turnFailure } from './thread-failure'
 import type { ThreadFiles } from './thread-files'
-import { canStartDelivery, THREAD_LIMITS } from './thread-limits'
+import { canStartDelivery, isReply, THREAD_LIMITS } from './thread-limits'
 import { answerPrompt, replyText, workPrompt } from './thread-prompts'
 import { type Delivery, isWork, type ThreadStore } from './thread-store'
 import type { ThreadWaits } from './thread-waits'
@@ -26,7 +26,6 @@ export interface RunnerHost {
 const TERMINAL = ['bot_not_found', 'unsafe_message', 'thread_limit']
 /** Kinds whose text is LilBot's own prompt, any bot text in it already checked and fenced. */
 const PREPARED = ['notice', 'oscar', 'point', 'round']
-const isReply = (kind: Delivery['kind']) => kind === 'answer' || kind === 'notice'
 
 export class ThreadRunner {
   private retries = new RetryQueue<Delivery>('thread delivery')
@@ -67,7 +66,7 @@ export class ThreadRunner {
     const pending = this.store.pending()
     const lanes = pending.map(d => {
       const group = this.groups?.groupOf(d)
-      return group ? `${group}\n${d.target}` : d.threadId
+      return group ? `${group}\n${d.target}` : isReply(d.kind) ? `${d.threadId}\nreply` : d.threadId
     })
     for (const [index, d] of pending.entries()) {
       if (!canStartDelivery(d, this.running.values(), id => !!this.store.get(id).worker)) continue

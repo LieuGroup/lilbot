@@ -1,14 +1,13 @@
 import type { Database } from 'bun:sqlite'
 import { LilBotError } from '../../shared/lilbot-error'
 import type { BotThread, ThreadMessage } from '../../shared/thread-schema'
-import { type Accept, acceptDelivery, assertNotWorker } from './thread-accept'
+import { type Accept, acceptDelivery, assertNotWorker, WORK } from './thread-accept'
 import { THREAD_LIMITS } from './thread-limits'
 
 /** request, redirect and oscar (his answer to its question on its work item) are work for the receiver; answer is a reply back; notice is LilBot's own word.
  *  In a group, point is the leader's point for one member and round a round's replies for the leader. */
 type DeliveryKind = 'request' | 'redirect' | 'oscar' | 'answer' | 'notice' | 'point' | 'round'
 export const isWork = (kind: DeliveryKind) => kind === 'request' || kind === 'redirect' || kind === 'oscar'
-const WORK = "kind IN ('request','redirect','oscar')"
 export interface Delivery {
   id: string
   threadId: string

@@ -29,6 +29,7 @@ const delegateTask = z
   })
   .superRefine((t, ctx) => {
     if (t.worker && t.to) ctx.addIssue({ code: 'custom', message: 'Give either worker: true or to, not both.', path: ['worker'] })
+    if (t.to && t.exchangeId) ctx.addIssue({ code: 'custom', message: 'Give either to or exchangeId, not both.', path: ['to'] })
     if ((t.model || t.reasoningEffort) && (!t.worker || t.exchangeId))
       ctx.addIssue({ code: 'custom', message: 'model and reasoningEffort apply only when starting a new worker.', path: ['model'] })
   })

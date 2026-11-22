@@ -21,7 +21,7 @@ export interface Accept {
   reasoningEffort?: ReasoningEffort
 }
 type Bot = { id: string; name: string }
-const WORK = "kind IN ('request','redirect','oscar')"
+export const WORK = "kind IN ('request','redirect','oscar')"
 
 /** Throws when `chatId` belongs to a worker session (or its compression continuation), or when its lineage cannot be read. */
 export function assertNotWorker(store: ThreadStore, botId: string, chatId: string, startingWorker = false) {
@@ -69,12 +69,13 @@ export function acceptDelivery(store: ThreadStore, caller: Bot, target: Bot, inp
       throw new LilBotError('thread_forbidden', 'Only the two participants can use this thread.')
     if ((!input.threadId && depth > THREAD_LIMITS.depth) || thread.depth > THREAD_LIMITS.depth)
       throw new LilBotError('thread_depth', 'Maximum thread depth reached. Report back to whoever asked you.')
-    if (!input.threadId && store.open(caller.id) >= THREAD_LIMITS.openPerBot)
-      throw new LilBotError('thread_limit', `You already have ${THREAD_LIMITS.openPerBot} delegations under way. Wait for answers or stop one first.`)
-    if (!input.threadId && input.worker && store.openWorkers(caller.id) >= THREAD_LIMITS.workersPerBot)
-      throw new LilBotError('thread_limit', `You already have ${THREAD_LIMITS.workersPerBot} workers under way. Wait for answers or stop one first.`)
     // Pending requests reserve their answer; continuations reserve through append below.
     const pending = (store.db.query(`SELECT count(*) AS n FROM thread_deliveries WHERE threadId=? AND ${WORK} AND status!='done'`).get(thread.id) as { n: number }).n
+    const reopens = kind === 'request' && (!input.threadId || pending === 0)
+    if (reopens && store.open(caller.id) >= THREAD_LIMITS.openPerBot)
+      throw new LilBotError('thread_limit', `You already have ${THREAD_LIMITS.openPerBot} delegations under way. Wait for answers or stop one first.`)
+    if (reopens && thread.worker && store.openWorkers(caller.id) >= THREAD_LIMITS.workersPerBot)
+      throw new LilBotError('thread_limit', `You already have ${THREAD_LIMITS.workersPerBot} workers under way. Wait for answers or stop one first.`)
     if (thread.state !== 'open' || thread.messages.length + pending + 2 > THREAD_LIMITS.messages)
       throw new LilBotError('thread_limit', 'Thread message limit reached. Report back to whoever asked you.')
     thread.messages.push({

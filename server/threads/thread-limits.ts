@@ -3,7 +3,7 @@
  *  many exchanges one bot may have under way (`workersPerBot` of them workers). */
 export const THREAD_LIMITS = { depth: 3, messages: 20, text: 20_000, concurrent: 6, openPerBot: 8, workersPerBot: 3, concurrentWorkers: 4 } as const
 
-const isReply = (kind: string) => kind === 'answer' || kind === 'notice'
+export const isReply = (kind: string) => kind === 'answer' || kind === 'notice'
 const isExchangeWork = (kind: string) => kind === 'request' || kind === 'redirect' || kind === 'oscar'
 
 /** Work deliveries share `concurrent` (and workers `concurrentWorkers`); answers and notices are never starved. */

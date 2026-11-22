@@ -53,9 +53,19 @@ export const steerText = (sender: string, threadId: string, id: string, text: st
     ? `Redirect ${id} from your parent session in worker exchange ${threadId}: it changes the task you are doing. ${WORKER_UNTRUSTED}\n${fence(text)}`
     : `Redirect ${id} from bot ${JSON.stringify(sender)} in exchange ${threadId}: it changes the task you are doing for it. ${UNTRUSTED}\n${fence(text)}`
 
+/** Slice up to `max` UTF-16 code units without splitting a surrogate pair. */
+function safeSlice(text: string, max: number) {
+  let end = Math.min(text.length, Math.max(0, max))
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1)
+    if (code >= 0xd800 && code <= 0xdbff) end--
+  }
+  return text.slice(0, end)
+}
+
 /** What an answer says: the receiver's final words, clamped when multi-step narration or a worker reply exceeds the limit. */
 export function replyText(items: ChatItem[], clamp?: { exchangeId: string; hard: boolean }) {
-  const parts = items.filter(i => i.kind === 'assistant').map(i => i.text)
+  const parts = items.flatMap(i => (i.kind === 'assistant' && i.text.trim() ? [i.text] : []))
   const joined = parts.join('\n\n')
   if (!joined) return 'The bot finished without an answer.'
   if (joined.length <= THREAD_LIMITS.text || !clamp) return joined
@@ -63,5 +73,11 @@ export function replyText(items: ChatItem[], clamp?: { exchangeId: string; hard:
   const last = parts.at(-1)!
   if (parts.length > 1 && last.length + note.length <= THREAD_LIMITS.text) return `${last}${note}`
   if (!clamp.hard) return joined
-  return `${last.slice(0, THREAD_LIMITS.text - note.length).trimEnd()}${note}`
+  const close = '\n```'
+  let cut = safeSlice(last, THREAD_LIMITS.text - note.length).trimEnd()
+  if ((cut.match(/```/g)?.length ?? 0) % 2 === 1) {
+    cut = safeSlice(last, THREAD_LIMITS.text - note.length - close.length).trimEnd()
+    if ((cut.match(/```/g)?.length ?? 0) % 2 === 1) cut += close
+  }
+  return `${cut}${note}`
 }

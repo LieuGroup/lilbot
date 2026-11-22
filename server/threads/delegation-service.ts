@@ -1,10 +1,10 @@
 /** Handing work to other bots or same-bot workers from LilBot's MCP server: several tasks at once, with files both ways.
  *  Built on the same exchanges as `ThreadService.ask`; control over them is `delegation-control.ts`. */
-import type { BotModel, ReasoningEffort } from '../../shared/bot-schema'
+import type { BotModel } from '../../shared/bot-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import { AttachInput, DelegateInput } from '../../shared/thread-schema'
 import { refuseUnsafe } from '../memory/memory-safety'
-import { checkFiles, stageFiles, withCopies } from './exchange-files'
+import { checkFiles, stageFiles, withBatchCopies } from './exchange-files'
 import { THREAD_LIMITS } from './thread-limits'
 import type { ThreadHost, ThreadService } from './thread-service'
 
@@ -34,6 +34,27 @@ export class DelegationService {
   ) {}
   private get store() {
     return this.threads.store
+  }
+
+  private checkCaps(callerId: string, tasks: DelegateInput['tasks'], ids: string[], resolved: { target: Bot; worker: boolean }[]) {
+    let opening = 0
+    let openingWorkers = 0
+    for (const [i, t] of tasks.entries()) {
+      if (this.store.delivery(`${callerId}:${ids[i]}`)) continue
+      if (t.exchangeId && this.store.pendingWork(t.exchangeId).length > 0) continue
+      opening++
+      if (resolved[i].worker) openingWorkers++
+    }
+    if (opening && this.store.open(callerId) + opening > THREAD_LIMITS.openPerBot)
+      throw new LilBotError(
+        'thread_limit',
+        `At most ${THREAD_LIMITS.openPerBot} delegations can be under way at once; ${this.store.open(callerId)} are. Wait for answers or stop one.`
+      )
+    if (openingWorkers && this.store.openWorkers(callerId) + openingWorkers > THREAD_LIMITS.workersPerBot)
+      throw new LilBotError(
+        'thread_limit',
+        `At most ${THREAD_LIMITS.workersPerBot} workers can be under way at once; ${this.store.openWorkers(callerId)} are. Wait for answers or stop one.`
+      )
   }
 
   async delegate(callerId: string, raw: DelegateInput) {
@@ -68,100 +89,85 @@ export class DelegationService {
     if (new Set(continuations).size !== continuations.length) throw new LilBotError('thread_target', 'One task per exchange in a call.')
     for (const t of input.tasks) refuseUnsafe(t.task)
     for (const t of fresh) if (t.model) await this.host.validateModel?.(t.model)
-    const opening = fresh.filter(t => !t.exchangeId).length
-    if (this.store.open(callerId) + opening > THREAD_LIMITS.openPerBot)
-      throw new LilBotError(
-        'thread_limit',
-        `At most ${THREAD_LIMITS.openPerBot} delegations can be under way at once; ${this.store.open(callerId)} are. Wait for answers or stop one.`
-      )
-    const openingWorkers = fresh.filter(t => !t.exchangeId && t.worker).length
-    if (openingWorkers && this.store.openWorkers(callerId) + openingWorkers > THREAD_LIMITS.workersPerBot)
-      throw new LilBotError(
-        'thread_limit',
-        `At most ${THREAD_LIMITS.workersPerBot} workers can be under way at once; ${this.store.openWorkers(callerId)} are. Wait for answers or stop one.`
-      )
+    this.checkCaps(callerId, input.tasks, ids, resolved)
     const root = await this.host.folder(callerId)
     for (const t of fresh) await checkFiles(root, t.files ?? [])
     const parentId = chatId ? (this.work?.parentFor(callerId, chatId, input.itemId) ?? null) : null
     const batchId = crypto.randomUUID()
-    const exchanges = []
-    for (const [i, task] of input.tasks.entries()) {
-      const { target, worker } = resolved[i]
-      const prior = this.store.delivery(`${callerId}:${ids[i]}`)
-      const delivery = prior ?? (await this.hand(caller, target, { ...task, worker, requestId: ids[i], chatId: chatId!, batchId, parentId, root }))
-      const thread = this.store.get(delivery.threadId)
-      exchanges.push({
-        exchangeId: thread.id,
-        to: thread.worker ? 'worker' : target.name,
-        ...(thread.worker ? { worker: true as const } : {}),
-        status: thread.status,
-        batchId: thread.batchId
-      })
-    }
-    if (fresh.length) this.threads.changed()
+    const newIds = input.tasks.map(t => t.exchangeId ?? crypto.randomUUID())
+    const copySpecs = await Promise.all(
+      input.tasks.map(async (t, i) => ({
+        files: this.store.delivery(`${callerId}:${ids[i]}`) ? [] : (t.files ?? []),
+        toRoot: await this.host.folder(resolved[i].target.id),
+        folder: ['exchanges', newIds[i]]
+      }))
+    )
+    // Accept the whole batch in one transaction so concurrent calls never commit partial batches.
+    const { exchanges, committed } = await withBatchCopies(root, copySpecs, (allCopies, keep) => {
+      const out = this.store.db.transaction(() => {
+        this.checkCaps(callerId, input.tasks, ids, resolved)
+        let added = false
+        const list = []
+        for (const [i, task] of input.tasks.entries()) {
+          const { target, worker } = resolved[i]
+          const prior = this.store.delivery(`${callerId}:${ids[i]}`)
+          const delivery =
+            prior ??
+            this.store.accept(
+              caller,
+              target,
+              {
+                requestId: ids[i],
+                text: task.task,
+                chatId: chatId!,
+                threadId: task.exchangeId,
+                newId: newIds[i],
+                batchId,
+                parentId: task.exchangeId ? null : parentId,
+                worker,
+                model: task.model,
+                reasoningEffort: task.reasoningEffort
+              },
+              (messageId, thread) => {
+                added = true
+                if (!task.exchangeId) {
+                  if (thread.worker) this.work?.workerChild?.(parentId, { id: thread.id, owner: target, task: task.task })
+                  else if (parentId) this.work?.child(parentId, { id: thread.id, owner: target, asker: caller, task: task.task })
+                }
+                for (const [n, c] of allCopies[i].entries())
+                  this.threads.files.add({
+                    id: `${messageId}:${n}`,
+                    thread_id: thread.id,
+                    message_id: messageId,
+                    sender: caller.id,
+                    name: c.name,
+                    size: c.size,
+                    sha256: c.sha256,
+                    source: c.source,
+                    copy: c.copy
+                  })
+              }
+            )
+          const thread = this.store.get(delivery.threadId)
+          list.push({
+            exchangeId: thread.id,
+            to: thread.worker ? 'worker' : target.name,
+            ...(thread.worker ? { worker: true as const } : {}),
+            status: thread.status,
+            batchId: thread.batchId
+          })
+        }
+        return { exchanges: list, committed: added }
+      })()
+      if (out.committed) keep()
+      return out
+    })
+    if (committed) this.threads.changed()
     return {
       exchanges,
       ...(parentId ? { itemId: parentId } : {}),
       note: 'Each answer arrives later as a new turn in this conversation. Do not poll; use lilbot_delegation (action wait) to hear when all are in.'
     }
-  }
-
-  private async hand(
-    caller: Bot,
-    target: Bot,
-    t: {
-      requestId: string
-      task: string
-      files?: string[]
-      exchangeId?: string
-      worker: boolean
-      model?: BotModel
-      reasoningEffort?: ReasoningEffort
-      chatId: string
-      batchId: string
-      parentId: string | null
-      root: string
-    }
-  ) {
-    const newId = t.exchangeId ?? crypto.randomUUID()
-    const toRoot = await this.host.folder(target.id)
-    return withCopies(t.root, t.files ?? [], toRoot, ['exchanges', newId], (copies, keep) =>
-      this.store.accept(
-        caller,
-        target,
-        {
-          requestId: t.requestId,
-          text: t.task,
-          chatId: t.chatId,
-          threadId: t.exchangeId,
-          newId,
-          batchId: t.batchId,
-          parentId: t.exchangeId ? null : t.parentId,
-          worker: t.worker,
-          model: t.model,
-          reasoningEffort: t.reasoningEffort
-        },
-        (messageId, thread) => {
-          keep()
-          if (!t.exchangeId) {
-            if (thread.worker) this.work?.workerChild?.(t.parentId, { id: thread.id, owner: target, task: t.task })
-            else if (t.parentId) this.work?.child(t.parentId, { id: thread.id, owner: target, asker: caller, task: t.task })
-          }
-          for (const [n, c] of copies.entries())
-            this.threads.files.add({
-              id: `${messageId}:${n}`,
-              thread_id: thread.id,
-              message_id: messageId,
-              sender: caller.id,
-              name: c.name,
-              size: c.size,
-              sha256: c.sha256,
-              source: c.source,
-              copy: c.copy
-            })
-        }
-      )
-    )
   }
 
   /** The other participant of an exchange this bot takes part in (the bot itself for its own worker). */
