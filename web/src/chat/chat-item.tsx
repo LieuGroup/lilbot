@@ -10,6 +10,8 @@ import type { ChatItem as ChatItemData } from '../../../shared/chat-schema'
 import { ImageNote, SentAttachments } from '../attachments/message-attachments'
 import { useBotStore } from '../bots/bot-store'
 import { thisDeviceId } from '../devices/this-device'
+import { CompactionLine } from '../history/history-marks'
+import { TurnActions } from '../history/turn-actions'
 import type { MessageItem } from './chat-state'
 
 type Failure = NonNullable<Extract<ChatItemData, { kind: 'error' }>['reason']>
@@ -32,7 +34,19 @@ const WorkLine = lazy(() => import('../work/work-line'))
  *  replies are not parsed or drawn again. `queued` draws a user message still waiting for the
  *  bot's current turn to end as a dashed, muted bubble. A message sent from another device says
  *  which one under its bubble; the name is the device's own text, drawn as plain text. */
-export const ChatItem = memo(function ChatItem({ item, botId, queued = false }: { item: MessageItem; botId: string; queued?: boolean }) {
+export const ChatItem = memo(function ChatItem({
+  item,
+  botId,
+  queued = false,
+  inTurn = false,
+  beforeTool = false
+}: {
+  item: MessageItem
+  botId: string
+  queued?: boolean
+  inTurn?: boolean
+  beforeTool?: boolean
+}) {
   switch (item.kind) {
     case 'user':
       return (
@@ -61,6 +75,7 @@ export const ChatItem = memo(function ChatItem({ item, botId, queued = false }: 
               <Markdown remarkPlugins={[remarkGfm]}>{item.text}</Markdown>
             </div>
             {item.stopped && <MessageFooter className="px-0">Stopped</MessageFooter>}
+            {!item.streaming && !inTurn && <TurnActions text={item.text} usage={item.usage} showUsage={!beforeTool || item.usage !== undefined} />}
           </MessageContent>
         </Message>
       )
@@ -79,6 +94,7 @@ export const ChatItem = memo(function ChatItem({ item, botId, queued = false }: 
         )
       return <ToolTrace item={item} />
     case 'compaction':
+      return <CompactionLine item={item} />
     case 'connection.sign_in':
       return null
     case 'error':

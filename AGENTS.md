@@ -64,7 +64,7 @@ web/src/           The web app.
   app/               start-up, the routes, the connection to the server, styles
   bots/              roster, bot menu and its dialogs, create bot, details panel and its Setup tab
   chat/              the conversation
-  history/           the conversation's earlier parts: paging, day lines, session dividers, its start
+  history/           the conversation's earlier parts, per-turn usage, context size meter and compaction line
   attachments/       files in the composer and in sent messages, the drop area
   activity/, memory/ their details tabs
   library/           the Library tab, the bot's workspace folder view and the item viewer
@@ -107,11 +107,11 @@ chat with live tool rows, stop and new session, continuous main conversation per
 (Activity, Library, Memory, Setup), bot menu, delete confirmation, Settings, chat attachments, LilBot memory with panel
 and after-chat review, system note and LilBot MCP tools, delegation and temporary groups (#133) with screens (#65, #135,
 #136), Routines screens (#53), Library screens (#54), Webhooks screens (#138), Work board, Check levels and Goals
-screens (#141, #142, #143), and backends for routines, webhooks, threads, library, skills, computers/devices, T3 Code
-coding and bot-added MCP services (#187). Next: webhook capability switches (Paper "17" frames 7–9, awaiting Oscar's
-approval), engine-skills switch screen (#140), message cost screens (#180), check-level track record and spot checks
-(#142), nightly memory tidy-up and editing abilities. Reports are not built. Desktop (Tauri) and iOS (Expo) follow the
-web app.
+screens (#141, #142, #143), message cost & context size screens (#180), and backends for routines, webhooks, threads,
+library, skills, computers/devices, T3 Code coding and bot-added MCP services (#187). Next: webhook capability switches
+(Paper "17" frames 7–9, awaiting Oscar's approval), engine-skills switch screen (#140), check-level track record and spot
+checks (#142), nightly memory tidy-up and editing abilities. Reports are not built. Desktop (Tauri) and iOS (Expo)
+follow the web app.
 
 ## Safety: production and development
 
@@ -290,9 +290,9 @@ scroll and history): [docs/screens.md](docs/screens.md).
   desktop only). Pinned tiles appear once any bot is pinned (primary first, then `pinnedAt` order); sections plus
   collapsed Unassigned/Hidden below.
 - `/bots/$botId` is a layout route keeping the chat mounted while tabs (`/bots/$botId/$tab`) or column overlays
-  (`?thread=`, `?run=`, `?webhookRun=`, one at a time) open. Composer has files, lazy model/reasoning pill and send/stop;
-  AI Elements' Message Scroller anchors only messages sent while open, memoises rows by position and preserves scroll
-  when earlier history pages load above.
+  (`?thread=`, `?run=`, `?webhookRun=`, one at a time) open. Composer has files, lazy model/reasoning pill, lazy
+  context meter pill and send/stop; AI Elements' Message Scroller anchors only messages sent while open, memoises rows
+  by position and preserves scroll when earlier history pages load above.
 - Feature panels live in lazy chunks: Skills (Setup tab, #137), Routines & Webhooks (Activity tab, #53/#138; webhook
   addresses are fetched only on Copy click), Library (All/Media/Files, sandboxed page viewer, read-only workspace
   browser, #54) and Work between bots (conversation cards, opened exchanges/groups, "Working together", #65/#135/#136).
