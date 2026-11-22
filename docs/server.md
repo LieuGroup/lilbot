@@ -22,9 +22,10 @@ Core rules and the project map are in `AGENTS.md`. This file holds the detailed 
   Every settle pushes `bots.changed`. `initialize()` rejects only when the one-time import fails.
 - Every start-up pass that touches engine profiles (permissions, memory refresh, skills, connections), and memory
   connection, uses only the non-deleted database bindings, by native id, never all engine profiles. Only the one-time
-  import into a new database needs engine discovery. That import is atomic and idempotent: existing bots keep their
-  profile ids. New bots get UUIDs independent of their native runtime ids. A missing runtime stays in the roster as
-  unavailable; its identity and memory stay in LilBot.
+  import into a new database needs engine discovery. That import is atomic and idempotent: every imported bot gets a
+  fresh random UUID independent of its native runtime id, just as a created bot does, and keeps the engine's id only in
+  its binding (`engine_id`, `engine_bot_id`). Already-imported databases are not imported again and keep their existing
+  rows as they are. A missing runtime stays in the roster as unavailable; its identity and memory stay in LilBot.
 - Identity is imported once, then LilBot wins on mismatch. Model edits are checked against the engine's available
   models before anything is saved, also when repairing a bot with an invalid saved model; the protocol names permission
   modes `approval-required`, `auto-accept-edits`, `auto` and `full-access` (only `full-access` is supported now), and
@@ -123,6 +124,10 @@ bun run bot:rekey -- --from <oldId> [--to <newId>] [--data-dir <dir>] [--workspa
   `creation_capability`), `lilbot-skills.json` and `lilbot-computers.json`, and removes `lilbot-applied.json` so the next
   server start refreshes MCP bearer tokens and `soul` automatically. Safe to repeat after completion or after an
   interruption between the database commit and disk steps.
+- **Browser-side state:** per-bot tasks-dock preferences in `localStorage` (`lilbot.dock-dismissed.<botId>` and
+  `lilbot.dock-collapsed.<botId>`) live only in each browser and are not rewritten by the CLI; stale keys under `<oldId>`
+  are harmlessly orphaned (never read once `<oldId>` leaves the roster) and the bot starts expanded with fresh dock
+  dismissals under `<newId>`. The `/bots/<unknown>` redirect intentionally does not mutate `localStorage`.
 
 ## Restart recovery
 

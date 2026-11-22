@@ -4,7 +4,7 @@ import { fakeService } from '../helpers/fake-engine'
 
 function roster(count: number) {
   const f = fakeService()
-  for (let i = 2; i <= count; i++) f.store.save({ ...f.store.get('b1'), id: `b${i}`, engineBotId: `b${i}` })
+  for (let i = 2; i <= count; i++) f.store.save({ ...f.store.get('b1'), id: `b${i}`, engineBotId: `native-b${i}` })
   f.engine.applyIdentity = async () => ({ abilities: [], memoryConnected: false })
   return f
 }
@@ -21,10 +21,10 @@ test('startup prepares the first bot alone for a head start, then the rest; pend
   const runtimes = new BotRuntimes(store, engine, undefined, undefined, undefined, { headStartMs: 30 })
   const all = runtimes.initialize(() => 'b4')
   await Bun.sleep(5)
-  expect(started).toEqual(['b4'])
+  expect(started).toEqual(['native-b4'])
   await Bun.sleep(50)
   expect(started).toHaveLength(6)
-  release.get('b4')?.()
+  release.get('native-b4')?.()
   await Bun.sleep(5)
   expect(runtimes.pending(store.get('b4'))).toBe(false)
   expect(runtimes.pending(store.get('b5'))).toBe(true)
@@ -44,7 +44,7 @@ test('the rest of the roster does not wait out the head start once the first bot
   }
   const runtimes = new BotRuntimes(store, engine, undefined, undefined, undefined, { headStartMs: 60_000 })
   await runtimes.initialize(() => 'b2')
-  expect(started).toEqual(['b2', 'b1', 'b3'])
+  expect(started).toEqual(['native-b2', 'native-b1', 'native-b3'])
 })
 
 test('opening a bot prepares it at once, without waiting for bots queued ahead of it', async () => {
@@ -52,12 +52,12 @@ test('opening a bot prepares it at once, without waiting for bots queued ahead o
   const started: string[] = []
   engine.prepareRuntime = id => {
     started.push(id)
-    return id === 'b7' ? Promise.resolve() : new Promise<void>(() => {})
+    return id === 'native-b7' ? Promise.resolve() : new Promise<void>(() => {})
   }
   const runtimes = new BotRuntimes(store, engine)
   void runtimes.initialize()
   await Bun.sleep(5)
-  expect(started).toEqual(['b1', 'b2', 'b3', 'b4', 'b5'])
+  expect(started).toEqual(['native-b1', 'native-b2', 'native-b3', 'native-b4', 'native-b5'])
   await runtimes.use(store.get('b7'))
   expect(runtimes.snapshot(store.get('b7'))).not.toBeNull()
 })
@@ -85,7 +85,7 @@ test('a failing bot is retried with pauses until it recovers, and each settle is
   const { store, engine } = roster(2)
   let failures = 2
   engine.prepareRuntime = async id => {
-    if (id === 'b2' && failures-- > 0) throw new Error('refused')
+    if (id === 'native-b2' && failures-- > 0) throw new Error('refused')
   }
   let announced = 0
   const runtimes = new BotRuntimes(store, engine, undefined, undefined, undefined, { retryDelays: [5, 5], changed: () => announced++ })
@@ -101,7 +101,7 @@ test('a failed preparation reaches the caller who opened that bot, and a deleted
   const { store, engine } = roster(2)
   let attempts = 0
   engine.prepareRuntime = async id => {
-    if (id === 'b2') {
+    if (id === 'native-b2') {
       attempts++
       throw new Error('refused')
     }

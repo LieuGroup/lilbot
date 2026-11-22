@@ -60,6 +60,9 @@ export type BotGroup = z.infer<typeof BotGroup>
 /** The exchange a bot is working on now for another bot, and that bot's name. */
 export const BotWorkingFor = z.object({ threadId: z.string(), name: z.string() })
 export type BotWorkingFor = z.infer<typeof BotWorkingFor>
+/** Running same-bot workers for this bot, for the roster row and Activity "Now" card. */
+export const BotWorkers = z.object({ count: z.number().int().positive(), activity: z.string().optional() })
+export type BotWorkers = z.infer<typeof BotWorkers>
 
 /** Current context size of the bot's main conversation against the model's window. */
 export const BotContext = z.object({
@@ -83,6 +86,8 @@ export const Bot = BotIdentity.extend({
   groups: z.array(BotGroup).optional(),
   /** Set while it works on a task another bot handed it. */
   workingFor: BotWorkingFor.optional(),
+  /** Set while one or more of its own workers are running. */
+  workers: BotWorkers.optional(),
   prefs: BotPrefs,
   /** The bot's own folder on the shared computer; its chats work there. */
   workspace: z.string(),

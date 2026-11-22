@@ -229,8 +229,9 @@ Every tool acts as the calling bot and calls the function the screen uses. Reads
 | `lilbot_roster_set` | `bots.setPrefs` (pinned, which also sets or clears `pinnedAt`; hidden; section) |
 | `lilbot_section_create` | `sections.create` |
 | `lilbot_unread_set` | `activity.setUnread` (`bots/bot-unread.ts`, shared with the screen) |
-| `lilbot_memory_list`, `_pause`, `_restore` | `memory.list`, `memory.pause`, `memory.restore` |
+| `lilbot_memory_list`, `_save`, `_pause`, `_restore` | `memory.list`, `MemoryService.write` (caller's own `author: 'bot'`, `via: 'chat'`, with safety checks and overflow notice), `memory.pause`, `memory.restore` |
 | `lilbot_memory_expiry` | `MemoryService.setExpiry` (no screen yet; same `memory.changed` push) |
+| `lilbot_skill_read` | `SkillsService.offered` and `SkillsService.read`: lists skills offered to the caller (respecting per-bot off switches and engine exclusions) or reads one offered skill file (`SKILL.md` by default) |
 | `lilbot_delete_defaults_get`, `_set` | `bots.deleteDefaults.get` and `.set` |
 | `lilbot_delegate` | hand one task to each named bot, with files; one exchange each, one batch (`docs/threads.md`) |
 | `lilbot_delegation` | `action`: `status` (read-only, no change-log row, allowed in check sessions), `cancel` (`ThreadService.cancel`), `redirect`, `wait` for the delegating bot, and `attach` for the receiver's answer files |

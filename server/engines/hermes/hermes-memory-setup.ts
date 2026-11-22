@@ -59,8 +59,8 @@ async function entries(path: string): Promise<string[]> {
     .filter(Boolean)
 }
 
-/** Whether the profile's memory settings file is readable and bound to `expectedBotId` (defaults to the profile id). */
-export function memoryInstalled(engineBotId: string, expectedBotId = engineBotId): boolean {
+/** Whether the profile's memory settings file is readable and bound to `expectedBotId`. */
+export function memoryInstalled(engineBotId: string, expectedBotId: string): boolean {
   try {
     const settings = JSON.parse(readFileSync(join(profileHome(engineBotId), SETTINGS_FILE), 'utf8'))
     if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return false

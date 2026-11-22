@@ -60,10 +60,10 @@ test('a current adapter makes its bot fail-closed again once after an outside ed
     import { writeFileSync } from 'node:fs'
     import { MEMORY_ADAPTER_VERSION, refreshMemoryAdapters } from '${modulePath}/hermes-memory-setup'
     const config = '${join(root, 'profiles/owned/config.yaml')}'
-    await refreshMemoryAdapters([{ id: 'owned', engineBotId: 'owned' }])
-    await refreshMemoryAdapters([{ id: 'owned', engineBotId: 'owned' }])
+    await refreshMemoryAdapters([{ id: 'bot-owned', engineBotId: 'owned' }])
+    await refreshMemoryAdapters([{ id: 'bot-owned', engineBotId: 'owned' }])
     writeFileSync(config, 'compression:\\n  checkpoint_required: false\\n')
-    await refreshMemoryAdapters([{ id: 'owned', engineBotId: 'owned' }])
+    await refreshMemoryAdapters([{ id: 'bot-owned', engineBotId: 'owned' }])
     if (!MEMORY_ADAPTER_VERSION) process.exit(1)
   `
   )
@@ -73,7 +73,7 @@ test('a current adapter makes its bot fail-closed again once after an outside ed
     writeFileSync(token, 'fixture-only')
     const version = /^version:\s*(\S+)/m.exec(readFileSync(join(modulePath, 'memory-adapter/plugin.yaml'), 'utf8'))![1]
     mkdirSync(join(home, 'plugins', `lilbot-memory-v${version.replaceAll('.', '-')}`), { recursive: true })
-    writeFileSync(join(home, 'lilbot-memory.json'), JSON.stringify({ url: 'http://localhost:1', token_file: token, bot_id: 'owned' }))
+    writeFileSync(join(home, 'lilbot-memory.json'), JSON.stringify({ url: 'http://localhost:1', token_file: token, bot_id: 'bot-owned' }))
     writeFileSync(join(home, 'config.yaml'), 'compression:\n  checkpoint_required: true\n')
     const child = Bun.spawn(['bun', script], { env: { ...process.env, HERMES_HOME: root, LILBOT_HERMES_BIN: hermes }, stdout: 'pipe', stderr: 'pipe' })
     const error = await new Response(child.stderr).text()
@@ -147,7 +147,7 @@ test('memoryInstalled compares stored bot_id against the expected id and rejects
     const file = join(home, 'lilbot-memory.json')
 
     expect(memoryInstalled('owned', 'bot-uuid')).toBe(false)
-    expect(memoryInstalled('owned')).toBe(false)
+    expect(memoryInstalled('owned', 'owned')).toBe(false)
 
     writeFileSync(file, '{not-json')
     expect(memoryInstalled('owned', 'bot-uuid')).toBe(false)
@@ -157,7 +157,6 @@ test('memoryInstalled compares stored bot_id against the expected id and rejects
 
     writeFileSync(file, JSON.stringify({ url: 'http://localhost:1', token_file: '/tmp/t', bot_id: 'owned' }))
     expect(memoryInstalled('owned', 'owned')).toBe(true)
-    expect(memoryInstalled('owned')).toBe(true)
     expect(memoryInstalled('owned', 'bot-uuid')).toBe(false)
 
     writeFileSync(file, JSON.stringify({ url: 'http://localhost:1', token_file: '/tmp/t', bot_id: 'bot-uuid' }))

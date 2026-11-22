@@ -13,7 +13,7 @@ import { MemoryService } from '../../server/memory/memory-service'
 import { MemoryStore } from '../../server/memory/memory-store'
 import { originOf } from '../../server/skills/skill-origin'
 import { SkillsService } from '../../server/skills/skills-service'
-import { detail, fakeEngine } from '../helpers/fake-engine'
+import { detail, fakeEngine, nativeBotId } from '../helpers/fake-engine'
 
 const content = (name: string, text = 'Follow this procedure.') => `---\nname: ${name}\ndescription: A workflow\n---\n${text}`
 const settled = async (done: () => boolean) => {
@@ -97,7 +97,7 @@ test('migration: an install with bots keeps its engine on and its imports attrib
   let db = openDatabase(path)
   try {
     expect(db.query('SELECT * FROM engine_skills').all()).toEqual([])
-    new BotStore(db).import('hermes', [{ ...detail, engineId: 'hermes', engineBotId: 'b1' }])
+    new BotStore(db).import('hermes', [{ ...detail, engineId: 'hermes', engineBotId: nativeBotId }])
     db.exec(`INSERT INTO skills VALUES ('imported-one','d','imported',1), ('improved','d','bot-a',1), ('mine','d','oscar',1), ('shipped','d','lilbot',1);
       INSERT INTO skill_imports VALUES ('/p/imported-one','imported-one'), ('/p/improved','improved'), ('/p/mine','mine'), ('bot:b1','')`)
     db.exec(
@@ -125,7 +125,7 @@ test('start-up imports from an engine only while its switch is on, and switching
     mkdirSync(source, { recursive: true })
     writeFileSync(join(source, 'SKILL.md'), content('engine-skill'))
     const store = new BotStore(db)
-    store.import('test', [{ ...detail, engineId: 'test', engineBotId: 'b1' }])
+    store.import('test', [{ ...detail, engineId: 'test', engineBotId: nativeBotId }])
     const applied: SkillSettings[] = []
     Object.assign(engine, {
       userSkillPaths: () => [source],

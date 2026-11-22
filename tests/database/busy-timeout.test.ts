@@ -14,7 +14,7 @@ test('claimDue waits for another connection to release its write lock', async ()
   let child: ReturnType<typeof Bun.spawn> | undefined
   try {
     expect(db.query('PRAGMA busy_timeout').get()).toEqual({ timeout: 5000 })
-    new BotStore(db).import('test', [{ ...detail, engineId: 'test', engineBotId: detail.id }])
+    new BotStore(db).import('test', [{ ...detail, engineId: 'test', engineBotId: 'native-b1' }])
     const store = new RoutineStore(db)
     store.create(detail.id, { requestId: 'lock-test', description: 'Test', schedule: { kind: 'interval', seconds: 300 }, createdBy: 'oscar' }, 0, 5)
     // A separate process can release its lock while this thread waits inside synchronous SQLite.
