@@ -59,7 +59,17 @@ async function entries(path: string): Promise<string[]> {
     .filter(Boolean)
 }
 
-export const memoryInstalled = (botId: string) => existsSync(join(profileHome(botId), SETTINGS_FILE))
+/** Whether the profile's memory settings file is readable and bound to `expectedBotId` (defaults to the profile id). */
+export function memoryInstalled(engineBotId: string, expectedBotId = engineBotId): boolean {
+  try {
+    const settings = JSON.parse(readFileSync(join(profileHome(engineBotId), SETTINGS_FILE), 'utf8'))
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return false
+    if (typeof settings.bot_id === 'string') return settings.bot_id.length > 0 && settings.bot_id === expectedBotId
+    return settings.bot_id === undefined && typeof settings.url === 'string' && typeof settings.token_file === 'string' && engineBotId === expectedBotId
+  } catch {
+    return false
+  }
+}
 
 /** Whether a connected bot has this repo's version of the plug-in. */
 const memoryCurrent = (botId: string) => installedFolders(profileHome(botId)).includes(providerName(MEMORY_ADAPTER_VERSION))
@@ -137,7 +147,7 @@ export async function removeMemory(botId: string) {
 export async function refreshMemoryAdapters(bots: RuntimeBinding[]): Promise<string[]> {
   const updated: string[] = []
   for (const { id: botId, engineBotId } of bots) {
-    if (!memoryInstalled(engineBotId)) continue
+    if (!existsSync(join(profileHome(engineBotId), SETTINGS_FILE))) continue
     try {
       const saved = await memorySettings(engineBotId)
       if (!saved) continue

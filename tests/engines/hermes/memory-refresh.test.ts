@@ -119,3 +119,45 @@ test('a current adapter rewrites lilbot-memory.json when the bot id or creation 
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('memoryInstalled compares stored bot_id against the expected id and rejects missing or unreadable files', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'memory-installed-test-'))
+  const previousHome = process.env.HERMES_HOME
+  process.env.HERMES_HOME = root
+  try {
+    const { memoryInstalled } = await import('../../../server/engines/hermes/hermes-memory-setup')
+    const home = join(root, 'profiles', 'owned')
+    mkdirSync(home, { recursive: true })
+    const file = join(home, 'lilbot-memory.json')
+
+    expect(memoryInstalled('owned', 'bot-uuid')).toBe(false)
+    expect(memoryInstalled('owned')).toBe(false)
+
+    writeFileSync(file, '{not-json')
+    expect(memoryInstalled('owned', 'bot-uuid')).toBe(false)
+
+    writeFileSync(file, JSON.stringify({}))
+    expect(memoryInstalled('owned', 'owned')).toBe(false)
+
+    writeFileSync(file, JSON.stringify({ url: 'http://localhost:1', token_file: '/tmp/t', bot_id: 'owned' }))
+    expect(memoryInstalled('owned', 'owned')).toBe(true)
+    expect(memoryInstalled('owned')).toBe(true)
+    expect(memoryInstalled('owned', 'bot-uuid')).toBe(false)
+
+    writeFileSync(file, JSON.stringify({ url: 'http://localhost:1', token_file: '/tmp/t', bot_id: 'bot-uuid' }))
+    expect(memoryInstalled('owned', 'bot-uuid')).toBe(true)
+    expect(memoryInstalled('owned', 'owned')).toBe(false)
+
+    writeFileSync(file, JSON.stringify({ url: 'http://localhost:1', token_file: '/tmp/t' }))
+    expect(memoryInstalled('owned', 'owned')).toBe(true)
+    expect(memoryInstalled('owned', 'bot-uuid')).toBe(false)
+
+    rmSync(file)
+    mkdirSync(file)
+    expect(memoryInstalled('owned', 'owned')).toBe(false)
+  } finally {
+    if (previousHome === undefined) delete process.env.HERMES_HOME
+    else process.env.HERMES_HOME = previousHome
+    rmSync(root, { recursive: true, force: true })
+  }
+})

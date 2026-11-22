@@ -67,10 +67,10 @@ export class HermesEngine implements BotEngine {
     return Promise.all(bots.map(bot => this.getBot(bot.id)))
   }
 
-  private async getBot(botId: string) {
+  private async getBot(botId: string, expectedBotId = botId) {
     const summary = await this.requireBot(botId)
     const described = await (await this.management.socket()).request('profiles.describe', { name: botId })
-    return { ...botDetailFromProfile(summary, described), memoryConnected: memoryInstalled(botId) }
+    return { ...botDetailFromProfile(summary, described), memoryConnected: memoryInstalled(botId, expectedBotId) }
   }
 
   async connectMemory(botId: string, connection: MemoryConnection) {
@@ -88,7 +88,7 @@ export class HermesEngine implements BotEngine {
   }
 
   async applyIdentity(id: string, identity: RuntimeIdentity) {
-    const detail = await this.getBot(id)
+    const detail = await this.getBot(id, identity.id)
     await applied(id, null, '', async () => applyIdentity(await this.management.socket(), id, identity, detail))
     return { abilities: detail.abilities, memoryConnected: detail.memoryConnected }
   }
