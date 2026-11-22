@@ -160,9 +160,7 @@ export function createAppServices(
     systemNote: systemNote(facts)
   })
   const calls = new CallingChats()
-  const observeRun = (event: ActivityEvent) => {
-    if (store.exists(event.botId)) activity.observe(event)
-  }
+  const observeRun = (event: ActivityEvent) => store.exists(event.botId) && activity.observe(event)
   const { webhooks, webhookRuns, gates } = createWebhooks({ webhookStore, messages, bots, rootOf, calls, token, origin: HOOK_ORIGIN, t3Enabled, observeRun, publish, repeat })
   const runs = { threadStore, routineStore, webhookStore, rootOf, goalStore: new GoalStore(database), reviewModel: mem.reviewModel }
   const remoteWork = remoteWorkAnswers(threadStore, () => ({
@@ -193,7 +191,6 @@ export function createAppServices(
   const routineScheduler = new RoutineScheduler(routines, observeRun)
   repeat('routines', 1000, () => routineScheduler.tick())
   const reviewer = mem.startReviewer(bots, store, repeat)
-
   const apiCore = { history, computers, bots, skills, routines, library, threads, reviewer, checkpointStore: mem.checkpointStore }
   const apiHooks = { chatKind, adapterVersion: MEMORY_ADAPTER_VERSION, deploymentNotice: () => deployNotice(DATA_DIR), botExists: (id: string) => store.exists(id) }
   const engineApi = createEngineApi(memory, token, PORT, { ...apiCore, ...apiHooks, onMemoryChanged: memoryChanged, inCheck: checkSessions.refusal, ...gates })
