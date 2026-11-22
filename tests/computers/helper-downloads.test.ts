@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'bun:test'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { settingsHash } from '../../helper/settings'
 import { HelperDownloads, helperSettings } from '../../server/computers/helper-downloads'
@@ -13,7 +13,7 @@ const fingerprint = 'f'.repeat(64)
 const system = { os: 'macos', arch: 'arm64' } as const
 
 function downloads() {
-  const dir = mkdtempSync(join(homedir(), 'agent-tmp/helper-downloads-test-'))
+  const dir = mkdtempSync(join(tmpdir(), 'helper-downloads-test-'))
   roots.push(dir)
   const settings = helperSettings({ LILBOT_HELPER_URL: 'https://door.example', LILBOT_ALLOWED_HOSTS: 'bot.tail.ts.net:8443' }, 3370, undefined, fingerprint)!
   const downloads = new HelperDownloads(dir, settings)

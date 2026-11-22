@@ -1,7 +1,7 @@
 import { expect } from 'bun:test'
 import { generateKeyPairSync } from 'node:crypto'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { helperFrame } from '../../helper/frame-auth'
 import { connectionHeaders } from '../../helper/identity'
@@ -17,7 +17,7 @@ import { cpuNow } from '../helpers/cpu-time'
 export const HEALTH_P99_MS = 500
 
 export function adversary() {
-  const root = mkdtempSync(join(homedir(), 'agent-tmp/computer-adversary-'))
+  const root = mkdtempSync(join(tmpdir(), 'computer-adversary-'))
   const db = openDatabase(join(root, 'data.db'))
   const store = new ComputerStore(db)
   const key = loadServerKey(root)

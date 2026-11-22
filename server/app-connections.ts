@@ -3,12 +3,13 @@
  *  only) and the watchers that apply sign-in changes to every bot. */
 import type { Database } from 'bun:sqlite'
 import { join } from 'node:path'
+import type { T3ConnectionStatus } from '../shared/connections-schema'
 import type { EventFrame } from '../shared/protocol'
 import { backgroundTask } from './background'
 import type { BotPrefsStore } from './bots/bot-prefs-store'
 import type { BotService } from './bots/bot-service'
 import type { BotStore } from './bots/bot-store'
-import { ConnectionApplier } from './connections/connection-apply'
+import { ConnectionApplier, cancelledPrompt, failedPrompt } from './connections/connection-apply'
 import { connectionCallback } from './connections/mcp-callback'
 import { McpConnectionStore } from './connections/mcp-connection-store'
 import { McpConnections } from './connections/mcp-connections'
@@ -24,6 +25,7 @@ import { watchT3SignIn } from './connections/t3-watch'
 import { connectionLine } from './devices/origin-line'
 import type { BotEngine } from './engines/bot-engine'
 import type { HistoryStore } from './history/history-store'
+import type { BrowserConnections } from './http/connection-handlers'
 import type { CallingChats } from './threads/calling-chats'
 
 interface ConnectionDeps {
@@ -40,6 +42,7 @@ interface ConnectionDeps {
   prefs: BotPrefsStore
   bots: BotService
   history: HistoryStore
+  hiddenChat: (botId: string, chatId: string) => boolean
   calls: CallingChats
   t3Grants: T3Grants
   t3Refusal: (botId: string, tool: string, args: unknown) => Promise<string | null>
@@ -66,6 +69,7 @@ export function createConnections({
   prefs,
   bots,
   history,
+  hiddenChat,
   calls,
   t3Grants,
   t3Refusal,
@@ -92,8 +96,23 @@ export function createConnections({
       botName: id => store.get(id).name,
       botExists: id => store.exists(id),
       callingChat: (botId, requestId) => calls.find(botId, 'lilbot_connection', requestId),
+      isHiddenChat: hiddenChat,
       userSentInChat: (botId, chatId, text) => history.hasUserMessageContaining(botId, chatId, text),
       signedIn: (botId, chatId, name, runId) => applier.signedIn(botId, chatId, name, runId),
+      signInCancelled: (botId, chatId, name, runId) => {
+        applier.tell(botId, chatId, cancelledPrompt(name), runId)
+        soon()
+      },
+      signInFailed: (botId, chatId, name, reason, runId) => {
+        applier.tell(botId, chatId, failedPrompt(name, reason), runId)
+        soon()
+      },
+      cardChanged: card => {
+        if (!store.exists(card.botId) || hiddenChat(card.botId, card.chatId)) return
+        history.signInCard(card.botId, card.chatId, card)
+        publish({ event: 'chat', chatId: card.chatId, data: { type: 'connection.sign_in', card } })
+        publish({ event: 'history.changed', botId: card.botId })
+      },
       changed: soon,
       toolName: engine.mcpToolName
     },
@@ -114,7 +133,10 @@ export function createConnections({
     published
   )
   applier.start()
-  repeat('connections', 1000, () => applier.tick())
+  repeat('connections', 1000, () => {
+    services.reconcileSignInCards()
+    return applier.tick()
+  })
   const lilbotUrl = `http://127.0.0.1:${port}`
   return {
     services,
@@ -131,7 +153,15 @@ export function createConnections({
       toolName: engine.mcpToolName
     }),
     callback: connectionCallback(services),
-    ready: (botId: string, chatId: string) => applier.ready(botId, chatId),
+    browser: (t3: () => T3ConnectionStatus): BrowserConnections => ({
+      status: () => ({ t3: t3(), services: services.list() }),
+      ready: (botId, chatId) => applier.ready(botId, chatId),
+      reconcile: () => services.reconcileSignInCards(),
+      openSignIn: cardId => services.openSignIn(cardId),
+      finishSignIn: (cardId, address) => services.finishSignInCard(cardId, address),
+      cancelSignIn: cardId => services.cancelSignIn(cardId),
+      restartSignIn: cardId => services.restartSignIn(cardId)
+    }),
     connections: (botId: string) => serviceConnections(services, lilbotUrl, engineToken, botId)
   }
 }

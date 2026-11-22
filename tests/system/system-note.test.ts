@@ -17,7 +17,7 @@ import { systemFixture } from './system-fixture'
 
 const words = (text: string) => text.split(/\s+/).filter(Boolean).length
 const facts = (others: NoteFacts['others'] = [{ name: 'Writer', function: 'Drafts posts' }]): NoteFacts => ({
-  bot: { id: 'b1', name: 'Bot One', workspace: '/home/oscar/lilbot/workspaces/b1', model: { provider: 'cliproxyapi', model: 'anthropic/claude-sonnet-5-5' } },
+  bot: { id: 'b1', name: 'Bot One', workspace: '/srv/lilbot/workspaces/b1', model: { provider: 'cliproxyapi', model: 'anthropic/claude-sonnet-5-5' } },
   others,
   computers: ['leader-box', 'MacBook'],
   coding: 'available, signed in until 2026-12-01',
@@ -29,7 +29,7 @@ test('the note states who the bot is, where it runs and points at the two tools,
   for (const part of [
     '"Bot One"',
     'id b1',
-    '/home/oscar/lilbot/workspaces/b1',
+    '/srv/lilbot/workspaces/b1',
     'cliproxyapi/anthropic/claude-sonnet-5-5',
     'leader machine',
     'Writer (Drafts posts)',

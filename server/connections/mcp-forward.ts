@@ -121,7 +121,7 @@ export function createServiceForward(options: ServiceForwardOptions) {
         await response.body?.cancel()
         if (signed) return expired(message, connection, sentToken)
         store.setState(connection.id, 'needs_sign_in')
-        const prompt = `${connection.name} now asks for a sign-in. Call lilbot_connection with action sign_in and id ${connection.id} for a link, give it to Oscar, and wait.`
+        const prompt = `${connection.name} now asks for a sign-in. Call lilbot_connection with action sign_in and id ${connection.id}; LilBot places a sign-in card for Oscar and tells you when he finishes.`
         return message.method === 'tools/call' ? toolError(message.id, prompt) : rpcError(message.id, -32000, prompt)
       }
       if (response.status >= 500 || (response.status >= 300 && response.status < 400)) {

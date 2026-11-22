@@ -1,7 +1,7 @@
 import { Database } from 'bun:sqlite'
 import { afterEach, expect, test } from 'bun:test'
 import { linkSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { acknowledge, finish, prepareJournal, pruneJournal } from '../../helper/journal'
 import { verifyFrame, verifyServer } from '../../helper/server-trust'
@@ -18,7 +18,7 @@ afterEach(() => {
   for (const clean of cleanups.splice(0).reverse()) clean()
 })
 function fixture(mode = 'full-access') {
-  const root = mkdtempSync(join(homedir(), 'agent-tmp/computer-security-'))
+  const root = mkdtempSync(join(tmpdir(), 'computer-security-'))
   const db = openDatabase(':memory:')
   const store = new ComputerStore(db)
   const key = loadServerKey(root)

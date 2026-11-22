@@ -1,12 +1,12 @@
 import { Database } from 'bun:sqlite'
 import { expect, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { readHistoryCatalog } from '../../server/engines/hermes/hermes-history-catalog'
 
 test('overflow catalogue handles >200 sessions, compression roots and hidden runs without reading messages', () => {
-  const dir = mkdtempSync(join(homedir(), 'agent-tmp/history-catalog-'))
+  const dir = mkdtempSync(join(tmpdir(), 'history-catalog-'))
   const path = join(dir, 'state.db')
   const db = new Database(path)
   try {

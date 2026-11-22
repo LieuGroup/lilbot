@@ -51,9 +51,9 @@ test('development creates prefixed native profiles; refuses binding and deletion
 
 test('attach passes the current environment explicitly and rejects a foreign receipt', async () => {
   const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs')
-  const { homedir } = await import('node:os')
+  const { tmpdir } = await import('node:os')
   const { join } = await import('node:path')
-  const root = mkdtempSync(join(homedir(), 'agent-tmp/attach-env-'))
+  const root = mkdtempSync(join(tmpdir(), 'attach-env-'))
   const fake = join(root, 'hermes')
   writeFileSync(
     fake,

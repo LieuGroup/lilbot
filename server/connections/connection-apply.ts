@@ -1,9 +1,9 @@
 /** Gets a change to the services (added, signed in, expired, removed, new tools) to every bot without a new session: each
  *  bot's engine is given its connections again, then each bot's main conversation is brought in step in place. A
  *  conversation whose turn is running is asked again once it ends, so the bot whose own call added a service has it
- *  from its next message. After a sign-in, the conversation that asked gets a turn ("<name> is connected"), only once
- *  its tools are there. Runs on a timer, so an engine is never reconfigured while it waits for the answer that caused it.
- *  Pending work lives in memory: after a restart a conversation reads its connections when it is next opened. */
+ *  from its next message. After a sign-in finishes, fails or is cancelled, the conversation that asked gets a hidden turn
+ *  once its tools are in step. Runs on a timer, so an engine is never reconfigured while it waits for the answer that
+ *  caused it. Pending work lives in memory: after a restart a conversation reads its connections when it is next opened. */
 import { backgroundFailure } from '../background'
 import type { ConnectionsApplied } from '../engines/mcp-connection'
 
@@ -18,7 +18,8 @@ export interface ApplyHost {
   tell(botId: string, chatId: string, prompt: string, runId: string): Promise<unknown>
 }
 
-type Pending = { botId: string; chatId: string; since: number; notice?: { prompt: string; runId: string }; retryAt?: number }
+type Notice = { prompt: string; runId: string }
+type Pending = { botId: string; chatId: string; since: number; notices: Notice[]; retryAt?: number }
 /** A turn that runs longer than this is left: its conversation reads the connections when next opened. */
 const GIVE_UP_MS = 30 * 60_000
 const RETRY_MS = 30_000
@@ -27,6 +28,11 @@ const READY_WAIT_MS = 5_000
 
 export const connectedPrompt = (name: string) =>
   `Oscar finished signing in to ${name}, so LilBot is connected to it and its tools are yours now. Carry on with what he asked; if nothing waits on ${name}, tell him in one short sentence that it is connected.`
+
+export const cancelledPrompt = (name: string) => `Oscar cancelled the sign-in for ${name}. Let him know briefly if you need it for what he asked.`
+
+export const failedPrompt = (name: string, reason: string) =>
+  `The sign-in for ${name} did not finish (${reason}). Let Oscar know briefly; he can press Start again on the sign-in card if he wants to retry.`
 
 export class ConnectionApplier {
   private pending = new Map<string, Pending>()
@@ -50,7 +56,19 @@ export class ConnectionApplier {
   }
 
   signedIn(botId: string, chatId: string, name: string, runId: string) {
-    this.pending.set(`${botId}\n${chatId}`, { botId, chatId, since: this.now(), notice: { prompt: connectedPrompt(name), runId } })
+    this.enqueueNotice(botId, chatId, { prompt: connectedPrompt(name), runId })
+  }
+
+  /** Delivers a sign-in outcome (cancelled or failed) to the asking conversation once its current turn settles. */
+  tell(botId: string, chatId: string, prompt: string, runId: string) {
+    this.enqueueNotice(botId, chatId, { prompt, runId })
+  }
+
+  private enqueueNotice(botId: string, chatId: string, notice: Notice) {
+    const key = `${botId}\n${chatId}`
+    const existing = this.pending.get(key)
+    const notices = existing ? [...existing.notices, notice] : [notice]
+    this.pending.set(key, { botId, chatId, since: this.now(), notices })
   }
 
   /** One pass at a time; a call while one runs gets that pass. */
@@ -92,7 +110,7 @@ export class ConnectionApplier {
         for (const bot of this.host.bots()) {
           const chatId = this.host.mainChat(bot.id)
           const key = `${bot.id}\n${chatId}`
-          if (chatId && !this.pending.has(key)) this.pending.set(key, { botId: bot.id, chatId, since: this.now() })
+          if (chatId && !this.pending.has(key)) this.pending.set(key, { botId: bot.id, chatId, since: this.now(), notices: [] })
         }
       }
       // Only apply once no newer generation arrived while `refresh()` was in flight.
@@ -124,20 +142,28 @@ export class ConnectionApplier {
         const state = results.find(result => result.chatId === entry.chatId)?.state ?? 'not_open'
         if (state === 'busy' && this.now() - entry.since < GIVE_UP_MS) continue
         this.pending.delete(key)
-        if (entry.notice) this.notify({ ...entry, notice: entry.notice })
+        for (const notice of entry.notices) this.notify(entry.botId, entry.chatId, notice)
       }
     }
     for (const [key, entry] of this.pending) if (!bots.has(entry.botId)) this.pending.delete(key)
   }
 
-  private notify(entry: Pending & { notice: NonNullable<Pending['notice']> }) {
+  private notify(botId: string, chatId: string, notice: Notice) {
     this.host
-      .tell(entry.botId, entry.chatId, entry.notice.prompt, entry.notice.runId)
-      .then(() => console.log(`[connections] bot ${entry.botId} was told its sign-in finished`))
+      .tell(botId, chatId, notice.prompt, notice.runId)
+      .then(() => console.log(`[connections] bot ${botId} was told its sign-in outcome`))
       .catch(() => {
         backgroundFailure('connection notice')
         // The same run id reaches the same engine admission, so a retry never gives a second turn.
-        this.pending.set(`${entry.botId}\n${entry.chatId}`, { ...entry, since: this.now(), retryAt: this.now() + RETRY_MS })
+        const key = `${botId}\n${chatId}`
+        const current = this.pending.get(key)
+        this.pending.set(key, {
+          botId,
+          chatId,
+          since: this.now(),
+          notices: current ? [...current.notices, notice] : [notice],
+          retryAt: this.now() + RETRY_MS
+        })
       })
   }
 }

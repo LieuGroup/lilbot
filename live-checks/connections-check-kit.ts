@@ -1,9 +1,10 @@
 /** What `check:connections` drives: its own dev server with the Access door on local test keys, the bot's conversation,
- *  Oscar's browser on another device, LilBot's own status tool, and the search for tokens outside LilBot's store. */
+ *  sign-in card events, Oscar's browser on another device, LilBot's status tool, and the search for leaked secrets. */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { connectionKey } from '../server/connections/connection-keys'
 import { SYSTEM_KEY_PURPOSE } from '../server/system/system-connection'
+import type { ConnectionSignInCard } from '../shared/connections-schema'
 import { accessEnv, token } from '../tests/http/access-fixture'
 import { checkClient } from './check-client'
 import { waitFor } from './wait-for'
@@ -28,11 +29,13 @@ export async function startCheckServer(env: Record<string, string>, log: string)
   return child
 }
 
-/** One conversation: send a message and wait for the bot's reply; or wait for a turn LilBot started itself. */
+/** One conversation: send a message and wait for the bot's reply; wait for sign-in cards or hidden turns LilBot starts. */
 export async function conversation(port: number) {
   const finished: { chatId: string; status: string; text: string }[] = []
+  const cardEvents: ConnectionSignInCard[] = []
   const client = await checkClient(port, frame => {
     if (frame.event === 'chat' && frame.data?.type === 'turn.finished') finished.push({ chatId: frame.chatId, status: frame.data.status, text: frame.data.text })
+    if (frame.event === 'chat' && frame.data?.type === 'connection.sign_in') cardEvents.push(frame.data.card)
   })
   const [bot] = await client.call('bots.list', {})
   const chat = await client.call('chat.open', { botId: bot.id })
@@ -44,6 +47,7 @@ export async function conversation(port: number) {
     client,
     botId: bot.id as string,
     chatId: chat.chatId as string,
+    cardEvents,
     turns: () => finished.filter(item => item.chatId === chat.chatId).length,
     say: async (text: string) => {
       const seen = finished.length
@@ -53,8 +57,11 @@ export async function conversation(port: number) {
       console.log(`  bot: ${turn.text.replace(/\s+/g, ' ').slice(0, 160)}`)
       return turn.text
     },
-    /** The bot's reply in a turn LilBot gave the conversation after `since` (the "connected" notice). A hidden turn is not
-     *  streamed to an open chat, so it is read from the conversation record, which does not resume the session. */
+    historyCards: async (): Promise<ConnectionSignInCard[]> => {
+      const page = await client.call('chat.history', { botId: bot.id })
+      return page.items.flatMap((row: any) => (row.item.kind === 'connection.sign_in' ? [row.item.card] : []))
+    },
+    /** The bot's reply in a turn LilBot gave the conversation after `since` (the "connected" notice). */
     lilbotReply: async (since: number, not = '') => {
       const reply = await waitFor<any>(
         async () => {
@@ -100,6 +107,26 @@ export async function openOnAccess(accessPort: number, location: string, login =
 }
 
 export const linkIn = (text: string, port: number) => text.match(new RegExp(`http://127\\.0\\.0\\.1:${port}/authorize\\?[^\\s)\\]>"'\`*]+`))?.[0]
+
+/** The names in a Hermes profile's `mcp_servers:` block (two-space keys until the next top-level key). */
+export const profileServers = (config: string) => {
+  const block = config.split(/^mcp_servers:\s*$/m)[1]?.split(/^\S/m)[0] ?? ''
+  return [...block.matchAll(/^ {2}([A-Za-z0-9_-]+):/gm)].map(match => match[1])
+}
+
+export function dumpCheckLogs(log: string) {
+  for (const file of [log, `${log}.err`]) {
+    try {
+      console.error(
+        readFileSync(file, 'utf8')
+          .split('\n')
+          .filter(line => /\[(connections|background|bots|hermes|chat|system)\]/.test(line))
+          .slice(-40)
+          .join('\n')
+      )
+    } catch {}
+  }
+}
 
 /** Every file under `root` holding any of `secrets`, as paths; files named in `except` are LilBot's store. */
 export function filesHolding(root: string, secrets: string[], except: string[] = []): string[] {

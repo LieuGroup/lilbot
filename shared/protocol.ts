@@ -5,6 +5,7 @@ import { BotDeleteDefaults, BotDeleteInput } from './bot-delete-schema'
 import { type Bot, BotCreateInput, type BotDetail, BotPrefsInput, BotUpdateInput, type ModelProvider, type Section, sectionName } from './bot-schema'
 import type { ChatEvent, ChatSnapshot } from './chat-schema'
 import { AddThisSystem } from './computer-add-schema'
+import { type ConnectionResults, connectionMethods } from './connections-schema'
 import { DeviceId, DeviceName } from './device-schema'
 import { type GoalResults, goalMethods } from './goal-schema'
 import { LibraryListInput, type LibraryPage, type WorkspaceEntry } from './library-schema'
@@ -99,14 +100,13 @@ export const methods = {
     ),
   'chat.stop': z.object({ chatId }),
   'chat.close': z.object({ chatId }),
-  /** LilBot's own connections, such as its T3 Code sign-in for coding. Never returns credentials. */
-  'connections.status': z.object({})
+  ...connectionMethods
 } as const
 
 export type Method = keyof typeof methods
 export type Params<M extends Method> = z.input<(typeof methods)[M]>
 
-export interface Results extends WorkResults, GoalResults, WebhookResults {
+export interface Results extends WorkResults, GoalResults, WebhookResults, ConnectionResults {
   'attachments.limits': { maxFileBytes: number; maxFilesPerMessage: number }
   'attachments.prepare': import('./attachment-schema').Attachment[]
   'attachments.status': import('./attachment-schema').Attachment[]
@@ -165,7 +165,6 @@ export interface Results extends WorkResults, GoalResults, WebhookResults {
   'chat.send': { ok: true; message?: import('./attachment-schema').AttachmentMessage }
   'chat.stop': { ok: true }
   'chat.close': { ok: true }
-  'connections.status': import('./connections-schema').ConnectionsStatus
 }
 
 export const RequestFrame = z.object({ id: z.number(), method: z.string(), params: z.unknown() })

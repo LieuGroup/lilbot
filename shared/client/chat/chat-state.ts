@@ -117,6 +117,11 @@ export function applyChatEvent(chat: ChatView, event: ChatEvent): ChatView {
             ...chat,
             items: [...chat.items, { kind: 'tool', toolId: `thread:${event.threadId}`, threadId: event.threadId, name: event.name, detail: event.detail, running: false }]
           }
+    case 'connection.sign_in': {
+      const index = chat.items.findIndex(item => item.kind === 'connection.sign_in' && item.card.id === event.card.id)
+      const next: ViewItem = index >= 0 ? { ...chat.items[index], kind: 'connection.sign_in', card: event.card } : { kind: 'connection.sign_in', card: event.card }
+      return { ...chat, items: index >= 0 ? chat.items.map((item, i) => (i === index ? next : item)) : [...chat.items, next] }
+    }
     case 'turn.started': {
       // This turn belongs to the message already in the transcript, or to the oldest queued one.
       if (chat.awaitingStart) return { ...chat, awaitingStart: false, running: true, activity: 'Thinking...' }

@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { connectionKey } from '../../server/connections/connection-keys'
 import { createT3Bridge } from '../../server/connections/t3-bridge'
@@ -10,7 +10,7 @@ import { T3Grants } from '../../server/connections/t3-grant'
 /** The upstream task outlives the bridge. Recreate all bridge state, including the grant reader,
  * after a lost launch reply, then retry admission and follow the same task to completion. */
 test('a lost T3 launch response survives bridge restart without starting another task', async () => {
-  const root = mkdtempSync(join(homedir(), 'agent-tmp', 't3-restart-'))
+  const root = mkdtempSync(join(tmpdir(), 't3-restart-'))
   const path = join(root, 'grant.json')
   const token = 'test-engine-token'
   let bridge: ReturnType<typeof createT3Bridge>

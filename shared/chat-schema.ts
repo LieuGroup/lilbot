@@ -2,6 +2,7 @@
 import { z } from 'zod'
 import { Attachment, AttachmentMessage, ImageSupport } from './attachment-schema'
 import { BotContext } from './bot-schema'
+import { ConnectionSignInCard } from './connections-schema'
 import { MessageOrigin } from './device-schema'
 
 /** Why a turn failed, when LilBot knows: never the engine's own wording. */
@@ -68,7 +69,9 @@ export const ChatItem = z.discriminatedUnion('kind', [
   }),
   /** `memory_save`: the turn stopped because the engine could not save the conversation to memory before shortening it
    *  (#148); the screen words it, so `text` is empty. */
-  z.object({ kind: z.literal('error'), text: z.string(), reason: TurnFailure.optional() })
+  z.object({ kind: z.literal('error'), text: z.string(), reason: TurnFailure.optional() }),
+  /** An in-chat sign-in card for an MCP service a bot added (#216). Never holds the sign-in URL, state or pasted address. */
+  z.object({ kind: z.literal('connection.sign_in'), card: ConnectionSignInCard })
 ])
 export type ChatItem = z.infer<typeof ChatItem>
 
@@ -76,6 +79,8 @@ export const ChatEvent = z.discriminatedUnion('type', [
   AttachmentMessage.extend({ type: z.literal('user.message') }),
   z.object({ type: z.literal('turn.started') }),
   z.object({ type: z.literal('thread'), threadId: z.string(), name: z.string(), detail: z.string(), failure: z.string().optional() }),
+  /** Live creation or state change of an in-chat service sign-in card (#216). Never carries the sign-in URL or state. */
+  z.object({ type: z.literal('connection.sign_in'), card: ConnectionSignInCard }),
   /** Short status while the bot thinks, e.g. "pondering...". */
   z.object({ type: z.literal('activity'), text: z.string() }),
   z.object({ type: z.literal('text.delta'), text: z.string() }),
