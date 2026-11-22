@@ -6,7 +6,7 @@ import { LilBotError } from '../shared/lilbot-error'
 import type { BotRecord, BotStore } from './bots/bot-store'
 import { withoutNote } from './bots/system-note'
 import type { ComputerService } from './computers/computer-service'
-import { assembleRemoteWorkerPrompt } from './computers/remote-worker-prompt'
+import { assembleRemoteWorkerPrompt, REMOTE_WORKER_EXCLUDED_SKILLS } from './computers/remote-worker-prompt'
 import { RemoteWorkerRunner } from './computers/remote-worker-runner'
 import { validateRemoteCwd, validateRemoteModel } from './computers/remote-worker-sanitize'
 import type { RemoteWorkerResult } from './computers/remote-worker-store'
@@ -37,7 +37,7 @@ export function createRemoteWorkers(deps: RemoteWorkerAppDeps) {
   deps.computers.onRevoke = id => runner.onRevoke(id)
 
   const buildSystemPrompt = (bot: BotRecord, computerName: string, cwd: string) => {
-    const offered = deps.skills.offered(bot.id).filter(s => s.name !== 't3-coding')
+    const offered = deps.skills.offered(bot.id).filter(s => !REMOTE_WORKER_EXCLUDED_SKILLS.has(s.name))
     let codingSkillBody: string | undefined
     if (offered.some(s => s.name === 'lilbot-coding')) {
       try {
