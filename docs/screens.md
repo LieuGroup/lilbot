@@ -506,3 +506,42 @@ Client routing, state, caching and interaction rules for the screens above.
 - Reopening or reconnecting keeps earlier parts already loaded when the new latest part shares a row with them
   (`withLatest`); rows that arrived live are replaced by their saved copies. `MessageList` is keyed by bot, so a new
   session never remounts the scroller.
+
+### Work, checks and goals (`web/src/work/`, `web/src/goals/`, Paper "20 Work: board, checks, goals", #141, #142, #143)
+
+- **Navigation (Frame 1):** "Work" sits at the top of the bot list (`work/work-nav-row.tsx`) and collapsed rail
+  (`work/work-rail-slot.tsx`, kept separate so Tooltip stays in the rail's lazy chunk) with a blue badge counting
+  `needs_oscar` work items plus goals with `waitsForOscar` (`work/work-badge-store.ts`). Routes `/work`, `/work/all`,
+  `/work/goals`, `/work/checks`, `/work/items/$itemId` and `/work/goals/$goalId` (`?review=`) load as lazy chunks.
+- **Today's brief (`/work`, Frame 1):** date heading, summary line, "Needs you" cards (inline Answer + Send for
+  questions, Look for Oscar checks and waiting goals), "Checks that failed" (items failed or sent back after
+  `not_verified` / `could_not_check`), and a collapsed "Done" card with `verified`, `self-checked` and `not checked`
+  pills that expands into the finished items. Roster bot rows keep real `bots.list` activity rather than the drawing's
+  per-bot item counts (not in `bots.list`).
+- **Result marks (`work/check-badge.tsx`, Frame 2):** green `Verified` appears only on level 2+ items `verified` by a
+  checker or `passed` by Oscar; `Not verified`, `Could not check`, `Self-checked`, `Not checked` and `Being checked`
+  are shared everywhere results show (`workBadge` in `work/work-lines.ts`, pure and tested).
+- **All work (`/work/all`, Frame 3):** "By status" / "By bot" toggle, bot and time window filters (Today, 7 days,
+  30 days, All time), parent/child indentation (`nestItems`) with part counts and `sent back` labels, plus expandable
+  overflow and Failed / Dropped sections.
+- **Item page (`/work/items/$itemId`, Frames 4–5):** top banner for every status (verified green result, sent-back red
+  comparison, Level 3 Pass / Send back… form, inline question Answer, checking, working/open, failed, dropped), "Done
+  means", check level and kind reason, owner evidence (`library` via `library.content`, `command`, safe `http(s)`
+  `link`, `number`), checker cards (including same-bot isolated check wording), child parts, Drop… dialog with required
+  reason, and links to parent, goal and origin exchange/group/run/chat.
+- **Conversation lines (Frame 6):** `tool` items with `workItemId` load lazy `work/work-line.tsx` ("Work · <title>"
+  with status, part progress and `CheckBadge`, opening `/work/items/$itemId`). Handed-over exchanges in
+  `threads/thread-line.tsx` gain the receiver item's `CheckBadge` (clicking the badge opens the item; clicking the row
+  opens the exchange).
+- **Checks tab (`/work/checks`, Frame 7):** default level selector for all nine backend `WorkKind` keys (`reply` and
+  `note` are separate rows matching `work.levels.get`, rather than combined), plus "Different for one bot" overrides
+  with Add dialog and reset to default. Track-record easing and the Spot checks switch from the drawing are omitted
+  because neither exists in the backend yet (#142).
+- **Goals (`web/src/goals/`, Frames 8–11):** pending goal agreements and proposed changes appear inline at the bottom
+  of the bot's chat (`goals/goal-chat-cards.tsx`, loaded lazily when `waitsForOscar`, with Agree, Adjust… and Not now;
+  transitions to "Agreed <date>" linking to the goal). `/work/goals` lists active goals (progress bars, waiting
+  proposals, paused) and reached/dropped goals below. `/work/goals/$goalId` shows Pause/Resume/Drop…, target progress
+  card with real verification provenance of the latest review item, "Did what it said" and "The number" tiles, Needs
+  you items, non-review work items and Reviews. Opening a review (`?review=<itemId>`, Frame 10) shows the report, any
+  pending proposal with Agree / Reply…, and a link to its work item and evidence.
+

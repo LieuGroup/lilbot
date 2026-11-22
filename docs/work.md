@@ -48,7 +48,7 @@ What must always happen is built in; what takes judgement is the `lilbot-work` s
   request ids make retries safe) and `lilbot_work_list` (mine, every bot's, or one in full).
 - Oscar: `work.list` (bot, status, updated between `from` and `to`), `work.open`, `work.drop` (with his reason),
   `work.answer`, `work.brief` (needs him, failed and done since a time, the last day by default) and the push
-  `work.changed`. Screens: `needs-ui`.
+  `work.changed`. Screens: `web/src/work/` ([screens.md](screens.md)).
 - An answer is saved, the item returns to `working` (or `open` if it never started), and is delivered once through
   `work_answers`: a hidden turn with a stable run id in the bot's main conversation for work from a conversation,
   otherwise in the session the work came from; transport failures retry after 30 seconds. On an item handed over by
