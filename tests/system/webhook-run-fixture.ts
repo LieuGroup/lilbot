@@ -4,8 +4,8 @@ import { systemFixture } from './system-fixture'
 
 export const RUN_CHAT = 'webhook-run-chat'
 
-export async function withRun() {
-  const f = systemFixture()
+export async function withRun(options?: { t3Enabled?: boolean }) {
+  const f = systemFixture(options)
   const hook = await f.webhooks.create('b1', { requestId: 'r', description: 'Triage issues', source: 'GitHub', createdBy: 'oscar' })
   f.database.query("INSERT INTO webhook_runs (id, webhook_id, bot_id, created_at, status) VALUES ('run-1', ?, 'b1', 1, 'running')").run(hook.id)
   f.webhookStore.attach('run-1', RUN_CHAT, 2)

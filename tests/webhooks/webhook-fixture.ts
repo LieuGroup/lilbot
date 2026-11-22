@@ -15,7 +15,7 @@ import { until } from '../helpers/until'
 const ORIGIN = 'https://door.example'
 export const unsigned: WebhookCreate = { requestId: 'one', description: 'Report new issues', source: 'GitHub', createdBy: 'oscar' }
 
-function webhookFixture() {
+function webhookFixture(t3Enabled = false) {
   const fake = fakeService()
   let time = 1_000_000
   let pushes = 0
@@ -26,7 +26,8 @@ function webhookFixture() {
     'engine-token-for-tests',
     ORIGIN,
     () => pushes++,
-    () => time
+    () => time,
+    t3Enabled
   )
   const scheduler = new RoutineScheduler(
     webhooks,
@@ -72,8 +73,8 @@ export function doorFixture() {
 }
 
 /** The fixture with a webhook, an engine that records each run's prompt, and the scheduler ticked at a given time. */
-export async function runFixture(input: WebhookCreate = unsigned) {
-  const f = webhookFixture()
+export async function runFixture(input: WebhookCreate = unsigned, t3Enabled = false) {
+  const f = webhookFixture(t3Enabled)
   const prompts: string[] = []
   f.engine.runRoutine = async (_botId, prompt, options) => {
     prompts.push(prompt)

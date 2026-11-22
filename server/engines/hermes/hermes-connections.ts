@@ -175,21 +175,23 @@ export function connectionPreparer(open: (id: string) => Promise<Pick<HermesSock
     }
   }
   return {
-    prepare: (id: string, connections: McpConnection[], options: boolean | { statusOnly?: boolean; staleTokens?: ReadonlySet<string> } = false): Promise<void> =>
+    prepare: (id: string, connections: McpConnection[], options: boolean | { statusOnly?: boolean; staleTokens?: ReadonlySet<string> } = false): Promise<boolean> =>
       turn(id, async () => {
         const { statusOnly, staleTokens } = typeof options === 'boolean' ? { statusOnly: options, staleTokens: undefined } : options
         const key = JSON.stringify(connections)
-        if (prepared.get(id) === key) return
+        if (prepared.get(id) === key) return false
+        let changed: boolean
         if (statusOnly) {
-          await using(id, socket => reconnectDisconnected(socket, connections))
+          changed = await using(id, socket => reconnectDisconnected(socket, connections))
         } else {
           const seen = tokens.get(id)
           const stale = new Set(staleTokens ?? [])
           for (const c of connections) if (seen?.has(c.name) && seen.get(c.name) !== c.bearerToken) stale.add(c.name)
-          await using(id, socket => prepareConnections(socket, connections, stale))
+          changed = await using(id, socket => prepareConnections(socket, connections, stale))
           tokens.set(id, new Map(connections.map(c => [c.name, c.bearerToken])))
         }
         prepared.set(id, key)
+        return changed
       }),
     apply: (id: string, chatIds: string[]) => turn(id, () => using(id, socket => applyToChats(socket, chatIds)))
   }

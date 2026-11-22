@@ -52,7 +52,8 @@ export function systemSessionRefusal(
   sessions: Pick<CheckSessions, 'checking' | 'isCheck'>,
   callers: Pick<WebhookCallers, 'hasRuns' | 'forChat'>,
   calls: Pick<CallingChats, 'gate'>,
-  beyondOwn: (botId: string, tool: string, args: unknown) => boolean
+  beyondOwn: (botId: string, tool: string, args: unknown) => boolean,
+  t3Enabled = false
 ) {
   const byName = new Map(tools.map(tool => [tool.name, tool]))
   return async (botId: string, name: string, raw: unknown): Promise<string | null> => {
@@ -69,6 +70,6 @@ export function systemSessionRefusal(
     }
     if (!needHook) return null
     if (chatId === null) console.warn(`[webhook-session] ${name}: no tool start seen; treated as a webhook run's call`)
-    return runRefusalForChat(callers.forChat(botId, chatId ?? undefined), botId, name, raw, beyondOwn)
+    return runRefusalForChat(callers.forChat(botId, chatId ?? undefined), botId, name, raw, beyondOwn, t3Enabled)
   }
 }

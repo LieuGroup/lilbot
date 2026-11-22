@@ -8,7 +8,7 @@ short version is in `AGENTS.md` under "Work".
 
 What must always happen is built in; what takes judgement is the `lilbot-work` skill
 (`server/work/work-skill/SKILL.md`, installed into the skills library at startup and restored if it differs, like
-`t3-coding`).
+`lilbot-coding`).
 
 - An item: id, title, owner (name captured at opening), who asked (`oscar`, `bot`, `routine`, `webhook` or `self`),
   origin (`conversation`, `exchange`, `group`, `routine_run`, `webhook_run`), the "done" definition, kind of work, check

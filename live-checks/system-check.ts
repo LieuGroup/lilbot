@@ -108,7 +108,8 @@ try {
   console.log(`  answer: ${answer.text.replace(/\s+/g, ' ').slice(0, 400)} (${answer.tokens} tokens sent, tools: ${answer.tools.join(', ') || 'none'})`)
   assert.ok(/lilbot/i.test(answer.text), 'it says it runs in LilBot')
   assert.ok(answer.text.includes(release.slice(0, 7)), `it names the running release ${release.slice(0, 7)}`)
-  assert.ok(/t3/i.test(answer.text), 'it says code changes go through T3 Code')
+  assert.ok(/branch|pull request|worker/i.test(answer.text), 'it says code changes go through a branch/PR or worker')
+  assert.ok(!/\bt3\b/i.test(answer.text), 'it does not mention T3 Code when T3 is off')
   assert.ok(/deploy/i.test(answer.text), 'it says production changes go through bun run deploy')
   console.log('ok: answered correctly from the note and tools, without being told in its instructions')
 

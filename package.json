@@ -48,6 +48,7 @@
     "check:memory": "bun live-checks/memory-check.ts",
     "check:reasoning": "bun live-checks/reasoning-check.ts",
     "check:model-switch": "bun live-checks/model-switch-check.ts",
+    "check:coding-native": "bun live-checks/coding-native-check.ts",
     "check:coding": "bun live-checks/coding-check.ts",
     "check:connections": "bun live-checks/connections-check.ts",
     "check:system": "bun live-checks/system-check.ts",

@@ -144,10 +144,10 @@ model input. `model.options` declares `ModelCapabilities` with fast/reasoning fl
 support is reported as `unknown`. Hermes declares incoming `CanonicalAttachment` paths but no outgoing attachment
 manifest on `MessageCompletePayload` or `TranscriptMessage`.
 
-## T3 Code connection (`hermes-connections.ts`)
+## T3 Code connection (`hermes-connections.ts`, only when `LILBOT_T3_ENABLED=1`)
 
-- The connection is the profile MCP server `lilbot_t3`, managed with `mcp.servers.list/remove/add` and `reload.mcp`
-  only when it changed. LilBot owns the profile's servers named `lilbot_*` and nothing else: one it no longer supplies is
+- When `LILBOT_T3_ENABLED=1`, the connection is the profile MCP server `lilbot_t3`, managed with `mcp.servers.list/remove/add` and `reload.mcp`
+  only when it changed (with T3 off, `lilbot_t3` is omitted and removed from profiles). LilBot owns the profile's servers named `lilbot_*` and nothing else: one it no longer supplies is
   removed, and any other server (Oscar's `revenuecat` and `paper`) is never changed or removed, even on a name match. The
   per-bot bridge key lives in the profile's `.env`.
 - Hermes keeps a server's tool list until its settings change, so the URL carries the sign-in state
@@ -161,8 +161,9 @@ manifest on `MessageCompletePayload` or `TranscriptMessage`.
 - One profile MCP server per service, named `lilbot_c_<name>`, pointing at LilBot's route
   `/engine/connections/<id>/mcp?v=<sign-in>` with the bot's per-service key in `.env`. The service's address and token
   never reach the profile. `tools.include` is the tool list LilBot read, or `connection_status` alone while signed out.
-  These servers are `optional`: when one does not connect, the reload is accepted as long as `lilbot_t3` and
-  `lilbot_system` are connected, so a dead service never makes a bot unavailable. Hermes' own `mcp.servers.oauth.*` and
+  These servers are `optional`: when one does not connect, the reload is accepted as long as every required LilBot
+  connection (`lilbot_system`, plus `lilbot_t3` when enabled) is connected, so a dead service never makes a bot
+  unavailable. Hermes' own `mcp.servers.oauth.*` and
   token store are never used.
 - Applying to open chats (`applyToChats`, `BotEngine.applyConnections`): `reload.mcp {confirm, session_id}` for each
   chat, after the profile's preparation, in the same per-profile queue. Measured on the dev gateway (#187 verification,
@@ -178,8 +179,9 @@ manifest on `MessageCompletePayload` or `TranscriptMessage`.
 
 ## LilBot system connection (`lilbot_system`)
 
-- A second profile MCP server beside `lilbot_t3`, applied by the same `prepareConnections`; both are hashed together into
-  the `connections` step of `lilbot-applied.json`, so adding the connection runs the step once per profile and an
+- Profile MCP server applied by the same `prepareConnections` (alongside `lilbot_t3` when `LILBOT_T3_ENABLED=1`); all
+  connections are hashed together into
+  the `connections` step of `lilbot-applied.json`, so adding or changing a connection runs the step once per profile and an
   unchanged restart skips it. Its URL carries `?tools=<hash of the tool definitions>` (see `docs/system-mcp.md`).
 - Hermes does not show an MCP server's `instructions` to the model. The "about your system" note therefore travels in the
   profile's `soul` (the instructions LilBot applies): `applyIdentity` compares and writes `soul` as before, now with

@@ -167,7 +167,7 @@ try {
     widened.fetched.some(output => output.includes('Example Domain')),
     `a run given web did not fetch ${PAGE}: ${JSON.stringify(widened.fetched).slice(0, 300)}`
   )
-  assert.ok(fromServer(widened, 'lilbot_t3').length > 0, 'a run given coding lacked the T3 tools')
+  assert.equal(fromServer(widened, 'lilbot_t3').length > 0, process.env.LILBOT_T3_ENABLED === '1', 'unexpected lilbot_t3 tools for T3 switch state')
   assert.deepEqual(has(widened, [...ENGINE_TOOLS.memory, ...ENGINE_TOOLS.engineDelegation]), [])
   assert.equal((await call('work.open', { itemId: firstItem.id })).status, 'done', "the widened run changed the first run's item")
   console.log(

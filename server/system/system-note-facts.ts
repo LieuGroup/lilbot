@@ -13,7 +13,7 @@ export function codingState(status: T3ConnectionStatus): string {
   return status.state === 'revoked' ? 'unavailable, Oscar revoked its approval' : `unavailable, its approval expired on ${day(status.expiresAt)}`
 }
 
-function noteFacts({ store, workspaces, computers, t3, commit }: SystemFacts, bot: BotRecord): NoteFacts {
+function noteFacts({ store, workspaces, computers, t3, t3Enabled, commit }: SystemFacts, bot: BotRecord): NoteFacts {
   return {
     bot: { id: bot.id, name: bot.name, workspace: workspaces.pathFor(bot.id), model: bot.model },
     others: store
@@ -21,7 +21,7 @@ function noteFacts({ store, workspaces, computers, t3, commit }: SystemFacts, bo
       .filter(other => other.id !== bot.id)
       .map(other => ({ name: other.name, function: other.function })),
     computers: computers.list().map(computer => computer.name ?? computer.id),
-    coding: codingState(t3()),
+    ...(t3Enabled ? { coding: codingState(t3()) } : {}),
     release: commit.slice(0, 12)
   }
 }

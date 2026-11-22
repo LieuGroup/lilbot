@@ -51,7 +51,8 @@ try {
   const check = await HermesSocket.connect(native)
   try {
     const status = await check.request('mcp.servers.status', {})
-    for (const name of ['lilbot_system', 'lilbot_t3']) {
+    const expected = process.env.LILBOT_T3_ENABLED === '1' ? ['lilbot_system', 'lilbot_t3'] : ['lilbot_system']
+    for (const name of expected) {
       const row = (status.servers as { name: string; connected: boolean; tools: number }[]).find(s => s.name === name)
       assert.ok(row?.connected && row.tools > 0, `MCP server ${name} was not connected after restart: ${JSON.stringify(row)}`)
     }

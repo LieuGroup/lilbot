@@ -1,4 +1,4 @@
-# Handing work to other bots
+# Handing work to other bots and workers
 
 Use `lilbot_delegate` to hand work to other bots (`to`, one per bot) or your own hidden worker (`worker: true`, optional `model` and `reasoningEffort`). Tasks in one call share a batch and run in parallel with full access. For a worker on another computer that advertises a coding agent (`lilbot_status` area `computers`), pass `computer` (id or name) and `cwd` (absolute or `~/...`; no `files`). Attach workspace `files` to local tasks by path; LilBot copies them under `exchanges/<exchange id>/`. Continue an exchange or worker with `exchangeId`. Answers return as new turns — carry on and never poll.
 

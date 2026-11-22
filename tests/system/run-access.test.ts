@@ -103,3 +103,17 @@ test('each call is matched to one start: a run’s identical call refuses only i
   expect((await f.call('b1', 'lilbot_about', {}, false)).data.you.id).toBe('b1')
   expect((await f.call('b1', 'lilbot_about', {}, false)).error).toContain('A webhook run cannot use lilbot_about')
 })
+
+test('coding capability authorizes lilbot_status only when LILBOT_T3_ENABLED is on', async () => {
+  const off = await withRun()
+  await off.webhooks.setCapabilities('b1', off.hook.id, ['coding'])
+  off.callFrom(RUN_CHAT)
+  const refused = await off.call('b1', 'lilbot_status', { area: 'computers' })
+  expect(refused.error).toContain('A webhook run cannot use lilbot_status')
+  expect(refused.error).toContain('"computers"')
+
+  const on = await withRun({ t3Enabled: true })
+  await on.webhooks.setCapabilities('b1', on.hook.id, ['coding'])
+  on.callFrom(RUN_CHAT)
+  expect((await on.call('b1', 'lilbot_status', { area: 't3' })).error).toBeUndefined()
+})

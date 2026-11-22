@@ -27,7 +27,8 @@ export class WebhookService {
     /** The helper door's public origin; without it no outside service can reach a webhook. */
     private origin: string | undefined,
     private changed: () => void = () => {},
-    private now = Date.now
+    private now = Date.now,
+    private t3Enabled = false
   ) {}
 
   private requireOrigin() {
@@ -122,7 +123,7 @@ export class WebhookService {
       this.changed()
       return result
     }
-    const access = webhookRunAccess(webhook.capabilities)
+    const access = webhookRunAccess(webhook.capabilities, this.t3Enabled)
     const result = await this.host.runRoutine(run.botId, webhookPrompt(webhook, access.prompt, items, withheld.length), {
       runId: `webhook-${run.id}`,
       toolsets: access.toolsets,

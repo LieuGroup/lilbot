@@ -37,7 +37,7 @@ const TOKEN = 'engine-token-for-tests'
 const PORT = 3997
 const COMMIT = 'abcdef0123456789abcdef0123456789abcdef01'
 
-export function systemFixture() {
+export function systemFixture({ t3Enabled = false }: { t3Enabled?: boolean } = {}) {
   const fake = fakeService()
   const state = { memoryPushes: 0, t3: { state: 'connected', expiresAt: Date.now() + 86_400_000 } as T3ConnectionStatus }
   const changes = new SystemChanges(fake.database)
@@ -114,6 +114,7 @@ export function systemFixture() {
     workspaces,
     computers,
     t3: () => state.t3,
+    t3Enabled,
     commit: COMMIT,
     bots: fake.service,
     activity: fake.activity,

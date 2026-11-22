@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite'
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, renameSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { z } from 'zod'
 import { LilBotError } from '../../shared/lilbot-error'
@@ -112,7 +112,9 @@ export class SkillsService {
       renameSync(temp, path)
     }
     this.db
-      .query('INSERT INTO skills VALUES (?,?,?,?) ON CONFLICT(name) DO UPDATE SET description=excluded.description, author=excluded.author, updated_at=excluded.updated_at')
+      .query(
+        "INSERT INTO skills VALUES (?,?,?,?) ON CONFLICT(name) DO UPDATE SET description=excluded.description, author=CASE WHEN skills.author='lilbot' AND excluded.author<>'oscar' THEN 'lilbot' ELSE excluded.author END, updated_at=excluded.updated_at"
+      )
       .run(name, meta.description, author, Date.now())
     this.changed()
   }
@@ -142,6 +144,18 @@ export class SkillsService {
   provide(name: string, data: Record<string, string>) {
     if (existsSync(this.path(name)) && digest(this.read(name)) === digest(data)) return
     this.save(name, data, 'lilbot')
+  }
+  /** Removes a built-in skill LilBot itself installed, leaving Oscar-authored, bot-authored, engine-imported, or untracked skills untouched. */
+  remove(name: string): boolean {
+    const target = this.path(name)
+    const row = this.db.query('SELECT author FROM skills WHERE name=?').get(name) as { author: string } | null
+    const imported = Boolean(this.db.query('SELECT 1 FROM skill_origins WHERE name=?').get(name))
+    if (row?.author !== 'lilbot' || imported) return false
+    if (existsSync(target)) rmSync(target, { recursive: true, force: true })
+    this.db.query('DELETE FROM skill_off WHERE name=?').run(name)
+    this.db.query('DELETE FROM skills WHERE name=?').run(name)
+    this.changed()
+    return true
   }
   importedBot(id: string) {
     return Boolean(this.db.query('SELECT 1 FROM skill_imports WHERE source=?').get(`bot:${id}`))

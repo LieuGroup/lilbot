@@ -38,7 +38,7 @@ export function applied(
   id: string,
   step: string | null,
   key: string,
-  run: (steps: Record<string, string> | null) => Promise<void>,
+  run: (steps: Record<string, string> | null) => Promise<unknown>,
   extraSteps?: Record<string, string>
 ): Promise<boolean> {
   const home = skillHome(id)

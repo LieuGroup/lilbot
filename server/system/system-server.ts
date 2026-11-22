@@ -48,7 +48,7 @@ export function createSystemServer(deps: SystemDeps & { engineToken: string; por
   const names = tools.map(tool => tool.name)
   const url = `http://127.0.0.1:${deps.port}`
   const beyondOwn = readsBeyondOwn(itemId => deps.work.store.get(itemId)?.ownerId)
-  const refusal = systemSessionRefusal(tools, deps.checkSessions, deps.webhookRuns.callers, deps.calls, beyondOwn)
+  const refusal = systemSessionRefusal(tools, deps.checkSessions, deps.webhookRuns.callers, deps.calls, beyondOwn, Boolean(deps.t3Enabled))
   return {
     tools,
     handler: createSystemMcp({

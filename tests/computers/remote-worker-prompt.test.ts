@@ -12,6 +12,7 @@ import { loadServerKey } from '../../server/computers/server-key'
 import { openDatabase } from '../../server/database/database'
 import { MemoryService } from '../../server/memory/memory-service'
 import { MemoryStore } from '../../server/memory/memory-store'
+import { files } from '../../server/skills/skill-files'
 import { SkillsService } from '../../server/skills/skills-service'
 import { WORKER_SYSTEM_PROMPT_MAX_BYTES } from '../../shared/worker-frame-schema'
 
@@ -81,12 +82,14 @@ test('assembleRemoteWorkerPrompt fits within 96 KiB, escapes section tags, and u
       () => true,
       () => dir
     )
+    const skills = new SkillsService(join(dir, 'skills'), db)
+    skills.provide('t3-coding', files(join(import.meta.dir, '../../server/connections/t3-coding-skill')))
     const rw = createRemoteWorkers({
       database: db,
       computers,
       store: bots,
       memory: new MemoryService(new MemoryStore(db)),
-      skills: new SkillsService(join(dir, 'skills'), db),
+      skills,
       handleMcp: async () => ({ status: 200, body: '{}' }),
       computersChanged: () => {}
     })
@@ -96,6 +99,7 @@ test('assembleRemoteWorkerPrompt fits within 96 KiB, escapes section tags, and u
       expect(built.systemPrompt).toContain('Stay sharp.')
       expect(built.systemPrompt).not.toContain('/srv/leader')
       expect(built.systemPrompt).not.toContain('T3 Code')
+      expect(built.systemPrompt).not.toContain('t3-coding')
       expect(built.systemPrompt).not.toContain('<lilbot-system-note>')
     }
     rw.runner.close()

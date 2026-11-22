@@ -35,7 +35,8 @@ export const TOOL_GROUPS: Partial<Record<WebhookCapability, string[]>> = {
 /** In no group: Oscar's list names the work board, not goals, and no webhook run may add or remove MCP services. */
 export const NO_RUN_TOOLS = ['lilbot_goal', 'lilbot_connection']
 
-const groupsOf = (tool: string) => (Object.keys(TOOL_GROUPS) as WebhookCapability[]).filter(group => TOOL_GROUPS[group]?.includes(tool))
+const groupsOf = (tool: string, t3Enabled = false) =>
+  (Object.keys(TOOL_GROUPS) as WebhookCapability[]).filter(group => (group !== 'coding' || t3Enabled) && TOOL_GROUPS[group]?.includes(tool))
 
 /** Why a session that may do `allowed` (null: not a webhook run's) may not use a tool in `groups`, or null when it may.
  *  The T3 bridge uses it for its tools, all in `coding`, and the engine API for plug-in tools. */
@@ -65,9 +66,10 @@ export function runRefusalForChat(
   botId: string,
   tool: string,
   args: unknown,
-  beyondOwn: (botId: string, tool: string, args: unknown) => boolean
+  beyondOwn: (botId: string, tool: string, args: unknown) => boolean,
+  t3Enabled = false
 ): string | null {
-  if (!RUN_TOOLS.includes(tool)) return refusalFor(allowed, tool, groupsOf(tool))
+  if (!RUN_TOOLS.includes(tool)) return refusalFor(allowed, tool, groupsOf(tool, t3Enabled))
   if (!beyondOwn(botId, tool, args) || allowed === null) return null
   return 'A webhook run reads only its own work items: list them without mine false, goals or goalId, or open one of its own. If you are not in a webhook run, make the call again from your own conversation.'
 }

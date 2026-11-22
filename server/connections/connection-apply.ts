@@ -64,6 +64,15 @@ export class ConnectionApplier {
     this.enqueueNotice(botId, chatId, { prompt, runId })
   }
 
+  /** Queue a bot's live main conversation for an in-place MCP reload after its profile's connections changed. */
+  applyBot(botId: string) {
+    const chatId = this.host.mainChat(botId)
+    if (!chatId) return
+    const key = `${botId}\n${chatId}`
+    const existing = this.pending.get(key)
+    this.pending.set(key, { botId, chatId, since: this.now(), notices: existing ? [...existing.notices] : [] })
+  }
+
   private enqueueNotice(botId: string, chatId: string, notice: Notice) {
     const key = `${botId}\n${chatId}`
     const existing = this.pending.get(key)

@@ -77,15 +77,15 @@ are in `AGENTS.md` under "Webhooks"; tunnel ingress is in [cloudflare.md](cloudf
   `webhooks.setCapabilities` (no bot tool); a run gets exactly those on top, read at each call and run.
 - **Granting any group except `web` and `webhooks` gives whoever can reach the address full access** (#12 review,
   finding 7): `shell` and `computers` directly (the engine token, the profile's keys, the leader is a computer);
-  `coding` (a T3 Code task is a full-access coding agent on the leader); `delegation` (the receiver's hidden session
+  `coding` (a T3 Code task is a full-access coding agent on the leader when `LILBOT_T3_ENABLED=1`; inactive when off); `delegation` (the receiver's hidden session
   has full access and the run writes the task); `routines` (routine runs have full access and the run writes the task);
   `bots` (a new bot's first prompt runs with full access, and `lilbot_bot_edit` rewrites any bot's instructions);
   `memory` (shared facts every bot reads on every turn). `webhooks` stays narrow but adds addresses and runs; `web`
   lets outside data lead the run to fetch a URL carrying what it read.
 - Reads: whatever its groups, a run never reads another bot's work items or any goal (`lilbot_work_list` with `mine:
   false`, `goals`, `goalId` or another bot's `itemId` is refused; `readsBeyondOwn` in `system/run-access.ts`).
-  `lilbot_about` (the other bots, computers, T3, deploy, the change log) needs `bots` and `lilbot_status` needs
-  `computers` or `coding`: a run needs none of it, and a refusal from the one tested list cannot drift the way a
+  `lilbot_about` (the other bots, computers, deploy, the change log, and T3 when enabled) needs `bots` and `lilbot_status` needs
+  `computers` (or `coding` when `LILBOT_T3_ENABLED=1`): a run needs none of it, and a refusal from the one tested list cannot drift the way a
   trimmed answer could. Skills stay readable (`skills_list`, `skill_view`): Hermes adds the skills plug-in back, and
   `lilbot-work` tells the run how to use the board. The folder read covers `attachments/`, `exchanges/` and `groups/`
   too. The bot's note (its system prompt, with the names of the computers) is the same in every session.
@@ -102,7 +102,8 @@ are in `AGENTS.md` under "Webhooks"; tunnel ingress is in [cloudflare.md](cloudf
   works on its transcript later (Hermes' background review forks share the session's id). Two layers, both chosen from
   one list:
   - `webhook-access.ts` starts the run's session with only `lilbot_system` plus each group's engine toolsets (web:
-    `web`; shell: `terminal`, `code_execution`, `file`; computers: `lilbot_computers`; coding: `lilbot_t3`; memory:
+    `web`; shell: `terminal`, `code_execution`, `file`; computers: `lilbot_computers`; coding: `lilbot_t3` when
+    `LILBOT_T3_ENABLED=1`; memory:
     `memory`). Hermes freezes a session's toolsets. Naming one MCP server leaves the others out. Hermes' `file` toolset
     is read and write together and has no per-session write root, so a narrow run reads with `lilbot_workspace_read`
     instead. Without `memory` the engine's memory tools and `search_conversations` are gone too. `lilbot_give_file` is

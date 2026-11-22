@@ -91,6 +91,56 @@ test('a message sent the moment the turn ended waits for the change to be applie
   expect(f.log.slice(before)).toHaveLength(1)
 })
 
+test('applyBot queues a bot’s live main conversation for an in-place reload without a new session', async () => {
+  const f = fixture()
+  f.applier.applyBot('a')
+  await f.applier.tick()
+  expect(f.log).toEqual(['apply dev-a a-main'])
+  await f.applier.tick()
+  expect(f.log).toEqual(['apply dev-a a-main'])
+})
+
+test('applyBot arriving while an earlier apply is in flight replaces the entry, preserves notices, and clears retry backoff', async () => {
+  const f = fixture()
+  const host = (f.applier as any).host as ApplyHost
+  const baseApply = host.apply
+  let midApply: (() => void) | undefined
+  let failOnce = false
+  host.apply = async (engineBotId, chatIds) => {
+    if (failOnce) {
+      failOnce = false
+      throw new Error('transient')
+    }
+    const out = await baseApply(engineBotId, chatIds)
+    const hook = midApply
+    midApply = undefined
+    hook?.()
+    return out
+  }
+  f.applier.signedIn('a', 'a-main', 'svc', 'run-mid-1')
+  midApply = () => f.applier.applyBot('a')
+  await f.applier.tick()
+  await Bun.sleep(0)
+  // First apply saw the entry replaced mid-flight, so notice waits for the second apply.
+  expect(f.log.filter(line => line.startsWith('apply dev-a'))).toHaveLength(1)
+  expect(f.log.filter(line => line.startsWith('tell'))).toEqual([])
+  await f.applier.tick()
+  await Bun.sleep(0)
+  expect(f.log.filter(line => line.startsWith('apply dev-a'))).toHaveLength(2)
+  expect(f.log.filter(line => line.startsWith('tell'))).toHaveLength(1)
+
+  // A failed apply backs off for 30s; a fresh applyBot clears retryAt immediately.
+  const before = f.log.length
+  failOnce = true
+  f.applier.applyBot('a')
+  await f.applier.tick()
+  await f.applier.tick()
+  expect(f.log.slice(before)).toEqual([])
+  f.applier.applyBot('a')
+  await f.applier.tick()
+  expect(f.log.slice(before)).toEqual(['apply dev-a a-main'])
+})
+
 test('a sign-in arriving while an earlier apply or refresh is in flight is not dropped and notifies only after its own apply', async () => {
   const f = fixture()
   let onApply: (() => void) | undefined

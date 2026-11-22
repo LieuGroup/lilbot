@@ -16,11 +16,11 @@ import { detail, fakeEngine } from '../helpers/fake-engine'
 import { systemFixture } from './system-fixture'
 
 const words = (text: string) => text.split(/\s+/).filter(Boolean).length
-const facts = (others: NoteFacts['others'] = [{ name: 'Writer', function: 'Drafts posts' }]): NoteFacts => ({
+const facts = (others: NoteFacts['others'] = [{ name: 'Writer', function: 'Drafts posts' }], coding?: string): NoteFacts => ({
   bot: { id: 'b1', name: 'Bot One', workspace: '/srv/lilbot/workspaces/b1', model: { provider: 'cliproxyapi', model: 'anthropic/claude-sonnet-5-5' } },
   others,
   computers: ['leader-box', 'MacBook'],
-  coding: 'available, signed in until 2026-12-01',
+  ...(coding ? { coding } : {}),
   release: 'abcdef012345'
 })
 
@@ -41,6 +41,8 @@ test('the note states who the bot is, where it runs and points at the two tools,
     'ask Oscar in your reply',
     'lilbot_about',
     'lilbot_guide',
+    'lilbot-coding',
+    'lilbot_delegate (worker: true)',
     'bun run deploy',
     'before any work beyond a reply, however small',
     'open an item with lilbot_work. Not for answering a question',
@@ -48,9 +50,14 @@ test('the note states who the bot is, where it runs and points at the two tools,
   ]) {
     expect(note).toContain(part)
   }
+  expect(note).not.toMatch(/t3/i)
   expect(words(note)).toBeGreaterThan(90)
   expect(words(note)).toBeLessThan(260)
   expect(buildNote({ ...facts([]), bot: { ...facts().bot, model: null } })).toContain("the engine's default")
+  const withT3 = buildNote(facts(undefined, 'available, signed in until 2026-12-01'))
+  expect(withT3).toContain('Coding through T3 Code: available, signed in until 2026-12-01.')
+  expect(withT3).toContain('code changes go through T3 Code')
+  expect(words(withT3)).toBeLessThan(260)
 })
 
 test('a long roster stays short: a few bots are named and the rest counted', () => {
@@ -126,22 +133,35 @@ test('the connection is the same on every start, so unchanged restarts skip the 
   expect(toolsVersion(changed)).not.toBe(toolsVersion(a.tools))
 })
 
-test('the guide ships with the code, every topic is listed, and the tools it names exist', async () => {
+test('the guide ships with the code, every topic is listed, and the tools it names exist in both T3 switch positions', async () => {
   const f = systemFixture()
   const folder = join(import.meta.dir, '../../server/system/guide')
   const files = readdirSync(folder).filter(file => file.endsWith('.md'))
   const listed = (await f.call('b1', 'lilbot_guide')).data.topics as string[]
   expect(listed).toHaveLength(files.length)
-  // Names a guide may use: this server's tools and the two connections' names.
-  const names = new Set([...f.tools.map(tool => tool.name), 'lilbot_t3', 'lilbot_system'])
+  // Names a guide may use: this server's tools and its connection names.
+  const names = new Set([...f.tools.map(tool => tool.name), 'lilbot_system'])
   for (const file of files) {
     const topic = file.slice(0, -3)
     const text = readFileSync(join(folder, file), 'utf8')
     expect((await f.call('b1', 'lilbot_guide', { topic })).data.guide).toBe(text)
     expect(words(text)).toBeLessThan(260)
+    expect(text).not.toMatch(/\bt3\b/i)
     for (const name of text.match(/lilbot_[a-z0-9_]+/g) ?? []) expect(names.has(name)).toBe(true)
   }
   expect((await f.call('b1', 'lilbot_guide', { topic: '../../etc/passwd' })).error).toContain('Invalid arguments')
   for (const name of buildNote(facts()).match(/lilbot_[a-z0-9_]+/g) ?? []) expect(names.has(name)).toBe(true)
-  for (const rule of ['T3 Code', 'bun run deploy', 'live bot']) expect((await f.call('b1', 'lilbot_guide', { topic: 'changing-lilbot' })).data.guide).toContain(rule)
+  for (const tool of f.tools) expect(tool.description).not.toMatch(/\bt3\b/i)
+  for (const rule of ['branch', 'bun run deploy', 'live bot']) expect((await f.call('b1', 'lilbot_guide', { topic: 'changing-lilbot' })).data.guide).toContain(rule)
+
+  const on = systemFixture({ t3Enabled: true })
+  const t3Names = new Set([...on.tools.map(tool => tool.name), 'lilbot_t3', 'lilbot_system'])
+  for (const file of files) {
+    const topic = file.slice(0, -3)
+    const text = (await on.call('b1', 'lilbot_guide', { topic })).data.guide as string
+    expect(words(text)).toBeLessThan(260)
+    for (const name of text.match(/lilbot_[a-z0-9_]+/g) ?? []) expect(t3Names.has(name)).toBe(true)
+  }
+  for (const rule of ['T3 Code', 'bun run deploy', 'live bot']) expect((await on.call('b1', 'lilbot_guide', { topic: 'changing-lilbot' })).data.guide).toContain(rule)
+  expect(toolsVersion(f.tools)).not.toBe(toolsVersion(on.tools))
 })

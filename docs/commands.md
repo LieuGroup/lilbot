@@ -90,7 +90,8 @@ Every `check:*` and `bun live-checks/*.ts` follows the development rules in `AGE
   (`webhook-session-checks.ts`): a skill write and the computers naming its session are refused, Oscar's answer reaches
   the main conversation and the run's transcript does not grow, its message is a line with no turn until Oscar writes,
   his next message passes its own tool call and gives the bot the message, and the review queue never holds it; no
-  skill is written meanwhile. Given `web`, `shell` and `coding`, a run gains exactly those, its stored `web_extract`
+  skill is written meanwhile. Given `web`, `shell` and `coding` (`coding` adds `lilbot_t3` only when
+  `LILBOT_T3_ENABLED=1`), a run gains exactly those, its stored `web_extract`
   output holds the fetched page, and it cannot change the first run's item. A burst of three is one run; pause refuses,
   resume accepts, delete ends the address.
 - `bun run check:restart`: SIGKILLs only its own second server mid-turn; chat, routine and thread side-effect counters
@@ -121,7 +122,11 @@ Every `check:*` and `bun live-checks/*.ts` follows the development rules in `AGE
   link completed through the Access route; no Access login, a wrong state, a reused and a late callback refused;
   refresh; `sign_in_expired` repaired by pasting the final address; `unreachable`; removal takes the tools away; one
   session throughout; the tokens found only in the store.
-- `bun run check:coding -- --code-file <file>` (or the code on stdin): needs a fresh pairing code; signs in, checks the
+- `bun run check:coding-native`: with T3 off by default, verifies `lilbot-coding` is installed (`t3-coding` and `lilbot_t3`
+  absent), a temporary bot delegates a small repo change to a worker that commits on a branch, runs the check, records
+  evidence on its `code` work item and reports back; then toggles `LILBOT_T3_ENABLED=1` and back off across restarts to
+  verify both switch positions and in-place MCP reload on the same live main session.
+- `bun run check:coding -- --code-file <file>` (or the code on stdin; runs with `LILBOT_T3_ENABLED=1`): needs a fresh pairing code; signs in, checks the
   signed-out, expired and refused messages, a repeated launch and a real task, then archives its threads, removes its
   project and profile and revokes its sign-in.
 - `bun live-checks/permissions-check.ts`: repairs a temporary profile from manual approvals to off, runs a harmless

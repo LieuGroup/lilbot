@@ -61,7 +61,8 @@ try {
       LILBOT_SKILLS_DIR: join(scratch, 'skills'),
       LILBOT_BOT_IDS: 'isolated-no-profiles',
       LILBOT_SKIP_MEMORY_SETUP: '1',
-      LILBOT_REVIEW: 'off'
+      LILBOT_REVIEW: 'off',
+      LILBOT_T3_ENABLED: '1'
     },
     stdout: 'ignore',
     stderr: 'inherit'
@@ -77,7 +78,6 @@ try {
   )
     await Bun.sleep(100)
   lilbot = await lilbotSocket(port)
-  console.log('Creating a temporary bot')
   const bot = await lilbot.call('bots.create', { name: 'Coding check', model: { provider: 'cliproxyapi', model: 'anthropic/claude-sonnet-5-5' } })
   const db = openDatabase(join(scratch, 'lilbot.db'))
   const nativeId = new BotStore(db).get(bot.id).engineBotId

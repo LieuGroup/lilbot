@@ -110,12 +110,18 @@ function ErrorBubble({ text }: { text: string }) {
   )
 }
 
+const NOTICE_TOOL_NAMES = new Set(['coding notice', 'webhook message'])
+
 /** A tool the bot used, as one Trace line: spinner while it runs, a check or a cross after. */
 function ToolTrace({ item }: { item: Extract<MessageItem, { kind: 'tool' }> }) {
+  const notice = NOTICE_TOOL_NAMES.has(item.name)
   return (
     <Trace>
-      <TraceLine status={item.failed ? 'error' : item.running ? 'running' : undefined} className="text-[13px]/5 data-[status=running]:text-foreground">
-        <TraceIcon className="size-[13px] [&_svg]:size-[13px]!">
+      <TraceLine
+        status={item.failed ? 'error' : item.running ? 'running' : undefined}
+        className={`text-[13px]/5 data-[status=running]:text-foreground${notice ? ' items-start' : ''}`}
+      >
+        <TraceIcon className={`size-[13px] [&_svg]:size-[13px]!${notice ? ' mt-[3.5px]' : ''}`}>
           {item.failed ? (
             <XIcon strokeWidth={2.5} />
           ) : item.running ? (
@@ -124,7 +130,7 @@ function ToolTrace({ item }: { item: Extract<MessageItem, { kind: 'tool' }> }) {
             <CheckIcon className="text-foreground/50" strokeWidth={2} />
           )}
         </TraceIcon>
-        <TraceTitle>
+        <TraceTitle wrap={notice}>
           {item.name} {item.detail && <code className="font-mono text-xs">{item.detail}</code>}
         </TraceTitle>
       </TraceLine>

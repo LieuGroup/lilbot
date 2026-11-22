@@ -6,10 +6,26 @@ import type { BotRuntimes } from './bot-runtimes'
 import type { SessionSettings } from './bot-session-settings'
 import type { Workspaces } from './workspaces'
 
-/** Model-only text LilBot gives a bot with Oscar's next message in its main conversation (a webhook run's message),
- *  never as a turn of its own; `taken` once the engine accepted the message. */
+/** Model-only text LilBot gives a bot with Oscar's next message in its main conversation (a webhook run's message or
+ *  a one-time coding-switch notice), never as a turn of its own; `taken` once the engine accepted the message. */
 export interface TurnNotes {
-  pending(botId: string): { text: string; taken: () => void } | null
+  pending(botId: string, chatId?: string): { text: string; taken: () => void } | null
+}
+
+/** Joins multiple `TurnNotes` sources in order and marks each taken once the send succeeds. */
+export function combineTurnNotes(...sources: (TurnNotes | undefined)[]): TurnNotes {
+  return {
+    pending(botId, chatId) {
+      const hits = sources.map(source => source?.pending(botId, chatId)).filter((hit): hit is { text: string; taken: () => void } => Boolean(hit))
+      if (!hits.length) return null
+      return {
+        text: hits.map(hit => hit.text).join('\n\n'),
+        taken: () => {
+          for (const hit of hits) hit.taken()
+        }
+      }
+    }
+  }
 }
 
 /** Main-session selection and the history journal share one chat lifecycle. */
@@ -67,7 +83,7 @@ export class BotConversations {
           images: { support: 'unknown', imageCount: 0 },
           ...(options?.origin?.device ? { origin: options.origin.device } : {})
         })
-      const note = !options?.hidden && id === this.prefs.mainChat(botId) ? this.notes?.pending(botId) : null
+      const note = !options?.hidden && id === this.prefs.mainChat(botId) ? this.notes?.pending(botId, id) : null
       if (!note) return send(text, options)
       await send(text, { ...options, origin: { ...options?.origin, line: [options?.origin?.line, note.text].filter(Boolean).join('\n\n') } })
       note.taken()
