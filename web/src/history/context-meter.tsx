@@ -3,6 +3,7 @@ import { lazy, type PointerEvent, Suspense, useEffect, useRef, useState } from '
 
 import { useBotStore } from '../bots/bot-store'
 import { contextMeterView } from './usage-format'
+import { contextMeterOnClick, type TriggerState } from './usage-trigger'
 
 const loadPopover = () => import('./context-popover')
 const ContextPopover = lazy(loadPopover)
@@ -17,7 +18,7 @@ export function ContextMeter({ botId, botName }: { botId: string; botName: strin
   const [used, setUsed] = useState(false)
   const pill = useRef<HTMLButtonElement>(null)
   const pinned = useRef(false)
-  const closedAt = useRef(0)
+  const down = useRef<TriggerState | null>(null)
   const openTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
@@ -36,10 +37,7 @@ export function ContextMeter({ botId, botName }: { botId: string; botName: strin
 
   const handleOpenChange = (next: boolean) => {
     clearTimers()
-    if (!next) {
-      if (open) closedAt.current = Date.now()
-      pinned.current = false
-    }
+    if (!next) pinned.current = false
     setOpen(next)
   }
 
@@ -68,18 +66,19 @@ export function ContextMeter({ botId, botName }: { botId: string; botName: strin
     closeTimer.current = setTimeout(() => setOpen(false), 150)
   }
 
+  const onPointerDownCapture = () => {
+    clearTimers()
+    down.current = { open, pinned: pinned.current }
+  }
+
   const onClick = () => {
     void loadPopover()
     clearTimers()
-    if (!open && Date.now() - closedAt.current < 250) return
-    setUsed(true)
-    if (open && pinned.current) {
-      pinned.current = false
-      setOpen(false)
-    } else {
-      pinned.current = true
-      setOpen(true)
-    }
+    const next = contextMeterOnClick({ open, pinned: pinned.current }, down.current)
+    down.current = null
+    if (next.open) setUsed(true)
+    pinned.current = next.pinned
+    setOpen(next.open)
   }
 
   return (
@@ -89,6 +88,10 @@ export function ContextMeter({ botId, botName }: { botId: string; botName: strin
         type="button"
         onPointerEnter={onPillEnter}
         onPointerLeave={onPillLeave}
+        onPointerDownCapture={onPointerDownCapture}
+        onKeyDown={() => {
+          down.current = null
+        }}
         onFocus={() => void loadPopover()}
         onClick={onClick}
         aria-label={view.muted ? 'Context size: not reported yet' : `Context size: ${view.label}`}

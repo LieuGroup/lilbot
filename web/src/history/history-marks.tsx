@@ -50,12 +50,12 @@ export function StartMarker({ name, avatar, at }: { name: string; avatar?: Avata
 export const CompactionLine = memo(function CompactionLine({ item }: { item: Extract<ChatItem, { kind: 'compaction' }> }) {
   return (
     <div className="flex w-full items-center gap-3 py-2">
-      <hr className="h-px flex-1 border-0 bg-hairline" />
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums">
+      <hr className="h-px min-w-3 flex-1 border-0 bg-hairline" />
+      <div className="flex min-w-0 items-center justify-center gap-1.5 text-center text-xs text-muted-foreground tabular-nums">
         <ChevronsDownUpIcon className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
-        <span>{compactionLineText(item)}</span>
+        <span className="min-w-0">{compactionLineText(item)}</span>
       </div>
-      <hr className="h-px flex-1 border-0 bg-hairline" />
+      <hr className="h-px min-w-3 flex-1 border-0 bg-hairline" />
     </div>
   )
 })

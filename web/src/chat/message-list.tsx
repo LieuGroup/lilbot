@@ -78,7 +78,18 @@ export function MessageList({ botId, botName, avatar, chat, emptyHint }: Message
         <MessageScrollerViewport ref={viewport} aria-label="Conversation" onScroll={() => check(true)}>
           <MessageScrollerContent className="mx-auto w-full max-w-[744px] gap-[18px] px-4 py-5 md:px-8">
             {items.length === 0 && <p className="mt-[20vh] text-center text-muted-foreground">{emptyHint}</p>}
-            <MessageRows botId={botId} botName={botName} avatar={avatar} items={items} first={first} drawFrom={drawFrom} start={chat.start} load={chat.load} />
+            <MessageRows
+              botId={botId}
+              botName={botName}
+              avatar={avatar}
+              items={items}
+              first={first}
+              drawFrom={drawFrom}
+              start={chat.start}
+              load={chat.load}
+              running={chat.running}
+              turnStart={chat.turnStart}
+            />
             {/* Sent while the bot was busy: waits here until its turn starts. */}
             {queued.map((message, index) => (
               <MessageScrollerItem key={`queued-${index}`} messageId={`queued-${index}`}>

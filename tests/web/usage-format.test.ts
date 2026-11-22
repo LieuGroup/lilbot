@@ -56,12 +56,25 @@ describe('turnUsageView', () => {
   })
 
   test('handles absent usage, partial breakdown and context-only usage', () => {
-    expect(turnUsageView(undefined)).toMatchObject({ empty: true, hasBreakdown: false, totalLabel: null, contextAfter: null })
+    expect(turnUsageView(undefined)).toMatchObject({
+      empty: true,
+      hasBreakdown: false,
+      emptyNote: 'No numbers were recorded for this turn.',
+      totalLabel: null,
+      contextAfter: null
+    })
 
     const contextOnly = turnUsageView({ contextTokens: 12_000, contextWindow: 200_000 })
-    expect(contextOnly).toMatchObject({ empty: false, hasBreakdown: false, totalLabel: null, contextAfter: '12,000 of 200,000' })
+    expect(contextOnly).toMatchObject({
+      empty: false,
+      hasBreakdown: false,
+      emptyNote: 'Token breakdown was not recorded for this turn.',
+      totalLabel: null,
+      contextAfter: '12,000 of 200,000'
+    })
 
     const partial = turnUsageView({ inputTokens: 80, cacheReadTokens: 12_000, outputTokens: 50, contextTokens: 12_200 })
+    expect(partial.emptyNote).toBeNull()
     expect(partial.totalLabel).toBe('12,130 tokens')
     expect(partial.rows[1]).toMatchObject({ label: 'Written to cache', text: '–', muted: true })
     expect(partial.contextAfter).toBe('12,200 tokens')
@@ -99,6 +112,7 @@ describe('compactionLineText', () => {
   test('formats before/after sizes and graceful fallbacks', () => {
     expect(compactionLineText({ beforeTokens: 512_300, afterTokens: 38_900 })).toBe('Conversation shortened · 512,300 to 38,900 tokens')
     expect(compactionLineText({ afterTokens: 38_900 })).toBe('Conversation shortened · to 38,900 tokens')
+    expect(compactionLineText({ afterTokens: 1 })).toBe('Conversation shortened · to 1 token')
     expect(compactionLineText({ compactedMessages: 18 })).toBe('Conversation shortened · 18 messages')
     expect(compactionLineText({})).toBe('Conversation shortened')
   })

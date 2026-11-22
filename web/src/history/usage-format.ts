@@ -12,9 +12,10 @@ interface UsageRow {
   muted: boolean
 }
 
-interface TurnUsageView {
+export interface TurnUsageView {
   empty: boolean
   hasBreakdown: boolean
+  emptyNote: string | null
   totalLabel: string | null
   rows: UsageRow[]
   segments: UsageRow[]
@@ -106,9 +107,12 @@ export function turnUsageView(usage: TurnUsage | undefined): TurnUsageView {
         ? `${formatTokenCount(usage.contextTokens)} of ${formatTokenCount(usage.contextWindow)}`
         : `${formatTokenCount(usage.contextTokens)} ${plural(usage.contextTokens, 'token', 'tokens')}`
       : null
+  const empty = !hasBreakdown && contextAfter === null
+  const emptyNote = hasBreakdown ? null : empty ? 'No numbers were recorded for this turn.' : 'Token breakdown was not recorded for this turn.'
   return {
-    empty: !hasBreakdown && contextAfter === null,
+    empty,
     hasBreakdown,
+    emptyNote,
     totalLabel: hasBreakdown ? `${formatTokenCount(total)} ${plural(total, 'token', 'tokens')}` : null,
     rows,
     segments: rows.filter(row => row.value > 0),
@@ -121,7 +125,7 @@ export function compactionLineText(item: Pick<Extract<ChatItem, { kind: 'compact
   if (item.beforeTokens !== undefined && item.afterTokens !== undefined) {
     return `Conversation shortened · ${formatTokenCount(item.beforeTokens)} to ${formatTokenCount(item.afterTokens)} tokens`
   }
-  if (item.afterTokens !== undefined) return `Conversation shortened · to ${formatTokenCount(item.afterTokens)} tokens`
+  if (item.afterTokens !== undefined) return `Conversation shortened · to ${formatTokenCount(item.afterTokens)} ${plural(item.afterTokens, 'token', 'tokens')}`
   if (item.compactedMessages !== undefined && item.compactedMessages > 0) {
     return `Conversation shortened · ${formatTokenCount(item.compactedMessages)} ${plural(item.compactedMessages, 'message', 'messages')}`
   }

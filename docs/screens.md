@@ -311,22 +311,25 @@ half a second after `threads.changed`). Bot and file names are plain text everyw
 - Message cost and context size (Paper "21 Message cost and context size", #180; counts only, no prices, formatting in
   `history/usage-format.ts`):
   - Turn numbers (`history/turn-actions.tsx`, lazy `history/turn-usage-panel.tsx`, frames 1, 4, 5 and 6): under every
-    finished assistant reply, two 28px icon buttons: Copy and a bar-chart mark (`ChartNoAxesColumnIcon`). Clicking the
-    mark opens a 300px popover on desktop (280px when empty) or a bottom sheet on phones (`history/usage-sheet.tsx`):
+    finished assistant reply once its turn finishes, two 28px icon buttons: Copy and a bar-chart mark
+    (`ChartNoAxesColumnIcon`; omitted on mid-turn text before a tool call when no usage is attached). Clicking the mark
+    opens a 300px popover on desktop (280px when empty) or a bottom sheet on phones (`history/usage-sheet.tsx`):
     "This turn" with total tokens, a 6px segmented bar (desktop only; zero buckets omitted) and the four rows in order
     — Read from cache (`foreground/20`), Written to cache (`foreground/50`), New input (`foreground`), Output
     (`muted-foreground`) — with zero or unreported rows muted and no warning colour, then a hairline and "Context
     after this turn" ("187,620 of 1,000,000", or count alone without a window). Older turns or engines with no numbers
-    read "No numbers were recorded for this turn."
+    read "No numbers were recorded for this turn." (or "Token breakdown was not recorded for this turn." when only the
+    context size was recorded).
   - Context size (`history/context-meter.tsx`, lazy `history/context-popover.tsx`, frames 2, 5 and 6): a 28px pill
     (`bg-foreground/6`) beside the model pill in the composer with a 16px ring and the percentage used (a dash until
     the first turn reports a size, or compact count such as "187k" when the model limit is unknown). Hover or tap opens
-    a 300px popover upward on desktop (bottom sheet on phones) with "Context", "N% used", an ink `Progress` bar,
-    "187,620 of 1,000,000 tokens" (or count alone / "No size reported yet.") and "What <bot> carries into its next
-    reply. The engine shortens a long conversation by itself; a line marks where."
+    a 300px popover upward on desktop (clicking while open from hover pins it; bottom sheet on phones) with "Context",
+    "N% used", an ink `Progress` bar, "187,620 of 1,000,000 tokens" (or count alone / "No size reported yet.") and
+    "What <bot> carries into its next reply. The engine shortens a long conversation by itself; a line marks where."
   - Shortened line (`CompactionLine` in `history/history-marks.tsx`, frame 3): hairlines flanking a 14px inward chevron
     mark and "Conversation shortened · 512,300 to 38,900 tokens" (falls back to after-size, message count, or
-    "Conversation shortened"). Shown both from persisted `compaction` rows and live from `turn.finished.compacted`.
+    "Conversation shortened"). Shown both from persisted `compaction` rows and live from `turn.finished.compacted`
+    (inserted before the turn that triggered compaction).
   - Setup context card (`history/setup-context-card.tsx`, frame 6): in the Setup tab under the model fields, a hairline
     card showing "Context", "N% used", the ink `Progress` bar and exact token count, kept live from `bots.list`.
 

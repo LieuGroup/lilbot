@@ -3,17 +3,18 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 
 import { iconButton } from '@/ui/icon-button'
 import type { TurnUsage } from '../../../shared/chat-schema'
+import { toggleOnClick } from './usage-trigger'
 
 const loadPanel = () => import('./turn-usage-panel')
 const TurnUsagePanel = lazy(loadPanel)
 
 /** Small action marks under a finished assistant reply: copy the text, or open the turn's token and cache counts (Paper artboard 21, frame 1). */
-export function TurnActions({ text, usage }: { text: string; usage?: TurnUsage }) {
+export function TurnActions({ text, usage, showUsage = true }: { text: string; usage?: TurnUsage; showUsage?: boolean }) {
   const [copied, setCopied] = useState(false)
   const [open, setOpen] = useState(false)
   const [used, setUsed] = useState(false)
   const trigger = useRef<HTMLButtonElement>(null)
-  const closedAt = useRef(0)
+  const down = useRef<{ open: boolean } | null>(null)
   const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   useEffect(() => () => clearTimeout(copyTimer.current), [])
@@ -29,16 +30,12 @@ export function TurnActions({ text, usage }: { text: string; usage?: TurnUsage }
       .catch(() => {})
   }
 
-  const handleOpenChange = (next: boolean) => {
-    if (!next && open) closedAt.current = Date.now()
-    setOpen(next)
-  }
-
   const toggle = () => {
     void loadPanel()
-    if (!open && Date.now() - closedAt.current < 250) return
-    setUsed(true)
-    setOpen(current => !current)
+    const next = toggleOnClick(open, down.current)
+    down.current = null
+    if (next) setUsed(true)
+    setOpen(next)
   }
 
   return (
@@ -52,24 +49,34 @@ export function TurnActions({ text, usage }: { text: string; usage?: TurnUsage }
       >
         {copied ? <CheckIcon /> : <CopyIcon />}
       </button>
-      <button
-        ref={trigger}
-        type="button"
-        onPointerEnter={() => void loadPanel()}
-        onFocus={() => void loadPanel()}
-        onClick={toggle}
-        aria-label="Turn numbers"
-        title="Turn numbers"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        className={iconButton({ on: open, className: 'rounded-lg' })}
-      >
-        <ChartNoAxesColumnIcon />
-      </button>
-      {used && (
-        <Suspense>
-          <TurnUsagePanel usage={usage} open={open} onOpenChange={handleOpenChange} anchor={trigger} />
-        </Suspense>
+      {showUsage && (
+        <>
+          <button
+            ref={trigger}
+            type="button"
+            onPointerEnter={() => void loadPanel()}
+            onPointerDownCapture={() => {
+              down.current = { open }
+            }}
+            onKeyDown={() => {
+              down.current = null
+            }}
+            onFocus={() => void loadPanel()}
+            onClick={toggle}
+            aria-label="Turn numbers"
+            title="Turn numbers"
+            aria-haspopup="dialog"
+            aria-expanded={open}
+            className={iconButton({ on: open, className: 'rounded-lg' })}
+          >
+            <ChartNoAxesColumnIcon />
+          </button>
+          {used && (
+            <Suspense>
+              <TurnUsagePanel usage={usage} open={open} onOpenChange={setOpen} anchor={trigger} />
+            </Suspense>
+          )}
+        </>
       )}
     </div>
   )

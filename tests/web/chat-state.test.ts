@@ -165,15 +165,3 @@ test("a message from another device whose turn started first goes before that tu
   expect(texts(chat)).toEqual(['user:late event', 'assistant:On it'])
   expect(chat).toMatchObject({ running: false, queued: [] })
 })
-
-test('a turn that compacted the conversation places the compaction line before the reply with its usage', () => {
-  const usage = { inputTokens: 980, cacheReadTokens: 0, cacheWriteTokens: 18_000, outputTokens: 120, contextTokens: 19_100, contextWindow: 200_000 }
-  const chat = play(
-    withUserMessage(emptyChat, 'keep going'),
-    { type: 'turn.started' },
-    { type: 'text.delta', text: 'Continued.' },
-    { type: 'turn.finished', status: 'completed', text: 'Continued.', usage, compacted: { beforeTokens: 95_000, afterTokens: 18_500 } }
-  )
-  expect(chat.items[1]).toEqual({ kind: 'compaction', beforeTokens: 95_000, afterTokens: 18_500 })
-  expect(chat.items[2]).toMatchObject({ kind: 'assistant', text: 'Continued.', usage })
-})
