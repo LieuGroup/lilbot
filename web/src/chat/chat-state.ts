@@ -162,13 +162,16 @@ export function applyChatEvent(chat: ChatView, event: ChatEvent): ChatView {
       let items = chat.items
       const streaming = last?.kind === 'assistant' && last.streaming
       const usage = event.usage ? { usage: event.usage } : {}
+      const compaction: ViewItem[] = event.compacted ? [{ kind: 'compaction', ...event.compacted }] : []
       if (streaming) {
         // The engine repeats the final text. When this page joined mid-reply it only streamed the
         // end of it, so the engine's text wins whenever it contains what was streamed.
         const text = event.text.endsWith(last.text) ? event.text : last.text
-        items = [...items.slice(0, -1), { ...last, text, streaming: false, stopped, ...usage }]
+        items = [...items.slice(0, -1), ...compaction, { ...last, text, streaming: false, stopped, ...usage }]
       } else if (event.text) {
-        items = [...items, { kind: 'assistant', text: event.text, stopped, ...usage }]
+        items = [...items, ...compaction, { kind: 'assistant', text: event.text, stopped, ...usage }]
+      } else if (compaction.length > 0) {
+        items = [...items, ...compaction]
       }
       if (event.failure) items = [...items, { kind: 'error', text: '', reason: event.failure }]
       else if (!streaming && !event.text && event.status === 'failed') items = [...items, { kind: 'error', text: 'The bot could not finish this reply.' }]

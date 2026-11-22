@@ -1,10 +1,12 @@
-import { LoaderCircleIcon } from 'lucide-react'
+import { ChevronsDownUpIcon, LoaderCircleIcon } from 'lucide-react'
 import { memo } from 'react'
 
 import { BotBadge } from '@/ui/bot-badge'
 import type { Avatar } from '../../../shared/avatar'
+import type { ChatItem } from '../../../shared/chat-schema'
 import type { SessionReason } from '../../../shared/history-schema'
 import { dayLabel, sessionTime, startDate } from './history-labels'
+import { compactionLineText } from './usage-format'
 
 /** Between two days of the conversation. */
 export function DateLine({ at }: { at: number }) {
@@ -43,6 +45,20 @@ export function StartMarker({ name, avatar, at }: { name: string; avatar?: Avata
     </div>
   )
 }
+
+/** Where the engine shortened the conversation (Paper artboard 21, frame 3). */
+export const CompactionLine = memo(function CompactionLine({ item }: { item: Extract<ChatItem, { kind: 'compaction' }> }) {
+  return (
+    <div className="flex w-full items-center gap-3 py-2">
+      <hr className="h-px flex-1 border-0 bg-hairline" />
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums">
+        <ChevronsDownUpIcon className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
+        <span>{compactionLineText(item)}</span>
+      </div>
+      <hr className="h-px flex-1 border-0 bg-hairline" />
+    </div>
+  )
+})
 
 /** Shown at the top of the conversation while an earlier part is on its way. It floats over the
  *  list rather than sitting in it, so the scroller keeps the reader's place when the part arrives. */

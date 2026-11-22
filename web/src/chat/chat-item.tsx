@@ -10,6 +10,8 @@ import type { ChatItem as ChatItemData } from '../../../shared/chat-schema'
 import { ImageNote, SentAttachments } from '../attachments/message-attachments'
 import { useBotStore } from '../bots/bot-store'
 import { thisDeviceId } from '../devices/this-device'
+import { CompactionLine } from '../history/history-marks'
+import { TurnActions } from '../history/turn-actions'
 import type { MessageItem } from './chat-state'
 
 type Failure = NonNullable<Extract<ChatItemData, { kind: 'error' }>['reason']>
@@ -61,6 +63,7 @@ export const ChatItem = memo(function ChatItem({ item, botId, queued = false }: 
               <Markdown remarkPlugins={[remarkGfm]}>{item.text}</Markdown>
             </div>
             {item.stopped && <MessageFooter className="px-0">Stopped</MessageFooter>}
+            {!item.streaming && <TurnActions text={item.text} usage={item.usage} />}
           </MessageContent>
         </Message>
       )
@@ -79,6 +82,7 @@ export const ChatItem = memo(function ChatItem({ item, botId, queued = false }: 
         )
       return <ToolTrace item={item} />
     case 'compaction':
+      return <CompactionLine item={item} />
     case 'connection.sign_in':
       return null
     case 'error':

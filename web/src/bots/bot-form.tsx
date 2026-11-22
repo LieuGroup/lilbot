@@ -28,10 +28,12 @@ interface BotFormProps {
   noModelLabel?: string
   /** The level the engine reports it sends for the saved effort (Setup). */
   sentEffort?: string | null
+  /** Optional context occupancy card shown under the model fields (Setup). */
+  context?: ReactNode
   onSubmit: (values: BotFormValues) => Promise<void>
 }
 
-export function BotForm({ initial, submitLabel, noModelLabel, sentEffort, onSubmit, children }: BotFormProps) {
+export function BotForm({ initial, submitLabel, noModelLabel, sentEffort, context, onSubmit, children }: BotFormProps) {
   const [values, setValues] = useState(initial)
   const listed = useModelProviders()
   const providers = listed ?? []
@@ -96,6 +98,7 @@ export function BotForm({ initial, submitLabel, noModelLabel, sentEffort, onSubm
           <EffortSelector id={`${id}-effort`} value={effort} canDisable={capability?.canDisableReasoning} onChange={level => set({ reasoningEffort: level })} />
         </FormField>
       )}
+      {context}
 
       {error && <Notice tone="error">{error}</Notice>}
       {saved && <Notice tone="ok">Saved.</Notice>}
