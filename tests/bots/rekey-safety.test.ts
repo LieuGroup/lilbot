@@ -19,54 +19,28 @@ test('CLI refuses unknown flags and missing explicit paths (no production defaul
 })
 
 test('pre-flight refuses missing dirs, dangling symlinks, corrupt JSON, read-only files, and low disk space before touching anything', async () => {
-  const cases: Array<{ name: string; mutate: (f: ReturnType<typeof createRekeyFixture>) => Partial<Parameters<typeof runRekey>[0]>; match: string }> = [
-    { name: 'missing workspaces dir', mutate: f => ({ workspacesDir: join(f.dataDir, 'missing-ws') }), match: 'workspaces directory does not exist' },
-    { name: 'missing hermes home', mutate: f => ({ hermesHome: join(f.dataDir, 'missing-h') }), match: 'Hermes home directory does not exist' },
-    {
-      name: 'dangling symlink at new workspace',
-      mutate: f => {
-        symlinkSync('/nonexistent/target', join(f.workspacesDir, 'target-uuid'))
-        return { to: 'target-uuid' }
-      },
-      match: 'symlink at new workspace'
-    },
-    {
-      name: 'dangling symlink at Hermes file',
-      mutate: f => {
-        rmSync(join(f.profileDir, 'lilbot-skills.json'))
-        symlinkSync('/nonexistent/skills', join(f.profileDir, 'lilbot-skills.json'))
-        return {}
-      },
-      match: 'symlink at lilbot-skills.json'
-    },
-    {
-      name: 'corrupt JSON in lilbot-memory.json',
-      mutate: f => {
-        writeFileSync(join(f.profileDir, 'lilbot-memory.json'), '{bad-json')
-        return {}
-      },
-      match: 'invalid JSON'
-    },
-    {
-      name: 'read-only Hermes JSON file',
-      mutate: f => {
-        chmodSync(join(f.profileDir, 'lilbot-computers.json'), 0o400)
-        return {}
-      },
-      match: 'not readable and writable'
-    },
-    { name: 'insufficient free space', mutate: () => ({ testHooks: { minDataBytes: Number.MAX_SAFE_INTEGER } }), match: 'Insufficient free disk space' }
+  type Fix = ReturnType<typeof createRekeyFixture>
+  const cases: Array<[string, (f: Fix) => Partial<Parameters<typeof runRekey>[0]>, string]> = [
+    ['missing workspaces dir', f => ({ workspacesDir: join(f.dataDir, 'missing-ws') }), 'workspaces directory does not exist'],
+    ['missing hermes home', f => ({ hermesHome: join(f.dataDir, 'missing-h') }), 'Hermes home directory does not exist'],
+    ['dangling workspace symlink', f => (symlinkSync('/nonexistent/target', join(f.workspacesDir, 'target-uuid')), { to: 'target-uuid' }), 'symlink at new workspace'],
+    [
+      'dangling Hermes symlink',
+      f => (rmSync(join(f.profileDir, 'lilbot-skills.json')), symlinkSync('/nonexistent/skills', join(f.profileDir, 'lilbot-skills.json')), {}),
+      'symlink at lilbot-skills.json'
+    ],
+    ['corrupt JSON', f => (writeFileSync(join(f.profileDir, 'lilbot-memory.json'), '{bad-json'), {}), 'invalid JSON'],
+    ['read-only JSON', f => (chmodSync(join(f.profileDir, 'lilbot-computers.json'), 0o400), {}), 'not readable and writable'],
+    ['low free space', () => ({ testHooks: { minDataBytes: Number.MAX_SAFE_INTEGER } }), 'Insufficient free disk space']
   ]
-  for (const c of cases) {
+  for (const [name, mutate, match] of cases) {
     const root = mkdtempSync(join(tmpdir(), 'rekey-pre-'))
     try {
       const f = createRekeyFixture(root)
-      const override = c.mutate(f)
       await expect(
-        runRekey({ from: OLD_ID, dataDir: f.dataDir, workspacesDir: f.workspacesDir, hermesHome: f.hermesHome, clearMainChat: false, dryRun: false, ...override }),
-        c.name
-      ).rejects.toThrow(c.match)
-      // Verify untouched state.
+        runRekey({ from: OLD_ID, dataDir: f.dataDir, workspacesDir: f.workspacesDir, hermesHome: f.hermesHome, clearMainChat: false, dryRun: false, ...mutate(f) }),
+        name
+      ).rejects.toThrow(match)
       const db = new Database(f.dbPath, { readonly: true })
       expect(db.query('SELECT id FROM bots WHERE id = ?').get(OLD_ID)).toBeTruthy()
       db.close()
