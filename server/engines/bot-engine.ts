@@ -43,8 +43,10 @@ export interface RoutineOptions {
   origin?: TurnOrigin
   /** Start the run's session with only these toolsets (webhook runs, `server/webhooks/webhook-access.ts`). */
   toolsets?: string[]
-  /** The model a new session runs on (a same-bot check, see `server/work/`); without it, the bot's own. */
+  /** The model a new session runs on (a same-bot check or worker); without it, the bot's own. */
   model?: BotModel
+  /** The reasoning effort a new session starts with; absent inherits on the bot's own model and omits on another model. */
+  reasoningEffort?: ReasoningEffort
 }
 
 /** Partial or full context report from an engine. */

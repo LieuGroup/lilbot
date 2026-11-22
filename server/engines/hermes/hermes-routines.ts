@@ -49,8 +49,11 @@ export async function runRoutine(botId: string, prompt: string, options: Routine
         const snapshot = await socket.request('session.resume', { session_id: session.stored_session_id, source: 'tool', display_projection: true })
         const items = itemsFromRows(snapshot.display_messages)
         const last = items.filter(item => item.kind === 'assistant').at(-1)
+        const switched = typeof snapshot.stored_session_id === 'string' && typeof session.stored_session_id === 'string' && snapshot.stored_session_id !== session.stored_session_id
+        const sliced = !switched && base < items.length ? items.slice(base) : items
+        const turnItems = receipt.outcome === 'completed' && sliced.every(item => item.kind === 'user') ? items : sliced
         return {
-          items: items.slice(base),
+          items: turnItems,
           status: receipt.outcome === 'completed' ? ('completed' as const) : receipt.outcome === 'interrupted' ? ('stopped' as const) : ('failed' as const),
           text: last ? last.text : `Routine ended: ${receipt.outcome ?? receipt.status}. Execution was not retried.`,
           ...(receipt.status === 'unknown' ? { unknownReceipt: true as const } : {})
