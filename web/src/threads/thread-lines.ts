@@ -96,9 +96,9 @@ export function lineState(thread: BotThread, botId: string, now: number): LineSt
   return plain(joined('Finished', runTime(thread, now), filesLine(thread, botId)), 'finished')
 }
 
-/** The bold line: "Worker · task", "Asked X", "X asked this bot", "X · task", "From X · task". */
+/** The bold line: "Worker · task", "Worker · <computer> · task", "Asked X", "X asked this bot", "X · task", "From X · task". */
 export function lineTitle(thread: BotThread, botId: string) {
-  if (thread.worker) return `Worker · ${taskTitle(thread)}`
+  if (thread.worker) return joined('Worker', thread.computer && (thread.computerName ?? thread.computer), taskTitle(thread))
   const asking = sides(thread).from.id === botId
   const name = otherName(thread, botId)
   if (!isTask(thread)) return asking ? `Asked ${name}` : `${name} asked this bot`

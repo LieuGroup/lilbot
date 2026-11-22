@@ -51,6 +51,7 @@ interface WorkDeps {
   /** `LILBOT_REVIEW_MODEL`: what a same-bot check runs on when it differs from the bot's own. */
   reviewModel: BotModel | null
   publish: (frame: EventFrame) => void
+  remoteWork?: { deliver: (threadId: string, runId: string, prompt: string) => boolean; stop: (botId: string, chatId: string) => Promise<unknown> }
 }
 
 /** The line in a conversation that links to the item opened there. */
@@ -132,7 +133,8 @@ export function createWork({
   history,
   calls,
   reviewModel,
-  publish
+  publish,
+  remoteWork
 }: WorkDeps) {
   const work = new WorkService(new WorkStore(database), {
     requireBot: id => bots.requireBot(id),
@@ -146,17 +148,24 @@ export function createWork({
       if (store.exists(botId)) activity.observe({ botId, chatId: `work:${itemId}`, key, status: on ? 'waiting' : 'finished' })
     },
     line: item => {
-      if (item.chatId && store.exists(item.ownerId)) history.reference(item.ownerId, item.chatId, workLine(item), item.createdAt)
+      if (item.chatId && !item.chatId.startsWith('remote:') && store.exists(item.ownerId)) history.reference(item.ownerId, item.chatId, workLine(item), item.createdAt)
     },
     tell: (id, item, prompt, oscar) => answers.queue(id, item, prompt, false, oscar),
     changed: () => publish({ event: 'work.changed' })
   })
-  /** The session a bot's answer or notice goes to: the one it came from, else its main conversation. */
-  const sessionOf = (botId: string, chatId: string | null) => chatId ?? prefs.mainChat(botId) ?? undefined
+  /** The session a bot's answer or notice goes to: the one it came from (never a synthetic `remote:` id), else its main conversation. */
+  const sessionOf = (botId: string, chatId: string | null) =>
+    chatId?.startsWith('remote:')
+      ? (threadStore.origin(chatId.slice('remote:'.length), botId)?.sourceChat ?? prefs.mainChat(botId) ?? undefined)
+      : (chatId ?? prefs.mainChat(botId) ?? undefined)
   const answers = new WorkAnswers(
     database,
-    (botId, prompt, runId, chatId) => bots.runRoutine(botId, prompt, { runId, chatId: sessionOf(botId, chatId), hiddenInput: true, onChat: () => {}, origin: { line: boardLine } }),
+    async (botId, prompt, runId, chatId) => {
+      if (chatId?.startsWith('remote:') && remoteWork?.deliver(chatId.slice('remote:'.length), runId, prompt)) return
+      return bots.runRoutine(botId, prompt, { runId, chatId: sessionOf(botId, chatId), hiddenInput: true, onChat: () => {}, origin: { line: boardLine } })
+    },
     async (botId, chatId) => {
+      if (chatId?.startsWith('remote:')) return void (await remoteWork?.stop(botId, chatId))
       const session = sessionOf(botId, chatId)
       if (session && store.exists(botId)) await engine.stopRun?.(store.get(botId).engineBotId, session)
     }

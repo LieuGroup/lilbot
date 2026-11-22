@@ -4,6 +4,7 @@ import type { BotModel } from '../../shared/bot-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import { AttachInput, DelegateInput } from '../../shared/thread-schema'
 import { refuseUnsafe } from '../memory/memory-safety'
+import { type ResolvedTask, type ResolveRemoteWorker, validateTaskTargets } from './delegation-remote'
 import { checkFiles, stageFiles, withBatchCopies } from './exchange-files'
 import { THREAD_LIMITS } from './thread-limits'
 import type { ThreadHost, ThreadService } from './thread-service'
@@ -12,6 +13,7 @@ export interface DelegationHost extends ThreadHost {
   folder(botId: string): Promise<string>
   steerRun?(botId: string, chatId: string, text: string): Promise<'steered' | 'not_running'>
   validateModel?(model: BotModel): Promise<void>
+  resolveRemoteWorker?: ResolveRemoteWorker
 }
 type Bot = { id: string; name: string }
 /** The work board (#141), so work handed out inside an item hangs under it as the receiver's own item. */
@@ -70,7 +72,7 @@ export class DelegationService {
         fresh.some(t => t.worker)
       )
     // Everything is checked before any task is handed out, so a refusal hands out nothing.
-    const resolved = await Promise.all(
+    const resolved: ResolvedTask[] = await Promise.all(
       input.tasks.map(async t => {
         if (t.exchangeId) {
           const entry = await this.other(t.exchangeId, callerId)
@@ -88,7 +90,7 @@ export class DelegationService {
     const continuations = input.tasks.flatMap(t => (t.exchangeId ? [t.exchangeId] : []))
     if (new Set(continuations).size !== continuations.length) throw new LilBotError('thread_target', 'One task per exchange in a call.')
     for (const t of input.tasks) refuseUnsafe(t.task)
-    for (const t of fresh) if (t.model) await this.host.validateModel?.(t.model)
+    await validateTaskTargets(callerId, input.tasks, resolved, i => !this.store.delivery(`${callerId}:${ids[i]}`), this.host)
     this.checkCaps(callerId, input.tasks, ids, resolved)
     const root = await this.host.folder(callerId)
     for (const t of fresh) await checkFiles(root, t.files ?? [])
@@ -109,7 +111,7 @@ export class DelegationService {
         let added = false
         const list = []
         for (const [i, task] of input.tasks.entries()) {
-          const { target, worker } = resolved[i]
+          const { target, worker, remote } = resolved[i]
           const prior = this.store.delivery(`${callerId}:${ids[i]}`)
           const delivery =
             prior ??
@@ -126,7 +128,10 @@ export class DelegationService {
                 parentId: task.exchangeId ? null : parentId,
                 worker,
                 model: task.model,
-                reasoningEffort: task.reasoningEffort
+                reasoningEffort: task.reasoningEffort,
+                computer: remote?.computerId,
+                computerName: remote?.computerName,
+                cwd: remote?.cwd
               },
               (messageId, thread) => {
                 added = true
@@ -135,17 +140,7 @@ export class DelegationService {
                   else if (parentId) this.work?.child(parentId, { id: thread.id, owner: target, asker: caller, task: task.task })
                 }
                 for (const [n, c] of allCopies[i].entries())
-                  this.threads.files.add({
-                    id: `${messageId}:${n}`,
-                    thread_id: thread.id,
-                    message_id: messageId,
-                    sender: caller.id,
-                    name: c.name,
-                    size: c.size,
-                    sha256: c.sha256,
-                    source: c.source,
-                    copy: c.copy
-                  })
+                  this.threads.files.add({ id: `${messageId}:${n}`, thread_id: thread.id, message_id: messageId, sender: caller.id, ...c })
               }
             )
           const thread = this.store.get(delivery.threadId)
@@ -153,6 +148,7 @@ export class DelegationService {
             exchangeId: thread.id,
             to: thread.worker ? 'worker' : target.name,
             ...(thread.worker ? { worker: true as const } : {}),
+            ...(thread.computer ? { computer: thread.computerName ?? thread.computer } : {}),
             status: thread.status,
             batchId: thread.batchId
           })
@@ -171,11 +167,12 @@ export class DelegationService {
   }
 
   /** The other participant of an exchange this bot takes part in (the bot itself for its own worker). */
-  private async other(exchangeId: string, botId: string) {
+  private async other(exchangeId: string, botId: string): Promise<ResolvedTask> {
     const thread = this.store.get(exchangeId)
     if (thread.worker) {
       if (thread.participants[0].id !== botId) throw new LilBotError('thread_forbidden', 'You are not part of that exchange.')
-      return { target: await this.host.requireBot(botId), worker: true }
+      const remote = thread.computer ? { computerId: thread.computer, computerName: thread.computerName ?? thread.computer, cwd: thread.cwd } : undefined
+      return { target: await this.host.requireBot(botId), worker: true, remote, existingModel: thread.model }
     }
     const other = thread.participants.find(p => p.id !== botId)
     if (!other || !thread.participants.some(p => p.id === botId)) throw new LilBotError('thread_forbidden', 'You are not part of that exchange.')

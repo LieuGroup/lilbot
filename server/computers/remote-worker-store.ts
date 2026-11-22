@@ -5,7 +5,7 @@ import type { Database } from 'bun:sqlite'
 import type { ChatItem, TurnUsage } from '../../shared/chat-schema'
 import { SAFE_WORKER_SESSION_ID } from '../../shared/worker-frame-schema'
 
-type RemoteFailureReason = 'offline' | 'interrupted' | 'prompt_too_large' | 'computer_removed' | 'invalid_start'
+type RemoteFailureReason = 'offline' | 'interrupted' | 'prompt_too_large' | 'computer_removed' | 'invalid_start' | 'session_lost'
 
 export interface RemoteWorkerResult {
   status: 'completed' | 'failed' | 'stopped'
@@ -26,6 +26,7 @@ export interface StoredRemoteRun {
   sessionId: string | null
   status: 'running' | 'settled'
   outcome: RemoteWorkerResult | null
+  confirmedSteers: string[]
   startedAt: number
   endedAt: number | null
 }
@@ -45,11 +46,14 @@ interface RawRow {
 
 function toStored(row: RawRow): StoredRemoteRun {
   let outcome: RemoteWorkerResult | null = null
+  let confirmedSteers: string[] = []
   if (row.outcome) {
     try {
-      outcome = JSON.parse(row.outcome) as RemoteWorkerResult
+      const parsed = JSON.parse(row.outcome) as RemoteWorkerResult & { pendingSteers?: unknown }
+      if (row.status === 'settled') outcome = parsed
+      else if (Array.isArray(parsed.pendingSteers)) confirmedSteers = parsed.pendingSteers.filter((s): s is string => typeof s === 'string')
     } catch {
-      outcome = { status: 'failed', text: 'Stored remote worker outcome was unreadable.', items: [], unknownReceipt: true }
+      if (row.status === 'settled') outcome = { status: 'failed', text: 'Stored remote worker outcome was unreadable.', items: [], unknownReceipt: true }
     }
   }
   return {
@@ -61,6 +65,7 @@ function toStored(row: RawRow): StoredRemoteRun {
     sessionId: row.session_id,
     status: row.status,
     outcome,
+    confirmedSteers,
     startedAt: row.started_at,
     endedAt: row.ended_at
   }
@@ -96,6 +101,19 @@ export class RemoteWorkerStore {
   updateSession(runId: string, sessionId: string) {
     if (!SAFE_WORKER_SESSION_ID.test(sessionId)) return
     this.db.query('UPDATE remote_worker_runs SET session_id=? WHERE run_id=?').run(sessionId, runId)
+  }
+
+  /** Clears a dead remote driver session id across runs of `chatId` so future continuations start fresh instead of retrying `--resume`. */
+  clearSession(chatId: string, sessionId: string) {
+    this.db.query('UPDATE remote_worker_runs SET session_id=NULL WHERE chat_id=? AND session_id=?').run(chatId, sessionId)
+  }
+
+  /** Persists a confirmed steer text on a running row so leader restarts never drop confirmed steers or mistake unconfirmed ones. */
+  recordSteer(runId: string, text: string) {
+    const row = this.get(runId)
+    if (row?.status !== 'running') return
+    const pendingSteers = [...row.confirmedSteers, text]
+    this.db.query("UPDATE remote_worker_runs SET outcome=? WHERE run_id=? AND status='running'").run(JSON.stringify({ pendingSteers }), runId)
   }
 
   /** Newest valid remote driver session id recorded for this LilBot chatId, for `--resume` continuations. */

@@ -27,7 +27,15 @@ const summary = (topic: string) =>
 export function aboutTools({ bots, workspaces, computers, t3, commit, dataDir, changes, connections }: SystemDeps): McpTool[] {
   const guideTopics = topics()
   const computerRows = () =>
-    computers.list().map(computer => ({ id: computer.id, name: computer.name, os: computer.os, online: computer.online, main: computer.main, lastSeen: iso(computer.lastSeen) }))
+    computers.list().map(computer => ({
+      id: computer.id,
+      name: computer.name,
+      os: computer.os,
+      online: computer.online,
+      main: computer.main,
+      lastSeen: iso(computer.lastSeen),
+      ...(computer.workerAgents?.length ? { workerAgents: computer.workerAgents } : {})
+    }))
   return [
     readTool(
       'lilbot_about',

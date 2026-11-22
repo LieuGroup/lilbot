@@ -22,8 +22,10 @@ function filesLine(from: string, files: FileRow[], worker?: boolean) {
 function workerPrompt(d: Delivery, thread: BotThread, sender: string, files: FileRow[], redirects: Delivery[]) {
   const head = d.kind === 'redirect' ? 'Redirect for your worker task' : 'Worker task'
   const later = redirects.map(r => `\nRedirect from your parent session, sent after the task above; it changes the task:\n${fence(r.text)}`).join('')
+  const where = thread.computer ? ` You are running on computer ${JSON.stringify(thread.computerName ?? thread.computer)} in folder ${JSON.stringify(thread.cwd ?? '')}.` : ''
+  const attach = thread.computer ? '' : ` To attach workspace files to your answer, call lilbot_delegation with action attach and exchangeId ${thread.id} before you finish.`
   const item = `\nLilBot opened a code work item for this worker: ${thread.id}. Before you start, write its done definition with lilbot_work (itemId ${thread.id}) and move it to working. If you hit a real product or design ambiguity, ask Oscar once with status needs_oscar on item ${thread.id}. When done, attach real verification evidence and mark item ${thread.id} done.`
-  return `${head} for ${JSON.stringify(sender)} (worker exchange ${thread.id}). You are a fresh hidden worker session of yourself. ${WORKER_UNTRUSTED}\n${fence(d.text)}${later}${filesLine(sender, files, true)}${item}\nDo the requested work and answer in your final response. LilBot sends it back to your parent session automatically. To attach workspace files to your answer, call lilbot_delegation with action attach and exchangeId ${thread.id} before you finish. Do not spawn another worker, delegate work, or start a group from this worker session.`
+  return `${head} for ${JSON.stringify(sender)} (worker exchange ${thread.id}). You are a fresh hidden worker session of yourself.${where} ${WORKER_UNTRUSTED}\n${fence(d.text)}${later}${filesLine(sender, files, true)}${item}\nDo the requested work and answer in your final response. LilBot sends it back to your parent session automatically.${attach} Do not spawn another worker, delegate work, or start a group from this worker session.`
 }
 
 /** A request or redirect for the receiver, with redirects queued behind it before it started. */
@@ -80,4 +82,13 @@ export function replyText(items: ChatItem[], clamp?: { exchangeId: string; hard:
     if ((cut.match(/```/g)?.length ?? 0) % 2 === 1) cut += close
   }
   return `${cut}${note}`
+}
+
+/** Extra `runRoutine` options for a work turn: remote target, plus model/effort on first start (and remote continuations). */
+export function workRunOptions(thread: BotThread, toWork: boolean, workSession?: string) {
+  if (!toWork) return {}
+  return {
+    ...(thread.computer ? { computer: thread.computer, cwd: thread.cwd, threadId: thread.id } : {}),
+    ...(!workSession || thread.computer ? { ...(thread.model ? { model: thread.model } : {}), ...(thread.reasoningEffort ? { reasoningEffort: thread.reasoningEffort } : {}) } : {})
+  }
 }

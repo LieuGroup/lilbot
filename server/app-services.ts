@@ -7,7 +7,7 @@ import { ActivityStore } from './activity/activity-store'
 import { createConnections } from './app-connections'
 import { createGoals } from './app-goals'
 import { createMemory } from './app-memory'
-import { createRemoteWorkers } from './app-remote-workers'
+import { createRemoteWorkers, remoteWorkAnswers } from './app-remote-workers'
 import { createThreads } from './app-threads'
 import { createWebhooks, webhookMessages } from './app-webhooks'
 import { createWork, giveFrom } from './app-work'
@@ -158,7 +158,13 @@ export function createAppServices(
   }
   const { webhooks, webhookRuns, gates } = createWebhooks({ webhookStore, messages, bots, rootOf, calls, token, origin: HOOK_ORIGIN, observeRun, publish, repeat })
   const runs = { threadStore, routineStore, webhookStore, rootOf, goalStore: new GoalStore(database), reviewModel: mem.reviewModel }
-  const workDeps = { database, engine, store, prefs, bots, ...runs, libraryStore, workspaces, activity, history: history.store, calls, publish }
+  const remoteWork = remoteWorkAnswers(threadStore, () => ({
+    computerOnline: id => computers.list().some(c => c.id === id && c.online && !c.keyConflict),
+    oscarAnswer: (id, reqId, text) => threads.oscarAnswer(id, reqId, text),
+    changed: () => threads.changed(),
+    stopByChat: (botId, chatId) => remoteWorkers.runner.stopByChat(botId, chatId)
+  }))
+  const workDeps = { database, engine, store, prefs, bots, ...runs, libraryStore, workspaces, activity, history: history.store, calls, publish, remoteWork }
   const { work, links, answers, checks, checkSessions } = createWork(workDeps)
   const redirectUri = ACCESS_HOST ? `https://${ACCESS_HOST}${CALLBACK_PATH}` : undefined
   const connBase = { database, dataDir: DATA_DIR, port: PORT, engineToken: token, redirectUri, callbackEnabled: settings.ACCESS_CALLBACK_ENABLED ?? false }
@@ -166,8 +172,8 @@ export function createAppServices(
   const mcp = createConnections({ ...connBase, ...connServices, t3Refusal: gates.t3Refusal, serviceRefusal: gates.serviceRefusal(checkSessions), publish, repeat })
   const rwDeps = { database, computers, store, memory, skills, computersChanged: () => publish({ event: 'computers.changed' }) }
   const remoteWorkers = createRemoteWorkers({ ...rwDeps, handleMcp: (ctx, body) => system.workerMcp(ctx, body) })
-  const threadDeps = { engine, store, prefs, bots, workspaces, history, activity, threadStore, calls, work: links, memory, library, root: WORKSPACES_DIR, rootOf, publish }
-  const { threads, delegation } = createThreads({ ...threadDeps, botsChanged, memoryChanged })
+  const threadCore = { engine, store, prefs, bots, workspaces, history, activity, threadStore, calls, work: links }
+  const { threads, delegation } = createThreads({ ...threadCore, memory, library, root: WORKSPACES_DIR, rootOf, remoteWorkers, publish, botsChanged, memoryChanged })
   const routines = new RoutineService(routineStore, bots, () => publish({ event: 'routines.changed' }), routineSettings(process.env))
   const { goals, boards } = createGoals({ goalStore: runs.goalStore, work, answers, threads, routines, activity, store, publish, repeat })
   const giveFile = giveFrom(library, calls, threadStore, routineStore, webhookStore, rootOf)
