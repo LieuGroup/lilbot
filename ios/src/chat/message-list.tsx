@@ -5,7 +5,6 @@ import type { ChatView, MessageItem } from '../../../shared/client/chat/chat-sta
 import { SendIcon } from '../ui/icon'
 import { useTheme } from '../ui/theme'
 import { AppText } from '../ui/text'
-import { radius } from '../ui/tokens'
 import { ChatItem } from './message-item'
 
 interface MessageListProps {
@@ -48,17 +47,20 @@ export function MessageList({ botId, botName, chat, emptyHint }: MessageListProp
 }
 
 interface ComposerProps {
+  botName: string
   ready: boolean
   running: boolean
   onSend: (text: string) => void
   onStop: () => void
 }
 
-/** The message box: multiline text, an icon Send when idle, Stop while the bot works. */
-export function Composer({ ready, running, onSend, onStop }: ComposerProps) {
+/** The message box, shaped like the web composer's chat box: text on top, send/stop inside. */
+export function Composer({ botName, ready, running, onSend, onStop }: ComposerProps) {
   const theme = useTheme()
   const [text, setText] = useState('')
-  const canSend = ready && text.trim().length > 0
+  const hasContent = text.trim().length > 0
+  const canSend = ready && hasContent
+  const stopping = running && !hasContent
 
   const submit = () => {
     if (!canSend) return
@@ -68,41 +70,33 @@ export function Composer({ ready, running, onSend, onStop }: ComposerProps) {
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: theme.hairline, backgroundColor: theme.background }}>
-        <TextInput
-          testID="composer-input"
-          value={text}
-          onChangeText={setText}
-          placeholder="Message"
-          placeholderTextColor={theme.mutedForeground}
-          multiline
-          editable={ready}
-          onSubmitEditing={submit}
-          blurOnSubmit={false}
-          style={{
-            flex: 1,
-            maxHeight: 120,
-            backgroundColor: theme.card,
-            borderRadius: radius.lg,
-            borderWidth: 1,
-            borderColor: theme.input,
-            paddingHorizontal: 14,
-            paddingVertical: 10,
-            fontFamily: 'Inter_400Regular',
-            fontSize: 15,
-            lineHeight: 22,
-            color: theme.foreground
-          }}
-        />
-        {running ? (
-          <Pressable onPress={onStop} accessibilityLabel="Stop" style={{ backgroundColor: theme.secondary, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10 }}>
-            <AppText variant="name">Stop</AppText>
-          </Pressable>
-        ) : (
-          <Pressable onPress={submit} disabled={!canSend} accessibilityLabel="Send" accessibilityRole="button" accessibilityState={{ disabled: !canSend }} testID="send-button" style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: canSend ? theme.primary : theme.muted }}>
-            <SendIcon color={canSend ? theme.primaryForeground : theme.mutedForeground} />
-          </Pressable>
-        )}
+      <View style={{ alignItems: 'center', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12 }}>
+        <View style={{ width: '100%', maxWidth: 680, backgroundColor: theme.card, borderRadius: 22, borderWidth: 1, borderColor: theme.hairline, paddingTop: 12, paddingHorizontal: 14, paddingBottom: 10 }}>
+          <TextInput
+            testID="composer-input"
+            value={text}
+            onChangeText={setText}
+            placeholder={`Message ${botName}`}
+            placeholderTextColor={theme.mutedForeground}
+            multiline
+            editable={ready}
+            onSubmitEditing={submit}
+            blurOnSubmit={false}
+            style={{ maxHeight: 120, paddingHorizontal: 0, paddingVertical: 0, fontFamily: 'Inter_400Regular', fontSize: 15, lineHeight: 22, color: theme.foreground }}
+          />
+          <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 32, marginTop: 8 }}>
+            <View style={{ flex: 1 }} />
+            {stopping ? (
+              <Pressable onPress={onStop} accessibilityLabel="Stop" style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.foreground }}>
+                <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: theme.card }} />
+              </Pressable>
+            ) : (
+              <Pressable onPress={submit} disabled={!canSend} accessibilityLabel="Send" accessibilityRole="button" accessibilityState={{ disabled: !canSend }} testID="send-button" style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: canSend ? theme.foreground : theme.muted }}>
+                <SendIcon color={canSend ? theme.background : theme.mutedForeground} size={18} />
+              </Pressable>
+            )}
+          </View>
+        </View>
       </View>
     </KeyboardAvoidingView>
   )

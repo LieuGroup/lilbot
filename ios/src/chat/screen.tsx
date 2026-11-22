@@ -31,7 +31,7 @@ export function ChatScreen({ bot }: { bot: Bot }) {
       ) : (
         <>
           <MessageList botId={bot.id} botName={bot.name} chat={chat.view} emptyHint={chat.ready ? `Message ${bot.name}` : 'Opening the conversation…'} />
-          <Composer ready={chat.ready} running={chat.view.running} onSend={send} onStop={() => void chat.stop()} />
+          <Composer botName={bot.name} ready={chat.ready} running={chat.view.running} onSend={send} onStop={() => void chat.stop()} />
         </>
       )}
     </View>

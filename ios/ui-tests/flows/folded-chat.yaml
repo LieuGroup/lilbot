@@ -26,9 +26,9 @@ appId: com.lilbot.app.dev
     commands:
       - tapOn: "Not Now"
 - assertVisible: "Hello! I am the fake LilBot server."
-# Tap the top edge of the composer: the lower strip does not take focus under XCUITest.
+# Focus the composer field directly: percentage taps miss the new card layout.
 - tapOn:
-    point: "8%,90%"
+    id: "composer-input"
 - inputText: "Hi there"
 - hideKeyboard
 - tapOn: "Send"
