@@ -68,3 +68,10 @@ export const MCP_SIGN_IN_CARD_TABLES = `CREATE TABLE IF NOT EXISTS connection_si
      created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, settled_at INTEGER);
    CREATE INDEX IF NOT EXISTS connection_sign_in_cards_waiting ON connection_sign_in_cards(connection_id, state) WHERE state = 'waiting';
    CREATE INDEX IF NOT EXISTS connection_sign_in_cards_bot_chat ON connection_sign_in_cards(bot_id, chat_id, created_at);`
+
+/** Schema step 39, leader-side remote worker runs (Slice 3). Tracks each active run, its assigned computer, persisted
+ *  remote session id (for `--resume` continuations), and settled outcomes across leader restarts and late/duplicate frames. */
+export const REMOTE_WORKER_TABLES = `CREATE TABLE IF NOT EXISTS remote_worker_runs(run_id TEXT PRIMARY KEY, computer_id TEXT NOT NULL, bot_id TEXT NOT NULL, thread_id TEXT NOT NULL,
+     chat_id TEXT NOT NULL, session_id TEXT, status TEXT NOT NULL DEFAULT 'running', outcome TEXT, started_at INTEGER NOT NULL, ended_at INTEGER);
+   CREATE INDEX IF NOT EXISTS remote_worker_runs_active ON remote_worker_runs(computer_id, status) WHERE status = 'running';
+   CREATE INDEX IF NOT EXISTS remote_worker_runs_chat ON remote_worker_runs(chat_id, started_at DESC);`

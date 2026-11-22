@@ -16,6 +16,11 @@ const HIDING = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF\u{E0
  *  VS16), so a model can read text there that a person cannot. */
 const CONTROLS = /[\u007F-\u009F]/u
 const HIGH_VARIATION_SELECTORS = /[\u{E0100}-\u{E01EF}]/u
+/** Shared invisible-character cleaners built from the same control/format/high-variation-selector definitions. */
+const INVISIBLE_TEXT = new RegExp(`(?:[\\u0000-\\u0008\\u000b-\\u001f]|${CONTROLS.source}|\\p{Cf}|${HIGH_VARIATION_SELECTORS.source})`, 'gu')
+const INVISIBLE_LINE = new RegExp(`(?:\\p{Cc}|\\p{Cf}|${HIGH_VARIATION_SELECTORS.source})`, 'gu')
+export const stripInvisibleText = (text: string) => text.replace(INVISIBLE_TEXT, '')
+export const stripInvisibleLine = (text: string) => text.replace(INVISIBLE_LINE, '')
 /** Every format character but the soft hyphen: refused in outside data (`outsideReason`) only. */
 const FORMAT = /[^\P{Cf}\u00AD]/u
 /** A run of token characters (starting where one starts, never inside one) followed by `.`, a second run and `.`. The
