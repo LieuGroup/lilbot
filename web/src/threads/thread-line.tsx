@@ -20,13 +20,14 @@ const ring = 'rounded-[10px] ring-1 ring-hairline'
  *  drawn at the batch's first line; a group draws its own line; an exchange not read yet keeps the plain `fallback`. */
 export default function ThreadLine({ botId, threadId, fallback }: { botId: string; threadId: string; fallback: ReactNode }) {
   const threads = useThreads(botId)
+  const waitingWork = useWaitingWork()
   const thread = threads?.find(candidate => candidate.id === threadId)
   if (!threads || !thread) return fallback
   if (thread.group) return <GroupLine botId={botId} thread={thread} />
   const batch = batchOf(threads, thread)
   if (batch[0].id !== thread.id) return null
   if (batch.length === 1) return <ThreadRow botId={botId} thread={thread} inWorkerBatch={false} className={ring} />
-  const summary = batchSummary(batch)
+  const summary = batchSummary(batch, waitingWork)
   const allWorkers = batch.every(isWorker)
   return (
     <section aria-label={summary.title} className={`flex flex-col ${ring}`}>

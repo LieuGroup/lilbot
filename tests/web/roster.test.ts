@@ -140,14 +140,26 @@ test('elapsed time reads in plain words', () => {
   expect(formatElapsed(125 * 60_000)).toBe('2 h')
 })
 
-test('a bot running workers shows their count and live activity, never "For <own name>"', () => {
-  const one = { ...bot('a', { activity: { status: 'working', text: 'Working' } }), workers: { count: 1, activity: 'Running tests' } }
-  expect(rowState(one)).toEqual({ tone: 'working', text: '1 worker · Running tests', unread: false })
+test('a bot running workers shows their count and live activity when idle, while its own reply and group stay ahead', () => {
+  const idleWithOne = { ...bot('a', { activity: { status: 'idle' } }), workers: { count: 1, activity: 'Running tests' } }
+  expect(rowState(idleWithOne)).toEqual({ tone: 'working', text: '1 worker · Running tests', unread: false })
   const quietOne = { ...bot('a'), workers: { count: 1 } }
   expect(rowState(quietOne)).toEqual({ tone: 'working', text: '1 worker · Working', unread: false })
-  const two = { ...bot('a', { activity: { status: 'working', unread: true } }), workers: { count: 2 } }
+  const two = { ...bot('a', { activity: { status: 'idle', unread: true } }), workers: { count: 2 } }
   expect(rowState(two)).toEqual({ tone: 'working', text: '2 workers running', unread: true })
-  // Waiting for Oscar still wins over background workers.
+  // Bot's own active reply in main chat stays ahead of background workers.
+  const both = { ...bot('a', { activity: { status: 'working', text: 'Running commands' } }), workers: { count: 1, activity: 'Running tests' } }
+  expect(rowState(both)).toEqual({ tone: 'working', text: 'Running commands', unread: false })
+  // Active group turn also stays ahead of background workers.
+  const g = { id: 'g1', purpose: 'Compare plans', round: 1, bots: 2, leading: true, activity: 'Searching the web' }
+  const inGroup = { ...bot('a', { activity: { status: 'working', text: 'Working' } }), groups: [g], workers: { count: 2 } }
+  expect(rowState(inGroup)).toEqual({ tone: 'working', text: 'Leading a group · Searching the web', unread: false })
+  // Transient main-chat finished falls through to still-running workers; waiting for Oscar wins over all.
+  const finWithWorker = { ...bot('a', { activity: { status: 'finished' } }), workers: { count: 1, activity: 'Running tests' } }
+  expect(rowState(finWithWorker)).toEqual({ tone: 'working', text: '1 worker · Running tests', unread: false })
   const waiting = { ...bot('a', { activity: { status: 'waiting', unread: true } }), workers: { count: 1, activity: 'Running tests' } }
   expect(rowState(waiting)).toEqual({ tone: 'waiting', text: 'Waiting for you', unread: true })
+  // activitySince tracks worker state when the bot's own chat is idle.
+  const idle = bot('a', { activity: { status: 'idle' } })
+  expect(activitySince([idle], {}, [idleWithOne], 700)).toEqual({ a: 700 })
 })

@@ -106,8 +106,8 @@ export function lineTitle(thread: BotThread, botId: string) {
 }
 
 /** The header of a card for tasks or workers started in one call. */
-export function batchSummary(threads: BotThread[]) {
-  const finished = threads.filter(thread => thread.status === 'finished').length
+export function batchSummary(threads: BotThread[], waitingWork: Record<string, WorkSummary> = {}) {
+  const finished = threads.filter(thread => thread.status === 'finished' && waitingWork[thread.id]?.status !== 'needs_oscar').length
   const allWorkers = threads.length > 0 && threads.every(isWorker)
   return {
     title: allWorkers ? `Started ${plural(threads.length, 'worker')}` : `Handed out ${plural(threads.length, 'task')}`,

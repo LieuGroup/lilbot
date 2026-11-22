@@ -6,24 +6,7 @@ import { create } from 'zustand'
 import type { BotThread } from '../../../shared/thread-schema'
 import type { WorkSummary } from '../../../shared/work-schema'
 import { lilbot, messageOf } from '../app/lilbot-socket'
-
-const collapsedKey = (botId: string) => `lilbot.dock-collapsed.${botId}`
-
-function readCollapsed(botId: string): boolean {
-  try {
-    return localStorage.getItem(collapsedKey(botId)) === 'collapsed'
-  } catch {
-    return false
-  }
-}
-
-function writeCollapsed(botId: string, collapsed: boolean) {
-  try {
-    localStorage.setItem(collapsedKey(botId), collapsed ? 'collapsed' : 'expanded')
-  } catch {
-    // Private window: kept in memory for this session.
-  }
-}
+import { readCollapsed, readDismissed, selectWaitingWork, watchDockStorage, writeCollapsed, writeDismissed } from './dock-storage'
 
 interface ThreadStore {
   byBot: Record<string, BotThread[]>
@@ -31,9 +14,9 @@ interface ThreadStore {
   errors: Record<string, string>
   /** Open `needs_oscar` work items originating from an exchange, keyed by exchange id. */
   waitingWork: Record<string, WorkSummary>
-  /** Dock rows dismissed (or opened) by Oscar, keyed by `${botId}:${threadId}` -> end timestamp at dismissal. */
-  dismissed: Record<string, number>
-  /** Per-bot dock collapse choice (mirrored to localStorage). */
+  /** Per-bot dismissed dock rows (`threadId -> end timestamp at dismissal`), mirrored to localStorage. */
+  dismissedByBot: Record<string, Record<string, number>>
+  /** Per-bot dock collapse choice, mirrored to localStorage. */
   dockCollapsed: Record<string, boolean>
 }
 
@@ -41,7 +24,7 @@ export const useThreadStore = create<ThreadStore>(() => ({
   byBot: {},
   errors: {},
   waitingWork: {},
-  dismissed: {},
+  dismissedByBot: {},
   dockCollapsed: {}
 }))
 
@@ -62,9 +45,7 @@ async function load(botId: string) {
 async function loadWaitingWork() {
   try {
     const items = await lilbot.call('work.list', { status: ['needs_oscar'], limit: 200 })
-    const waitingWork: Record<string, WorkSummary> = {}
-    for (const item of items) if (item.origin.kind === 'exchange') waitingWork[item.origin.id] = item
-    useThreadStore.setState({ waitingWork })
+    useThreadStore.setState({ waitingWork: selectWaitingWork(items) })
   } catch {
     // Work board may be unavailable on minimal test servers; exchanges still work.
   }
@@ -96,6 +77,11 @@ function ensureStarted() {
     reloadSoon()
     reloadWorkSoon()
   })
+  watchDockStorage({
+    onCollapsed: (botId, collapsed) => useThreadStore.setState(state => ({ dockCollapsed: { ...state.dockCollapsed, [botId]: collapsed } })),
+    onDismissed: (botId, map) => useThreadStore.setState(state => ({ dismissedByBot: { ...state.dismissedByBot, [botId]: map } })),
+    onClear: () => useThreadStore.setState({ dockCollapsed: {}, dismissedByBot: {} })
+  })
 }
 
 /** The bot's exchanges; undefined until the first read. */
@@ -123,14 +109,21 @@ export function useDockCollapsed(botId: string) {
   return useThreadStore(state => (botId in state.dockCollapsed ? state.dockCollapsed[botId] : readCollapsed(botId)))
 }
 
+export function useDismissed(botId: string) {
+  return useThreadStore(state => (botId in state.dismissedByBot ? state.dismissedByBot[botId] : readDismissed(botId)))
+}
+
 export function setDockCollapsed(botId: string, collapsed: boolean) {
   writeCollapsed(botId, collapsed)
   useThreadStore.setState(state => ({ dockCollapsed: { ...state.dockCollapsed, [botId]: collapsed } }))
 }
 
 export function dismissDockItem(botId: string, threadId: string, stamp: number) {
-  const key = `${botId}:${threadId}`
-  useThreadStore.setState(state => ({ dismissed: { ...state.dismissed, [key]: stamp } }))
+  useThreadStore.setState(state => {
+    const prev = botId in state.dismissedByBot ? state.dismissedByBot[botId] : readDismissed(botId)
+    const next = writeDismissed(botId, { ...prev, [threadId]: stamp })
+    return { dismissedByBot: { ...state.dismissedByBot, [botId]: next } }
+  })
 }
 
 /** Oscar stops a running exchange. Reloads immediately so every line, dock and view updates at once. */

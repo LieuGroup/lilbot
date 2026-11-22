@@ -5,18 +5,19 @@ import { Notice } from '@/ui/notice'
 import type { BotThread } from '../../../shared/thread-schema'
 import { messageOf } from '../app/lilbot-socket'
 import { leaderOf, stopSentence } from './group-lines'
-import { isTask, sides } from './thread-lines'
+import { isTask, sides, taskTitle } from './thread-lines'
 import { stopThread } from './thread-store'
 
 const footButton = 'h-8 rounded-lg px-3 text-[13px]/[18px] font-medium'
 
 /** "Stop this worker?", "Stop this task?" or "Stop this group?" (Paper "18 Bots working together" frame 8, "22 Workers"
- *  frame 9): states what stopping affects, guards against double-clicks, and shows errors inline. */
+ *  frame 9): states which task stops and what stopping affects, guards against double-clicks, and shows errors inline. */
 export default function StopThreadDialog({ botId, thread, onClose }: { botId: string; thread: BotThread; onClose: () => void }) {
   const [stopping, setStopping] = useState(false)
   const [error, setError] = useState('')
   const { from, to } = sides(thread)
   const what = thread.group ? 'group' : thread.worker ? 'worker' : isTask(thread) ? 'task' : 'thread'
+  const subject = thread.group ? thread.group.purpose : isTask(thread) ? taskTitle(thread) : ''
   const description = thread.worker
     ? `This worker stops now. ${from.name} is told you stopped it, and what happened so far stays readable. Files or commits already made are not undone.`
     : `${thread.group ? `${stopSentence(thread)} ${leaderOf(thread).name}` : `${to.name} stops working on it now. ${from.name}`} is told you stopped it, and what was said so far stays readable. Work a bot already did is not undone.`
@@ -39,6 +40,7 @@ export default function StopThreadDialog({ botId, thread, onClose }: { botId: st
       <DialogContent showCloseButton={false} className="w-[calc(100%-2rem)] max-w-[400px] gap-4 rounded-2xl bg-card p-5 sm:max-w-[400px]">
         <div className="flex flex-col gap-1.5">
           <DialogTitle className="text-base/[22px] font-semibold tracking-[-0.01em]">Stop this {what}?</DialogTitle>
+          {subject && <p className="truncate text-[13px]/[18px] font-medium text-foreground">{subject}</p>}
           <DialogDescription className="text-[13px]/5 text-muted-foreground">{description}</DialogDescription>
         </div>
         {error && <Notice tone="error">{error}</Notice>}

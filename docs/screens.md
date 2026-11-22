@@ -40,8 +40,8 @@ type scale, bundle budget) are in `AGENTS.md` under "Stack" and "Web app".
   being the bot's own turn in that group, from `groups[].activity`, else its general one), "Waiting for you", finished
   (green check), failed (red cross), or, idle, "Leading a group" / "In a group" (no mark) while it is in a running
   group, else the bot's function (no message preview in the data yet). A handed-over task wins over a group (that is the
-  turn running now); waiting for Oscar wins over background workers.
-  now); waiting for Oscar and an unavailable runtime win over both. The drawing's "· 2 tasks out" has no data and is
+  turn running now); the bot's own reply, handed-over task, active group turn, and waiting for Oscar win over
+  background workers; an unavailable runtime wins when idle. The drawing's "· 2 tasks out" has no data and is
   not shown.
   Unread rows have a 600 name and a blue dot; on hover the "more" button replaces the dot.
 - Footer: the user, a Settings button and, while the socket is down, "Offline · reconnecting" with a red dot (the

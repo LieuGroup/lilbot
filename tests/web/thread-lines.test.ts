@@ -177,4 +177,8 @@ test('same-bot workers format titles, file counts, inline records, custom model 
   expect(workerActivityRow({ ...worker, status: 'finished' }, now, waiting).state).toMatchObject({ icon: 'waiting', text: 'Waiting for you · Confirm empty-file behavior' })
   expect(inlineState({ ...worker, status: 'finished' }, waiting)).toEqual({ icon: 'waiting', text: 'Waiting for you', failed: false, stopped: false })
   expect(stripState({ ...worker, status: 'finished' }, now, waiting)).toMatchObject({ icon: 'waiting', text: 'Waiting for you · Confirm empty-file behavior' })
+  expect(batchSummary([worker, { ...worker, id: 't2', status: 'finished' }], { t2: { ...waiting, id: 't2', origin: { kind: 'exchange', id: 't2' } } })).toEqual({
+    title: 'Started 2 workers',
+    progress: '0 of 2 finished'
+  })
 })

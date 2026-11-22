@@ -4,7 +4,21 @@ import type { BotGroup, BotWorkers, BotWorkingFor } from '../../shared/bot-schem
 import type { GroupStore } from './group-store'
 import { rosterGroups } from './group-view'
 import type { ThreadRunner } from './thread-runner'
-import type { ThreadStore } from './thread-store'
+import { type Delivery, isWork, type ThreadStore } from './thread-store'
+
+/** True when `d` is a non-cancelled same-bot worker delivery and the bot's sole active worker (so its tool line appears on the roster). */
+export function isSoleRunningWorker(store: ThreadStore, running: Iterable<Delivery>, d: Delivery) {
+  if (!isWork(d.kind)) return false
+  const thread = store.get(d.threadId)
+  if (!thread.worker || thread.status === 'cancelled') return false
+  let count = 0
+  for (const r of running) {
+    if (!isWork(r.kind) || r.target !== d.target) continue
+    const other = store.get(r.threadId)
+    if (other.worker && other.status !== 'cancelled' && ++count > 1) return false
+  }
+  return count === 1
+}
 
 export function botRoster(store: ThreadStore, groups: GroupStore | undefined, runner: ThreadRunner) {
   const out = new Map<string, { groups?: BotGroup[]; workingFor?: BotWorkingFor; workers?: BotWorkers }>()

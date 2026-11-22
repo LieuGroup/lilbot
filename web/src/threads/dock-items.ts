@@ -63,14 +63,14 @@ function compareItems(a: DockItem, b: DockItem): number {
 export function dockItems(threads: BotThread[], botId: string, waitingWork: Record<string, WorkSummary>, dismissed: Record<string, number>, now: number): DockItem[] {
   const items: DockItem[] = []
   for (const thread of threads) {
-    const item = classifyDockItem(thread, botId, waitingWork[thread.id], dismissed[`${botId}:${thread.id}`], now)
+    const item = classifyDockItem(thread, botId, waitingWork[thread.id], dismissed[thread.id], now)
     if (item) items.push(item)
   }
   return items.sort(compareItems)
 }
 
 /** Groups visible dock items that share a `batchId` (when at least 2 from that batch are visible), keeping explicit priority order. */
-export function dockEntries(items: DockItem[], allThreads: BotThread[], botId: string): DockEntry[] {
+export function dockEntries(items: DockItem[], allThreads: BotThread[], botId: string, waitingWork: Record<string, WorkSummary> = {}): DockEntry[] {
   const byBatch = new Map<string, DockItem[]>()
   for (const item of items) {
     const id = item.thread.batchId
@@ -92,7 +92,7 @@ export function dockEntries(items: DockItem[], allThreads: BotThread[], botId: s
     emitted.add(id)
     const full = allThreads.filter(thread => !thread.group && sides(thread).from.id === botId && thread.batchId === id)
     const total = Math.max(full.length, group.length)
-    const finished = full.filter(thread => thread.status === 'finished').length
+    const finished = full.filter(thread => thread.status === 'finished' && waitingWork[thread.id]?.status !== 'needs_oscar').length
     const allWorkers = (full.length ? full : group.map(entry => entry.thread)).every(isWorker)
     entries.push({
       kind: 'batch',
@@ -170,13 +170,13 @@ export function dockCollapsedSummary(items: DockItem[], botId: string): { icon: 
   return { icon, lead, detail: joined(...extra, actors.join(', ')) }
 }
 
-/** Milliseconds until the next finished item expires (or null if none are waiting to expire). */
-export function nextDockExpiryMs(items: DockItem[], now: number): number | null {
+/** Soonest timestamp when a finished dock item expires (or null if none are waiting to expire). */
+export function nextDockExpiryAt(items: DockItem[]): number | null {
   let soonest: number | null = null
   for (const item of items) {
     if (item.kind !== 'finished') continue
-    const left = Math.max(50, item.stamp + FINISHED_TTL_MS - now)
-    if (soonest === null || left < soonest) soonest = left
+    const at = item.stamp + FINISHED_TTL_MS
+    if (soonest === null || at < soonest) soonest = at
   }
   return soonest
 }

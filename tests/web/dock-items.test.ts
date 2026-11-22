@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import type { BotThread } from '../../shared/thread-schema'
 import type { WorkSummary } from '../../shared/work-schema'
-import { dockCollapsedSummary, dockEntries, dockHeaderSummary, dockItems, dockRowState, dockRowTitle, FINISHED_TTL_MS, nextDockExpiryMs } from '../../web/src/threads/dock-items'
+import { dockCollapsedSummary, dockEntries, dockHeaderSummary, dockItems, dockRowState, dockRowTitle, FINISHED_TTL_MS, nextDockExpiryAt } from '../../web/src/threads/dock-items'
 
 const MIN = 60_000
 const T0 = new Date(2026, 10, 22, 10, 0).getTime()
@@ -69,11 +69,13 @@ test('finished rows stay 2 minutes, leave on expiry or dismiss, and reappear if 
   // Still visible at 1m59s after completion.
   const almost = dockItems([done], lead.id, {}, {}, T0 + MIN + FINISHED_TTL_MS - 1_000)
   expect(almost).toHaveLength(1)
-  expect(nextDockExpiryMs(almost, T0 + MIN + FINISHED_TTL_MS - 1_000)).toBe(1_000)
+  expect(nextDockExpiryAt(almost)).toBe(T0 + MIN + FINISHED_TTL_MS)
+  // Backward clock jump (now < endedAt) never expires a newly finished row early.
+  expect(dockItems([done], lead.id, {}, {}, T0)).toHaveLength(1)
   // Auto-leaves at 2m00s.
   expect(dockItems([done], lead.id, {}, {}, T0 + MIN + FINISHED_TTL_MS)).toEqual([])
   // Dismissing hides it immediately for that end stamp.
-  const dismissed = { [`${lead.id}:w1`]: done.endedAt! }
+  const dismissed = { w1: done.endedAt! }
   expect(dockItems([done], lead.id, {}, dismissed, T0 + MIN + 5_000)).toEqual([])
   // If continued and finished again with a newer endedAt, it shows again.
   const continued = makeThread('w1', { worker: true, status: 'finished', endedAt: T0 + 5 * MIN })
@@ -102,9 +104,9 @@ test('waiting-on-Oscar and failed rows stay past 2 minutes until answered or dis
   expect(dockRowState(items[0], lead.id, longAfter)).toEqual({ icon: 'waiting', text: 'Waiting for you · Confirm empty-file behavior', failed: false, stopped: false })
   expect(dockRowState(items[1], lead.id, longAfter)).toEqual({ icon: 'waiting', text: 'Waiting for your check', failed: false, stopped: false })
   expect(dockRowState(items[2], lead.id, longAfter)).toMatchObject({ icon: 'failed', failed: true, text: 'Failed · Mac mini helper is offline' })
-  expect(nextDockExpiryMs(items, longAfter)).toBeNull()
+  expect(nextDockExpiryAt(items)).toBeNull()
   // Dismissing the failed row removes only the failed row.
-  const afterDismiss = dockItems([failed, asked], lead.id, waiting, { [`${lead.id}:fail1`]: T0 }, longAfter)
+  const afterDismiss = dockItems([failed, asked], lead.id, waiting, { fail1: T0 }, longAfter)
   expect(afterDismiss.map(i => i.thread.id)).toEqual(['ask1'])
 })
 
@@ -159,4 +161,9 @@ test('batches group >=2 visible tasks with worker-only vs mixed headers and unwr
   const m2 = makeThread('m2', { participants: [lead, eng], batchId: 'mix', status: 'working' })
   const mixed = dockEntries(dockItems([m1, m2], lead.id, {}, {}, now), [m1, m2], lead.id)
   expect(mixed[0]).toMatchObject({ kind: 'batch', title: 'Handed out 2 tasks', progress: '0 of 2 finished', allWorkers: false })
+
+  // A worker whose exchange turn finished while its work item is `needs_oscar` is NOT counted as finished in the batch header.
+  const waiting = { w2: waitingWork('w2') }
+  const waitingBatch = dockEntries(dockItems([w1, w2], lead.id, waiting, {}, now), [w1, w2], lead.id, waiting)
+  expect(waitingBatch[0]).toMatchObject({ kind: 'batch', title: 'Started 2 workers', progress: '0 of 2 finished', allWorkers: true })
 })

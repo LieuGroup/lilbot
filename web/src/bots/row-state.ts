@@ -19,15 +19,16 @@ export function rowState(bot: Bot): RowState {
   const activity = bot.activity
   const unread = activity?.unread ?? false
   if (activity?.status === 'waiting') return { tone: 'waiting', text: 'Waiting for you', unread }
-  if (bot.workers && bot.workers.count > 0 && !bot.workingFor) return { tone: 'working', text: workerText(bot.workers), unread }
   switch (activity?.status) {
     case 'working':
       return { tone: 'working', text: `${workingIn(bot)}${(!bot.workingFor && groupActivity(bot)) || activity.text || 'Working'}`, unread }
     case 'finished':
+      if (bot.workers && bot.workers.count > 0) return { tone: 'working', text: workerText(bot.workers), unread }
       return { tone: 'finished', text: 'Finished', unread }
     case 'failed':
       return { tone: 'failed', text: 'Failed', unread }
     default:
+      if (bot.workers && bot.workers.count > 0) return { tone: 'working', text: workerText(bot.workers), unread }
       return { tone: 'idle', text: idleText(bot), unread }
   }
 }

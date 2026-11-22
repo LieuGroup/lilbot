@@ -118,24 +118,44 @@ test('every worker opens a code work item (with or without parent), supports nee
   expect(d.store.get(childId).status).toBe('cancelled')
 })
 
-test('roster reports running worker count and live single-worker activity, and pushes on worker tool calls', async () => {
+test('roster reports worker count/activity without feeding activity.observe, pushes only for sole worker tools, and pushes immediately on cancel', async () => {
   const pushes: boolean[] = []
-  const f = delegationFixture({ touched: roster => roster !== undefined && pushes.push(roster) })
+  const observed: { botId: string; kind: string; working: boolean }[] = []
+  const f = delegationFixture({
+    touched: roster => roster !== undefined && pushes.push(roster),
+    activity: (botId, d, working) => observed.push({ botId, kind: d.kind, working })
+  })
   await f.delegation.delegate('a', { requestId: 'w1', tasks: [{ worker: true, task: 'Run tests' }] })
   await f.settle()
+  // Same-bot worker work deliveries push roster directly without calling activity.observe (keeping the bot's own reply ahead).
+  expect(observed).toEqual([])
+  expect(pushes).toEqual([true])
   expect(f.threads.roster().get('a')).toEqual({ workers: { count: 1 } })
+  pushes.length = 0
   f.threads.runner.sawTool(f.runs[0].chatId, 'Running commands')
   expect(f.threads.roster().get('a')).toEqual({ workers: { count: 1, activity: 'Running commands' } })
   expect(pushes).toEqual([true])
-  // Second concurrent worker switches roster to count-only ("2 workers running").
+  // Second concurrent worker switches roster to count-only ("2 workers running") and suppresses redundant roster pushes on tool changes.
   const second = await f.delegation.delegate('a', { requestId: 'w2', tasks: [{ worker: true, task: 'Check lint' }] })
   await f.settle()
   expect(f.threads.roster().get('a')).toEqual({ workers: { count: 2 } })
-  // Cancelling one drops it from the roster immediately, before its interrupted turn finishes unwinding.
+  pushes.length = 0
+  f.threads.runner.sawTool(f.runs[1].chatId, 'Editing files')
+  expect(pushes).toEqual([false])
+  // Cancelling a running worker drops it from the roster and pushes bots.changed immediately, before its turn unwinds.
+  pushes.length = 0
   await f.delegation.cancel('a', second.exchanges[0].exchangeId)
+  expect(pushes).toEqual([true])
   expect(f.threads.roster().get('a')).toEqual({ workers: { count: 1, activity: 'Running commands' } })
+  // Late tool call on a cancelled worker does not push the roster.
+  pushes.length = 0
+  f.threads.runner.sawTool(f.runs[1].chatId, 'Reading files')
+  expect(pushes).toEqual([false])
+  // Finishing the worker delivers its answer back into the main chat, which DOES notify activity.observe.
   f.runs[0].finish('Tests passed')
   f.runs[1].finish('Late after stop')
   await f.settle()
   expect(f.threads.roster().get('a')?.workers).toBeUndefined()
+  await f.settle()
+  expect(observed.some(o => o.kind === 'answer' && o.working)).toBe(true)
 })
