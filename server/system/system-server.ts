@@ -16,6 +16,7 @@ import { memoryTools } from './tool-memory'
 import { rosterTools } from './tool-roster'
 import { routineTools } from './tool-routines'
 import { settingsTools } from './tool-settings'
+import { skillTools } from './tool-skills'
 import { webhookTools } from './tool-webhooks'
 import { workTools } from './tool-work'
 import { workspaceTools } from './tool-workspace'
@@ -30,6 +31,7 @@ export function createSystemServer(deps: SystemDeps & { engineToken: string; por
     ...botTools(deps),
     ...rosterTools(deps),
     ...memoryTools(deps),
+    ...skillTools(deps),
     ...settingsTools(deps),
     ...delegationTools(deps),
     ...groupTools(deps),

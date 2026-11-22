@@ -4,7 +4,7 @@
  *  needs that decision. */
 import type { WebhookCapability } from '../../shared/webhook-schema'
 
-export const RUN_TOOLS = ['lilbot_guide', 'lilbot_work', 'lilbot_work_list', 'lilbot_webhook_message', 'lilbot_workspace_read']
+export const RUN_TOOLS = ['lilbot_guide', 'lilbot_skill_read', 'lilbot_work', 'lilbot_work_list', 'lilbot_webhook_message', 'lilbot_workspace_read']
 
 export const TOOL_GROUPS: Partial<Record<WebhookCapability, string[]>> = {
   // The other bots, computers, T3 and deploy state and the change log: a run Oscar lets manage bots has the roster anyway.
@@ -25,7 +25,7 @@ export const TOOL_GROUPS: Partial<Record<WebhookCapability, string[]>> = {
   delegation: ['lilbot_bots_list', 'lilbot_delegate', 'lilbot_delegation', 'lilbot_group'],
   computers: ['lilbot_status'],
   coding: ['lilbot_status'],
-  memory: ['lilbot_memory_list', 'lilbot_memory_pause', 'lilbot_memory_restore', 'lilbot_memory_expiry'],
+  memory: ['lilbot_memory_list', 'lilbot_memory_save', 'lilbot_memory_pause', 'lilbot_memory_restore', 'lilbot_memory_expiry'],
   routines: ['lilbot_routine', 'lilbot_routines_list'],
   // A run can only give the Library a file it could write.
   shell: ['lilbot_give_file'],

@@ -2,7 +2,7 @@
  *  short id the bot sees, and only facts in that bot's own panel can be named. */
 import { z } from 'zod'
 import { LilBotError } from '../../shared/lilbot-error'
-import type { MemoryFact } from '../../shared/memory-schema'
+import { factText, type MemoryFact, MemoryKind, MemoryScope } from '../../shared/memory-schema'
 import { endOfDay, expiryDay } from '../memory/memory-expiry'
 import { shortId } from '../memory/memory-service'
 import { actionTool, type McpTool, readTool } from './mcp-tool'
@@ -75,6 +75,19 @@ export function memoryTools({ bots, memory, memoryChanged }: SystemDeps): McpToo
         memory.setExpiry(found.id, expiresAt)
         memoryChanged()
         return view({ ...found, expiresAt })
+      }
+    ),
+    actionTool(
+      'lilbot_memory_save',
+      'Save one short lasting fact (profile) or dated note (journal) to your memory. Facts with instructions, secrets or hidden characters are refused.',
+      z.object({ kind: MemoryKind.default('profile'), scope: MemoryScope.optional(), text: factText, expires: expiryDay.optional() }),
+      async (caller, input) => {
+        const expiresAt = input.expires ? endOfDay(input.expires) : undefined
+        if (expiresAt !== undefined && Number.isNaN(expiresAt)) throw new LilBotError('invalid_fact', 'Use a real date like 2026-12-31.')
+        const saved = memory.write({ botId: caller, kind: input.kind, scope: input.scope, text: input.text, author: 'bot', via: 'chat', expiresAt })
+        memoryChanged()
+        const notice = memory.overflowNotice(caller)
+        return { ...view(saved), ...(notice ? { notice } : {}) }
       }
     )
   ]
