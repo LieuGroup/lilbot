@@ -12,6 +12,7 @@ import type { GoalService } from '../goals/goal-service'
 import type { LibraryService } from '../library/library-service'
 import type { MemoryService } from '../memory/memory-service'
 import type { RoutineService } from '../routines/routine-service'
+import type { SkillsService } from '../skills/skills-service'
 import type { CallingChats } from '../threads/calling-chats'
 import type { DelegationControl } from '../threads/delegation-control'
 import type { DelegationService } from '../threads/delegation-service'
@@ -38,6 +39,7 @@ export interface SystemDeps extends SystemFacts {
   activity: ActivityService
   memory: MemoryService
   memoryChanged: () => void
+  skills: SkillsService
   /** Handing work to one bot, and working together in temporary groups. */
   delegation: { hand: DelegationService; control: DelegationControl; groups: GroupService }
   work: WorkService
