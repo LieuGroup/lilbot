@@ -96,11 +96,14 @@ test('engines run the instructions with the note; LilBot’s stored and shown in
 
 test('importing an engine’s bots takes the note off instructions an earlier LilBot wrote there', async () => {
   const fake = fakeEngine()
-  const engine: BotEngine = { ...fake.engine, importBots: async () => [{ ...detail, instructions: withNote('Be kind.', buildNote(facts())) }] }
+  const engine: BotEngine = { ...fake.engine, importBots: async () => [{ ...detail, id: 'default', instructions: withNote('Be kind.', buildNote(facts())) }] }
   const database = openDatabase(':memory:')
   const store = new BotStore(database)
   await new BotService(engine, store, new BotPrefsStore(database), new Workspaces('/tmp/lilbot-note-test'), new MemoryService(new MemoryStore(database))).listBots()
-  expect(store.get('b1').instructions).toBe('Be kind.')
+  const [imported] = store.list()
+  expect(imported.id).not.toBe('default')
+  expect(imported.engineBotId).toBe('default')
+  expect(imported.instructions).toBe('Be kind.')
 })
 
 test('coding state reads as one line for each sign-in state', () => {

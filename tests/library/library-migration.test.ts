@@ -12,7 +12,7 @@ test('library migration preserves shipped routines and their run aliases', () =>
   const path = join(root, 'db')
   let db = openDatabase(path)
   try {
-    new BotStore(db).import('test', [{ ...detail, engineId: 'test', engineBotId: 'b1' }])
+    new BotStore(db).import('test', [{ ...detail, engineId: 'test', engineBotId: 'native-b1' }])
     const store = new RoutineStore(db)
     store.create('b1', { requestId: 'one', description: 'Check', schedule: { kind: 'interval', seconds: 300 }, createdBy: 'oscar' }, 0, 5)
     const [run] = store.claimDue(300_000)

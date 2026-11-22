@@ -21,7 +21,7 @@ export function goalFixture(options: { calls?: CallingChats } = {}) {
   }
   // Routine runs join the bots table; the fixture's bots are only in its `requireBot`.
   for (const id of ['a', 'b', 'c'])
-    w.database.query("INSERT INTO bots(id, name, function, instructions, engine_id, engine_bot_id) VALUES (?, ?, '', '', 'test', ?)").run(id, id.toUpperCase(), id)
+    w.database.query("INSERT INTO bots(id, name, function, instructions, engine_id, engine_bot_id) VALUES (?, ?, '', '', 'test', ?)").run(id, id.toUpperCase(), `native-${id}`)
   const g = { waits: [] as { botId: string; goalId: string; key: string; on: boolean }[], pushes: 0 }
   const routineHost = {
     requireBot: (id: string) => w.work.host.requireBot(id),

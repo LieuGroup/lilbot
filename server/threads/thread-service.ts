@@ -37,7 +37,7 @@ export class ThreadService {
     private host: ThreadHost,
     readonly changed: () => void = () => {},
     activity: (botId: string, d: Delivery, working: boolean) => void = () => {},
-    touched: (roster?: boolean) => void = () => {},
+    private touched: (roster?: boolean) => void = () => {},
     groupHost?: GroupHost,
     limits: GroupLimits = GROUP_LIMITS
   ) {
@@ -144,6 +144,7 @@ export class ThreadService {
       return next
     })()
     const end = async () => {
+      if (stopped.worker && running) this.touched(true)
       if (running?.chatId) await this.host.stopRun?.(running.target, running.chatId).catch(() => backgroundFailure('thread stop'))
       this.changed()
     }
@@ -160,7 +161,6 @@ export class ThreadService {
     await stop.end()
     return this.view(stop.thread)
   }
-
   /** Oscar answered the receiver's question on its work item: its next turn in this exchange, so what it says then comes back to
    *  the delegating bot like any answer. Refuses like `accept` when the exchange cannot take another message. */
   oscarAnswer(threadId: string, id: string, prompt: string) {

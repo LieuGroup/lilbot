@@ -47,7 +47,7 @@ test('the owner’s conversation cannot pass a verdict off as the check session�
 test('an item opened by a routine run is not credited to Oscar’s conversation when the run’s start is late (#174)', async () => {
   const calls = new CallingChats(300)
   const f = workFixture({ calls })
-  f.database.exec("INSERT INTO bots(id, name, function, instructions, engine_id, engine_bot_id) VALUES ('a', 'A', '', '', 'test', 'a')")
+  f.database.exec("INSERT INTO bots(id, name, function, instructions, engine_id, engine_bot_id) VALUES ('a', 'A', '', '', 'test', 'native-a')")
   f.routineStore.create('a', { requestId: 'daily', description: 'Check sales', schedule: { kind: 'interval', seconds: 600 }, createdBy: 'oscar' }, 0, 5)
   const [run] = f.routineStore.claimDue(Date.now() + 1_000_000)
   f.routineStore.attach(run.id, 'run-session', Date.now())

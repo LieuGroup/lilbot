@@ -8,19 +8,23 @@ import { detail, fakeEngine, fakeService } from '../helpers/fake-engine'
 
 test('imports all identity fields once, concurrently and across service restarts', async () => {
   const store = new BotStore(openDatabase(':memory:'))
-  const { engine } = fakeEngine()
+  const { engine, runtimeIds } = fakeEngine()
   let calls = 0
   engine.importBots = async () => {
     calls++
-    return [{ ...detail, instructions: 'Original', model: { provider: 'p', model: 'm' } }]
+    return [{ ...detail, id: 'default', isDefault: true, instructions: 'Original', model: { provider: 'p', model: 'm' } }]
   }
+  runtimeIds.add('default')
   const runtimes = new BotRuntimes(store, engine)
   await Promise.all([runtimes.initialize(), runtimes.initialize()])
-  expect(store.get('b1')).toMatchObject({ id: 'b1', instructions: 'Original', model: { provider: 'p', model: 'm' }, engineId: 'test', engineBotId: 'b1' })
-  store.save({ ...store.get('b1'), name: 'Edited' })
+  const [imported] = store.list()
+  expect(imported.id).toMatch(/^[0-9a-f-]{36}$/)
+  expect(imported.id).not.toBe('default')
+  expect(imported).toMatchObject({ instructions: 'Original', model: { provider: 'p', model: 'm' }, isDefault: true, engineId: 'test', engineBotId: 'default' })
+  store.save({ ...imported, name: 'Edited' })
   await new BotRuntimes(store, engine).initialize()
   expect(calls).toBe(1)
-  expect(store.get('b1').name).toBe('Edited')
+  expect(store.get(imported.id).name).toBe('Edited')
 })
 
 test('failed imports retry without leaving partial identities or an import marker', async () => {
@@ -42,12 +46,15 @@ test('create persists app identity and passes it to the runtime; failed updates 
   const { service, store, engine, runtimeIds } = fakeService()
   engine.createRuntime = async identity => {
     expect(store.get(identity.id).name).toBe('New')
-    runtimeIds.add(identity.id)
-    return identity.id
+    const nativeId = `native-${identity.id}`
+    runtimeIds.add(nativeId)
+    return nativeId
   }
   const made = await service.createBot({ name: 'New', function: 'Purpose', instructions: 'Initial' })
+  const expectedNative = store.get(made.id).engineBotId
+  expect(expectedNative).not.toBe(made.id)
   engine.applyIdentity = async (id, identity) => {
-    expect(id).toBe(made.id)
+    expect(id).toBe(expectedNative)
     expect(store.get(made.id).instructions).toBe(identity.instructions)
     throw new Error('offline')
   }
@@ -152,7 +159,9 @@ test('identity migration preserves populated primary, prefs, main chat, facts, q
     await new BotRuntimes(store, fakeEngine().engine).initialize()
     expect(rows(db)).toEqual(before)
     expect(new BotPrefsStore(db).prefs('b1').pinnedAt).toBeNumber()
-    expect(store.get('b1').id).toBe('b1')
+    const [imported] = store.list()
+    expect(imported.engineBotId).toBe('native-b1')
+    expect(imported.id).not.toBe(imported.engineBotId)
     db.close()
   } finally {
     rmSync(dir, { recursive: true, force: true })

@@ -18,7 +18,7 @@ test('bound activity uses native sockets and LilBot ids for unread and durable c
   store.import('hermes', [
     { ...detail, id: 'lilbot', engineId: 'hermes', engineBotId: 'native' },
     { ...detail, id: 'missing', engineId: 'hermes', engineBotId: 'deleted' },
-    { ...detail, id: 'other', engineId: 'other-engine', engineBotId: 'other' }
+    { ...detail, id: 'other', engineId: 'other-engine', engineBotId: 'native-other' }
   ])
   const engine = new HermesEngine()
   const prepare = spyOn(engine, 'prepareRuntime').mockResolvedValue(undefined)

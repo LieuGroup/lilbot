@@ -8,6 +8,6 @@ export async function importBots(store: BotStore, engine: BotEngine) {
   const bots = await engine.importBots()
   store.import(
     engine.id,
-    bots.map(bot => ({ ...bot, instructions: withoutNote(bot.instructions), engineId: engine.id, engineBotId: bot.id }))
+    bots.map(bot => ({ ...bot, id: crypto.randomUUID(), instructions: withoutNote(bot.instructions), engineId: engine.id, engineBotId: bot.id }))
   )
 }

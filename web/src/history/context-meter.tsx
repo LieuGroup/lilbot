@@ -47,6 +47,7 @@ export function ContextMeter({ botId, botName }: { botId: string; botName: strin
     clearTimeout(closeTimer.current)
     if (open) return
     openTimer.current = setTimeout(() => {
+      if (document.querySelector('[role="dialog"], [role="menu"], [data-slot="popover-content"]')) return
       setUsed(true)
       setOpen(true)
     }, 120)

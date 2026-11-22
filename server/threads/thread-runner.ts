@@ -12,6 +12,7 @@ import { failExchange, turnFailure } from './thread-failure'
 import type { ThreadFiles } from './thread-files'
 import { canStartDelivery, isReply, THREAD_LIMITS } from './thread-limits'
 import { answerPrompt, replyText, workPrompt } from './thread-prompts'
+import { isSoleRunningWorker } from './thread-roster'
 import { type Delivery, isWork, type ThreadStore } from './thread-store'
 import type { ThreadWaits } from './thread-waits'
 
@@ -55,10 +56,12 @@ export class ThreadRunner {
     const d = [...this.running.values()].find(d => d.chatId === chatId)
     if (!d || this.lines.get(d.id) === line) return
     this.lines.set(d.id, line)
-    this.touched(!!this.groups?.groupOf(d))
+    this.touched(!!this.groups?.groupOf(d) || isSoleRunningWorker(this.store, this.running.values(), d))
   }
 
   private mark(d: Delivery, working: boolean) {
+    // Same-bot worker runs surface via `Bot.workers` rather than `activity.observe`, keeping the bot's own reply ahead.
+    if (isWork(d.kind) && this.store.get(d.threadId).worker) return this.touched(true)
     for (const botId of new Set(d.kind === 'point' ? [d.target] : [d.sender, d.target])) this.activity(botId, d, working)
   }
 

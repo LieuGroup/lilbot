@@ -59,7 +59,18 @@ async function entries(path: string): Promise<string[]> {
     .filter(Boolean)
 }
 
-export const memoryInstalled = (botId: string) => existsSync(join(profileHome(botId), SETTINGS_FILE))
+export function memoryInstalled(engineBotId: string, expectedBotId?: string): boolean {
+  const path = join(profileHome(engineBotId), SETTINGS_FILE)
+  if (!expectedBotId) return existsSync(path)
+  try {
+    const settings = JSON.parse(readFileSync(path, 'utf8'))
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return false
+    if (settings.bot_id !== undefined && typeof settings.bot_id !== 'string') return false
+    return (settings.bot_id || engineBotId) === expectedBotId
+  } catch {
+    return false
+  }
+}
 
 /** Whether a connected bot has this repo's version of the plug-in. */
 const memoryCurrent = (botId: string) => installedFolders(profileHome(botId)).includes(providerName(MEMORY_ADAPTER_VERSION))

@@ -68,8 +68,8 @@ web/src/           The web app.
   attachments/       files in the composer and in sent messages, the drop area
   activity/, memory/ their details tabs
   library/           the Library tab, the bot's workspace folder view and the item viewer
-  threads/           work between bots: the line in a conversation, the opened exchange or group, stop, "With other bots",
-                     "Working together"
+  threads/           work between bots and workers: composer tasks dock, quiet conversation record, opened exchange/worker/group,
+                     stop and answer dialogs, Activity "Workers" and "With other bots", roster "Working together"
   work/              the Work board (Today, All work, Checks), item page, check badges and chat Work lines
   goals/             the Goals tab, goal page, review report and chat Goal agreement cards
   routines/          the Activity tab's Routines card, one routine (in place of the panel), a run's transcript; the run
@@ -105,13 +105,13 @@ Rules that keep it this way:
 Built: roster, create bot, Setup panel (toolsets and connectors read-only; skills with per-bot switch and reader, #137),
 chat with live tool rows, stop and new session, continuous main conversation per bot across devices, three-column shell
 (Activity, Library, Memory, Setup), bot menu, delete confirmation, Settings, chat attachments, LilBot memory with panel
-and after-chat review, system note and LilBot MCP tools, delegation and temporary groups (#133) with screens (#65, #135,
-#136), Routines screens (#53), Library screens (#54), Webhooks screens (#138), Work board, Check levels and Goals
-screens (#141, #142, #143), message cost & context size screens (#180), and backends for routines, webhooks, threads,
-library, skills, computers/devices, T3 Code coding and bot-added MCP services (#187). Next: webhook capability switches
-(Paper "17" frames 7–9, awaiting Oscar's approval), engine-skills switch screen (#140), check-level track record and spot
-checks (#142), nightly memory tidy-up and editing abilities. Reports are not built. Desktop (Tauri) and iOS (Expo)
-follow the web app.
+and after-chat review, system note and LilBot MCP tools, delegation, same-bot workers and temporary groups (#133) with
+screens (#65, #135, #136, Paper "22 Workers"), Routines screens (#53), Library screens (#54), Webhooks screens (#138),
+Work board, Check levels and Goals screens (#141, #142, #143), message cost & context size screens (#180), and backends
+for routines, webhooks, threads, library, skills, computers/devices, T3 Code coding and bot-added MCP services (#187).
+Next: webhook capability switches (Paper "17" frames 7–9, awaiting Oscar's approval), engine-skills switch screen (#140),
+check-level track record and spot checks (#142), nightly memory tidy-up and editing abilities. Reports are not built.
+Desktop (Tauri) and iOS (Expo) follow the web app.
 
 ## Safety: production and development
 

@@ -137,7 +137,7 @@ test('content URLs', async () => {
 })
 
 test('engine deliveries resolve both routine session aliases to the owned run, ignoring forged provenance', async () => {
-  new BotStore(db).import('test', [{ ...detail, id: 'bot', engineId: 'test', engineBotId: 'bot' }])
+  new BotStore(db).import('test', [{ ...detail, id: 'bot', engineId: 'test', engineBotId: 'native-bot' }])
   const routines = new RoutineStore(db)
   routines.create('bot', { requestId: 'one', description: 'Deliver', schedule: { kind: 'interval', seconds: 300 }, createdBy: 'oscar' }, 0, 5)
   const [run] = routines.claimDue(300_000)

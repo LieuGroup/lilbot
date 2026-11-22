@@ -32,7 +32,7 @@ test('a rollback clears the flag only where it is set, for bound bots that are n
     const database = join(root, 'lilbot.db')
     const db = new Database(database)
     db.exec(
-      "CREATE TABLE bots(engine_id TEXT, engine_bot_id TEXT, deletion TEXT); INSERT INTO bots VALUES ('hermes','dev-on',NULL),('hermes','dev-off',NULL),('hermes','dev-gone','{}'),('other','dev-x',NULL)"
+      "CREATE TABLE bots(id TEXT, engine_id TEXT, engine_bot_id TEXT, deletion TEXT); INSERT INTO bots VALUES ('lilbot-1','hermes','dev-on',NULL),('lilbot-2','hermes','dev-off',NULL),('lilbot-3','hermes','dev-gone','{}'),('lilbot-4','other','dev-x',NULL)"
     )
     db.close()
     const log = join(root, 'calls.log')

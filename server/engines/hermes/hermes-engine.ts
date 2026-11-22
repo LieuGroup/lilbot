@@ -90,7 +90,7 @@ export class HermesEngine implements BotEngine {
   async applyIdentity(id: string, identity: RuntimeIdentity) {
     const detail = await this.getBot(id)
     await applied(id, null, '', async () => applyIdentity(await this.management.socket(), id, identity, detail))
-    return { abilities: detail.abilities, memoryConnected: detail.memoryConnected }
+    return { abilities: detail.abilities, memoryConnected: memoryInstalled(id, identity.id) }
   }
 
   async deleteRuntime(id: string) {
@@ -191,9 +191,9 @@ export class HermesEngine implements BotEngine {
       .sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name))
   }
 
-  /** Every bot id from the browser passes here before it reaches Hermes or a subprocess. */
-  private async requireBot(botId: string): Promise<BotIdentity> {
-    const bot = PROFILE_ID.test(botId) ? (await this.profiles()).find(candidate => candidate.id === botId) : undefined
+  /** Every native profile id passes here before it reaches Hermes or a subprocess. */
+  private async requireBot(engineBotId: string): Promise<BotIdentity> {
+    const bot = PROFILE_ID.test(engineBotId) ? (await this.profiles()).find(candidate => candidate.id === engineBotId) : undefined
     if (!bot) throw new LilBotError('bot_not_found', 'That bot does not exist.')
     return bot
   }
