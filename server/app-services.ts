@@ -178,7 +178,7 @@ export function createAppServices(
   const routines = new RoutineService(routineStore, bots, () => publish({ event: 'routines.changed' }), routineSettings(process.env))
   const { goals, boards } = createGoals({ goalStore: runs.goalStore, work, answers, threads, routines, activity, store, publish, repeat })
   const giveFile = giveFrom(library, calls, threadStore, routineStore, webhookStore, rootOf)
-  const core = { ...facts, bots, activity, memory, memoryChanged, delegation, work, goals, routines, giveFile, library }
+  const core = { ...facts, bots, activity, memory, memoryChanged, skills, delegation, work, goals, routines, giveFile, library }
   const extra = { webhooks, webhookRuns, connections: mcp.services, calls, checkSessions, changes: new SystemChanges(database), engineToken: token, port: PORT }
   const system = createSystemServer({ ...core, ...extra })
   repeat('threads', 1000, () => threads.tick())

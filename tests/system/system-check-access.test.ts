@@ -17,6 +17,8 @@ test('a check session only reads and gives its verdict: every change, and readin
   expect((await f.call('b1', 'lilbot_about')).data).toBeDefined()
   expect((await f.call('b1', 'lilbot_section_create', { name: 'Checked' })).error).toContain(IN_CHECK)
   expect((await f.call('b1', 'lilbot_memory_list')).error).toContain(IN_CHECK)
+  expect((await f.call('b1', 'lilbot_memory_save', { text: 'Check should not save.' })).error).toContain(IN_CHECK)
+  expect((await f.call('b1', 'lilbot_skill_read')).data.skills).toEqual([])
   expect((await f.call('b1', 'lilbot_give_file', { path: 'a.txt', title: 'A', requestId: 'r1' })).error).toContain(IN_CHECK)
   expect((await f.call('b1', 'lilbot_delegate', { requestId: 'r2', tasks: [{ to: 'b2', task: 'x' }] })).error).toContain(IN_CHECK)
   expect((await f.call('b1', 'lilbot_delegation', { action: 'status' })).data.exchanges).toEqual([])
