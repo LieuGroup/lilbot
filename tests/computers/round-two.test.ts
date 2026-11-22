@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { operate } from '../../helper/operations'
 import { boundResult, RESULT_JSON_LIMIT, TRUNCATED } from '../../helper/result-bounds'
@@ -17,7 +17,7 @@ afterEach(() => {
   for (const clean of cleanups.splice(0).reverse()) clean()
 })
 function fixture(disk = false) {
-  const root = mkdtempSync(join(homedir(), 'agent-tmp/computer-round-two-'))
+  const root = mkdtempSync(join(tmpdir(), 'computer-round-two-'))
   const db = openDatabase(disk ? join(root, 'requests.db') : ':memory:')
   const store = new ComputerStore(db)
   const key = loadServerKey(root)

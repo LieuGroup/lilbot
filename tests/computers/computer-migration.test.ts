@@ -1,11 +1,11 @@
 import { expect, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { openDatabase } from '../../server/database/database'
 
 test('migration 15 preserves shipped threads and adds computer tables', () => {
-  const root = mkdtempSync(join(homedir(), 'agent-tmp/computer-migration-'))
+  const root = mkdtempSync(join(tmpdir(), 'computer-migration-'))
   const path = join(root, 'test.db')
   let db = openDatabase(path)
   try {
@@ -36,7 +36,7 @@ test('migration 15 preserves shipped threads and adds computer tables', () => {
 })
 
 test('migration 16 preserves schema 15 requests and payloads with zeroed receive allowances', () => {
-  const root = mkdtempSync(join(homedir(), 'agent-tmp/computer-migration-'))
+  const root = mkdtempSync(join(tmpdir(), 'computer-migration-'))
   const path = join(root, 'test.db')
   let db = openDatabase(path)
   try {
@@ -61,7 +61,7 @@ test('migration 16 preserves schema 15 requests and payloads with zeroed receive
 })
 
 test('migration 24 adds the devices tables without touching computers, can run again, and allows one main computer', () => {
-  const root = mkdtempSync(join(homedir(), 'agent-tmp/computer-migration-'))
+  const root = mkdtempSync(join(tmpdir(), 'computer-migration-'))
   const path = join(root, 'test.db')
   let db = openDatabase(path)
   try {

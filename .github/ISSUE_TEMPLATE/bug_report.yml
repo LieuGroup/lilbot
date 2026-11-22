@@ -1,0 +1,62 @@
+name: Bug report
+description: Report broken or unexpected behaviour in LilBot
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: >
+        Please do not include secrets, tokens, webhook URLs, personal emails, or private hostnames.
+        To report a security vulnerability, use GitHub's private vulnerability reporting instead (see SECURITY.md).
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened
+      description: Describe the bug and what you expected to happen instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps or commands to trigger the problem.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Web UI
+        - Server / HTTP / WebSocket
+        - Engine (Hermes)
+        - Memory / History
+        - Threads / Work / Goals
+        - Routines / Webhooks
+        - Computers / Helper / Devices
+        - Connections / MCP / Skills
+        - Build / Tests / Deploy
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Bun version, LilBot commit SHA, and Hermes version (if applicable).
+      placeholder: |
+        - OS:
+        - Bun:
+        - LilBot commit:
+        - Hermes version:
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or error output
+      description: Relevant console, server, or test output (redacted of any secrets or private paths).
+      render: text

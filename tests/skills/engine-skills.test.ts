@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { BotPrefsStore } from '../../server/bots/bot-prefs-store'
 import { BotService } from '../../server/bots/bot-service'
@@ -19,7 +19,7 @@ const content = (name: string, text = 'Follow this procedure.') => `---\nname: $
 const settled = async (done: () => boolean) => {
   for (let attempt = 0; attempt < 200 && !done(); attempt++) await Bun.sleep(10)
 }
-const scratch = () => mkdtempSync(join(homedir(), 'agent-tmp/engine-skills-'))
+const scratch = () => mkdtempSync(join(tmpdir(), 'engine-skills-'))
 
 test('origin: shipped by LilBot first, then the engine it was imported from, then who wrote it', () => {
   expect(originOf('lilbot', 'hermes')).toEqual({ kind: 'lilbot' })

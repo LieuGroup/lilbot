@@ -1,6 +1,6 @@
 import { expect, spyOn, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { BotRuntimes } from '../../server/bots/bot-runtimes'
 import { t3Connection } from '../../server/connections/t3-connection'
@@ -25,7 +25,7 @@ test('every bot’s runtime is given LilBot’s connections, with its own key, b
 })
 
 test('the coding skill ships with LilBot, passes the skill safety rules and is restored when changed', () => {
-  const root = mkdtempSync(join(homedir(), 'agent-tmp/coding-skill-test-'))
+  const root = mkdtempSync(join(tmpdir(), 'coding-skill-test-'))
   const db = openDatabase(':memory:')
   try {
     const skills = new SkillsService(root, db)

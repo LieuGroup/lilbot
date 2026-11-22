@@ -1,10 +1,10 @@
 import { expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 test('refresh touches only supplied native ids, respects the allowlist, and skips missing profiles', async () => {
-  const root = mkdtempSync(join(homedir(), 'agent-tmp', 'refresh-test-'))
+  const root = mkdtempSync(join(tmpdir(), 'refresh-test-'))
   // configSet captures its executable at module load; run this fixture in a fresh process.
   const script = join(root, 'check.ts')
   const modulePath = join(import.meta.dir, '../../../server/engines/hermes')
@@ -44,7 +44,7 @@ test('refresh touches only supplied native ids, respects the allowlist, and skip
 })
 
 test('a current adapter makes its bot fail-closed again once after an outside edit (a rollback), and not on an unchanged start', async () => {
-  const root = mkdtempSync(join(homedir(), 'agent-tmp', 'refresh-test-'))
+  const root = mkdtempSync(join(tmpdir(), 'refresh-test-'))
   const script = join(root, 'check.ts')
   const modulePath = join(import.meta.dir, '../../../server/engines/hermes')
   const log = join(root, 'calls.log')

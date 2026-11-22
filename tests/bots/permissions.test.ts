@@ -43,11 +43,11 @@ test('saved mode reaches engine for roster startup, updates, chats and reviews',
 test('migration gives an existing identity full access without losing fields', async () => {
   const { Database } = await import('bun:sqlite')
   const { mkdtempSync, rmSync } = await import('node:fs')
-  const { homedir } = await import('node:os')
+  const { tmpdir } = await import('node:os')
   const { join } = await import('node:path')
   const { openDatabase } = await import('../../server/database/database')
   const { BotStore } = await import('../../server/bots/bot-store')
-  const dir = mkdtempSync(join(homedir(), 'agent-tmp/lilbot-mode-'))
+  const dir = mkdtempSync(join(tmpdir(), 'lilbot-mode-'))
   try {
     const path = join(dir, 'old.db')
     const old = new Database(path)
@@ -69,9 +69,9 @@ test('shipped deletion schema upgrades without changing tombstones or deletion d
   const { openDatabase } = await import('../../server/database/database')
   const { BotStore } = await import('../../server/bots/bot-store')
   const { mkdtempSync, rmSync } = await import('node:fs')
-  const { homedir } = await import('node:os')
+  const { tmpdir } = await import('node:os')
   const { join } = await import('node:path')
-  const root = mkdtempSync(join(homedir(), 'agent-tmp/lilbot-deletion-upgrade-'))
+  const root = mkdtempSync(join(tmpdir(), 'lilbot-deletion-upgrade-'))
   try {
     const path = join(root, 'db')
     const db = openDatabase(path)

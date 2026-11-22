@@ -1,12 +1,12 @@
 import { expect, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { checkLifecycle } from '../../live-checks/computers-lifecycle'
 import { loadServerKey } from '../../server/computers/server-key'
 
 test('helper authenticates revocation, preserves work on restart and refuses key conflicts', async () => {
-  const root = mkdtempSync(join(homedir(), 'agent-tmp/helper-lifecycle-'))
+  const root = mkdtempSync(join(tmpdir(), 'helper-lifecycle-'))
   try {
     await checkLifecycle(['bun', join(import.meta.dir, '../../helper/main.ts')], root)
   } finally {
@@ -15,7 +15,7 @@ test('helper authenticates revocation, preserves work on restart and refuses key
 }, 20_000)
 
 test('wrong-key server does not reset reconnect backoff on socket open', async () => {
-  const root = mkdtempSync(join(homedir(), 'agent-tmp/helper-backoff-'))
+  const root = mkdtempSync(join(tmpdir(), 'helper-backoff-'))
   let attempts = 0
   const wrong = loadServerKey(root)
   const door = Bun.serve({
@@ -55,7 +55,7 @@ test('wrong-key server does not reset reconnect backoff on socket open', async (
 
 test('reset removes only identity and service configuration, retaining execution receipts', async () => {
   const { existsSync, mkdirSync, writeFileSync } = await import('node:fs')
-  const root = mkdtempSync(join(homedir(), 'agent-tmp/helper-reset-'))
+  const root = mkdtempSync(join(tmpdir(), 'helper-reset-'))
   mkdirSync(join(root, 'bin'))
   writeFileSync(join(root, 'bin/systemctl'), '#!/bin/sh\nexit 0\n', { mode: 0o700 })
   mkdirSync(join(root, '.config/systemd/user'), { recursive: true })

@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { BotPrefsStore } from '../../server/bots/bot-prefs-store'
 import { BotService } from '../../server/bots/bot-service'
@@ -13,7 +13,7 @@ import { MemoryStore } from '../../server/memory/memory-store'
 import { SkillsService } from '../../server/skills/skills-service'
 
 test('skill preparation uses only bound live bots and Setup reports saved off switches', async () => {
-  const root = mkdtempSync(join(homedir(), 'agent-tmp/skills-api-'))
+  const root = mkdtempSync(join(tmpdir(), 'skills-api-'))
   const db = openDatabase(':memory:')
   try {
     const store = new BotStore(db)

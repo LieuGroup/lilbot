@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { startAccessDoor } from '../../server/http/access-door'
 import { appRoutes } from '../../server/http/app-routes'
@@ -8,7 +8,7 @@ import { fakeAccess, token } from './access-fixture'
 
 test('Access serves browser routes only after authentication, host and origin checks', async () => {
   const fake = fakeAccess()
-  const root = mkdtempSync(join(homedir(), 'agent-tmp', 'access-unit-'))
+  const root = mkdtempSync(join(tmpdir(), 'access-unit-'))
   await Bun.write(join(root, 'index.html'), '<html>App shell</html>')
   await Bun.write(join(root, 'asset.js'), '/* app asset */')
   const routes = appRoutes({ content: async () => ({ data: Buffer.from('delivered file'), mime: 'text/plain', name: 'notes.txt' }) }, root, new Set([fake.settings.host]), 'test')
@@ -96,7 +96,7 @@ test('Access failures return a plain 500 without error details', async () => {
 test('the sign-in callback is off by default (404, no app shell fallthrough) and only mounted on Access when opted in', async () => {
   const fake = fakeAccess()
   const seen: string[] = []
-  const root = mkdtempSync(join(homedir(), 'agent-tmp', 'access-unit-'))
+  const root = mkdtempSync(join(tmpdir(), 'access-unit-'))
   await Bun.write(join(root, 'index.html'), '<html>App shell</html>')
   const routes = appRoutes({ content: async () => ({ data: Buffer.from(''), mime: 'text/plain', name: 'x' }) }, root, new Set([fake.settings.host]), 'test')
   const callback = async (request: Request) => {

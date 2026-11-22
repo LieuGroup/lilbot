@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { mkdir, mkdtemp, rm, symlink, truncate, writeFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { botCapability } from '../../server/bots/bot-capability'
 import type { BotService } from '../../server/bots/bot-service'
@@ -24,7 +24,7 @@ let workspaces: Workspaces
 let active: Set<string>
 let changes: string[]
 beforeEach(async () => {
-  root = await mkdtemp(join(homedir(), 'agent-tmp/library-test-'))
+  root = await mkdtemp(join(tmpdir(), 'library-test-'))
   db = openDatabase(':memory:')
   workspaces = new Workspaces(join(root, 'workspaces'))
   await workspaces.ensure('bot')

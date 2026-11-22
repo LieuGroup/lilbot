@@ -1,12 +1,12 @@
 import { expect, test } from 'bun:test'
 import { mkdir, mkdtemp, readdir, rm } from 'node:fs/promises'
-import { homedir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { writeJson } from '../../server/deploy/files'
 import { currentRelease, pruneReleases, switchRelease } from '../../server/deploy/releases'
 
 test('release pointer switches atomically; retention keeps three and protects the running release', async () => {
-  const root = await mkdtemp(join(homedir(), 'agent-tmp', 'release-test-'))
+  const root = await mkdtemp(join(tmpdir(), 'release-test-'))
   const releases = join(root, 'releases')
   try {
     await mkdir(releases)

@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { mkdtempSync, readdirSync, rmSync, symlinkSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { assertDevelopmentTarget, assertServerEnvironment, developmentHome } from '../../server/environment'
 
@@ -39,7 +39,7 @@ for (const [key, value] of Object.entries({
   test(`checks refuse production ${key}`, () => expect(() => assertDevelopmentTarget({ [key]: value })).toThrow('Development refuses'))
 }
 test('a symlink and a missing child cannot disguise production data', () => {
-  const root = mkdtempSync(join(homedir(), 'agent-tmp/env-guard-'))
+  const root = mkdtempSync(join(tmpdir(), 'env-guard-'))
   try {
     symlinkSync(homedir(), join(root, 'alias'))
     expect(() => assertDevelopmentTarget({ LILBOT_DATA_DIR: join(root, 'alias', '.local/share/lilbot', 'new-child') })).toThrow('production path')

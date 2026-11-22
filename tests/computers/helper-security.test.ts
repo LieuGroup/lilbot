@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { operate } from '../../helper/operations'
 import { installBinary } from '../../helper/service'
@@ -11,7 +11,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { force: true, recursive: true })
 })
 function fixture() {
-  const root = mkdtempSync(join(homedir(), 'agent-tmp/helper-security-'))
+  const root = mkdtempSync(join(tmpdir(), 'helper-security-'))
   roots.push(root)
   return { root }
 }

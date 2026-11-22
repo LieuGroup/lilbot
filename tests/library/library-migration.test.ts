@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { BotStore } from '../../server/bots/bot-store'
 import { openDatabase } from '../../server/database/database'
@@ -8,7 +8,7 @@ import { RoutineStore } from '../../server/routines/routine-store'
 import { detail } from '../helpers/fake-engine'
 
 test('library migration preserves shipped routines and their run aliases', () => {
-  const root = mkdtempSync(join(homedir(), 'agent-tmp', 'library-migration-'))
+  const root = mkdtempSync(join(tmpdir(), 'library-migration-'))
   const path = join(root, 'db')
   let db = openDatabase(path)
   try {
