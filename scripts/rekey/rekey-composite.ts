@@ -20,13 +20,15 @@ function rewriteCursorPrefix(db: Database, oldPrefix: string, newPrefix: string,
 }
 
 export function rewriteCompositeIds(db: Database, maps: IdMaps, record: (table: string, n: number) => void) {
-  const { waitIds, deliveryIds, messageIds, workItemIds, checkIds } = maps
+  const { waitIds, deliveryIds, remoteRunIds, messageIds, workItemIds, checkIds } = maps
   if (tableExists(db, 'thread_waits')) {
     for (const [oldW, newW] of waitIds) record('thread_waits', runChanges(db, 'UPDATE thread_waits SET id = ? WHERE id = ?', newW, oldW))
     for (const [oldD, newD] of deliveryIds) record('thread_waits', runChanges(db, 'UPDATE thread_waits SET delivery_id = ? WHERE delivery_id = ?', newD, oldD))
   }
   if (tableExists(db, 'thread_deliveries'))
     for (const [oldD, newD] of deliveryIds) record('thread_deliveries', runChanges(db, 'UPDATE thread_deliveries SET id = ? WHERE id = ?', newD, oldD))
+  if (tableExists(db, 'remote_worker_runs'))
+    for (const [oldR, newR] of remoteRunIds) record('remote_worker_runs', runChanges(db, 'UPDATE remote_worker_runs SET run_id = ? WHERE run_id = ?', newR, oldR))
   if (tableExists(db, 'thread_files')) {
     for (const [oldMsg, newMsg] of messageIds) {
       record('thread_files', runChanges(db, 'UPDATE thread_files SET message_id = ? WHERE message_id = ?', newMsg, oldMsg))

@@ -152,16 +152,17 @@ test('refuses wrong target, deleted bot, all 6 in-flight work tables, non-stoppe
     expect((await runRekey({ ...base, dryRun: true })).mode).toBe('dry-run')
     rmSync(lockDir, { recursive: true, force: true })
 
-    // All 6 in-flight work tables refused with counts only
+    // All 7 in-flight work tables refused with counts only
     const db = new Database(f.dbPath)
     db.query("UPDATE computer_requests SET status = 'running' WHERE id = 'cr-1'").run()
+    db.query("UPDATE remote_worker_runs SET status = 'running' WHERE bot_id = ?").run(OLD_ID)
     db.query("UPDATE routine_runs SET status = 'pending' WHERE id = 'rr-1'").run()
     db.query("UPDATE webhook_runs SET status = 'running' WHERE id = 'wr-1'").run()
     db.query("UPDATE thread_deliveries SET status = 'pending' WHERE sender = ?").run(OLD_ID)
     db.query("UPDATE work_answers SET status = 'stopping' WHERE bot_id = ?").run(OLD_ID)
     db.query("UPDATE work_checks SET state = 'checking' WHERE checker_id = ?").run(OLD_ID)
     db.close()
-    await expect(runRekey(base)).rejects.toThrow(/computer_requests=1.*routine_runs=1.*webhook_runs=1.*thread_deliveries=2.*work_answers=2.*work_checks=1/)
+    await expect(runRekey(base)).rejects.toThrow(/computer_requests=1.*remote_worker_runs=1.*routine_runs=1.*webhook_runs=1.*thread_deliveries=2.*work_answers=2.*work_checks=1/)
 
     // Deleted (tombstoned) bot refused
     const db2 = new Database(f.dbPath)

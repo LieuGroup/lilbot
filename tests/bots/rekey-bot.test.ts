@@ -4,6 +4,7 @@ import { createHmac } from 'node:crypto'
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { PLAIN_TARGETS } from '../../scripts/rekey/rekey-targets'
 import { runRekey, runUndo } from '../../scripts/rekey-bot'
 import { defaultAvatar } from '../../shared/avatar'
 import {
@@ -85,6 +86,10 @@ test('full re-key covers every table and all 6 composite shapes, passes schema-w
     expect(db.query('SELECT id FROM thread_files WHERE message_id = ?').get(`group:${GROUP_ID}:1:${newId}:reply`)).toEqual({ id: `group:${GROUP_ID}:1:${newId}:reply:0` })
     // Decoy bot (`legacyXbot`) must be untouched despite `_` wildcard in OLD_ID (`legacy_bot`).
     expect(db.query('SELECT id, message_id FROM thread_files WHERE sender = ?').get(DECOY_ID)).toEqual({ id: `${DECOY_ID}:dreq-1:0`, message_id: `${DECOY_ID}:dreq-1` })
+    expect(db.query('SELECT run_id, bot_id FROM remote_worker_runs ORDER BY bot_id').all()).toEqual([
+      { run_id: `thread-${DECOY_ID}:dreq-1`, bot_id: DECOY_ID },
+      { run_id: `thread-${newId}:wreq-1`, bot_id: newId }
+    ])
     expect(db.query('SELECT id FROM work_answers ORDER BY id').all()).toEqual([{ id: `check-${newCheck}` }, { id: `drop-${newMember}` }])
     expect(db.query('SELECT id, verdict_request FROM work_checks WHERE item_id = ?').get(newMember)).toEqual({ id: newCheck, verdict_request: `verdict-${newCheck}` })
     expect(db.query("SELECT target FROM system_changes WHERE tool = 'lilbot_work'").get()).toEqual({ target: newMember })
@@ -130,7 +135,52 @@ test('full re-key covers every table and all 6 composite shapes, passes schema-w
     const restoredDb = new Database(f.dbPath, { readonly: true })
     expect(restoredDb.query('SELECT id FROM bots WHERE id = ?').get(OLD_ID)).toBeTruthy()
     expect(restoredDb.query('SELECT id FROM bots WHERE id = ?').get(newId)).toBeNull()
+    expect(restoredDb.query('SELECT run_id, bot_id FROM remote_worker_runs WHERE bot_id = ?').get(OLD_ID)).toEqual({ run_id: `thread-${OLD_ID}:wreq-1`, bot_id: OLD_ID })
     restoredDb.close()
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+/** Catches any future migration table or bot-keyed column that is neither registered in scripts/rekey/ nor audited bot-free,
+ *  and guarantees every re-keyed table has >= 1 row in createRekeyFixture so scanEveryTableColumn never skips it silently. */
+test('schema-wide guard: every migration table and bot-keyed column is classified for re-key and populated in the fixture', () => {
+  const BOT_FREE_TABLES = new Set(
+    'bot_delete_defaults bot_imports computer_attempt_devices computer_attempts computer_codes computer_nonces computer_payloads computers devices engine_skills goal_events main_computer routine_chats sections skill_origins webhook_chats webhook_events'.split(
+      ' '
+    )
+  )
+  const SPECIAL_REKEY_TABLES = new Set(['skill_imports', 'memory_checkpoint_reviewed', 'threads', 'thread_links', 'work_check_chats', 'work_events', 'goal_reviews'])
+  const SPECIAL_REKEY_COLS = new Set(['memory_checkpoint_reviewed.bot_id'])
+  const NON_BOT_ID_COLS = new Set(['memory_facts.author', 'memory_facts.forgotten_by', 'goals.target'])
+  const BOT_COL_PATTERN = /^(bot|bot_id|owner_id|leader_id|added_by|checker_id|asked_id|by_id|sender|target|author|forgotten_by)$/
+
+  const plainTables = new Set(PLAIN_TARGETS.map(t => t.table))
+  const plainCols = new Set(PLAIN_TARGETS.map(t => `${t.table}.${t.column}`))
+  const root = mkdtempSync(join(tmpdir(), 'rekey-schema-guard-'))
+  try {
+    const f = createRekeyFixture(root)
+    const db = new Database(f.dbPath, { readonly: true })
+    const tables = db
+      .query<{ name: string; sql: string | null }, []>("SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+      .all()
+      .filter(t => !t.sql?.toUpperCase().startsWith('CREATE VIRTUAL TABLE') && !/^(history_search|memory_search)_/.test(t.name))
+    const unclassifiedTables: string[] = []
+    const unclassifiedCols: string[] = []
+    const emptyRekeyTables: string[] = []
+    for (const { name } of tables) {
+      const handled = plainTables.has(name) || SPECIAL_REKEY_TABLES.has(name)
+      if (!handled && !BOT_FREE_TABLES.has(name)) unclassifiedTables.push(name)
+      if (handled && (db.query<{ n: number }, []>(`SELECT count(*) AS n FROM "${name}"`).get()?.n ?? 0) === 0) emptyRekeyTables.push(name)
+      for (const { name: col } of db.query<{ name: string }, []>(`PRAGMA table_info("${name}")`).all()) {
+        const key = `${name}.${col}`
+        if (BOT_COL_PATTERN.test(col) && !plainCols.has(key) && !SPECIAL_REKEY_COLS.has(key) && !NON_BOT_ID_COLS.has(key)) unclassifiedCols.push(key)
+      }
+    }
+    db.close()
+    expect(unclassifiedTables).toEqual([])
+    expect(unclassifiedCols).toEqual([])
+    expect(emptyRekeyTables).toEqual([])
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

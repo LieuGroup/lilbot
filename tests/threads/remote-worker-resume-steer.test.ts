@@ -121,8 +121,26 @@ test('PR #235 Medium #2 & #4: unsafe replies withheld; lost --resume cleared; un
   await until(() => threadStore.delivery(unconf.id)?.status === 'pending')
   expect(threadStore.delivery(unconf.id)?.status).toBe('pending')
 
-  rw.runner.store.insert({ runId: 'r-pers', computerId: compId, botId: 'b1', threadId: 't-pers', chatId: 'remote:t-pers' })
-  rw.runner.store.recordSteer('r-pers', 'steer-payload-99')
+  // N8: drive runner.steer -> worker.steer.result -> leader restart -> worker.done and prove confirmed steer survives.
+  outbound.length = 0
+  void rw.runner.run({
+    runId: 'r-pers',
+    computerId: compId,
+    botId: 'b1',
+    threadId: 't-pers',
+    chatId: 'remote:t-pers',
+    cwd: '/tmp',
+    model: 'claude-sonnet-4-6',
+    systemPrompt: 'sys',
+    prompt: 'hi'
+  })
+  await until(() => starts().some(f => f.runId === 'r-pers'))
+  const steerP = rw.runner.steer(compId, 'r-pers', 'steer-payload-99')
+  await until(() => outbound.some(f => f.type === 'worker.steer' && f.runId === 'r-pers'))
+  const steerFrame = outbound.find((f): f is Extract<WorkerLeaderFrame, { type: 'worker.steer' }> => f.type === 'worker.steer' && f.runId === 'r-pers')!
+  rw.runner.bridge.onFrame(compId, { type: 'worker.steer.result', runId: 'r-pers', steerId: steerFrame.steerId, status: 'steered' }, () => true)
+  expect(await steerP).toBe('steered')
+  rw.runner.close()
   const runner2 = new RemoteWorkerRunner({ db: core.db, botExists: () => true, handleMcp: async () => ({ status: 200, body: '{}' }) })
   cleanups.push(() => runner2.close())
   const resP = runner2.run({

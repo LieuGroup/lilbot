@@ -76,6 +76,12 @@ export function seedThreadsAndWork(db: Database, oldId: string, otherId: string,
   db.query('INSERT INTO thread_links VALUES (?, NULL, ?)').run('thr-sub', memberItem)
   db.query('INSERT INTO thread_chats VALUES (?, ?, ?)').run('tchat-1', oldId, 'thr-worker')
   db.query("INSERT INTO thread_deliveries VALUES (?, 'thr-worker', ?, ?, 'chat-main-1', 'do work', 'request', 'tchat-1', NULL, 'done')").run(workerDeliveryId, oldId, oldId)
+  db.query(
+    "INSERT INTO remote_worker_runs VALUES (?, 'comp-1', ?, 'thr-worker', 'remote:thr-worker', 'sess-1', 'settled', '{\"status\":\"completed\",\"text\":\"done\",\"items\":[]}', 1000, 1001)"
+  ).run(`thread-${workerDeliveryId}`, oldId)
+  db.query(
+    "INSERT INTO remote_worker_runs VALUES (?, 'comp-1', ?, 'thr-decoy', 'remote:thr-decoy', 'sess-d', 'settled', '{\"status\":\"completed\",\"text\":\"ok\",\"items\":[]}', 1000, 1001)"
+  ).run(`thread-${decoyDeliveryId}`, decoyId)
   db.query("INSERT INTO thread_deliveries VALUES (?, 'thr-decoy', ?, ?, 'chat-decoy', 'decoy', 'request', NULL, NULL, 'done')").run(decoyDeliveryId, decoyId, otherId)
   db.query("INSERT INTO thread_deliveries VALUES (?, ?, ?, ?, 'chat-other', 'point', 'point', NULL, NULL, 'done')").run(groupPointId, groupId, otherId, oldId)
   db.query("INSERT INTO thread_deliveries VALUES (?, 'thr-worker', ?, ?, 'chat-main-1', 'notice', 'notice', NULL, NULL, 'done')").run(`wait:${oldWaitId}`, oldId, oldId)
