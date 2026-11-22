@@ -29,7 +29,7 @@ test('refresh touches only supplied native ids, respects the allowlist, and skip
     for (const id of ['owned', 'unbound', 'excluded']) {
       const home = join(root, 'profiles', id)
       mkdirSync(join(home, 'plugins', 'lilbot-memory-v0-1-0'), { recursive: true })
-      writeFileSync(join(home, 'lilbot-memory.json'), JSON.stringify({ url: 'http://localhost:1', token_file: token }))
+      writeFileSync(join(home, 'lilbot-memory.json'), JSON.stringify({ url: 'http://localhost:1', token_file: token, bot_id: `bot-${id}` }))
     }
     const unbound = readFileSync(join(root, 'profiles/unbound/lilbot-memory.json'), 'utf8')
     const excluded = readFileSync(join(root, 'profiles/excluded/lilbot-memory.json'), 'utf8')
@@ -87,34 +87,50 @@ test('a current adapter makes its bot fail-closed again once after an outside ed
   }
 })
 
-test('a current adapter rewrites lilbot-memory.json when the bot id or creation capability drifted', async () => {
+test('a current adapter repairs drifted url, token_file, or creation_capability and skips mismatched bot_id for connectAll', async () => {
   const root = mkdtempSync(join(tmpdir(), 'refresh-rekey-test-'))
   const script = join(root, 'check.ts')
   const modulePath = join(import.meta.dir, '../../../server/engines/hermes')
-  const token = join(root, 'token')
-  writeFileSync(token, 'fixture-token')
+  const staleToken = join(root, 'stale-token')
+  const liveToken = join(root, 'live-token')
+  writeFileSync(staleToken, 'stale-fixture-token')
+  writeFileSync(liveToken, 'live-fixture-token')
   writeFileSync(
     script,
-    `
-    import { refreshMemoryAdapters } from '${modulePath}/hermes-memory-setup'
-    const first = await refreshMemoryAdapters([{ id: 'new-bot-uuid', engineBotId: 'owned' }])
-    const second = await refreshMemoryAdapters([{ id: 'new-bot-uuid', engineBotId: 'owned' }])
+    `\n    import { refreshMemoryAdapters } from '${modulePath}/hermes-memory-setup'
+    const current = { url: 'http://127.0.0.1:4444', tokenFile: '${liveToken}' }
+    const first = await refreshMemoryAdapters([
+      { id: 'new-bot-uuid', engineBotId: 'owned' },
+      { id: 'rekeyed-bot-uuid', engineBotId: 'stale' }
+    ], current)
+    const second = await refreshMemoryAdapters([
+      { id: 'new-bot-uuid', engineBotId: 'owned' },
+      { id: 'rekeyed-bot-uuid', engineBotId: 'stale' }
+    ], current)
     if (JSON.stringify(first) !== '["owned"]' || second.length !== 0) process.exit(1)
   `
   )
   try {
-    const home = join(root, 'profiles', 'owned')
     const version = /^version:\s*(\S+)/m.exec(readFileSync(join(modulePath, 'memory-adapter/plugin.yaml'), 'utf8'))![1]
-    mkdirSync(join(home, 'plugins', `lilbot-memory-v${version.replaceAll('.', '-')}`), { recursive: true })
-    writeFileSync(join(home, 'lilbot-memory.json'), JSON.stringify({ url: 'http://localhost:1', token_file: token, bot_id: 'old-id', creation_capability: 'stale' }))
-    writeFileSync(join(home, 'config.yaml'), 'compression:\n  checkpoint_required: true\n')
+    const owned = join(root, 'profiles', 'owned')
+    mkdirSync(join(owned, 'plugins', `lilbot-memory-v${version.replaceAll('.', '-')}`), { recursive: true })
+    writeFileSync(join(owned, 'lilbot-memory.json'), JSON.stringify({ url: 'http://127.0.0.1:9999', token_file: staleToken, bot_id: 'new-bot-uuid', creation_capability: 'stale' }))
+    writeFileSync(join(owned, 'config.yaml'), 'compression:\n  checkpoint_required: true\n')
+    const stale = join(root, 'profiles', 'stale')
+    mkdirSync(join(stale, 'plugins', `lilbot-memory-v${version.replaceAll('.', '-')}`), { recursive: true })
+    const mismatchedBefore = JSON.stringify({ url: 'http://127.0.0.1:9999', token_file: staleToken, bot_id: 'old-id', creation_capability: 'stale' })
+    writeFileSync(join(stale, 'lilbot-memory.json'), mismatchedBefore)
+    writeFileSync(join(stale, 'config.yaml'), 'compression:\n  checkpoint_required: true\n')
     const child = Bun.spawn(['bun', script], { env: { ...process.env, HERMES_HOME: root, LILBOT_HERMES_BIN: '/usr/bin/true' }, stdout: 'pipe', stderr: 'pipe' })
     const error = await new Response(child.stderr).text()
     expect(await child.exited, error).toBe(0)
-    const written = JSON.parse(readFileSync(join(home, 'lilbot-memory.json'), 'utf8'))
+    const written = JSON.parse(readFileSync(join(owned, 'lilbot-memory.json'), 'utf8'))
+    expect(written.url).toBe('http://127.0.0.1:4444')
+    expect(written.token_file).toBe(liveToken)
     expect(written.bot_id).toBe('new-bot-uuid')
     expect(written.creation_capability).toMatch(/^[0-9a-f]{64}$/)
     expect(written.creation_capability).not.toBe('stale')
+    expect(readFileSync(join(stale, 'lilbot-memory.json'), 'utf8')).toBe(mismatchedBefore)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

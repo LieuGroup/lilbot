@@ -111,8 +111,11 @@ export class HermesEngine implements BotEngine {
     }
   }
 
-  refreshMemory(bots: RuntimeBinding[]): Promise<string[]> {
-    return refreshMemoryAdapters(bots.filter(bot => allowedProfile(bot.engineBotId) && (!this.botIds || this.botIds.includes(bot.engineBotId))))
+  refreshMemory(bots: RuntimeBinding[], connection?: MemoryConnection): Promise<string[]> {
+    return refreshMemoryAdapters(
+      bots.filter(bot => allowedProfile(bot.engineBotId) && (!this.botIds || this.botIds.includes(bot.engineBotId))),
+      connection
+    )
   }
 
   onToolCall = onToolCall

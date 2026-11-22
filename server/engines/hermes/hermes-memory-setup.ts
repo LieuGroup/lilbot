@@ -142,21 +142,23 @@ export async function removeMemory(botId: string) {
   await rm(join(home, SETTINGS_FILE), { force: true })
 }
 
-/** Upgrades connected adapters and repairs drifted bot ids or capabilities. One that cannot be updated must not stop
- *  the others; it is tried on the next start. Returns the native profile ids that were updated. */
-export async function refreshMemoryAdapters(bots: RuntimeBinding[]): Promise<string[]> {
+/** Upgrades connected adapters and repairs drifted connection settings or capabilities. Profiles whose settings are
+ *  missing or bound to a different bot id are skipped here so `connectAllMemory` connects them cleanly once. */
+export async function refreshMemoryAdapters(bots: RuntimeBinding[], current?: MemoryConnection): Promise<string[]> {
   const updated: string[] = []
   for (const { id: botId, engineBotId } of bots) {
-    if (!existsSync(join(profileHome(engineBotId), SETTINGS_FILE))) continue
+    if (!memoryInstalled(engineBotId, botId)) continue
     try {
       const saved = await memorySettings(engineBotId)
-      if (!saved) continue
-      const connection: MemoryConnection = { url: saved.url, tokenFile: saved.tokenFile, botId }
+      if (!saved && !current) continue
+      const url = current?.url ?? saved!.url
+      const tokenFile = current?.tokenFile ?? saved!.tokenFile
+      const connection: MemoryConnection = { url, tokenFile, botId }
       // Fail-closed again after the deploy watchdog cleared it for a rollback (`server/deploy/rollback-profiles.ts`);
       // once, not on every start: a changed `checkpoint_required` rebuilds every cached Hermes agent of the bot.
       if (memoryCurrent(engineBotId)) {
-        const expectedCapability = await memoryCapability(saved.tokenFile, botId)
-        if (saved.botId !== botId || saved.creationCapability !== expectedCapability) {
+        const expectedCapability = await memoryCapability(tokenFile, botId)
+        if (!saved || saved.url !== url || saved.tokenFile !== tokenFile || saved.botId !== botId || saved.creationCapability !== expectedCapability) {
           await writeMemorySettings(profileHome(engineBotId), connection, botId)
           updated.push(engineBotId)
         }

@@ -74,7 +74,10 @@ async function prepareMemory() {
   // Temporary test servers must opt in: never rewrite real profiles' memory endpoints.
   await bots.prepareRuntimes()
   if (process.env.LILBOT_SKIP_MEMORY_SETUP === '1') return
-  const updated = await engine.refreshMemory(store.list().filter(bot => bot.engineId === engine.id))
+  const updated = await engine.refreshMemory(
+    store.list().filter(bot => bot.engineId === engine.id),
+    { url: `http://127.0.0.1:${PORT}`, tokenFile: join(DATA_DIR, 'engine-token') }
+  )
   if (updated.length) console.log(`Memory adapter updated to ${MEMORY_ADAPTER_VERSION} for: ${updated.join(', ')}`)
   const connected = await bots.connectAllMemory()
   if (connected.length) console.log(`Connected to LilBot memory: ${connected.join(', ')}`)
