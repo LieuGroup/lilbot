@@ -113,3 +113,31 @@ test('a webhook address is blanked in the common encodings, also split across fi
     f.clean()
   }
 })
+
+test('form-encoded and JSON webhook payloads withhold secrets while allowing pagination, masks and schemas', () => {
+  for (const [body, headers] of [
+    ['user=alice&password=hunter2abc', FORM],
+    ['user=alice&pass=hunter2abc', FORM],
+    ['user=alice&db_pass=hunter2abc', FORM],
+    ['user=alice&auth_token=tok_9f8e7d6c5b4a', FORM],
+    [`password=hunter2abc&pad=${'x'.repeat(5000)}`, FORM],
+    [JSON.stringify({ config: { openai_api_key: '9f8e7d6c5b4a3' } }), {}],
+    [JSON.stringify({ auth: { pass: 'hunter2abc' } }), {}],
+    [JSON.stringify({ secret: 'topsecret123', pad: 'x'.repeat(5000) }), {}]
+  ] as const) {
+    const shown = view(body, headers)
+    expect(shown.refusal).toContain('password or key')
+    expect(shown.item).toBe('')
+  }
+  for (const [body, headers] of [
+    ['user=alice&page_token=Cg0IARIGabcdef', FORM],
+    ['user=alice&next_token=Cg0IARIGabcdef', FORM],
+    [JSON.stringify({ next_page_token: 'Cg0IARIGabcdef', max_tokens: 4096, pass: true }), {}],
+    [JSON.stringify({ hook: { config: { secret: '********' } } }), {}],
+    [JSON.stringify({ schema: { password: { type: 'string' }, token: null } }), {}]
+  ] as const) {
+    const shown = view(body, headers)
+    expect(shown.refusal).toBeNull()
+    expect(shown.item).not.toBe('')
+  }
+})
