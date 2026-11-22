@@ -26,6 +26,7 @@ export interface CodingSwitchStartup {
   bots: string[]
   mainChat: (botId: string) => string | null
   primaryBot: string | null
+  hasNotice?: (issuedAt: number) => boolean
   postNotice: (botId: string, chatId: string, issuedAt: number, detail: string) => void
 }
 
@@ -35,7 +36,7 @@ export class CodingSwitchNotice {
     this.state = this.load()
   }
 
-  onStartup({ t3Enabled, removedT3Skill, t3GrantIssuedAt, bots, mainChat, primaryBot, postNotice }: CodingSwitchStartup) {
+  onStartup({ t3Enabled, removedT3Skill, t3GrantIssuedAt, bots, mainChat, primaryBot, hasNotice, postNotice }: CodingSwitchStartup) {
     if (t3Enabled) {
       if (Object.keys(this.state.pendingChats).length) {
         this.state.pendingChats = {}
@@ -54,14 +55,19 @@ export class CodingSwitchNotice {
       }
     }
     if (t3GrantIssuedAt !== null && this.state.t3NoticeIssuedAt !== t3GrantIssuedAt) {
-      const ordered = primaryBot && bots.includes(primaryBot) ? [primaryBot, ...bots.filter(id => id !== primaryBot)] : bots
-      const target = ordered.map(id => ({ id, chatId: mainChat(id) })).find(entry => entry.chatId)
-      if (target?.chatId) {
-        postNotice(target.id, target.chatId, t3GrantIssuedAt, T3_OFF_OSCAR_NOTICE)
+      if (hasNotice?.(t3GrantIssuedAt)) {
         this.state.t3NoticeIssuedAt = t3GrantIssuedAt
-        const existing = this.state.pendingChats[target.id]
-        if (!existing || existing.chatId === target.chatId) this.state.pendingChats[target.id] = { chatId: target.chatId, hadT3Grant: true }
         dirty = true
+      } else {
+        const ordered = primaryBot && bots.includes(primaryBot) ? [primaryBot, ...bots.filter(id => id !== primaryBot)] : bots
+        const target = ordered.map(id => ({ id, chatId: mainChat(id) })).find(entry => entry.chatId)
+        if (target?.chatId) {
+          postNotice(target.id, target.chatId, t3GrantIssuedAt, T3_OFF_OSCAR_NOTICE)
+          this.state.t3NoticeIssuedAt = t3GrantIssuedAt
+          const existing = this.state.pendingChats[target.id]
+          if (existing && existing.chatId === target.chatId) this.state.pendingChats[target.id] = { chatId: target.chatId, hadT3Grant: true }
+          dirty = true
+        }
       }
     }
     if (dirty) this.save()

@@ -112,7 +112,9 @@ export class SkillsService {
       renameSync(temp, path)
     }
     this.db
-      .query('INSERT INTO skills VALUES (?,?,?,?) ON CONFLICT(name) DO UPDATE SET description=excluded.description, author=excluded.author, updated_at=excluded.updated_at')
+      .query(
+        "INSERT INTO skills VALUES (?,?,?,?) ON CONFLICT(name) DO UPDATE SET description=excluded.description, author=CASE WHEN skills.author='lilbot' AND excluded.author<>'oscar' THEN 'lilbot' ELSE excluded.author END, updated_at=excluded.updated_at"
+      )
       .run(name, meta.description, author, Date.now())
     this.changed()
   }

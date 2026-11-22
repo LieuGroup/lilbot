@@ -80,6 +80,9 @@ test('the native coding skill ships with LilBot, passes safety rules, mentions n
     for (const part of [
       'wins over any older instruction naming T3',
       'thinking-only',
+      'Out of scope',
+      "Oscar's decisions and words",
+      "before editing so Oscar's board shows it",
       'lilbot_delegate',
       'worker: true',
       'lilbot_bots_list',
@@ -90,7 +93,9 @@ test('the native coding skill ships with LilBot, passes safety rules, mentions n
       'writes findings and progress'
     ])
       expect(shipped['SKILL.md']).toContain(part)
+    expect(shipped['SKILL.md']).not.toContain('for any change that will be committed')
     skills.write({ name: 'lilbot-coding', action: 'edit', content: shipped['SKILL.md'].replace('Write a complete brief', 'Write a short brief') }, 'bot-a')
+    expect(skills.list('any-bot').find(s => s.name === 'lilbot-coding')?.author).toBe('lilbot')
     skills.provide('lilbot-coding', shipped)
     expect(skills.read('lilbot-coding')['SKILL.md']).toBe(shipped['SKILL.md'])
   } finally {
@@ -99,7 +104,7 @@ test('the native coding skill ships with LilBot, passes safety rules, mentions n
   }
 })
 
-test('SkillsService.remove deletes only LilBot-installed built-ins and leaves Oscar, bot, engine-imported, or untracked skills untouched', () => {
+test('SkillsService.remove deletes LilBot built-ins (even after a bot edit) and leaves Oscar, bot-created, engine-imported, or untracked skills untouched', () => {
   const root = mkdtempSync(join(tmpdir(), 'skills-remove-guard-'))
   const db = openDatabase(':memory:')
   try {
@@ -112,6 +117,7 @@ test('SkillsService.remove deletes only LilBot-installed built-ins and leaves Os
     mkdirSync(untracked, { recursive: true })
     writeFileSync(join(untracked, 'SKILL.md'), body('untracked-skill'))
     skills.provide('built-in', { 'SKILL.md': body('built-in') })
+    skills.write({ name: 'built-in', action: 'edit', content: body('built-in').replace('Keep this.', 'Bot edited.') }, 'bot-a')
     expect(skills.remove('oscar-skill')).toBe(false)
     expect(skills.remove('bot-skill')).toBe(false)
     expect(skills.remove('engine-skill')).toBe(false)

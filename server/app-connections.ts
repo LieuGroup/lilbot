@@ -175,7 +175,7 @@ export function createConnections({
       soon()
     },
     onCodingSkillsReady: (removedT3Skill: boolean) => {
-      const grant = t3Grants.read()
+      const grant = t3Grants.usable()
       codingSwitch.onStartup({
         t3Enabled: Boolean(t3Enabled),
         removedT3Skill,
@@ -183,6 +183,7 @@ export function createConnections({
         bots: botIds(),
         mainChat: id => prefs.mainChat(id),
         primaryBot: prefs.primaryBot() ?? store.list().find(bot => bot.isDefault)?.id ?? null,
+        hasNotice: issuedAt => history.hasItem(`t3-switch-notice:${issuedAt}`),
         postNotice: (botId, chatId, issuedAt, detail) => {
           const at = Date.now()
           history.session(botId, chatId, at)

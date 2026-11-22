@@ -100,7 +100,7 @@ test('connectionPreparer.prepare and prepareAppliedConnections report whether MC
   // Case 1: applied() ran with matching token steps and matching connected MCP servers -> false.
   const matching = socket([{ name: 'lilbot_t3', url: t3.url, enabled: true, tools: t3.tools }])
   const p1 = connectionPreparer(async () => ({ ...matching, close: () => {} }))
-  const ranWithTokens = async (_id: string, _step: string | null, _key: string, run: (steps: Record<string, string> | null) => Promise<void>) => {
+  const ranWithTokens = async (_id: string, _step: string | null, _key: string, run: (steps: Record<string, string> | null) => Promise<unknown>) => {
     await run(connectionTokenSteps([connection]))
     return true
   }
@@ -111,7 +111,7 @@ test('connectionPreparer.prepare and prepareAppliedConnections report whether MC
   // Case 2: applied() skipped (lilbot-applied.json intact), statusOnly reconnects a parked server -> true.
   const parked = socket([{ name: 'lilbot_t3', url: t3.url, enabled: true, tools: t3.tools }], [{ name: 'lilbot_t3', connected: false }])
   const p2 = connectionPreparer(async () => ({ ...parked, close: () => {} }))
-  const skipFirst = async (_id: string, step: string | null, _key: string, run: (steps: Record<string, string> | null) => Promise<void>) => {
+  const skipFirst = async (_id: string, step: string | null, _key: string, run: (steps: Record<string, string> | null) => Promise<unknown>) => {
     if (step) return false
     await run(null)
     return true

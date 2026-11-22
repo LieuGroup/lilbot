@@ -130,6 +130,9 @@ export class HistoryStore {
   reference(bot: string, session: string, item: Extract<ChatItem, { kind: 'tool' }>, at: number) {
     this.write(bot, session, [{ id: item.toolId, at, order: 0, item }])
   }
+  hasItem(id: string): boolean {
+    return Boolean(this.db.query('SELECT 1 FROM history_items WHERE id=? LIMIT 1').get(id))
+  }
   /** Inserts or updates a service sign-in card in place in its conversation; never indexed in FTS (`text` stays empty). */
   signInCard(bot: string, session: string, card: import('../../shared/connections-schema').ConnectionSignInCard) {
     this.session(bot, session, card.createdAt)
