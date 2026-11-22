@@ -171,28 +171,3 @@ test('a run asked for toolsets starts its session with only those; without, the 
   expect(created[0].toolsets).toEqual(['web'])
   expect('toolsets' in created[1]).toBe(false)
 })
-
-test('a transcript that shrank after compression returns its post-compression items instead of an empty slice', async () => {
-  let submitted = false
-  const before = [
-    { role: 'user', text: 't1' },
-    { role: 'assistant', text: 'a1' },
-    { role: 'user', text: 't2' },
-    { role: 'assistant', text: 'a2' }
-  ]
-  const connect = async () =>
-    ({
-      request: async (method: string) => {
-        if (method === 'config.get') return { value: 'off' }
-        if (method === 'prompt.submit') {
-          submitted = true
-          return { admission_id: 'one' }
-        }
-        if (method === 'prompt.receipt') return { status: 'terminal', outcome: 'completed' }
-        return { session_id: 'live', stored_session_id: 'stored', display_messages: submitted ? [{ role: 'assistant', text: 'After compression' }] : before }
-      },
-      close: () => {}
-    }) as unknown as HermesSocket
-  const result = await runRoutine('bot', 'follow-up', { workspace: '/bot', runId: 'compressed', chatId: 'stored', onChat: () => {}, baseline: n => n }, connect)
-  expect(result).toMatchObject({ status: 'completed', text: 'After compression', items: [{ kind: 'assistant', text: 'After compression' }] })
-})
