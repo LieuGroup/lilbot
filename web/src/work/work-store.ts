@@ -17,7 +17,7 @@ interface WorkStore {
   error: string
 }
 
-export const useWorkStore = create<WorkStore>(() => ({
+const useWorkStore = create<WorkStore>(() => ({
   brief: null,
   active: [],
   list: [],

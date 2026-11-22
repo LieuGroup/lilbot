@@ -24,6 +24,8 @@ export function failureLine(reason: Failure, botName: string | undefined): strin
 
 // An exchange with another bot draws as a bordered line with its live state; it loads with the first one.
 const ThreadLine = lazy(() => import('../threads/thread-line'))
+// A work item opened in a conversation draws as a bordered Work line; it loads with the first one.
+const WorkLine = lazy(() => import('../work/work-line'))
 
 /** One transcript item drawn with the AI Elements patterns: Message and Bubble for turns, a Tool
  *  trace line for tool use. Memoised: a streamed chunk changes only the last item, so earlier
@@ -63,12 +65,19 @@ export const ChatItem = memo(function ChatItem({ item, botId, queued = false }: 
         </Message>
       )
     case 'tool':
-      if (!item.threadId) return <ToolTrace item={item} />
-      return (
-        <Suspense fallback={<div className="h-[52px] rounded-[10px] ring-1 ring-hairline" />}>
-          <ThreadLine botId={botId} threadId={item.threadId} fallback={<ToolTrace item={item} />} />
-        </Suspense>
-      )
+      if (item.threadId)
+        return (
+          <Suspense fallback={<div className="h-[52px] rounded-[10px] ring-1 ring-hairline" />}>
+            <ThreadLine botId={botId} threadId={item.threadId} fallback={<ToolTrace item={item} />} />
+          </Suspense>
+        )
+      if (item.workItemId)
+        return (
+          <Suspense fallback={<div className="h-[52px] rounded-[10px] ring-1 ring-hairline" />}>
+            <WorkLine botId={botId} workItemId={item.workItemId} fallback={<ToolTrace item={item} />} />
+          </Suspense>
+        )
+      return <ToolTrace item={item} />
     case 'compaction':
       return null
     case 'error':

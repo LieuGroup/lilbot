@@ -101,18 +101,8 @@ export function elapsedShort(ms: number, suffix = ''): string {
 }
 
 export function askedByLabel(askedBy: WorkAsker): string {
-  switch (askedBy.kind) {
-    case 'oscar':
-      return 'asked by you'
-    case 'bot':
-      return `asked by ${askedBy.name}`
-    case 'routine':
-      return 'by a routine'
-    case 'webhook':
-      return 'from a webhook'
-    case 'self':
-      return 'started by itself'
-  }
+  const labels = { oscar: 'asked by you', bot: `asked by ${askedBy.name}`, routine: 'by a routine', webhook: 'from a webhook', self: 'started by itself' }
+  return labels[askedBy.kind]
 }
 
 export function checkerLabel(check: WorkCheck, ownerName: string): string {
