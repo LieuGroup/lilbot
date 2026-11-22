@@ -12,6 +12,8 @@ const MCP_PER_SEC = 4
 
 export interface WorkerDoorBridge {
   hasRun(computerId: string, runId: string): boolean
+  /** True for a run this leader started on `computerId` that has already settled: late/duplicate `worker.done` is acked and ignored. */
+  isSettledRun?(computerId: string, runId: string): boolean
   onFrame(computerId: string, frame: WorkerHelperFrame, send: (frame: WorkerLeaderFrame) => boolean): void
   onCapabilities?(computerId: string, agents: WorkerAgentInfo[]): void
   onConnect?(computerId: string, send: (frame: WorkerLeaderFrame) => boolean): () => void
@@ -83,7 +85,10 @@ export function handleOversizedWorkerDone(
   if (typeof runId !== 'string' || !runId || runId.length > 100) return true
   state.events.delete(runId)
   state.mcp.delete(runId)
-  if (!bridge?.hasRun(computerId, runId)) return true
+  if (!bridge?.hasRun(computerId, runId)) {
+    if (bridge?.isSettledRun?.(computerId, runId)) send({ type: 'worker.ack', runId })
+    return true
+  }
   bridge.onFrame(computerId, { type: 'worker.done', runId, status: 'failed', text: '', items: [], error: 'Worker outcome exceeded size limit.' }, send)
   send({ type: 'worker.ack', runId })
   return true
@@ -112,6 +117,7 @@ export function handleWorkerFrame(
   if (!bridge?.hasRun(computerId, frame.runId)) {
     state.events.delete(frame.runId)
     state.mcp.delete(frame.runId)
+    if (frame.type === 'worker.done' && bridge?.isSettledRun?.(computerId, frame.runId)) send({ type: 'worker.ack', runId: frame.runId })
     return true
   }
   if (frame.type === 'worker.event') {

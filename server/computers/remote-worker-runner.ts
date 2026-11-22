@@ -1,0 +1,223 @@
+/** Leader-side remote worker runner (Slice 3). Tracks active runs per computer, validates outbound frames before
+ *  sending, routes inbound frames via `WorkerDoorBridge`, and handles offline timeouts, restarts, stops, and steers. */
+import { type WorkerLeaderFrame, WorkerSteerFrame } from '../../shared/worker-frame-schema'
+import { buildStartFrame, handleRemoteWorkerInbound, makeActiveRun, snapshotToolItems } from './remote-worker-inbound'
+import { type RemoteWorkerResult, RemoteWorkerStore } from './remote-worker-store'
+import type { ActiveRun, PendingSteer, RemoteToolEvent, RemoteWorkerRunInput, RemoteWorkerRunnerOptions } from './remote-worker-types'
+import type { WorkerDoorBridge } from './worker-door'
+
+const MAX_PER_COMPUTER = 2
+const OFFLINE_MS = 60_000
+const STOP_MS = 5000
+const STEER_MS = 5000
+
+export class RemoteWorkerRunner {
+  readonly store: RemoteWorkerStore
+  private peers = new Map<string, (frame: WorkerLeaderFrame) => boolean>()
+  private runs = new Map<string, ActiveRun>()
+  private steers = new Map<string, PendingSteer>()
+  private toolListeners = new Set<(event: RemoteToolEvent) => void>()
+
+  constructor(private options: RemoteWorkerRunnerOptions) {
+    this.store = new RemoteWorkerStore(options.db)
+    for (const row of this.store.activeRuns()) {
+      const active = makeActiveRun(row, true)
+      this.runs.set(row.runId, active)
+      this.armOfflineTimer(active)
+    }
+  }
+
+  onToolCall(listener: (event: RemoteToolEvent) => void): () => void {
+    this.toolListeners.add(listener)
+    return () => this.toolListeners.delete(listener)
+  }
+
+  activeForComputer(computerId: string): number {
+    let n = 0
+    for (const run of this.runs.values()) if (run.computerId === computerId) n++
+    return n
+  }
+
+  readonly bridge: WorkerDoorBridge = {
+    hasRun: (computerId, runId) => this.runs.get(runId)?.computerId === computerId,
+    isSettledRun: (computerId, runId) => this.store.isSettled(computerId, runId),
+    onCapabilities: (computerId, agents) => this.options.onCapabilitiesChanged?.(computerId, agents),
+    onConnect: (computerId, send) => {
+      this.peers.set(computerId, send)
+      for (const run of this.runs.values()) {
+        if (run.computerId !== computerId) continue
+        clearTimeout(run.offlineTimer)
+        run.offlineTimer = undefined
+        if (run.pendingStart && !run.sentStart && send(run.pendingStart)) run.sentStart = true
+      }
+      return () => this.onPeerDisconnect(computerId, send)
+    },
+    onFrame: (computerId, rawFrame, send) =>
+      handleRemoteWorkerInbound(
+        {
+          runs: this.runs,
+          steers: this.steers,
+          peerOf: id => this.peers.get(id),
+          isSettled: (cid, rid) => this.store.isSettled(cid, rid),
+          updateSession: (rid, sid) => this.store.updateSession(rid, sid),
+          botExists: id => this.options.botExists(id),
+          handleMcp: (ctx, body) => this.options.handleMcp(ctx, body),
+          emitTool: ev => {
+            for (const listener of this.toolListeners) listener(ev)
+          },
+          finishSteer: (id, st) => this.finishSteer(id, st),
+          stopActive: run => this.stopActive(run),
+          settleRun: (rid, res, sid) => this.settleRun(rid, res, sid)
+        },
+        computerId,
+        rawFrame,
+        send
+      )
+  }
+
+  async run(input: RemoteWorkerRunInput): Promise<RemoteWorkerResult> {
+    const existing = this.store.get(input.runId)
+    if (existing?.status === 'settled' && existing.outcome) {
+      input.onChat?.(existing.chatId)
+      return existing.outcome
+    }
+    const resumeSession = input.sessionId ?? existing?.sessionId ?? this.store.latestSession(input.chatId)
+    const built = buildStartFrame(input, resumeSession)
+    if (!built.ok) return built.failure
+    if (!this.options.botExists(input.botId)) return { status: 'failed', text: 'The bot no longer exists.', items: [] }
+
+    let active = this.runs.get(input.runId)
+    if (!active && this.activeForComputer(input.computerId) >= MAX_PER_COMPUTER) return { status: 'failed', text: 'Worker capacity reached on this computer.', items: [] }
+    input.onChat?.(input.chatId)
+    if (!active) {
+      this.store.insert({ runId: input.runId, computerId: input.computerId, botId: input.botId, threadId: input.threadId, chatId: input.chatId, sessionId: resumeSession })
+      active = makeActiveRun({ ...input, sessionId: resumeSession }, false)
+      this.runs.set(input.runId, active)
+    }
+    active.pendingStart = built.frame
+    active.sentStart = false
+
+    const peer = this.peers.get(input.computerId)
+    if (peer?.(built.frame)) active.sentStart = true
+    else if (!peer && this.options.isRevoked?.(input.computerId)) {
+      const outcome: RemoteWorkerResult = { status: 'failed', text: 'The computer was removed.', items: [], failureReason: 'computer_removed' }
+      this.settleRun(input.runId, outcome)
+      return outcome
+    } else this.armOfflineTimer(active)
+
+    return new Promise<RemoteWorkerResult>(resolve => {
+      const current = this.runs.get(input.runId)
+      if (!current) return resolve(this.store.get(input.runId)?.outcome ?? { status: 'failed', text: 'Remote worker ended before waiting.', items: [], unknownReceipt: true })
+      current.waiters.push(resolve)
+    })
+  }
+
+  async stop(computerId: string, runId: string): Promise<boolean> {
+    const run = this.runs.get(runId)
+    return run && run.computerId === computerId ? this.stopActive(run) : false
+  }
+
+  async stopByChat(botId: string, chatId: string): Promise<boolean> {
+    const matches = [...this.runs.values()].filter(r => r.botId === botId && r.chatId === chatId)
+    for (const run of matches) this.stopActive(run)
+    return matches.length > 0
+  }
+
+  stopForBot(botId: string) {
+    for (const run of [...this.runs.values()]) if (run.botId === botId) this.stopActive(run)
+  }
+
+  async steer(computerId: string, runId: string, text: string): Promise<'steered' | 'not_running'> {
+    const run = this.runs.get(runId)
+    const peer = this.peers.get(computerId)
+    if (!run || run.computerId !== computerId || run.stopping || !peer) return 'not_running'
+    const steerId = crypto.randomUUID()
+    const frame = WorkerSteerFrame.safeParse({ type: 'worker.steer', runId, steerId, text })
+    if (!frame.success || !peer(frame.data)) return 'not_running'
+    return new Promise<'steered' | 'not_running'>(resolve => {
+      const timer = setTimeout(() => this.finishSteer(steerId, 'not_running'), this.options.steerTimeoutMs ?? STEER_MS)
+      this.steers.set(steerId, { runId, computerId, text, timer, resolve })
+    })
+  }
+
+  async steerByChat(botId: string, chatId: string, text: string): Promise<'steered' | 'not_running'> {
+    const run = [...this.runs.values()].find(r => r.botId === botId && r.chatId === chatId)
+    return run ? this.steer(run.computerId, run.runId, text) : 'not_running'
+  }
+
+  close() {
+    for (const id of [...this.steers.keys()]) this.finishSteer(id, 'not_running')
+    for (const run of this.runs.values()) {
+      clearTimeout(run.offlineTimer)
+      clearTimeout(run.stopTimer)
+    }
+    this.runs.clear()
+    this.peers.clear()
+  }
+
+  private onPeerDisconnect(computerId: string, send: (frame: WorkerLeaderFrame) => boolean) {
+    if (this.peers.get(computerId) !== send) return
+    this.peers.delete(computerId)
+    for (const [id, steer] of [...this.steers]) if (steer.computerId === computerId) this.finishSteer(id, 'not_running')
+    const revoked = this.options.isRevoked?.(computerId) ?? false
+    for (const run of [...this.runs.values()]) {
+      if (run.computerId !== computerId) continue
+      if (revoked)
+        this.settleRun(run.runId, {
+          status: 'failed',
+          text: 'The computer was removed while the worker was running.',
+          items: snapshotToolItems(run),
+          failureReason: 'computer_removed'
+        })
+      else this.armOfflineTimer(run)
+    }
+  }
+
+  private stopActive(run: ActiveRun): boolean {
+    run.stopping = true
+    const peer = this.peers.get(run.computerId)
+    if (!peer) {
+      this.settleRun(run.runId, { status: 'stopped', text: '', items: snapshotToolItems(run) })
+      return true
+    }
+    peer({ type: 'worker.stop', runId: run.runId })
+    if (!run.stopTimer)
+      run.stopTimer = setTimeout(() => this.settleRun(run.runId, { status: 'stopped', text: '', items: snapshotToolItems(run) }), this.options.stopGraceMs ?? STOP_MS)
+    return true
+  }
+
+  private armOfflineTimer(run: ActiveRun) {
+    if (run.offlineTimer) return
+    run.offlineTimer = setTimeout(
+      () =>
+        this.settleRun(run.runId, {
+          status: 'failed',
+          text: 'The computer went offline while the worker was running.',
+          items: snapshotToolItems(run),
+          unknownReceipt: true,
+          failureReason: 'offline'
+        }),
+      this.options.offlineGraceMs ?? OFFLINE_MS
+    )
+  }
+
+  private finishSteer(steerId: string, status: 'steered' | 'not_running') {
+    const entry = this.steers.get(steerId)
+    if (!entry) return
+    this.steers.delete(steerId)
+    clearTimeout(entry.timer)
+    if (status === 'steered') this.runs.get(entry.runId)?.confirmedSteers.push(entry.text)
+    entry.resolve(status)
+  }
+
+  private settleRun(runId: string, result: RemoteWorkerResult, sessionId?: string) {
+    const run = this.runs.get(runId)
+    if (!run) return
+    this.runs.delete(runId)
+    clearTimeout(run.offlineTimer)
+    clearTimeout(run.stopTimer)
+    for (const [id, steer] of [...this.steers]) if (steer.runId === runId) this.finishSteer(id, 'not_running')
+    this.store.settle(runId, result, sessionId ?? run.sessionId)
+    for (const resolve of run.waiters) resolve(result)
+  }
+}

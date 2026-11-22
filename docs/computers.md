@@ -319,6 +319,18 @@ macOS and Linux helpers are covered; Windows is not covered (process-group termi
   prevents duplicate spawns on reconnect and preserves unacknowledged `worker.done` outcomes (strictly capped at 32
   pending rows), and a signed `revoked` frame stops all active worker process groups (`SIGTERM`, escalating to
   `SIGKILL` after 2 s, with a bounded stdout/stderr drain timeout) and closes their proxies before retiring the helper.
+- **Leader-side runner and scoped MCP (`server/computers/remote-worker-*.ts`, `server/system/worker-mcp.ts`):**
+  `RemoteWorkerRunner` persists active runs in `remote_worker_runs` (schema step 39) with their assigned `computer_id`,
+  `bot_id`, `thread_id`, `chat_id`, and latest driver `session_id` (for `--resume` continuations). It assembles the
+  starting system prompt (bot instructions + system note + remote framing, optional `lilbot-coding` skill, fenced
+  recalled memory, and offered skill index) within 96 KiB UTF-8 and validates the whole `WorkerStartFrame` before
+  sending. Every inbound frame is validated and sanitized structurally: tool events map to fixed worker activity labels
+  (never raw agent strings), and `worker.done.items` accepts only `assistant` and `tool` items (dropping `user`,
+  `compaction`, `error`, and `connection.sign_in`, and stripping `threadId`/`workItemId`). `worker.mcp.request` is served
+  by `createWorkerMcp` with an explicit 7-tool allow-list (`lilbot_work` scoped strictly to `run.threadId` with no
+  verdicts, `lilbot_work_list` scoped to own bot's items without goals, `lilbot_memory_list` own bot only,
+  `lilbot_memory_save`, `lilbot_skill_read`, `lilbot_status`, `lilbot_guide`). Late or duplicate `worker.done` frames
+  for settled runs on their assigned computer are acknowledged and ignored; unknown or wrong-computer frames are ignored.
 
 ## Tests
 

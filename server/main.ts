@@ -53,20 +53,20 @@ function botsChanged() {
 }
 
 const engine = new HermesEngine(process.env.LILBOT_BOT_IDS?.split(',').filter(Boolean))
-const { bots, store, skills, hiddenChat, library, computers, devices, attachments, t3Grants, mcp, system, engineApi, activity, routines, threads, boards, webhooks } =
-  createAppServices(engine, {
-    DATA_DIR,
-    WORKSPACES_DIR,
-    PORT,
-    MEMORY_ADAPTER_VERSION,
-    COMMIT,
-    // `helperSettings` below refuses a helper URL that is not the door's HTTPS origin.
-    HOOK_ORIGIN: PUBLIC_ENABLED && process.env.LILBOT_HELPER_URL ? new URL(process.env.LILBOT_HELPER_URL).origin : undefined,
-    ACCESS_HOST: ACCESS?.host,
-    ACCESS_CALLBACK_ENABLED: ACCESS?.callbackEnabled ?? false,
-    publish: frame => publish(EVERYONE, JSON.stringify(frame)),
-    botsChanged
-  })
+const services = createAppServices(engine, {
+  DATA_DIR,
+  WORKSPACES_DIR,
+  PORT,
+  MEMORY_ADAPTER_VERSION,
+  COMMIT,
+  // `helperSettings` below refuses a helper URL that is not the door's HTTPS origin.
+  HOOK_ORIGIN: PUBLIC_ENABLED && process.env.LILBOT_HELPER_URL ? new URL(process.env.LILBOT_HELPER_URL).origin : undefined,
+  ACCESS_HOST: ACCESS?.host,
+  ACCESS_CALLBACK_ENABLED: ACCESS?.callbackEnabled ?? false,
+  publish: frame => publish(EVERYONE, JSON.stringify(frame)),
+  botsChanged
+})
+const { bots, store, skills, hiddenChat, library, computers, devices, attachments, t3Grants, mcp, system, engineApi, activity, routines, threads, boards, webhooks } = services
 
 // Every bot uses LilBot's memory: bots on an older adapter are updated, and a bot that is not
 // connected yet is connected. Both take effect from the bot's next session.
@@ -187,4 +187,4 @@ for (const [name, folder] of [
 console.log(`LilBot listening on http://${server.hostname}:${server.port} (engine: Hermes)`)
 
 // Off until the dedicated tunnel is provisioned. Never target the private app port.
-if (PUBLIC_ENABLED) startPublicDoor(computers, PUBLIC_PORT, { hooks: webhookRoute(webhooks) })
+if (PUBLIC_ENABLED) startPublicDoor(computers, PUBLIC_PORT, { hooks: webhookRoute(webhooks), workers: services.remoteWorkers.runner.bridge })
