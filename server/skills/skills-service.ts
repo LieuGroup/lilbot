@@ -143,15 +143,14 @@ export class SkillsService {
     if (existsSync(this.path(name)) && digest(this.read(name)) === digest(data)) return
     this.save(name, data, 'lilbot')
   }
-  /** Removes a built-in skill LilBot no longer ships, cleaning its folder and database rows. */
+  /** Removes a built-in skill LilBot itself installed, leaving Oscar-authored, bot-authored, engine-imported, or untracked skills untouched. */
   remove(name: string): boolean {
     const target = this.path(name)
-    const hadFile = existsSync(target)
-    const hadRow = Boolean(this.db.query('SELECT 1 FROM skills WHERE name=?').get(name))
-    if (!hadFile && !hadRow) return false
-    if (hadFile) rmSync(target, { recursive: true, force: true })
+    const row = this.db.query('SELECT author FROM skills WHERE name=?').get(name) as { author: string } | null
+    const imported = Boolean(this.db.query('SELECT 1 FROM skill_origins WHERE name=?').get(name))
+    if (row?.author !== 'lilbot' || imported) return false
+    if (existsSync(target)) rmSync(target, { recursive: true, force: true })
     this.db.query('DELETE FROM skill_off WHERE name=?').run(name)
-    this.db.query('DELETE FROM skill_origins WHERE name=?').run(name)
     this.db.query('DELETE FROM skills WHERE name=?').run(name)
     this.changed()
     return true

@@ -6,6 +6,7 @@
 import { createHash } from 'node:crypto'
 import { LilBotError } from '../../../shared/lilbot-error'
 import type { ConnectionsApplied, McpConnection } from '../mcp-connection'
+import { applied, hashOf } from './hermes-applied'
 import type { HermesSocket } from './hermes-socket'
 
 const OWNED = /^lilbot_/
@@ -160,13 +161,29 @@ export function connectionPreparer(open: (id: string) => Promise<Pick<HermesSock
     }
   }
   return {
-    prepare: (id: string, connections: McpConnection[], statusOnly = false): Promise<void> =>
+    prepare: (id: string, connections: McpConnection[], statusOnly = false): Promise<boolean> =>
       turn(id, async () => {
         const key = JSON.stringify(connections)
-        if (prepared.get(id) === key) return
-        await using(id, socket => (statusOnly ? reconnectDisconnected(socket, connections) : prepareConnections(socket, connections)))
+        if (prepared.get(id) === key) return false
+        const changed = await using(id, socket => (statusOnly ? reconnectDisconnected(socket, connections) : prepareConnections(socket, connections)))
         prepared.set(id, key)
+        return changed
       }),
     apply: (id: string, chatIds: string[]) => turn(id, () => using(id, socket => applyToChats(socket, chatIds)))
   }
+}
+
+/** Runs `prepare` through `applied()` and returns whether MCP servers actually changed or reconnected (never just
+ *  whether `applied()` ran because another setting touched `config.yaml`). */
+export async function prepareAppliedConnections(preparer: ReturnType<typeof connectionPreparer>, id: string, connections: McpConnection[], apply = applied): Promise<boolean> {
+  let changed = false
+  const ran = await apply(id, 'connections', hashOf('v2', connections), async () => {
+    changed = await preparer.prepare(id, connections)
+  })
+  if (!ran) {
+    await apply(id, null, '', async () => {
+      changed = await preparer.prepare(id, connections, true)
+    })
+  }
+  return changed
 }

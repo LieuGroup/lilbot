@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { t3Connection } from '../../../server/connections/t3-connection'
-import { connectionPreparer, prepareConnections, serverConfig } from '../../../server/engines/hermes/hermes-connections'
+import { connectionPreparer, prepareAppliedConnections, prepareConnections, serverConfig } from '../../../server/engines/hermes/hermes-connections'
 
 const connection = t3Connection('http://127.0.0.1:3370', 'token', 'bot-a')
 
@@ -92,4 +92,33 @@ test('applying to open chats reloads each with its session id and reports applie
   ])
   expect(sent.slice(0, 3)).toEqual(['mcp.servers.list:', 'mcp.servers.add:lilbot_t3', 'reload.mcp:'])
   expect(sent.slice(3)).toEqual(['reload.mcp:live', 'reload.mcp:running', 'reload.mcp:closed', 'reload.mcp:failing'])
+})
+
+test('connectionPreparer.prepare and prepareAppliedConnections report whether MCP servers actually changed or reconnected', async () => {
+  const t3 = serverConfig(connection)
+  // Case 1: applied() ran (e.g. unrelated config.yaml edit), but MCP servers already matched and were connected -> false.
+  const matching = socket([{ name: 'lilbot_t3', url: t3.url, enabled: true, tools: t3.tools }])
+  const p1 = connectionPreparer(async () => ({ ...matching, close: () => {} }))
+  const ranAlways = async (_id: string, _step: string | null, _key: string, run: () => Promise<void>) => {
+    await run()
+    return true
+  }
+  expect(await prepareAppliedConnections(p1, 'p1', [connection], ranAlways)).toBe(false)
+  // Cache hit returns false too without reopening a socket.
+  expect(await p1.prepare('p1', [connection])).toBe(false)
+
+  // Case 2: applied() skipped (lilbot-applied.json intact), statusOnly reconnects a parked server -> true.
+  const parked = socket([{ name: 'lilbot_t3', url: t3.url, enabled: true, tools: t3.tools }], [{ name: 'lilbot_t3', connected: false }])
+  const p2 = connectionPreparer(async () => ({ ...parked, close: () => {} }))
+  const skipFirst = async (_id: string, step: string | null, _key: string, run: () => Promise<void>) => {
+    if (step) return false
+    await run()
+    return true
+  }
+  expect(await prepareAppliedConnections(p2, 'p2', [connection], skipFirst)).toBe(true)
+
+  // Case 3: applied() skipped and statusOnly finds every server already connected -> false.
+  const healthy = socket([{ name: 'lilbot_t3', url: t3.url, enabled: true, tools: t3.tools }], [{ name: 'lilbot_t3', connected: true }])
+  const p3 = connectionPreparer(async () => ({ ...healthy, close: () => {} }))
+  expect(await prepareAppliedConnections(p3, 'p3', [connection], skipFirst)).toBe(false)
 })

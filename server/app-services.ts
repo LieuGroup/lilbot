@@ -13,6 +13,7 @@ import { createWork, giveFrom } from './app-work'
 import { AttachmentService } from './attachments/attachment-service'
 import { AttachmentStore } from './attachments/attachment-store'
 import { backgroundTask } from './background'
+import { combineTurnNotes } from './bots/bot-conversations'
 import { BotPrefsStore } from './bots/bot-prefs-store'
 import { BotService } from './bots/bot-service'
 import { BotStore } from './bots/bot-store'
@@ -21,6 +22,7 @@ import { Workspaces } from './bots/workspaces'
 import { ComputerService } from './computers/computer-service'
 import { ComputerStore } from './computers/computer-store'
 import { loadServerKey } from './computers/server-key'
+import { CodingSwitchNotice } from './connections/coding-switch-notice'
 import { CALLBACK_PATH } from './connections/mcp-callback'
 import { isT3Enabled, t3Connection } from './connections/t3-connection'
 import { T3Grants } from './connections/t3-grant'
@@ -129,11 +131,12 @@ export function createAppServices(
   )
   repeat('history', 1000, () => history.tick())
   const messages = webhookMessages(database, { store, prefs, history: history.store, activity, bots: () => bots }, publish)
+  const codingSwitch = new CodingSwitchNotice(join(DATA_DIR, 'coding-switch.json'))
   const t3For = (botId: string) => (t3Enabled ? [t3Connection(`http://127.0.0.1:${PORT}`, token, botId, t3Grants.generation())] : [])
   const bots = new BotService(engine, store, prefs, workspaces, memory, {
     skills,
     history,
-    turnNotes: messages,
+    turnNotes: combineTurnNotes(messages, codingSwitch),
     cleanupBot: botId => {
       history.store.forget(botId)
       devices.forgetBot(botId)
@@ -145,6 +148,7 @@ export function createAppServices(
       links.forgetBot(botId)
       goals.forgetBot(botId)
       mcp.services.forgetBot(botId)
+      codingSwitch.forgetBot(botId)
     },
     changed: botsChanged,
     memoryChanged,
@@ -163,19 +167,9 @@ export function createAppServices(
   const { work, links, answers, checks, checkSessions } = createWork(workDeps)
   const redirectUri = ACCESS_HOST ? `https://${ACCESS_HOST}${CALLBACK_PATH}` : undefined
   const connBase = { database, dataDir: DATA_DIR, port: PORT, engineToken: token, redirectUri, callbackEnabled: settings.ACCESS_CALLBACK_ENABLED ?? false, t3Enabled }
-  const connServices = {
-    engine,
-    store,
-    prefs,
-    bots,
-    history: history.store,
-    hiddenChat,
-    calls,
-    t3Grants,
-    t3Refusal: gates.t3Refusal,
-    serviceRefusal: gates.serviceRefusal(checkSessions)
-  }
-  const mcp = createConnections({ ...connBase, ...connServices, publish, repeat })
+  const connBots = { engine, store, prefs, bots, activity, history: history.store, hiddenChat, calls, codingSwitch }
+  const connGates = { t3Grants, t3Refusal: gates.t3Refusal, serviceRefusal: gates.serviceRefusal(checkSessions) }
+  const mcp = createConnections({ ...connBase, ...connBots, ...connGates, publish, repeat })
   const threadDeps = { engine, store, prefs, bots, workspaces, history, activity, threadStore, calls, work: links, memory, library, root: WORKSPACES_DIR, rootOf, publish }
   const { threads, delegation } = createThreads({ ...threadDeps, botsChanged, memoryChanged })
   const routines = new RoutineService(routineStore, bots, () => publish({ event: 'routines.changed' }), routineSettings(process.env))

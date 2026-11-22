@@ -186,9 +186,10 @@ for (const [name, folder] of [
   }
 }
 try {
-  skills.remove(T3_ENABLED ? 'lilbot-coding' : 't3-coding')
+  mcp.onCodingSkillsReady(skills.remove(T3_ENABLED ? 'lilbot-coding' : 't3-coding'))
 } catch (error) {
   console.error('[skills] could not remove inactive coding skill:', error instanceof Error ? error.message : error)
+  mcp.onCodingSkillsReady(false)
 }
 prepareMemory().catch(error => console.error('[memory] could not prepare memory for the bots:', error instanceof Error ? error.message : error))
 

@@ -69,7 +69,8 @@ export class ConnectionApplier {
     const chatId = this.host.mainChat(botId)
     if (!chatId) return
     const key = `${botId}\n${chatId}`
-    if (!this.pending.has(key)) this.pending.set(key, { botId, chatId, since: this.now(), notices: [] })
+    const existing = this.pending.get(key)
+    this.pending.set(key, { botId, chatId, since: this.now(), notices: existing ? [...existing.notices] : [] })
   }
 
   private enqueueNotice(botId: string, chatId: string, notice: Notice) {

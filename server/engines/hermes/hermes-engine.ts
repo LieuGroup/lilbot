@@ -9,7 +9,7 @@ import { adapterHash, applied, hashOf } from './hermes-applied'
 import { botDetailFromProfile, botFromProfile, DEFAULT_PROFILE, providersFromModelOptions, requireListedModel } from './hermes-bot-mapping'
 import { openChat } from './hermes-chat'
 import { configureComputers } from './hermes-computers'
-import { connectionPreparer, hermesMcpToolName } from './hermes-connections'
+import { connectionPreparer, hermesMcpToolName, prepareAppliedConnections } from './hermes-connections'
 import { deleteRuntime } from './hermes-delete'
 import { allowedProfile, requireProfileEnvironment } from './hermes-environment'
 import { conversations } from './hermes-history'
@@ -138,9 +138,7 @@ export class HermesEngine implements BotEngine {
   mcpToolName = hermesMcpToolName
   async prepareConnections(id: string, connections: import('../mcp-connection').McpConnection[]): Promise<boolean> {
     await this.requireBot(id)
-    const changed = await applied(id, 'connections', hashOf('v2', connections), () => this.connections.prepare(id, connections))
-    if (!changed) await applied(id, null, '', () => this.connections.prepare(id, connections, true))
-    return changed
+    return prepareAppliedConnections(this.connections, id, connections)
   }
   async applyConnections(id: string, chatIds: string[]) {
     await this.requireBot(id)

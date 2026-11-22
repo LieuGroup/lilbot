@@ -108,7 +108,8 @@ chat with live tool rows, stop and new session, continuous main conversation per
 and after-chat review, system note and LilBot MCP tools, delegation, same-bot workers and temporary groups (#133) with
 screens (#65, #135, #136, Paper "22 Workers"), Routines screens (#53), Library screens (#54), Webhooks screens (#138),
 Work board, Check levels and Goals screens (#141, #142, #143), message cost & context size screens (#180), and backends
-for routines, webhooks, threads, library, skills, computers/devices, T3 Code coding and bot-added MCP services (#187).
+for routines, webhooks, threads, library, skills, computers/devices, native coding (legacy T3 Code behind
+`LILBOT_T3_ENABLED=1`) and bot-added MCP services (#187).
 Next: webhook capability switches (Paper "17" frames 7–9, awaiting Oscar's approval), engine-skills switch screen (#140),
 check-level track record and spot checks (#142), nightly memory tidy-up and editing abilities. Reports are not built.
 Desktop (Tauri) and iOS (Expo) follow the web app.

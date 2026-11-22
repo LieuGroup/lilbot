@@ -8,8 +8,9 @@ app. Rules and the short version are in `AGENTS.md` under "System". Code: `serve
 
 - Written by LilBot, about 250 words: the bot's name, id, folder and model; that it runs in LilBot on the leader; the
   other bots (up to eight, then a count); the computers; the standing rules for choosing a computer (static text
-  that adds no online state and no main mark: the per-message origin line and `lilbot_about` give those); whether coding
-  through T3 Code works; two static lines on when to open a work item (#141); the running release; and two lines
+  that adds no online state and no main mark: the per-message origin line and `lilbot_about` give those); native coding
+  guidance (`lilbot-coding`, or T3 Code status when `LILBOT_T3_ENABLED=1`); two static lines on when to open a work item
+  (#141); the running release; and two lines
   pointing at `lilbot_about` and `lilbot_guide` with the rules for changing LilBot.
 - Delivered through the one engine-neutral system-prompt path: `BotRuntimes.state()` hands every engine
   `withNote(instructions, note)` as the bot's instructions. LilBot's database and the Setup panel keep the user's own
@@ -218,9 +219,9 @@ Every tool acts as the calling bot and calls the function the screen uses. Reads
 
 | Tool | Same as |
 |---|---|
-| `lilbot_about` | live facts: you, other bots, computers (with which is `main`), T3, release, deploy status and last failure, recent changes |
+| `lilbot_about` | live facts: you, other bots, computers (with which is `main`), release, deploy status and last failure, recent changes (plus T3 when `LILBOT_T3_ENABLED=1`) |
 | `lilbot_guide(topic?)` | text shipped in `server/system/guide/*.md` |
-| `lilbot_status(area)` | `connections.status` (t3, and `connections`: the MCP services bots added, never a token), `computers.list`, `deploy.status` |
+| `lilbot_status(area)` | `connections.status` (`connections`: the MCP services bots added, never a token; plus `t3` when `LILBOT_T3_ENABLED=1`), `computers.list`, `deploy.status` |
 | `lilbot_bots_list`, `lilbot_bot_read` | `bots.list` with `sections.list`, `bots.get` |
 | `lilbot_bot_create` | `BotService.createFromBot` (any bot; request-id idempotency; model inherited); the plug-in's `create_bot` ended with adapter 0.11.0 |
 | `lilbot_bot_edit` | `bots.update` for name, function, instructions, model, reasoning effort (not the permission mode); bot text gets the creation-time `memoryRefusal` check |

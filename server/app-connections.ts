@@ -5,10 +5,12 @@ import type { Database } from 'bun:sqlite'
 import { join } from 'node:path'
 import type { T3ConnectionStatus } from '../shared/connections-schema'
 import type { EventFrame } from '../shared/protocol'
+import type { ActivityService } from './activity/activity-service'
 import { backgroundTask } from './background'
 import type { BotPrefsStore } from './bots/bot-prefs-store'
 import type { BotService } from './bots/bot-service'
 import type { BotStore } from './bots/bot-store'
+import type { CodingSwitchNotice } from './connections/coding-switch-notice'
 import { ConnectionApplier, cancelledPrompt, failedPrompt } from './connections/connection-apply'
 import { connectionCallback } from './connections/mcp-callback'
 import { McpConnectionStore } from './connections/mcp-connection-store'
@@ -41,9 +43,11 @@ interface ConnectionDeps {
   store: BotStore
   prefs: BotPrefsStore
   bots: BotService
+  activity: ActivityService
   history: HistoryStore
   hiddenChat: (botId: string, chatId: string) => boolean
   calls: CallingChats
+  codingSwitch: CodingSwitchNotice
   t3Enabled?: boolean
   t3Grants: T3Grants
   t3Refusal: (botId: string, tool: string, args: unknown) => Promise<string | null>
@@ -69,9 +73,11 @@ export function createConnections({
   store,
   prefs,
   bots,
+  activity,
   history,
   hiddenChat,
   calls,
+  codingSwitch,
   t3Enabled,
   t3Grants,
   t3Refusal,
@@ -167,6 +173,24 @@ export function createConnections({
     applyBot: (botId: string) => {
       applier.applyBot(botId)
       soon()
+    },
+    onCodingSkillsReady: (removedT3Skill: boolean) => {
+      const grant = t3Grants.read()
+      codingSwitch.onStartup({
+        t3Enabled: Boolean(t3Enabled),
+        removedT3Skill,
+        t3GrantIssuedAt: grant ? grant.issuedAt : null,
+        bots: botIds(),
+        mainChat: id => prefs.mainChat(id),
+        primaryBot: prefs.primaryBot() ?? store.list().find(bot => bot.isDefault)?.id ?? null,
+        postNotice: (botId, chatId, issuedAt, detail) => {
+          const at = Date.now()
+          history.session(botId, chatId, at)
+          history.reference(botId, chatId, { kind: 'tool', toolId: `t3-switch-notice:${issuedAt}`, name: 'coding notice', detail, running: false }, at)
+          publish({ event: 'history.changed', botId })
+          activity.setUnread(botId, true)
+        }
+      })
     },
     connections: (botId: string) => serviceConnections(services, lilbotUrl, engineToken, botId)
   }

@@ -83,7 +83,8 @@ Every `check:*` and `bun live-checks/*.ts` follows the development rules in `AGE
   (`webhook-session-checks.ts`): a skill write and the computers naming its session are refused, Oscar's answer reaches
   the main conversation and the run's transcript does not grow, its message is a line with no turn until Oscar writes,
   his next message passes its own tool call and gives the bot the message, and the review queue never holds it; no
-  skill is written meanwhile. Given `web`, `shell` and `coding`, a run gains exactly those, its stored `web_extract`
+  skill is written meanwhile. Given `web`, `shell` and `coding` (`coding` adds `lilbot_t3` only when
+  `LILBOT_T3_ENABLED=1`), a run gains exactly those, its stored `web_extract`
   output holds the fetched page, and it cannot change the first run's item. A burst of three is one run; pause refuses,
   resume accepts, delete ends the address.
 - `bun run check:restart`: SIGKILLs only its own second server mid-turn; chat, routine and thread side-effect counters

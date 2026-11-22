@@ -62,7 +62,8 @@ conversations, reaches LilBot through MCP, and keeps a thin adapter for the few 
 
 - [ ] An MCP client for Streamable HTTP with a URL and a bearer token per server, a per-call timeout, and a tool
   allowlist (`McpConnection`, `server/engines/mcp-connection.ts`). `prepareConnections` gives the runtime exactly the
-  connections listed, for sessions from their next resume, and is safe to repeat. Every name starts with `lilbot_`:
+  connections listed, for sessions from their next resume, returns `Promise<boolean>` (`true` only when the runtime's
+  connections actually changed or reconnected), and is safe to repeat. Every name starts with `lilbot_`:
   the engine owns those servers (one no longer listed is removed) and never changes or removes any other server, even on
   a name match. A connection marked `optional` (a service a bot added) may fail to connect without failing the bot.
 - [ ] `applyConnections(runtime, chatIds)` brings open conversations in step with the connections last prepared, in
@@ -76,8 +77,9 @@ conversations, reaches LilBot through MCP, and keeps a thin adapter for the few 
 - [ ] The tool list is refreshed when the URL changes: LilBot puts a hash of the tool definitions in the query string, so
   a release that changes a tool reconnects every bot once and an unchanged restart changes nothing. The engine must not
   keep a stale list.
-- [ ] The connections: `lilbot_system` (LilBot's own tools, [system-mcp.md](system-mcp.md)), `lilbot_t3` (T3 Code
-  through LilBot's bridge) and one `lilbot_c_<name>` per MCP service a bot added (LilBot's forwarding route; LilBot holds
+- [ ] The connections: `lilbot_system` (LilBot's own tools, [system-mcp.md](system-mcp.md)), `lilbot_t3` (legacy T3
+  Code bridge, included only when `LILBOT_T3_ENABLED=1`) and one `lilbot_c_<name>` per MCP service a bot added
+  (LilBot's forwarding route; LilBot holds
   the service's sign-in and tokens, the engine only its own key). A bot's key is valid for that bot and that connection
   only; a deleted bot's key is refused. An engine never runs its own OAuth for these: the routes never answer 401.
 - [ ] The system note (about 200 words) is delivered as the bot's instructions, the one engine-neutral system-prompt path.

@@ -6,8 +6,9 @@ import '../scripts/dev-env'
  *  skill swap and in-place MCP connection reload. No T3 upstream, no real repo, no network beyond the model provider. */
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { T3_OFF_OSCAR_NOTICE } from '../server/connections/coding-switch-notice'
 import { T3_BRIDGE_PATH } from '../server/connections/t3-connection'
 import { HermesSocket } from '../server/engines/hermes/hermes-socket'
 import { RestartServer, reopenChat, waitFor } from './restart-server'
@@ -86,11 +87,12 @@ try {
     300_000
   )
   const report: any = await waitFor(
-    'lead reported worker outcome in main chat',
+    'lead reported worker outcome in main chat after launch turn',
     async () =>
       server.events
         .slice(beforeTask)
         .filter(e => e.event === 'chat' && e.chatId === main.chatId && e.data?.type === 'turn.finished')
+        .slice(1)
         .find(e => /CODING_REPORT/i.test(String(e.data?.text ?? ''))),
     Boolean,
     180_000
@@ -139,7 +141,23 @@ try {
   assert.ok(onInfo.servers.includes('lilbot_t3') && onInfo.tools.includes('lilbot_t3'), 'lilbot_t3 must reload in place into the open main session when enabled')
   say('LILBOT_T3_ENABLED=1: t3-coding restored, lilbot-coding removed, lilbot_t3 reloaded in place on same session')
 
-  // Flip back off and verify in-place removal on the SAME main session.
+  // Create a pre-switch main session while T3 is ON (freezing T3 wording & t3-coding into its prompt) and seed a stored T3 sign-in.
+  const preSwitch = await server.call('chat.new', { botId: bot.id })
+  await sendAndWait(preSwitch.chatId, 'Reply with just PRE_SWITCH_READY.')
+  const preInfo = await hermesInfo(native, preSwitch.chatId)
+  assert.ok(preInfo.prompt.includes('T3 Code') && preInfo.prompt.includes('t3-coding'), 'pre-switch session must freeze T3 wording in its prompt')
+  const grantIssuedAt = 1700000000000
+  writeFileSync(
+    join(server.root, 't3-grant.json'),
+    JSON.stringify({ accessToken: 'dev-check-only', expiresAt: Date.now() + 86_400_000, issuedAt: grantIssuedAt, scope: 'mcp', label: 'dev-check' }),
+    { mode: 0o600 }
+  )
+  const repo2 = join(server.root, 'pre-switch-repo')
+  mkdirSync(repo2, { recursive: true })
+  writeFileSync(join(repo2, 'value.txt'), '0\n')
+  writeFileSync(join(repo2, 'check.sh'), 'test "$(cat value.txt)" = 99\n')
+
+  // Flip back off and verify: in-place removal, startup Oscar notice for stored T3 grant, and native coding on the SAME pre-switch session.
   await server.crash('SIGTERM')
   delete extra.LILBOT_T3_ENABLED
   await server.start()
@@ -147,11 +165,20 @@ try {
   await waitFor('bot runnable after T3 off', async () => (await server.call('bots.list')).every((b: any) => b.runnable), Boolean, 90_000)
   const skillsBack = (await server.call('skills.list', { botId: bot.id })).map((s: any) => s.name)
   assert.ok(skillsBack.includes('lilbot-coding') && !skillsBack.includes('t3-coding'), `expected lilbot-coding back, got ${skillsBack.join(', ')}`)
-  assert.equal((await reopenChat(() => server.call('chat.open', { botId: bot.id }))).chatId, main.chatId, 'must stay on same main session')
-  await sendAndWait(main.chatId, 'Reply with just SWITCH_OFF_OK.')
-  const backInfo = await hermesInfo(native, main.chatId)
+  assert.equal((await reopenChat(() => server.call('chat.open', { botId: bot.id }))).chatId, preSwitch.chatId, 'must stay on same pre-switch main session')
+  const hist = await server.call('chat.history', { botId: bot.id })
+  const noticeItem = (hist.items ?? []).find((row: any) => row.item?.kind === 'tool' && row.item?.toolId === `t3-switch-notice:${grantIssuedAt}`)
+  assert.ok(noticeItem && noticeItem.item.detail === T3_OFF_OSCAR_NOTICE, 'startup must post the one-time T3-off notice when a stored T3 sign-in exists')
+  say('stored T3 sign-in posted the one-time startup notice to Oscar without losing the pre-switch session')
+
+  await sendAndWait(preSwitch.chatId, `In ${repo2}, update value.txt from 0 to 99 and run "sh check.sh". Reply PRE_SWITCH_CODED when done.`)
+  assert.equal(readFileSync(join(repo2, 'value.txt'), 'utf8').trim(), '99', 'pre-switch session must code natively and update value.txt to 99')
+  assert.equal(Bun.spawnSync(['sh', 'check.sh'], { cwd: repo2 }).exitCode, 0, 'check.sh must pass in pre-switch repo')
+  const backInfo = await hermesInfo(native, preSwitch.chatId)
   assert.ok(!backInfo.servers.includes('lilbot_t3') && !backInfo.tools.includes('lilbot_t3'), 'lilbot_t3 must be removed in place from the open main session when off')
-  say('LILBOT_T3_ENABLED off again: lilbot-coding restored, t3-coding removed, lilbot_t3 removed in place on same session')
+  const switchState = JSON.parse(readFileSync(join(server.root, 'coding-switch.json'), 'utf8'))
+  assert.deepEqual(switchState.pendingChats, {}, 'one-time coding switch TurnNotes notice must be cleared after delivery')
+  say('pre-switch main session coded natively on the same session via one-time TurnNotes notice and removed lilbot_t3 in place')
 } finally {
   await server.cleanup()
 }
