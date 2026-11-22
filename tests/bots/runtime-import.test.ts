@@ -7,11 +7,13 @@ import { BotPrefsStore } from '../../server/bots/bot-prefs-store'
 import { BotRuntimes } from '../../server/bots/bot-runtimes'
 import { BotService } from '../../server/bots/bot-service'
 import { BotStore } from '../../server/bots/bot-store'
+import { sessionRoots } from '../../server/bots/hidden-chats'
 import { importBots } from '../../server/bots/runtime-import'
 import { Workspaces } from '../../server/bots/workspaces'
 import { openDatabase } from '../../server/database/database'
 import { MemoryService } from '../../server/memory/memory-service'
 import { MemoryStore } from '../../server/memory/memory-store'
+import { ThreadStore } from '../../server/threads/thread-store'
 import { detail, fakeEngine } from '../helpers/fake-engine'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
@@ -49,6 +51,20 @@ test('imported bots always get fresh random ids distinct from their engine ids, 
     expect(primary?.id).not.toBe('default')
     expect(store.get(primary!.id).engineBotId).toBe('default')
     expect(primary?.workspace).toBe(join(root, primary!.id))
+
+    const seenCalls: Array<[string, string]> = []
+    engine.compressionRoot = (engineBotId, chatId) => {
+      seenCalls.push([engineBotId, chatId])
+      return chatId === 'worker-compressed' ? 'worker-root' : chatId
+    }
+    const threads = new ThreadStore(db, sessionRoots(engine, store))
+    const delivery = threads.accept(primary!, primary!, { requestId: 'w1', text: 'Run worker', chatId: 'main-chat', worker: true })
+    threads.attach(delivery, primary!.id, 'worker-root', true)
+    expect(() => threads.assertNotWorker(primary!.id, 'worker-compressed', true)).toThrow('A worker cannot start another worker')
+    expect(seenCalls).toEqual([
+      ['default', 'main-chat'],
+      ['default', 'worker-compressed']
+    ])
   } finally {
     db.close()
     rmSync(root, { recursive: true, force: true })
