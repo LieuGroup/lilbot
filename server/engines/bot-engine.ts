@@ -154,8 +154,8 @@ export interface BotEngine {
   openChat(engineBotId: string, chatId: string | null, options: ChatOptions, onEvent: (event: ChatEvent) => void): Promise<OpenChat>
   /** Switch the bot to LilBot memory from its next session; returns legacy engine notes. */
   connectMemory(engineBotId: string, connection: MemoryConnection): Promise<LegacyNotes>
-  /** Upgrade connected adapters only for LilBot's non-deleted native bindings. */
-  refreshMemory(engineBotIds: string[]): Promise<string[]>
+  /** Upgrade connected adapters and repair drifted connection settings only for LilBot's non-deleted bindings. */
+  refreshMemory(bots: RuntimeBinding[], connection?: MemoryConnection): Promise<string[]>
   /** Run `prompt` as a hidden memory-only session for the after-chat review. */
   reviewMemory(engineBotId: string, prompt: string, options: ReviewOptions): Promise<void>
   /** Run or recover one scheduled task, using runId as a durable execution identity. */

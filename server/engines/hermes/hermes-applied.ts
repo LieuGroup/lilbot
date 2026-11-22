@@ -33,8 +33,14 @@ async function load(home: string): Promise<Applied | null> {
 
 /** Runs `run` unless `step` was already applied with `key` and the profile is untouched since; then records it.
  *  Without a step it always runs and only keeps the record in step with a change LilBot made to the config
- *  (memory setup, identity). Returns whether it ran. */
-export function applied(id: string, step: string | null, key: string, run: () => Promise<void>): Promise<boolean> {
+ *  (memory setup, identity). Passes previously recorded steps when `config.yaml` is intact. Returns whether it ran. */
+export function applied(
+  id: string,
+  step: string | null,
+  key: string,
+  run: (steps: Record<string, string> | null) => Promise<void>,
+  extraSteps?: Record<string, string>
+): Promise<boolean> {
   const home = skillHome(id)
   const turn = (queues.get(id) ?? Promise.resolve())
     .catch(() => {})
@@ -42,11 +48,11 @@ export function applied(id: string, step: string | null, key: string, run: () =>
       const before = await load(home)
       const intact = !!before && before.config === (await configHash(home))
       if (step && intact && before.steps[step] === key) return false
-      await run()
+      await run(intact ? before.steps : null)
       const config = await configHash(home)
       // A pass that changed nothing (identity is checked on every chat) writes nothing.
-      if (!step && intact && before.config === config) return true
-      const steps = { ...(intact ? before.steps : {}), ...(step ? { [step]: key } : {}) }
+      if (!step && !extraSteps && intact && before.config === config) return true
+      const steps = { ...(intact ? before.steps : {}), ...(step ? { [step]: key } : {}), ...(extraSteps ?? {}) }
       const file = join(home, `${FILE}.tmp`)
       await writeFile(file, JSON.stringify({ config, steps }), { mode: 0o600 })
       await rename(file, join(home, FILE))
