@@ -1,8 +1,8 @@
-/** Pre-flight disk, symlink (including dangling), JSON parseability, permission, and free-space checks. */
+/** Pre-flight disk, symlink (including dangling), file-type, JSON, permission, and free-space checks. */
 import { accessSync, constants, existsSync, lstatSync, readFileSync, statfsSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
-const HERMES_FILES = ['lilbot-memory.json', 'lilbot-skills.json', 'lilbot-computers.json', 'lilbot-applied.json', '.env'] as const
+export const HERMES_FILES = ['lilbot-memory.json', 'lilbot-skills.json', 'lilbot-computers.json', 'lilbot-applied.json', '.env'] as const
 const HERMES_JSON_FILES = ['lilbot-memory.json', 'lilbot-skills.json', 'lilbot-computers.json', 'lilbot-applied.json'] as const
 
 export const profileDir = (hermesHome: string, engineBotId: string) => (engineBotId === 'default' ? hermesHome : join(hermesHome, 'profiles', engineBotId))
@@ -13,21 +13,44 @@ export function lstatNoSymlink(path: string, label: string) {
   try {
     stat = lstatSync(path)
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
     throw error
   }
   if (stat.isSymbolicLink()) throw new Error(`Refusing to touch symlink at ${label}: ${path}`)
+  return stat
 }
 
-function assertWritableDir(dir: string, label: string) {
-  lstatNoSymlink(dir, label)
-  if (!existsSync(dir)) throw new Error(`Required ${label} directory does not exist: ${dir}`)
-  if (!statSync(dir).isDirectory()) throw new Error(`${label} is not a directory: ${dir}`)
+export function assertWritableDir(dir: string, label: string) {
+  const stat = lstatNoSymlink(dir, label)
+  if (!stat) throw new Error(`Required ${label} directory does not exist: ${dir}`)
+  if (!stat.isDirectory()) throw new Error(`${label} is not a directory: ${dir}`)
   try {
     accessSync(dir, constants.R_OK | constants.W_OK | constants.X_OK)
   } catch {
     throw new Error(`${label} directory is not readable and writable: ${dir}`)
   }
+}
+
+export function assertOptionalDir(path: string, label: string) {
+  const stat = lstatNoSymlink(path, label)
+  if (stat && !stat.isDirectory()) throw new Error(`${label} is not a directory: ${path}`)
+  return Boolean(stat)
+}
+
+export function assertRegularFile(path: string, label: string, mode: number, required = false) {
+  const stat = lstatNoSymlink(path, label)
+  if (!stat) {
+    if (required) throw new Error(`Required ${label} file does not exist: ${path}`)
+    return false
+  }
+  if (!stat.isFile()) throw new Error(`${label} is not a regular file: ${path}`)
+  try {
+    accessSync(path, mode)
+  } catch {
+    const need = mode === constants.R_OK ? 'readable' : 'readable and writable'
+    throw new Error(`${label} is not ${need}: ${path}`)
+  }
+  return true
 }
 
 function assertFreeSpace(dir: string, neededBytes: number, label: string) {
@@ -39,11 +62,7 @@ function assertFreeSpace(dir: string, neededBytes: number, label: string) {
 }
 
 export function parseJsonObject(path: string, label: string): Record<string, unknown> {
-  try {
-    accessSync(path, constants.R_OK | constants.W_OK)
-  } catch {
-    throw new Error(`${label} is not readable and writable: ${path}`)
-  }
+  assertRegularFile(path, label, constants.R_OK | constants.W_OK, true)
   let parsed: unknown
   try {
     parsed = JSON.parse(readFileSync(path, 'utf8'))
@@ -54,7 +73,7 @@ export function parseJsonObject(path: string, label: string): Record<string, unk
   return parsed as Record<string, unknown>
 }
 
-/** Validates every directory, target, symlink (including dangling), JSON file, permission, and free space before any write. */
+/** Validates every directory, target, symlink (including dangling), file type, JSON file, permission, and free space before any write. */
 export function preflightDisk(params: {
   dataDir: string
   workspacesDir: string | null
@@ -66,27 +85,30 @@ export function preflightDisk(params: {
 }) {
   assertWritableDir(params.dataDir, 'data')
   const dbPath = join(params.dataDir, 'lilbot.db')
-  lstatNoSymlink(dbPath, 'database')
-  const dbBytes = existsSync(dbPath) ? statSync(dbPath).size : 0
+  assertRegularFile(dbPath, 'database', constants.R_OK | constants.W_OK, true)
+  const dbBytes = statSync(dbPath).size
   assertFreeSpace(params.dataDir, params.minDataBytes ?? dbBytes * 3 + 16 * 1024 * 1024, 'data directory')
+
+  const backupsDir = join(params.dataDir, 'rekey-backups')
+  if (lstatNoSymlink(backupsDir, 'rekey-backups')) assertWritableDir(backupsDir, 'rekey-backups')
+  assertRegularFile(join(params.dataDir, 'rekey-journal.json'), 'rekey-journal.json', constants.R_OK | constants.W_OK)
+  assertRegularFile(join(params.dataDir, 'computer-server-key.pem'), 'computer-server-key.pem', constants.R_OK)
+  const dataToken = join(params.dataDir, 'engine-token')
+  if (assertRegularFile(dataToken, 'engine-token', constants.R_OK) && !readFileSync(dataToken, 'utf8').trim()) {
+    throw new Error(`engine-token is empty: ${dataToken}`)
+  }
 
   if (params.workspacesDir !== null) {
     assertWritableDir(params.workspacesDir, 'workspaces')
-    const src = join(params.workspacesDir, params.oldId)
-    const dst = join(params.workspacesDir, params.newId)
-    lstatNoSymlink(src, 'old workspace')
-    lstatNoSymlink(dst, 'new workspace')
-    if (existsSync(src) && existsSync(dst)) throw new Error(`Both old and new workspace folders exist (${params.oldId} and ${params.newId}); resolve manually before running.`)
+    const hasSrc = assertOptionalDir(join(params.workspacesDir, params.oldId), 'old workspace')
+    const hasDst = assertOptionalDir(join(params.workspacesDir, params.newId), 'new workspace')
+    if (hasSrc && hasDst) throw new Error(`Both old and new workspace folders exist (${params.oldId} and ${params.newId}); resolve manually before running.`)
     const archive = join(params.workspacesDir, '.archive')
-    lstatNoSymlink(archive, 'workspace archive')
-    if (existsSync(archive)) {
+    if (lstatNoSymlink(archive, 'workspace archive')) {
       assertWritableDir(archive, 'workspace archive')
-      const arcSrc = join(archive, params.oldId)
-      const arcDst = join(archive, params.newId)
-      lstatNoSymlink(arcSrc, 'old archived workspace')
-      lstatNoSymlink(arcDst, 'new archived workspace')
-      if (existsSync(arcSrc) && existsSync(arcDst))
-        throw new Error(`Both old and new archive folders exist (${params.oldId} and ${params.newId}); resolve manually before running.`)
+      const hasArcSrc = assertOptionalDir(join(archive, params.oldId), 'old archived workspace')
+      const hasArcDst = assertOptionalDir(join(archive, params.newId), 'new archived workspace')
+      if (hasArcSrc && hasArcDst) throw new Error(`Both old and new archive folders exist (${params.oldId} and ${params.newId}); resolve manually before running.`)
     }
   }
 
@@ -95,20 +117,16 @@ export function preflightDisk(params: {
     const pDir = profileDir(params.hermesHome, params.engineBotId)
     assertWritableDir(pDir, `Hermes profile (${params.engineBotId})`)
     assertFreeSpace(pDir, 1024 * 1024, 'Hermes profile directory')
-    for (const name of HERMES_FILES) lstatNoSymlink(join(pDir, name), name)
+    assertRegularFile(join(pDir, '.env'), '.env', constants.R_OK)
     for (const name of HERMES_JSON_FILES) {
       const file = join(pDir, name)
-      if (!existsSync(file)) continue
+      if (!lstatNoSymlink(file, name)) continue
       const parsed = parseJsonObject(file, name)
       if (name === 'lilbot-memory.json') {
-        const tokenFile = existsSync(join(params.dataDir, 'engine-token')) ? join(params.dataDir, 'engine-token') : typeof parsed.token_file === 'string' ? parsed.token_file : ''
+        const tokenFile = existsSync(dataToken) ? dataToken : typeof parsed.token_file === 'string' ? parsed.token_file : ''
         if (tokenFile) {
-          lstatNoSymlink(tokenFile, 'engine-token')
-          try {
-            if (!readFileSync(tokenFile, 'utf8').trim()) throw new Error('empty')
-          } catch {
-            throw new Error(`Token file referenced for lilbot-memory.json is unreadable or empty: ${tokenFile}`)
-          }
+          assertRegularFile(tokenFile, 'engine-token', constants.R_OK, true)
+          if (!readFileSync(tokenFile, 'utf8').trim()) throw new Error(`Token file referenced for lilbot-memory.json is empty: ${tokenFile}`)
         }
       }
     }

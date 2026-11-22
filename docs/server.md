@@ -101,27 +101,40 @@ are kept with `bots.deleteDefaults.get/set`. The primary bot and the engine's de
 
 ## Re-keying a bot id
 
-When an imported bot carries a human or engine-profile name as its LilBot id instead of a random UUID, stop the service
-under the deploy lock (`bun run deploy --maintenance stop`) and run the one-time operator CLI with explicit paths (there
-are no production defaults):
+When an imported bot carries a human or engine-profile name as its LilBot id instead of a random UUID, first run a
+read-only dry run from the deployed release checkout so any pre-flight refusal incurs zero downtime, then stop the
+service under the deploy lock (`bun run deploy --maintenance stop`), apply the re-key with explicit paths (there are no
+production defaults), start the service (`bun run deploy --maintenance start`), and verify health and app state:
 
 ```bash
 bun run bot:rekey -- --from <oldId> --data-dir <dir> (--workspaces-dir <dir> | --skip-workspaces) (--hermes-home <dir> | --skip-hermes) [--to <newId>] [--clear-main-chat] [--dry-run] [--yes]
-bun run bot:rekey -- --undo <backupDir> [--dry-run] [--yes]
+bun run bot:rekey -- --undo <backupDir> [--dry-run] [--yes] [--force]
 ```
 
-- **Dry run and strict CLI:** omit `--yes` (or pass `--dry-run`) to inspect per-table change counts, disk actions and
-  the generated target UUID without writing anything. Unknown flags and missing paths are refused; output prints counts,
-  table names, backup path and disk actions only — never secrets, message text or memory text.
+- **Dry run and strict CLI:** omit `--yes` (or pass `--dry-run`) to inspect per-table change counts, kept invariant
+  counts, disk actions and the generated target UUID without writing anything. Unknown flags, `--force` without
+  `--undo`, and missing paths are refused; output prints counts, table names, backup path and disk actions only — never
+  secrets, message text or memory text.
+- **Maintenance lock (`deploy --maintenance stop|start`):** verifies the service unit's `WorkingDirectory`, `ExecStart`,
+  running `LILBOT_DATA_DIR`, and `lilbot-deploy.service` watchdog binding before stopping. If stop fails or times out,
+  or if start fails `/api/health` commit + `MainPID` verification, `deploy/lock/maintenance.json` is retained (preventing
+  concurrent deploys and letting `bun run deploy --maintenance start` recover after inspecting `systemctl --user status`
+  and `journalctl`).
 - **Guards, pre-flight, backup and rollback:** refuses if `lilbot.service` is in any state other than fully stopped
   (`inactive/dead`), if a non-maintenance `deploy/lock/` exists, if any process holds `lilbot.db` open, if the bot is
   deleted (tombstoned), if work is in flight (`computer_requests`, `routine_runs`, `webhook_runs`, `thread_deliveries`,
-  `work_answers`, `work_checks`), or if any target path is a symlink (including dangling), unparseable JSON, read-only
-  or short on disk space. Before writing, takes a private (`0700`/`0600`) backup under `<data>/rekey-backups/` using
-  SQLite's online backup API alongside `computer-server-key.pem` and the profile's engine files (including `.env`), and
-  writes `<data>/rekey-journal.json` pinning the target id and step progress. Any post-DB failure rolls back the DB,
-  folders and engine files automatically from the backup; a mid-run crash resumes cleanly with the same target id, or
-  `--undo <backupDir> --yes` restores everything in one operation.
+  `work_answers`, `work_checks`), or if any target path (`lilbot.db`, `rekey-backups/`, `rekey-journal.json`,
+  `computer-server-key.pem`, `engine-token`, workspace/archive dirs, or Hermes profile files including `.env`) is a
+  symlink (including dangling), wrong file type, unparseable JSON, missing required permissions or short on disk space.
+  Before writing, takes a private (`0700`/`0600`) backup under `<data>/rekey-backups/` using SQLite's online backup API
+  with SHA-256 digests and post-rekey table fingerprints alongside `computer-server-key.pem` and the profile's engine
+  files (including `.env`), and writes `<data>/rekey-journal.json` pinning the target id, scope and step progress. Any
+  post-DB failure rolls back automatically; a mid-run crash refuses narrowed skip flags, replaces missing backup dirs
+  before DB commit, and resumes cleanly with the same target id.
+- **Verified `--undo`:** validates every manifest-listed backup file and DB `quick_check` before touching any target,
+  refuses stale earlier backups and repeated undos, refuses to wipe post-rekey database writes unless `--force` is
+  explicitly passed (reporting changed tables and row-count deltas only), preserves any `.env` created after backup, and
+  writes an `undo` journal so a crash during undo resumes cleanly on rerun.
 - **Database rewrites and kept invariants:** rewrites every stored LilBot bot-id reference (plain columns, composite
   keys with escaped LIKE patterns, and JSON columns) inside one `BEGIN IMMEDIATE` transaction, materializes
   `defaultAvatar(<oldId>)` if any avatar field is NULL, optionally clears `bot_prefs.main_chat_id` so the next chat

@@ -3,15 +3,16 @@
 import { Database } from 'bun:sqlite'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { createRekeyBackup, readManifest, restoreRekeyBackup } from './rekey/rekey-backup'
-import { verifyDatabaseRekey } from './rekey/rekey-check'
+import { createRekeyBackup, isCompleteBackup, readManifest, recordPostRekeyManifest } from './rekey/rekey-backup'
+import { countKeptInvariants, verifyDatabaseRekey } from './rekey/rekey-check'
 import { parseCli, printSummary, type RekeyOptions, type RekeySummary, type UndoOptions } from './rekey/rekey-cli'
 import { applyDatabaseRekey, inspectBotState, previewDatabaseRekey } from './rekey/rekey-db'
 import { applyDiskRekey, type DiskReport, verifyDiskRekey } from './rekey/rekey-disk'
 import { assertDatabaseNotInUse } from './rekey/rekey-guard'
-import { type RekeyJournal, readJournal, removeJournal, writeJournal } from './rekey/rekey-journal'
-import { preflightDisk } from './rekey/rekey-preflight'
+import { assertJournalMatchesRekey, type RekeyJournal, readJournal, removeJournal, writeJournal } from './rekey/rekey-journal'
+import { lstatNoSymlink, preflightDisk } from './rekey/rekey-preflight'
 import { inFlightCounts } from './rekey/rekey-targets'
+import { restoreRekeyBackup } from './rekey/rekey-undo'
 
 export type { RekeyOptions, RekeySummary, UndoOptions }
 
@@ -30,7 +31,7 @@ function withReadonlyDb<T>(dbPath: string, run: (db: Database) => T): T {
 export async function runUndo(options: UndoOptions) {
   const manifest = readManifest(options.undo)
   if (!options.dryRun) assertDatabaseNotInUse(manifest.dataDir, options.testHooks?.serviceProbe)
-  return restoreRekeyBackup(options.undo, options.dryRun)
+  return restoreRekeyBackup(options.undo, { dryRun: options.dryRun, force: options.force, injectFailure: options.testHooks?.injectFailure })
 }
 
 export async function runRekey(options: RekeyOptions): Promise<RekeySummary> {
@@ -38,16 +39,12 @@ export async function runRekey(options: RekeyOptions): Promise<RekeySummary> {
   if (!SAFE_ID.test(options.from)) throw new Error(`Invalid --from bot id: ${options.from}`)
   if (options.to !== undefined && (!SAFE_ID.test(options.to) || options.to === options.from)) throw new Error(`Invalid --to bot id: ${options.to}`)
   const dbPath = join(options.dataDir, 'lilbot.db')
+  lstatNoSymlink(dbPath, 'database')
   if (!existsSync(dbPath)) throw new Error(`No LilBot database at ${dbPath}.`)
   if (!options.dryRun) assertDatabaseNotInUse(options.dataDir, options.testHooks?.serviceProbe)
 
   const existingJournal = readJournal(options.dataDir)
-  if (existingJournal) {
-    if (existingJournal.from !== options.from)
-      throw new Error(`Unfinished rekey journal found for "${existingJournal.from}" -> "${existingJournal.to}"; resume or --undo ${existingJournal.backupDir} first.`)
-    if (options.to !== undefined && options.to !== existingJournal.to)
-      throw new Error(`Unfinished rekey journal pins target id "${existingJournal.to}" (got --to "${options.to}").`)
-  }
+  if (existingJournal) assertJournalMatchesRekey(existingJournal, options)
 
   const requestedTo = options.to ?? existingJournal?.to
   const state = withReadonlyDb(dbPath, db => inspectBotState(db, options.from, requestedTo, existingJournal ? { from: existingJournal.from, to: existingJournal.to } : undefined))
@@ -106,23 +103,27 @@ export async function runRekey(options: RekeyOptions): Promise<RekeySummary> {
     if (!options.dryRun) {
       const diskFailures = verifyDiskRekey(options.workspacesDir, options.hermesHome, engineBotId, options.dataDir, options.from, targetId)
       if (diskFailures.length) throw new Error(`Disk self-check failed:\n${diskFailures.join('\n')}`)
-      if (existingJournal) removeJournal(options.dataDir)
+      if (existingJournal) {
+        if (isCompleteBackup(existingJournal.backupDir)) recordPostRekeyManifest(existingJournal.backupDir, dbPath, true)
+        removeJournal(options.dataDir)
+      }
     }
     return done(options.dryRun ? 'dry-run' : 'already-rekeyed', {}, 0, false, disk, dbCheck.kept, existingJournal?.backupDir)
   }
 
   if (options.dryRun) {
-    const preview = withReadonlyDb(dbPath, db => previewDatabaseRekey(db, options.from, targetId))
+    const [preview, kept] = withReadonlyDb(dbPath, db => [previewDatabaseRekey(db, options.from, targetId), countKeptInvariants(db, engineBotId)] as const)
     const disk = applyDiskRekey({ ...diskArgs, dryRun: true })
-    return done('dry-run', preview.perTable, preview.totalChanges, options.clearMainChat && preview.hasMainChat, disk, { 'bots.engine_bot_id': 1 })
+    return done('dry-run', preview.perTable, preview.totalChanges, options.clearMainChat && preview.hasMainChat, disk, kept)
   }
 
   const backupDir =
-    existingJournal?.steps.backup && existsSync(existingJournal.backupDir)
+    existingJournal?.steps.backup && isCompleteBackup(existingJournal.backupDir)
       ? existingJournal.backupDir
       : await createRekeyBackup({ dataDir: options.dataDir, workspacesDir: options.workspacesDir, hermesHome: options.hermesHome, from: options.from, to: targetId, engineBotId })
-  const journal: RekeyJournal = existingJournal ?? {
+  const journal: RekeyJournal = {
     version: 1,
+    mode: 'rekey',
     from: options.from,
     to: targetId,
     engineBotId,
@@ -131,7 +132,7 @@ export async function runRekey(options: RekeyOptions): Promise<RekeySummary> {
     workspacesDir: options.workspacesDir,
     hermesHome: options.hermesHome,
     clearMainChat: options.clearMainChat,
-    steps: { backup: true, db: false, workspace: false, archive: false, hermes: false }
+    steps: { ...(existingJournal?.steps ?? { backup: true, db: false, workspace: false, archive: false, hermes: false }), backup: true }
   }
   writeJournal(options.dataDir, journal)
 
@@ -146,6 +147,7 @@ export async function runRekey(options: RekeyOptions): Promise<RekeySummary> {
   } finally {
     db.close()
   }
+  recordPostRekeyManifest(backupDir, dbPath, false)
   journal.steps.db = true
   writeJournal(options.dataDir, journal)
 
@@ -165,9 +167,10 @@ export async function runRekey(options: RekeyOptions): Promise<RekeySummary> {
     if (diskFailures.length) throw new Error(`Disk self-check failed:\n${diskFailures.join('\n')}`)
   } catch (error) {
     if (options.testHooks?.simulateCrash) throw error
-    await restoreRekeyBackup(backupDir, false)
+    await restoreRekeyBackup(backupDir, { dryRun: false, force: true, internalRollback: true })
     throw new Error(`Post-DB step failed (fully rolled back from backup ${backupDir}): ${error instanceof Error ? error.message : String(error)}`)
   }
+  recordPostRekeyManifest(backupDir, dbPath, true)
   removeJournal(options.dataDir)
   return done('applied', dbResult.tableCounts, dbResult.totalChanges, dbResult.clearedMainChat, disk, dbResult.kept, backupDir)
 }
@@ -177,7 +180,8 @@ if (import.meta.main) {
     const parsed = parseCli(process.argv.slice(2))
     if ('undo' in parsed) {
       const res = await runUndo(parsed)
-      console.log(`${res.restored ? 'Undone' : 'Dry-run undo'}: ${res.manifest.to} -> ${res.manifest.from} (${res.actions.join(', ')})`)
+      const note = res.postRekeyChanges.length ? ` (discarded post-rekey changes in ${res.postRekeyChanges.length} table(s))` : ''
+      console.log(`${res.restored ? 'Undone' : 'Dry-run undo'}: ${res.manifest.to} -> ${res.manifest.from} (${res.actions.join(', ')})${note}`)
     } else printSummary(await runRekey(parsed))
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error))

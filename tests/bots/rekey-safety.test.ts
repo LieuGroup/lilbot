@@ -8,15 +8,17 @@ import { runRekey } from '../../scripts/rekey-bot'
 import { MAINTENANCE_LOCK_FILE } from '../../server/deploy/maintenance'
 import { createRekeyFixture, OLD_ID, OTHER_ID } from './rekey-fixture'
 
-test('CLI refuses unknown flags and missing explicit paths (no production defaults)', () => {
+test('CLI refuses unknown flags, --force without --undo, and missing explicit paths (no production defaults)', () => {
   expect(() => parseCli(['--from', OLD_ID, '--unknown'])).toThrow('Unknown argument')
   expect(() => parseCli(['--from', OLD_ID])).toThrow('no production defaults')
   expect(() => parseCli(['--from', OLD_ID, '--data-dir', '/tmp/d'])).toThrow('--workspaces-dir')
   expect(() => parseCli(['--from', OLD_ID, '--data-dir', '/tmp/d', '--skip-workspaces'])).toThrow('--hermes-home')
+  expect(() => parseCli(['--from', OLD_ID, '--data-dir', '/tmp/d', '--skip-workspaces', '--skip-hermes', '--force'])).toThrow('--force is only valid with --undo')
+  expect(parseCli(['--undo', '/tmp/b', '--force', '--yes'])).toEqual({ undo: '/tmp/b', dryRun: false, force: true })
   expect(parseCli(['--from', OLD_ID, '--data-dir', '/tmp/d', '--skip-workspaces', '--skip-hermes'])).toMatchObject({ workspacesDir: null, hermesHome: null, dryRun: true })
 })
 
-test('pre-flight refuses missing dirs, dangling symlinks, corrupt JSON, read-only files, and low disk space before touching anything', async () => {
+test('pre-flight refuses missing dirs, dangling symlinks, corrupt JSON, read-only dirs/files, non-dir workspace, and low disk space before touching anything', async () => {
   type Fix = ReturnType<typeof createRekeyFixture>
   const cases: Array<[string, (f: Fix) => Partial<Parameters<typeof runRekey>[0]> | undefined, string]> = [
     ['missing workspaces dir', f => ({ workspacesDir: join(f.dataDir, 'missing-ws') }), 'workspaces directory does not exist'],
@@ -54,6 +56,48 @@ test('pre-flight refuses missing dirs, dangling symlinks, corrupt JSON, read-onl
       },
       'not readable and writable'
     ],
+    [
+      'read-only rekey-backups dir',
+      f => {
+        mkdirSync(join(f.dataDir, 'rekey-backups'), { mode: 0o500 })
+        return { dryRun: true }
+      },
+      'rekey-backups directory is not readable and writable'
+    ],
+    [
+      'unreadable Hermes .env',
+      f => {
+        chmodSync(join(f.profileDir, '.env'), 0o000)
+        return { dryRun: true }
+      },
+      '.env is not readable'
+    ],
+    [
+      'regular file at workspaces/<oldId>',
+      f => {
+        rmSync(join(f.workspacesDir, OLD_ID), { recursive: true, force: true })
+        writeFileSync(join(f.workspacesDir, OLD_ID), 'not-a-dir')
+        return { dryRun: true }
+      },
+      'old workspace is not a directory'
+    ],
+    [
+      'symlinked computer-server-key.pem',
+      f => {
+        rmSync(join(f.dataDir, 'computer-server-key.pem'))
+        symlinkSync('/nonexistent/key.pem', join(f.dataDir, 'computer-server-key.pem'))
+        return { dryRun: true }
+      },
+      'symlink at computer-server-key.pem'
+    ],
+    [
+      'symlinked rekey-journal.json',
+      f => {
+        symlinkSync('/nonexistent/journal.json', join(f.dataDir, 'rekey-journal.json'))
+        return { dryRun: true }
+      },
+      'non-regular rekey journal'
+    ],
     ['low free space', () => ({ testHooks: { minDataBytes: Number.MAX_SAFE_INTEGER } }), 'Insufficient free disk space']
   ]
   for (const [name, mutate, match] of cases) {
@@ -69,11 +113,17 @@ test('pre-flight refuses missing dirs, dangling symlinks, corrupt JSON, read-onl
       db.close()
       expect(existsSync(join(f.workspacesDir, OLD_ID))).toBe(true)
     } finally {
-      chmodSync(join(root, 'hermes', 'profiles', OLD_ID, 'lilbot-computers.json'), 0o600)
+      try {
+        chmodSync(join(root, 'data', 'rekey-backups'), 0o700)
+      } catch {}
+      try {
+        chmodSync(join(root, 'hermes', 'profiles', OLD_ID, '.env'), 0o600)
+        chmodSync(join(root, 'hermes', 'profiles', OLD_ID, 'lilbot-computers.json'), 0o600)
+      } catch {}
       rmSync(root, { recursive: true, force: true })
     }
   }
-}, 30_000)
+}, 45_000)
 
 test('refuses wrong target, deleted bot, all 6 in-flight work tables, non-stopped service, deploy lock, and open DB process', async () => {
   const root = mkdtempSync(join(tmpdir(), 'rekey-refuse-'))

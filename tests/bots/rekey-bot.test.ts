@@ -53,7 +53,11 @@ test('full re-key covers every table and all 6 composite shapes, passes schema-w
   try {
     const f = createRekeyFixture(root)
     const newId = 'new-bot-uuid-1234'
+    const preview = await runRekey({ from: OLD_ID, to: newId, dataDir: f.dataDir, workspacesDir: f.workspacesDir, hermesHome: f.hermesHome, clearMainChat: true, dryRun: true })
+    expect(preview.mode).toBe('dry-run')
+    expect(preview.kept).toMatchObject({ 'bots.engine_bot_id': 1, 'history_items.id_prefix': 1, 'message_origins.row_id_prefix': 1 })
     const applied = await runRekey({ from: OLD_ID, to: newId, dataDir: f.dataDir, workspacesDir: f.workspacesDir, hermesHome: f.hermesHome, clearMainChat: true, dryRun: false })
+    expect(preview.kept).toEqual(applied.kept)
     expect(applied.mode).toBe('applied')
     expect(applied.backupDir && existsSync(join(applied.backupDir, 'lilbot.db'))).toBe(true)
     expect(applied.backupDir && existsSync(join(applied.backupDir, 'computer-server-key.pem'))).toBe(true)

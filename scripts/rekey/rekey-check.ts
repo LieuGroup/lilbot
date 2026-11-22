@@ -1,5 +1,6 @@
-/** Read-only reference scanning and post-rekey SQLite self-checks. Never reads or prints message or memory text. */
+/** Read-only reference scanning, DB fingerprinting, and post-rekey SQLite self-checks. Never logs message or memory text. */
 import type { Database } from 'bun:sqlite'
+import { createHash } from 'node:crypto'
 import { rewriteAttachmentMessage, rewriteChatItem, rewriteHistoryEvent, rewriteStoredAttachment, rewriteThreadData } from './rekey-json'
 import { buildIdMaps, escapeLike, PLAIN_TARGETS, tableExists, tableRowCounts } from './rekey-targets'
 
@@ -113,6 +114,64 @@ export function scanReferences(db: Database, oldId: string, probeId = '__probe__
   return hits
 }
 
+export interface TableFingerprint {
+  count: number
+  sha256: string
+}
+
+export interface TableDiff {
+  table: string
+  before: number
+  after: number
+  delta: number
+}
+
+/** Computes per-table row counts and SHA-256 content digests (never logs or retains row text). */
+export function snapshotDatabaseFingerprint(db: Database): Record<string, TableFingerprint> {
+  const counts = tableRowCounts(db)
+  const out: Record<string, TableFingerprint> = {}
+  for (const [table, count] of Object.entries(counts)) {
+    const hash = createHash('sha256')
+    for (const row of db.query(`SELECT * FROM "${table}"`).iterate()) {
+      hash.update(JSON.stringify(row))
+      hash.update('\n')
+    }
+    out[table] = { count, sha256: hash.digest('hex') }
+  }
+  return out
+}
+
+export function diffDatabaseFingerprints(expected: Record<string, TableFingerprint>, actual: Record<string, TableFingerprint>): TableDiff[] {
+  const tables = new Set([...Object.keys(expected), ...Object.keys(actual)])
+  const diffs: TableDiff[] = []
+  for (const table of [...tables].sort()) {
+    const e = expected[table]
+    const a = actual[table]
+    if (!e || !a || e.count !== a.count || e.sha256 !== a.sha256) {
+      const before = e?.count ?? 0
+      const after = a?.count ?? 0
+      diffs.push({ table, before, after, delta: after - before })
+    }
+  }
+  return diffs
+}
+
+/** Counts every invariant row intentionally kept untouched by re-keying (engine binding, history prefixes, global sentinels). */
+export function countKeptInvariants(db: Database, engineBotId: string): Record<string, number> {
+  const escEngine = escapeLike(engineBotId)
+  return {
+    'bots.engine_bot_id': db.query<{ n: number }, [string]>('SELECT count(*) AS n FROM bots WHERE engine_bot_id = ?').get(engineBotId)!.n,
+    'history_items.id_prefix': tableExists(db, 'history_items')
+      ? db.query<{ n: number }, [string]>(`SELECT count(*) AS n FROM history_items WHERE id LIKE ? ESCAPE '\\'`).get(`hermes:${escEngine}:%`)!.n
+      : 0,
+    'message_origins.row_id_prefix': tableExists(db, 'message_origins')
+      ? db.query<{ n: number }, [string]>(`SELECT count(*) AS n FROM message_origins WHERE row_id LIKE ? ESCAPE '\\'`).get(`hermes:${escEngine}:%`)!.n
+      : 0,
+    'computer_bytes.global_sentinel': tableExists(db, 'computer_bytes') ? db.query<{ n: number }, []>("SELECT count(*) AS n FROM computer_bytes WHERE bot_id = ''").get()!.n : 0,
+    'work_levels.global_sentinel': tableExists(db, 'work_levels') ? db.query<{ n: number }, []>("SELECT count(*) AS n FROM work_levels WHERE bot_id = ''").get()!.n : 0
+  }
+}
+
 export function verifyDatabaseRekey(db: Database, oldId: string, newId: string, engineBotId: string, beforeCounts?: Record<string, number>, deletedCheckpointRows = 0) {
   const failures: string[] = []
   const remaining = scanReferences(db, oldId, newId)
@@ -129,17 +188,5 @@ export function verifyDatabaseRekey(db: Database, oldId: string, newId: string, 
       if (afterCounts[table] !== expected) failures.push(`Row count mismatch in ${table}: before=${before}, expected=${expected}, after=${afterCounts[table]}`)
     }
   }
-  const escEngine = escapeLike(engineBotId)
-  const kept: Record<string, number> = {
-    'bots.engine_bot_id': db.query<{ n: number }, [string]>('SELECT count(*) AS n FROM bots WHERE engine_bot_id = ?').get(engineBotId)!.n,
-    'history_items.id_prefix': tableExists(db, 'history_items')
-      ? db.query<{ n: number }, [string]>(`SELECT count(*) AS n FROM history_items WHERE id LIKE ? ESCAPE '\\'`).get(`hermes:${escEngine}:%`)!.n
-      : 0,
-    'message_origins.row_id_prefix': tableExists(db, 'message_origins')
-      ? db.query<{ n: number }, [string]>(`SELECT count(*) AS n FROM message_origins WHERE row_id LIKE ? ESCAPE '\\'`).get(`hermes:${escEngine}:%`)!.n
-      : 0,
-    'computer_bytes.global_sentinel': tableExists(db, 'computer_bytes') ? db.query<{ n: number }, []>("SELECT count(*) AS n FROM computer_bytes WHERE bot_id = ''").get()!.n : 0,
-    'work_levels.global_sentinel': tableExists(db, 'work_levels') ? db.query<{ n: number }, []>("SELECT count(*) AS n FROM work_levels WHERE bot_id = ''").get()!.n : 0
-  }
-  return { ok: failures.length === 0, failures, remaining, kept }
+  return { ok: failures.length === 0, failures, remaining, kept: countKeptInvariants(db, engineBotId) }
 }

@@ -19,10 +19,11 @@ Every `check:*` and `bun live-checks/*.ts` follows the development rules in `AGE
 - `bun run history:exclude -- --bot <id> --session <id> --reason "<text>" [--yes]`: operator CLI to permanently remove
   one non-main engine session from LilBot's history copy (previews without `--yes`).
 - `bun run bot:rekey -- --from <oldId> --data-dir <dir> (--workspaces-dir <dir> | --skip-workspaces) (--hermes-home <dir> | --skip-hermes) [--to <newId>] [--clear-main-chat] [--dry-run] [--yes]`
-  (and `--undo <backupDir> [--dry-run] [--yes]`): one-time operator CLI to re-key a bot's LilBot id across SQLite,
-  workspace folders and engine profile settings while keeping its engine binding (`engine_bot_id`) intact. Requires
-  explicit paths (no production defaults), takes a private online backup before writing, previews without `--yes`, and
-  refuses to run unless the service is stopped and no work is in flight. See [server.md](server.md#re-keying-a-bot-id).
+  (and `--undo <backupDir> [--dry-run] [--yes] [--force]`): one-time operator CLI to re-key a bot's LilBot id across
+  SQLite, workspace folders and engine profile settings while keeping its engine binding (`engine_bot_id`) intact.
+  Requires explicit paths (no production defaults), takes a private online backup before writing, previews without
+  `--yes`, and refuses to run unless the service is stopped and no work is in flight; `--undo` refuses post-rekey writes
+  without `--force`, stale backups and repeated runs. See [server.md](server.md#re-keying-a-bot-id).
 
 ## Live checks
 

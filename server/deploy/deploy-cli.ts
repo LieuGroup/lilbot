@@ -27,10 +27,10 @@ try {
   if (maintenanceIdx >= 0) {
     const action = process.argv[maintenanceIdx + 1]
     if (action !== 'stop' && action !== 'start') throw new Error('Usage: bun run deploy --maintenance <stop|start>')
-    if (!/^[a-zA-Z0-9_.@-]+\.service$/.test(unit)) throw new Error('Invalid service name')
+    if (!/^[a-zA-Z0-9_.@-]+\.service$/.test(unit) || !/^[a-zA-Z0-9_.@-]+\.service$/.test(watchdogUnit) || unit === watchdogUnit) throw new Error('Invalid service names')
     const url = new URL(healthUrl)
     if (url.hostname !== '127.0.0.1' || url.protocol !== 'http:') throw new Error('Health URL must use HTTP on 127.0.0.1')
-    console.log(JSON.stringify(await runMaintenance(action, { dataDir, releaseLink, releaseRoot, unit, healthUrl }), null, 2))
+    console.log(JSON.stringify(await runMaintenance(action, { dataDir, releaseLink, releaseRoot, unit, watchdogUnit, healthUrl }), null, 2))
     process.exit(0)
   }
   if (!/^[a-zA-Z0-9_.@-]+\.service$/.test(unit) || !/^[a-zA-Z0-9_.@-]+\.service$/.test(watchdogUnit) || unit === watchdogUnit) throw new Error('Invalid service names')

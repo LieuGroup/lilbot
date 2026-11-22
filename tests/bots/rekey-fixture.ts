@@ -42,6 +42,7 @@ export function createRekeyFixture(root: string) {
   writeFileSync(join(profileDir, 'config.yaml'), 'approvals:\n  mode: "off"\n')
 
   const db = new Database(join(dataDir, 'lilbot.db'))
+  db.exec('PRAGMA synchronous = OFF')
   for (const sql of migrations) db.exec(sql)
 
   db.query("INSERT INTO bots VALUES (?, 'Bot One', 'Helper', 'Be helpful', NULL, 1, 'hermes', ?, NULL, 'full-access', NULL)").run(OLD_ID, OLD_ID)

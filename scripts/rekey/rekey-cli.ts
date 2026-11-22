@@ -1,6 +1,7 @@
 /** Strict CLI argument parsing and summary formatting for `bun run bot:rekey`. Zero production defaults. */
 import type { DiskReport, FailurePoint } from './rekey-disk'
 import type { ServiceProbeResult } from './rekey-guard'
+import type { UndoFailurePoint } from './rekey-undo'
 
 export interface RekeyOptions {
   from: string
@@ -16,7 +17,8 @@ export interface RekeyOptions {
 export interface UndoOptions {
   undo: string
   dryRun: boolean
-  testHooks?: { serviceProbe?: () => ServiceProbeResult }
+  force?: boolean
+  testHooks?: { serviceProbe?: () => ServiceProbeResult; injectFailure?: UndoFailurePoint }
 }
 
 export interface RekeySummary {
@@ -35,10 +37,10 @@ export interface RekeySummary {
 
 const USAGE =
   'Usage: bun run bot:rekey -- --from <oldId> --data-dir <dir> (--workspaces-dir <dir> | --skip-workspaces) (--hermes-home <dir> | --skip-hermes) [--to <newId>] [--clear-main-chat] [--dry-run] [--yes]\n' +
-  '   or: bun run bot:rekey -- --undo <backupDir> [--dry-run] [--yes]'
+  '   or: bun run bot:rekey -- --undo <backupDir> [--dry-run] [--yes] [--force]'
 
 const VALUE_FLAGS = new Set(['--from', '--to', '--data-dir', '--workspaces-dir', '--hermes-home', '--undo'])
-const BOOL_FLAGS = new Set(['--clear-main-chat', '--dry-run', '--yes', '--skip-workspaces', '--skip-hermes'])
+const BOOL_FLAGS = new Set(['--clear-main-chat', '--dry-run', '--yes', '--skip-workspaces', '--skip-hermes', '--force'])
 
 export function parseCli(argv: string[]): RekeyOptions | UndoOptions {
   const values = new Map<string, string>()
@@ -61,8 +63,9 @@ export function parseCli(argv: string[]): RekeyOptions | UndoOptions {
   if (undo) {
     if (values.size > 1 || flags.has('--clear-main-chat') || flags.has('--skip-workspaces') || flags.has('--skip-hermes'))
       throw new Error(`--undo cannot be combined with re-key flags.\n${USAGE}`)
-    return { undo, dryRun }
+    return { undo, dryRun, force: flags.has('--force') }
   }
+  if (flags.has('--force')) throw new Error(`--force is only valid with --undo.\n${USAGE}`)
   const from = values.get('--from')
   const dataDir = values.get('--data-dir')
   const workspacesDir = values.get('--workspaces-dir') ?? null
