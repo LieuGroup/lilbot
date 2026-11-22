@@ -7,6 +7,7 @@ import { ActivityStore } from './activity/activity-store'
 import { createConnections } from './app-connections'
 import { createGoals } from './app-goals'
 import { createMemory } from './app-memory'
+import { createRemoteWorkers } from './app-remote-workers'
 import { createThreads } from './app-threads'
 import { createWebhooks, webhookMessages } from './app-webhooks'
 import { createWork, giveFrom } from './app-work'
@@ -143,6 +144,7 @@ export function createAppServices(
       routineStore.forgetBot(botId)
       webhookStore.forgetBot(botId)
       computers.forgetBot(botId)
+      remoteWorkers.runner.stopForBot(botId)
       activity.forgetBot(botId)
       mem.forgetBot(botId)
       links.forgetBot(botId)
@@ -167,9 +169,10 @@ export function createAppServices(
   const { work, links, answers, checks, checkSessions } = createWork(workDeps)
   const redirectUri = ACCESS_HOST ? `https://${ACCESS_HOST}${CALLBACK_PATH}` : undefined
   const connBase = { database, dataDir: DATA_DIR, port: PORT, engineToken: token, redirectUri, callbackEnabled: settings.ACCESS_CALLBACK_ENABLED ?? false, t3Enabled }
-  const connBots = { engine, store, prefs, bots, activity, history: history.store, hiddenChat, calls, codingSwitch }
-  const connGates = { t3Grants, t3Refusal: gates.t3Refusal, serviceRefusal: gates.serviceRefusal(checkSessions) }
-  const mcp = createConnections({ ...connBase, ...connBots, ...connGates, publish, repeat })
+  const connBots = { engine, store, prefs, bots, activity, history: history.store, hiddenChat, calls, codingSwitch, t3Grants }
+  const mcp = createConnections({ ...connBase, ...connBots, t3Refusal: gates.t3Refusal, serviceRefusal: gates.serviceRefusal(checkSessions), publish, repeat })
+  const rwDeps = { database, computers, store, memory, skills, computersChanged: () => publish({ event: 'computers.changed' }) }
+  const remoteWorkers = createRemoteWorkers({ ...rwDeps, handleMcp: (ctx, body) => system.workerMcp(ctx, body) })
   const threadDeps = { engine, store, prefs, bots, workspaces, history, activity, threadStore, calls, work: links, memory, library, root: WORKSPACES_DIR, rootOf, publish }
   const { threads, delegation } = createThreads({ ...threadDeps, botsChanged, memoryChanged })
   const routines = new RoutineService(routineStore, bots, () => publish({ event: 'routines.changed' }), routineSettings(process.env))
@@ -188,5 +191,6 @@ export function createAppServices(
   const apiCore = { history, computers, bots, skills, routines, library, threads, reviewer, checkpointStore: mem.checkpointStore }
   const apiHooks = { chatKind, adapterVersion: MEMORY_ADAPTER_VERSION, deploymentNotice: () => deployNotice(DATA_DIR), botExists: (id: string) => store.exists(id) }
   const engineApi = createEngineApi(memory, token, PORT, { ...apiCore, ...apiHooks, onMemoryChanged: memoryChanged, inCheck: checkSessions.refusal, ...gates })
-  return { bots, store, skills, library, computers, devices, attachments, t3Grants, mcp, system, engineApi, activity, routines, threads, boards, webhooks, hiddenChat }
+  const base = { bots, store, skills, library, computers, remoteWorkers, devices, attachments, t3Grants, mcp, system, engineApi }
+  return { ...base, activity, routines, threads, boards, webhooks, hiddenChat }
 }

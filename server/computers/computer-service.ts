@@ -26,6 +26,7 @@ export class ComputerService {
     return queue(action)
   }
   readonly auth: ComputerAuth
+  onRevoke?: (id: string) => void
   private closed = false
   private nextDispatch = new Map<string, number>()
   private dispatching = new Set<string>()
@@ -134,13 +135,12 @@ export class ComputerService {
   }
   remove(id: string) {
     if (id === 'leader') throw new Error('The leader cannot be removed.')
-    this.contenders.get(id)?.peer.send(JSON.stringify({ type: 'revoked' }))
-    this.contenders.get(id)?.peer.close(4003)
-    this.contenders.delete(id)
-    this.peers.get(id)?.send(JSON.stringify({ type: 'revoked' }))
+    for (const p of [this.contenders.get(id)?.peer, this.peers.get(id)]) p?.send(JSON.stringify({ type: 'revoked' }))
     this.store.revoke(id)
-    this.peers.get(id)?.close(4003)
+    for (const p of [this.contenders.get(id)?.peer, this.peers.get(id)]) p?.close(4003)
+    this.contenders.delete(id)
     this.peers.delete(id)
+    this.onRevoke?.(id)
     this.notify()
     return { ok: true as const }
   }
@@ -269,8 +269,7 @@ export class ComputerService {
   close() {
     this.closed = true
     clearTimeout(this.changeTimer)
-    for (const { peer } of this.contenders.values()) peer.close(1001)
-    for (const peer of this.peers.values()) peer.close(1001)
+    for (const p of [...[...this.contenders.values()].map(c => c.peer), ...this.peers.values()]) p.close(1001)
     for (const controller of this.local.values()) controller.abort()
   }
 }

@@ -12,6 +12,8 @@ const MCP_PER_SEC = 4
 
 export interface WorkerDoorBridge {
   hasRun(computerId: string, runId: string): boolean
+  /** True for a run this leader started on `computerId` that has already settled: late/duplicate `worker.done` is acked and ignored. */
+  isSettledRun?(computerId: string, runId: string): boolean
   onFrame(computerId: string, frame: WorkerHelperFrame, send: (frame: WorkerLeaderFrame) => boolean): void
   onCapabilities?(computerId: string, agents: WorkerAgentInfo[]): void
   onConnect?(computerId: string, send: (frame: WorkerLeaderFrame) => boolean): () => void
@@ -69,6 +71,16 @@ export function isWorkerFrame(frame: { type: string }): frame is WorkerHelperFra
   return frame.type.startsWith('worker.')
 }
 
+function deliverOversizedDone(computerId: string, runId: string, send: (frame: WorkerLeaderFrame) => boolean, bridge: WorkerDoorBridge) {
+  let acked = false
+  const trackSend = (frame: WorkerLeaderFrame) => {
+    if (frame.type === 'worker.ack' && frame.runId === runId) acked = true
+    return send(frame)
+  }
+  bridge.onFrame(computerId, { type: 'worker.done', runId, status: 'failed', text: '', items: [], error: 'Worker outcome exceeded size limit.' }, trackSend)
+  if (!acked) send({ type: 'worker.ack', runId })
+}
+
 /** Handles an oversized `worker.done` payload before running full Zod parsing on huge item arrays. */
 export function handleOversizedWorkerDone(
   computerId: string,
@@ -83,9 +95,11 @@ export function handleOversizedWorkerDone(
   if (typeof runId !== 'string' || !runId || runId.length > 100) return true
   state.events.delete(runId)
   state.mcp.delete(runId)
-  if (!bridge?.hasRun(computerId, runId)) return true
-  bridge.onFrame(computerId, { type: 'worker.done', runId, status: 'failed', text: '', items: [], error: 'Worker outcome exceeded size limit.' }, send)
-  send({ type: 'worker.ack', runId })
+  if (!bridge?.hasRun(computerId, runId)) {
+    if (bridge?.isSettledRun?.(computerId, runId)) send({ type: 'worker.ack', runId })
+    return true
+  }
+  deliverOversizedDone(computerId, runId, send, bridge)
   return true
 }
 
@@ -112,6 +126,7 @@ export function handleWorkerFrame(
   if (!bridge?.hasRun(computerId, frame.runId)) {
     state.events.delete(frame.runId)
     state.mcp.delete(frame.runId)
+    if (frame.type === 'worker.done' && bridge?.isSettledRun?.(computerId, frame.runId)) send({ type: 'worker.ack', runId: frame.runId })
     return true
   }
   if (frame.type === 'worker.event') {
@@ -145,8 +160,7 @@ export function handleWorkerFrame(
     state.events.delete(frame.runId)
     state.mcp.delete(frame.runId)
     if (payloadBytes > WORKER_DONE_MAX_BYTES) {
-      bridge.onFrame(computerId, { type: 'worker.done', runId: frame.runId, status: 'failed', text: '', items: [], error: 'Worker outcome exceeded size limit.' }, send)
-      send({ type: 'worker.ack', runId: frame.runId })
+      deliverOversizedDone(computerId, frame.runId, send, bridge)
       return true
     }
   }

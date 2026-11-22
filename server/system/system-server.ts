@@ -20,6 +20,7 @@ import { skillTools } from './tool-skills'
 import { webhookTools } from './tool-webhooks'
 import { workTools } from './tool-work'
 import { workspaceTools } from './tool-workspace'
+import { createWorkerMcp } from './worker-mcp'
 
 /** For an engine that shows an MCP server's instructions to the model (Hermes does not; the note carries the same pointers). */
 const INSTRUCTIONS =
@@ -59,6 +60,7 @@ export function createSystemServer(deps: SystemDeps & { engineToken: string; por
       instructions: INSTRUCTIONS,
       refusal
     }),
+    workerMcp: createWorkerMcp(deps, tools),
     connection: (botId: string) => systemConnection(url, deps.engineToken, botId, names, version)
   }
 }
