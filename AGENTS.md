@@ -64,12 +64,14 @@ web/src/           The web app.
   app/               start-up, the routes, the connection to the server, styles
   bots/              roster, bot menu and its dialogs, create bot, details panel and its Setup tab
   chat/              the conversation
-  history/           the conversation's earlier parts: paging, day lines, session dividers, its start
+  history/           the conversation's earlier parts, per-turn usage, context size meter and compaction line
   attachments/       files in the composer and in sent messages, the drop area
   activity/, memory/ their details tabs
   library/           the Library tab, the bot's workspace folder view and the item viewer
   threads/           work between bots: the line in a conversation, the opened exchange or group, stop, "With other bots",
                      "Working together"
+  work/              the Work board (Today, All work, Checks), item page, check badges and chat Work lines
+  goals/             the Goals tab, goal page, review report and chat Goal agreement cards
   routines/          the Activity tab's Routines card, one routine (in place of the panel), a run's transcript; the run
                      list, transcript and delete dialog webhooks reuse
   webhooks/          the Activity tab's Webhooks section, one webhook (in place of the panel), a webhook run's transcript
@@ -104,11 +106,12 @@ Built: roster, create bot, Setup panel (toolsets and connectors read-only; skill
 chat with live tool rows, stop and new session, continuous main conversation per bot across devices, three-column shell
 (Activity, Library, Memory, Setup), bot menu, delete confirmation, Settings, chat attachments, LilBot memory with panel
 and after-chat review, system note and LilBot MCP tools, delegation and temporary groups (#133) with screens (#65, #135,
-#136), Routines screens (#53), Library screens (#54), Webhooks screens (#138), and backends for routines, webhooks,
-threads, library, skills, computers/devices, work board with check levels, goals, T3 Code coding and bot-added MCP
-services (#187). Next: webhook capability switches (Paper "17" frames 7–9, awaiting Oscar's approval), work board and
-goal screens, check-level track record and spot checks (#142), nightly memory tidy-up and editing abilities. Reports are
-not built. Desktop (Tauri) and iOS (Expo) follow the web app.
+#136), Routines screens (#53), Library screens (#54), Webhooks screens (#138), Work board, Check levels and Goals
+screens (#141, #142, #143), message cost & context size screens (#180), and backends for routines, webhooks, threads,
+library, skills, computers/devices, T3 Code coding and bot-added MCP services (#187). Next: webhook capability switches
+(Paper "17" frames 7–9, awaiting Oscar's approval), engine-skills switch screen (#140), check-level track record and spot
+checks (#142), nightly memory tidy-up and editing abilities. Reports are not built. Desktop (Tauri) and iOS (Expo)
+follow the web app.
 
 ## Safety: production and development
 
@@ -191,8 +194,8 @@ behaviour he can check in the app. Keep an eye on speed and memory; measure befo
     spinner; switches and primary buttons are ink (`bg-foreground`). Defined in `app/styles.css`; dark mode follows
     `prefers-color-scheme`; bot replies use `prose-chat`.
   - Font: Inter bundled in `app/fonts/` (~48 kB English subsets). Closed type scale: 12 meta/section, 13 previews/menus,
-    14 names, 15 chat, 16 panel/dialog titles; weights 400, 500, 600. Icons 16px at stroke 1.75 in 28px buttons
-    (`ui/icon-button.ts`).
+    14 names, 15 chat, 16 panel/dialog titles, plus 28 goal metric display; weights 400, 500, 600. Icons 16px at stroke
+    1.75 in 28px buttons (`ui/icon-button.ts`).
   - Bundle budget: chat's first load stays about 220 kB JS and 17 kB CSS (gzip -9, all files `dist/index.html`
     references). Import UI parts as `@/ui/<part>`; keep form pages, details tabs, bot menu/dialogs, Settings, model
     menu, image viewer and thread/routine/webhook/library detail views lazy.
@@ -287,9 +290,9 @@ scroll and history): [docs/screens.md](docs/screens.md).
   desktop only). Pinned tiles appear once any bot is pinned (primary first, then `pinnedAt` order); sections plus
   collapsed Unassigned/Hidden below.
 - `/bots/$botId` is a layout route keeping the chat mounted while tabs (`/bots/$botId/$tab`) or column overlays
-  (`?thread=`, `?run=`, `?webhookRun=`, one at a time) open. Composer has files, lazy model/reasoning pill and send/stop;
-  AI Elements' Message Scroller anchors only messages sent while open, memoises rows by position and preserves scroll
-  when earlier history pages load above.
+  (`?thread=`, `?run=`, `?webhookRun=`, one at a time) open. Composer has files, lazy model/reasoning pill, lazy
+  context meter pill and send/stop; AI Elements' Message Scroller anchors only messages sent while open, memoises rows
+  by position and preserves scroll when earlier history pages load above.
 - Feature panels live in lazy chunks: Skills (Setup tab, #137), Routines & Webhooks (Activity tab, #53/#138; webhook
   addresses are fetched only on Copy click), Library (All/Media/Files, sandboxed page viewer, read-only workspace
   browser, #54) and Work between bots (conversation cards, opened exchanges/groups, "Working together", #65/#135/#136).
@@ -332,7 +335,8 @@ Full board rules, session attribution, drop/answer routing and `#142` check-leve
 - `server/work/` tracks every real piece of bot work (`lilbot_work`, `lilbot_work_list`; `lilbot-work` skill): owner,
   asker/origin from LilBot's session records (`workSessions`, `sessionRoots`), "done" definition, kind, check level
   (0–3), evidence pointers, result and status (`open`, `working`, `checking`, `needs_oscar`, `done`, `failed`, `dropped`).
-  Delegation and groups open child items automatically; `work.drop` cascades in one transaction. Screens: `needs-ui`.
+  Delegation and groups open child items automatically; `work.drop` cascades in one transaction. Screens:
+  `web/src/work/` ([docs/screens.md](docs/screens.md)).
 - **Check levels (#142, `lilbot-check` skill):** 0 none (`reply`, `note`), 1 owner evidence (`file`, `computer`, `code`),
   2 second bot reproduces claim (`deploy`, `outside`, `spending`, `figure`; falls back to a fresh isolated same-bot
   session on `LILBOT_REVIEW_MODEL`), 3 Oscar (`work.pass`/`work.sendBack`). Check sessions (`#174`) get no memory,
@@ -344,7 +348,7 @@ Full agreement, review routine and progress rules: [docs/goals.md](docs/goals.md
 
 - `server/goals/` (#143, guide topic `goals`): a bot proposes an agreement, measured target with baseline evidence and
   review rhythm (`lilbot_goal`, conversation sessions only). Nothing proactive runs before `goals.agree`; proposals wait
-  for Oscar (`goal:<id>` unread). Screens: `needs-ui`.
+  for Oscar (`goal:<id>` unread). Screens: `web/src/goals/` ([docs/screens.md](docs/screens.md)).
 - Once agreed, `goal-routines.ts` maintains a LilBot-owned review routine (`createdBy: oscar`, synced every 5 s).
   Reviews come only from that routine, become level-2 `figure` work items, reject stalled progress without a proposed
   change/drop, and reach the goal only after the review's work item is checked `done`.

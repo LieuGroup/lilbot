@@ -33,7 +33,8 @@ short version is in `AGENTS.md` under "Goals".
   starts, a paused one resumes, a proposed change applies and a proposal to drop drops it; `review` replaces the rhythm),
   `goals.adjust` (his words; the bot proposes again), `goals.pause`, `goals.drop` (optional reason), push
   `goals.changed`. A proposed goal or a change waits for Oscar: the bot shows waiting and turns unread (`goal:<id>`),
-  like a `needs_oscar` item, and it is not also a work item, so he has one way to answer. Screens: `needs-ui`.
+  like a `needs_oscar` item, and it is not also a work item, so he has one way to answer. Screens: `web/src/goals/`
+  ([screens.md](screens.md)).
 - Each decision is saved with its notice in one transaction. Notices are hidden turns in the bot's main conversation
   through `work_answers` (`WorkAnswers.notify`, stable run ids): agreed (open an item per thing it does alone and a
   `needs_oscar` item with one question per thing it needs from Oscar), resumed, change applied, adjusted, paused,
