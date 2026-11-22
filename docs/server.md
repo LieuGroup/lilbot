@@ -98,6 +98,32 @@ are kept with `bots.deleteDefaults.get/set`. The primary bot and the engine's de
   it wrote, with their authorship; the log of changes bots made through the system server (with the name the bot had);
   MCP services it added (every bot has them; once it is gone any bot may remove one).
 
+## Re-keying a bot id
+
+When an imported bot carries a human or engine-profile name as its LilBot id instead of a random UUID, use the one-time
+operator CLI while the LilBot server is stopped:
+
+```bash
+bun run bot:rekey -- --from <oldId> [--to <newId>] [--data-dir <dir>] [--workspaces-dir <dir>] [--hermes-home <dir>] [--clear-main-chat] [--dry-run] [--yes]
+```
+
+- **Dry run by default:** omit `--yes` (or pass `--dry-run`) to inspect per-table change counts, disk actions and the
+  generated target UUID without writing anything. Output prints counts, table names and disk actions only — never
+  secrets, message text or memory text.
+- **Safety and atomicity:** refuses to run if `lilbot.service` is active against `--data-dir` or any other process holds
+  `lilbot.db` open. Rewrites every stored LilBot bot-id reference (plain columns, composite keys and JSON columns) inside
+  one `BEGIN IMMEDIATE` transaction, materializes `defaultAvatar(<oldId>)` if any avatar field is NULL, optionally clears
+  `bot_prefs.main_chat_id` so the next chat starts a fresh session in the renamed workspace with all history and memory
+  intact, and rolls back automatically if foreign-key checks, row-count checks or the post-commit self-check fail.
+- **What stays untouched:** `bots.engine_bot_id`, engine-namespaced `history_items.id` and `message_origins.row_id`
+  (`hermes:<engineBotId>:...`), global sentinel rows (`computer_bytes.bot_id = ''`, `work_levels.bot_id = ''`), and
+  historical free text.
+- **Disk and engine profile:** atomically renames `<workspaces>/<oldId>` (and `.archive/<oldId>` if present) to `<newId>`
+  (restoring a pre-run SQLite snapshot if the rename fails), updates `lilbot-memory.json` (including recomputing
+  `creation_capability`), `lilbot-skills.json` and `lilbot-computers.json`, and removes `lilbot-applied.json` so the next
+  server start refreshes MCP bearer tokens and `soul` automatically. Safe to repeat after completion or after an
+  interruption between the database commit and disk steps.
+
 ## Restart recovery
 
 Restarting LilBot only leaves Hermes turns and T3 tasks running; nothing is resubmitted.

@@ -57,7 +57,8 @@
     "dev:setup": "bun scripts/dev-setup.ts",
     "check:history": "bun live-checks/history-check.ts",
     "check:checkpoint": "bun live-checks/checkpoint-check.ts",
-    "history:exclude": "bun server/history/history-exclude-cli.ts"
+    "history:exclude": "bun server/history/history-exclude-cli.ts",
+    "bot:rekey": "bun scripts/rekey-bot.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

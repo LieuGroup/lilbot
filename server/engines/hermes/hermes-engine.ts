@@ -9,7 +9,7 @@ import { adapterHash, applied, hashOf } from './hermes-applied'
 import { botDetailFromProfile, botFromProfile, DEFAULT_PROFILE, providersFromModelOptions, requireListedModel } from './hermes-bot-mapping'
 import { openChat } from './hermes-chat'
 import { configureComputers } from './hermes-computers'
-import { connectionPreparer, hermesMcpToolName } from './hermes-connections'
+import { connectionPreparer, connectionTokenSteps, hermesMcpToolName, staleTokenNames } from './hermes-connections'
 import { deleteRuntime } from './hermes-delete'
 import { allowedProfile, requireProfileEnvironment } from './hermes-environment'
 import { conversations } from './hermes-history'
@@ -111,34 +111,26 @@ export class HermesEngine implements BotEngine {
     }
   }
 
-  refreshMemory(botIds: string[]): Promise<string[]> {
-    return refreshMemoryAdapters(botIds.filter(id => allowedProfile(id) && (!this.botIds || this.botIds.includes(id))))
+  refreshMemory(bots: RuntimeBinding[]): Promise<string[]> {
+    return refreshMemoryAdapters(bots.filter(bot => allowedProfile(bot.engineBotId) && (!this.botIds || this.botIds.includes(bot.engineBotId))))
   }
 
   onToolCall = onToolCall
-  async stopRun(id: string, chatId: string) {
+  private async withBot<T>(id: string, run: () => Promise<T>): Promise<T> {
     await this.requireBot(id)
-    return stopRun(id, chatId)
+    return run()
   }
-  async steerRun(id: string, chatId: string, text: string) {
-    await this.requireBot(id)
-    return steerRun(id, chatId, text)
-  }
-
-  async reviewMemory(botId: string, prompt: string, options: ReviewOptions): Promise<void> {
-    await this.requireBot(botId)
-    return reviewMemory(botId, prompt, options)
-  }
-  async runRoutine(botId: string, prompt: string, options: import('../bot-engine').RoutineOptions & ChatOptions) {
-    await this.requireBot(botId)
-    return runRoutine(botId, prompt, options)
-  }
+  stopRun = (id: string, chatId: string) => this.withBot(id, () => stopRun(id, chatId))
+  steerRun = (id: string, chatId: string, text: string) => this.withBot(id, () => steerRun(id, chatId, text))
+  reviewMemory = (botId: string, prompt: string, options: ReviewOptions) => this.withBot(botId, () => reviewMemory(botId, prompt, options))
+  runRoutine = (botId: string, prompt: string, options: import('../bot-engine').RoutineOptions & ChatOptions) => this.withBot(botId, () => runRoutine(botId, prompt, options))
 
   private connections = connectionPreparer(id => HermesSocket.connect(id === DEFAULT_PROFILE ? '' : id))
   mcpToolName = hermesMcpToolName
   async prepareConnections(id: string, connections: import('../mcp-connection').McpConnection[]) {
     await this.requireBot(id)
-    if (!(await applied(id, 'connections', hashOf('v2', connections), () => this.connections.prepare(id, connections))))
+    const run = (steps: Record<string, string> | null) => this.connections.prepare(id, connections, { staleTokens: staleTokenNames(connections, steps) })
+    if (!(await applied(id, 'connections', hashOf('v3', connections), run, connectionTokenSteps(connections))))
       await applied(id, null, '', () => this.connections.prepare(id, connections, true))
   }
   async applyConnections(id: string, chatIds: string[]) {

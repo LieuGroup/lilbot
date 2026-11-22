@@ -11,6 +11,19 @@ import type { HermesSocket } from './hermes-socket'
 const OWNED = /^lilbot_/
 const MAX_TOOL_NAME = 64
 const sanitize = (value: string) => value.replace(/[^A-Za-z0-9_]/g, '_')
+const tokenHash = (token: string) => createHash('sha256').update(token, 'utf8').digest('hex').slice(0, 32)
+
+/** Per-server bearer token hashes stored in `lilbot-applied.json` (hashes only, never credentials). */
+export const connectionTokenSteps = (connections: McpConnection[]) =>
+  Object.fromEntries(connections.filter(connection => OWNED.test(connection.name)).map(connection => [`connToken:${connection.name}`, tokenHash(connection.bearerToken)]))
+
+/** Owned servers whose bearer token hash is missing or changed since the last intact apply. */
+export const staleTokenNames = (connections: McpConnection[], steps: Record<string, string> | null) =>
+  new Set(
+    connections
+      .filter(connection => OWNED.test(connection.name) && steps?.[`connToken:${connection.name}`] !== tokenHash(connection.bearerToken))
+      .map(connection => connection.name)
+  )
 
 /** Hermes' MCP tool name (`tools/mcp_tool_schema.py` `mcp_prefixed_tool_name`): non-word chars become `_`, and names
  *  over 64 chars are clamped with `_` + 8-char SHA-256 hex of the full sanitized name. */
@@ -102,11 +115,12 @@ export async function reconnectDisconnected(socket: Rpc, connections: McpConnect
   return true
 }
 
-/** Returns whether anything changed. */
-export async function prepareConnections(socket: Rpc, connections: McpConnection[]): Promise<boolean> {
+/** Returns whether anything changed. Servers in `staleTokens` are always replaced so rotated bearer keys reach `.env`. */
+export async function prepareConnections(socket: Rpc, connections: McpConnection[], staleTokens?: ReadonlySet<string>): Promise<boolean> {
   const servers = await listServers(socket)
   const given = connections.filter(connection => OWNED.test(connection.name))
   const basicMatch = (connection: McpConnection) => {
+    if (staleTokens?.has(connection.name)) return false
     const existing = servers.find(server => server.name === connection.name)
     const config = serverConfig(connection)
     return existing?.url === config.url && existing.enabled !== false && JSON.stringify(existing.tools?.include) === JSON.stringify(config.tools.include)
@@ -145,6 +159,7 @@ async function applyToChats(socket: Rpc, chatIds: string[]): Promise<{ chatId: s
  *  concurrent adds of the same server would collide, and an apply must see the preparation before it. */
 export function connectionPreparer(open: (id: string) => Promise<Pick<HermesSocket, 'request' | 'close'>>) {
   const prepared = new Map<string, string>()
+  const tokens = new Map<string, Map<string, string>>()
   const queue = new Map<string, Promise<unknown>>()
   const turn = <T>(id: string, step: () => Promise<T>): Promise<T> => {
     const run = (queue.get(id) ?? Promise.resolve()).catch(() => {}).then(step)
@@ -160,11 +175,20 @@ export function connectionPreparer(open: (id: string) => Promise<Pick<HermesSock
     }
   }
   return {
-    prepare: (id: string, connections: McpConnection[], statusOnly = false): Promise<void> =>
+    prepare: (id: string, connections: McpConnection[], options: boolean | { statusOnly?: boolean; staleTokens?: ReadonlySet<string> } = false): Promise<void> =>
       turn(id, async () => {
+        const { statusOnly, staleTokens } = typeof options === 'boolean' ? { statusOnly: options, staleTokens: undefined } : options
         const key = JSON.stringify(connections)
         if (prepared.get(id) === key) return
-        await using(id, socket => (statusOnly ? reconnectDisconnected(socket, connections) : prepareConnections(socket, connections)))
+        if (statusOnly) {
+          await using(id, socket => reconnectDisconnected(socket, connections))
+        } else {
+          const seen = tokens.get(id)
+          const stale = new Set(staleTokens ?? [])
+          for (const c of connections) if (seen?.has(c.name) && seen.get(c.name) !== c.bearerToken) stale.add(c.name)
+          await using(id, socket => prepareConnections(socket, connections, stale))
+          tokens.set(id, new Map(connections.map(c => [c.name, c.bearerToken])))
+        }
         prepared.set(id, key)
       }),
     apply: (id: string, chatIds: string[]) => turn(id, () => using(id, socket => applyToChats(socket, chatIds)))

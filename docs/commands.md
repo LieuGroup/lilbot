@@ -17,6 +17,10 @@ Every `check:*` and `bun live-checks/*.ts` follows the development rules in `AGE
   Linux downloads for a server.
 - `bun run history:exclude -- --bot <id> --session <id> --reason "<text>" [--yes]`: operator CLI to permanently remove
   one non-main engine session from LilBot's history copy (previews without `--yes`).
+- `bun run bot:rekey -- --from <oldId> [--to <newId>] [--data-dir <dir>] [--workspaces-dir <dir>] [--hermes-home <dir>] [--clear-main-chat] [--dry-run] [--yes]`:
+  one-time operator CLI to re-key a bot's LilBot id across SQLite, workspace folders and engine profile settings while
+  keeping its engine binding (`engine_bot_id`) intact (previews without `--yes`; refuses to run while the server holds
+  the database open). See [server.md](server.md#re-keying-a-bot-id).
 
 ## Live checks
 
