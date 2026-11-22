@@ -108,7 +108,7 @@ test('dismissed and collapsed dock state persist per bot in localStorage, stay b
 test('selectWaitingWork prefers the exchange primary item, and prefers an answerable question over an open Oscar check', () => {
   const oscarCheck = {
     round: 1,
-    by: { kind: 'oscar' as const, id: null, name: 'Oscar' },
+    by: { kind: 'oscar' as const, id: null, name: 'Oscar' as const },
     state: 'checking' as const,
     text: null,
     note: null,

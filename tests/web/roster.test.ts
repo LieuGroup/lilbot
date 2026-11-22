@@ -151,7 +151,7 @@ test('a bot running workers shows their count and live activity when idle, while
   const both = { ...bot('a', { activity: { status: 'working', text: 'Running commands' } }), workers: { count: 1, activity: 'Running tests' } }
   expect(rowState(both)).toEqual({ tone: 'working', text: 'Running commands', unread: false })
   // Active group turn also stays ahead of background workers.
-  const g = { id: 'g1', purpose: 'Compare plans', round: 1, bots: 2, leading: true, activity: 'Searching the web' }
+  const g = { id: 'g1', purpose: 'Compare plans', round: 1, roundCap: 6, leading: true, activity: 'Searching the web' }
   const inGroup = { ...bot('a', { activity: { status: 'working', text: 'Working' } }), groups: [g], workers: { count: 2 } }
   expect(rowState(inGroup)).toEqual({ tone: 'working', text: 'Leading a group · Searching the web', unread: false })
   // Transient main-chat finished falls through to still-running workers; waiting for Oscar wins over all.
