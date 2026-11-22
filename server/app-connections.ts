@@ -44,6 +44,7 @@ interface ConnectionDeps {
   history: HistoryStore
   hiddenChat: (botId: string, chatId: string) => boolean
   calls: CallingChats
+  t3Enabled?: boolean
   t3Grants: T3Grants
   t3Refusal: (botId: string, tool: string, args: unknown) => Promise<string | null>
   serviceRefusal: (botId: string, tool: string, args: unknown) => Promise<string | null>
@@ -71,6 +72,7 @@ export function createConnections({
   history,
   hiddenChat,
   calls,
+  t3Enabled,
   t3Grants,
   t3Refusal,
   serviceRefusal,
@@ -80,7 +82,7 @@ export function createConnections({
   const published = () => publish({ event: 'connections.changed' })
   const botIds = () => store.list().map(bot => bot.id)
   // A sign-in from `bun run t3:sign-in`, an expiry or a revocation changes which tools bots should see.
-  watchT3SignIn(t3Grants, published, () => bots.refreshConnections())
+  if (t3Enabled) watchT3SignIn(t3Grants, published, () => bots.refreshConnections())
   const rows = new McpConnectionStore(database)
   const credentials = new McpCredentials(join(dataDir, 'mcp-credentials.json'))
   const soon = () =>
@@ -162,6 +164,10 @@ export function createConnections({
       cancelSignIn: cardId => services.cancelSignIn(cardId),
       restartSignIn: cardId => services.restartSignIn(cardId)
     }),
+    applyBot: (botId: string) => {
+      applier.applyBot(botId)
+      soon()
+    },
     connections: (botId: string) => serviceConnections(services, lilbotUrl, engineToken, botId)
   }
 }

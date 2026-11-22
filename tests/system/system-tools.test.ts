@@ -79,7 +79,7 @@ test('a bot reads its own setup by default and another bot’s by id', async () 
   expect(getBot).toHaveBeenLastCalledWith(other.id)
 })
 
-test('status and about report computers, T3 Code and the release without credentials', async () => {
+test('status and about report computers and the release without credentials, and expose T3 only when enabled', async () => {
   const f = systemFixture()
   const about = (await f.call('b1', 'lilbot_about')).data
   expect(about).toMatchObject({
@@ -90,15 +90,19 @@ test('status and about report computers, T3 Code and the release without credent
     ],
     deploy: { lastFailure: null }
   })
-  expect(about.codingThroughT3).toContain('available, signed in until')
+  expect(about.codingThroughT3).toBeUndefined()
+  expect((await f.call('b1', 'lilbot_status', { area: 't3' })).error).toContain('Invalid arguments')
   expect((await f.call('b1', 'lilbot_status', { area: 'computers' })).data).toEqual([
     { id: 'leader', name: 'leader-box', os: 'linux', online: true, main: false, lastSeen: '2023-11-14T22:13:20.000Z' },
     { id: 'mac', name: 'MacBook', os: 'darwin', online: false, main: true, lastSeen: '2023-11-14T22:13:20.000Z' }
   ])
-  expect((await f.call('b1', 'lilbot_status', { area: 't3' })).data.state).toBe('connected')
-  f.state.t3 = { state: 'expired', expiresAt: 1700000000000 }
-  const expired = (await f.call('b1', 'lilbot_status', { area: 't3' })).data
-  expect(expired.whatToTellOscar).toContain('expired on 2023-11-14')
   expect((await f.call('b1', 'lilbot_status', { area: 'deploy' })).data).toEqual({ running: 'abcdef012345', latest: null, lastFailure: null })
   expect(JSON.stringify(about)).not.toMatch(/token|key/i)
+
+  const on = systemFixture({ t3Enabled: true })
+  expect((await on.call('b1', 'lilbot_about')).data.codingThroughT3).toContain('available, signed in until')
+  expect((await on.call('b1', 'lilbot_status', { area: 't3' })).data.state).toBe('connected')
+  on.state.t3 = { state: 'expired', expiresAt: 1700000000000 }
+  const expired = (await on.call('b1', 'lilbot_status', { area: 't3' })).data
+  expect(expired.whatToTellOscar).toContain('expired on 2023-11-14')
 })

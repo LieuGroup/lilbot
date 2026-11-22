@@ -1,15 +1,34 @@
-# Connections: T3 Code and MCP services
+# Connections: Coding and MCP services
 
-`server/connections/` owns LilBot's external MCP connections: the shared T3 Code coding bridge and the MCP services bots
-add (#187). Short summaries and trust boundaries are in `AGENTS.md` under "Coding (T3 Code)" and "Connections: MCP
-services bots add (#187)".
+`server/connections/` owns LilBot's external MCP connections: the MCP services bots add (#187) and the legacy T3 Code
+bridge (off by default behind `LILBOT_T3_ENABLED=1`). Short summaries and trust boundaries are in `AGENTS.md` under
+"Coding" and "Connections: MCP services bots add (#187)".
 
-## Coding (T3 Code)
+## Coding
 
-Coding goes to T3 Code, Oscar's coding backend, through its MCP tools. LilBot builds no coding engine, worktree or
-pull-request handling. Running commands, reading files and using apps stay ordinary bot work.
+Coding happens natively inside LilBot: bots do small edits themselves, launch same-bot workers (`lilbot_delegate` with
+`worker: true`) for larger work, or delegate to a project's developer bot (`lilbot_bots_list`, recognised by name and
+function with no bot types). LilBot builds no worktree manager, folder convention or hard-coded model selector: agents
+decide when to use a separate working copy and follow `~/code/home/AGENTS.md` and each repository's `AGENTS.md`.
 
-- The T3 connection (`server/connections/t3-connection.ts`) is given to every bot by every engine
+- Bot instructions live in the built-in skill `lilbot-coding` (`server/threads/coding-skill/SKILL.md`), installed at
+  startup and restored if it differs. Workers open a `code` work item automatically, ask Oscar via `needs_oscar` on real
+  decisions, record branch, PR link and check output as evidence, and save lasting technical facts directly with
+  `update_memory`.
+- **T3 Code switch (`LILBOT_T3_ENABLED=1`, off by default):** during the trial, T3 Code stays behind one switch. When
+  off, `t3Connection` is withheld from every bot (removing `lilbot_t3` from Hermes profiles), `t3-coding` is removed
+  from the skills library if present, `/engine/t3/mcp` returns 404, the T3 sign-in watcher does not run, and no system
+  note, guide topic, tool description, `lilbot_about`, `lilbot_status` or webhook prompt mentions T3. When
+  `LILBOT_T3_ENABLED=1`, `lilbot-coding` is removed, `t3-coding` is installed, and T3 behaves as before.
+- **What a running conversation sees when the switch changes:** when a bot's prepared connections change on restart,
+  `ConnectionApplier.applyBot` reloads MCP tools in place (`reload.mcp` with `session_id`) on its open main conversation
+  before the next message (or after an in-flight turn finishes), so adding or removing `lilbot_t3` and updating
+  `lilbot_system` needs no new session. The system note and the prompt's skill catalogue are built once per session by
+  Hermes and refresh on the next new session; skill reads via tool reflect the updated library immediately.
+
+### Legacy T3 Code bridge (`LILBOT_T3_ENABLED=1`)
+
+- When enabled, the T3 connection (`server/connections/t3-connection.ts`) is given to every bot by every engine
   (`BotEngine.prepareConnections`, on creation, startup and before use). With the system server and bot-added MCP
   services it is an exception to "tools and MCP connectors stay with the engine".
 - The bridge (`t3-bridge.ts`, `/engine/t3/mcp`) forwards Streamable HTTP MCP to T3 Code (`LILBOT_T3_MCP_URL`). Callers
@@ -22,16 +41,9 @@ pull-request handling. Running commands, reading files and using apps stay ordin
   Oscar approves again. The running server picks up a new sign-in without a restart.
 - Missing, expired or revoked: the bridge answers MCP itself with one tool, `t3_connection_status`, telling the bot
   what to tell Oscar. A T3 401 on an unexpired grant marks it revoked; the 401 is never passed on, so an engine never
-  starts its own OAuth. `connections.status` returns state and expiry, never the token. No Settings screen yet
-  (`needs-ui`).
-- Bot instructions are the skill `t3-coding` (`server/connections/t3-coding-skill/SKILL.md`), installed into the
-  skills library at startup and restored if it differs: one launch with a stable `clientRequestId`, then
-  `t3_thread_wait`/`t3_thread_read`, with the T3 `link` in the chat right away and with the result. An uncertain
-  launch retries the original `clientRequestId`, never a replacement task. There is no LilBot follow-up queue after
-  the Hermes turn ends.
-- `check:coding` runs its real task in the project root of a throwaway repo (T3's MCP has no worktree removal) and
-  revokes its own sign-in at the end. T3 recovery has a unit test with a simulated upstream; the live grant is never
-  copied into tests.
+  starts its own OAuth. `connections.status` returns state and expiry, never the token.
+- `check:coding-native` tests native coding with a worker on a throwaway repo plus both switch positions and in-place
+  connection reload. `check:coding` enables `LILBOT_T3_ENABLED=1` and tests the T3 bridge against a throwaway repo.
 
 ## MCP services bots add (#187)
 

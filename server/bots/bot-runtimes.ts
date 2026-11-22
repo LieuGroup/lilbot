@@ -8,29 +8,33 @@ import { Readiness } from './runtime-readiness'
 import { prepareTools, refreshConnections } from './runtime-tools'
 import { withNote } from './system-note'
 
+interface RuntimeOptions {
+  changed?: () => void
+  retryDelays?: readonly number[]
+  headStartMs?: number
+  systemNote?: (bot: BotRecord) => string
+  onConnectionsChanged?: (botId: string) => void
+}
+
 export class BotRuntimes {
   private importing?: Promise<void>
   private prepared = new Set<string>()
   private states = new Map<string, RuntimeState | null>()
+  private readiness: Readiness
   constructor(
     readonly store: BotStore,
     private engine: BotEngine,
     private skills?: import('../skills/skills-service').SkillsService,
     private connection?: import('../engines/bot-engine').MemoryConnection,
-    /** LilBot-owned MCP connections every bot gets (`server/connections/`). */
     private connections?: (botId: string) => import('../engines/mcp-connection').McpConnection[],
-    options: { changed?: () => void; retryDelays?: readonly number[]; headStartMs?: number; systemNote?: (bot: BotRecord) => string } = {}
+    private options: RuntimeOptions = {}
   ) {
-    this.systemNote = options.systemNote
     this.readiness = new Readiness(
       bot => this.prepareAndState(bot),
       id => (this.store.exists(id) ? this.store.get(id) : undefined),
       { settled: options.changed, delays: options.retryDelays, headStartMs: options.headStartMs }
     )
   }
-
-  private readiness: Readiness
-  private systemNote?: (bot: BotRecord) => string
 
   private loading?: Promise<void>
   load(): Promise<void> {
@@ -41,8 +45,7 @@ export class BotRuntimes {
     return this.loading
   }
 
-  /** Prepares every bot, the one `first` names ahead of the rest. Resolves when each has settled, ready or
-   *  unavailable and retrying; only the one-time import can reject. */
+  /** Prepares every bot, the one `first` names ahead of the rest. */
   initialize(first?: (bots: BotRecord[]) => string | undefined): Promise<void> {
     this.importing ??= (async () => {
       await this.load()
@@ -65,8 +68,7 @@ export class BotRuntimes {
     return this.readiness.all(bots)
   }
 
-  /** One bot prepared before use, ahead of the rest of the roster, then its identity and tools checked again.
-   *  Rejects when its preparation fails. */
+  /** One bot prepared before use, ahead of the rest of the roster; rejects on failure. */
   async use(bot: BotRecord): Promise<RuntimeState> {
     await this.readiness.ensure(bot)
     return this.state(bot)
@@ -108,19 +110,16 @@ export class BotRuntimes {
 
   private validateMode(bot: Pick<BotRecord, 'permissionMode'>) {
     if (!this.engine.supportedPermissionModes.includes(bot.permissionMode)) {
-      throw new LilBotError(
-        'unsupported_permission_mode',
-        `Engine ${this.engine.id} does not support permission mode "${bot.permissionMode}". Supported modes: ${this.engine.supportedPermissionModes.join(', ') || 'none'}.`
-      )
+      throw new LilBotError('unsupported_permission_mode', `Engine ${this.engine.id} does not support permission mode "${bot.permissionMode}".`)
     }
   }
 
   async state(bot: BotRecord): Promise<RuntimeState> {
     this.validateMode(bot)
     try {
-      await prepareTools(this.engine, bot, { skills: this.skills, connection: this.connection, connections: this.connections })
-      // The engine runs the bot's instructions followed by the note about its system; LilBot's copy stays the user's text.
-      const identity = this.systemNote ? { ...bot, instructions: withNote(bot.instructions, this.systemNote(bot)) } : bot
+      const { skills, connection, connections } = this
+      await prepareTools(this.engine, bot, { skills, connection, connections, onConnectionsChanged: this.options.onConnectionsChanged })
+      const identity = this.options.systemNote ? { ...bot, instructions: withNote(bot.instructions, this.options.systemNote(bot)) } : bot
       const state = await this.engineFor(bot).applyIdentity(bot.engineBotId, identity)
       this.states.set(bot.id, state)
       return state
@@ -130,10 +129,9 @@ export class BotRuntimes {
     }
   }
 
-  /** Gives every available bot its connections again, for example after the shared T3 sign-in changed. */
   async refreshConnections(): Promise<void> {
     const available = this.bound().filter(bot => this.states.get(bot.id))
-    if (this.connections) await refreshConnections(this.engine, available, this.connections)
+    if (this.connections) await refreshConnections(this.engine, available, this.connections, this.options.onConnectionsChanged)
   }
 
   snapshot(bot: BotRecord): RuntimeState | null {

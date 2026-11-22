@@ -136,10 +136,11 @@ export class HermesEngine implements BotEngine {
 
   private connections = connectionPreparer(id => HermesSocket.connect(id === DEFAULT_PROFILE ? '' : id))
   mcpToolName = hermesMcpToolName
-  async prepareConnections(id: string, connections: import('../mcp-connection').McpConnection[]) {
+  async prepareConnections(id: string, connections: import('../mcp-connection').McpConnection[]): Promise<boolean> {
     await this.requireBot(id)
-    if (!(await applied(id, 'connections', hashOf('v2', connections), () => this.connections.prepare(id, connections))))
-      await applied(id, null, '', () => this.connections.prepare(id, connections, true))
+    const changed = await applied(id, 'connections', hashOf('v2', connections), () => this.connections.prepare(id, connections))
+    if (!changed) await applied(id, null, '', () => this.connections.prepare(id, connections, true))
+    return changed
   }
   async applyConnections(id: string, chatIds: string[]) {
     await this.requireBot(id)
@@ -171,7 +172,6 @@ export class HermesEngine implements BotEngine {
   async listModels() {
     return providersFromModelOptions(await (await this.management.socket()).request('model.options'))
   }
-
   async updateSession(botId: string, chatId: string, change: SessionChange) {
     await this.requireBot(botId)
     return updateSession(botId, chatId, change)

@@ -3,6 +3,9 @@
 import type { McpConnection } from '../engines/mcp-connection'
 import { connectionKey } from './connection-keys'
 
+/** T3 Code is off by default; set `LILBOT_T3_ENABLED=1` to restore the T3 hand-off and skill. */
+export const isT3Enabled = (env: Record<string, string | undefined> = process.env) => env.LILBOT_T3_ENABLED === '1'
+
 /** Engines name the tools after this (Hermes: `mcp__lilbot_t3__t3_thread_launch`). */
 export const T3_CONNECTION = 'lilbot_t3'
 export const T3_BRIDGE_PATH = '/engine/t3/mcp'

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { BotRuntimes } from '../../server/bots/bot-runtimes'
-import { t3Connection } from '../../server/connections/t3-connection'
+import { isT3Enabled, t3Connection } from '../../server/connections/t3-connection'
 import { openDatabase } from '../../server/database/database'
 import type { McpConnection } from '../../server/engines/mcp-connection'
 import { files } from '../../server/skills/skill-files'
@@ -58,6 +58,51 @@ test('a sign-in change gives every available bot its connections again', async (
   signIn = '1700000000000'
   await runtimes.refreshConnections()
   expect(urls).toEqual(['http://127.0.0.1:3370/engine/t3/mcp?signin=signed-out', 'http://127.0.0.1:3370/engine/t3/mcp?signin=1700000000000'])
+})
+
+test('the native coding skill ships with LilBot, passes safety rules, mentions no T3, and removes t3-coding cleanly', () => {
+  expect(isT3Enabled({})).toBe(false)
+  expect(isT3Enabled({ LILBOT_T3_ENABLED: '0' })).toBe(false)
+  expect(isT3Enabled({ LILBOT_T3_ENABLED: '1' })).toBe(true)
+  const root = mkdtempSync(join(tmpdir(), 'native-coding-skill-test-'))
+  const db = openDatabase(':memory:')
+  try {
+    const skills = new SkillsService(root, db)
+    const legacy = files(join(import.meta.dir, '../../server/connections/t3-coding-skill'))
+    skills.provide('t3-coding', legacy)
+    skills.setEnabled('bot-a', 't3-coding', false)
+    const shipped = files(join(import.meta.dir, '../../server/threads/coding-skill'))
+    skills.provide('lilbot-coding', shipped)
+    expect(skills.remove('t3-coding')).toBe(true)
+    expect(skills.remove('t3-coding')).toBe(false)
+    expect(skills.list('any-bot').map(s => s.name)).toEqual(['lilbot-coding'])
+    expect(shipped['SKILL.md']).not.toMatch(/\bt3\b/i)
+    for (const part of ['lilbot_delegate', 'worker: true', 'lilbot_bots_list', 'lilbot_work', 'needs_oscar', 'update_memory']) expect(shipped['SKILL.md']).toContain(part)
+    skills.write({ name: 'lilbot-coding', action: 'edit', content: shipped['SKILL.md'].replace('Write a complete brief', 'Write a short brief') }, 'bot-a')
+    skills.provide('lilbot-coding', shipped)
+    expect(skills.read('lilbot-coding')['SKILL.md']).toBe(shipped['SKILL.md'])
+  } finally {
+    db.close()
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('onConnectionsChanged fires only when prepareConnections reports a real profile change', async () => {
+  const { store, engine } = fakeService()
+  let changed = true
+  const notified: string[] = []
+  engine.prepareConnections = async () => changed
+  const runtimes = new BotRuntimes(store, engine, undefined, undefined, botId => [t3Connection('http://127.0.0.1:3370', 'token', botId)], {
+    onConnectionsChanged: botId => notified.push(botId)
+  })
+  await runtimes.initialize()
+  expect(notified).toEqual(['b1'])
+  changed = false
+  await runtimes.refreshConnections()
+  expect(notified).toEqual(['b1'])
+  changed = true
+  await runtimes.refreshConnections()
+  expect(notified).toEqual(['b1', 'b1'])
 })
 
 test('failed connection refresh remains retryable and does not log engine payloads', async () => {

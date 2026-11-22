@@ -38,9 +38,10 @@ const SAYS: Record<WebhookCapability, string> = {
 const listed = (groups: WebhookCapability[], last: string) =>
   groups.map(group => SAYS[group]).reduce((text, item, i, all) => (i === 0 ? item : `${text}${i === all.length - 1 ? ` ${last} ` : ', '}${item}`), '')
 
-export function webhookRunAccess(capabilities: WebhookCapability[]) {
-  const granted = Object.keys(SAYS).filter(group => capabilities.includes(group as WebhookCapability)) as WebhookCapability[]
-  const withheld = (Object.keys(SAYS) as WebhookCapability[]).filter(group => !granted.includes(group))
+export function webhookRunAccess(capabilities: WebhookCapability[], t3Enabled = false) {
+  const active = (Object.keys(SAYS) as WebhookCapability[]).filter(group => t3Enabled || group !== 'coding')
+  const granted = active.filter(group => capabilities.includes(group))
+  const withheld = active.filter(group => !granted.includes(group))
   return {
     toolsets: [...new Set([...NARROW, ...granted.flatMap(group => ENGINE_TOOLSETS[group])])],
     prompt: [

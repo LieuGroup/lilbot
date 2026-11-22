@@ -41,7 +41,7 @@ server/            The LilBot server (runs on the leader).
   activity/          live status and unread
   memory/            The memory system: rules, facts table, safety, after-chat review.
   history/           Conversation records, import checkpoints, paging and bot-scoped search.
-  threads/           Bot-to-bot exchanges: delegation, temporary groups, files, control, transcripts and durable deliveries.
+  threads/           Bot-to-bot exchanges: delegation, temporary groups, coding skill (`lilbot-coding`), files, control, transcripts and durable deliveries.
   routines/          App-owned schedules, run history and scheduler.
   webhooks/          Outside events: secret addresses, sender signatures, accepted deliveries and their runs.
   work/              The work board: items with "done" definitions, evidence and results, Oscar's answers, its skill.
@@ -49,8 +49,8 @@ server/            The LilBot server (runs on the leader).
   library/           Delivered workspace files, metadata, safe reads and folder listings.
   attachments/       Incoming chat files, streaming uploads and durable message associations.
   skills/            The shared skills library, per-bot switches and each engine's "Include this engine's skills" switch.
-  connections/       LilBot-owned connections: T3 Code for coding (bridge, sign-in, skill), the MCP services bots add (sign-in, tokens,
-                     forwarding route, applying changes) and the keys and replies MCP endpoints share.
+  connections/       LilBot-owned connections: MCP services bots add (sign-in, tokens, forwarding route, applying changes),
+                     legacy T3 Code bridge/sign-in/skill (off by default behind `LILBOT_T3_ENABLED=1`) and shared MCP helpers.
   system/            LilBot's own MCP server through which bots operate the app, and the note every bot gets about its system.
   computers/         Computer identities, key registration and durable command requests.
   devices/           Devices (one per browser or app install), what "my computer" means from each, and where each message came from.
@@ -387,14 +387,18 @@ Full upload, storage, marker, safety and read rules: [docs/library-and-attachmen
   checks. `chat.send` requires client UUID `messageId` for idempotency; display-only markers reconcile stored engine text
   at the HTTP edge; non-image files pass as untrusted workspace references.
 
-## Coding (T3 Code)
+## Coding
 
-Full bridge, sign-in, skill and test details: [docs/connections.md](docs/connections.md#coding-t3-code).
+Full native coding, switch and legacy T3 bridge details: [docs/connections.md](docs/connections.md#coding).
 
-- Coding delegates to T3 Code via MCP (`server/connections/t3-bridge.ts`, `/engine/t3/mcp`, per-bot HMAC key, narrowed
-  to `T3_TOOLS`, `clientRequestId` prefixed with bot id). One shared Full-access grant in `<data>/t3-grant.json` (0600,
-  30 days, `bun run t3:sign-in`, hot-reloaded); missing/expired/revoked returns `t3_connection_status` and never passes
-  401 upstream. Bot instructions live in `t3-coding` skill. Settings screen: `needs-ui`.
+- Bots code natively inside LilBot using the `lilbot-coding` skill (`server/threads/coding-skill/SKILL.md`): small
+  edits directly, larger work via same-bot workers (`lilbot_delegate` with `worker: true`), or delegation to a project's
+  developer bot (`lilbot_bots_list`). LilBot builds no worktree manager or hard-coded model rules; agents decide when to
+  use a separate working copy and follow `~/code/home/AGENTS.md` and each repo's `AGENTS.md`.
+- T3 Code (`server/connections/t3-*.ts`) is off by default behind `LILBOT_T3_ENABLED=1` during the trial: when off,
+  `lilbot_t3` is withheld, `t3-coding` is removed from the library, `/engine/t3/mcp` returns 404, and no system note,
+  guide, status tool or webhook prompt mentions T3. Flipping the switch applies connection changes in place to open main
+  conversations (`ConnectionApplier.applyBot`); the system note and prompt skill catalogue refresh next session.
 
 ## Connections: MCP services bots add (#187)
 
@@ -574,7 +578,7 @@ How screens get designed and closed:
 
 Cleaning up after a merge:
 
-- The merging agent removes its own t3 worktree, local branch and remote branch (squash merges look unmerged to git;
+- The merging agent removes its own worktree, local branch and remote branch (squash merges look unmerged to git;
   delete once the PR shows merged). Never touch another thread's unmerged work. Remove abandoned PR branches the same
   way after noting it in the issue.
 
@@ -593,5 +597,5 @@ checks use the dev launcher, temporary `dev-` profiles, isolated directories and
   `check:checkpoint`, `check:threads`, `check:delegation`, `check:worker`, `check:groups`, `check:work`, `check:work-drop`,
   `check:checks`, `check:goals`, `check:routines`, `check:webhooks`, `check:restart`, `check:attachments`,
   `check:skills`, `check:computers`, `check:access`, `check:add-computer`, `check:deploy`, `check:system`,
-  `check:my-computer`, `check:connections`, `check:coding -- --code-file <file>`, plus
+  `check:my-computer`, `check:connections`, `check:coding-native`, `check:coding -- --code-file <file>`, plus
   `live-checks/permissions-check.ts` and `live-checks/library-check.ts`.

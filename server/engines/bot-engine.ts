@@ -131,8 +131,8 @@ export interface BotEngine {
   /** Prepare persistent policy at startup and when the saved mode changes. */
   prepareRuntime?(engineBotId: string, identity: RuntimeIdentity): Promise<void>
   /** Give this runtime exactly LilBot's MCP connections (servers named `lilbot_*` not listed are removed; others are left
-   *  alone), for its sessions from their next resume. An optional one that does not connect is not an error. Safe to repeat. */
-  prepareConnections?(engineBotId: string, connections: McpConnection[]): Promise<void>
+   *  alone), for its sessions from their next resume. Returns true when the profile's connections changed. Safe to repeat. */
+  prepareConnections?(engineBotId: string, connections: McpConnection[]): Promise<boolean> | Promise<void>
   /** Bring these open conversations in step with the connections last prepared, in place: from their next message, with
    *  their context and cache kept. A running turn is never changed (`busy`: LilBot asks again once it ends). */
   applyConnections?(engineBotId: string, chatIds: string[]): Promise<{ chatId: string; state: ConnectionsApplied }[]>

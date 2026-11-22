@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite'
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, renameSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { z } from 'zod'
 import { LilBotError } from '../../shared/lilbot-error'
@@ -142,6 +142,19 @@ export class SkillsService {
   provide(name: string, data: Record<string, string>) {
     if (existsSync(this.path(name)) && digest(this.read(name)) === digest(data)) return
     this.save(name, data, 'lilbot')
+  }
+  /** Removes a built-in skill LilBot no longer ships, cleaning its folder and database rows. */
+  remove(name: string): boolean {
+    const target = this.path(name)
+    const hadFile = existsSync(target)
+    const hadRow = Boolean(this.db.query('SELECT 1 FROM skills WHERE name=?').get(name))
+    if (!hadFile && !hadRow) return false
+    if (hadFile) rmSync(target, { recursive: true, force: true })
+    this.db.query('DELETE FROM skill_off WHERE name=?').run(name)
+    this.db.query('DELETE FROM skill_origins WHERE name=?').run(name)
+    this.db.query('DELETE FROM skills WHERE name=?').run(name)
+    this.changed()
+    return true
   }
   importedBot(id: string) {
     return Boolean(this.db.query('SELECT 1 FROM skill_imports WHERE source=?').get(`bot:${id}`))

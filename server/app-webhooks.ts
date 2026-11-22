@@ -55,13 +55,14 @@ interface WebhookDeps {
   calls: CallingChats
   token: string
   origin: string | undefined
+  t3Enabled?: boolean
   observeRun: (event: ActivityEvent) => void
   publish: (frame: EventFrame) => void
   repeat: (label: string, ms: number, task: () => void) => void
 }
 
-export function createWebhooks({ webhookStore, messages, bots, rootOf, calls, token, origin, observeRun, publish, repeat }: WebhookDeps) {
-  const webhooks = new WebhookService(webhookStore, bots, token, origin, () => publish({ event: 'webhooks.changed' }))
+export function createWebhooks({ webhookStore, messages, bots, rootOf, calls, token, origin, t3Enabled, observeRun, publish, repeat }: WebhookDeps) {
+  const webhooks = new WebhookService(webhookStore, bots, token, origin, () => publish({ event: 'webhooks.changed' }), Date.now, Boolean(t3Enabled))
   const callers = webhookCallers(webhookStore, rootOf, calls)
   const scheduler = new RoutineScheduler(webhooks, observeRun)
   repeat('webhooks', 1000, () => scheduler.tick())

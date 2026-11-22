@@ -12,9 +12,10 @@ interface ToolSources {
   skills?: SkillsService
   connection?: MemoryConnection
   connections?: (botId: string) => McpConnection[]
+  onConnectionsChanged?: (botId: string) => void
 }
 
-export async function prepareTools(engine: BotEngine, bot: BotRecord, { skills, connection, connections }: ToolSources) {
+export async function prepareTools(engine: BotEngine, bot: BotRecord, { skills, connection, connections, onConnectionsChanged }: ToolSources) {
   if (connection) {
     try {
       await engine.configureComputers?.(bot.engineBotId, { ...connection, botId: bot.id })
@@ -41,15 +42,15 @@ export async function prepareTools(engine: BotEngine, bot: BotRecord, { skills, 
     })
   }
   const given = connections?.(bot.id)
-  if (given?.length) await engine.prepareConnections?.(bot.engineBotId, given)
+  if (given?.length && (await engine.prepareConnections?.(bot.engineBotId, given))) onConnectionsChanged?.(bot.id)
 }
 
-/** Gives each bot its connections again, for example after the shared T3 sign-in changed. */
-export async function refreshConnections(engine: BotEngine, bots: BotRecord[], connections: (botId: string) => McpConnection[]) {
+/** Gives each bot its connections again, for example after a connection or sign-in changed. */
+export async function refreshConnections(engine: BotEngine, bots: BotRecord[], connections: (botId: string) => McpConnection[], onChanged?: (botId: string) => void) {
   let failed = false
   for (const bot of bots) {
     try {
-      await engine.prepareConnections?.(bot.engineBotId, connections(bot.id))
+      if (await engine.prepareConnections?.(bot.engineBotId, connections(bot.id))) onChanged?.(bot.id)
     } catch {
       backgroundFailure('bot connections')
       failed = true

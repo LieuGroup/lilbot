@@ -9,7 +9,7 @@ import type { WebSocketHandler } from 'bun'
 import { AddThisComputer } from './computers/add-this-computer'
 import { HelperDownloads, helperSettings } from './computers/helper-downloads'
 import { CALLBACK_PATH } from './connections/mcp-callback'
-import { T3_BRIDGE_PATH } from './connections/t3-connection'
+import { isT3Enabled, T3_BRIDGE_PATH } from './connections/t3-connection'
 import { deployNotice } from './deploy/deploy-notice'
 import { runningCommit } from './deploy/health'
 import { HermesEngine } from './engines/hermes/hermes-engine'
@@ -52,6 +52,7 @@ function botsChanged() {
   changeTimer = setTimeout(() => publish(EVERYONE, JSON.stringify({ event: 'bots.changed' })), CHANGE_DELAY_MS)
 }
 
+const T3_ENABLED = isT3Enabled(process.env)
 const engine = new HermesEngine(process.env.LILBOT_BOT_IDS?.split(',').filter(Boolean))
 const { bots, store, skills, hiddenChat, library, computers, devices, attachments, t3Grants, mcp, system, engineApi, activity, routines, threads, boards, webhooks } =
   createAppServices(engine, {
@@ -64,6 +65,7 @@ const { bots, store, skills, hiddenChat, library, computers, devices, attachment
     HOOK_ORIGIN: PUBLIC_ENABLED && process.env.LILBOT_HELPER_URL ? new URL(process.env.LILBOT_HELPER_URL).origin : undefined,
     ACCESS_HOST: ACCESS?.host,
     ACCESS_CALLBACK_ENABLED: ACCESS?.callbackEnabled ?? false,
+    T3_ENABLED,
     publish: frame => publish(EVERYONE, JSON.stringify(frame)),
     botsChanged
   })
@@ -84,7 +86,6 @@ async function prepareMemory() {
   const connected = await bots.connectAllMemory()
   if (connected.length) console.log(`Connected to LilBot memory: ${connected.join(', ')}`)
 }
-prepareMemory().catch(error => console.error('[memory] could not prepare memory for the bots:', error instanceof Error ? error.message : error))
 
 engine.onBotsChanged(botsChanged)
 bots.watchActivity(event => {
@@ -139,6 +140,7 @@ const server = Bun.serve<SocketData>({
       if (isTunnelRequest(request)) return new Response('Forbidden', { status: 403 })
       const url = new URL(request.url)
       if (url.pathname === T3_BRIDGE_PATH) {
+        if (!T3_ENABLED) return new Response('Not found', { status: 404 })
         server.timeout(request, 0)
         return mcp.t3Bridge(request)
       }
@@ -171,9 +173,9 @@ const accessServer = ACCESS
     )
   : undefined
 
-// LilBot's own skills, restored at every start if they differ.
+// LilBot's own skills, restored at every start if they differ; inactive coding skill is removed.
 for (const [name, folder] of [
-  ['t3-coding', join(import.meta.dir, 'connections', 't3-coding-skill')],
+  T3_ENABLED ? ['t3-coding', join(import.meta.dir, 'connections', 't3-coding-skill')] : ['lilbot-coding', join(import.meta.dir, 'threads', 'coding-skill')],
   ['lilbot-work', join(import.meta.dir, 'work', 'work-skill')],
   ['lilbot-check', join(import.meta.dir, 'work', 'check-skill')]
 ]) {
@@ -183,6 +185,12 @@ for (const [name, folder] of [
     console.error(`[skills] could not install the ${name} skill:`, error instanceof Error ? error.message : error)
   }
 }
+try {
+  skills.remove(T3_ENABLED ? 'lilbot-coding' : 't3-coding')
+} catch (error) {
+  console.error('[skills] could not remove inactive coding skill:', error instanceof Error ? error.message : error)
+}
+prepareMemory().catch(error => console.error('[memory] could not prepare memory for the bots:', error instanceof Error ? error.message : error))
 
 console.log(`LilBot listening on http://${server.hostname}:${server.port} (engine: Hermes)`)
 

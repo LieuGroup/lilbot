@@ -13,8 +13,8 @@ export interface NoteFacts {
   others: { name: string; function: string }[]
   /** Names of the registered computers. */
   computers: string[]
-  /** `signed in until 2026-12-01`, or why coding through T3 Code is unavailable. */
-  coding: string
+  /** `signed in until 2026-12-01`, or why coding through T3 Code is unavailable. Omit when T3 Code is off. */
+  coding?: string
   /** The running release, as a short commit id. */
   release: string
 }
@@ -37,11 +37,15 @@ export function buildNote({ bot, others, computers, coding, release }: NoteFacts
     `Other bots: ${shown.join(', ') || 'none'}${more}.`,
     `Computers: ${computers.join(', ') || 'none'}.`,
     'Choosing a computer: each message ends with a [LilBot origin] line. Use lilbot_guide topic `computers` for the full rules; never guess for a command that changes something, and ask Oscar in your reply if unclear.',
-    `Coding through T3 Code: ${coding}.`,
+    coding
+      ? `Coding through T3 Code: ${coding}.`
+      : 'Coding: do small changes yourself, start a worker with lilbot_delegate (worker: true) for larger work, or hand project work to its developer bot (skill lilbot-coding, lilbot_guide topic `coding`).',
     'Work board: before any work beyond a reply, however small (changing a file, setting or message; handed over, scheduled or from outside), open an item with lilbot_work. Not for answering a question.',
     'Write its "done" definition before starting, add evidence read from the real result, then finish it (skill lilbot-work).',
     `LilBot release: ${release}.`,
-    'You can operate LilBot yourself with your lilbot_* tools. lilbot_about gives these facts live (they can change during a long session); lilbot_guide explains each part and the rules for changing LilBot: code changes go through T3 Code, production changes only through `bun run deploy`, and never test on live bots.',
+    coding
+      ? 'You can operate LilBot yourself with your lilbot_* tools. lilbot_about gives these facts live (they can change during a long session); lilbot_guide explains each part and the rules for changing LilBot: code changes go through T3 Code, production changes only through `bun run deploy`, and never test on live bots.'
+      : 'You can operate LilBot yourself with your lilbot_* tools. lilbot_about gives these facts live (they can change during a long session); lilbot_guide explains each part and the rules for changing LilBot: work on a branch and open a pull request, production changes only through `bun run deploy`, and never test on live bots.',
     CLOSE
   ].join('\n')
 }

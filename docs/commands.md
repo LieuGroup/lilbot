@@ -114,7 +114,11 @@ Every `check:*` and `bun live-checks/*.ts` follows the development rules in `AGE
   link completed through the Access route; no Access login, a wrong state, a reused and a late callback refused;
   refresh; `sign_in_expired` repaired by pasting the final address; `unreachable`; removal takes the tools away; one
   session throughout; the tokens found only in the store.
-- `bun run check:coding -- --code-file <file>` (or the code on stdin): needs a fresh pairing code; signs in, checks the
+- `bun run check:coding-native`: with T3 off by default, verifies `lilbot-coding` is installed (`t3-coding` and `lilbot_t3`
+  absent), a temporary bot delegates a small repo change to a worker that commits on a branch, runs the check, records
+  evidence on its `code` work item and reports back; then toggles `LILBOT_T3_ENABLED=1` and back off across restarts to
+  verify both switch positions and in-place MCP reload on the same live main session.
+- `bun run check:coding -- --code-file <file>` (or the code on stdin; runs with `LILBOT_T3_ENABLED=1`): needs a fresh pairing code; signs in, checks the
   signed-out, expired and refused messages, a repeated launch and a real task, then archives its threads, removes its
   project and profile and revokes its sign-in.
 - `bun live-checks/permissions-check.ts`: repairs a temporary profile from manual approvals to off, runs a harmless

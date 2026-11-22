@@ -91,6 +91,15 @@ test('a message sent the moment the turn ended waits for the change to be applie
   expect(f.log.slice(before)).toHaveLength(1)
 })
 
+test('applyBot queues a bot’s live main conversation for an in-place reload without a new session', async () => {
+  const f = fixture()
+  f.applier.applyBot('a')
+  await f.applier.tick()
+  expect(f.log).toEqual(['apply dev-a a-main'])
+  await f.applier.tick()
+  expect(f.log).toEqual(['apply dev-a a-main'])
+})
+
 test('a sign-in arriving while an earlier apply or refresh is in flight is not dropped and notifies only after its own apply', async () => {
   const f = fixture()
   let onApply: (() => void) | undefined

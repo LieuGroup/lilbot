@@ -30,7 +30,7 @@ export interface BotServiceOptions {
   memoryConnection?: MemoryConnection
   /** LilBot-owned MCP connections given to every bot, by LilBot id. */
   connections?: (botId: string) => import('../engines/mcp-connection').McpConnection[]
-  /** The "about your system" note added to the instructions an engine runs (`system-note.ts`). */
+  onConnectionsChanged?: (botId: string) => void
   systemNote?: (bot: BotRecord) => string
 }
 
@@ -59,7 +59,7 @@ export class BotService {
   ) {
     this.history = options.history
     this.library = options.skills
-    this.runtimes = new BotRuntimes(store, engine, options.skills, options.memoryConnection, options.connections, { changed: options.changed, systemNote: options.systemNote })
+    this.runtimes = new BotRuntimes(store, engine, options.skills, options.memoryConnection, options.connections, options)
     this.changed = options.changed ?? (() => {})
     if (options.skills) this.skills = new BotSkills(options.skills, this.runtimes, engine, this.changed)
     this.sessions = new SessionSettings(engine, prefs, this.changed)

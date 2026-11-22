@@ -30,6 +30,8 @@ export interface SystemFacts {
   workspaces: Workspaces
   computers: ComputerService
   t3: () => T3ConnectionStatus
+  /** Whether T3 Code is enabled (`LILBOT_T3_ENABLED=1`). Off by default. */
+  t3Enabled?: boolean
   /** The running release. */
   commit: string
 }

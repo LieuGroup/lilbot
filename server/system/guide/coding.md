@@ -1,3 +1,5 @@
-# Coding through T3 Code
+# Coding in LilBot: yourself, workers and developer bots
 
-Coding work (changing code, fixing a bug, a pull request) goes to T3 Code, Oscar's coding backend, through your `lilbot_t3` tools; the t3-coding skill has the steps. LilBot has one shared sign-in with T3 Code that lasts 30 days. `lilbot_status` (area t3) says whether it works; when it does not, tell Oscar exactly what it says. Running a command or reading a file is not coding: do that yourself.
+Coding happens inside LilBot (skill `lilbot-coding`). Do small, self-contained edits yourself. For larger work, check `lilbot_bots_list` for a developer bot whose name and function cover that project and delegate to it with `lilbot_delegate` (`to`); otherwise start a worker of yourself with `lilbot_delegate` (`worker: true`, optional `model` and `reasoningEffort` per Oscar's written rules and `lilbot_models_list`).
+
+A worker runs in a fresh hidden session with your instructions, skills and memory, opens a `code` work item automatically and cannot start workers or delegations. Give a complete brief (goal, done, out of scope, repo and branch, checks, Oscar's decisions and words). Workers run on the leader today; use Computers for remote build steps. Record branch, pull request link and check output on the `code` work item (`lilbot_work`), ask Oscar there (`needs_oscar`) on real decisions, and save lasting repo facts with `update_memory`.

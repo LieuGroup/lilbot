@@ -21,6 +21,7 @@ Rules and the short version are in `AGENTS.md` under "Threads". Code: `server/th
 | `group-end.ts` | ending once, the outcome and journal facts, the work after the end, time and quiet |
 | `group-store.ts`, `group-folder.ts` | `thread_groups` and the group's deliveries; the shared folder and its archive |
 | `group-prompts.ts`, `group-view.ts` | what group members and the leader are told; Oscar's view, the bots' status, the roster |
+| `coding-skill/SKILL.md` | the built-in `lilbot-coding` skill (installed by default when `LILBOT_T3_ENABLED` is off) |
 
 Delivery kinds: `request` (work), `redirect` (a change of course), `oscar` (Oscar's answer to the receiver's question on its
 work item, #156: work like a request, sent from the delegating bot's side, never checked as bot text), `answer` (a reply
