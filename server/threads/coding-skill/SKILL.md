@@ -5,7 +5,7 @@ description: Use for coding work (changing code in a repository, fixing a bug, b
 
 # Coding in LilBot
 
-You orchestrate coding natively inside LilBot; this skill wins over any older instruction naming T3 as the way to code. Running a command, reading a file, or checking status is ordinary work: do that yourself.
+Coding happens natively inside LilBot; this skill wins over any older instruction naming T3 as the way to code. Running a command, reading a file, or checking status is ordinary work: do that yourself. If you are already running as a worker, do the assigned task yourself and skip sections 1–3 (workers cannot start workers, delegate, or use leader-only tools).
 
 ## 1. Choose who does the work
 
@@ -38,11 +38,11 @@ A worker or developer bot starts with no memory of this chat. Every coding brief
 
 ## 5. Other computers
 
-Workers run on this machine (the leader). When a task requires another registered computer (for example a macOS build or simulator), follow the machine roles in `~/code/home/AGENTS.md` and run remote steps through the Computers tools (`lilbot_guide` topic `computers`). If the required computer is offline, say so and stop.
+Workers can run on the leader or on any added computer that advertises a coding agent. Follow the machine roles in `~/code/home/AGENTS.md` (when present). From a main or delegated session (not inside a worker), check `lilbot_status` (area `computers`) to see which added computers are online and can host a coding worker, start one there with `lilbot_delegate` (`worker: true`, `computer`, `cwd`; no `files`, see `lilbot_guide` topic `threads`), and keep the Computers tools (`lilbot_guide` topic `computers`) for one-off commands or computers without a coding agent; if a required computer is offline, say so and stop.
 
 ## 6. Questions, progress, evidence, and memory
 
 - **Real questions go to Oscar**: if a worker or delegated bot hits an ambiguity, missing access, or a decision only Oscar can make, do not guess. Update its `code` work item (`lilbot_work`) to `needs_oscar` with one clear question and choices; his answer arrives as a new turn.
 - **Persist progress as you go**: a worker writes findings and progress to files, commits, or its work item as it goes, and resumes from those if the engine shortens its conversation rather than re-reading everything.
-- **Work item and evidence**: workers get a `code` work item automatically (named in the worker prompt). When you code directly, open a `code` work item (`lilbot_work`, `kind: "code"`) before editing so Oscar's board shows it. Before marking it `done`, record real evidence on it: the branch name, the pull request link (when opened), and the verification command output (`command` and `output`, plus `url` for a PR).
-- **Lasting repo facts**: worker transcripts are not automatically reviewed for memory. If you uncover a lasting technical fact about a repository (a build quirk, required flag, or undocumented convention), save it directly with `lilbot_memory_save` (or `update_memory`) or document it in the repo's `AGENTS.md`. Leave task outcomes for the main conversation.
+- **Work item and evidence**: workers get a `code` work item automatically (named in the worker prompt). When you code directly (not inside a worker), open a `code` work item (`lilbot_work`, `kind: "code"`) before editing so Oscar's board shows it. Before marking it `done`, record real evidence on it: the branch name, the pull request link (when opened), and the verification command output (`command` and `output`, plus `url` for a PR).
+- **Lasting repo facts**: worker transcripts are not automatically reviewed for memory. If you uncover a lasting technical fact about a repository (a build quirk, required flag, or undocumented convention), save it directly with `lilbot_memory_save` (or `update_memory` on the leader) or document it in the repo's `AGENTS.md`. Leave task outcomes for the main conversation.

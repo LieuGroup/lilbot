@@ -37,7 +37,7 @@ export function createRemoteWorkers(deps: RemoteWorkerAppDeps) {
   deps.computers.onRevoke = id => runner.onRevoke(id)
 
   const buildSystemPrompt = (bot: BotRecord, computerName: string, cwd: string) => {
-    const offered = deps.skills.offered(bot.id)
+    const offered = deps.skills.offered(bot.id).filter(s => s.name !== 't3-coding')
     let codingSkillBody: string | undefined
     if (offered.some(s => s.name === 'lilbot-coding')) {
       try {

@@ -1,5 +1,5 @@
 import { expect, spyOn, test } from 'bun:test'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { BotRuntimes } from '../../server/bots/bot-runtimes'
@@ -90,10 +90,17 @@ test('the native coding skill ships with LilBot, passes safety rules, mentions n
       'needs_oscar',
       'lilbot_memory_save',
       'update_memory',
-      'writes findings and progress'
+      'writes findings and progress',
+      'any added computer',
+      'lilbot_status',
+      'skip sections 1–3'
     ])
       expect(shipped['SKILL.md']).toContain(part)
     expect(shipped['SKILL.md']).not.toContain('for any change that will be committed')
+    expect(shipped['SKILL.md']).not.toContain('Workers run on this machine (the leader)')
+    const codingGuide = readFileSync(join(import.meta.dir, '../../server/system/guide/coding.md'), 'utf8')
+    for (const part of ['any added computer', 'lilbot_status', 'computer', 'cwd', 'lilbot_memory_save']) expect(codingGuide).toContain(part)
+    expect(codingGuide).not.toContain('Workers run on the leader today')
     skills.write({ name: 'lilbot-coding', action: 'edit', content: shipped['SKILL.md'].replace('Write a complete brief', 'Write a short brief') }, 'bot-a')
     expect(skills.list('any-bot').find(s => s.name === 'lilbot-coding')?.author).toBe('lilbot')
     skills.provide('lilbot-coding', shipped)
