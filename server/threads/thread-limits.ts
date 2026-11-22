@@ -1,6 +1,25 @@
-/** Limits apply across restarts. Each request reserves a slot for its answer. `concurrent` is how many deliveries run
- *  at once across all bots; `openPerBot` is how many exchanges one bot may have under way. */
-export const THREAD_LIMITS = { depth: 3, messages: 20, text: 20_000, concurrent: 6, openPerBot: 8 } as const
+/** Limits apply across restarts. Each request reserves a slot for its answer. `concurrent` is how many work deliveries run
+ *  at once across all bots (`concurrentWorkers` of them workers; answers and notices are never starved); `openPerBot` is how
+ *  many exchanges one bot may have under way (`workersPerBot` of them workers). */
+export const THREAD_LIMITS = { depth: 3, messages: 20, text: 20_000, concurrent: 6, openPerBot: 8, workersPerBot: 3, concurrentWorkers: 4 } as const
+
+export const isReply = (kind: string) => kind === 'answer' || kind === 'notice'
+const isExchangeWork = (kind: string) => kind === 'request' || kind === 'redirect' || kind === 'oscar'
+
+/** Work deliveries share `concurrent` (and workers `concurrentWorkers`); answers and notices are never starved. */
+export function canStartDelivery(d: { kind: string; threadId: string }, running: Iterable<{ kind: string; threadId: string }>, isWorker: (threadId: string) => boolean) {
+  if (isReply(d.kind)) return true
+  let work = 0
+  let workers = 0
+  for (const r of running) {
+    if (isReply(r.kind)) continue
+    work++
+    if (isExchangeWork(r.kind) && isWorker(r.threadId)) workers++
+  }
+  if (work >= THREAD_LIMITS.concurrent) return false
+  if (isExchangeWork(d.kind) && isWorker(d.threadId) && workers >= THREAD_LIMITS.concurrentWorkers) return false
+  return true
+}
 
 /** Temporary groups: `members` besides the leader; a group ends by itself after `rounds` rounds, `messages` messages
  *  (points and replies), `minutes` from its start, or `quietMinutes` without a point while nothing runs. A bot leads at

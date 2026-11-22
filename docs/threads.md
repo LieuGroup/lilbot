@@ -8,6 +8,7 @@ Rules and the short version are in `AGENTS.md` under "Threads". Code: `server/th
 | File | Does |
 |---|---|
 | `thread-store.ts` | `threads` (JSON transcript and status), `thread_links` (batch, parent), `thread_deliveries` (the outbox) |
+| `thread-accept.ts` | transactional acceptance of exchange deliveries: self, worker-nesting, depth and open caps |
 | `thread-runner.ts` | the outbox: runs each delivery in its bot's hidden session, keeps status, records answers |
 | `thread-service.ts` | `ask` (the engine API's legacy `threads/ask`, kept for sessions on adapter 0.9.x), reading (bots and Oscar), stopping (`stopping` is its database part, which the work board runs inside its own transaction), Oscar's answer and drop on a work item |
 | `delegation-service.ts` | the MCP tools: delegate in batches with files, status, redirect, wait, attach |
@@ -28,10 +29,17 @@ in groups `point` (the leader's point for one member) and `round` (a round's rep
 
 ## Delegation rules and limits
 
-- Any bot may hand work to any other, never itself. One `lilbot_delegate` call names several bots, one task each; each
-  task is its own exchange and the call's tasks share a `batchId`. `exchangeId` continues the same work. Each exchange
-  has a nullable `parentId` (`thread_links`): the delegating bot's work item it was handed out under (see
-  [work.md](work.md)). The plug-in tools `ask_bot` and `list_bots` ended with adapter 0.10.0 (#113): new sessions use
+- Any bot may hand work to any other (never `to` itself), or start a same-bot **worker** (`worker: true`, optional
+  `model` and `reasoningEffort`, mutually exclusive with `to`). One `lilbot_delegate` call may name several other bots
+  (one task per bot) and/or up to `workersPerBot` (3) workers; each task is its own exchange and the call's tasks share
+  a `batchId`. `exchangeId` continues the same work (without changing a worker's model or effort). Each exchange has a
+  nullable `parentId` (`thread_links`): the delegating bot's work item it was handed out under (see [work.md](work.md));
+  every worker also opens a `code` work item (`askedBy: self`) at the bot's effective default level even when `parentId`
+  is null. Worker sessions (including their compression continuations via `rootOf`, failing closed when unreadable) cannot
+  start another worker, delegation, or group (`thread_worker_nested`). Work deliveries share `concurrent` (6, at most
+  `concurrentWorkers` = 4 workers) while `answer` and `notice` deliveries are never starved; verbose multi-step or worker
+  replies over 20,000 characters clamp to the final response with a transcript pointer so finished work never fails
+  delivery. The plug-in tools `ask_bot` and `list_bots` ended with adapter 0.10.0 (#113): new sessions use
   `lilbot_delegate` and `lilbot_bots_list`; the engine API's `threads/ask` and `threads/bots` stay only for sessions
   that loaded 0.9.x.
 - The receiver works in its own hidden session with its own instructions, memory, skills, workspace and full access;

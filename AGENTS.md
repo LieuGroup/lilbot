@@ -317,13 +317,16 @@ Full journalling, importer, `#180` usage/compaction and `#148` pre-compress chec
 
 Full delegation, files, engine findings, concurrency and temporary group rules: [docs/threads.md](docs/threads.md).
 
-- `server/threads/` owns bot-to-bot exchanges (`lilbot_delegate`, `lilbot_delegation`) and temporary groups
-  (`lilbot_group`, #133, 1 leader + 2–4 members). Receivers work in hidden sessions; MCP calls are matched to their
-  exact `tool.start` (`calling-chats.ts`, refused as `session_unknown` if unmatched, #174).
+- `server/threads/` owns bot-to-bot exchanges and same-bot workers (`lilbot_delegate` with `to` or `worker: true`,
+  `lilbot_delegation`) and temporary groups (`lilbot_group`, #133, 1 leader + 2–4 members). Receivers and workers run in
+  hidden sessions (workers open a `code` work item, may override `model`/`reasoningEffort`, and cannot spawn workers,
+  delegations or groups); MCP calls are matched to their exact `tool.start` (`calling-chats.ts`, refused as
+  `session_unknown` if unmatched, #174).
 - Control (status, cancel, redirect, wait) belongs to the delegating bot; Oscar reads (`threads.list`/`open`) and may
   stop (`threads.cancel`), never writes. Files copy safely with `O_NOFOLLOW` and SHA-256 verification; bot text passes
-  safety checks and is JSON-fenced. Limits (`thread-limits.ts`): depth 3, 20 msgs/exchange, 6 concurrent deliveries, 8
-  open exchanges/bot; groups: 4 members, 6 rounds, 40 msgs, 120 min, 15 min quiet, 2 active/leader.
+  safety checks and is JSON-fenced. Limits (`thread-limits.ts`): depth 3, 20 msgs/exchange, 6 concurrent work deliveries
+  (4 workers; answers/notices unstarved), 8 open exchanges/bot (3 workers); groups: 4 members, 6 rounds, 40 msgs, 120
+  min, 15 min quiet, 2 active/leader.
 
 ## Work and check levels
 
@@ -587,7 +590,7 @@ checks use the dev launcher, temporary `dev-` profiles, isolated directories and
 - `bun run deploy` (`--status`, `--bootstrap`), `bun run t3:sign-in`, `bun run build:helper`,
   `bun run build:helper-downloads [data dir]`, `bun run history:exclude`.
 - Live checks: `check:live`, `check:reasoning`, `check:model-switch`, `check:memory`, `check:history`,
-  `check:checkpoint`, `check:threads`, `check:delegation`, `check:groups`, `check:work`, `check:work-drop`,
+  `check:checkpoint`, `check:threads`, `check:delegation`, `check:worker`, `check:groups`, `check:work`, `check:work-drop`,
   `check:checks`, `check:goals`, `check:routines`, `check:webhooks`, `check:restart`, `check:attachments`,
   `check:skills`, `check:computers`, `check:access`, `check:add-computer`, `check:deploy`, `check:system`,
   `check:my-computer`, `check:connections`, `check:coding -- --code-file <file>`, plus

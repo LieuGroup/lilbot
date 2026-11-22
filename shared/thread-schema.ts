@@ -1,5 +1,6 @@
 /** Shared, engine-independent exchanges. Oscar reads them and can stop one; bots supply the messages. */
 import { z } from 'zod'
+import { BotModel, ReasoningEffort } from './bot-schema'
 import type { ChatItem } from './chat-schema'
 
 const text = z.string().trim().min(1).max(20_000)
@@ -16,21 +17,28 @@ export const ThreadAsk = z.object({
 })
 export type ThreadAsk = z.infer<typeof ThreadAsk>
 
-/** One call hands one task to each named bot; each task is its own exchange, all of them one batch. */
+const delegateTask = z
+  .object({
+    to: z.string().min(1).max(100).optional().describe('Bot id or exact name'),
+    worker: z.literal(true).optional().describe('Start a fresh hidden worker session of yourself'),
+    model: BotModel.optional().describe('Worker only: model for this worker session'),
+    reasoningEffort: ReasoningEffort.optional().describe('Worker only: starting reasoning effort'),
+    task: text,
+    files: files.optional(),
+    exchangeId: exchangeId.optional().describe('Continue this exchange')
+  })
+  .superRefine((t, ctx) => {
+    if (t.worker && t.to) ctx.addIssue({ code: 'custom', message: 'Give either worker: true or to, not both.', path: ['worker'] })
+    if (t.to && t.exchangeId) ctx.addIssue({ code: 'custom', message: 'Give either to or exchangeId, not both.', path: ['to'] })
+    if ((t.model || t.reasoningEffort) && (!t.worker || t.exchangeId))
+      ctx.addIssue({ code: 'custom', message: 'model and reasoningEffort apply only when starting a new worker.', path: ['model'] })
+  })
+
+/** One call hands tasks to other bots or starts same-bot workers; each task is its own exchange, all of them one batch. */
 export const DelegateInput = z.object({
   requestId: z.string().min(1).max(100),
   itemId: z.string().min(1).max(100).optional().describe('Your work item this is part of'),
-  tasks: z
-    .array(
-      z.object({
-        to: z.string().min(1).max(100).optional().describe('Bot id or exact name'),
-        task: text,
-        files: files.optional(),
-        exchangeId: exchangeId.optional().describe('Continue this exchange')
-      })
-    )
-    .min(1)
-    .max(8)
+  tasks: z.array(delegateTask).min(1).max(8)
 })
 export type DelegateInput = z.infer<typeof DelegateInput>
 export const RedirectInput = z.object({ requestId: z.string().min(1).max(100), exchangeId, message: text })
@@ -87,6 +95,8 @@ export interface ThreadMessage {
   files?: ExchangeFile[]
   /** Arrived after the exchange was stopped: kept here, never delivered. */
   withheld?: true
+  /** Reply from a same-bot worker (both participants carry the same bot id). */
+  fromWorker?: true
   /** In a group: the leader's point that opens this round. */
   round?: number
 }
@@ -143,6 +153,12 @@ export interface BotThread {
   /** In a view, while it runs: a redirect waits for the receiver's next step (it did not reach the running turn). */
   redirecting?: true
   stoppedBy: { kind: 'bot' | 'oscar'; id: string | null; name: string; at: number } | null
+  /** Present when the exchange is a same-bot worker session rather than work between two bots. */
+  worker?: true
+  /** Model override a worker started with, when different from the bot's own. */
+  model?: BotModel
+  /** Starting reasoning effort override for a worker. */
+  reasoningEffort?: ReasoningEffort
   /** Present when the thread is a temporary group rather than an exchange between two bots. */
   group?: ThreadGroup
 }
