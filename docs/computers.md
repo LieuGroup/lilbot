@@ -276,6 +276,38 @@ The rules are in `AGENTS.md` ("My computer"). Code: `server/devices/`, `shared/d
   main"; the last step of "Add this computer" has the "Make it my main computer" switch. A user message from another
   device shows "from <name>" under it, as plain text.
 
+## Worker hosting on added computers
+
+Code: `shared/worker-frame-schema.ts`, `helper/worker-*.ts`, `server/computers/worker-door.ts`, `server/http/public-door.ts`.
+macOS and Linux helpers are covered; Windows is not covered (process-group termination and private file permissions assume POSIX).
+
+- **Capability advertisement:** the helper probes installed coding agents at registration and on connect, advertising
+  `'worker'` in `ComputerHello.capabilities` and their `{ driver, version }` entries in `workerAgents` (also refreshed
+  via signed `worker.capabilities` frames). A computer with no coding agent stays usable for commands and simply omits
+  the `worker` capability.
+- **Driver interface and Claude Code CLI:** `helper/worker-driver.ts` defines the engine-neutral `WorkerDriver`
+  contract so additional agents can plug in beside it. `helper/worker-claude-protocol.ts` and
+  `helper/worker-driver-claude.ts` implement the Claude Code CLI driver (`claude -p --output-format stream-json
+  --input-format stream-json --verbose --permission-mode bypassPermissions --strict-mcp-config --mcp-config <file>
+  --model <model>` with optional `--effort`, `--append-system-prompt`, and `--resume`). LilBot passes the bot's model
+  and effort through and stores no provider key file on added computers: the agent uses whatever sign-in that machine
+  already has, and model refusals surface as a failed worker with the agent's plain reason.
+- **Session files:** the Claude Code driver intentionally leaves Claude Code's own session persistence enabled (it does
+  not pass `--no-session-persistence`) because follow-up turns and post-interrupt recovery depend on `--resume
+  <session_id>`. Claude Code manages those files under its own home folder; LilBot never writes secrets into prompts
+  and deletes each run's `0600` MCP config file in `finally`.
+- **Per-run loopback MCP proxy (`helper/worker-mcp-proxy.ts`):** binds `127.0.0.1:0` with a fresh random bearer token
+  verified in constant time, refuses `Origin` and non-loopback `Host` headers, caps bodies at 256 KiB, answers
+  `server/discover` cleanly, forwards JSON-RPC requests as signed `worker.mcp.request` frames over the helper's
+  existing WebSocket, retries briefly while disconnected (failing already-sent calls on disconnect to avoid duplicate
+  side effects), and stops immediately when the run ends. The bearer token is never logged or sent in any frame.
+- **Bounds, recovery and revocation:** workers are capped separately from commands (`WORKERS_PER_COMPUTER = 2`),
+  `worker.event` updates coalesce to at most one frame per 350 ms per run (server enforces 250 ms spacing and rejects
+  any frame whose `runId` was not started by the leader on that computer), `worker_runs` in `requests.db` prevents
+  duplicate spawns on reconnect and preserves unacknowledged `worker.done` outcomes, and a signed `revoked` frame stops
+  all active worker process groups (`SIGTERM`, escalating to `SIGKILL` after 2 s) and closes their proxies before
+  retiring the helper.
+
 ## Tests
 
 - `tests/devices/` (device records and limits, the origin line, the message round trip through snapshot, history page and

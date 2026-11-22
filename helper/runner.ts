@@ -10,11 +10,29 @@ import { outbound } from './outbound'
 import { boundResult } from './result-bounds'
 import { retire } from './retire'
 import { verifyFrame, verifyServer } from './server-trust'
+import { detectWorkerAgents } from './worker-driver'
+import { WorkerHost, type WorkerHostOptions } from './worker-host'
 
-export async function run(identity: Identity, signal: AbortSignal) {
-  const lock = new Database(join(configDir, 'runner.lock'))
+type RunnerOptions = Omit<WorkerHostOptions, 'db' | 'send' | 'emitNow'> & { configDir?: string; retire?: () => Promise<void> }
+
+const waitBackoff = (ms: number, signal: AbortSignal) =>
+  new Promise<void>(resolve => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', abort)
+      resolve()
+    }, ms)
+    const abort = () => {
+      clearTimeout(timer)
+      resolve()
+    }
+    signal.addEventListener('abort', abort, { once: true })
+  })
+
+export async function run(identity: Identity, signal: AbortSignal, options: RunnerOptions = {}) {
+  const dir = options.configDir ?? configDir
+  const lock = new Database(join(dir, 'runner.lock'))
   lock.exec('PRAGMA busy_timeout = 5000; BEGIN EXCLUSIVE')
-  const path = join(configDir, 'requests.db')
+  const path = join(dir, 'requests.db')
   const db = new Database(path, { create: true })
   db.exec('PRAGMA busy_timeout = 5000')
   chmodSync(path, 0o600)
@@ -31,19 +49,18 @@ export async function run(identity: Identity, signal: AbortSignal) {
     socket.send(helperFrame(identity.privateKey, identity.id, nonce, outgoing++, JSON.stringify(frame)))
     return true
   }
-  const sender = outbound(
-    emit,
-    () =>
-      (db.query('SELECT id FROM requests WHERE finished_at IS NOT NULL ORDER BY finished_at, id LIMIT 32').all() as { id: string }[]).map(({ id }) => ({
-        id,
-        result: () => (db.query('SELECT result FROM requests WHERE id=?').get(id) as { result: string }).result
-      })),
-    () => authenticated && socket?.readyState === WebSocket.OPEN && socket.bufferedAmount < 64_000
-  )
-  const send = (id: string, result: ComputerResult, final: boolean) => {
-    if (final) sender.flush()
-    else emit({ type: 'result', id, result: boundResult(result), final })
+  const pendingRows = () =>
+    (db.query('SELECT id FROM requests WHERE finished_at IS NOT NULL ORDER BY finished_at, id LIMIT 32').all() as { id: string }[]).map(({ id }) => ({
+      id,
+      result: () => (db.query('SELECT result FROM requests WHERE id=?').get(id) as { result: string }).result
+    }))
+  const sender = outbound(emit, pendingRows, () => authenticated && socket?.readyState === WebSocket.OPEN && socket.bufferedAmount < 64_000)
+  const send = (id: string, result: ComputerResult, final: boolean) => (final ? sender.flush() : void emit({ type: 'result', id, result: boundResult(result), final }))
+  const sendWorker = (key: string, frame: unknown) => {
+    sender.control(key, frame)
+    sender.flush()
   }
+  const workers = new WorkerHost({ ...options, db, send: sendWorker, emitNow: emit })
   const work = async (id: string, operation: ComputerOperation) => {
     const previous = db.query('SELECT result,finished_at FROM requests WHERE id=?').get(id) as { result: string | null; finished_at: number | null } | null
     if (previous) {
@@ -75,10 +92,13 @@ export async function run(identity: Identity, signal: AbortSignal) {
   const stop = () => {
     socket?.close()
     for (const controller of active.values()) controller.abort()
+    workers.stopAll()
   }
   signal.addEventListener('abort', stop)
   try {
     while (!signal.aborted && !revoked) {
+      const agents = await detectWorkerAgents(options.drivers)
+      if (signal.aborted || revoked) break
       await new Promise<void>(resolve => {
         const headers = connectionHeaders(identity)
         authenticated = false
@@ -112,18 +132,16 @@ export async function run(identity: Identity, signal: AbortSignal) {
             const raw = JSON.parse(String(event.data))
             if (!authenticated) {
               authenticated = raw.type === 'server' && verifyServer(identity.serverFingerprint, identity.id, headers['x-lilbot-nonce'], raw)
-              if (!authenticated) socket?.close()
-              else {
-                delay = 500
-                serverKey = raw.publicKey
-                clearTimeout(timeout)
-              }
+              if (!authenticated) return socket?.close()
+              delay = 500
+              serverKey = raw.publicKey
+              clearTimeout(timeout)
+              sender.control('worker-capabilities', { type: 'worker.capabilities', agents })
+              workers.onReconnect()
+              sender.flush()
               return
             }
-            if (!verifyFrame(serverKey, identity.id, headers['x-lilbot-nonce'], sequence++, raw)) {
-              socket?.close()
-              return
-            }
+            if (!verifyFrame(serverKey, identity.id, headers['x-lilbot-nonce'], sequence++, raw)) return socket?.close()
             const frame = HelperWork.parse(JSON.parse(raw.payload))
             if (frame.type === 'heartbeat') {
               lastHeartbeat = Date.now()
@@ -134,6 +152,7 @@ export async function run(identity: Identity, signal: AbortSignal) {
             } else if (frame.type === 'revoked') {
               revoked = true
               for (const controller of active.values()) controller.abort()
+              workers.stopAll()
               socket?.close()
             } else if (frame.type === 'ack') {
               acknowledge(db, frame.id)
@@ -142,11 +161,12 @@ export async function run(identity: Identity, signal: AbortSignal) {
               active.get(frame.id)?.abort()
               if (!active.has(frame.id)) {
                 db.query('INSERT OR IGNORE INTO requests(id,result,finished_at) VALUES(?,?,?)').run(frame.id, JSON.stringify({ output: '', error: 'Cancelled.' }), Date.now())
-                const stored = db.query('SELECT result,finished_at FROM requests WHERE id=?').get(frame.id) as { result: string; finished_at: number | null }
+                const stored = db.query('SELECT result FROM requests WHERE id=?').get(frame.id) as { result: string }
                 sender.receipt(frame.id, stored.result)
                 sender.flush()
               }
-            } else void work(frame.id, frame.operation).catch(() => socket?.close())
+            } else if (frame.type === 'work') void work(frame.id, frame.operation).catch(() => socket?.close())
+            else workers.handle(frame)
           } catch {
             socket?.close()
           }
@@ -154,27 +174,17 @@ export async function run(identity: Identity, signal: AbortSignal) {
         socket.onerror = () => socket?.close()
         socket.onclose = event => {
           if (event.code === 4001) delay = 30_000
+          workers.onDisconnect()
           clearInterval(timer)
           clearTimeout(timeout)
           resolve()
         }
       })
-      if (!signal.aborted && !revoked)
-        await new Promise<void>(resolve => {
-          const done = () => {
-            clearTimeout(timer)
-            signal.removeEventListener('abort', done)
-            resolve()
-          }
-          const timer = setTimeout(done, delay + Math.random() * 250)
-          signal.addEventListener('abort', done, { once: true })
-        })
+      if (!signal.aborted && !revoked) await waitBackoff(delay + Math.random() * 250, signal)
       delay = Math.min(delay * 2, 30_000)
     }
-    while (active.size) await Bun.sleep(50)
-    if (revoked) {
-      await retire()
-    }
+    while (active.size || workers.activeCount()) await Bun.sleep(50)
+    if (revoked) await (options.retire ?? retire)()
   } finally {
     signal.removeEventListener('abort', stop)
     db.close()

@@ -1,4 +1,17 @@
 import { z } from 'zod'
+import {
+  WorkerAckFrame,
+  WorkerAgentInfo,
+  WorkerCapabilitiesFrame,
+  WorkerDoneFrame,
+  WorkerEventFrame,
+  WorkerMcpRequestFrame,
+  WorkerMcpResponseFrame,
+  WorkerStartFrame,
+  WorkerSteerFrame,
+  WorkerSteerResultFrame,
+  WorkerStopFrame
+} from './worker-frame-schema'
 
 export const ComputerHello = z.object({
   name: z.string().trim().min(1).max(100),
@@ -8,7 +21,8 @@ export const ComputerHello = z.object({
     .min(1)
     .max(512)
     .regex(/^[^\p{Cc}\p{Cf}]*$/u),
-  capabilities: z.array(z.enum(['exec', 'read', 'write', 'list', 'copy'])).max(5)
+  capabilities: z.array(z.enum(['exec', 'read', 'write', 'list', 'copy', 'worker'])).max(6),
+  workerAgents: z.array(WorkerAgentInfo).max(4).optional()
 })
 export type ComputerHello = z.infer<typeof ComputerHello>
 export interface Computer extends ComputerHello {
@@ -62,12 +76,22 @@ export interface ComputerRequest {
 }
 export const HelperFrame = z.discriminatedUnion('type', [
   z.object({ type: z.literal('heartbeat'), challenge: z.string().max(100).optional() }),
-  z.object({ type: z.literal('result'), id: z.string(), result: ComputerResult, final: z.boolean().default(true) })
+  z.object({ type: z.literal('result'), id: z.string(), result: ComputerResult, final: z.boolean().default(true) }),
+  WorkerCapabilitiesFrame,
+  WorkerEventFrame,
+  WorkerSteerResultFrame,
+  WorkerMcpRequestFrame,
+  WorkerDoneFrame
 ])
 export const HelperWork = z.discriminatedUnion('type', [
   z.object({ type: z.literal('work'), id: z.string(), operation: ComputerOperation }),
   z.object({ type: z.literal('cancel'), id: z.string() }),
   z.object({ type: z.literal('heartbeat'), challenge: z.string().max(100).optional() }),
   z.object({ type: z.literal('ack'), id: z.string() }),
-  z.object({ type: z.literal('revoked') })
+  z.object({ type: z.literal('revoked') }),
+  WorkerStartFrame,
+  WorkerSteerFrame,
+  WorkerStopFrame,
+  WorkerMcpResponseFrame,
+  WorkerAckFrame
 ])
