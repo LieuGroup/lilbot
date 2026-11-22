@@ -1,46 +1,21 @@
-/** Workspace folder moves and Hermes profile file updates for bot re-keying. Never logs secrets or file contents. */
+/** Workspace folder moves and Hermes profile updates for bot re-keying. Never logs secrets. */
 import { createHmac } from 'node:crypto'
-import { chmodSync, existsSync, lstatSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, renameSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { writeAtomicPrivate } from './rekey-journal'
+import { parseJsonObject, profileDir } from './rekey-preflight'
 
-type DiskAction = 'moved' | 'would-move' | 'already-moved' | 'updated' | 'would-update' | 'already-current' | 'removed' | 'would-remove' | 'absent'
+type DiskAction = 'moved' | 'would-move' | 'already-moved' | 'updated' | 'would-update' | 'already-current' | 'removed' | 'would-remove' | 'absent' | 'skipped'
+export type DiskStep = 'workspace' | 'archive' | 'hermes'
+export type FailurePoint = 'post-db' | 'workspace' | 'archive' | 'hermes-memory' | 'hermes-skills' | 'hermes-computers' | 'hermes-applied'
+
 export interface DiskReport {
   workspace: DiskAction
   archive: DiskAction
   hermes: Record<string, DiskAction>
 }
 
-function writeAtomicJson(path: string, data: unknown) {
-  const tmp = `${path}.rekey-tmp-${process.pid}`
-  writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 })
-  chmodSync(tmp, 0o600)
-  renameSync(tmp, path)
-}
-
 const capabilityFor = (tokenFile: string, botId: string) => createHmac('sha256', readFileSync(tokenFile, 'utf8').trim()).update(`create-bot:${botId}`).digest('hex')
-
-const profileDir = (hermesHome: string, engineBotId: string) => (engineBotId === 'default' ? hermesHome : join(hermesHome, 'profiles', engineBotId))
-
-function checkNoSymlink(path: string, label: string) {
-  if (existsSync(path) && lstatSync(path).isSymbolicLink()) throw new Error(`Refusing to touch symlink at ${label}: ${path}`)
-}
-
-export function preflightWorkspace(workspacesDir: string, oldId: string, newId: string) {
-  const src = join(workspacesDir, oldId)
-  const dst = join(workspacesDir, newId)
-  checkNoSymlink(workspacesDir, 'workspaces root')
-  checkNoSymlink(src, 'old workspace')
-  checkNoSymlink(dst, 'new workspace')
-  if (existsSync(src) && existsSync(dst)) throw new Error(`Both old and new workspace folders exist (${oldId} and ${newId}); resolve manually before running.`)
-  const archive = join(workspacesDir, '.archive')
-  if (!existsSync(archive)) return
-  checkNoSymlink(archive, 'workspace archive')
-  const arcSrc = join(archive, oldId)
-  const arcDst = join(archive, newId)
-  checkNoSymlink(arcSrc, 'old archived workspace')
-  checkNoSymlink(arcDst, 'new archived workspace')
-  if (existsSync(arcSrc) && existsSync(arcDst)) throw new Error(`Both old and new archive folders exist (${oldId} and ${newId}); resolve manually before running.`)
-}
 
 function moveFolder(src: string, dst: string, dryRun: boolean): DiskAction {
   if (!existsSync(src)) return existsSync(dst) ? 'already-moved' : 'absent'
@@ -49,69 +24,104 @@ function moveFolder(src: string, dst: string, dryRun: boolean): DiskAction {
   return 'moved'
 }
 
-export function applyDiskRekey(workspacesDir: string, hermesHome: string, engineBotId: string, dataDir: string, oldId: string, newId: string, dryRun: boolean): DiskReport {
-  preflightWorkspace(workspacesDir, oldId, newId)
-  const workspace = moveFolder(join(workspacesDir, oldId), join(workspacesDir, newId), dryRun)
-  const archive = moveFolder(join(workspacesDir, '.archive', oldId), join(workspacesDir, '.archive', newId), dryRun)
-  const dir = profileDir(hermesHome, engineBotId)
-  const hermes: Record<string, DiskAction> = {}
-
-  const memPath = join(dir, 'lilbot-memory.json')
-  if (existsSync(memPath)) {
-    const parsed = JSON.parse(readFileSync(memPath, 'utf8')) as Record<string, unknown>
-    const tokenFile = existsSync(join(dataDir, 'engine-token')) ? join(dataDir, 'engine-token') : String(parsed.token_file ?? '')
-    const nextCap = tokenFile && existsSync(tokenFile) ? capabilityFor(tokenFile, newId) : undefined
-    if (parsed.bot_id === newId && (!nextCap || parsed.creation_capability === nextCap)) hermes['lilbot-memory.json'] = 'already-current'
-    else if (dryRun) hermes['lilbot-memory.json'] = 'would-update'
-    else {
-      writeAtomicJson(memPath, { ...parsed, bot_id: newId, ...(nextCap ? { creation_capability: nextCap } : {}) })
-      hermes['lilbot-memory.json'] = 'updated'
-    }
-  } else hermes['lilbot-memory.json'] = 'absent'
-
-  for (const name of ['lilbot-skills.json', 'lilbot-computers.json']) {
-    const file = join(dir, name)
-    if (!existsSync(file)) {
-      hermes[name] = 'absent'
-      continue
-    }
-    const parsed = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>
-    if (parsed.botId !== oldId) hermes[name] = 'already-current'
-    else if (dryRun) hermes[name] = 'would-update'
-    else {
-      writeAtomicJson(file, { ...parsed, botId: newId })
-      hermes[name] = 'updated'
-    }
+export function applyDiskRekey(params: {
+  workspacesDir: string | null
+  hermesHome: string | null
+  engineBotId: string
+  dataDir: string
+  oldId: string
+  newId: string
+  dryRun: boolean
+  onStep?: (step: DiskStep) => void
+  injectFailure?: FailurePoint
+}): DiskReport {
+  const { workspacesDir, hermesHome, engineBotId, dataDir, oldId, newId, dryRun, onStep, injectFailure } = params
+  const failIf = (point: FailurePoint) => {
+    if (!dryRun && injectFailure === point) throw new Error(`Injected failure at ${point}`)
   }
 
-  const appliedPath = join(dir, 'lilbot-applied.json')
-  if (!existsSync(appliedPath)) hermes['lilbot-applied.json'] = 'absent'
-  else if (dryRun) hermes['lilbot-applied.json'] = 'would-remove'
-  else {
-    rmSync(appliedPath, { force: true })
-    hermes['lilbot-applied.json'] = 'removed'
+  let workspace: DiskAction = 'skipped'
+  let archive: DiskAction = 'skipped'
+  if (workspacesDir !== null) {
+    failIf('workspace')
+    workspace = moveFolder(join(workspacesDir, oldId), join(workspacesDir, newId), dryRun)
+    if (!dryRun) onStep?.('workspace')
+    failIf('archive')
+    archive = moveFolder(join(workspacesDir, '.archive', oldId), join(workspacesDir, '.archive', newId), dryRun)
+    if (!dryRun) onStep?.('archive')
+  }
+
+  const hermes: Record<string, DiskAction> = {}
+  if (hermesHome !== null) {
+    const dir = profileDir(hermesHome, engineBotId)
+    const memPath = join(dir, 'lilbot-memory.json')
+    if (existsSync(memPath)) {
+      failIf('hermes-memory')
+      const parsed = parseJsonObject(memPath, 'lilbot-memory.json')
+      const tokenFile = existsSync(join(dataDir, 'engine-token')) ? join(dataDir, 'engine-token') : typeof parsed.token_file === 'string' ? parsed.token_file : ''
+      const nextCap = tokenFile && existsSync(tokenFile) ? capabilityFor(tokenFile, newId) : undefined
+      if (parsed.bot_id === newId && (!nextCap || parsed.creation_capability === nextCap)) hermes['lilbot-memory.json'] = 'already-current'
+      else if (dryRun) hermes['lilbot-memory.json'] = 'would-update'
+      else {
+        writeAtomicPrivate(memPath, `${JSON.stringify({ ...parsed, bot_id: newId, ...(nextCap ? { creation_capability: nextCap } : {}) }, null, 2)}\n`)
+        hermes['lilbot-memory.json'] = 'updated'
+      }
+    } else hermes['lilbot-memory.json'] = 'absent'
+
+    for (const [name, point] of [
+      ['lilbot-skills.json', 'hermes-skills'],
+      ['lilbot-computers.json', 'hermes-computers']
+    ] as const) {
+      const file = join(dir, name)
+      if (!existsSync(file)) {
+        hermes[name] = 'absent'
+        continue
+      }
+      failIf(point)
+      const parsed = parseJsonObject(file, name)
+      if (parsed.botId !== oldId) hermes[name] = 'already-current'
+      else if (dryRun) hermes[name] = 'would-update'
+      else {
+        writeAtomicPrivate(file, `${JSON.stringify({ ...parsed, botId: newId }, null, 2)}\n`)
+        hermes[name] = 'updated'
+      }
+    }
+
+    const appliedPath = join(dir, 'lilbot-applied.json')
+    if (!existsSync(appliedPath)) hermes['lilbot-applied.json'] = 'absent'
+    else if (dryRun) hermes['lilbot-applied.json'] = 'would-remove'
+    else {
+      failIf('hermes-applied')
+      rmSync(appliedPath, { force: true })
+      hermes['lilbot-applied.json'] = 'removed'
+    }
+    if (!dryRun) onStep?.('hermes')
   }
   return { workspace, archive, hermes }
 }
 
-export function verifyDiskRekey(workspacesDir: string, hermesHome: string, engineBotId: string, dataDir: string, oldId: string, newId: string): string[] {
+export function verifyDiskRekey(workspacesDir: string | null, hermesHome: string | null, engineBotId: string, dataDir: string, oldId: string, newId: string): string[] {
   const failures: string[] = []
-  if (existsSync(join(workspacesDir, oldId))) failures.push(`Old workspace folder still exists: ${oldId}`)
-  if (existsSync(join(workspacesDir, '.archive', oldId))) failures.push(`Old archived workspace folder still exists: ${oldId}`)
-  const dir = profileDir(hermesHome, engineBotId)
-  const memPath = join(dir, 'lilbot-memory.json')
-  if (existsSync(memPath)) {
-    const parsed = JSON.parse(readFileSync(memPath, 'utf8')) as Record<string, unknown>
-    if (parsed.bot_id !== newId) failures.push('lilbot-memory.json bot_id does not match new id')
-    const tokenFile = existsSync(join(dataDir, 'engine-token')) ? join(dataDir, 'engine-token') : String(parsed.token_file ?? '')
-    if (tokenFile && existsSync(tokenFile) && parsed.creation_capability !== capabilityFor(tokenFile, newId)) {
-      failures.push('lilbot-memory.json creation_capability does not match new id')
+  if (workspacesDir !== null) {
+    if (existsSync(join(workspacesDir, oldId))) failures.push(`Old workspace folder still exists: ${oldId}`)
+    if (existsSync(join(workspacesDir, '.archive', oldId))) failures.push(`Old archived workspace folder still exists: ${oldId}`)
+  }
+  if (hermesHome !== null) {
+    const dir = profileDir(hermesHome, engineBotId)
+    const memPath = join(dir, 'lilbot-memory.json')
+    if (existsSync(memPath)) {
+      const parsed = parseJsonObject(memPath, 'lilbot-memory.json')
+      if (parsed.bot_id !== newId) failures.push('lilbot-memory.json bot_id does not match new id')
+      const tokenFile = existsSync(join(dataDir, 'engine-token')) ? join(dataDir, 'engine-token') : String(parsed.token_file ?? '')
+      if (tokenFile && existsSync(tokenFile) && parsed.creation_capability !== capabilityFor(tokenFile, newId)) {
+        failures.push('lilbot-memory.json creation_capability does not match new id')
+      }
     }
+    for (const name of ['lilbot-skills.json', 'lilbot-computers.json']) {
+      const file = join(dir, name)
+      if (existsSync(file) && parseJsonObject(file, name).botId === oldId) failures.push(`${name} still holds old bot id`)
+    }
+    if (existsSync(join(dir, 'lilbot-applied.json'))) failures.push('lilbot-applied.json still exists')
   }
-  for (const name of ['lilbot-skills.json', 'lilbot-computers.json']) {
-    const file = join(dir, name)
-    if (existsSync(file) && (JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>).botId === oldId) failures.push(`${name} still holds old bot id`)
-  }
-  if (existsSync(join(dir, 'lilbot-applied.json'))) failures.push('lilbot-applied.json still exists')
   return failures
 }

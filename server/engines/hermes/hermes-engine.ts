@@ -133,7 +133,7 @@ export class HermesEngine implements BotEngine {
   async prepareConnections(id: string, connections: import('../mcp-connection').McpConnection[]) {
     await this.requireBot(id)
     const run = (steps: Record<string, string> | null) => this.connections.prepare(id, connections, { staleTokens: staleTokenNames(connections, steps) })
-    if (!(await applied(id, 'connections', hashOf('v3', connections), run, connectionTokenSteps(connections))))
+    if (!(await applied(id, 'connections', hashOf('v2', connections), run, connectionTokenSteps(connections))))
       await applied(id, null, '', () => this.connections.prepare(id, connections, true))
   }
   async applyConnections(id: string, chatIds: string[]) {

@@ -11,16 +11,18 @@ Every `check:*` and `bun live-checks/*.ts` follows the development rules in `AGE
 - `bun run dev:setup`: create or repair the development home (`~/lilbot-dev/`) and start `lilbot-dev-hermes.service`.
 - `bun run dev`: Vite with hot reload, proxying to a dev server on `LILBOT_PORT` (default 3371); production ports are
   refused. `bun run start`: run the server (`LILBOT_PORT`, `LILBOT_HOST`).
-- `bun run deploy` (`--status`, `--bootstrap`): build and roll out a verified commit; see [deploy.md](deploy.md).
+- `bun run deploy` (`--status`, `--bootstrap`, `--maintenance stop|start`): build and roll out a verified commit, or
+  stop/start the service cleanly under `<data>/deploy/lock/` for offline maintenance; see [deploy.md](deploy.md).
 - `bun run t3:sign-in`: redeem a T3 pairing code from stdin or `--code-file`, into `LILBOT_DATA_DIR`.
 - `bun run build:helper`: build the standalone computer helper. `bun run build:helper-downloads [data dir]`: build the
   Linux downloads for a server.
 - `bun run history:exclude -- --bot <id> --session <id> --reason "<text>" [--yes]`: operator CLI to permanently remove
   one non-main engine session from LilBot's history copy (previews without `--yes`).
-- `bun run bot:rekey -- --from <oldId> [--to <newId>] [--data-dir <dir>] [--workspaces-dir <dir>] [--hermes-home <dir>] [--clear-main-chat] [--dry-run] [--yes]`:
-  one-time operator CLI to re-key a bot's LilBot id across SQLite, workspace folders and engine profile settings while
-  keeping its engine binding (`engine_bot_id`) intact (previews without `--yes`; refuses to run while the server holds
-  the database open). See [server.md](server.md#re-keying-a-bot-id).
+- `bun run bot:rekey -- --from <oldId> --data-dir <dir> (--workspaces-dir <dir> | --skip-workspaces) (--hermes-home <dir> | --skip-hermes) [--to <newId>] [--clear-main-chat] [--dry-run] [--yes]`
+  (and `--undo <backupDir> [--dry-run] [--yes]`): one-time operator CLI to re-key a bot's LilBot id across SQLite,
+  workspace folders and engine profile settings while keeping its engine binding (`engine_bot_id`) intact. Requires
+  explicit paths (no production defaults), takes a private online backup before writing, previews without `--yes`, and
+  refuses to run unless the service is stopped and no work is in flight. See [server.md](server.md#re-keying-a-bot-id).
 
 ## Live checks
 

@@ -2,31 +2,35 @@
 import type { Database } from 'bun:sqlite'
 import { defaultAvatar } from '../../shared/avatar'
 import { scanReferences, verifyDatabaseRekey } from './rekey-check'
+import { rewriteCompositeIds, runChanges } from './rekey-composite'
 import { rewriteAttachmentMessage, rewriteChatItem, rewriteHistoryEvent, rewriteStoredAttachment, rewriteThreadData } from './rekey-json'
-import { buildIdMaps, PLAIN_TARGETS, tableExists, tableRowCounts } from './rekey-targets'
+import { buildIdMaps, type IdMaps, PLAIN_TARGETS, tableExists, tableRowCounts } from './rekey-targets'
 
 export interface BotState {
-  status: 'ready' | 'already_rekeyed' | 'missing' | 'collision'
+  status: 'ready' | 'already_rekeyed' | 'missing' | 'collision' | 'deleted' | 'wrong_target'
   engineBotId?: string
   existingNewId?: string
 }
 
-function runChanges(db: Database, sql: string, ...params: (string | number | null)[]) {
-  db.query(sql).run(...params)
-  return (db.query<{ c: number }, []>('SELECT changes() AS c').get() as { c: number }).c
-}
-
-export function inspectBotState(db: Database, oldId: string, requestedNewId?: string): BotState {
-  const oldRow = db.query<{ id: string; engine_bot_id: string }, [string]>('SELECT id, engine_bot_id FROM bots WHERE id = ?').get(oldId)
+export function inspectBotState(db: Database, oldId: string, requestedNewId?: string, journalTarget?: { from: string; to: string }): BotState {
+  const oldRow = db.query<{ id: string; engine_bot_id: string; deletion: string | null }, [string]>('SELECT id, engine_bot_id, deletion FROM bots WHERE id = ?').get(oldId)
   if (oldRow) {
+    if (oldRow.deletion !== null) return { status: 'deleted' }
     if (requestedNewId && db.query('SELECT 1 FROM bots WHERE id = ?').get(requestedNewId)) return { status: 'collision' }
     return { status: 'ready', engineBotId: oldRow.engine_bot_id }
   }
-  if (requestedNewId) {
-    const target = db.query<{ id: string; engine_bot_id: string }, [string]>('SELECT id, engine_bot_id FROM bots WHERE id = ?').get(requestedNewId)
-    return target ? { status: 'already_rekeyed', engineBotId: target.engine_bot_id, existingNewId: target.id } : { status: 'missing' }
+  const targetId = requestedNewId ?? (journalTarget?.from === oldId ? journalTarget.to : undefined)
+  if (targetId) {
+    const target = db.query<{ id: string; engine_bot_id: string; deletion: string | null }, [string]>('SELECT id, engine_bot_id, deletion FROM bots WHERE id = ?').get(targetId)
+    if (!target) return { status: 'missing' }
+    if (target.deletion !== null) return { status: 'deleted' }
+    const journalMatches = journalTarget?.from === oldId && journalTarget.to === target.id
+    if (target.engine_bot_id === oldId || journalMatches) return { status: 'already_rekeyed', engineBotId: target.engine_bot_id, existingNewId: target.id }
+    return { status: 'wrong_target', engineBotId: target.engine_bot_id, existingNewId: target.id }
   }
-  const byEngine = db.query<{ id: string; engine_bot_id: string }, [string, string]>('SELECT id, engine_bot_id FROM bots WHERE engine_bot_id = ? AND id <> ?').all(oldId, oldId)
+  const byEngine = db
+    .query<{ id: string; engine_bot_id: string }, [string, string]>('SELECT id, engine_bot_id FROM bots WHERE engine_bot_id = ? AND id <> ? AND deletion IS NULL')
+    .all(oldId, oldId)
   return byEngine.length === 1 ? { status: 'already_rekeyed', engineBotId: byEngine[0].engine_bot_id, existingNewId: byEngine[0].id } : { status: 'missing' }
 }
 
@@ -46,105 +50,57 @@ export function previewDatabaseRekey(db: Database, oldId: string, newId: string)
 
 function materializeAvatarIfNeeded(db: Database, oldId: string) {
   if (!tableExists(db, 'bot_prefs')) return
-  const row = db
+  const pref = db
     .query<{ avatar_shape: string | null; avatar_color: string | null; avatar_face_color: string | null }, [string]>(
       'SELECT avatar_shape, avatar_color, avatar_face_color FROM bot_prefs WHERE bot_id = ?'
     )
     .get(oldId)
-  if (!row || (row.avatar_shape && row.avatar_color && row.avatar_face_color)) return
   const fallback = defaultAvatar(oldId)
-  db.query(
-    'UPDATE bot_prefs SET avatar_shape = COALESCE(avatar_shape, ?), avatar_color = COALESCE(avatar_color, ?), avatar_face_color = COALESCE(avatar_face_color, ?) WHERE bot_id = ?'
-  ).run(fallback.shape, fallback.color, fallback.faceColor ?? null, oldId)
-}
-
-function rewriteCompositeIds(
-  db: Database,
-  oldId: string,
-  newId: string,
-  waitIds: ReadonlyMap<string, string>,
-  deliveryIds: ReadonlyMap<string, string>,
-  workItemIds: ReadonlyMap<string, string>,
-  record: (table: string, count: number) => void
-) {
-  for (const [oldWait, newWait] of waitIds) record('thread_waits', db.query('UPDATE thread_waits SET id = ? WHERE id = ?').run(newWait, oldWait).changes)
-  if (tableExists(db, 'thread_waits') && deliveryIds.size > 0) {
-    for (const row of db.query<{ id: string; delivery_id: string }, []>('SELECT id, delivery_id FROM thread_waits WHERE delivery_id IS NOT NULL').all()) {
-      const mapped = deliveryIds.get(row.delivery_id)
-      if (mapped) record('thread_waits', db.query('UPDATE thread_waits SET delivery_id = ? WHERE id = ?').run(mapped, row.id).changes)
-    }
-  }
-  for (const [oldDeliv, newDeliv] of deliveryIds) {
-    record('thread_deliveries', db.query('UPDATE thread_deliveries SET id = ? WHERE id = ?').run(newDeliv, oldDeliv).changes)
-    if (tableExists(db, 'thread_files')) {
-      record('thread_files', db.query('UPDATE thread_files SET message_id = ? WHERE message_id = ?').run(newDeliv, oldDeliv).changes)
-      record('thread_files', db.query('UPDATE thread_files SET message_id = ? WHERE message_id = ?').run(`${newDeliv}:reply`, `${oldDeliv}:reply`).changes)
-    }
-  }
-  if (tableExists(db, 'thread_files')) {
-    for (const row of db
-      .query<{ id: string; message_id: string }, [string, string]>('SELECT id, message_id FROM thread_files WHERE message_id LIKE ? OR message_id LIKE ?')
-      .all(`${oldId}:%`, `group:%:${oldId}:reply`)) {
-      const next = row.message_id.startsWith(`${oldId}:`) ? `${newId}${row.message_id.slice(oldId.length)}` : `${row.message_id.slice(0, -(oldId.length + 6))}${newId}:reply`
-      record('thread_files', db.query('UPDATE thread_files SET message_id = ? WHERE id = ?').run(next, row.id).changes)
-    }
-  }
-  const itemRefs = [
-    ['work_items', 'id'],
-    ['work_items', 'parent_id'],
-    ['thread_links', 'parent_id'],
-    ['work_evidence', 'item_id'],
-    ['work_events', 'item_id'],
-    ['work_answers', 'item_id'],
-    ['work_checks', 'item_id'],
-    ['goal_reviews', 'item_id']
-  ] as const
-  for (const [oldItem, newItem] of workItemIds) {
-    for (const [table, col] of itemRefs) if (tableExists(db, table)) record(table, db.query(`UPDATE "${table}" SET "${col}" = ? WHERE "${col}" = ?`).run(newItem, oldItem).changes)
-    if (tableExists(db, 'work_evidence')) {
-      for (const row of db.query<{ id: string }, [string]>('SELECT id FROM work_evidence WHERE id LIKE ?').all(`${oldItem}:%`)) {
-        record('work_evidence', db.query('UPDATE work_evidence SET id = ? WHERE id = ?').run(`${newItem}${row.id.slice(oldItem.length)}`, row.id).changes)
-      }
-    }
-    if (tableExists(db, 'work_checks')) {
-      for (const row of db.query<{ id: string }, [string]>('SELECT id FROM work_checks WHERE id LIKE ?').all(`${oldItem}:check:%`)) {
-        const nextCheck = `${newItem}${row.id.slice(oldItem.length)}`
-        record('work_checks', db.query('UPDATE work_checks SET id = ? WHERE id = ?').run(nextCheck, row.id).changes)
-        if (tableExists(db, 'work_check_chats')) record('work_check_chats', db.query('UPDATE work_check_chats SET check_id = ? WHERE check_id = ?').run(nextCheck, row.id).changes)
-      }
-    }
+  if (!pref) {
+    db.query('INSERT INTO bot_prefs (bot_id, avatar_shape, avatar_color, avatar_face_color) VALUES (?, ?, ?, ?)').run(oldId, fallback.shape, fallback.color, fallback.faceColor)
+  } else if (!pref.avatar_shape || !pref.avatar_color || !pref.avatar_face_color) {
+    db.query(
+      'UPDATE bot_prefs SET avatar_shape = COALESCE(avatar_shape, ?), avatar_color = COALESCE(avatar_color, ?), avatar_face_color = COALESCE(avatar_face_color, ?) WHERE bot_id = ?'
+    ).run(fallback.shape, fallback.color, fallback.faceColor, oldId)
   }
 }
 
-function rewriteJsonColumns(
-  db: Database,
-  oldId: string,
-  newId: string,
-  deliveryIds: ReadonlyMap<string, string>,
-  workItemIds: ReadonlyMap<string, string>,
-  record: (table: string, count: number) => void
-) {
-  for (const [table, fn] of [
-    ['attachments', (raw: string) => rewriteStoredAttachment(raw, oldId, newId)],
-    ['attachment_messages', (raw: string) => rewriteAttachmentMessage(raw, oldId, newId)],
-    ['threads', (raw: string) => rewriteThreadData(raw, oldId, newId, deliveryIds, workItemIds)]
-  ] as const) {
-    if (!tableExists(db, table)) continue
-    for (const row of db.query<{ id: string; data: string }, [string]>(`SELECT id, data FROM "${table}" WHERE instr(data, ?) > 0`).all(oldId)) {
-      const next = fn(row.data)
-      if (next !== null) record(table, db.query(`UPDATE "${table}" SET data = ? WHERE id = ?`).run(next, row.id).changes)
+function rewriteJsonColumns(db: Database, oldId: string, newId: string, maps: IdMaps, record: (table: string, n: number) => void) {
+  const { deliveryIds, workItemIds } = maps
+  if (tableExists(db, 'attachments')) {
+    for (const row of db.query<{ id: string; data: string }, [string]>('SELECT id, data FROM attachments WHERE instr(data, ?) > 0').all(oldId)) {
+      const next = rewriteStoredAttachment(row.data, oldId, newId)
+      if (next !== null) record('attachments', runChanges(db, 'UPDATE attachments SET data = ? WHERE id = ?', next, row.id))
+    }
+  }
+  if (tableExists(db, 'attachment_messages')) {
+    for (const row of db.query<{ id: string; data: string }, [string]>('SELECT id, data FROM attachment_messages WHERE instr(data, ?) > 0').all(oldId)) {
+      const next = rewriteAttachmentMessage(row.data, oldId, newId)
+      if (next !== null) record('attachment_messages', runChanges(db, 'UPDATE attachment_messages SET data = ? WHERE id = ?', next, row.id))
+    }
+  }
+  if (tableExists(db, 'threads')) {
+    for (const row of db.query<{ id: string; data: string }, []>('SELECT id, data FROM threads').all()) {
+      const next = rewriteThreadData(row.data, oldId, newId, deliveryIds, workItemIds)
+      if (next !== null) record('threads', runChanges(db, 'UPDATE threads SET data = ? WHERE id = ?', next, row.id))
     }
   }
   if (tableExists(db, 'history_items')) {
-    const q = `SELECT rowid, item FROM history_items WHERE json_extract(item,'$.kind') IN ('connection.sign_in','user','tool') AND instr(item, ?) > 0`
-    for (const row of db.query<{ rowid: number; item: string }, [string]>(q).all(oldId)) {
+    for (const row of db
+      .query<{ bot: string; id: string; item: string }, [string]>(
+        `SELECT bot, id, item FROM history_items WHERE json_extract(item,'$.kind') IN ('connection.sign_in','user','tool') AND instr(item, ?) > 0`
+      )
+      .all(oldId)) {
       const next = rewriteChatItem(row.item, oldId, newId, workItemIds)
-      if (next !== null) record('history_items', runChanges(db, 'UPDATE history_items SET item = ? WHERE rowid = ?', next, row.rowid))
+      if (next !== null) record('history_items', runChanges(db, 'UPDATE history_items SET item = ? WHERE bot = ? AND id = ?', next, row.bot, row.id))
     }
   }
   if (tableExists(db, 'history_events')) {
-    const q = `SELECT rowid, event FROM history_events WHERE json_extract(event,'$.type') IN ('connection.sign_in','user.message') AND instr(event, ?) > 0`
-    for (const row of db.query<{ rowid: number; event: string }, [string]>(q).all(oldId)) {
+    for (const row of db
+      .query<{ rowid: number; event: string }, [string]>(
+        `SELECT rowid, event FROM history_events WHERE json_extract(event,'$.type') IN ('connection.sign_in','user.message') AND instr(event, ?) > 0`
+      )
+      .all(oldId)) {
       const next = rewriteHistoryEvent(row.event, oldId, newId)
       if (next !== null) record('history_events', runChanges(db, 'UPDATE history_events SET event = ? WHERE rowid = ?', next, row.rowid))
     }
@@ -154,7 +110,7 @@ function rewriteJsonColumns(
 /** Re-keys `oldId` to `newId` inside one `BEGIN IMMEDIATE` transaction and verifies zero stale references before commit. */
 export function applyDatabaseRekey(db: Database, oldId: string, newId: string, engineBotId: string, clearMainChat: boolean) {
   const beforeRowCounts = tableRowCounts(db)
-  const { waitIds, deliveryIds, workItemIds } = buildIdMaps(db, oldId, newId)
+  const maps = buildIdMaps(db, oldId, newId)
   const tableCounts: Record<string, number> = {}
   const record = (table: string, count: number) => {
     if (count > 0) tableCounts[table] = (tableCounts[table] ?? 0) + count
@@ -176,8 +132,8 @@ export function applyDatabaseRekey(db: Database, oldId: string, newId: string, e
         deletedCheckpointRows = runChanges(db, 'DELETE FROM memory_checkpoint_reviewed WHERE bot_id = ?', oldId)
         record('memory_checkpoint_reviewed', deletedCheckpointRows)
       }
-      rewriteCompositeIds(db, oldId, newId, waitIds, deliveryIds, workItemIds, record)
-      rewriteJsonColumns(db, oldId, newId, deliveryIds, workItemIds, record)
+      rewriteCompositeIds(db, maps, record)
+      rewriteJsonColumns(db, oldId, newId, maps, record)
       if (clearMainChat && tableExists(db, 'bot_prefs')) {
         clearedMainChat = runChanges(db, 'UPDATE bot_prefs SET main_chat_id = NULL WHERE bot_id = ? AND main_chat_id IS NOT NULL', newId) > 0
       }

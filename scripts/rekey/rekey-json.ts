@@ -30,11 +30,20 @@ function rewriteChatItemObject(item: Obj, oldId: string, newId: string, workItem
     changed = true
   }
   if (item.kind === 'user' && rewriteAttachmentsArray(item.attachments, oldId, newId)) changed = true
-  if (item.kind === 'tool' && typeof item.workItemId === 'string') {
-    const mapped = workItemIds.get(item.workItemId)
-    if (mapped) {
-      item.workItemId = mapped
-      changed = true
+  if (item.kind === 'tool') {
+    if (typeof item.workItemId === 'string') {
+      const mapped = workItemIds.get(item.workItemId)
+      if (mapped) {
+        item.workItemId = mapped
+        changed = true
+      }
+    }
+    if (typeof item.toolId === 'string' && item.toolId.startsWith('work:')) {
+      const mapped = workItemIds.get(item.toolId.slice('work:'.length))
+      if (mapped) {
+        item.toolId = `work:${mapped}`
+        changed = true
+      }
     }
   }
   return changed

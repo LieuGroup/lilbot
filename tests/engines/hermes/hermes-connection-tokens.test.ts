@@ -50,7 +50,7 @@ test('rotated bearer tokens force replacement even when url, tools, hardening an
   ]
 
   // Simulate an earlier intact apply under old-bot: lilbot-applied.json records old token hashes (never raw tokens).
-  await applied('p1', 'connections', hashOf('v3', [oldT3, oldSys]), async () => {}, connectionTokenSteps([oldT3, oldSys]))
+  await applied('p1', 'connections', hashOf('v2', [oldT3, oldSys]), async () => {}, connectionTokenSteps([oldT3, oldSys]))
   const appliedText = readFileSync(join(root, 'profiles/p1/lilbot-applied.json'), 'utf8')
   expect(appliedText).not.toContain(oldT3.bearerToken)
   expect(appliedText).not.toContain(oldSys.bearerToken)
@@ -60,7 +60,7 @@ test('rotated bearer tokens force replacement even when url, tools, hardening an
   const ran = await applied(
     'p1',
     'connections',
-    hashOf('v3', [newT3, newSys]),
+    hashOf('v2', [newT3, newSys]),
     async steps => {
       await prepareConnections(fake, [newT3, newSys], staleTokenNames([newT3, newSys], steps))
     },
@@ -80,7 +80,7 @@ test('rotated bearer tokens force replacement even when url, tools, hardening an
   await applied(
     'p1',
     'connections',
-    hashOf('v3', [newT3, newSys, extra]),
+    hashOf('v2', [newT3, newSys, extra]),
     async steps => {
       await prepareConnections(thirdSocket, [newT3, newSys, extra], staleTokenNames([newT3, newSys, extra], steps))
     },
@@ -88,6 +88,29 @@ test('rotated bearer tokens force replacement even when url, tools, hardening an
   )
   expect(thirdSocket.calls.filter(c => c.method === 'mcp.servers.remove')).toEqual([])
   expect(thirdSocket.calls.filter(c => c.method === 'mcp.servers.add').map(c => c.params.name)).toEqual(['lilbot_c_demo'])
+})
+
+test('an untouched existing bot with a pre-PR v2 lilbot-applied.json has nothing rewritten on startup', async () => {
+  const t3 = t3Connection('http://127.0.0.1:3370', 'token', 'default')
+  const sys = systemConnection('http://127.0.0.1:3370', 'token', 'default', ['lilbot_about'], 'v1')
+  const existing = [
+    { name: 'lilbot_t3', url: serverConfig(t3).url, enabled: true, tools: serverConfig(t3).tools },
+    { name: 'lilbot_system', url: serverConfig(sys).url, enabled: true, tools: serverConfig(sys).tools }
+  ]
+  // Pre-PR applied file: v2 connections hash only, no connToken:* step entries.
+  await applied('p1', 'connections', hashOf('v2', [t3, sys]), async () => {})
+  const fake = socket(existing)
+  const preparer = connectionPreparer(async () => ({ ...fake, close: () => {} }))
+  const ran = await applied(
+    'p1',
+    'connections',
+    hashOf('v2', [t3, sys]),
+    steps => preparer.prepare('p1', [t3, sys], { staleTokens: staleTokenNames([t3, sys], steps) }),
+    connectionTokenSteps([t3, sys])
+  )
+  expect(ran).toBe(false)
+  await applied('p1', null, '', () => preparer.prepare('p1', [t3, sys], true))
+  expect(fake.calls.filter(c => c.method === 'mcp.servers.remove' || c.method === 'mcp.servers.add' || c.method === 'reload.mcp')).toEqual([])
 })
 
 test('connectionPreparer also detects in-process bearer token rotation for the same server config', async () => {

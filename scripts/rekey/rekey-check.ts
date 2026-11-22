@@ -1,7 +1,7 @@
 /** Read-only reference scanning and post-rekey SQLite self-checks. Never reads or prints message or memory text. */
 import type { Database } from 'bun:sqlite'
 import { rewriteAttachmentMessage, rewriteChatItem, rewriteHistoryEvent, rewriteStoredAttachment, rewriteThreadData } from './rekey-json'
-import { buildIdMaps, PLAIN_TARGETS, tableExists, tableRowCounts } from './rekey-targets'
+import { buildIdMaps, escapeLike, PLAIN_TARGETS, tableExists, tableRowCounts } from './rekey-targets'
 
 /** Counts every remaining reference to `oldId` across plain columns, composite keys, and JSON columns. */
 export function scanReferences(db: Database, oldId: string, probeId = '__probe__'): Record<string, number> {
@@ -16,53 +16,83 @@ export function scanReferences(db: Database, oldId: string, probeId = '__probe__
   }
   if (tableExists(db, 'skill_imports'))
     add('skill_imports.source', db.query<{ n: number }, [string]>('SELECT count(*) AS n FROM skill_imports WHERE source = ?').get(`bot:${oldId}`)!.n)
-  if (tableExists(db, 'memory_checkpoint_reviewed')) {
+  if (tableExists(db, 'memory_checkpoint_reviewed'))
     add('memory_checkpoint_reviewed.bot_id', db.query<{ n: number }, [string]>('SELECT count(*) AS n FROM memory_checkpoint_reviewed WHERE bot_id = ?').get(oldId)!.n)
-  }
-  const { deliveryIds, workItemIds } = buildIdMaps(db, oldId, probeId)
+
+  const { deliveryIds, messageIds, workItemIds, checkIds } = buildIdMaps(db, oldId, probeId)
   add('thread_deliveries.id', deliveryIds.size)
-  add('work_items.id', workItemIds.size)
   if (tableExists(db, 'thread_files')) {
-    add(
-      'thread_files.message_id',
-      db.query<{ n: number }, [string, string]>('SELECT count(*) AS n FROM thread_files WHERE message_id LIKE ? OR message_id LIKE ?').get(`${oldId}:%`, `group:%:${oldId}:reply`)!
-        .n
-    )
+    for (const oldMsg of messageIds.keys()) {
+      add('thread_files.message_id', db.query<{ n: number }, [string]>('SELECT count(*) AS n FROM thread_files WHERE message_id = ?').get(oldMsg)!.n)
+      add('thread_files.id', db.query<{ n: number }, [string]>(`SELECT count(*) AS n FROM thread_files WHERE id LIKE ? ESCAPE '\\'`).get(`${escapeLike(oldMsg)}:%`)!.n)
+    }
   }
-  const groupIds = new Set<string>()
-  if (tableExists(db, 'thread_groups')) for (const row of db.query<{ thread_id: string }, []>('SELECT thread_id FROM thread_groups').all()) groupIds.add(row.thread_id)
-  if (tableExists(db, 'work_items'))
-    for (const row of db.query<{ origin_id: string }, []>("SELECT DISTINCT origin_id FROM work_items WHERE origin_kind = 'group'").all()) groupIds.add(row.origin_id)
-  for (const gid of groupIds) {
-    const memberItem = `${gid}:${oldId}`
+  for (const oldItem of workItemIds.keys()) {
+    if (tableExists(db, 'work_items')) {
+      add('work_items.id', db.query<{ n: number }, [string]>('SELECT count(*) AS n FROM work_items WHERE id = ?').get(oldItem)!.n)
+      add('work_items.parent_id', db.query<{ n: number }, [string]>('SELECT count(*) AS n FROM work_items WHERE parent_id = ?').get(oldItem)!.n)
+    }
     for (const [table, col] of [
-      ['work_items', 'parent_id'],
       ['thread_links', 'parent_id'],
       ['work_evidence', 'item_id'],
       ['work_events', 'item_id'],
       ['work_answers', 'item_id'],
       ['work_checks', 'item_id'],
-      ['goal_reviews', 'item_id']
+      ['goal_reviews', 'item_id'],
+      ['system_changes', 'target']
     ] as const) {
-      if (tableExists(db, table)) add(`${table}.${col}`, db.query<{ n: number }, [string]>(`SELECT count(*) AS n FROM "${table}" WHERE "${col}" = ?`).get(memberItem)!.n)
+      if (tableExists(db, table)) add(`${table}.${col}`, db.query<{ n: number }, [string]>(`SELECT count(*) AS n FROM "${table}" WHERE "${col}" = ?`).get(oldItem)!.n)
     }
     if (tableExists(db, 'work_evidence'))
-      add('work_evidence.id', db.query<{ n: number }, [string]>('SELECT count(*) AS n FROM work_evidence WHERE id LIKE ?').get(`${memberItem}:%`)!.n)
-    if (tableExists(db, 'work_checks'))
-      add('work_checks.id', db.query<{ n: number }, [string]>('SELECT count(*) AS n FROM work_checks WHERE id LIKE ?').get(`${memberItem}:check:%`)!.n)
-    if (tableExists(db, 'work_check_chats')) {
-      add('work_check_chats.check_id', db.query<{ n: number }, [string]>('SELECT count(*) AS n FROM work_check_chats WHERE check_id LIKE ?').get(`${memberItem}:check:%`)!.n)
+      add('work_evidence.id', db.query<{ n: number }, [string]>(`SELECT count(*) AS n FROM work_evidence WHERE id LIKE ? ESCAPE '\\'`).get(`${escapeLike(oldItem)}:%`)!.n)
+    if (tableExists(db, 'work_answers')) add('work_answers.id', db.query<{ n: number }, [string]>('SELECT count(*) AS n FROM work_answers WHERE id = ?').get(`drop-${oldItem}`)!.n)
+    if (tableExists(db, 'activity_cursors'))
+      add('activity_cursors.chat_id', db.query<{ n: number }, [string]>('SELECT count(*) AS n FROM activity_cursors WHERE chat_id = ?').get(`work:${oldItem}`)!.n)
+    if (tableExists(db, 'history_items'))
+      add('history_items.id', db.query<{ n: number }, [string]>('SELECT count(*) AS n FROM history_items WHERE id = ?').get(`work:${oldItem}`)!.n)
+  }
+  for (const oldCheck of checkIds.keys()) {
+    if (tableExists(db, 'work_checks')) {
+      add('work_checks.id', db.query<{ n: number }, [string]>('SELECT count(*) AS n FROM work_checks WHERE id = ?').get(oldCheck)!.n)
+      add('work_checks.verdict_request', db.query<{ n: number }, [string]>('SELECT count(*) AS n FROM work_checks WHERE verdict_request = ?').get(`verdict-${oldCheck}`)!.n)
+    }
+    if (tableExists(db, 'work_check_chats'))
+      add('work_check_chats.check_id', db.query<{ n: number }, [string]>('SELECT count(*) AS n FROM work_check_chats WHERE check_id = ?').get(oldCheck)!.n)
+    if (tableExists(db, 'work_answers'))
+      add('work_answers.id', db.query<{ n: number }, [string]>('SELECT count(*) AS n FROM work_answers WHERE id = ?').get(`check-${oldCheck}`)!.n)
+    if (tableExists(db, 'activity_cursors')) {
+      add('activity_cursors.chat_id', db.query<{ n: number }, [string]>('SELECT count(*) AS n FROM activity_cursors WHERE chat_id = ?').get(`check:${oldCheck}`)!.n)
+      add(
+        'activity_cursors.event_key',
+        db.query<{ n: number }, [string]>(`SELECT count(*) AS n FROM activity_cursors WHERE event_key LIKE ? ESCAPE '\\'`).get(`${escapeLike(oldCheck)}:%`)!.n
+      )
     }
   }
-  for (const [table, column, fn] of [
-    ['attachments', 'data', (raw: string) => rewriteStoredAttachment(raw, oldId, probeId)],
-    ['attachment_messages', 'data', (raw: string) => rewriteAttachmentMessage(raw, oldId, probeId)],
-    ['threads', 'data', (raw: string) => rewriteThreadData(raw, oldId, probeId, deliveryIds, workItemIds)]
-  ] as const) {
-    if (!tableExists(db, table)) continue
+  if (tableExists(db, 'activity_cursors')) {
+    for (const oldD of deliveryIds.keys()) {
+      add('activity_cursors.chat_id', db.query<{ n: number }, [string]>('SELECT count(*) AS n FROM activity_cursors WHERE chat_id = ?').get(`thread:${oldD}`)!.n)
+      add(
+        'activity_cursors.event_key',
+        db.query<{ n: number }, [string]>(`SELECT count(*) AS n FROM activity_cursors WHERE event_key LIKE ? ESCAPE '\\'`).get(`${escapeLike(oldD)}:%`)!.n
+      )
+    }
+  }
+  if (tableExists(db, 'attachments')) {
     let count = 0
-    for (const row of db.query<{ val: string }, [string]>(`SELECT "${column}" AS val FROM "${table}" WHERE instr("${column}", ?) > 0`).all(oldId)) if (fn(row.val) !== null) count++
-    add(`${table}.${column}`, count)
+    for (const row of db.query<{ data: string }, [string]>('SELECT data FROM attachments WHERE instr(data, ?) > 0').all(oldId))
+      if (rewriteStoredAttachment(row.data, oldId, probeId) !== null) count++
+    add('attachments.data', count)
+  }
+  if (tableExists(db, 'attachment_messages')) {
+    let count = 0
+    for (const row of db.query<{ data: string }, [string]>('SELECT data FROM attachment_messages WHERE instr(data, ?) > 0').all(oldId))
+      if (rewriteAttachmentMessage(row.data, oldId, probeId) !== null) count++
+    add('attachment_messages.data', count)
+  }
+  if (tableExists(db, 'threads')) {
+    let count = 0
+    for (const row of db.query<{ data: string }, []>('SELECT data FROM threads').all()) if (rewriteThreadData(row.data, oldId, probeId, deliveryIds, workItemIds) !== null) count++
+    add('threads.data', count)
   }
   if (tableExists(db, 'history_items')) {
     let count = 0
@@ -99,13 +129,14 @@ export function verifyDatabaseRekey(db: Database, oldId: string, newId: string, 
       if (afterCounts[table] !== expected) failures.push(`Row count mismatch in ${table}: before=${before}, expected=${expected}, after=${afterCounts[table]}`)
     }
   }
+  const escEngine = escapeLike(engineBotId)
   const kept: Record<string, number> = {
     'bots.engine_bot_id': db.query<{ n: number }, [string]>('SELECT count(*) AS n FROM bots WHERE engine_bot_id = ?').get(engineBotId)!.n,
     'history_items.id_prefix': tableExists(db, 'history_items')
-      ? db.query<{ n: number }, [string]>('SELECT count(*) AS n FROM history_items WHERE id LIKE ?').get(`hermes:${engineBotId}:%`)!.n
+      ? db.query<{ n: number }, [string]>(`SELECT count(*) AS n FROM history_items WHERE id LIKE ? ESCAPE '\\'`).get(`hermes:${escEngine}:%`)!.n
       : 0,
     'message_origins.row_id_prefix': tableExists(db, 'message_origins')
-      ? db.query<{ n: number }, [string]>('SELECT count(*) AS n FROM message_origins WHERE row_id LIKE ?').get(`hermes:${engineBotId}:%`)!.n
+      ? db.query<{ n: number }, [string]>(`SELECT count(*) AS n FROM message_origins WHERE row_id LIKE ? ESCAPE '\\'`).get(`hermes:${escEngine}:%`)!.n
       : 0,
     'computer_bytes.global_sentinel': tableExists(db, 'computer_bytes') ? db.query<{ n: number }, []>("SELECT count(*) AS n FROM computer_bytes WHERE bot_id = ''").get()!.n : 0,
     'work_levels.global_sentinel': tableExists(db, 'work_levels') ? db.query<{ n: number }, []>("SELECT count(*) AS n FROM work_levels WHERE bot_id = ''").get()!.n : 0
