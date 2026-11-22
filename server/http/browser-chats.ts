@@ -21,7 +21,8 @@ export class BrowserChats {
     private sendFrame: (frame: EventFrame) => void,
     private activity?: ActivityService,
     private threads?: ThreadService,
-    private attachments?: AttachmentService
+    private attachments?: AttachmentService,
+    private onRead?: () => void
   ) {}
 
   closeChat(chatId: string) {
@@ -45,6 +46,7 @@ export class BrowserChats {
 
   /** Opens a chat through `open`, keeps its handle for this connection and forwards its events. */
   async track(afterResponse: AfterResponse, open: (onEvent: (event: ChatEvent) => void) => Promise<OpenChat>) {
+    this.onRead?.()
     if (this.chats.size >= MAX_OPEN_CHATS) throw new LilBotError('too_many_chats', 'Too many chats are open in this window.')
     // The browser only listens for a chat once it has the response naming it, so events that
     // arrive earlier wait here and go out right after that response.
@@ -92,6 +94,11 @@ export class BrowserChats {
       }
     }
     return this.attachments ? this.attachments.merge(chat.snapshot) : chat.snapshot
+  }
+
+  async history(botId: string, cursor?: string, limit?: number) {
+    this.onRead?.()
+    return this.mergeHistory(botId, await this.bots.historyPage(botId, cursor, limit))
   }
 
   mergeHistory(botId: string, page: import('../../shared/history-schema').HistoryPage) {

@@ -70,6 +70,7 @@ export const ChatItem = memo(function ChatItem({ item, botId, queued = false }: 
         </Suspense>
       )
     case 'compaction':
+    case 'connection.sign_in':
       return null
     case 'error':
       return item.reason ? <ErrorBubble text={failureLine(item.reason, useBotStore.getState().bots.find(bot => bot.id === botId)?.name)} /> : <ErrorBubble text={item.text} />

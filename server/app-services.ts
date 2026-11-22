@@ -142,6 +142,7 @@ export function createAppServices(
       mem.forgetBot(botId)
       links.forgetBot(botId)
       goals.forgetBot(botId)
+      mcp.services.forgetBot(botId)
     },
     changed: botsChanged,
     memoryChanged,

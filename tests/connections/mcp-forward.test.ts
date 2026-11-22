@@ -15,7 +15,7 @@ afterAll(() => oauth.stop())
 async function setup(service = oauth, signIn = true) {
   const f = connectionsFixture()
   const added: any = await f.services.add('bot-a', { name: 'svc', address: service.address, requestId: crypto.randomUUID() })
-  if (signIn && added.signInLink) await f.callback(await f.browse(added.signInLink))
+  if (signIn && added.cardId) await f.callback(await f.browse(f.linkFor(added.cardId)))
   const forward = createServiceForward({
     services: f.services,
     store: f.store,

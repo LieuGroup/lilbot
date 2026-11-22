@@ -402,13 +402,15 @@ Full OAuth, discovery, forwarding and in-place apply details:
 - **Untrusted inputs & SSRF:** names are 2–31 `[a-z0-9_]`; addresses/OAuth endpoints must be HTTPS or loopback HTTP, no
   credentials/fragments/secrets (`memoryRefusal`), internet services cannot target loopback/this machine, and nothing
   follows redirects. Service tool output is fenced as `<outside-service-output>` data, never Oscar's instructions.
-- **LilBot-held OAuth & tokens:** `add` probes the service; on 401 LilBot discovers auth metadata (RFC 9728 / RFC 8414 /
-  OpenID, issuer-checked, same-origin endpoints), requires PKCE S256, registers dynamically (RFC 7591 public client; no
-  API keys yet, #63) and returns a sign-in link with RFC 8707 resource indicator, `state` (10 min, single-use) and `iss`
-  check. Return URL is `https://<LILBOT_ACCESS_HOST>/api/connections/callback` (route off by default,
-  `LILBOT_ACCESS_CALLBACK_ENABLED=1` opts in; paste fallback via `finish` works without it and requires Oscar's visible
-  user message in the same bot/conversation). Tokens and client secrets live ONLY in `<data>/mcp-credentials.json`
-  (0600) — never in chats, logs, memory or engine configs; LilBot refreshes 30 s before expiry or on 401.
+- **LilBot-held OAuth, sign-in cards (#216) & tokens:** `add` probes the service; on 401 LilBot discovers auth metadata
+  (RFC 9728 / RFC 8414 / OpenID, issuer-checked, same-origin endpoints), requires PKCE S256, registers dynamically
+  (RFC 7591 public client; no API keys yet, #63) and places an in-chat `connection.sign_in` card (`connection_sign_in_cards`,
+  10 min, single-use `state`, `iss` check, expires on restart; link/state/pasted URL never stored, broadcast, logged or
+  given to bots). Browsers manage cards via `connections.signIn.{open,finish,cancel,restart}`. Return URL is
+  `https://<LILBOT_ACCESS_HOST>/api/connections/callback` (route off by default, `LILBOT_ACCESS_CALLBACK_ENABLED=1` opts
+  in; browser card paste and legacy bot `finish` work without it). Tokens and client secrets live ONLY in
+  `<data>/mcp-credentials.json` (0600) — never in chats, logs, memory or engine configs; LilBot refreshes 30 s before
+  expiry or on 401.
 - **Forwarding & in-place apply:** engines connect to `/engine/connections/<id>/mcp` (private listener, loopback, no
   Origin, per-bot HMAC key, POST/DELETE only, never forwards 401; signed-out answers `connection_status`). A 1 s watcher
   (`connection-apply.ts`, `BotEngine.applyConnections`) updates profiles and applies tool changes in place to open main

@@ -1,39 +1,38 @@
-/** The MCP services bots add (#187): LilBot connects to them, does the OAuth sign-in, holds the tokens and keeps the
- *  state. Every bot gets every service, through LilBot's forwarding route (`mcp-forward.ts`). Names and addresses come
- *  from a bot and outside services: untrusted text throughout. */
-import type { McpService } from '../../shared/connections-schema'
+/** The MCP services bots add (#187) and their in-chat sign-in cards (#216): LilBot connects to them, does the OAuth
+ *  sign-in, holds the tokens and keeps the state. Every bot gets every service through `mcp-forward.ts`. Names,
+ *  addresses and card labels/reasons come from a bot or outside services: untrusted plain text throughout. */
+import type { ConnectionSignInCard, McpService } from '../../shared/connections-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import { ENGINE_PREFIX, serviceAddress } from './mcp-address'
 import type { McpConnectionStore, StoredConnection } from './mcp-connection-store'
 import type { McpCredentials } from './mcp-credentials'
 import { discover, register } from './mcp-oauth-discovery'
-import { exchangeCode } from './mcp-oauth-tokens'
 import { probe } from './mcp-probe'
 import { returnOf, type SignInFlows, type SignInReturn } from './mcp-sign-in'
+import type { SignInCardStore } from './mcp-sign-in-cards'
+import { cardToolReply, completeSignIn, connectionNotFound, finishCardPaste, signInRefused, signInUnavailable } from './mcp-sign-in-complete'
+import { SignInCardService } from './mcp-sign-in-service'
 
 /** Every service costs each bot listing lines on every turn. */
 const MAX_SERVICES = 20
 const NEXT = 'Its tools reach you, and every other bot, from your next message in this conversation (not in this turn).'
 
-interface ConnectionsHost {
+export interface ConnectionsHost {
   botName(botId: string): string
   botExists(botId: string): boolean
   callingChat(botId: string, requestId: string): Promise<string>
   userSentInChat(botId: string, chatId: string, text: string): boolean
   signedIn(botId: string, chatId: string, name: string, runId: string): void
+  signInCancelled?(botId: string, chatId: string, name: string, runId: string): void
+  signInFailed?(botId: string, chatId: string, name: string, reason: string, runId: string): void
+  cardChanged?(card: ConnectionSignInCard): void
   changed(): void
   toolName?: (server: string, tool: string) => string
 }
 
-const notFound = () => new LilBotError('connection_not_found', 'There is no connection with that id. lilbot_status with area connections lists them.')
-const signInRefused = () =>
-  new LilBotError(
-    'sign_in_refused',
-    'That address does not finish a sign-in LilBot started in this conversation in the last ten minutes. Ask Oscar to paste the full address or ask for a new link with sign_in.'
-  )
-
 export class McpConnections {
   private finished = new Map<string, Record<string, unknown>>()
+  readonly cards: SignInCardService
   constructor(
     private store: McpConnectionStore,
     private credentials: McpCredentials,
@@ -41,26 +40,28 @@ export class McpConnections {
     private host: ConnectionsHost,
     readonly redirectUri: string | undefined,
     private now: () => number = Date.now,
-    private callbackEnabled = false
-  ) {}
-
-  list(): McpService[] {
-    return this.store.list().map(({ id, name, address, state, addedBy, createdAt, lastWorkedAt, tools }) => ({ id, name, address, state, addedBy, createdAt, lastWorkedAt, tools }))
-  }
-  get(id: string): StoredConnection | null {
-    return this.store.get(id)
-  }
-  usable(id: string): boolean {
-    const credential = this.credentials.get(id)
-    return !credential || !!credential.tokens
-  }
-  signedInAt(id: string): number | undefined {
-    return this.credentials.get(id)?.signedInAt
+    private callbackEnabled = false,
+    cardStore?: SignInCardStore
+  ) {
+    this.cards = new SignInCardService(cardStore ?? this.store.cardStore(), flows, card => this.host.cardChanged?.(card), now)
+    // Any waiting card left over from before a restart has no in-memory flow and becomes expired at once.
+    this.cards.reconcile()
   }
 
-  async add(botId: string, input: { name?: string; address?: string; requestId: string }) {
+  list = (): McpService[] =>
+    this.store.list().map(({ id, name, address, state, addedBy, createdAt, lastWorkedAt, tools }) => ({ id, name, address, state, addedBy, createdAt, lastWorkedAt, tools }))
+  get = (id: string) => this.store.get(id)
+  usable = (id: string) => !this.credentials.get(id) || !!this.credentials.get(id)?.tokens
+  signedInAt = (id: string) => this.credentials.get(id)?.signedInAt
+  reconcileSignInCards = () => this.cards.reconcile()
+  forgetBot = (botId: string) => this.cards.forgetBot(botId)
+  openSignIn = (cardId: string) => this.cards.open(cardId)
+  finishSignInCard = (cardId: string, address: string) => finishCardPaste(this.completionDeps(), cardId, address)
+  complete = (answer: SignInReturn, expectedCardId?: string) => completeSignIn(this.completionDeps(), answer, expectedCardId)
+
+  async add(botId: string, input: { name?: string; address?: string; requestId: string; label?: string; reason?: string }) {
     const repeated = this.store.byRequest(botId, input.requestId)
-    if (repeated) return repeated.state === 'needs_sign_in' ? this.signIn(botId, { id: repeated.id, requestId: input.requestId }) : this.view(repeated, NEXT)
+    if (repeated) return repeated.state === 'needs_sign_in' ? this.signIn(botId, { id: repeated.id, ...input }) : this.view(repeated, NEXT)
     if (!input.name || !input.address) throw new LilBotError('connection_input', 'add needs a name and an address.')
     const address = serviceAddress(input.address)
     if (this.store.byName(input.name))
@@ -91,32 +92,42 @@ export class McpConnections {
     }
     if (sign) this.credentials.set(connection.id, sign)
     this.host.changed()
-    return sign ? this.link(connection, botId, chatId) : this.view(connection, NEXT)
+    return sign ? this.startCard(connection, botId, chatId, input) : this.view(connection, NEXT)
   }
 
-  async signIn(botId: string, { id, requestId }: { id?: string; requestId: string }) {
-    const connection = id ? this.store.get(id) : null
-    if (!connection) throw notFound()
-    if (connection.state !== 'needs_sign_in' && connection.state !== 'sign_in_expired')
-      throw new LilBotError('connection_connected', `${connection.name} is ${connection.state.replaceAll('_', ' ')} and does not need a new sign-in.`)
+  async signIn(botId: string, { id, requestId, label, reason }: { id?: string; requestId: string; label?: string; reason?: string }) {
+    const connection = this.requireSignInConnection(id)
     const chatId = await this.host.callingChat(botId, requestId)
-    if (!this.credentials.get(connection.id)) {
-      const found = await probe(new URL(connection.address), undefined, this.mapTool(connection.name))
-      if (found.kind !== 'sign_in') throw new LilBotError('connection_open', `${connection.name} needs no sign-in.`)
-      const prepared = await this.prepareSignIn(new URL(connection.address), found.challenge)
-      if (!this.store.get(connection.id)) throw notFound()
-      this.credentials.set(connection.id, prepared)
-    }
-    if (!this.store.get(connection.id)) throw notFound()
-    return this.link(connection, botId, chatId)
+    await this.ensureCredential(connection)
+    if (!this.store.get(connection.id)) throw connectionNotFound()
+    return this.startCard(connection, botId, chatId, { label, reason })
   }
 
-  /** The paste fallback: bound to the flow's bot, calling conversation, and an actual visible message from Oscar. */
+  cancelSignIn(cardId: string): ConnectionSignInCard {
+    const cancelled = this.cards.cancel(cardId)
+    this.host.signInCancelled?.(cancelled.botId, cancelled.chatId, cancelled.serviceName, `connection-cancel-${cancelled.id}-${cancelled.settledAt}`)
+    return cancelled
+  }
+
+  async restartSignIn(cardId: string): Promise<ConnectionSignInCard> {
+    this.cards.reconcile()
+    if (!this.redirectUri) throw signInUnavailable()
+    const card = this.cards.requireRestartable(cardId)
+    if (!this.host.botExists(card.botId)) throw new LilBotError('bot_not_found', 'That bot no longer exists.')
+    const connection = this.requireSignInConnection(card.connectionId)
+    await this.ensureCredential(connection)
+    const fresh = this.store.get(connection.id)
+    const credential = fresh ? this.credentials.get(fresh.id) : undefined
+    if (!fresh || !credential) throw connectionNotFound()
+    return this.cards.restart(cardId, fresh, credential, this.redirectUri)
+  }
+
+  /** Bot-side paste fallback for clients without the card: bound to the flow's bot, calling chat and Oscar's visible message. */
   async finish(botId: string, { address, requestId }: { address?: string; requestId: string }) {
     const key = `${botId}\n${requestId}`
     const done = this.finished.get(key)
     if (done) return done
-    if (!this.redirectUri) throw this.noSignIn()
+    if (!this.redirectUri) throw signInUnavailable()
     const chatId = await this.host.callingChat(botId, requestId)
     const raw = (address ?? '').trim()
     const parsed = returnOf(raw, this.redirectUri)
@@ -130,70 +141,53 @@ export class McpConnections {
     return answer
   }
 
-  /** A sign-in's return, from the callback route or a pasted address. Each flow is spent by its first answer. */
-  async complete(answer: SignInReturn): Promise<StoredConnection | null> {
-    const flow = this.flows.take(answer.state)
-    const credential = flow ? this.credentials.get(flow.connectionId) : undefined
-    if (!flow || !credential || !this.redirectUri || answer.error || !answer.code) return refused('no valid sign-in')
-    if (answer.iss !== undefined ? answer.iss !== credential.server.issuer : credential.server.issRequired) return refused('issuer')
-    const tokens = await exchangeCode(credential.server, credential.client, answer.code, flow.verifier, this.redirectUri, this.now())
-    const connection = this.store.get(flow.connectionId)
-    if (tokens.kind !== 'ok' || !connection || this.credentials.get(connection.id)?.client.clientId !== credential.client.clientId) return refused('token exchange')
-    const signedInAt = this.now()
-    this.credentials.set(connection.id, { ...credential, tokens: tokens.tokens, signedInAt })
-    const found = await probe(new URL(connection.address), tokens.tokens.accessToken, this.mapTool(connection.name))
-    if (found.kind === 'ok') this.store.setTools(connection.id, found.tools)
-    this.store.setState(connection.id, found.kind === 'ok' ? 'connected' : found.kind === 'refused' ? 'sign_in_expired' : 'unreachable')
-    this.host.changed()
-    this.host.signedIn(flow.botId, flow.chatId, connection.name, `connection-${connection.id}-${signedInAt}`)
-    return this.store.get(connection.id)
-  }
-
   remove(botId: string, id: string | undefined) {
     const connection = id ? this.store.get(id) : null
-    if (!connection) throw notFound()
+    if (!connection) throw connectionNotFound()
     if (connection.addedById !== botId && this.host.botExists(connection.addedById))
       throw new LilBotError('connection_not_yours', `Only ${connection.addedBy}, which added ${connection.name}, can remove it. Ask that bot, or Oscar.`)
     this.credentials.delete(connection.id)
     this.store.delete(connection.id)
     this.flows.forget(connection.id)
+    this.cards.cancelConnection(connection.id, 'This connection was removed.')
     this.host.changed()
     return { id: connection.id, name: connection.name, removed: true, note: 'Its tools leave every bot from its next message.' }
   }
-  private noSignIn() {
-    return new LilBotError('sign_in_unavailable', 'LilBot has no sign-in address (its Access door is not set up), so it cannot sign in to this service. Tell Oscar.')
+
+  private requireSignInConnection(id: string | undefined) {
+    const connection = id ? this.store.get(id) : null
+    if (!connection) throw connectionNotFound()
+    if (connection.state !== 'needs_sign_in' && connection.state !== 'sign_in_expired')
+      throw new LilBotError('connection_connected', `${connection.name} is ${connection.state.replaceAll('_', ' ')} and does not need a new sign-in.`)
+    return connection
   }
+  private completionDeps = () => ({
+    store: this.store,
+    credentials: this.credentials,
+    flows: this.flows,
+    cards: this.cards,
+    redirectUri: this.redirectUri,
+    now: this.now,
+    ...this.host
+  })
   private async prepareSignIn(address: URL, challenge: string) {
-    if (!this.redirectUri) throw this.noSignIn()
+    if (!this.redirectUri) throw signInUnavailable()
     const server = await discover(address, challenge)
     return { server, client: await register(server, this.redirectUri) }
   }
-  private link(connection: StoredConnection, botId: string, chatId: string) {
+  private async ensureCredential(connection: StoredConnection) {
+    if (this.credentials.get(connection.id)) return
+    const found = await probe(new URL(connection.address), undefined, this.mapTool(connection.name))
+    if (found.kind !== 'sign_in') throw new LilBotError('connection_open', `${connection.name} needs no sign-in.`)
+    const prepared = await this.prepareSignIn(new URL(connection.address), found.challenge)
+    if (!this.store.get(connection.id)) throw connectionNotFound()
+    this.credentials.set(connection.id, prepared)
+  }
+  private startCard(connection: StoredConnection, botId: string, chatId: string, opts?: { label?: string; reason?: string }) {
     const credential = this.credentials.get(connection.id)
-    if (!credential || !this.redirectUri) throw this.noSignIn()
-    const signInLink = this.flows.start(connection.id, botId, chatId, credential.server, credential.client, this.redirectUri)
-    const signsInAt = new URL(credential.server.authorizationEndpoint).host
-    const where =
-      signsInAt !== new URL(connection.address).host
-        ? `Tell Oscar the token goes to ${connection.address} and sign-in happens at ${signsInAt}.`
-        : `Tell Oscar the token goes to ${connection.address}.`
-    const completion = this.callbackEnabled
-      ? 'LilBot tells you here when he has signed in. If his browser ends on an error page instead, ask him to paste the address it shows, and pass it to lilbot_connection with action finish.'
-      : 'After he signs in, his browser will land on a not-found or error page — ask him to paste that full address here in chat, and pass it to lilbot_connection with action finish.'
-    return {
-      ...this.view(connection, `Give Oscar this sign-in link as it is; it works for ten minutes. ${where} ${completion}`),
-      address: connection.address,
-      signInLink,
-      signsInAt
-    }
+    if (!credential || !this.redirectUri) throw signInUnavailable()
+    return cardToolReply(connection, this.cards.begin(connection, botId, chatId, credential, this.redirectUri, opts), this.callbackEnabled)
   }
   private mapTool = (name: string) => (this.host.toolName ? (tool: string) => this.host.toolName!(`${ENGINE_PREFIX}${name}`, tool) : undefined)
-  private view(connection: StoredConnection, note: string) {
-    return { id: connection.id, name: connection.name, state: connection.state, tools: connection.tools, note }
-  }
-}
-
-function refused(reason: string): null {
-  console.warn(`[connections] sign-in refused: ${reason}`)
-  return null
+  private view = (connection: StoredConnection, note: string) => ({ id: connection.id, name: connection.name, state: connection.state, tools: connection.tools, note })
 }

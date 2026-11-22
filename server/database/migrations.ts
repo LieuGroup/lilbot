@@ -188,5 +188,6 @@ export const migrations: string[] = [
   tables.WEBHOOK_ACCESS,
   tables.MEMORY_CHECKPOINT_TABLES,
   tables.HISTORY_USAGE_TABLES,
-  tables.MCP_CONNECTION_TABLES
+  tables.MCP_CONNECTION_TABLES,
+  tables.MCP_SIGN_IN_CARD_TABLES
 ]

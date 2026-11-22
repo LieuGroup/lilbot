@@ -1,6 +1,5 @@
 /** One browser connection: checks each request, runs it on the bot service, and forwards chat events. */
 import type { z } from 'zod'
-import type { ConnectionsStatus } from '../../shared/connections-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import { type EventFrame, type Method, methods, RequestFrame, type ResponseFrame, type Results } from '../../shared/protocol'
 import type { ActivityService } from '../activity/activity-service'
@@ -16,6 +15,7 @@ import type { WebhookService } from '../webhooks/webhook-service'
 import type { WorkBoard } from '../work/work-board'
 import { boardHandlers } from './board-handlers'
 import { type AfterResponse, BrowserChats } from './browser-chats'
+import { type BrowserConnections, connectionHandlers } from './connection-handlers'
 
 function requireService<T>(service: T | undefined, message: string): T {
   if (!service) throw new LilBotError('unavailable', message)
@@ -37,7 +37,7 @@ export class BrowserSession {
     private library?: LibraryService,
     private threads?: import('../threads/thread-service').ThreadService,
     /** `ready`: what waits for a conversation (a service added or signed in) is applied before a message goes in. */
-    private connections?: { status: () => ConnectionsStatus; ready: (botId: string, chatId: string) => Promise<void> },
+    private connections?: BrowserConnections,
     private computers?: import('../computers/computer-service').ComputerService,
     private deploymentNotice?: () => string | undefined,
     private attachments?: AttachmentService,
@@ -47,7 +47,7 @@ export class BrowserSession {
     private webhooks?: WebhookService,
     private goals?: GoalBoard
   ) {
-    this.chats = new BrowserChats(bots, sendFrame, activity, threads, attachments)
+    this.chats = new BrowserChats(bots, sendFrame, activity, threads, attachments, () => this.connections?.reconcile?.())
   }
 
   private skills = () => requireService(this.bots.skills, 'Skills are unavailable.')
@@ -101,7 +101,7 @@ export class BrowserSession {
     'library.list': input => requireService(this.library, 'Library is unavailable.').list(input),
     'library.workspace': ({ botId, path }) => requireService(this.library, 'Library is unavailable.').workspace(botId, path),
     'library.content': async ({ botId, itemId }) => requireService(this.library, 'Library is unavailable.').contentUrl(botId, itemId),
-    'connections.status': async () => requireService(this.connections, 'Connections are unavailable.').status(),
+    ...connectionHandlers(() => requireService(this.connections, 'Connections are unavailable.')),
     'bots.delete': input => this.bots.deleteBot(input),
     'bots.deleteDefaults.get': async () => this.bots.deleteDefaults(),
     'bots.deleteDefaults.set': async input => this.bots.setDeleteDefaults(input),
@@ -142,7 +142,7 @@ export class BrowserSession {
       return { ok: true }
     },
     'memory.connect': ({ botId }) => this.bots.connectMemory(botId),
-    'chat.history': async ({ botId, cursor, limit }) => this.chats.mergeHistory(botId, await this.bots.historyPage(botId, cursor, limit)),
+    'chat.history': async ({ botId, cursor, limit }) => this.chats.history(botId, cursor, limit),
     'chat.open': ({ botId, chatId }, afterResponse) => this.chats.track(afterResponse, onEvent => this.bots.openChat(botId, chatId, onEvent)),
     'chat.new': ({ botId }, afterResponse) => this.chats.track(afterResponse, onEvent => this.bots.newChat(botId, onEvent)),
     'chat.send': async ({ chatId, text, attachmentIds, messageId, deviceId }) => {

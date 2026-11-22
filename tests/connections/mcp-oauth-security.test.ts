@@ -55,15 +55,17 @@ test('M2 & Low #5: cross-origin issuer allowed, endpoint origin mismatch refused
   }
 })
 
-test('M2 & default-off callback note: sign-in payload names service address and signsInAt, and adapts note to callbackEnabled', async () => {
+test('M2 & default-off callback note: sign-in payload names service address, signsInAt and cardId (no signInLink) and adapts note to callbackEnabled', async () => {
   const fOff = connectionsFixture(undefined, false)
   const off: any = await fOff.services.add('bot-a', { name: 'svc_off', address: oauth.address, requestId: 'r-off' })
   expect(off.address).toBe(oauth.address)
   expect(off.signsInAt).toBe(new URL(oauth.address).host)
+  expect(off.cardId).toBeTruthy()
+  expect(off.signInLink).toBeUndefined()
   expect(off.note).toContain(oauth.address)
   expect(off.note).toContain('not-found or error page')
   const fOn = connectionsFixture(undefined, true)
-  expect(((await fOn.services.add('bot-a', { name: 'svc_on', address: oauth.address, requestId: 'r-on' })) as any).note).toContain('LilBot tells you here when he has signed in')
+  expect(((await fOn.services.add('bot-a', { name: 'svc_on', address: oauth.address, requestId: 'r-on' })) as any).note).toContain('LilBot notifies you here when he finishes')
 
   const idp = Bun.serve({
     hostname: '127.0.0.1',
@@ -102,7 +104,7 @@ test('M2 & default-off callback note: sign-in payload names service address and 
 test('M3: sign_in refused while connected or unreachable; finish binds to bot, chat and Oscar’s message without spending flow on mismatches', async () => {
   const f = connectionsFixture()
   const added: any = await f.services.add('bot-a', { name: 'bound', address: oauth.address, requestId: 'm3-add' })
-  const landed = await f.browse(added.signInLink)
+  const landed = await f.browse(f.linkFor(added.cardId))
 
   f.userSays('bot-b', landed)
   await expect(f.services.finish('bot-b', { address: landed, requestId: 'm3-wrong-bot' })).rejects.toThrow('does not finish a sign-in')
@@ -118,7 +120,9 @@ test('M3: sign_in refused while connected or unreachable; finish binds to bot, c
   f.store.setState(added.id, 'unreachable')
   await expect(f.services.signIn('bot-a', { id: added.id, requestId: 'm3-unreachable' })).rejects.toThrow('does not need a new sign-in')
   f.store.setState(added.id, 'sign_in_expired')
-  expect(((await f.services.signIn('bot-a', { id: added.id, requestId: 'm3-expired' })) as any).signInLink).toBeTruthy()
+  const refreshed: any = await f.services.signIn('bot-a', { id: added.id, requestId: 'm3-expired' })
+  expect(refreshed.signInLink).toBeUndefined()
+  expect(f.linkFor(refreshed.cardId)).toBeTruthy()
 })
 
 test('Low #6: McpCredentials refuses writes when existing file is corrupt and writes atomically with mode 0600', () => {

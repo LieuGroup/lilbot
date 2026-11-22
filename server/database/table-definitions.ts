@@ -60,3 +60,11 @@ export const HISTORY_USAGE_TABLES = `CREATE TABLE IF NOT EXISTS history_turn_usa
 export const MCP_CONNECTION_TABLES = `CREATE TABLE IF NOT EXISTS mcp_connections(id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, address TEXT NOT NULL, state TEXT NOT NULL,
      added_by TEXT NOT NULL, added_by_name TEXT NOT NULL, request_id TEXT NOT NULL, created_at INTEGER NOT NULL, last_worked_at INTEGER, tools TEXT NOT NULL DEFAULT '[]',
      UNIQUE(added_by, request_id));`
+
+/** Schema step 38, in-chat sign-in cards for MCP services (#216). Stores only the card's public metadata and state:
+ *  never the sign-in URL, OAuth `state`, PKCE verifier or pasted callback address. Every statement is repeatable. */
+export const MCP_SIGN_IN_CARD_TABLES = `CREATE TABLE IF NOT EXISTS connection_sign_in_cards(id TEXT PRIMARY KEY, connection_id TEXT NOT NULL, bot_id TEXT NOT NULL, chat_id TEXT NOT NULL,
+     service_name TEXT NOT NULL, service_address TEXT NOT NULL, provider_domain TEXT NOT NULL, state TEXT NOT NULL, reason TEXT, label TEXT,
+     created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, settled_at INTEGER);
+   CREATE INDEX IF NOT EXISTS connection_sign_in_cards_waiting ON connection_sign_in_cards(connection_id, state) WHERE state = 'waiting';
+   CREATE INDEX IF NOT EXISTS connection_sign_in_cards_bot_chat ON connection_sign_in_cards(bot_id, chat_id, created_at);`
