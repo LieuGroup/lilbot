@@ -9,8 +9,8 @@ import type { McpCredentials } from './mcp-credentials'
 import { discover, register } from './mcp-oauth-discovery'
 import { probe } from './mcp-probe'
 import { returnOf, type SignInFlows, type SignInReturn } from './mcp-sign-in'
-import type { SignInCardStore } from './mcp-sign-in-cards'
-import { cardToolReply, completeSignIn, connectionNotFound, finishCardPaste, signInRefused, signInUnavailable } from './mcp-sign-in-complete'
+import { plainCardText, type SignInCardStore } from './mcp-sign-in-cards'
+import { cardToolReply, completeSignIn, connectionNotFound, finishCardPaste, hiddenChatSignIn, signInRefused, signInUnavailable } from './mcp-sign-in-complete'
 import { SignInCardService } from './mcp-sign-in-service'
 
 /** Every service costs each bot listing lines on every turn. */
@@ -21,6 +21,7 @@ export interface ConnectionsHost {
   botName(botId: string): string
   botExists(botId: string): boolean
   callingChat(botId: string, requestId: string): Promise<string>
+  isHiddenChat?(botId: string, chatId: string): boolean
   userSentInChat(botId: string, chatId: string, text: string): boolean
   signedIn(botId: string, chatId: string, name: string, runId: string): void
   signInCancelled?(botId: string, chatId: string, name: string, runId: string): void
@@ -44,8 +45,6 @@ export class McpConnections {
     cardStore?: SignInCardStore
   ) {
     this.cards = new SignInCardService(cardStore ?? this.store.cardStore(), flows, card => this.host.cardChanged?.(card), now)
-    // Any waiting card left over from before a restart has no in-memory flow and becomes expired at once.
-    this.cards.reconcile()
   }
 
   list = (): McpService[] =>
@@ -63,6 +62,8 @@ export class McpConnections {
     const repeated = this.store.byRequest(botId, input.requestId)
     if (repeated) return repeated.state === 'needs_sign_in' ? this.signIn(botId, { id: repeated.id, ...input }) : this.view(repeated, NEXT)
     if (!input.name || !input.address) throw new LilBotError('connection_input', 'add needs a name and an address.')
+    plainCardText(input.label, 120)
+    plainCardText(input.reason, 300)
     const address = serviceAddress(input.address)
     if (this.store.byName(input.name))
       throw new LilBotError('connection_exists', `A connection named ${input.name} exists already. lilbot_status with area connections lists them.`)
@@ -71,6 +72,7 @@ export class McpConnections {
     const found = await probe(address, undefined, this.mapTool(input.name))
     if (found.kind === 'unreachable') throw new LilBotError('connection_unreachable', 'LilBot could not reach an MCP service at that address.')
     if (found.kind === 'refused') throw new LilBotError('connection_refused', 'The service refused LilBot without offering a sign-in.')
+    if (found.kind === 'sign_in' && this.host.isHiddenChat?.(botId, chatId)) throw hiddenChatSignIn()
     const sign = found.kind === 'sign_in' ? await this.prepareSignIn(address, found.challenge) : null
     const connection: StoredConnection = {
       id: crypto.randomUUID(),
@@ -97,7 +99,10 @@ export class McpConnections {
 
   async signIn(botId: string, { id, requestId, label, reason }: { id?: string; requestId: string; label?: string; reason?: string }) {
     const connection = this.requireSignInConnection(id)
+    plainCardText(label, 120)
+    plainCardText(reason, 300)
     const chatId = await this.host.callingChat(botId, requestId)
+    if (this.host.isHiddenChat?.(botId, chatId)) throw hiddenChatSignIn()
     await this.ensureCredential(connection)
     if (!this.store.get(connection.id)) throw connectionNotFound()
     return this.startCard(connection, botId, chatId, { label, reason })

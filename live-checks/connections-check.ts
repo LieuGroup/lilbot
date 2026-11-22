@@ -84,13 +84,16 @@ try {
   assert.ok((await chat.say('Use the oauthcheck tool with the text pasted and tell me exactly what it returned.')).includes('OAUTH_CHECK_pasted'))
   pass('callback-off 404 + waiting card + browser paste finish -> connected + hidden turn + tool works')
 
+  const reboot = async (env: Record<string, string>) => {
+    close()
+    child?.kill()
+    await child?.exited
+    child = await startCheckServer(env, log)
+    chat = await conversation(port)
+    close = () => chat.client.socket.close()
+  }
   // Phase 2: restart with Access callback enabled; verify plain service, expiry, restart, automatic callback, refresh, removal.
-  close()
-  child.kill()
-  await child.exited
-  child = await startCheckServer({ ...baseEnv, LILBOT_ACCESS_CALLBACK_ENABLED: '1' }, log)
-  chat = await conversation(port)
-  close = () => chat.client.socket.close()
+  await reboot({ ...baseEnv, LILBOT_ACCESS_CALLBACK_ENABLED: '1' })
 
   await chat.say(`Connect the MCP service at ${plain.address} with lilbot_connection; name it plaincheck. Reply in one sentence.`)
   assert.equal((await status('plaincheck'))?.state, 'connected')
@@ -122,6 +125,11 @@ try {
   assert.equal((await openOnAccess(accessPort, late)).status, 400, 'late callback accepted')
   assert.equal((await chat.historyCards()).find(c => c.id === card2.id)?.state, 'expired')
   pass('waiting card expires after 20 s window and late callback is refused')
+
+  assert.equal((await chat.client.call('connections.signIn.restart', { cardId: card2.id })).state, 'waiting')
+  // Real server restart while a card is waiting must boot cleanly (no crash) and expire the card.
+  await reboot({ ...baseEnv, LILBOT_ACCESS_CALLBACK_ENABLED: '1' })
+  assert.equal((await chat.historyCards()).find(c => c.id === card2.id)?.state, 'expired')
 
   assert.equal((await chat.client.call('connections.signIn.restart', { cardId: card2.id })).state, 'waiting')
   const { url: autoUrl } = await chat.client.call('connections.signIn.open', { cardId: card2.id })

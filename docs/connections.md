@@ -100,11 +100,15 @@ address, signsInAt, note }`, telling the bot to wait for LilBot to notify it whe
   - A second `add`/`sign_in` for the same connection while a card is `waiting` updates that waiting card in place when in
     the same conversation (no duplicate card), or marks an earlier waiting card in another conversation `expired`, and
     voids the prior in-memory flow. Removing a connection cancels its waiting cards.
+  - Sign-in cards can only be placed in a visible conversation with Oscar; calls from hidden sessions (routine runs,
+    bot-to-bot threads/groups, webhook runs, check sessions) are refused so background runs never drop cards into
+    invisible sessions or stall history import.
   - When a waiting card's 10-minute window elapses (`LILBOT_CONNECTION_TEST_SIGN_IN_SECONDS` in dev checks) or after a
-    LilBot server restart (when in-memory flows are gone), the card transitions to `expired` (reconciled on startup, on
-    the 1-second connections tick, and before `chat.open`, `chat.history`, and card actions), updating history and
-    pushing to open browsers.
-- **Browser requests (Oscar's browser WebSocket only; bots cannot call them):**
+    LilBot server restart (when in-memory flows are gone), the card transitions to `expired` (reconciled on the
+    1-second connections tick and before `chat.open`, `chat.history`, and card actions — never during service
+    construction before HTTP listeners bind), updating history and pushing to open browsers.
+- **Browser requests (Oscar's browser WebSocket protocol only; unreachable from bot MCP tools, `/engine/*` or the
+  helper door — on the leader itself, full-access bots with shell access already share the Unix user boundary):**
   - `connections.signIn.open({ cardId })` → `{ url }`: returns the live sign-in URL on demand only while the card is
     `waiting` and unexpired (same on-demand boundary as `webhooks.address`); never broadcast or stored.
   - `connections.signIn.finish({ cardId, address })` → `ConnectionSignInCard`: validates the pasted callback address

@@ -57,15 +57,19 @@ export async function completeSignIn(deps: CompletionDeps, answer: SignInReturn,
     deps.credentials.set(connection.id, { ...credential, tokens: tokens.tokens, signedInAt })
     const mapTool = deps.toolName ? (tool: string) => deps.toolName!(`${ENGINE_PREFIX}${connection.name}`, tool) : undefined
     const found = await probe(new URL(connection.address), tokens.tokens.accessToken, mapTool)
+    if (!deps.store.get(connection.id) || deps.credentials.get(connection.id)?.client.clientId !== credential.client.clientId) return refused('connection changed')
     if (found.kind === 'ok') deps.store.setTools(connection.id, found.tools)
     deps.store.setState(connection.id, found.kind === 'ok' ? 'connected' : found.kind === 'refused' ? 'sign_in_expired' : 'unreachable')
     deps.changed()
     if (found.kind !== 'ok') return fail('probe failed', found.kind === 'refused' ? 'The service refused the sign-in token.' : 'Signed in, but LilBot could not reach the service.')
-    deps.cards.markConnected(flow.cardId, signedInAt)
+    if (!deps.cards.markConnected(flow.cardId, signedInAt)) return refused('card settled')
     deps.signedIn(flow.botId, flow.chatId, connection.name, `connection-${connection.id}-${signedInAt}`)
     return deps.store.get(connection.id)
   })
 }
+
+export const hiddenChatSignIn = () =>
+  new LilBotError('connection_hidden_chat', 'A sign-in card can only be placed in a conversation with Oscar, not a background run or bot-to-bot thread.')
 
 export const connectionNotFound = () => new LilBotError('connection_not_found', 'There is no connection with that id. lilbot_status with area connections lists them.')
 export const signInUnavailable = () =>

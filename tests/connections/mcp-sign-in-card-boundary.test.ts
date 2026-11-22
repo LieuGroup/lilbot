@@ -83,6 +83,35 @@ test('untrusted card label/reason strips control chars, refuses secrets/invisibl
   for (const forbidden of ['cancel', 'open', 'restart']) {
     expect(ConnectionActionInput.safeParse({ action: forbidden, requestId: 'r1', id: added.id }).success).toBe(false)
   }
+
+  // Invalid label/reason on add is rejected BEFORE inserting the connection or saving credentials.
+  await expect(f.services.add('bot-a', { name: 'bad_label_svc', address: oauth.address, requestId: 'u4', label: 'token=supersecrettoken123' })).rejects.toThrow('plain text')
+  expect(f.store.byName('bad_label_svc')).toBeNull()
+})
+
+test('hidden chats cannot place sign-in cards or write hidden history_sessions; removing mid-completion never flips cancelled to connected', async () => {
+  const f = connectionsFixture()
+  f.chatOf.set('bot-a', 'routine-run-1')
+  f.hiddenChats.add('routine-run-1')
+  await expect(f.services.add('bot-a', { name: 'hidden_svc', address: oauth.address, requestId: 'h1' })).rejects.toThrow('conversation with Oscar')
+  expect(f.store.byName('hidden_svc')).toBeNull()
+  expect(f.history.sessions('bot-a')).toHaveLength(0)
+
+  // Visible chat creates the card; then removing the connection during in-flight completion leaves card cancelled with no connected turn.
+  f.chatOf.delete('bot-a')
+  const added: any = await f.services.add('bot-a', { name: 'race_svc', address: oauth.address, requestId: 'h2' })
+  f.chatOf.set('bot-a', 'routine-run-1')
+  await expect(f.services.signIn('bot-a', { id: added.id, requestId: 'h3' })).rejects.toThrow('conversation with Oscar')
+  f.chatOf.delete('bot-a')
+
+  const landed = await f.browse(f.linkFor(added.cardId))
+  const finishing = f.services.finishSignInCard(added.cardId, landed)
+  f.services.remove('bot-a', added.id)
+  const after = await finishing
+  expect(after.state).toBe('cancelled')
+  expect(f.services.cards.get(added.cardId)?.state).toBe('cancelled')
+  expect(f.signedIn).toHaveLength(0)
+  expect(f.failed).toHaveLength(0)
 })
 
 test('helper door and private listener still do not mount /api/connections/callback', async () => {

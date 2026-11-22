@@ -29,18 +29,21 @@ export function connectionsFixture(redirectUri: string | null = REDIRECT, callba
   const cardEvents: ConnectionSignInCard[] = []
   const bots = new Set(['bot-a', 'bot-b'])
   const chatOf = new Map<string, string>()
+  const hiddenChats = new Set<string>()
   const userMessages: { botId: string; chatId: string; text: string }[] = []
   let changes = 0
   const host: ConnectionsHost = {
     botName: id => (id === 'bot-a' ? 'Alpha' : 'Beta'),
     botExists: id => bots.has(id),
     callingChat: async botId => chatOf.get(botId) ?? `${botId}-main`,
+    isHiddenChat: (_botId, chatId) => hiddenChats.has(chatId),
     userSentInChat: (botId, chatId, text) => userMessages.some(msg => msg.botId === botId && msg.chatId === chatId && msg.text.includes(text)),
     signedIn: (botId, chatId, name, runId) => signedIn.push({ botId, chatId, name, runId }),
     signInCancelled: (botId, chatId, name, runId) => cancelled.push({ botId, chatId, name, runId }),
     signInFailed: (botId, chatId, name, reason, runId) => failed.push({ botId, chatId, name, reason, runId }),
     cardChanged: card => {
-      if (bots.has(card.botId)) history.signInCard(card.botId, card.chatId, card)
+      if (!bots.has(card.botId) || hiddenChats.has(card.chatId)) return
+      history.signInCard(card.botId, card.chatId, card)
       cardEvents.push(card)
     },
     changed: () => changes++,
@@ -73,6 +76,7 @@ export function connectionsFixture(redirectUri: string | null = REDIRECT, callba
     cardEvents,
     bots,
     chatOf,
+    hiddenChats,
     userSays,
     browse,
     linkFor,

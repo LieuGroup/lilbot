@@ -158,9 +158,13 @@ test('expiry after 10 minutes and LilBot restart while waiting both transition t
   expect(f.history.page('bot-a').items[0].item).toMatchObject({ kind: 'connection.sign_in', card: { id: added.cardId, state: 'expired' } })
 
   // Start a fresh waiting card, then simulate a LilBot server restart (new McpConnections + empty SignInFlows on same DB).
+  // Constructor must NEVER call cardChanged synchronously (listeners are not bound yet in server/main.ts).
   await f.services.restartSignIn(added.cardId)
   expect(f.services.cards.get(added.cardId)?.state).toBe('waiting')
+  const eventsBeforeRestart = f.cardEvents.length
   const restartedServices = f.restart()
+  expect(f.cardEvents.length).toBe(eventsBeforeRestart)
+  expect(restartedServices.reconcileSignInCards()).toBe(1)
   expect(restartedServices.cards.get(added.cardId)?.state).toBe('expired')
   expect(f.history.page('bot-a').items[0].item).toMatchObject({ kind: 'connection.sign_in', card: { id: added.cardId, state: 'expired' } })
   expect(() => restartedServices.openSignIn(added.cardId)).toThrow('expired')

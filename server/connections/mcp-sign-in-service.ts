@@ -39,6 +39,7 @@ export class SignInCardService {
     const nextReason = opts?.reason !== undefined ? plainCardText(opts.reason, 300) : undefined
     this.reconcile()
     const existing = this.store.waitingForConnection(connection.id)
+    if (existing.some(card => this.inFlight.has(card.id))) throw inProgress()
     const reuse = existing.find(card => card.botId === botId && card.chatId === chatId)
     const now = this.now()
     for (const other of existing) {
@@ -136,14 +137,15 @@ export class SignInCardService {
 
   markConnected(cardId: string, settledAt: number): ConnectionSignInCard | null {
     const card = this.store.get(cardId)
-    if (!card) return null
+    if (card?.state !== 'waiting') return null
+    this.flows.forget(card.connectionId)
     const { reason: _reason, ...rest } = card
     return this.save({ ...rest, state: 'connected', settledAt })
   }
 
   markFailed(cardId: string, reason: string, settledAt: number): ConnectionSignInCard | null {
     const card = this.store.get(cardId)
-    if (!card) return null
+    if (card?.state !== 'waiting') return null
     return this.save({ ...card, state: 'failed', reason, settledAt })
   }
 

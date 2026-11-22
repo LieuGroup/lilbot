@@ -42,6 +42,7 @@ interface ConnectionDeps {
   prefs: BotPrefsStore
   bots: BotService
   history: HistoryStore
+  hiddenChat: (botId: string, chatId: string) => boolean
   calls: CallingChats
   t3Grants: T3Grants
   t3Refusal: (botId: string, tool: string, args: unknown) => Promise<string | null>
@@ -68,6 +69,7 @@ export function createConnections({
   prefs,
   bots,
   history,
+  hiddenChat,
   calls,
   t3Grants,
   t3Refusal,
@@ -94,6 +96,7 @@ export function createConnections({
       botName: id => store.get(id).name,
       botExists: id => store.exists(id),
       callingChat: (botId, requestId) => calls.find(botId, 'lilbot_connection', requestId),
+      isHiddenChat: hiddenChat,
       userSentInChat: (botId, chatId, text) => history.hasUserMessageContaining(botId, chatId, text),
       signedIn: (botId, chatId, name, runId) => applier.signedIn(botId, chatId, name, runId),
       signInCancelled: (botId, chatId, name, runId) => {
@@ -105,7 +108,7 @@ export function createConnections({
         soon()
       },
       cardChanged: card => {
-        if (!store.exists(card.botId)) return
+        if (!store.exists(card.botId) || hiddenChat(card.botId, card.chatId)) return
         history.signInCard(card.botId, card.chatId, card)
         publish({ event: 'chat', chatId: card.chatId, data: { type: 'connection.sign_in', card } })
         publish({ event: 'history.changed', botId: card.botId })

@@ -160,7 +160,18 @@ export function createAppServices(
   const { work, links, answers, checks, checkSessions } = createWork(workDeps)
   const redirectUri = ACCESS_HOST ? `https://${ACCESS_HOST}${CALLBACK_PATH}` : undefined
   const connBase = { database, dataDir: DATA_DIR, port: PORT, engineToken: token, redirectUri, callbackEnabled: settings.ACCESS_CALLBACK_ENABLED ?? false }
-  const connServices = { engine, store, prefs, bots, history: history.store, calls, t3Grants, t3Refusal: gates.t3Refusal, serviceRefusal: gates.serviceRefusal(checkSessions) }
+  const connServices = {
+    engine,
+    store,
+    prefs,
+    bots,
+    history: history.store,
+    hiddenChat,
+    calls,
+    t3Grants,
+    t3Refusal: gates.t3Refusal,
+    serviceRefusal: gates.serviceRefusal(checkSessions)
+  }
   const mcp = createConnections({ ...connBase, ...connServices, publish, repeat })
   const threadDeps = { engine, store, prefs, bots, workspaces, history, activity, threadStore, calls, work: links, memory, library, root: WORKSPACES_DIR, rootOf, publish }
   const { threads, delegation } = createThreads({ ...threadDeps, botsChanged, memoryChanged })
