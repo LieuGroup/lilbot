@@ -32,14 +32,15 @@ test('recovery reuses create/submit identities, uses full access, and reads a du
   expect(aliases).toEqual(['stored', 'live', 'stored', 'live'])
 })
 
-test('a run given a model creates its session on that model, else on the bot’s own', async () => {
-  const creates: any[] = []
+/** A connection that records every `session.create` call and completes immediately. */
+function recordingCreate() {
+  const created: any[] = []
   const connect = async () =>
     ({
       request: async (method: string, params: any) => {
         if (method === 'config.get') return { value: 'off' }
         if (method === 'session.create') {
-          creates.push(params)
+          created.push(params)
           return { session_id: 'live', stored_session_id: 'stored' }
         }
         if (method === 'prompt.submit') return { admission_id: 'receipt' }
@@ -48,11 +49,16 @@ test('a run given a model creates its session on that model, else on the bot’s
       },
       close: () => {}
     }) as unknown as HermesSocket
+  return { created, connect }
+}
+
+test('a run given a model creates its session on that model, else on the bot’s own', async () => {
+  const { created, connect } = recordingCreate()
   await runRoutine('native-id', 'task', { workspace: '/test', runId: 'own', onChat: () => {} }, connect)
   await runRoutine('native-id', 'task', { workspace: '/test', runId: 'other', model: { provider: 'cheap', model: 'small-1' }, onChat: () => {} }, connect)
-  expect(creates[0]).not.toHaveProperty('model')
-  expect(creates[0]).not.toHaveProperty('provider')
-  expect(creates[1]).toMatchObject({ provider: 'cheap', model: 'small-1' })
+  expect(created[0]).not.toHaveProperty('model')
+  expect(created[0]).not.toHaveProperty('provider')
+  expect(created[1]).toMatchObject({ provider: 'cheap', model: 'small-1' })
 })
 
 /** A connection whose one run ends with this receipt. */
@@ -151,19 +157,7 @@ test('restart during a running delivery recovers its terminal receipt and transc
 })
 
 test('a routine session is created with the bot’s reasoning effort, and without one when there is none', async () => {
-  const created: any[] = []
-  const connect = async () =>
-    ({
-      request: async (method: string, params: any) => {
-        if (method === 'config.get') return { value: 'off' }
-        if (method === 'session.create') created.push(params)
-        if (method === 'session.create') return { session_id: 'live', stored_session_id: 'stored' }
-        if (method === 'prompt.submit') return { admission_id: 'receipt' }
-        if (method === 'prompt.receipt') return { status: 'terminal', outcome: 'completed' }
-        return { display_messages: [] }
-      },
-      close: () => {}
-    }) as unknown as HermesSocket
+  const { created, connect } = recordingCreate()
   await runRoutine('native-id', 'task', { workspace: '/test', runId: 'one', reasoningEffort: 'xhigh', onChat: () => {} }, connect)
   await runRoutine('native-id', 'task', { workspace: '/test', runId: 'two', onChat: () => {} }, connect)
   expect(created[0].reasoning).toBe('xhigh')
@@ -171,23 +165,34 @@ test('a routine session is created with the bot’s reasoning effort, and withou
 })
 
 test('a run asked for toolsets starts its session with only those; without, the session has every toolset', async () => {
-  const created: any[] = []
-  const connect = async () =>
-    ({
-      request: async (method: string, params: any) => {
-        if (method === 'config.get') return { value: 'off' }
-        if (method === 'session.create') {
-          created.push(params)
-          return { session_id: 'live', stored_session_id: 'stored' }
-        }
-        if (method === 'prompt.submit') return { admission_id: 'receipt' }
-        if (method === 'prompt.receipt') return { status: 'terminal', outcome: 'completed' }
-        return { display_messages: [] }
-      },
-      close: () => {}
-    }) as unknown as HermesSocket
+  const { created, connect } = recordingCreate()
   await runRoutine('native-id', 'task', { workspace: '/test', runId: 'narrow', onChat: () => {}, toolsets: ['web'] }, connect)
   await runRoutine('native-id', 'task', { workspace: '/test', runId: 'wide', onChat: () => {} }, connect)
   expect(created[0].toolsets).toEqual(['web'])
   expect('toolsets' in created[1]).toBe(false)
+})
+
+test('a transcript that shrank after compression returns its post-compression items instead of an empty slice', async () => {
+  let submitted = false
+  const before = [
+    { role: 'user', text: 't1' },
+    { role: 'assistant', text: 'a1' },
+    { role: 'user', text: 't2' },
+    { role: 'assistant', text: 'a2' }
+  ]
+  const connect = async () =>
+    ({
+      request: async (method: string) => {
+        if (method === 'config.get') return { value: 'off' }
+        if (method === 'prompt.submit') {
+          submitted = true
+          return { admission_id: 'one' }
+        }
+        if (method === 'prompt.receipt') return { status: 'terminal', outcome: 'completed' }
+        return { session_id: 'live', stored_session_id: 'stored', display_messages: submitted ? [{ role: 'assistant', text: 'After compression' }] : before }
+      },
+      close: () => {}
+    }) as unknown as HermesSocket
+  const result = await runRoutine('bot', 'follow-up', { workspace: '/bot', runId: 'compressed', chatId: 'stored', onChat: () => {}, baseline: n => n }, connect)
+  expect(result).toMatchObject({ status: 'completed', text: 'After compression', items: [{ kind: 'assistant', text: 'After compression' }] })
 })
