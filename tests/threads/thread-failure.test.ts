@@ -60,6 +60,27 @@ test('an answer LilBot’s safety check withholds fails the exchange with that r
   expect(long.store.get(tooLong).failure).toBe('the answer was too long to deliver')
 })
 
+test('a reply quoting PASS: test output is delivered; a secret dressed up as PASS: is still withheld', async () => {
+  const ok = delegationFixture()
+  const okId = await hand(ok)
+  await ok.settle()
+  ok.runs[0].finish('Verified locally:\nPASS: add(2, 3) === 5')
+  await ok.settle()
+  await ok.settle()
+  expect(ok.store.get(okId).status).toBe('finished')
+  expect(ok.store.get(okId).failure).toBeUndefined()
+  expect(ok.store.get(okId).messages.at(-1)?.withheld).toBeUndefined()
+
+  const bad = delegationFixture()
+  const badId = await hand(bad)
+  await bad.settle()
+  bad.runs[0].finish('PASS: password=hunter2abc')
+  await bad.settle()
+  await bad.settle()
+  expect(await reasonIn(bad, badId)).toBe("LilBot's safety check withheld the answer")
+  expect(bad.store.get(badId).messages.at(-1)?.withheld).toBe(true)
+})
+
 test('a stopped exchange stays stopped when a later notice cannot be delivered, and a follow-up clears a failure', async () => {
   const f = delegationFixture()
   const id = await hand(f)

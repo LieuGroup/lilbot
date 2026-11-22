@@ -55,7 +55,8 @@ const rules: Rule[] = [
   matches(/-----BEGIN [A-Z ]*PRIVATE KEY-----/, 'it contains a private key'),
   matches(/\b(sk|pk|rk)-[A-Za-z0-9_-]{20,}|\bAKIA[0-9A-Z]{16}\b|\bgh[pousr]_[A-Za-z0-9]{30,}|\bxox[abprs]-[A-Za-z0-9-]{10,}/, 'it contains what looks like an access key or token'),
   { test: hasJwt, reason: 'it contains what looks like an access key or token' },
-  matches(/\b(pass(word|wd|phrase)?|secret|api[_ -]?key|token)\b\s*(is|=|:)\s*\S{6,}/i, 'it contains what looks like a password or key'),
+  matches(/\b(pass(word|wd|phrase)|secret|api[_ -]?key|token)\b\s*(is|=|:)\s*\S{6,}/i, 'it contains what looks like a password or key'),
+  matches(/\bpass\b\s*=\s*\S{6,}/i, 'it contains what looks like a password or key'),
   matches(new RegExp(WEBHOOK_ADDRESS.source, 'i'), 'it contains a webhook address'),
   // Sending data out, or running fetched code.
   matches(/\b(curl|wget)\b[^\n]{0,80}\|\s*(ba|z)?sh\b/i, 'it contains a command that runs downloaded code'),

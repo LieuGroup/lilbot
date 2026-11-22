@@ -101,3 +101,67 @@ test('DEL, C1 controls and variation selectors 17 and up are hidden text; emoji 
     expect(memoryRefusal(text)).toBeNull()
   }
 })
+
+describe('bare pass test output vs real credentials', () => {
+  const allowed = [
+    'PASS: add(2, 3) === 5',
+    'PASSED: add(2, 3) === 5',
+    'PASS: tests/memory/memory-safety.test.ts',
+    '--- PASS: TestAuthFlow (0.12s)',
+    'pass: 12 tests',
+    'pass: 12/12_checks',
+    'tests pass: all green',
+    'tests pass: everything is green',
+    'first pass: refactored the parser',
+    'the first pass is complete',
+    'this build pass is skipped',
+    'PASS: TestAdd2Plus3\nFAIL: TestSub',
+    'if (pass === "verified")',
+    'key: primary123'
+  ]
+  for (const text of allowed) {
+    test(`allows test/prose pass: ${text.replace('\n', ' / ').slice(0, 44)}`, () => {
+      expect(memoryRefusal(text)).toBeNull()
+      expect(outsideReason(text)).toBeNull()
+      expect(() => refuseUnsafe(text)).not.toThrow()
+    })
+  }
+
+  const refused = [
+    ['pass=hunter2abc', 'password or key'],
+    ['pass = hunter2abc', 'password or key'],
+    ['PASS=hunter2abc', 'password or key'],
+    ['--pass=hunter2abc', 'password or key'],
+    ['https://api.example.com/v1?user=alice&pass=hunter2abc', 'password or key'],
+    ['db.pass=hunter2abc', 'password or key'],
+    ['password: hunter2abc', 'password or key'],
+    ['password is hunter2abc', 'password or key'],
+    ['passwd: hunter2abc', 'password or key'],
+    ['passphrase is correct-horse-battery', 'password or key'],
+    ['secret: topsecret123', 'password or key'],
+    ['token: tok_9f8e7d6c5b4a', 'password or key'],
+    ['PASS: password=hunter2abc', 'password or key'],
+    ['PASS: password: hunter2abc', 'password or key'],
+    ['PASS: password is hunter2abc', 'password or key'],
+    ['PASS: passwd: hunter2abc', 'password or key'],
+    ['PASS: passphrase is correct-horse-battery', 'password or key'],
+    ['PASS: pass=hunter2abc', 'password or key'],
+    ['PASS: secret=topsecret123', 'password or key'],
+    ['PASS: api_key: 9f8e7d6c5b4a3', 'password or key'],
+    ['PASS: token=tok_9f8e7d6c5b4a', 'password or key'],
+    ['PASS: sk-abcdefghijklmnopqrstuvwxyz123456', 'access key or token'],
+    ['PASS: AKIAIOSFODNN7EXAMPLE', 'access key or token'],
+    [`PASS: ${'ghp'}_${'a'.repeat(36)}`, 'access key or token'],
+    [`PASS: ${'xoxb'}-0000000000-fakefakefake`, 'access key or token'],
+    ['PASS: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.sig', 'access key or token'],
+    ['PASS: -----BEGIN OPENSSH PRIVATE KEY-----', 'private key'],
+    [`PASS: https://door.example/hook/${'a'.repeat(64)}`, 'webhook address']
+  ] as const
+  for (const [text, reason] of refused) {
+    test(`refuses secret: ${text.slice(0, 44)}`, () => {
+      expect(memoryRefusal(text)).toContain(reason)
+      expect(outsideReason(text)).toContain(reason)
+      expect(() => refuseUnsafe(text)).toThrow()
+    })
+  }
+})
