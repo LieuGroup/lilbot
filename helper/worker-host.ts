@@ -109,19 +109,9 @@ export class WorkerHost {
       }
       return
     }
-    if (this.active.size >= this.maxWorkers || !canAdmitWorker(this.options.db)) {
-      return this.emitDone({ type: 'worker.done', runId: frame.runId, status: 'failed', text: '', items: [], error: 'Worker capacity reached on this computer; try again later.' })
-    }
+    if (this.active.size >= this.maxWorkers || !canAdmitWorker(this.options.db)) return this.fail(frame.runId, 'Worker capacity reached on this computer; try again later.')
     const driver = frame.driver ? this.drivers.find(d => d.id === frame.driver) : this.drivers[0]
-    if (!driver)
-      return this.emitDone({
-        type: 'worker.done',
-        runId: frame.runId,
-        status: 'failed',
-        text: '',
-        items: [],
-        error: 'Requested coding agent driver is not available on this computer.'
-      })
+    if (!driver) return this.fail(frame.runId, 'Requested coding agent driver is not available on this computer.')
 
     startWorkerRecord(this.options.db, frame.runId, frame.sessionId)
     const proxy = frame.mcpEnabled
@@ -134,12 +124,9 @@ export class WorkerHost {
       : undefined
     const entry: ActiveWorker = { runId: frame.runId, proxy, lastEmittedAt: 0 }
     this.active.set(frame.runId, entry)
-
     const flushEvent = () => {
-      if (entry.timer) {
-        clearTimeout(entry.timer)
-        entry.timer = undefined
-      }
+      if (entry.timer) clearTimeout(entry.timer)
+      entry.timer = undefined
       const p = entry.pending
       if (!p || !this.active.has(frame.runId)) return
       entry.pending = undefined
@@ -154,7 +141,6 @@ export class WorkerHost {
       }
       this.options.send(`worker-event:${frame.runId}`, eventFrame)
     }
-
     const onEvent = (event: WorkerProgressEvent) => {
       if (!this.active.has(frame.runId)) return
       if (event.sessionId) updateWorkerSession(this.options.db, frame.runId, event.sessionId)
@@ -168,7 +154,6 @@ export class WorkerHost {
       if (elapsed >= this.coalesceMs) flushEvent()
       else if (!entry.timer) entry.timer = setTimeout(flushEvent, this.coalesceMs - elapsed)
     }
-
     const handle = driver.start({ ...frame, mcp: proxy ? { url: proxy.url, token: proxy.token } : undefined }, onEvent)
     entry.handle = handle
     const settle = (outcome: Omit<WorkerDoneFrame, 'type' | 'runId'>) => {
@@ -178,17 +163,14 @@ export class WorkerHost {
       this.emitDone({ type: 'worker.done', runId: frame.runId, ...outcome })
     }
     void handle.done
-      .then(o =>
-        settle({
-          ...(o.sessionId ? { sessionId: o.sessionId } : {}),
-          status: o.status,
-          text: o.text,
-          items: o.items,
-          ...(o.usage ? { usage: o.usage } : {}),
-          ...(o.error ? { error: o.error } : {})
-        })
+      .then(({ sessionId, status, text, items, usage, error }) =>
+        settle({ ...(sessionId ? { sessionId } : {}), status, text, items, ...(usage ? { usage } : {}), ...(error ? { error } : {}) })
       )
       .catch(() => settle({ status: 'failed', text: '', items: [], error: 'Worker failed unexpectedly.' }))
+  }
+
+  private fail(runId: string, error: string) {
+    this.emitDone({ type: 'worker.done', runId, status: 'failed', text: '', items: [], error })
   }
 
   private stop(runId: string) {

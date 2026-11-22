@@ -20,26 +20,32 @@ afterEach(async () => {
   while (cleanups.length) await cleanups.pop()!()
 })
 
-function harness(agentPresent = true) {
-  const root = mkdtempSync(join(tmpdir(), 'worker-e2e-'))
-  const db = openDatabase(join(root, 'lilbot.db'))
-  const store = new ComputerStore(db)
-  const serverKey = loadServerKey(root)
-  const service = new ComputerService(
+function makeService(store: ComputerStore, root: string) {
+  return new ComputerService(
     store,
-    serverKey,
+    loadServerKey(root),
     () => true,
     () => root,
     () => {},
     () => 'full-access'
   )
+}
+
+function harness(agentPresent = true) {
+  const root = mkdtempSync(join(tmpdir(), 'worker-e2e-'))
+  const db = openDatabase(join(root, 'lilbot.db'))
+  const store = new ComputerStore(db)
+  const serverKey = loadServerKey(root)
+  const service = makeService(store, root)
   const pair = generateKeyPairSync('ed25519')
   const computerId = 'worker-box'
-  store.add(
-    computerId,
-    { name: 'Worker Box', os: 'linux', home: root, capabilities: ['exec', 'read', 'write', 'list', 'copy'] },
-    pair.publicKey.export({ type: 'spki', format: 'pem' }).toString()
-  )
+  const baseHello = {
+    name: 'Worker Box',
+    os: 'linux' as const,
+    home: root,
+    capabilities: ['exec', 'read', 'write', 'list', 'copy'] as ('exec' | 'read' | 'write' | 'list' | 'copy')[]
+  }
+  store.add(computerId, baseHello, pair.publicKey.export({ type: 'spki', format: 'pem' }).toString())
 
   const allowedRuns = new Set<string>()
   const received: WorkerHelperFrame[] = []
@@ -65,23 +71,20 @@ function harness(agentPresent = true) {
   const door = startPublicDoor(service, 0, { workers: bridge })
   const driver = claudeCodeDriver({ bin: agentPresent ? writeFakeClaude(root) : join(root, 'no-agent'), configDir: root, killGraceMs: 400 })
   const controller = new AbortController()
-  const runner = run(
-    {
-      id: computerId,
-      url: `http://127.0.0.1:${door.port}`,
-      privateKey: pair.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
-      serverFingerprint: serverKey.fingerprint
-    },
-    controller.signal,
-    {
-      configDir: root,
-      drivers: [driver],
-      coalesceMs: 100,
-      retire: async () => {
-        retired = true
-      }
+  const identity = {
+    id: computerId,
+    url: `http://127.0.0.1:${door.port}`,
+    privateKey: pair.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
+    serverFingerprint: serverKey.fingerprint
+  }
+  const runner = run(identity, controller.signal, {
+    configDir: root,
+    drivers: [driver],
+    coalesceMs: 100,
+    retire: async () => {
+      retired = true
     }
-  )
+  })
 
   cleanups.push(async () => {
     controller.abort()
@@ -91,24 +94,19 @@ function harness(agentPresent = true) {
     db.close()
     rmSync(root, { recursive: true, force: true })
   })
-  return { root, service, store, door, computerId, allowedRuns, received, getSend: () => sendToHelper, isRetired: () => retired, runner }
+  const computer = () => service.list().find(c => c.id === computerId)
+  return { root, service, store, door, computerId, computer, allowedRuns, received, getSend: () => sendToHelper, isRetired: () => retired, runner }
 }
 
 test('helper advertises worker capability only when an agent exists; absent agent stays usable for commands', async () => {
   const withAgent = harness(true)
-  await until(
-    () =>
-      withAgent.service
-        .list()
-        .find(c => c.id === withAgent.computerId)
-        ?.capabilities.includes('worker') === true
-  )
-  expect(withAgent.service.list().find(c => c.id === withAgent.computerId)?.workerAgents).toEqual([{ driver: 'claude-code', version: '2.1.327' }])
+  await until(() => withAgent.computer()?.capabilities.includes('worker') === true)
+  expect(withAgent.computer()?.workerAgents).toEqual([{ driver: 'claude-code', version: '2.1.327' }])
 
   const withoutAgent = harness(false)
-  await until(() => withoutAgent.service.list().find(c => c.id === withoutAgent.computerId)?.online === true)
+  await until(() => withoutAgent.computer()?.online === true)
   await Bun.sleep(150)
-  const plain = withoutAgent.service.list().find(c => c.id === withoutAgent.computerId)!
+  const plain = withoutAgent.computer()!
   expect(plain.capabilities).not.toContain('worker')
   expect(plain.workerAgents).toBeUndefined()
   const cmd = await withoutAgent.service.submit('b1', { computer: withoutAgent.computerId, requestId: 'cmd-1', operation: { kind: 'exec', command: 'printf STILL_WORKS' } })
@@ -150,14 +148,7 @@ test('MCP proxy works over signed WebSocket, unstarted runIds are refused, and d
   f.door.stop(true)
   await until(() => !f.getSend())
 
-  const service2 = new ComputerService(
-    f.store,
-    loadServerKey(f.root),
-    () => true,
-    () => f.root,
-    () => {},
-    () => 'full-access'
-  )
+  const service2 = makeService(f.store, f.root)
   let send2: ((frame: WorkerLeaderFrame) => boolean) | undefined
   const doneAfter: WorkerDoneFrame[] = []
   const door2 = startPublicDoor(service2, port, {
@@ -165,13 +156,14 @@ test('MCP proxy works over signed WebSocket, unstarted runIds are refused, and d
       hasRun: (cid, runId) => cid === f.computerId && runId === 'reconnect-run',
       onConnect: (_cid, send) => {
         send2 = send
-        return () => (send2 = undefined)
+        return () => {
+          send2 = undefined
+        }
       },
       onFrame: (_cid, frame, send) => {
-        if (frame.type === 'worker.done') {
-          doneAfter.push(frame)
-          send({ type: 'worker.ack', runId: frame.runId })
-        }
+        if (frame.type !== 'worker.done') return
+        doneAfter.push(frame)
+        send({ type: 'worker.ack', runId: frame.runId })
       }
     }
   })
@@ -194,7 +186,6 @@ test('signed revocation mid-run stops running worker and its child process group
   f.getSend()!({ type: 'worker.start', runId: 'revoke-run', cwd: f.root, model: 'claude-sonnet-5-5', prompt: JSON.stringify({ mode: 'sleep', childPidFile }), mcpEnabled: true })
   await until(() => existsSync(childPidFile))
   const childPid = Number(readFileSync(childPidFile, 'utf8').trim())
-
   f.service.remove(f.computerId)
   await f.runner
   expect(f.isRetired()).toBe(true)
