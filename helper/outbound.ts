@@ -16,6 +16,9 @@ export function outbound(emit: (frame: unknown) => boolean, results: () => { id:
     heartbeat(challenge = '') {
       controls.set(challenge, { type: 'heartbeat', ...(challenge ? { challenge } : {}) })
     },
+    control(key: string, frame: unknown) {
+      controls.set(key, frame)
+    },
     flush(_now = Date.now()) {
       for (const [key, frame] of controls) {
         if (!emit(frame)) return

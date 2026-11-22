@@ -3,8 +3,10 @@
 
 import { verifyHelperFrame } from '../../helper/frame-auth'
 import { HelperFrame } from '../../shared/computer-schema'
+import type { WorkerLeaderFrame } from '../../shared/worker-frame-schema'
 import { Registration } from '../computers/computer-auth'
 import type { ComputerService } from '../computers/computer-service'
+import { createWorkerSocketState, handleOversizedWorkerDone, handleWorkerFrame, isWorkerFrame, type WorkerDoorBridge, type WorkerSocketState } from '../computers/worker-door'
 import { HOOK_PATH } from '../webhooks/webhook-address'
 import { WEBHOOK_LIMITS } from '../webhooks/webhook-limits'
 import { addressGroup, byteBudget, connectionBudget, plainServerError, readLimited } from './listener-safety'
@@ -15,9 +17,9 @@ const HELPER_BODY_BYTES = 8192
 export function startPublicDoor(
   computers: ComputerService,
   port: number,
-  options: { onClose?: (code: number) => void; hooks?: (request: Request, token: string, address: string) => Promise<HookAnswer> } = {}
+  options: { onClose?: (code: number) => void; hooks?: (request: Request, token: string, address: string) => Promise<HookAnswer>; workers?: WorkerDoorBridge } = {}
 ) {
-  const { onClose = () => {}, hooks } = options
+  const { onClose = () => {}, hooks, workers } = options
   const allowed = connectionBudget()
   const perComputer = connectionBudget(6)
   const signed = connectionBudget(6, true)
@@ -25,6 +27,9 @@ export function startPublicDoor(
     id: string
     nonce: string
     disconnect?: () => void
+    workerDisconnect?: () => void
+    workerSend?: (frame: WorkerLeaderFrame) => boolean
+    workerState?: WorkerSocketState
     bytes?: ReturnType<typeof byteBudget>
     messages?: ReturnType<typeof byteBudget>
     progress?: Map<string, number>
@@ -101,11 +106,23 @@ export function startPublicDoor(
           socket.close(4003)
           return
         }
+        socket.data.workerState = createWorkerSocketState()
+        socket.data.workerSend = frame => send(JSON.stringify(frame))
         socket.data.disconnect = computers.connect(
           socket.data.id,
           send,
-          (code = 1001) => socket.close(code),
-          () => socket.getBufferedAmount() < 64_000
+          (code = 1001) => {
+            const drop = socket.data.workerDisconnect
+            socket.data.workerDisconnect = undefined
+            drop?.()
+            socket.close(code)
+          },
+          () => socket.getBufferedAmount() < 64_000,
+          (promoted?: boolean) => {
+            if (socket.readyState !== 1) return
+            if (workers?.onConnect) socket.data.workerDisconnect = workers.onConnect(socket.data.id, socket.data.workerSend!)
+            if (promoted) send(JSON.stringify({ type: 'heartbeat' }))
+          }
         )
       },
       drain(socket) {
@@ -124,11 +141,20 @@ export function startPublicDoor(
             const envelope = JSON.parse(String(message))
             if (!verifyHelperFrame(computers.auth.publicKey(socket.data.id)!, socket.data.id, socket.data.nonce, socket.data.sequence, envelope)) return socket.close(1007)
             socket.data.sequence++
-            const frame = HelperFrame.parse(JSON.parse(envelope.payload))
+            const payloadBytes = Buffer.byteLength(envelope.payload)
+            const rawFrame = JSON.parse(envelope.payload)
+            if (rawFrame && typeof rawFrame === 'object' && typeof rawFrame.type === 'string' && rawFrame.type.startsWith('worker.')) {
+              if (!computers.isActivePeer(socket.data.id, socket.data.disconnect)) return
+              if (handleOversizedWorkerDone(socket.data.id, rawFrame, payloadBytes, socket.data.workerState!, socket.data.workerSend!, workers)) return
+            }
+            const frame = HelperFrame.parse(rawFrame)
             if (frame.type === 'heartbeat') {
               if (!frame.challenge && arrivedAt - socket.data.heartbeatAt < 5000) return
               if (!frame.challenge) socket.data.heartbeatAt = arrivedAt
               computers.heartbeat(socket.data.id, socket.data.disconnect, frame.challenge)
+            } else if (isWorkerFrame(frame)) {
+              if (!handleWorkerFrame(computers.store.db, socket.data.id, frame, socket.data.workerState!, arrivedAt, payloadBytes, socket.data.workerSend!, workers))
+                socket.close(1008)
             } else {
               if (!frame.final) {
                 if (frame.result.output.length > 8192 || arrivedAt - (socket.data.progress!.get(frame.id) ?? 0) < 900) return
@@ -153,6 +179,9 @@ export function startPublicDoor(
       },
       close(socket, code) {
         onClose(code)
+        const drop = socket.data.workerDisconnect
+        socket.data.workerDisconnect = undefined
+        drop?.()
         socket.data.disconnect?.()
       }
     }
