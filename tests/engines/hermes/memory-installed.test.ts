@@ -31,16 +31,17 @@ afterEach(() => {
 const settingsPath = (profile: string) => (profile === 'default' ? join(root, 'lilbot-memory.json') : join(root, 'profiles', profile, 'lilbot-memory.json'))
 
 test('memoryInstalled compares stored bot_id with expectedBotId and treats missing or unreadable settings as not installed', () => {
-  expect(memoryInstalled('existing')).toBe(false)
+  expect(memoryInstalled('existing', 'existing')).toBe(false)
   expect(memoryInstalled('existing', 'bot-uuid')).toBe(false)
 
-  for (const invalid of ['{not json', 'null', '[]', '"text"', JSON.stringify({ bot_id: 42 }), JSON.stringify({ bot_id: null })]) {
+  for (const invalid of ['{not json', 'null', '[]', '"text"', '{}', JSON.stringify({ bot_id: '' }), JSON.stringify({ bot_id: 42 }), JSON.stringify({ bot_id: null })]) {
     writeFileSync(settingsPath('existing'), invalid)
     expect(memoryInstalled('existing', 'bot-uuid')).toBe(false)
+    expect(memoryInstalled('existing', 'existing')).toBe(false)
   }
 
   writeFileSync(settingsPath('existing'), JSON.stringify({ url: 'http://127.0.0.1:1', token_file: '/tmp/t', bot_id: 'old-uuid' }))
-  expect(memoryInstalled('existing')).toBe(true)
+  expect(memoryInstalled('existing', 'existing')).toBe(false)
   expect(memoryInstalled('existing', 'new-uuid')).toBe(false)
   expect(memoryInstalled('existing', 'old-uuid')).toBe(true)
 
@@ -127,6 +128,35 @@ test('an already-imported database where bot id equals engine id stays connected
       expect(await service.connectAllMemory()).toEqual([])
       expect(connectCalls).toBe(0)
       expect(readFileSync(settingsPath('default'), 'utf8')).toBe(raw)
+    } finally {
+      db.close()
+    }
+  }
+})
+
+test('an equal-id bot with an empty or blank-id settings object is reported disconnected and repaired by connectAllMemory', async () => {
+  for (const broken of [{}, { bot_id: '' }]) {
+    writeFileSync(settingsPath('default'), JSON.stringify(broken))
+    const db = openDatabase(':memory:')
+    try {
+      const store = new BotStore(db)
+      store.import('test', [{ ...detail, id: 'default', name: 'Chief', isDefault: true, engineId: 'test', engineBotId: 'default' }])
+      const { engine, runtimeIds } = fakeEngine()
+      runtimeIds.add('default')
+      engine.applyIdentity = async (engineBotId, identity) => ({ abilities: [], memoryConnected: memoryInstalled(engineBotId, identity.id) })
+      engine.connectMemory = async (engineBotId, connection) => {
+        writeFileSync(settingsPath(engineBotId), JSON.stringify({ url: connection.url, token_file: connection.tokenFile, bot_id: connection.botId ?? engineBotId }))
+        return { aboutUser: [], ownNotes: [] }
+      }
+      const connection = { url: 'http://127.0.0.1:3370', tokenFile: '/t' }
+      const service = new BotService(engine, store, new BotPrefsStore(db), new Workspaces(join(root, 'workspaces')), new MemoryService(new MemoryStore(db)), {
+        memoryConnection: connection
+      })
+      await service.prepareRuntimes()
+      expect((await service.listMemory('default')).connected).toBe(false)
+      expect(await service.connectAllMemory()).toEqual(['default'])
+      expect((await service.listMemory('default')).connected).toBe(true)
+      expect(JSON.parse(readFileSync(settingsPath('default'), 'utf8'))).toEqual({ url: connection.url, token_file: '/t', bot_id: 'default' })
     } finally {
       db.close()
     }

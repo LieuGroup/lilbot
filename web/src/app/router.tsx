@@ -48,15 +48,28 @@ function AppShell() {
  *  connected and scrolled where it was underneath. */
 function BotLayout() {
   const { botId } = useParams({ from: '/bots/$botId' })
+  const bots = useBotStore(state => state.bots)
+  const loaded = useBotStore(state => state.loaded)
   const tab = useDetailsTab()
   const thread = useOpenThreadId()
   const run = useBotSearch('run')
   const webhookRun = useBotSearch('webhookRun')
   const covered = !!(thread || run || webhookRun)
   const navigate = useNavigate()
+  const missing = loaded && !bots.some(bot => bot.id === botId)
+  const fallback = bots.find(bot => bot.isPrimary) ?? bots[0]
   useEffect(() => {
-    if (!tab && detailsOpenByDefault()) void navigate({ to: '/bots/$botId/$tab', params: { botId, tab: 'activity' }, search: true, replace: true })
-  }, [botId, tab, navigate])
+    if (missing && fallback) {
+      void navigate(
+        tab
+          ? { to: '/bots/$botId/$tab', params: { botId: fallback.id, tab }, search: {}, replace: true }
+          : { to: '/bots/$botId', params: { botId: fallback.id }, search: {}, replace: true }
+      )
+      return
+    }
+    if (!missing && !tab && detailsOpenByDefault()) void navigate({ to: '/bots/$botId/$tab', params: { botId, tab: 'activity' }, search: true, replace: true })
+  }, [missing, fallback?.id, botId, tab, navigate])
+  if (missing && fallback) return null
   return (
     <div className="flex h-full min-w-0">
       <div className={`${tab ? 'hidden md:flex' : 'flex'} relative min-w-0 flex-1 flex-col`}>
