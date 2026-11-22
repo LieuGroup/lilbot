@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
+import { railGroups, rosterGroups, searchBots } from '../../shared/client/bots/roster-groups'
 import { activitySince, formatElapsed } from '../../web/src/activity/activity-since'
-import { railGroups, rosterGroups, searchBots } from '../../web/src/bots/roster-groups'
 import { rowState } from '../../web/src/bots/row-state'
 import { testBot as bot } from './test-bot'
 

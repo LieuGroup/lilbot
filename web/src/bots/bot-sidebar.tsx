@@ -1,12 +1,12 @@
 import { lazy, Suspense } from 'react'
 
 import { Notice } from '@/ui/notice'
+import { rosterGroups, searchBots } from '../../../shared/client/bots/roster-groups'
 import { loadBotMenu } from './bot-menu-target'
 import { useBotStore } from './bot-store'
 import { useDetailsTab, useOpenBotId } from './details-tabs'
 import { RosterFooter } from './roster-footer'
 import { RosterCollapsedGroup, RosterSection } from './roster-group'
-import { rosterGroups, searchBots } from './roster-groups'
 import { RosterHeader } from './roster-header'
 import { RosterOverlays } from './roster-overlays'
 import { RosterRow } from './roster-row'

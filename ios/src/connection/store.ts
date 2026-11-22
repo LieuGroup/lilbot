@@ -1,12 +1,15 @@
-/** The server settings this install uses, kept on the device, plus the live connection state. */
+/** The server settings this install uses, plus the live connection state. The Access token
+ *  lives in the Keychain (expo-secure-store); only the server address is plain storage. */
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import Constants from 'expo-constants'
+import * as SecureStore from 'expo-secure-store'
 import { create } from 'zustand'
 import type { Device } from '../../../shared/device-schema'
 import { thisDeviceId } from '../devices/device'
 import { ensureSocket, resetSocket } from './lilbot'
 
-const KEY = 'lilbot.settings'
+const SETTINGS_KEY = 'lilbot.settings'
+const TOKEN_KEY = 'lilbot.accessToken'
 
 export interface ServerSettings {
   serverUrl: string
@@ -24,22 +27,23 @@ interface ConnectionState {
   setDevice: (device: Device) => void
 }
 
-export const useConnectionStore = create<ConnectionState>((set, get) => ({
+export const useConnectionStore = create<ConnectionState>(set => ({
   settings: null,
   loaded: false,
   connected: false,
   device: null,
   load: async () => {
     try {
-      const raw = await AsyncStorage.getItem(KEY)
-      set({ settings: raw ? (JSON.parse(raw) as ServerSettings) : null, loaded: true })
+      const [raw, token] = await Promise.all([AsyncStorage.getItem(SETTINGS_KEY), SecureStore.getItemAsync(TOKEN_KEY)])
+      const saved = raw ? (JSON.parse(raw) as { serverUrl: string }) : null
+      set({ settings: saved ? { serverUrl: saved.serverUrl, accessToken: token ?? '' } : null, loaded: true })
     } catch {
       set({ loaded: true })
     }
   },
   save: async settings => {
     resetSocket()
-    await AsyncStorage.setItem(KEY, JSON.stringify(settings))
+    await Promise.all([AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify({ serverUrl: settings.serverUrl })), SecureStore.setItemAsync(TOKEN_KEY, settings.accessToken)])
     set({ settings })
   },
   setConnected: connected => set({ connected }),
@@ -51,8 +55,8 @@ export function deviceName(): string {
   return Constants.deviceName ?? 'iPhone'
 }
 
-/** Start the socket once; after every (re)connect reload nothing here — the roster and chats
- *  listen themselves — and make sure the server knows this device. */
+/** Start the socket once; after every (re)connect make sure the server knows this device. The
+ *  roster and chats listen to push events themselves. */
 export function startConnection() {
   const socket = ensureSocket()
   if (!socket) return

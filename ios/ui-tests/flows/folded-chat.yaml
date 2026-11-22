@@ -1,0 +1,19 @@
+# Folded layout (iPhone): settings gate, roster, conversation, send.
+# Run with the fake server up: `bun ui-tests/fake-lilbot.ts` (port 3399).
+appId: com.lilbot.app.dev
+---
+- launchApp
+- assertVisible: "Server address"
+- tapOn: "https://lilbot.example.com"
+- inputText: "http://localhost:3399"
+- tapOn: "cf-access-jwt-assertion value"
+- inputText: "test-token"
+- tapOn: "Save and connect"
+- assertVisible: "Test Bot"
+- assertVisible: "Test section"
+- tapOn: "Test Bot"
+- assertVisible: "Hello! I am the fake LilBot server."
+- tapOn: "Message"
+- inputText: "Hi there"
+- tapOn: "Send"
+- assertVisible: "Hi there"

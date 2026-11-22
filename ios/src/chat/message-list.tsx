@@ -18,10 +18,11 @@ interface MessageListProps {
 export function MessageList({ botId, botName, chat, emptyHint }: MessageListProps) {
   const theme = useTheme()
   const activity = chat.running ? chat.activity : ''
+  // An inverted list takes the newest row first.
   const rows: { key: string; item: MessageItem; queued: boolean }[] = [
     ...chat.items.filter((item): item is MessageItem => item.kind !== 'session').map((item, index) => ({ key: `item-${index}`, item, queued: false })),
     ...chat.queued.map((message, index) => ({ key: `queued-${index}`, item: message as MessageItem, queued: true }))
-  ]
+  ].reverse()
   return (
     <FlatList
       inverted

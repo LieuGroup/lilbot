@@ -1,6 +1,6 @@
 /** The Duo adaptive shell: unfolded (wide) shows the roster beside the conversation, folded
  *  (narrow) shows one at a time with a back button. The breakpoint is the window width. */
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Pressable, useWindowDimensions, View } from 'react-native'
 import type { Bot } from '../../../shared/bot-schema'
 import { useBotStore } from '../bots/store'
@@ -20,6 +20,13 @@ export function DuoShell({ onOpenSettings }: { onOpenSettings: () => void }) {
   const sections = useBotStore(state => state.sections)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const selected = bots.find(bot => bot.id === selectedId) ?? null
+  // Open the primary bot's conversation on entry, once; the roster's back button can still clear it.
+  const didAutoSelect = useRef(false)
+  useEffect(() => {
+    if (didAutoSelect.current || bots.length === 0) return
+    didAutoSelect.current = true
+    setSelectedId((bots.find(bot => bot.isPrimary) ?? bots[0]).id)
+  }, [bots])
 
   if (!wide) {
     if (!selected) {

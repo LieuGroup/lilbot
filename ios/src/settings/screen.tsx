@@ -1,7 +1,8 @@
 /** Settings: the server address and Access token this install talks to, plus connection state.
- *  The token is Oscar's Cloudflare Access JWT; the app sends it on every request. */
+ *  The token is Oscar's Cloudflare Access JWT, kept in the Keychain; the app sends it on every request. */
 import { useState } from 'react'
 import { Pressable, ScrollView, TextInput, View } from 'react-native'
+import { serverUrlError } from '../connection/lilbot'
 import { useConnectionStore } from '../connection/store'
 import { useTheme } from '../ui/theme'
 import { AppText } from '../ui/text'
@@ -15,9 +16,15 @@ export function SettingsScreen({ onDone }: { onDone: () => void }) {
   const save = useConnectionStore(state => state.save)
   const [serverUrl, setServerUrl] = useState(settings?.serverUrl ?? '')
   const [accessToken, setAccessToken] = useState(settings?.accessToken ?? '')
+  const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
   const submit = async () => {
+    const invalid = serverUrlError(serverUrl)
+    if (invalid) {
+      setError(invalid)
+      return
+    }
     setSaving(true)
     try {
       await save({ serverUrl: serverUrl.trim(), accessToken: accessToken.trim() })
@@ -65,6 +72,12 @@ export function SettingsScreen({ onDone }: { onDone: () => void }) {
           {saving ? 'Saving…' : 'Save and connect'}
         </AppText>
       </Pressable>
+
+      {error ? (
+        <AppText variant="meta" color={theme.destructive}>
+          {error}
+        </AppText>
+      ) : null}
 
       <View style={{ gap: 6, marginTop: 12 }}>
         <AppText variant="meta" color={theme.mutedForeground}>

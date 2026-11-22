@@ -33,11 +33,13 @@ export class LilBotSocket {
   private connectionListeners = new Set<(connected: boolean) => void>()
   private pushListeners = new Map<string, Set<(frame: EventFrame) => void>>()
   private disposed = false
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   connected = false
 
   constructor(private options: { url: string | (() => string); createSocket?: SocketFactory; reconnectDelaysMs?: number[] }) {}
 
   connect() {
+    if (this.disposed) return
     const url = typeof this.options.url === 'string' ? this.options.url : this.options.url()
     const socket = (this.options.createSocket ?? (address => new WebSocket(address) as unknown as ClientSocket))(url)
     this.socket = socket
@@ -55,13 +57,21 @@ export class LilBotSocket {
       this.pending.clear()
       this.setConnected(false)
       const delays = this.options.reconnectDelaysMs ?? RECONNECT_DELAYS_MS
-      setTimeout(() => this.connect(), delays[Math.min(this.attempt++, delays.length - 1)])
+      this.reconnectTimer = setTimeout(() => this.connect(), delays[Math.min(this.attempt++, delays.length - 1)])
     }
   }
 
-  /** Close for good: no reconnect, pending requests fail. */
+  /** Close for good: no reconnect, pending requests fail, listeners hear the disconnect. */
   stop() {
     this.disposed = true
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
+    this.reconnectTimer = null
+    for (const waiting of this.pending.values()) {
+      clearTimeout(waiting.timer)
+      waiting.reject(new LilBotError('disconnected', 'The connection to LilBot was closed.'))
+    }
+    this.pending.clear()
+    this.setConnected(false)
     this.socket?.close()
   }
 

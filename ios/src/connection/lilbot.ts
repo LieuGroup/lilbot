@@ -3,6 +3,15 @@
 import { LilBotSocket, type ClientSocket } from '../../../shared/client/socket'
 import { useConnectionStore } from './store'
 
+/** Plain HTTP is only for a server on this Mac (the UI tests' fake server); anywhere else the
+ *  Access token would travel unencrypted, so it is refused. */
+export function serverUrlError(url: string): string | null {
+  const trimmed = url.trim()
+  if (!trimmed) return 'Give the server address.'
+  if (/^http:\/\//.test(trimmed) && !/^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/.test(trimmed)) return 'Use https:// for a server that is not on this Mac.'
+  return null
+}
+
 /** "https://lilbot.example.com" or a bare host becomes the `/ws` address of that server. */
 export function socketUrl(base: string): string {
   const trimmed = base.trim().replace(/\/+$/, '')

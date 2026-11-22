@@ -24,6 +24,7 @@ export default function Home() {
     void loadSettings()
   }, [loadSettings])
 
+  // `settings` (not just the address) is a dependency: a new token replaces the socket too.
   useEffect(() => {
     if (!loaded || !settings?.serverUrl) return
     startConnection()
@@ -31,7 +32,7 @@ export default function Home() {
     return () => {
       stopWatching()
     }
-  }, [loaded, settings?.serverUrl])
+  }, [loaded, settings])
 
   useEffect(() => {
     if (connected) void loadBots()
