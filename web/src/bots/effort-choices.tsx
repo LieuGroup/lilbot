@@ -2,8 +2,8 @@ import { ChevronDownIcon } from 'lucide-react'
 import { Button } from '@/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/ui/dropdown-menu'
 import { ReasoningEffort } from '../../../shared/bot-schema'
+import { effortLabel } from '../../../shared/client/bots/reasoning-effort'
 import { choiceRow } from './model-selector'
-import { effortLabel } from './reasoning-effort'
 
 const LEVELS = ReasoningEffort.options.filter(level => level !== 'none')
 const DEFAULT = ''

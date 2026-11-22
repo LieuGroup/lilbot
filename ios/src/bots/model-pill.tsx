@@ -11,7 +11,7 @@ import { useTheme } from '../ui/theme'
 import { AppText } from '../ui/text'
 import { ChevronDownIcon, InfoIcon } from '../ui/icon'
 import { useBotStore } from './store'
-import { modelKey, modelPillView, type PickerChange } from './model-choice'
+import { modelKey, modelPillView, type PickerChange } from '../../../shared/client/bots/model-choice'
 import { useModelProviders } from './model-list'
 import { ModelMenu } from './model-menu'
 

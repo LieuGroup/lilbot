@@ -6,10 +6,10 @@ import { Input } from '@/ui/input'
 import { Notice } from '@/ui/notice'
 import { Textarea } from '@/ui/textarea'
 import type { BotModel, ReasoningEffort } from '../../../shared/bot-schema'
+import { capabilityOf, effortLabel, reasons, sentDiffers } from '../../../shared/client/bots/reasoning-effort'
 import { EffortSelector } from './effort-choices'
 import { useModelProviders } from './model-list'
 import { ModelSelector } from './model-selector'
-import { capabilityOf, effortLabel, reasons, sentDiffers } from './reasoning-effort'
 
 interface BotFormValues {
   name: string

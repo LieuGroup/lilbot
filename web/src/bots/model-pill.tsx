@@ -3,8 +3,8 @@ import { ChevronDownIcon, InfoIcon, LoaderCircleIcon } from 'lucide-react'
 import { lazy, Suspense, useRef } from 'react'
 
 import { InputGroupButton } from '@/ui/input-group'
+import { modelPillView } from '../../../shared/client/bots/model-choice'
 import { useBotStore } from './bot-store'
-import { modelPillView } from './model-choice'
 import { useModelProviders } from './model-list'
 import { loadModelMenu, openModelMenu, useModelPicker } from './model-picker-target'
 

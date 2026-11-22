@@ -2,7 +2,7 @@
  *  The pill only writes here; the menu loads on first use (`model-menu.tsx`), so the first page stays small. */
 import { create } from 'zustand'
 
-import type { PickerChange } from './model-choice'
+import type { PickerChange } from '../../../shared/client/bots/model-choice'
 
 interface ModelPickerState {
   open: boolean

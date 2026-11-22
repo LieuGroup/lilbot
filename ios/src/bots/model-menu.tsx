@@ -7,8 +7,9 @@ import { ReasoningEffort } from '../../../shared/bot-schema'
 import { CheckIcon } from '../ui/icon'
 import { useTheme } from '../ui/theme'
 import { AppText } from '../ui/text'
-import { capabilityOf, effortLabel, effortValue, modelFromKey, modelGroups, modelKey, reasons } from './model-choice'
-import type { PickerChange } from './model-choice'
+import { modelFromKey, modelGroups, modelKey } from '../../../shared/client/bots/model-choice'
+import type { PickerChange } from '../../../shared/client/bots/model-choice'
+import { capabilityOf, effortLabel, effortValue, reasons } from '../../../shared/client/bots/reasoning-effort'
 
 interface ModelMenuProps {
   visible: boolean

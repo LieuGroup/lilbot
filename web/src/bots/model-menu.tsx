@@ -11,15 +11,15 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger
 } from '@/ui/dropdown-menu'
+import { modelGroups, modelKey, type PickerChange } from '../../../shared/client/bots/model-choice'
+import { capabilityOf, effortValue, reasons } from '../../../shared/client/bots/reasoning-effort'
 import { LilBotError } from '../../../shared/lilbot-error'
 import { lilbot, messageOf } from '../app/lilbot-socket'
 import { useBotStore } from './bot-store'
 import { EffortChoices } from './effort-choices'
-import { modelGroups, modelKey, type PickerChange } from './model-choice'
 import { useModelList } from './model-list'
 import { useModelPicker } from './model-picker-target'
 import { ModelChoices } from './model-selector'
-import { capabilityOf, effortValue, reasons } from './reasoning-effort'
 
 /** Save at once. The pill shows the new value with a spinner meanwhile. A refusal puts the saved value back with a red note;
  *  a switch the open conversation could not take is saved for new conversations, and the note says so. */

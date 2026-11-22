@@ -47,11 +47,4 @@ export function ensureSocket(): LilBotSocket | null {
   return socket
 }
 
-/** After the settings change: drop the old socket (no reconnect) so the next ensureSocket uses the new ones. */
-export function resetSocket() {
-  socket?.stop()
-  socket = null
-  socketKey = ''
-}
-
 export { socket as lilbotSocket }
