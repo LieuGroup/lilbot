@@ -44,6 +44,10 @@ Every `check:*` and `bun live-checks/*.ts` follows the development rules in `AGE
   idempotently, with its limits.
 - `bun run check:delegation`: a temporary lead hands two tasks to two helpers in one call, one with a file; then it
   reads their status, redirects one mid-command and stops the other; the first answer returns once, with a file.
+- `bun run check:worker`: a temporary bot starts two same-bot workers in one call (one on a different model and effort
+  with a file, one sleeper), checks automatic `code` work items, Hermes model/effort, no self `workingFor` on the
+  roster, redirect and stop, main-chat return, exclusion from history/memory review, and continuation under hygiene
+  compression.
 - `bun run check:groups`: on a dev server with the round limit at 3, a temporary lead starts a group with two members
   and a file; both reply at once; LilBot is killed mid-round 2 and restarted (the member's gated script ran once); the
   member attaches a file, the lead closes and keeps it (Library, archive, journal facts) and the outcome reaches its

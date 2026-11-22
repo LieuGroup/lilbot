@@ -10,7 +10,7 @@ import { sendFiles } from './exchange-files'
 import type { GroupRounds } from './group-rounds'
 import { failExchange, turnFailure } from './thread-failure'
 import type { ThreadFiles } from './thread-files'
-import { THREAD_LIMITS } from './thread-limits'
+import { canStartDelivery, isReply, THREAD_LIMITS } from './thread-limits'
 import { answerPrompt, replyText, workPrompt } from './thread-prompts'
 import { type Delivery, isWork, type ThreadStore } from './thread-store'
 import type { ThreadWaits } from './thread-waits'
@@ -37,25 +37,20 @@ export class ThreadRunner {
     private waits: ThreadWaits,
     private host: RunnerHost,
     private changed: () => void,
-    /** One bot's session in this delivery started or stopped working. */
     private activity: (botId: string, d: Delivery, working: boolean) => void,
-    /** A light push: an exchange's status or activity line changed (`roster`: a group member's line, which the roster shows). */
     private touched: (roster?: boolean) => void,
     private groups?: GroupRounds
   ) {}
 
-  /** The deliveries running now in this exchange's (or group's) sessions. */
   runningIn(threadId: string) {
     return [...this.running.values()].filter(d => this.store.workThread(d) === threadId)
   }
   runningFor(threadId: string) {
     return this.runningIn(threadId)[0]
   }
-  /** What the bot running this delivery is doing right now. */
   lineOf(d: Delivery | undefined) {
     return (d && this.lines.get(d.id)) ?? null
   }
-  /** A tool call seen in a chat: in a running exchange it becomes the receiver's activity line. */
   sawTool(chatId: string, line: string) {
     const d = [...this.running.values()].find(d => d.chatId === chatId)
     if (!d || this.lines.get(d.id) === line) return
@@ -63,20 +58,18 @@ export class ThreadRunner {
     this.touched(!!this.groups?.groupOf(d))
   }
 
-  /** Who works while a delivery runs: both bots of an exchange, but of a group's point only the member (the leader waits for the replies). */
   private mark(d: Delivery, working: boolean) {
     for (const botId of new Set(d.kind === 'point' ? [d.target] : [d.sender, d.target])) this.activity(botId, d, working)
   }
 
   tick() {
     const pending = this.store.pending()
-    // In order within a thread, and within a group per member so members reply in parallel; nested threads move independently.
     const lanes = pending.map(d => {
       const group = this.groups?.groupOf(d)
-      return group ? `${group}\n${d.target}` : d.threadId
+      return group ? `${group}\n${d.target}` : isReply(d.kind) ? `${d.threadId}\nreply` : d.threadId
     })
     for (const [index, d] of pending.entries()) {
-      if (this.running.size >= THREAD_LIMITS.concurrent) break
+      if (!canStartDelivery(d, this.running.values(), id => !!this.store.get(id).worker)) continue
       if (!this.retries.ready(d.id) || lanes.slice(0, index).includes(lanes[index])) continue
       this.retries.run(
         d.id,
@@ -112,7 +105,6 @@ export class ThreadRunner {
     const stillOn = () => {
       if (stopped()) throw new LilBotError('thread_cancelled', 'The exchange was stopped.')
     }
-    // Stopped before this turn ran, or while LilBot was down: make sure its session is not left running.
     if (stopped() && d.chatId) await this.host.stopRun?.(d.target, d.chatId)
     stillOn()
     const thread = this.store.get(d.threadId)
@@ -128,13 +120,16 @@ export class ThreadRunner {
       : d.kind === 'answer'
         ? answerPrompt(thread, sender, d.text, files, this.waits.foldedInto(d.id))
         : workPrompt(d, thread, sender, files, redirects)
-    const toWork = d.kind !== 'answer' && d.kind !== 'notice'
+    const toWork = !isReply(d.kind)
+    const workSession = toWork ? this.store.session(d.threadId, d.target) : undefined
     const internal = toWork || !!this.store.context(d.target, d.sourceChat)
     if (work && !group) this.store.update(work, t => t.status !== 'working' && Object.assign(t, { status: 'working', startedAt: Date.now(), endedAt: null, failure: undefined }))
     this.touched()
     const result = await this.host.runRoutine(d.target, prompt, {
       runId: `thread-${d.id}`,
-      chatId: toWork ? this.store.session(d.threadId, d.target) : d.sourceChat,
+      chatId: toWork ? workSession : d.sourceChat,
+      ...(toWork && !workSession && thread.model ? { model: thread.model } : {}),
+      ...(toWork && !workSession && thread.reasoningEffort ? { reasoningEffort: thread.reasoningEffort } : {}),
       onChat: id => {
         stillOn()
         this.store.attach(d, d.target, id, internal)
@@ -162,7 +157,6 @@ export class ThreadRunner {
     if (result.status !== 'completed') items.push({ kind: 'assistant', text: `Thread work ${result.status}: ${result.text}` })
     const group = this.groups?.groupOf(d)
     if (group) return void (await this.groups!.record(d, group, items))
-    // A redirect steered into this turn that the turn never took runs as the receiver's next turn instead.
     const work = this.store.workThread(d)
     for (const r of work ? this.store.steered(work) : [])
       if (r.target === d.target) this.store.setStatus(r.id, result.items?.some(i => i.kind === 'user' && i.text.includes(r.id)) ? 'done' : 'pending')
@@ -176,9 +170,18 @@ export class ThreadRunner {
       if (response) {
         const thread = this.store.get(response.threadId)
         const author = thread.participants.find(p => p.id === d.target)!
-        const reply = { id: replyId, authorId: author.id, authorName: author.name, createdAt: Date.now(), items, ...(withheld ? { withheld: true as const } : {}) }
+        const reply = {
+          id: replyId,
+          authorId: author.id,
+          authorName: author.name,
+          createdAt: Date.now(),
+          items,
+          ...(thread.worker && isWork(d.kind) ? { fromWorker: true as const } : {}),
+          ...(withheld ? { withheld: true as const } : {})
+        }
         const sent = this.store.append(thread, reply) && !withheld
-        if (sent) this.store.enqueue(replyId, thread.id, d.target, response.target, response.sourceChat, replyText(items), 'answer')
+        if (sent)
+          this.store.enqueue(replyId, thread.id, d.target, response.target, response.sourceChat, replyText(items, { exchangeId: thread.id, hard: !!thread.worker }), 'answer')
         if (!withheld) {
           const more = this.store.pendingWork(thread.id).some(id => !settled.includes(id))
           thread.status = result.status === 'completed' ? (more ? 'waiting' : 'finished') : result.status === 'stopped' ? 'cancelled' : 'failed'

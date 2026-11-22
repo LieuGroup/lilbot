@@ -76,7 +76,8 @@ export function createAppServices(
   const memoryChanged = () => publish({ event: 'memory.changed' })
   const token = engineToken(DATA_DIR)
   const store = new BotStore(database)
-  const threadStore = new ThreadStore(database)
+  const rootOf = sessionRoots(engine, store)
+  const threadStore = new ThreadStore(database, rootOf)
   const computers = new ComputerService(
     new ComputerStore(database),
     loadServerKey(DATA_DIR),
@@ -90,7 +91,6 @@ export function createAppServices(
   const routineStore = new RoutineStore(database)
   const libraryStore = new LibraryStore(database)
   const webhookStore = new WebhookStore(database)
-  const rootOf = sessionRoots(engine, store)
   const checkStore = new WorkCheckStore(database)
   const ownChat = (chat: string) => routineStore.isRoutineChat(chat) || threadStore.isInternal(chat) || webhookStore.isWebhookChat(chat) || checkStore.isCheckChat(chat)
   const chatKind = chatKinds(rootOf, ownChat)

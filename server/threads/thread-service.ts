@@ -99,7 +99,7 @@ export class ThreadService {
     const row = this.files.forMessage(messageId)[index]
     if (!row || row.thread_id !== threadId || !row.copy || !row.sha256 || !this.host.folder) throw new LilBotError('file_missing', 'That file was not delivered.')
     if (thread.group) return { name: row.name, ...(await readGroupFile(this.groupRoot, this.host.folder, thread, row)) }
-    const to = await this.host.requireBot(thread.participants.find(p => p.id !== row.sender)!.id)
+    const to = await this.host.requireBot(thread.worker ? thread.participants[1].id : thread.participants.find(p => p.id !== row.sender)!.id)
     const parts = row.copy.split('/')
     const stored = parts.pop()!
     return { name: row.name, ...(await readAttachment(await this.host.folder(to.id), stored, row.sha256, parts)) }
@@ -138,7 +138,7 @@ export class ThreadService {
         this.tellDelegator(
           next,
           `stopped:${threadId}:${next.messages.length}`,
-          `Oscar stopped the task you handed to ${JSON.stringify(receiver.name)} (exchange ${threadId})${reason ? `, saying ${JSON.stringify(reason)}` : ''}. Its answer will not come.`
+          `Oscar stopped ${next.worker ? `your worker (exchange ${threadId})` : `the task you handed to ${JSON.stringify(receiver.name)} (exchange ${threadId})`}${reason ? `, saying ${JSON.stringify(reason)}` : ''}. Its answer will not come.`
         )
       this.waits.settle(threadId, null)
       return next
@@ -164,10 +164,11 @@ export class ThreadService {
   /** Oscar answered the receiver's question on its work item: its next turn in this exchange, so what it says then comes back to
    *  the delegating bot like any answer. Refuses like `accept` when the exchange cannot take another message. */
   oscarAnswer(threadId: string, id: string, prompt: string) {
-    const [delegator, receiver] = this.store.get(threadId).participants
+    const thread = this.store.get(threadId)
+    const [delegator, receiver] = thread.participants
     const origin = this.store.origin(threadId, receiver.id)
     if (!origin) throw new LilBotError('thread_missing', 'That exchange has no request to continue.')
-    this.store.accept(delegator, receiver, { requestId: id, text: prompt, chatId: origin.sourceChat, threadId, kind: 'oscar' })
+    this.store.accept(delegator, receiver, { requestId: id, text: prompt, chatId: origin.sourceChat, threadId, kind: 'oscar', worker: thread.worker })
   }
 
   /** Oscar dropped the work item this exchange was handed out as. A running exchange is stopped, with the same database part as
@@ -179,7 +180,7 @@ export class ThreadService {
     this.tellDelegator(
       thread,
       `dropped:${threadId}`,
-      `Oscar dropped the work item of the task you handed to ${JSON.stringify(thread.participants[1].name)} (exchange ${threadId}), saying ${JSON.stringify(reason)}. Its work is no longer wanted.`
+      `Oscar dropped the work item of ${thread.worker ? `your worker (exchange ${threadId})` : `the task you handed to ${JSON.stringify(thread.participants[1].name)} (exchange ${threadId})`}, saying ${JSON.stringify(reason)}. Its work is no longer wanted.`
     )
     return async () => {}
   }

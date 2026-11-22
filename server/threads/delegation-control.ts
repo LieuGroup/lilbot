@@ -40,12 +40,13 @@ export class DelegationControl {
 
   private summary(stored: BotThread) {
     const t = this.threads.view(stored)
-    const answer = t.messages.filter(m => m.authorId !== t.participants[0].id && !m.withheld).at(-1)
+    const answer = t.messages.filter(m => (t.worker ? m.fromWorker === true : m.authorId !== t.participants[0].id) && !m.withheld).at(-1)
     const text = answer?.items.flatMap(i => (i.kind === 'assistant' ? [i.text] : [])).join('\n\n')
     return {
       exchangeId: t.id,
       batchId: t.batchId,
-      to: t.participants[1].name,
+      to: t.worker ? 'worker' : t.participants[1].name,
+      ...(t.worker ? { worker: true as const } : {}),
       status: t.status,
       activity: t.activity,
       runSeconds: t.startedAt ? Math.round(((t.endedAt ?? Date.now()) - t.startedAt) / 1000) : null,
@@ -80,12 +81,13 @@ export class DelegationControl {
       text: input.message,
       chatId: origin?.sourceChat ?? '',
       threadId: thread.id,
-      kind: 'redirect'
+      kind: 'redirect',
+      worker: thread.worker
     })
     this.threads.changed()
     if (!running?.chatId || !this.host.steerRun) return { exchangeId: thread.id, applied: thread.status === 'waiting' ? 'with the task' : 'next turn' }
     this.store.setStatus(d.id, 'steered')
-    const steered = await this.host.steerRun(receiver.id, running.chatId, steerText(caller.name, thread.id, d.id, input.message)).catch(() => 'not_running' as const)
+    const steered = await this.host.steerRun(receiver.id, running.chatId, steerText(caller.name, thread.id, d.id, input.message, thread.worker)).catch(() => 'not_running' as const)
     if (steered !== 'steered') this.store.setStatus(d.id, 'pending')
     return { exchangeId: thread.id, applied: steered === 'steered' ? 'now' : 'next turn' }
   }

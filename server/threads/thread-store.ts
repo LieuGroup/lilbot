@@ -1,13 +1,13 @@
 import type { Database } from 'bun:sqlite'
 import { LilBotError } from '../../shared/lilbot-error'
 import type { BotThread, ThreadMessage } from '../../shared/thread-schema'
+import { type Accept, acceptDelivery, assertNotWorker, WORK } from './thread-accept'
 import { THREAD_LIMITS } from './thread-limits'
 
 /** request, redirect and oscar (his answer to its question on its work item) are work for the receiver; answer is a reply back; notice is LilBot's own word.
  *  In a group, point is the leader's point for one member and round a round's replies for the leader. */
 type DeliveryKind = 'request' | 'redirect' | 'oscar' | 'answer' | 'notice' | 'point' | 'round'
 export const isWork = (kind: DeliveryKind) => kind === 'request' || kind === 'redirect' || kind === 'oscar'
-const WORK = "kind IN ('request','redirect','oscar')"
 export interface Delivery {
   id: string
   threadId: string
@@ -21,23 +21,15 @@ export interface Delivery {
   status: 'pending' | 'steered' | 'done'
   chatId: string | null
 }
-export interface Accept {
-  requestId: string
-  text: string
-  chatId: string
-  threadId?: string
-  /** The id a new thread gets, so files can be copied before it exists. */
-  newId?: string
-  batchId?: string | null
-  /** The delegating bot's work item a new exchange is handed out under. */
-  parentId?: string | null
-  kind?: 'request' | 'redirect' | 'oscar'
-}
 type Bot = { id: string; name: string }
+type SessionRoot = (botId: string, chatId: string) => string | null
 export const FINAL = ['finished', 'failed', 'cancelled'] as const
 
 export class ThreadStore {
-  constructor(readonly db: Database) {}
+  constructor(
+    readonly db: Database,
+    private rootOf?: SessionRoot
+  ) {}
   get(id: string): BotThread {
     const row = this.db.query('SELECT data, batch_id, parent_id FROM threads LEFT JOIN thread_links ON thread_id=id WHERE id=?').get(id) as {
       data: string
@@ -69,8 +61,28 @@ export class ThreadStore {
   batch(batchId: string): string[] {
     return (this.db.query('SELECT thread_id FROM thread_links WHERE batch_id=? ORDER BY rowid').all(batchId) as { thread_id: string }[]).map(r => r.thread_id)
   }
-  context(botId: string, chatId: string) {
+  private directContext(botId: string, chatId: string) {
     return this.db.query('SELECT thread_id FROM thread_chats WHERE bot_id=? AND chat_id=?').get(botId, chatId) as { thread_id: string } | null
+  }
+  /** The exchange or group this session belongs to, following compression continuations when `rootOf` is supplied. */
+  context(botId: string, chatId: string): { thread_id: string } | null {
+    const direct = this.directContext(botId, chatId)
+    if (direct || !this.rootOf) return direct
+    const root = this.rootOf(botId, chatId)
+    return root && root !== chatId ? this.directContext(botId, root) : null
+  }
+  /** Like `context`, returning the thread, and failing closed (`session_unknown`) when compression lineage cannot be read. */
+  parentThread(botId: string, chatId: string): BotThread | null {
+    const direct = this.directContext(botId, chatId)
+    if (direct) return this.get(direct.thread_id)
+    if (!this.rootOf) return null
+    const root = this.rootOf(botId, chatId)
+    if (root === null) throw new LilBotError('session_unknown', 'LilBot cannot tell where this session came from just now. Try again in a moment.')
+    const hit = root !== chatId ? this.directContext(botId, root) : null
+    return hit ? this.get(hit.thread_id) : null
+  }
+  assertNotWorker(botId: string, chatId: string, startingWorker = false) {
+    return assertNotWorker(this, botId, chatId, startingWorker)
   }
   session(threadId: string, botId: string): string | undefined {
     return (this.db.query('SELECT chat_id FROM thread_chats WHERE thread_id=? AND bot_id=? ORDER BY rowid LIMIT 1').get(threadId, botId) as { chat_id: string } | null)?.chat_id
@@ -87,64 +99,21 @@ export class ThreadStore {
     return d.kind === 'answer' ? (this.context(d.target, d.sourceChat)?.thread_id ?? null) : null
   }
   accept(caller: Bot, target: Bot, input: Accept, record?: (id: string, thread: BotThread) => void) {
-    return this.db.transaction(() => {
-      const id = `${caller.id}:${input.requestId}`
-      const prior = this.delivery(id)
-      if (prior) return prior
-      if (caller.id === target.id) throw new LilBotError('thread_self', 'You cannot ask yourself.')
-      const parent = this.context(caller.id, input.chatId)
-      const depth = parent ? this.get(parent.thread_id).depth + 1 : 1
-      const thread: BotThread = input.threadId
-        ? this.get(input.threadId)
-        : {
-            id: input.newId ?? crypto.randomUUID(),
-            participants: [caller, target].map(({ id, name }) => ({ id, name })),
-            createdAt: Date.now(),
-            depth,
-            state: 'open',
-            messages: [],
-            batchId: input.batchId ?? null,
-            parentId: input.parentId ?? null,
-            status: 'waiting',
-            activity: null,
-            startedAt: null,
-            endedAt: null,
-            stoppedBy: null
-          }
-      if (thread.group) throw new LilBotError('thread_forbidden', 'That is a group: use lilbot_group.')
-      if (!thread.participants.some(p => p.id === caller.id) || !thread.participants.some(p => p.id === target.id))
-        throw new LilBotError('thread_forbidden', 'Only the two participants can use this thread.')
-      if ((!input.threadId && depth > THREAD_LIMITS.depth) || thread.depth > THREAD_LIMITS.depth)
-        throw new LilBotError('thread_depth', 'Maximum thread depth reached. Report back to whoever asked you.')
-      if (!input.threadId && this.open(caller.id) >= THREAD_LIMITS.openPerBot)
-        throw new LilBotError('thread_limit', `You already have ${THREAD_LIMITS.openPerBot} delegations under way. Wait for answers or stop one first.`)
-      // Pending requests reserve their answer; continuations reserve through append below.
-      const pending = (this.db.query(`SELECT count(*) AS n FROM thread_deliveries WHERE threadId=? AND ${WORK} AND status!='done'`).get(thread.id) as { n: number }).n
-      if (thread.state !== 'open' || thread.messages.length + pending + 2 > THREAD_LIMITS.messages)
-        throw new LilBotError('thread_limit', 'Thread message limit reached. Report back to whoever asked you.')
-      const kind = input.kind ?? 'request'
-      thread.messages.push({
-        id,
-        authorId: caller.id,
-        authorName: caller.name,
-        createdAt: Date.now(),
-        items: [{ kind: 'assistant', text: input.text }],
-        ...(kind === 'redirect' ? { redirect: true } : kind === 'oscar' ? { oscar: true } : {})
-      })
-      if (thread.status !== 'working') Object.assign(thread, { status: 'waiting', endedAt: null, failure: undefined })
-      this.save(thread)
-      if (!input.threadId)
-        this.db.query('INSERT OR IGNORE INTO thread_links(thread_id,batch_id,parent_id) VALUES(?,?,?)').run(thread.id, input.batchId ?? null, input.parentId ?? null)
-      this.db
-        .query('INSERT INTO thread_deliveries(id,threadId,sender,target,sourceChat,text,kind) VALUES(?,?,?,?,?,?,?)')
-        .run(id, thread.id, caller.id, target.id, input.chatId, input.text, kind)
-      record?.(id, thread)
-      return this.delivery(id)!
-    })()
+    return acceptDelivery(this, caller, target, input, record)
   }
   /** Exchanges this bot started that still have work queued or under way. */
   open(botId: string) {
     return (this.db.query(`SELECT count(DISTINCT threadId) AS n FROM thread_deliveries WHERE sender=? AND ${WORK} AND status!='done'`).get(botId) as { n: number }).n
+  }
+  /** Worker exchanges this bot started that still have work queued or under way. */
+  openWorkers(botId: string) {
+    return (
+      this.db
+        .query(
+          `SELECT count(DISTINCT d.threadId) AS n FROM thread_deliveries d JOIN threads t ON t.id=d.threadId WHERE d.sender=? AND d.${WORK} AND d.status!='done' AND json_extract(t.data, '$.worker')=1`
+        )
+        .get(botId) as { n: number }
+    ).n
   }
   origin(threadId: string, target: string): Delivery | null {
     return this.db.query("SELECT * FROM thread_deliveries WHERE threadId=? AND target=? AND kind='request' ORDER BY rowid DESC LIMIT 1").get(threadId, target) as Delivery | null
