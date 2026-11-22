@@ -322,15 +322,19 @@ macOS and Linux helpers are covered; Windows is not covered (process-group termi
 - **Leader-side runner and scoped MCP (`server/computers/remote-worker-*.ts`, `server/system/worker-mcp.ts`):**
   `RemoteWorkerRunner` persists active runs in `remote_worker_runs` (schema step 39) with their assigned `computer_id`,
   `bot_id`, `thread_id`, `chat_id`, and latest driver `session_id` (for `--resume` continuations). It assembles the
-  starting system prompt (bot instructions + system note + remote framing, optional `lilbot-coding` skill, fenced
-  recalled memory, and offered skill index) within 96 KiB UTF-8 and validates the whole `WorkerStartFrame` before
-  sending. Every inbound frame is validated and sanitized structurally: tool events map to fixed worker activity labels
-  (never raw agent strings), and `worker.done.items` accepts only `assistant` and `tool` items (dropping `user`,
-  `compaction`, `error`, and `connection.sign_in`, and stripping `threadId`/`workItemId`). `worker.mcp.request` is served
-  by `createWorkerMcp` with an explicit 7-tool allow-list (`lilbot_work` scoped strictly to `run.threadId` with no
-  verdicts, `lilbot_work_list` scoped to own bot's items without goals, `lilbot_memory_list` own bot only,
-  `lilbot_memory_save`, `lilbot_skill_read`, `lilbot_status`, `lilbot_guide`). Late or duplicate `worker.done` frames
-  for settled runs on their assigned computer are acknowledged and ignored; unknown or wrong-computer frames are ignored.
+  starting system prompt (bot instructions with a short remote-specific note, optional `lilbot-coding` skill, fenced
+  recalled memory, and offered skill index, all XML-escaped) within 96 KiB UTF-8 and validates the whole
+  `WorkerStartFrame` before sending. Removing a computer settles its active runs immediately even while offline, and a
+  stopping run refuses every tool call (HTTP 409) and settles as `stopped` regardless of what the helper reports. Every
+  inbound frame is validated and sanitized structurally using the shared invisible-character definition from
+  `memory-safety.ts`: tool events map to fixed worker activity labels (never raw agent strings), and `worker.done.items`
+  accepts only `assistant` and `tool` items (capped at 500 items, dropping `user`, `compaction`, `error`, and
+  `connection.sign_in`, and stripping `threadId`/`workItemId`). `worker.mcp.request` is served by `createWorkerMcp` with
+  an explicit 6-tool allow-list (`lilbot_work` scoped strictly to `run.threadId` with no verdicts, `lilbot_work_list`
+  scoped to own bot's items and own children without goals, `lilbot_memory_list` own bot only, `lilbot_memory_save`
+  forced to `scope: 'bot'` with a 10-save per-run cap, `lilbot_skill_read`, `lilbot_guide`; `lilbot_status` is excluded).
+  Late or duplicate `worker.done` frames for settled runs on their assigned computer are acknowledged once and ignored;
+  unknown or wrong-computer frames are ignored.
 
 ## Tests
 

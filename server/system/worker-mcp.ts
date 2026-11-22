@@ -1,9 +1,10 @@
 /** Scoped MCP server for remote coding workers over the helper's signed WebSocket.
- *  Uses an explicit allow-list (work board scoped to the worker's own item, own memory read/save, offered skill read,
- *  status, and guide). Never exposes bot CRUD, delegation, groups, connections, routines, webhooks, or leader files. */
+ *  Uses an explicit 6-tool allow-list (work board scoped to the worker's own item, own work list, own memory read,
+ *  bot-private memory save with per-run cap, offered skill read, and guide). Never exposes `lilbot_status`, bot CRUD,
+ *  delegation, groups, connections, routines, webhooks, shared memory writes, or leader files. */
 import { ZodError } from 'zod'
 import { LilBotError } from '../../shared/lilbot-error'
-import { WorkInput } from '../../shared/work-schema'
+import { WorkInput, type WorkItem } from '../../shared/work-schema'
 import type { RemoteWorkerMcpContext } from '../computers/remote-worker-types'
 import type { JsonRpc } from '../connections/mcp-json-rpc'
 import { fenceRunText } from '../work/webhook-items'
@@ -11,12 +12,14 @@ import { inputSchema, type McpTool } from './mcp-tool'
 import type { SystemDeps } from './system-deps'
 
 const MAX_BODY_BYTES = 262_144
+export const MAX_MEMORY_SAVES_PER_RUN = 10
+const MAX_TRACKED_RUNS = 500
 const SERVER_INFO = { name: 'LilBot Worker', version: '1.0.0' }
 const INSTRUCTIONS =
-  'Scoped LilBot tools for your remote worker session: report on your own work item (lilbot_work), list your own work items (lilbot_work_list), read/save your own memory (lilbot_memory_list, lilbot_memory_save), read shared skills (lilbot_skill_read), and check LilBot status/guides (lilbot_status, lilbot_guide).'
+  'Scoped LilBot tools for your remote worker session: report on your own work item (lilbot_work), list your own work items (lilbot_work_list), read your memory (lilbot_memory_list), save bot-private memory (lilbot_memory_save), read shared skills (lilbot_skill_read), and read LilBot guides (lilbot_guide).'
 
 /** Explicit allow-list of system tools a remote worker may invoke. Every other system tool is refused. */
-export const REMOTE_WORKER_TOOLS = ['lilbot_work', 'lilbot_work_list', 'lilbot_memory_list', 'lilbot_memory_save', 'lilbot_skill_read', 'lilbot_status', 'lilbot_guide'] as const
+export const REMOTE_WORKER_TOOLS = ['lilbot_work', 'lilbot_work_list', 'lilbot_memory_list', 'lilbot_memory_save', 'lilbot_skill_read', 'lilbot_guide'] as const
 
 const ALLOWED_SET = new Set<string>(REMOTE_WORKER_TOOLS)
 
@@ -43,6 +46,7 @@ export function createWorkerMcp(deps: Pick<SystemDeps, 'store' | 'work' | 'chang
     inputSchema: inputSchema(tool.input),
     annotations: { readOnlyHint: tool.readOnly === true }
   }))
+  const memorySaves = new Map<string, number>()
 
   const bounded = (id: JsonRpc['id'], res: { status: number; body: string }) =>
     Buffer.byteLength(res.body, 'utf8') <= MAX_BODY_BYTES ? res : toolErr(id, 'Tool response exceeded the remote worker size limit.')
@@ -67,16 +71,28 @@ export function createWorkerMcp(deps: Pick<SystemDeps, 'store' | 'work' | 'chang
         parsedArgs = parsed as unknown as Record<string, unknown>
         result = fenceRunText(await deps.work.actFrom(ctx.botId, parsed, ctx.chatId))
       } else if (name === 'lilbot_work_list') {
-        if (rawArgs.mine === false || rawArgs.goals || rawArgs.goalId !== undefined)
+        if (rawArgs.mine === false || rawArgs.goals !== undefined || rawArgs.goalId !== undefined)
           return toolErr(msg.id, "A remote worker can only read its own bot's work items (no mine: false or goals).")
-        if (rawArgs.itemId !== undefined && deps.work.store.get(String(rawArgs.itemId))?.ownerId !== ctx.botId)
+        if (rawArgs.itemId !== undefined && (typeof rawArgs.itemId !== 'string' || deps.work.store.get(rawArgs.itemId)?.ownerId !== ctx.botId))
           return toolErr(msg.id, "A remote worker can only read its own bot's work items.")
         parsedArgs = tool.input.parse({ ...rawArgs, mine: true }) as Record<string, unknown>
-        result = await tool.run(ctx.botId, parsedArgs)
+        const raw = await tool.run(ctx.botId, parsedArgs)
+        result =
+          rawArgs.itemId !== undefined && isRecord(raw) && Array.isArray((raw as unknown as WorkItem).children)
+            ? { ...raw, children: (raw as unknown as WorkItem).children.filter(c => c.ownerId === ctx.botId) }
+            : raw
       } else if (name === 'lilbot_memory_list') {
         if (rawArgs.botId !== undefined && rawArgs.botId !== ctx.botId) return toolErr(msg.id, "A remote worker can only read its own bot's memory.")
         parsedArgs = tool.input.parse({}) as Record<string, unknown>
         result = await tool.run(ctx.botId, parsedArgs)
+      } else if (name === 'lilbot_memory_save') {
+        if (rawArgs.scope !== undefined && rawArgs.scope !== 'bot') return toolErr(msg.id, 'A remote worker can only save bot-private memory (scope "bot"), never shared memory.')
+        const count = memorySaves.get(ctx.runId) ?? 0
+        if (count >= MAX_MEMORY_SAVES_PER_RUN) return toolErr(msg.id, `Remote worker memory save limit (${MAX_MEMORY_SAVES_PER_RUN} per run) reached.`)
+        parsedArgs = tool.input.parse({ ...rawArgs, scope: 'bot' }) as Record<string, unknown>
+        result = await tool.run(ctx.botId, parsedArgs)
+        if (!memorySaves.has(ctx.runId) && memorySaves.size >= MAX_TRACKED_RUNS) memorySaves.delete(memorySaves.keys().next().value!)
+        memorySaves.set(ctx.runId, count + 1)
       } else {
         parsedArgs = tool.input.parse(rawArgs) as Record<string, unknown>
         result = await tool.run(ctx.botId, parsedArgs)

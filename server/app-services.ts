@@ -164,7 +164,7 @@ export function createAppServices(
   const connBase = { database, dataDir: DATA_DIR, port: PORT, engineToken: token, redirectUri, callbackEnabled: settings.ACCESS_CALLBACK_ENABLED ?? false }
   const connServices = { engine, store, prefs, bots, history: history.store, hiddenChat, calls, t3Grants }
   const mcp = createConnections({ ...connBase, ...connServices, t3Refusal: gates.t3Refusal, serviceRefusal: gates.serviceRefusal(checkSessions), publish, repeat })
-  const rwDeps = { database, computers, store, memory, skills, systemNote: systemNote(facts), computersChanged: () => publish({ event: 'computers.changed' }) }
+  const rwDeps = { database, computers, store, memory, skills, computersChanged: () => publish({ event: 'computers.changed' }) }
   const remoteWorkers = createRemoteWorkers({ ...rwDeps, handleMcp: (ctx, body) => system.workerMcp(ctx, body) })
   const threadCore = { engine, store, prefs, bots, workspaces, history, activity, threadStore, calls, work: links }
   const { threads, delegation } = createThreads({ ...threadCore, memory, library, root: WORKSPACES_DIR, rootOf, remoteWorkers, publish, botsChanged, memoryChanged })
