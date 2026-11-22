@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
 import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { AttachmentService } from '../../server/attachments/attachment-service'
 import { AttachmentStore } from '../../server/attachments/attachment-store'
@@ -11,7 +12,7 @@ import { startPublicDoor } from '../../server/http/public-door'
 import { fakeAccess, token } from '../http/access-fixture'
 
 test('authenticated Access uploads/downloads attachments; public helper listener never serves them', async () => {
-  const root = await mkdtemp('/home/oscar/agent-tmp/attachment-access-')
+  const root = await mkdtemp(join(tmpdir(), 'lilbot-attachment-access-'))
   const db = openDatabase(join(root, 'data.db'))
   const service = new AttachmentService(
     new AttachmentStore(db),

@@ -41,8 +41,8 @@ for (const [key, value] of Object.entries({
 test('a symlink and a missing child cannot disguise production data', () => {
   const root = mkdtempSync(join(homedir(), 'agent-tmp/env-guard-'))
   try {
-    symlinkSync(join(homedir(), '.local/share/lilbot'), join(root, 'alias'))
-    expect(() => assertDevelopmentTarget({ LILBOT_DATA_DIR: join(root, 'alias', 'new-child') })).toThrow('production path')
+    symlinkSync(homedir(), join(root, 'alias'))
+    expect(() => assertDevelopmentTarget({ LILBOT_DATA_DIR: join(root, 'alias', '.local/share/lilbot', 'new-child') })).toThrow('production path')
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
