@@ -9,9 +9,21 @@ const isRecord = (v: unknown): v is Record<string, unknown> => Boolean(v) && typ
 
 export const cleanAgentText = (text: string, max: number, secret?: string) => {
   let out = secret ? text.replaceAll(secret, '[redacted]') : text
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: strip C0/C1 control characters from untrusted agent output
-  out = out.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g, '')
-  return out.length > max ? `${out.slice(0, max - 14)} [truncated]` : out
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: strip C0/C1 controls (except tab/newline) and Unicode format chars from untrusted agent output
+  out = out.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\p{Cf}]/gu, '')
+  if (secret) while (out.includes(secret)) out = out.replaceAll(secret, '[redacted]')
+  if (out.length <= max) return out
+  return max > 14 ? `${out.slice(0, max - 14)} [truncated]` : out.slice(0, max)
+}
+
+/** Single-line variant of `cleanAgentText` that strips every control and format character before redacting. */
+export const cleanAgentLine = (text: string, max: number, secret?: string) => {
+  let out = secret ? text.replaceAll(secret, '[redacted]') : text
+  out = out.replace(/[\p{Cc}\p{Cf}]/gu, '')
+  if (secret) while (out.includes(secret)) out = out.replaceAll(secret, '[redacted]')
+  out = out.trim()
+  if (out.length <= max) return out
+  return max > 14 ? `${out.slice(0, max - 14)} [truncated]` : out.slice(0, max)
 }
 
 export const claudeUserLine = (text: string) => `${JSON.stringify({ type: 'user', message: { role: 'user', content: text } })}\n`
@@ -58,7 +70,7 @@ export const createClaudeStreamState = (): ClaudeStreamState => ({ items: [], to
 function toolDetail(input: unknown, secret?: string): string {
   if (!isRecord(input)) return ''
   const value = input.file_path ?? input.path ?? input.command ?? input.pattern ?? input.query ?? input.url ?? ''
-  return typeof value === 'string' ? cleanAgentText(value, 300, secret) : ''
+  return typeof value === 'string' ? cleanAgentLine(value, 300, secret) : ''
 }
 
 function blockText(content: unknown, secret?: string): string {
@@ -69,7 +81,11 @@ function blockText(content: unknown, secret?: string): string {
 
 function parseUsage(raw: unknown, modelUsage: unknown): TurnUsage | undefined {
   if (!isRecord(raw)) return undefined
-  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.trunc(v) : undefined)
+  const num = (v: unknown) => {
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) return undefined
+    const n = Math.trunc(v)
+    return Number.isSafeInteger(n) ? n : undefined
+  }
   const usage: TurnUsage = {
     inputTokens: num(raw.input_tokens),
     cacheReadTokens: num(raw.cache_read_input_tokens),
@@ -114,8 +130,8 @@ export function parseClaudeLine(line: string, state: ClaudeStreamState, secret?:
         }
         if (state.items.length < MAX_ITEMS) state.items.push({ kind: 'assistant', text })
       } else if (block.type === 'tool_use' && typeof block.id === 'string' && typeof block.name === 'string') {
-        const toolId = cleanAgentText(block.id, 200, secret).trim()
-        const name = cleanAgentText(block.name, 200, secret).trim()
+        const toolId = cleanAgentLine(block.id, 200, secret)
+        const name = cleanAgentLine(block.name, 200, secret)
         if (!toolId || !name) continue
         const detail = toolDetail(block.input, secret)
         const item: Extract<ChatItem, { kind: 'tool' }> = { kind: 'tool', toolId, name, detail, running: true }
@@ -124,7 +140,7 @@ export function parseClaudeLine(line: string, state: ClaudeStreamState, secret?:
           state.items.push(item)
         }
         if (tools.length < 32) tools.push({ toolId, name, detail, running: true })
-        activity = cleanAgentText(detail ? `${name}: ${detail}` : name, 240, secret).trim() || undefined
+        activity = cleanAgentLine(detail ? `${name}: ${detail}` : name, 240, secret) || undefined
       } else if (block.type === 'thinking') activity ??= 'Thinking...'
     }
     if (!state.sessionId && !activity && !tools.length && !state.text) return null
@@ -139,7 +155,7 @@ export function parseClaudeLine(line: string, state: ClaudeStreamState, secret?:
     const tools: WorkerToolEvent[] = []
     for (const block of contentBlocks(msg)) {
       if (block.type !== 'tool_result' || typeof block.tool_use_id !== 'string') continue
-      const item = state.tools.get(cleanAgentText(block.tool_use_id, 200, secret).trim())
+      const item = state.tools.get(cleanAgentLine(block.tool_use_id, 200, secret))
       if (!item) continue
       item.running = false
       item.failed = Boolean(block.is_error)

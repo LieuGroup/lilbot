@@ -14,7 +14,7 @@ type Peer = {
   pong?: string
   close: (code?: number) => void
   disconnect?: () => void
-  activate?: () => void
+  activate?: (promoted?: boolean) => void
   seen: number
   sent: Set<string>
 }
@@ -55,7 +55,7 @@ export class ComputerService {
   list() {
     return this.store.list().map(c => ({ ...c, lastSeen: c.id === 'leader' ? Date.now() : c.lastSeen, online: c.id === 'leader' || this.peers.has(c.id) }))
   }
-  connect(id: string, send: Peer['send'], close: Peer['close'], ready = () => true, onActivate?: () => void) {
+  connect(id: string, send: Peer['send'], close: Peer['close'], ready = () => true, onActivate?: Peer['activate']) {
     const peer: Peer = { send, close, ready, activate: onActivate, seen: Date.now(), sent: new Set<string>() }
     peer.disconnect = () => {
       if (this.peers.get(id) === peer) {
@@ -97,7 +97,7 @@ export class ComputerService {
     if (challenge) {
       if (this.contenders.get(id)?.challenge !== challenge || peer.pong === challenge) return peer.close(1008)
       peer.pong = challenge
-    } else {
+    } else if (this.peers.get(id)?.disconnect === disconnect) {
       this.store.seen(id)
       peer.send(JSON.stringify({ type: 'heartbeat' }))
     }
@@ -115,7 +115,7 @@ export class ComputerService {
       } else if (candidate.peer.pong === candidate.challenge) {
         existing?.close(4000)
         this.peers.set(id, candidate.peer)
-        candidate.peer.activate?.()
+        candidate.peer.activate?.(true)
       } else candidate.peer.close(4000)
       this.notify()
     }

@@ -1,5 +1,5 @@
 /** Safe binary discovery, strict 0700/0600 per-run config files, and startup cleanup for the Claude Code driver. */
-import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { accessSync, chmodSync, constants, existsSync, lstatSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -23,7 +23,9 @@ export function cleanupStaleWorkerConfigs(configDir?: string) {
 function isExecutableFile(path: string): boolean {
   try {
     const st = statSync(path)
-    return st.isFile() && (st.mode & 0o111) !== 0
+    if (!st.isFile() || (st.mode & 0o002) !== 0) return false
+    accessSync(path, constants.X_OK)
+    return true
   } catch {
     return false
   }
@@ -63,7 +65,7 @@ export function writeRunMcpConfig(configDir: string | undefined, runId: string, 
   return path
 }
 
-/** Reads NDJSON lines from stdout, dropping any single line that exceeds `maxChars` without a newline. */
+/** Reads NDJSON lines from stdout, dropping any single line that exceeds `maxChars`. */
 export async function readBoundedLines(stream: ReadableStream<Uint8Array>, readers: ReadableStreamDefaultReader<Uint8Array>[], maxChars: number, onLine: (line: string) => void) {
   const reader = stream.getReader()
   readers.push(reader)
@@ -76,7 +78,7 @@ export async function readBoundedLines(stream: ReadableStream<Uint8Array>, reade
     buf += decoder.decode(value, { stream: true })
     let nl = buf.indexOf('\n')
     while (nl !== -1) {
-      if (!dropping) onLine(buf.slice(0, nl))
+      if (!dropping && nl <= maxChars) onLine(buf.slice(0, nl))
       dropping = false
       buf = buf.slice(nl + 1)
       nl = buf.indexOf('\n')
@@ -86,7 +88,8 @@ export async function readBoundedLines(stream: ReadableStream<Uint8Array>, reade
       buf = ''
     }
   }
-  if (!dropping && buf.trim()) onLine(buf)
+  buf += decoder.decode()
+  if (!dropping && buf.length <= maxChars && buf.trim()) onLine(buf)
 }
 
 /** Reads the tail of stderr up to `maxChars`. */

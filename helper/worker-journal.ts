@@ -2,24 +2,62 @@
  *  Guarantees reconnects never spawn a duplicate process for the same `runId` and preserves unacknowledged
  *  `worker.done` outcomes across leader disconnects and restarts. */
 import type { Database } from 'bun:sqlite'
-import { SAFE_WORKER_SESSION_ID, type WorkerDoneFrame } from '../shared/worker-frame-schema'
+import { SAFE_WORKER_SESSION_ID, WorkerDoneFrame } from '../shared/worker-frame-schema'
 
 const MAX_PENDING_WORKERS = 32
 const MAX_DONE_BYTES = 900_000
 
-export function parseStoredDone(raw: string, runId: string): WorkerDoneFrame {
+const fallbackDone = (runId: string, error = 'Worker produced an invalid outcome.'): WorkerDoneFrame => ({
+  type: 'worker.done',
+  runId: runId.slice(0, 100) || 'unknown',
+  status: 'failed',
+  text: '',
+  items: [],
+  error
+})
+
+function ensureValidDone(frame: WorkerDoneFrame): WorkerDoneFrame {
+  const direct = WorkerDoneFrame.safeParse(frame)
+  if (direct.success) return direct.data
+  const repaired: WorkerDoneFrame = {
+    type: 'worker.done',
+    runId: (typeof frame.runId === 'string' ? frame.runId : '').slice(0, 100) || 'unknown',
+    ...(typeof frame.sessionId === 'string' && SAFE_WORKER_SESSION_ID.test(frame.sessionId) ? { sessionId: frame.sessionId } : {}),
+    status: frame.status,
+    text: typeof frame.text === 'string' ? frame.text.slice(0, 500_000) : '',
+    items: Array.isArray(frame.items) ? frame.items.slice(0, 2000) : [],
+    ...(typeof frame.error === 'string' && frame.error ? { error: frame.error.slice(0, 1000) } : {})
+  }
+  const checked = WorkerDoneFrame.safeParse(repaired)
+  if (checked.success) return checked.data
+  const minimal = WorkerDoneFrame.safeParse({ ...repaired, items: [] })
+  return minimal.success ? minimal.data : fallbackDone(repaired.runId)
+}
+
+export function parseStoredDone(raw: string, runId: string, db?: Database): WorkerDoneFrame {
   try {
-    return JSON.parse(raw) as WorkerDoneFrame
+    const parsed = JSON.parse(raw) as unknown
+    const valid = WorkerDoneFrame.safeParse(parsed)
+    if (valid.success && Buffer.byteLength(JSON.stringify(valid.data)) <= MAX_DONE_BYTES) return valid.data
+    const healed =
+      parsed && typeof parsed === 'object' && (parsed as { type?: unknown }).type === 'worker.done'
+        ? boundWorkerDone({ ...(parsed as WorkerDoneFrame), runId })
+        : fallbackDone(runId, 'Stored worker outcome could not be read.')
+    if (db) db.query('UPDATE worker_runs SET done_frame=? WHERE run_id=?').run(JSON.stringify(healed), runId)
+    return healed
   } catch {
-    return { type: 'worker.done', runId, status: 'failed', text: '', items: [], error: 'Stored worker outcome could not be read.' }
+    const healed = fallbackDone(runId, 'Stored worker outcome could not be read.')
+    if (db) db.query('UPDATE worker_runs SET done_frame=? WHERE run_id=?').run(JSON.stringify(healed), runId)
+    return healed
   }
 }
 
-/** Bounds a `worker.done` frame well below the leader's 1 MiB ceiling so verbose runs always deliver cleanly. */
+/** Bounds and schema-validates a `worker.done` frame well below the leader's 1 MiB ceiling so nothing invalid is ever saved or replayed. */
 export function boundWorkerDone(frame: WorkerDoneFrame): WorkerDoneFrame {
-  if (Buffer.byteLength(JSON.stringify(frame)) <= MAX_DONE_BYTES) return frame
-  const items = frame.items.map(item => (item.kind === 'tool' && item.result && item.result.length > 500 ? { ...item, result: `${item.result.slice(0, 486)} [truncated]` } : item))
-  let next: WorkerDoneFrame = { ...frame, items }
+  let next = ensureValidDone(frame)
+  if (Buffer.byteLength(JSON.stringify(next)) <= MAX_DONE_BYTES) return next
+  const items = next.items.map(item => (item.kind === 'tool' && item.result && item.result.length > 500 ? { ...item, result: `${item.result.slice(0, 486)} [truncated]` } : item))
+  next = { ...next, items }
   if (Buffer.byteLength(JSON.stringify(next)) <= MAX_DONE_BYTES) return next
   const kept: WorkerDoneFrame['items'] = []
   let budget = Math.max(0, MAX_DONE_BYTES - Buffer.byteLength(JSON.stringify({ ...next, items: [] })) - 1024)
@@ -31,7 +69,11 @@ export function boundWorkerDone(frame: WorkerDoneFrame): WorkerDoneFrame {
   }
   next = { ...next, items: kept }
   if (Buffer.byteLength(JSON.stringify(next)) <= MAX_DONE_BYTES) return next
-  return { ...next, items: [], text: `${next.text.slice(0, 200_000)} [truncated]` }
+  let text = next.text
+  while (text.length > 0 && Buffer.byteLength(JSON.stringify({ ...next, items: [], text: `${text} [truncated]` })) > MAX_DONE_BYTES) {
+    text = text.slice(0, Math.floor(text.length / 2))
+  }
+  return ensureValidDone({ ...next, items: [], text: text ? `${text} [truncated]` : '' })
 }
 
 export function prepareWorkerJournal(db: Database) {
@@ -111,5 +153,5 @@ export function unacknowledgedWorkers(db: Database): { runId: string; frame: Wor
     run_id: string
     done_frame: string
   }[]
-  return rows.map(row => ({ runId: row.run_id, frame: parseStoredDone(row.done_frame, row.run_id) }))
+  return rows.map(row => ({ runId: row.run_id, frame: parseStoredDone(row.done_frame, row.run_id, db) }))
 }

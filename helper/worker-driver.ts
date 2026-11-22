@@ -1,7 +1,7 @@
 /** Engine-neutral coding-agent driver contract for the helper.
  *  Adding a second coding agent (such as an ACP driver) is a second file implementing `WorkerDriver`. */
 import type { ChatItem, TurnUsage } from '../shared/chat-schema'
-import type { WorkerAgentInfo, WorkerDoneStatus, WorkerDriverId, WorkerEventFrame, WorkerToolEvent } from '../shared/worker-frame-schema'
+import { WorkerAgentInfo, type WorkerDoneStatus, type WorkerDriverId, type WorkerEventFrame, type WorkerToolEvent } from '../shared/worker-frame-schema'
 import { claudeCodeDriver } from './worker-driver-claude'
 
 interface WorkerMcpEndpoint {
@@ -56,7 +56,8 @@ export async function detectWorkerAgents(drivers: WorkerDriver[] = defaultWorker
   const found: WorkerAgentInfo[] = []
   for (const driver of drivers) {
     const info = await driver.detect().catch(() => null)
-    if (info) found.push(info)
+    const parsed = info ? WorkerAgentInfo.safeParse(info) : null
+    if (parsed?.success && found.length < 4) found.push(parsed.data)
   }
   return found
 }

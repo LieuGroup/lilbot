@@ -1,7 +1,7 @@
 /** Manages coding-agent workers on this computer: concurrency cap, 350 ms event coalescing, per-run
  *  loopback MCP proxy, stop/steer, reconnect idempotency via SQLite journal, and teardown on revocation. */
 import type { Database } from 'bun:sqlite'
-import type { WorkerDoneFrame, WorkerLeaderFrame, WorkerStartFrame } from '../shared/worker-frame-schema'
+import { type WorkerDoneFrame, WorkerHelperFrame, type WorkerLeaderFrame, type WorkerStartFrame } from '../shared/worker-frame-schema'
 import { cleanupStaleWorkerConfigs } from './worker-claude-env'
 import { createEventCoalescer, defaultWorkerDrivers, type WorkerDriver, type WorkerHandle } from './worker-driver'
 import {
@@ -72,9 +72,23 @@ export class WorkerHost {
   flushPending() {
     for (const { runId, frame } of unacknowledgedWorkers(this.options.db)) {
       if (this.sentDone.has(runId)) continue
-      this.options.send(`worker-done:${runId}`, frame)
+      this.sendFrame(`worker-done:${runId}`, frame)
       this.sentDone.add(runId)
     }
+  }
+
+  /** Rejects an invalid or oversized leader `worker.start` with a failed outcome instead of closing the socket. */
+  rejectStart(raw: unknown) {
+    if (!raw || typeof raw !== 'object' || (raw as { type?: unknown }).type !== 'worker.start') return false
+    const runId = (raw as { runId?: unknown }).runId
+    if (typeof runId !== 'string' || !runId || runId.length > 100) return false
+    if (!this.active.has(runId) && !getWorkerRun(this.options.db, runId)) this.fail(runId, 'Worker start request exceeded limits or was invalid.', false)
+    return true
+  }
+
+  private sendFrame(key: string, frame: unknown) {
+    const parsed = WorkerHelperFrame.safeParse(frame)
+    if (parsed.success) this.options.send(key, parsed.data)
   }
 
   handle(frame: WorkerLeaderFrame) {
@@ -98,7 +112,7 @@ export class WorkerHost {
 
   private emitDone(frame: WorkerDoneFrame, persist = true) {
     const bounded = boundWorkerDone(frame)
-    if (!persist) return this.options.send(`worker-done:${bounded.runId}`, bounded)
+    if (!persist) return this.sendFrame(`worker-done:${bounded.runId}`, bounded)
     finishWorkerRecord(this.options.db, bounded)
     this.sentDone.delete(bounded.runId)
     this.flushPending()
@@ -113,7 +127,7 @@ export class WorkerHost {
     const existing = getWorkerRun(this.options.db, frame.runId)
     if (existing) {
       if (existing.done_frame) {
-        this.options.send(`worker-done:${frame.runId}`, parseStoredDone(existing.done_frame, frame.runId))
+        this.sendFrame(`worker-done:${frame.runId}`, parseStoredDone(existing.done_frame, frame.runId, this.options.db))
         this.sentDone.add(frame.runId)
       }
       return
@@ -126,7 +140,7 @@ export class WorkerHost {
     const coalescer = createEventCoalescer(
       frame.runId,
       this.coalesceMs,
-      ev => this.options.send(`worker-event:${frame.runId}`, ev),
+      ev => this.sendFrame(`worker-event:${frame.runId}`, ev),
       sid => updateWorkerSession(this.options.db, frame.runId, sid)
     )
     const entry: ActiveWorker = { runId: frame.runId, cancelEvents: coalescer.cancel }
@@ -135,7 +149,10 @@ export class WorkerHost {
       if (frame.mcpEnabled) {
         const { mcpRetryWindowMs: retryWindowMs, mcpRetryIntervalMs: retryIntervalMs, mcpCallTimeoutMs: callTimeoutMs } = this.options
         proxy = startWorkerMcpProxy({
-          send: (callId, body) => this.options.emitNow({ type: 'worker.mcp.request', runId: frame.runId, callId, body }),
+          send: (callId, body) => {
+            const parsed = WorkerHelperFrame.safeParse({ type: 'worker.mcp.request', runId: frame.runId, callId, body })
+            return parsed.success ? this.options.emitNow(parsed.data) : false
+          },
           retryWindowMs,
           retryIntervalMs,
           callTimeoutMs
@@ -169,7 +186,7 @@ export class WorkerHost {
     if (active) return active.handle?.stop()
     const stored = getWorkerRun(this.options.db, runId)
     if (stored?.done_frame) {
-      this.options.send(`worker-done:${runId}`, parseStoredDone(stored.done_frame, runId))
+      this.sendFrame(`worker-done:${runId}`, parseStoredDone(stored.done_frame, runId, this.options.db))
       this.sentDone.add(runId)
     } else if (!stored) this.emitDone({ type: 'worker.done', runId, status: 'stopped', text: '', items: [] }, false)
   }
@@ -177,6 +194,6 @@ export class WorkerHost {
   private async steer(runId: string, text: string, steerId?: string) {
     const active = this.active.get(runId)
     const status = active?.handle ? await active.handle.steer(text) : 'not_running'
-    this.options.send(`worker-steer:${runId}:${steerId ?? ''}`, { type: 'worker.steer.result', runId, ...(steerId ? { steerId } : {}), status })
+    this.sendFrame(`worker-steer:${runId}:${steerId ?? ''}`, { type: 'worker.steer.result', runId, ...(steerId ? { steerId } : {}), status })
   }
 }

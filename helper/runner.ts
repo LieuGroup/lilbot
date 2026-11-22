@@ -17,15 +17,13 @@ type RunnerOptions = Omit<WorkerHostOptions, 'db' | 'send' | 'emitNow'> & { conf
 
 const waitBackoff = (ms: number, signal: AbortSignal) =>
   new Promise<void>(resolve => {
-    const timer = setTimeout(() => {
-      signal.removeEventListener('abort', abort)
-      resolve()
-    }, ms)
-    const abort = () => {
+    const done = () => {
       clearTimeout(timer)
+      signal.removeEventListener('abort', done)
       resolve()
     }
-    signal.addEventListener('abort', abort, { once: true })
+    const timer = setTimeout(done, ms)
+    signal.addEventListener('abort', done, { once: true })
   })
 
 export async function run(identity: Identity, signal: AbortSignal, options: RunnerOptions = {}) {
@@ -62,8 +60,12 @@ export async function run(identity: Identity, signal: AbortSignal, options: Runn
   }
   const workers = new WorkerHost({ ...options, configDir: dir, db, send: sendWorker, emitNow: emit })
   const probe = await createAgentProbe(options.drivers, next => sendWorker('worker-capabilities', { type: 'worker.capabilities', agents: next }))
+  const syncWorkers = () => {
+    sendWorker('worker-capabilities', { type: 'worker.capabilities', agents: probe.current() })
+    workers.onReconnect()
+  }
   const work = async (id: string, operation: ComputerOperation) => {
-    const previous = db.query('SELECT result,finished_at FROM requests WHERE id=?').get(id) as { result: string | null; finished_at: number | null } | null
+    const previous = db.query('SELECT result,finished_at FROM requests WHERE id=?').get(id) as { result: string | null } | null
     if (previous) {
       if (previous.result) {
         sender.receipt(id, previous.result)
@@ -72,9 +74,9 @@ export async function run(identity: Identity, signal: AbortSignal, options: Runn
       return
     }
     if (active.size >= 8 || !canAdmit(db)) {
-      db.query('INSERT INTO requests(id,result,finished_at) VALUES(?,?,?)').run(id, JSON.stringify({ output: '', error: 'Helper busy; submit a new request later.' }), Date.now())
-      send(id, { output: '', error: 'Helper busy; submit a new request later.' }, true)
-      return
+      const busy = { output: '', error: 'Helper busy; submit a new request later.' }
+      db.query('INSERT INTO requests(id,result,finished_at) VALUES(?,?,?)').run(id, JSON.stringify(busy), Date.now())
+      return send(id, busy, true)
     }
     db.query('INSERT INTO requests(id) VALUES(?)').run(id)
     const controller = new AbortController()
@@ -107,6 +109,7 @@ export async function run(identity: Identity, signal: AbortSignal, options: Runn
         nonce = headers['x-lilbot-nonce']
         let serverKey = ''
         let sequence = 0
+        let challenged = false
         socket = new WebSocket(`${identity.url.replace(/^http/, 'ws')}/helper/connect`, { headers } as any)
         const timeout = setTimeout(() => socket?.close(), 15_000)
         let lastHeartbeat = Date.now()
@@ -114,15 +117,13 @@ export async function run(identity: Identity, signal: AbortSignal, options: Runn
         const timer = setInterval(() => {
           try {
             pruneJournal(db)
-            if (Date.now() - lastHeartbeat > 35_000) socket?.close()
-            else {
-              if (Date.now() >= nextHeartbeat) {
-                sender.heartbeat()
-                nextHeartbeat = Date.now() + 10_000
-              }
-              probe.refresh()
-              sender.flush()
+            if (Date.now() - lastHeartbeat > 35_000) return socket?.close()
+            if (Date.now() >= nextHeartbeat) {
+              sender.heartbeat()
+              nextHeartbeat = Date.now() + 10_000
             }
+            probe.refresh()
+            sender.flush()
           } catch {
             console.error('[helper] heartbeat failed; will retry on the next tick.')
           }
@@ -137,18 +138,23 @@ export async function run(identity: Identity, signal: AbortSignal, options: Runn
               delay = 500
               serverKey = raw.publicKey
               clearTimeout(timeout)
-              sender.control('worker-capabilities', { type: 'worker.capabilities', agents: probe.current() })
-              workers.onReconnect()
-              sender.flush()
+              syncWorkers()
               return
             }
             if (!verifyFrame(serverKey, identity.id, headers['x-lilbot-nonce'], sequence++, raw)) return socket?.close()
-            const frame = HelperWork.parse(JSON.parse(raw.payload))
+            const parsed = JSON.parse(raw.payload)
+            const checked = HelperWork.safeParse(parsed)
+            if (!checked.success) return workers.rejectStart(parsed) ? undefined : socket?.close()
+            const frame = checked.data
             if (frame.type === 'heartbeat') {
               lastHeartbeat = Date.now()
               if (frame.challenge) {
+                challenged = true
                 sender.heartbeat(frame.challenge)
                 sender.flush()
+              } else if (challenged) {
+                challenged = false
+                syncWorkers()
               }
             } else if (frame.type === 'revoked') {
               revoked = true
@@ -162,8 +168,7 @@ export async function run(identity: Identity, signal: AbortSignal, options: Runn
               active.get(frame.id)?.abort()
               if (!active.has(frame.id)) {
                 db.query('INSERT OR IGNORE INTO requests(id,result,finished_at) VALUES(?,?,?)').run(frame.id, JSON.stringify({ output: '', error: 'Cancelled.' }), Date.now())
-                const stored = db.query('SELECT result FROM requests WHERE id=?').get(frame.id) as { result: string }
-                sender.receipt(frame.id, stored.result)
+                sender.receipt(frame.id, (db.query('SELECT result FROM requests WHERE id=?').get(frame.id) as { result: string }).result)
                 sender.flush()
               }
             } else if (frame.type === 'work') void work(frame.id, frame.operation).catch(() => socket?.close())

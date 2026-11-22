@@ -307,10 +307,15 @@ macOS and Linux helpers are covered; Windows is not covered (process-group termi
   (`--permission-mode bypassPermissions`), so one worker can read another concurrent worker's `worker-runs/*.mcp.json`
   token file (and the helper's `identity.json`). That is inherent to the single-user, full-access machine model.
 - **Bounds, recovery and revocation:** workers are capped separately from commands (`WORKERS_PER_COMPUTER = 2`),
-  `systemPrompt` is bounded to 96 KiB UTF-8 (below Linux's 128 KiB single-argument limit), `worker.event` updates
-  coalesce to at most one frame per 350 ms per run, and the leader door enforces 250 ms event spacing, per-run MCP
-  request rate limits, a 1 MiB cap on `worker.done`, active-peer-only routing (rejecting unproven contender sockets),
-  and rejects any frame whose `runId` was not started by the leader on that computer. `worker_runs` in `requests.db`
+  `systemPrompt` is bounded to 96 KiB UTF-8 (below Linux's 128 KiB single-argument limit; the leader must validate and
+  truncate before sending, and if an invalid or oversized `worker.start` still arrives, the helper replies with a failed
+  `worker.done` instead of closing the socket), `worker.event` updates coalesce to at most one frame per 350 ms per run,
+  and the leader door enforces 250 ms event spacing, per-run MCP request rate limits (burst of 10, refilling at 4/s), a
+  1 MiB cap on `worker.done`, active-peer-only routing (rejecting unproven contender sockets and notifying a promoted
+  peer so it re-sends capabilities and unacknowledged outcomes), and rejects any frame whose `runId` was not started by
+  the leader on that computer. All agent-derived strings pass through a single cleaner that strips control and invisible
+  formatting characters and scrubs the run's MCP bearer token both before and after stripping, and every outgoing worker
+  frame is validated against the shared leader schema before persisting or sending. `worker_runs` in `requests.db`
   prevents duplicate spawns on reconnect and preserves unacknowledged `worker.done` outcomes (strictly capped at 32
   pending rows), and a signed `revoked` frame stops all active worker process groups (`SIGTERM`, escalating to
   `SIGKILL` after 2 s, with a bounded stdout/stderr drain timeout) and closes their proxies before retiring the helper.

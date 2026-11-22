@@ -111,10 +111,17 @@ export function startPublicDoor(
         socket.data.disconnect = computers.connect(
           socket.data.id,
           send,
-          (code = 1001) => socket.close(code),
+          (code = 1001) => {
+            const drop = socket.data.workerDisconnect
+            socket.data.workerDisconnect = undefined
+            drop?.()
+            socket.close(code)
+          },
           () => socket.getBufferedAmount() < 64_000,
-          () => {
-            if (socket.readyState === 1 && workers?.onConnect) socket.data.workerDisconnect = workers.onConnect(socket.data.id, socket.data.workerSend!)
+          (promoted?: boolean) => {
+            if (socket.readyState !== 1) return
+            if (workers?.onConnect) socket.data.workerDisconnect = workers.onConnect(socket.data.id, socket.data.workerSend!)
+            if (promoted) send(JSON.stringify({ type: 'heartbeat' }))
           }
         )
       },
@@ -172,7 +179,9 @@ export function startPublicDoor(
       },
       close(socket, code) {
         onClose(code)
-        socket.data.workerDisconnect?.()
+        const drop = socket.data.workerDisconnect
+        socket.data.workerDisconnect = undefined
+        drop?.()
         socket.data.disconnect?.()
       }
     }

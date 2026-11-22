@@ -3,7 +3,7 @@
  *  own session files in place so `--resume <session_id>` works for follow-ups and post-interrupt recovery. */
 import { existsSync, rmSync, statSync } from 'node:fs'
 import { expandWorkerCwd, readBoundedLines, readTailText, resolveClaudeBinary, writeRunMcpConfig } from './worker-claude-env'
-import { buildClaudeArgs, claudeUserLine, cleanAgentText, createClaudeStreamState, parseClaudeLine } from './worker-claude-protocol'
+import { buildClaudeArgs, claudeUserLine, cleanAgentLine, cleanAgentText, createClaudeStreamState, parseClaudeLine } from './worker-claude-protocol'
 import type { WorkerDriver, WorkerHandle, WorkerOutcome } from './worker-driver'
 
 const MAX_STDOUT_LINE_CHARS = 2 * 1024 * 1024
@@ -44,11 +44,8 @@ export function claudeCodeDriver(options: { bin?: string; configDir?: string; ki
         const [out, code] = await Promise.all([new Response(child.stdout).text(), child.exited])
         clearTimeout(timer)
         if (code !== 0) return null
-        const version = out
-          .replace(/[\p{Cc}\p{Cf}]/gu, '')
-          .trim()
-          .split(/\s+/)[0]
-          ?.slice(0, 64)
+        const firstLine = out.split(/\r?\n/)[0] ?? ''
+        const version = cleanAgentLine(firstLine, 200).split(/\s+/)[0]?.slice(0, 64)
         return version ? { driver: 'claude-code', version } : null
       } catch {
         return null
