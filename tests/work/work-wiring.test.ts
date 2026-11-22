@@ -126,7 +126,7 @@ test('with no other bot, the check is a new hidden session of the owner on the r
     expect(checking).toMatchObject({ status: 'checking', check: { by: { kind: 'bot', id: 'b1' }, sameBot: true, model: expected ?? null } })
     f.checks.tick()
     await until(() => runs.length > 0)
-    expect(runs).toEqual([{ botId: 'b1', chatId: undefined, hidden: true, model: expected }])
+    expect(runs).toEqual([{ botId: 'native-b1', chatId: undefined, hidden: true, model: expected }])
     expect(f.work.checks.isCheckChat('same-bot-session')).toBe(true)
   }
 })

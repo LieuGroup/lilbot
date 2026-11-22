@@ -7,7 +7,7 @@ test('exactly one primary defaults to the engine default, changes without changi
     { ...bot, id: 'other' },
     { ...bot, isDefault: true }
   ]
-  for (const bot of original) store.save({ ...bot, instructions: '', engineId: 'test', engineBotId: bot.id })
+  for (const bot of original) store.save({ ...bot, instructions: '', engineId: 'test', engineBotId: `native-${bot.id}` })
   const primary = async () => (await service.listBots()).filter(bot => bot.isPrimary).map(bot => bot.id)
   expect(await primary()).toEqual(['b1'])
   await service.setPrimary('other')
@@ -30,9 +30,9 @@ test('exactly one primary defaults to the engine default, changes without changi
 })
 
 test('losing a runtime leaves the chosen primary identity in place', async () => {
-  const { service, runtimeIds } = fakeService()
+  const { service, store, runtimeIds } = fakeService()
   await service.setPrimary('b1')
-  runtimeIds.delete('b1')
+  runtimeIds.delete(store.get('b1').engineBotId)
   await expect(service.newChat('b1', () => {})).rejects.toThrow()
   expect(await service.listBots()).toMatchObject([{ id: 'b1', isPrimary: true, runnable: false }])
 })

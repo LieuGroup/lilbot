@@ -80,7 +80,7 @@ test('stopping an exchange drops its child item, saying who stopped it; a delete
 
 test('a routine run opens items as the routine, and links an item it reports on', async () => {
   const w = workFixture()
-  w.database.exec("INSERT INTO bots(id, name, function, instructions, engine_id, engine_bot_id) VALUES ('a', 'A', '', '', 'test', 'a')")
+  w.database.exec("INSERT INTO bots(id, name, function, instructions, engine_id, engine_bot_id) VALUES ('a', 'A', '', '', 'test', 'native-a')")
   const routine = w.routineStore.create(
     'a',
     { requestId: 'daily', description: 'Check the sales dashboard', schedule: { kind: 'interval', seconds: 600 }, createdBy: 'oscar' },
@@ -101,7 +101,7 @@ test('a routine run opens items as the routine, and links an item it reports on'
 
 test('a webhook run opens items as the webhook, with the run as their origin', async () => {
   const w = workFixture()
-  w.database.exec("INSERT INTO bots(id, name, function, instructions, engine_id, engine_bot_id) VALUES ('a', 'A', '', '', 'test', 'a')")
+  w.database.exec("INSERT INTO bots(id, name, function, instructions, engine_id, engine_bot_id) VALUES ('a', 'A', '', '', 'test', 'native-a')")
   const hook = w.webhookStore.create('a', { requestId: 'gh', description: 'Triage new issues', source: 'GitHub', createdBy: 'oscar' }, null, 0)
   w.webhookStore.events.add(hook.id, { deliveryId: null, bodyHash: null }, { item: '{}', size: 2, refusal: null }, 0)
   const [run] = w.webhookStore.claimDue(60_000)
@@ -114,7 +114,7 @@ test('a webhook run opens items as the webhook, with the run as their origin', a
 
 test('a run continued after compression still counts as the run; an unreadable lineage refuses rather than credits Oscar', async () => {
   const w = workFixture()
-  w.database.exec("INSERT INTO bots(id, name, function, instructions, engine_id, engine_bot_id) VALUES ('a', 'A', '', '', 'test', 'a')")
+  w.database.exec("INSERT INTO bots(id, name, function, instructions, engine_id, engine_bot_id) VALUES ('a', 'A', '', '', 'test', 'native-a')")
   const hook = w.webhookStore.create('a', { requestId: 'gh', description: 'Triage new issues', source: 'GitHub', createdBy: 'oscar' }, null, 0)
   w.webhookStore.events.add(hook.id, { deliveryId: null, bodyHash: null }, { item: '{}', size: 2, refusal: null }, 0)
   const [hookRun] = w.webhookStore.claimDue(60_000)

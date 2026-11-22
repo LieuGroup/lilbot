@@ -73,7 +73,7 @@ test('an item that is open or waiting on Oscar is told without ending a turn; on
   expect(f.interrupted).toEqual([])
   expect(f.delivered.map(d => d.botId).sort()).toEqual(['a', 'b'])
 
-  f.database.exec("INSERT INTO bots(id, name, function, instructions, engine_id, engine_bot_id) VALUES ('c', 'C', '', '', 'test', 'c')")
+  f.database.exec("INSERT INTO bots(id, name, function, instructions, engine_id, engine_bot_id) VALUES ('c', 'C', '', '', 'test', 'native-c')")
   const routine = f.routineStore.create('c', { requestId: 'daily', description: 'Check sales', schedule: { kind: 'interval', seconds: 600 }, createdBy: 'oscar' }, 0, 5)
   const [run] = f.routineStore.claimDue(Date.now() + 1_000_000)
   f.routineStore.attach(run.id, 'c-run-session', Date.now())

@@ -21,7 +21,7 @@ for (const files of ['archive', 'delete'] as const) {
         f.queue.add('b1', 'c', 'hello', 'hello', Date.now())
         await f.service.deleteBot({ botId: 'b1', files, privateMemories })
         expect(await f.service.listBots()).toEqual([])
-        expect(f.runtimeIds.has('b1')).toBe(false)
+        expect(f.runtimeIds.has('native-b1')).toBe(false)
         expect(f.prefs.mainChat('b1')).toBeNull()
         expect(f.activity.state('b1').unread).toBe(false)
         expect(f.activity.cursor('b1', 'c')).toBeUndefined()

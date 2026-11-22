@@ -19,7 +19,7 @@ test('any bot creates, not only the primary; concurrent and later retries return
   expect(prefs.mainChat(first.id)).toBeTruthy()
   expect(log.filter(line => line.startsWith('send:'))).toHaveLength(1)
   expect(log).toContain(`hidden:greeting-${first.id}`)
-  expect(log).toContain(`connect-memory:${first.id}`)
+  expect(log).toContain(`connect-memory:${store.get(first.id).engineBotId}`)
 })
 
 test('endpoint resolves credential owner and ignores model-supplied bot ids and model', async () => {
@@ -69,10 +69,12 @@ test('a bot created by the primary can be deleted without reviving it on a retri
   try {
     f.prefs.setPrimaryBot('b1')
     const created = await f.service.createFromBot('b1', input)
+    const createdNative = f.store.get(created.id).engineBotId
+    expect(createdNative).not.toBe(created.id)
     expect(f.store.creationDone(created.id)).toBe(true)
     await f.service.deleteBot({ botId: created.id })
     expect(f.store.creationDone(created.id)).toBe(false)
-    expect(f.runtimeIds.has(created.id)).toBe(false)
+    expect(f.runtimeIds.has(createdNative)).toBe(false)
     expect((await f.service.listBots()).map(bot => bot.id)).toEqual(['b1'])
     await expect(f.service.createFromBot('b1', input)).rejects.toThrow('deleted')
     // A late greeting completion must not restore the creation marker.

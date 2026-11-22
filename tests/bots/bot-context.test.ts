@@ -10,7 +10,7 @@ import { openDatabase } from '../../server/database/database'
 import { MemoryService } from '../../server/memory/memory-service'
 import { MemoryStore } from '../../server/memory/memory-store'
 import type { ModelProvider } from '../../shared/bot-schema'
-import { bot, detail, fakeEngine, fakeService } from '../helpers/fake-engine'
+import { bot, detail, fakeEngine, fakeService, nativeBotId } from '../helpers/fake-engine'
 
 const providers: ModelProvider[] = [
   {
@@ -83,7 +83,7 @@ test('persisted bot context survives server restarts without extra engine calls 
     const start = () => {
       const db = openDatabase(dbPath)
       const store = new BotStore(db)
-      if (!store.exists(bot.id)) store.import('test', [{ ...detail, engineId: 'test', engineBotId: bot.id }])
+      if (!store.exists(bot.id)) store.import('test', [{ ...detail, engineId: 'test', engineBotId: nativeBotId }])
       const fake = fakeEngine()
       const service = new BotService(fake.engine, store, new BotPrefsStore(db), new Workspaces(wsDir), new MemoryService(new MemoryStore(db)))
       return { db, fake, service }

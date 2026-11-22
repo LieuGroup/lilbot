@@ -48,7 +48,7 @@ test('the effort is saved with the bot, and a model change never rewrites it', a
 test('an edit is saved first and then reaches the open main conversation, effort alone or model with effort', async () => {
   const f = await withMainChat()
   await f.service.updateBot({ botId: 'b1', reasoningEffort: 'high' })
-  expect(f.sessionChanges).toEqual([{ botId: 'b1', chatId: f.chat.snapshot.chatId, change: { reasoningEffort: 'high' } }])
+  expect(f.sessionChanges).toEqual([{ botId: 'native-b1', chatId: f.chat.snapshot.chatId, change: { reasoningEffort: 'high' } }])
   f.sessionChanges.length = 0
   await f.service.updateBot({ botId: 'b1', model: { provider: 'p', model: 'other' } })
   expect(f.sessionChanges.map(entry => entry.change)).toEqual([{ model: { provider: 'p', model: 'other' }, reasoningEffort: 'high' }])

@@ -19,7 +19,7 @@ test('every bot’s runtime is given LilBot’s connections, with its own key, b
   }
   const runtimes = new BotRuntimes(store, engine, undefined, undefined, botId => [t3Connection('http://127.0.0.1:3370', 'token', botId)])
   await runtimes.initialize()
-  expect(given.map(entry => entry.id).sort()).toEqual(['b1', 'native-2'])
+  expect(given.map(entry => entry.id).sort()).toEqual(['native-2', 'native-b1'])
   const forB2 = given.find(entry => entry.id === 'native-2')!.connections[0]
   expect(forB2.bearerToken).toBe(t3Connection('http://127.0.0.1:3370', 'token', 'b2').bearerToken)
 })

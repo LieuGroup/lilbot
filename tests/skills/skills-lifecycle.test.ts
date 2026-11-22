@@ -10,7 +10,7 @@ import { openDatabase } from '../../server/database/database'
 import { MemoryService } from '../../server/memory/memory-service'
 import { MemoryStore } from '../../server/memory/memory-store'
 import { SkillsService } from '../../server/skills/skills-service'
-import { detail, fakeEngine } from '../helpers/fake-engine'
+import { detail, fakeEngine, nativeBotId } from '../helpers/fake-engine'
 
 const content = (name: string) => `---\nname: ${name}\ndescription: A workflow\n---\nFollow this procedure.`
 
@@ -20,7 +20,7 @@ test('chat, routine and review refresh the shared catalogue and per-bot off swit
   try {
     const { engine } = fakeEngine()
     const store = new BotStore(db)
-    store.import('test', [{ ...detail, engineId: 'test', engineBotId: 'b1' }])
+    store.import('test', [{ ...detail, engineId: 'test', engineBotId: nativeBotId }])
     const skills = new SkillsService(join(root, 'skills'), db)
     skills.write({ name: 'disabled', action: 'create', content: content('disabled') }, 'b1')
     skills.setEnabled('b1', 'disabled', false)
@@ -78,7 +78,7 @@ test('skills migration upgrades shipped Library schema without losing deliveries
   let db = openDatabase(path)
   try {
     db.exec("INSERT INTO library_items VALUES ('file','b1','Title','file.md','page',10,1,'chat',NULL)")
-    new BotStore(db).import('test', [{ ...detail, engineId: 'test', engineBotId: 'b1' }])
+    new BotStore(db).import('test', [{ ...detail, engineId: 'test', engineBotId: nativeBotId }])
     db.exec("INSERT INTO routines (id,bot_id,description,schedule,created_by,request_id,next_run_at) VALUES ('r','b1','Task','{}','oscar','request',2)")
     db.exec("INSERT INTO routine_runs (id,routine_id,bot_id,due_at) VALUES ('run','r','b1',1)")
     db.exec("INSERT INTO routine_chats VALUES ('chat','run')")

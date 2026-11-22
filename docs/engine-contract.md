@@ -12,7 +12,8 @@ conversations, reaches LilBot through MCP, and keeps a thin adapter for the few 
 
 - [ ] `createRuntime` makes a runtime from a LilBot identity and returns its native id (never shown as a bot id);
   `deleteRuntime` removes it and its conversations, safe to repeat; `importBots` lists existing runtimes for the one-time
-  import into a new database.
+  import into a new database (each returned `id` is stored only as `engine_bot_id`; LilBot assigns a fresh random UUID
+  as the bot's id).
 - [ ] `applyIdentity` applies LilBot's authoritative name-independent settings if they drifted: instructions (the string
   LilBot passes already ends with the system note, section 4), model, reasoning effort and permission mode. A missing
   runtime throws `bot_not_found`. LilBot wins on mismatch.
@@ -24,7 +25,7 @@ conversations, reaches LilBot through MCP, and keeps a thin adapter for the few 
 
 ## 2. Sessions and streaming
 
-- [ ] `openChat(botId, chatId|null, options, onEvent)`: a new session or a stored one; a stored one that no longer exists
+- [ ] `openChat(engineBotId, chatId|null, options, onEvent)`: a new session or a stored one; a stored one that no longer exists
   is replaced and the snapshot says which was opened, with `resumeRefused` (the engine's code) when it was replaced. Only
   a definite "does not exist" may replace it, never one connection's refusal. One continuous main conversation per bot,
   one active session.
