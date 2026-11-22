@@ -20,6 +20,7 @@ import type { ChatEvent } from '../../shared/chat-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 
 export const bot: BotIdentity = { id: 'b1', name: 'Bot One', function: '', model: null, reasoningEffort: null, isDefault: false, permissionMode: 'full-access' }
+export const nativeBotId = 'native-b1'
 export const detail: EngineBotDetail = { ...bot, instructions: '', abilities: [], memoryConnected: false }
 
 export function fakeEngine(options: { earlyEvents?: ChatEvent[] } = {}) {
@@ -37,7 +38,7 @@ export function fakeEngine(options: { earlyEvents?: ChatEvent[] } = {}) {
   const holdModelSwitch = { value: false }
   /** What each new session was asked to start with. */
   const created: { chatId: string; reasoningEffort?: string }[] = []
-  const runtimeIds = new Set(['b1'])
+  const runtimeIds = new Set([nativeBotId])
   const engine: BotEngine = {
     id: 'test',
     runRoutine: async (_botId, _prompt, options) => {
@@ -50,10 +51,11 @@ export function fakeEngine(options: { earlyEvents?: ChatEvent[] } = {}) {
       log.push(`delete:${id}`)
     },
     supportedPermissionModes: ['full-access'],
-    importBots: async () => [detail],
+    importBots: async () => [{ ...detail, id: nativeBotId }],
     createRuntime: async identity => {
-      runtimeIds.add(identity.id)
-      return identity.id
+      const nativeId = `native-${identity.id}`
+      runtimeIds.add(nativeId)
+      return nativeId
     },
     applyIdentity: async id => {
       if (!runtimeIds.has(id)) throw new LilBotError('bot_not_found', 'That bot does not exist.')
@@ -117,7 +119,7 @@ export function fakeService(options?: Parameters<typeof fakeEngine>[0]) {
   const fake = fakeEngine(options)
   const database = openDatabase(':memory:')
   const store = new BotStore(database)
-  store.import('test', [{ ...detail, engineId: 'test', engineBotId: bot.id }])
+  store.import('test', [{ ...detail, engineId: 'test', engineBotId: nativeBotId }])
   const prefs = new BotPrefsStore(database)
   const memory = new MemoryService(new MemoryStore(database))
   const root = mkdtempSync(join(tmpdir(), 'lilbot-ws-'))

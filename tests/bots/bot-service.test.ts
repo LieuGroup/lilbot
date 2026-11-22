@@ -96,9 +96,9 @@ describe('the main conversation', () => {
 
 describe('memory', () => {
   test('a new bot is connected to LilBot memory and keeps only what is known about the user', async () => {
-    const { service, log, memory } = fakeService()
+    const { service, store, log, memory } = fakeService()
     const made = await service.createBot({ name: 'Maker', function: '', instructions: '' })
-    expect(log).toContain(`connect-memory:${made.id}`)
+    expect(log).toContain(`connect-memory:${store.get(made.id).engineBotId}`)
     const facts = memory.list(made.id)
     expect(facts.find(fact => fact.text === 'Oscar lives in Adelaide.')).toMatchObject({ kind: 'profile', scope: 'shared' })
     expect(facts.map(fact => fact.text)).toEqual(['Oscar lives in Adelaide.'])
@@ -132,5 +132,5 @@ test('at start-up every bot that is not on LilBot memory is connected, once', as
   expect(await service.connectAllMemory()).toEqual(['b1'])
   engine.applyIdentity = async () => ({ abilities: [], memoryConnected: true })
   expect(await service.connectAllMemory()).toEqual([])
-  expect(log.filter(entry => entry.startsWith('connect-memory'))).toEqual(['connect-memory:b1'])
+  expect(log.filter(entry => entry.startsWith('connect-memory'))).toEqual(['connect-memory:native-b1'])
 })

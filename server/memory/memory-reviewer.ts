@@ -5,8 +5,13 @@
 import type { BotModel } from '../../shared/bot-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import { backgroundFailure } from '../background'
-import type { BotEngine } from '../engines/bot-engine'
+import type { ReviewOptions } from '../engines/bot-engine'
 import type { PendingSummary, PendingTurn, ReviewQueue } from './review-queue'
+
+/** Runs a review session for a bot identified by its LilBot id (not an engine native id). */
+interface ReviewRunner {
+  reviewMemory(botId: string, prompt: string, options: ReviewOptions): Promise<void>
+}
 
 interface ReviewSettings {
   enabled: boolean
@@ -57,7 +62,7 @@ export class MemoryReviewer {
 
   constructor(
     private queue: ReviewQueue,
-    private engine: Pick<BotEngine, 'reviewMemory'>,
+    private runner: ReviewRunner,
     private settings: ReviewSettings = defaultReviewSettings,
     private now: () => number = Date.now,
     private botExists: (botId: string) => boolean = () => true
@@ -110,7 +115,7 @@ export class MemoryReviewer {
     if (turns.length === 0) return 0
     this.running.add(botId)
     try {
-      await this.engine.reviewMemory(botId, reviewPrompt(turns), {
+      await this.runner.reviewMemory(botId, reviewPrompt(turns), {
         model: this.settings.model,
         onChat: chatId => {
           this.trackReview(chatId)

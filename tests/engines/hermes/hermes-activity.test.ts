@@ -4,12 +4,14 @@ import { HermesSocket } from '../../../server/engines/hermes/hermes-socket'
 
 test('observer reuses profile sockets, consumes incremental events and drops removed bots', async () => {
   let bots = [
-    { id: 'a', engineBotId: 'a' },
-    { id: 'b', engineBotId: 'b' }
+    { id: 'bot-a', engineBotId: 'native-a' },
+    { id: 'bot-b', engineBotId: 'native-b' }
   ]
+  const connected: string[] = []
   const sockets: any[] = []
   const positions: number[] = []
-  const connect = spyOn(HermesSocket, 'connect').mockImplementation(async () => {
+  const connect = spyOn(HermesSocket, 'connect').mockImplementation(async profile => {
+    connected.push(profile)
     let poll = 0
     const socket = {
       isOpen: true,
@@ -26,17 +28,22 @@ test('observer reuses profile sockets, consumes incremental events and drops rem
     return socket as unknown as HermesSocket
   })
   const events: any[] = []
+  const cursors: string[] = []
   const stop = watchHermesActivity(
     async () => bots,
     e => events.push(e),
-    () => undefined
+    botId => {
+      cursors.push(botId)
+      return undefined
+    }
   )
   try {
     await Bun.sleep(1150)
-    expect(connect).toHaveBeenCalledTimes(2)
+    expect(connected).toEqual(['native-a', 'native-b'])
+    expect(cursors).toEqual(['bot-a', 'bot-b'])
     expect(positions).toEqual([0, 0, 1, 1])
-    expect(events.every(e => e.tool === 'terminal')).toBe(true)
-    bots = [{ id: 'a', engineBotId: 'a' }]
+    expect(events.every(e => e.tool === 'terminal' && (e.botId === 'bot-a' || e.botId === 'bot-b'))).toBe(true)
+    bots = [{ id: 'bot-a', engineBotId: 'native-a' }]
     await Bun.sleep(1000)
     expect(sockets[1].isOpen).toBe(false)
     expect(sockets[0].isOpen).toBe(true)
@@ -51,21 +58,21 @@ test('a failed profile backs off without reconnecting healthy profiles', async (
   const attempts: string[] = []
   const connect = spyOn(HermesSocket, 'connect').mockImplementation(async profile => {
     attempts.push(profile)
-    if (profile === 'bad') throw new Error('offline')
+    if (profile === 'native-bad') throw new Error('offline')
     return { isOpen: true, close() {}, request: async () => ({ sessions: [] }) } as unknown as HermesSocket
   })
   const stop = watchHermesActivity(
     async () => [
-      { id: 'bad', engineBotId: 'bad' },
-      { id: 'good', engineBotId: 'good' }
+      { id: 'bot-bad', engineBotId: 'native-bad' },
+      { id: 'bot-good', engineBotId: 'native-good' }
     ],
     () => {},
     () => undefined
   )
   try {
     await Bun.sleep(3200)
-    expect(attempts.filter(id => id === 'good')).toHaveLength(1)
-    expect(attempts.filter(id => id === 'bad').length).toBeLessThanOrEqual(3)
+    expect(attempts.filter(id => id === 'native-good')).toHaveLength(1)
+    expect(attempts.filter(id => id === 'native-bad').length).toBeLessThanOrEqual(3)
   } finally {
     stop()
     connect.mockRestore()
@@ -86,7 +93,7 @@ test('an epoch change and a truncated delta each trigger only one full read', as
     }
   } as unknown as HermesSocket)
   const stop = watchHermesActivity(
-    async () => [{ id: 'a', engineBotId: 'a' }],
+    async () => [{ id: 'bot-a', engineBotId: 'native-a' }],
     () => {},
     () => undefined
   )
@@ -114,7 +121,7 @@ test('non-activity session.info events do not re-emit finished on an idle sessio
   } as unknown as HermesSocket)
   const events: any[] = []
   const stop = watchHermesActivity(
-    async () => [{ id: 'a', engineBotId: 'a' }],
+    async () => [{ id: 'bot-a', engineBotId: 'native-a' }],
     e => events.push(e),
     () => undefined
   )
@@ -122,7 +129,7 @@ test('non-activity session.info events do not re-emit finished on an idle sessio
     await Bun.sleep(2150)
     expect(poll).toBeGreaterThanOrEqual(2)
     expect(events).toHaveLength(1)
-    expect(events[0].status).toBe('finished')
+    expect(events[0]).toMatchObject({ botId: 'bot-a', status: 'finished' })
   } finally {
     stop()
     connect.mockRestore()

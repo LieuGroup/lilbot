@@ -6,7 +6,7 @@ const RUN_CHAT = 'a-webhook-session'
 /** Bot a with one webhook run under way in `RUN_CHAT`, the calls coming from there. */
 function withRun() {
   const w = workFixture()
-  w.database.exec("INSERT INTO bots(id, name, function, instructions, engine_id, engine_bot_id) VALUES ('a', 'A', '', '', 'test', 'a')")
+  w.database.exec("INSERT INTO bots(id, name, function, instructions, engine_id, engine_bot_id) VALUES ('a', 'A', '', '', 'test', 'native-a')")
   const hook = w.webhookStore.create('a', { requestId: 'gh', description: 'Triage new issues', source: 'GitHub', createdBy: 'oscar' }, null, 0)
   w.webhookStore.events.add(hook.id, { deliveryId: null, bodyHash: null }, { item: '{}', size: 2, refusal: null }, 0)
   const [run] = w.webhookStore.claimDue(60_000)

@@ -120,7 +120,7 @@ export interface BotEngine {
   ): () => void
   readonly supportedPermissionModes: readonly PermissionMode[]
   readonly id: string
-  /** Only used for the one-time migration of identities that predate LilBot ownership. */
+  /** Only used for the one-time import of runtimes into a new database; each returned `id` is stored only as `engineBotId`. */
   importBots(): Promise<EngineBotDetail[]>
   /** Prepare a new runtime for this LilBot identity; returns its engine-native id. */
   createRuntime(identity: RuntimeIdentity): Promise<string>
@@ -138,35 +138,35 @@ export interface BotEngine {
   applyConnections?(engineBotId: string, chatIds: string[]): Promise<{ chatId: string; state: ConnectionsApplied }[]>
   /** The name this engine reports in `onToolCall` for an MCP server's tool. */
   mcpToolName?(server: string, tool: string): string
-  userSkillPaths?(id: string): string[]
+  userSkillPaths?(engineBotId: string): string[]
   /** Skills the engine offers by itself in this runtime, without the ones in `alwaysOnSkills`: the engine's own switch can hide these. */
-  bundledSkills?(id: string): string[]
+  bundledSkills?(engineBotId: string): string[]
   /** Engine skills nobody can hide, with the reason to show. */
   readonly alwaysOnSkills?: readonly { name: string; reason: string }[]
-  configureComputers?(id: string, settings: { url: string; tokenFile: string; botId: string }): Promise<void>
-  configureSkills?(id: string, settings: SkillSettings): Promise<void>
+  configureComputers?(engineBotId: string, settings: { url: string; tokenFile: string; botId: string }): Promise<void>
+  configureSkills?(engineBotId: string, settings: SkillSettings): Promise<void>
   /** Refuse an unavailable model before an identity edit is saved. Must not apply the old identity. */
   validateModel(model: BotModel): Promise<void>
   listModels(): Promise<ModelProvider[]>
   /** Switch a stored conversation's model or effort from its next message. Throws `confirm_required` if held back. */
-  updateSession(botId: string, chatId: string, change: SessionChange): Promise<{ effort: string | null; context?: ContextReport } | null>
+  updateSession(engineBotId: string, chatId: string, change: SessionChange): Promise<{ effort: string | null; context?: ContextReport } | null>
   /** Open a new chat (`chatId` null) or continue a stored one. Events arrive until `close()`. */
-  openChat(botId: string, chatId: string | null, options: ChatOptions, onEvent: (event: ChatEvent) => void): Promise<OpenChat>
+  openChat(engineBotId: string, chatId: string | null, options: ChatOptions, onEvent: (event: ChatEvent) => void): Promise<OpenChat>
   /** Switch the bot to LilBot memory from its next session; returns legacy engine notes. */
-  connectMemory(botId: string, connection: MemoryConnection): Promise<LegacyNotes>
+  connectMemory(engineBotId: string, connection: MemoryConnection): Promise<LegacyNotes>
   /** Upgrade connected adapters only for LilBot's non-deleted native bindings. */
-  refreshMemory(botIds: string[]): Promise<string[]>
+  refreshMemory(engineBotIds: string[]): Promise<string[]>
   /** Run `prompt` as a hidden memory-only session for the after-chat review. */
-  reviewMemory(botId: string, prompt: string, options: ReviewOptions): Promise<void>
+  reviewMemory(engineBotId: string, prompt: string, options: ReviewOptions): Promise<void>
   /** Run or recover one scheduled task, using runId as a durable execution identity. */
   runRoutine(
-    botId: string,
+    engineBotId: string,
     prompt: string,
     options: RoutineOptions & ChatOptions
   ): Promise<{ status: 'completed' | 'failed' | 'stopped'; text: string; items?: import('../../shared/chat-schema').ChatItem[]; unknownReceipt?: true }>
   /** The session a compressed conversation began as, when the engine continues a long session under a new id (the chat
    *  itself when it is not such a continuation); null when it cannot tell. Engines that never do this leave it out. */
-  compressionRoot?(botId: string, chatId: string): string | null
+  compressionRoot?(engineBotId: string, chatId: string): string | null
   /** Told when bots or their chats changed outside this server. Returns the function that stops it. */
   onBotsChanged(listener: () => void): () => void
   /** Every tool call the engine sees start. MCP requests carry no session, so this is how LilBot's own MCP server

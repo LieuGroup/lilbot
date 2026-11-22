@@ -12,7 +12,7 @@ test('closing and reopening SQLite keeps claims, schedule, aliases and completed
   const path = join(root, 'db')
   let db = openDatabase(path)
   try {
-    new BotStore(db).import('test', [{ ...detail, engineId: 'test', engineBotId: 'b1' }])
+    new BotStore(db).import('test', [{ ...detail, engineId: 'test', engineBotId: 'native-b1' }])
     let store = new RoutineStore(db)
     const routine = store.create('b1', { requestId: 'one', description: 'Check', schedule: { kind: 'interval', seconds: 300 }, createdBy: 'bot' }, 0, 5)
     const [run] = store.claimDue(600_000)
