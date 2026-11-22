@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'bun:test'
 import { generateKeyPairSync, sign } from 'node:crypto'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { codeId, codeKey, registrationMac } from '../../helper/frame-auth'
 import { HANDOVER_PORT, type HelperSettings, SHORT_CODE, settingsHash } from '../../helper/settings'
@@ -26,7 +26,7 @@ const env = { LILBOT_HELPER_URL: 'https://door.example', LILBOT_ALLOWED_HOSTS: '
 
 function fixture() {
   const db = openDatabase(':memory:')
-  const root = mkdtempSync(join(homedir(), 'agent-tmp/add-computer-test-'))
+  const root = mkdtempSync(join(tmpdir(), 'add-computer-test-'))
   const service = new ComputerService(
     new ComputerStore(db),
     loadServerKey(root),

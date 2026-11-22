@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { BotPrefsStore } from '../../server/bots/bot-prefs-store'
 import { BotService } from '../../server/bots/bot-service'
@@ -15,7 +15,7 @@ import { detail, fakeEngine } from '../helpers/fake-engine'
 const content = (name: string) => `---\nname: ${name}\ndescription: A workflow\n---\nFollow this procedure.`
 
 test('chat, routine and review refresh the shared catalogue and per-bot off switches before dispatch', async () => {
-  const root = mkdtempSync(join(homedir(), 'agent-tmp/skills-lifecycle-'))
+  const root = mkdtempSync(join(tmpdir(), 'skills-lifecycle-'))
   const db = openDatabase(':memory:')
   try {
     const { engine } = fakeEngine()
@@ -73,7 +73,7 @@ test('chat, routine and review refresh the shared catalogue and per-bot off swit
 })
 
 test('skills migration upgrades shipped Library schema without losing deliveries or routine history', () => {
-  const root = mkdtempSync(join(homedir(), 'agent-tmp/skills-migration-'))
+  const root = mkdtempSync(join(tmpdir(), 'skills-migration-'))
   const path = join(root, 'db')
   let db = openDatabase(path)
   try {

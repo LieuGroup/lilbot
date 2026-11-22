@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'bun:test'
 import { generateKeyPairSync, sign } from 'node:crypto'
 import { mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { codeId, codeKey, registrationMac } from '../../helper/frame-auth'
 import { botCapability } from '../../server/bots/bot-capability'
@@ -21,7 +21,7 @@ afterEach(() => {
 })
 function fixture() {
   const db = openDatabase(':memory:')
-  const root = mkdtempSync(join(homedir(), 'agent-tmp/computers-test-'))
+  const root = mkdtempSync(join(tmpdir(), 'computers-test-'))
   const store = new ComputerStore(db)
   const service = new ComputerService(
     store,
@@ -183,7 +183,7 @@ test('engine calls bind to authenticated bot, ignoring supplied bot ids', async 
 })
 
 test('queued requests survive database reopen and deletion cancels all bot work', async () => {
-  const root = mkdtempSync(join(homedir(), 'agent-tmp/computers-persistence-'))
+  const root = mkdtempSync(join(tmpdir(), 'computers-persistence-'))
   cleanups.push(() => rmSync(root, { recursive: true, force: true }))
   const path = join(root, 'data.db')
   let db = openDatabase(path)

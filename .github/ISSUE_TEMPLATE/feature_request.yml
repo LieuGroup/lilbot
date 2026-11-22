@@ -1,0 +1,36 @@
+name: Feature request
+description: Propose a change or new capability for LilBot
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or goal
+      description: What are you trying to do, and what is missing or awkward today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+      description: Describe the user-visible or API behaviour you have in mind.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - Backend (server / data / engine)
+        - Web UI
+        - Both backend and web UI
+        - Tooling / Docs / CI
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Relevant docs, constraints, or trade-offs.
