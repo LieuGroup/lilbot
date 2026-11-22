@@ -69,6 +69,7 @@ export function Composer({ ready, running, onSend, onStop }: ComposerProps) {
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: theme.hairline, backgroundColor: theme.background }}>
         <TextInput
+          testID="composer-input"
           value={text}
           onChangeText={setText}
           placeholder="Message"

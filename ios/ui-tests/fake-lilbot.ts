@@ -13,9 +13,11 @@ const BOT = {
   isPrimary: true,
   runnable: true,
   activity: { status: 'idle', text: '', machine: 'leader', unread: false },
-  prefs: { avatar: { shape: 'squircle', color: 'blue', faceColor: 'ink' }, sectionId: null, pinned: true, pinnedAt: 1, hidden: false },
+  prefs: { avatar: { shape: 'squircle', color: 'blue', faceColor: 'ink' }, sectionId: null, pinned: false, pinnedAt: null, hidden: false },
   workspace: '/tmp/lilbot-test'
 }
+
+const SECTION_BOT = { ...BOT, id: 'bot-test-2', name: 'Section Bot', isPrimary: false, prefs: { ...BOT.prefs, sectionId: 'section-1' } }
 
 const SECTIONS = [{ id: 'section-1', name: 'Test section' }]
 
@@ -36,7 +38,7 @@ function handle(method: string, params: Record<string, unknown>): unknown {
     case 'devices.current':
       return { id: params.deviceId, name: params.name, computerId: null, resolves: { via: 'none' } }
     case 'bots.list':
-      return [BOT]
+      return [BOT, SECTION_BOT]
     case 'sections.list':
       return SECTIONS
     case 'chat.history':

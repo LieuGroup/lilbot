@@ -26,9 +26,12 @@ export function SettingsScreen({ onDone }: { onDone: () => void }) {
       return
     }
     setSaving(true)
+    setError('')
     try {
       await save({ serverUrl: serverUrl.trim(), accessToken: accessToken.trim() })
       onDone()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not save the settings.')
     } finally {
       setSaving(false)
     }
@@ -54,14 +57,14 @@ export function SettingsScreen({ onDone }: { onDone: () => void }) {
         <AppText variant="meta" color={theme.mutedForeground}>
           Server address
         </AppText>
-        <TextInput value={serverUrl} onChangeText={setServerUrl} placeholder="https://lilbot.example.com" placeholderTextColor={theme.mutedForeground} autoCapitalize="none" autoCorrect={false} keyboardType="url" style={field} />
+        <TextInput value={serverUrl} onChangeText={setServerUrl} placeholder="https://lilbot.example.com" placeholderTextColor={theme.mutedForeground} autoCapitalize="none" autoCorrect={false} keyboardType="url" textContentType="none" style={field} />
       </View>
 
       <View style={{ gap: 6 }}>
         <AppText variant="meta" color={theme.mutedForeground}>
           Cloudflare Access token
         </AppText>
-        <TextInput value={accessToken} onChangeText={setAccessToken} placeholder="cf-access-jwt-assertion value" placeholderTextColor={theme.mutedForeground} autoCapitalize="none" autoCorrect={false} secureTextEntry style={field} />
+        <TextInput value={accessToken} onChangeText={setAccessToken} placeholder="cf-access-jwt-assertion value" placeholderTextColor={theme.mutedForeground} autoCapitalize="none" autoCorrect={false} secureTextEntry textContentType="none" style={field} />
         <AppText variant="meta" color={theme.mutedForeground}>
           From your browser's cookies for the LilBot domain (CF_Authorization), or a service token.
         </AppText>

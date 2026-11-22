@@ -1,19 +1,39 @@
-# Folded layout (iPhone): settings gate, roster, conversation, send.
+# Folded layout (iPhone): settings gate, auto-opened chat, send, then roster.
 # Run with the fake server up: `bun ui-tests/fake-lilbot.ts` (port 3399).
 appId: com.lilbot.app.dev
 ---
-- launchApp
+- launchApp:
+    clearState: true
 - assertVisible: "Server address"
 - tapOn: "https://lilbot.example.com"
 - inputText: "http://localhost:3399"
 - tapOn: "cf-access-jwt-assertion value"
 - inputText: "test-token"
+- hideKeyboard
+- runFlow:
+    when:
+      visible: "Not Now"
+    commands:
+      - tapOn: "Not Now"
 - tapOn: "Save and connect"
-- assertVisible: "Test Bot"
-- assertVisible: "Test section"
-- tapOn: "Test Bot"
+- extendedWaitUntil:
+    visible: "Not Now"
+    timeout: 10000
+    optional: true
+- runFlow:
+    when:
+      visible: "Not Now"
+    commands:
+      - tapOn: "Not Now"
 - assertVisible: "Hello! I am the fake LilBot server."
-- tapOn: "Message"
+# Tap the top edge of the composer: the lower strip does not take focus under XCUITest.
+- tapOn:
+    point: "8%,90%"
 - inputText: "Hi there"
+- hideKeyboard
 - tapOn: "Send"
 - assertVisible: "Hi there"
+- tapOn: "Back"
+- assertVisible: "Test Bot"
+- assertVisible: "Test section"
+- assertVisible: "Section Bot"

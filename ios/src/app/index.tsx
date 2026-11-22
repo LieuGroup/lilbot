@@ -3,7 +3,7 @@
 import { useFonts } from 'expo-font'
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold } from '@expo-google-fonts/inter'
 import { useEffect, useState } from 'react'
-import { View } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { startConnection, useConnectionStore } from '../connection/store'
 import { useBotStore, watchRoster } from '../bots/store'
 import { DuoShell } from '../duo/shell'
@@ -38,17 +38,17 @@ export default function Home() {
     if (connected) void loadBots()
   }, [connected, loadBots])
 
-  if (!fontsLoaded || !loaded) return <View style={{ flex: 1, backgroundColor: theme.background }} />
+  if (!fontsLoaded || !loaded) return <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} />
   if (!settings?.serverUrl || showSettings) {
     return (
-      <View style={{ flex: 1, backgroundColor: theme.background }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
         <SettingsScreen onDone={() => setShowSettings(false)} />
-      </View>
+      </SafeAreaView>
     )
   }
   return (
-    <View style={{ flex: 1, backgroundColor: theme.background }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
       <DuoShell onOpenSettings={() => setShowSettings(true)} />
-    </View>
+    </SafeAreaView>
   )
 }

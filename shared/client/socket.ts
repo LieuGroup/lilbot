@@ -16,6 +16,7 @@ export interface ClientSocket {
 
 export type SocketFactory = (url: string) => ClientSocket
 
+const CONNECTING = 0
 const OPEN = 1
 const REQUEST_TIMEOUT_MS = 90_000
 const RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10_000]
@@ -39,6 +40,7 @@ export class LilBotSocket {
 
   connect() {
     if (this.disposed) return
+    if (this.socket && (this.socket.readyState === CONNECTING || this.socket.readyState === OPEN)) return
     const url = typeof this.options.url === 'string' ? this.options.url : this.options.url()
     const socket = (this.options.createSocket ?? (address => new WebSocket(address) as unknown as ClientSocket))(url)
     this.socket = socket
@@ -48,6 +50,7 @@ export class LilBotSocket {
     }
     socket.onmessage = message => this.handleFrame(String(message.data))
     socket.onclose = () => {
+      if (this.socket === socket) this.socket = null
       if (this.disposed) return
       for (const waiting of this.pending.values()) {
         clearTimeout(waiting.timer)
@@ -72,6 +75,7 @@ export class LilBotSocket {
     this.pending.clear()
     this.setConnected(false)
     this.socket?.close()
+    this.socket = null
   }
 
   call<M extends Method>(method: M, params: Params<M>): Promise<Results[M]> {
