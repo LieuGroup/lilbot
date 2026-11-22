@@ -26,6 +26,40 @@ export interface InboundHooks {
 
 export const snapshotToolItems = (run: ActiveRun): ChatItem[] => [...run.tools.values()].map(item => ({ ...item, running: false }))
 
+export function handlePeerConnect(
+  peers: Map<string, (frame: WorkerLeaderFrame) => boolean>,
+  runs: Map<string, ActiveRun>,
+  steers: Map<string, PendingSteer>,
+  computerId: string,
+  send: (frame: WorkerLeaderFrame) => boolean,
+  hooks: Pick<InboundHooks, 'finishSteer' | 'settleRun'> & { isRevoked: (cid: string) => boolean; armOfflineTimer: (run: ActiveRun) => void }
+) {
+  peers.set(computerId, send)
+  for (const run of runs.values()) {
+    if (run.computerId !== computerId) continue
+    clearTimeout(run.offlineTimer)
+    run.offlineTimer = undefined
+    if (run.pendingStart && !run.sentStart && send(run.pendingStart)) run.sentStart = true
+  }
+  return () => {
+    if (peers.get(computerId) !== send) return
+    peers.delete(computerId)
+    for (const [id, steer] of [...steers]) if (steer.computerId === computerId) hooks.finishSteer(id, 'not_running')
+    const revoked = hooks.isRevoked(computerId)
+    for (const run of [...runs.values()]) {
+      if (run.computerId !== computerId) continue
+      if (revoked)
+        hooks.settleRun(run.runId, {
+          status: 'failed',
+          text: 'The computer was removed while the worker was running.',
+          items: snapshotToolItems(run),
+          failureReason: 'computer_removed'
+        })
+      else hooks.armOfflineTimer(run)
+    }
+  }
+}
+
 export function makeActiveRun(
   row: { runId: string; computerId: string; botId: string; threadId: string; chatId: string; sessionId?: string | null },
   sentStart: boolean
