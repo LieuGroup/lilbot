@@ -23,6 +23,7 @@ export interface RunnerHost {
   runRoutine(botId: string, prompt: string, options: ThreadRunOptions): Promise<RunResult>
   folder?(botId: string): Promise<string>
   stopRun?(botId: string, chatId: string): Promise<boolean>
+  activeRemoteThreads?(computerId: string): Iterable<string>
 }
 const TERMINAL = ['bot_not_found', 'unsafe_message', 'thread_limit']
 /** Kinds whose text is LilBot's own prompt, any bot text in it already checked and fenced. */
@@ -72,7 +73,7 @@ export class ThreadRunner {
       return group ? `${group}\n${d.target}` : isReply(d.kind) ? `${d.threadId}\nreply` : d.threadId
     })
     for (const [index, d] of pending.entries()) {
-      if (!canStartDelivery(d, this.running.values(), id => this.store.get(id))) continue
+      if (!canStartDelivery(d, this.running.values(), id => this.store.get(id), this.host.activeRemoteThreads)) continue
       if (!this.retries.ready(d.id) || lanes.slice(0, index).includes(lanes[index])) continue
       this.retries.run(
         d.id,
@@ -160,9 +161,8 @@ export class ThreadRunner {
     const group = this.groups?.groupOf(d)
     if (group) return void (await this.groups!.record(d, group, items))
     const work = this.store.workThread(d)
-    const remoteDone = !!work && !!this.store.get(work).computer && result.status === 'completed'
     for (const r of work ? this.store.steered(work) : [])
-      if (r.target === d.target) this.store.setStatus(r.id, remoteDone || result.items?.some(i => i.kind === 'user' && i.text.includes(r.id)) ? 'done' : 'pending')
+      if (r.target === d.target) this.store.setStatus(r.id, result.items?.some(i => i.kind === 'user' && i.text.includes(r.id)) ? 'done' : 'pending')
     const response = this.responseFor(d)
     const replyId = `${d.id}:reply`
     const withheld = !!response && this.store.get(response.threadId).status === 'cancelled'

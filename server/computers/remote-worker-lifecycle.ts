@@ -36,8 +36,9 @@ export function armRunOfflineTimer(run: ActiveRun, offlineGraceMs: number, settl
 }
 
 export function makeActiveRun(
-  row: { runId: string; computerId: string; botId: string; threadId: string; chatId: string; sessionId?: string | null },
-  sentStart: boolean
+  row: { runId: string; computerId: string; botId: string; threadId: string; chatId: string; sessionId?: string | null; confirmedSteers?: string[] },
+  sentStart: boolean,
+  resumedFrom?: string
 ): ActiveRun {
   return {
     runId: row.runId,
@@ -46,12 +47,14 @@ export function makeActiveRun(
     threadId: row.threadId,
     chatId: row.chatId,
     sessionId: row.sessionId ?? undefined,
+    resumedFrom,
+    sawEvent: false,
     sentStart,
     stopping: false,
     emittedWorking: false,
     seenToolIds: new Set(),
     tools: new Map(),
-    confirmedSteers: [],
+    confirmedSteers: [...(row.confirmedSteers ?? [])],
     waiters: []
   }
 }

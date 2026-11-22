@@ -54,6 +54,8 @@ export interface ActiveRun {
   threadId: string
   chatId: string
   sessionId?: string
+  resumedFrom?: string
+  sawEvent: boolean
   pendingStart?: WorkerStartFrame
   sentStart: boolean
   stopping: boolean

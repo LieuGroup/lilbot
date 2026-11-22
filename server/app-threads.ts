@@ -71,7 +71,13 @@ export function createThreads(deps: ThreadDeps) {
         ? remoteWorkers.runner.steerByChat(botId, chatId, text)
         : ((await engine.steerRun?.(native(botId), chatId, text)) ?? 'not_running'),
     validateModel: model => engine.validateModel(model),
-    ...(remoteWorkers ? { resolveRemoteWorker: remoteWorkers.resolveRemoteWorker, computerName: remoteWorkers.computerName } : {})
+    ...(remoteWorkers
+      ? {
+          resolveRemoteWorker: remoteWorkers.resolveRemoteWorker,
+          computerName: remoteWorkers.computerName,
+          activeRemoteThreads: (id: string) => remoteWorkers.runner.activeThreadsForComputer(id)
+        }
+      : {})
   }
   const groupHost: GroupHost = {
     root: deps.root,

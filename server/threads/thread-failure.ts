@@ -11,7 +11,8 @@ const REMOTE_FAILURE: Record<string, string> = {
   interrupted: 'the remote worker was interrupted',
   prompt_too_large: 'the starting prompt exceeded the remote worker limit',
   computer_removed: 'the computer was removed',
-  invalid_start: 'the remote worker start request was invalid'
+  invalid_start: 'the remote worker start request was invalid',
+  session_lost: 'the previous remote session could not be resumed; retry to start fresh'
 }
 
 /** The receiver's turn ended badly; with an unknown engine receipt LilBot cannot say how, and never ran it again. */
@@ -38,10 +39,14 @@ export async function failExchange(store: ThreadStore, waits: ThreadWaits, host:
   const failure = await reasonFor(host, store.get(d.threadId), d, error)
   store.db.transaction(() => {
     const thread = store.get(d.threadId)
+    if (error.code === 'unsafe_message' && !isWork(d.kind)) {
+      const msg = thread.messages.find(m => m.id === d.id)
+      if (msg) msg.withheld = true
+    }
     if (thread.status !== 'cancelled') {
       Object.assign(thread, { state: 'failed', status: 'failed', endedAt: Date.now(), failure })
       store.save(thread)
-    }
+    } else if (error.code === 'unsafe_message' && !isWork(d.kind)) store.save(thread)
     store.setStatus(d.id, 'done')
     waits.settle(thread.id, null)
   })()

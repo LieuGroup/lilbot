@@ -56,7 +56,6 @@ async function makeHarness() {
     store: core.bots,
     memory: core.memory,
     skills: core.skills,
-    systemNote: () => 'System note.',
     handleMcp: (ctx, body) => system.workerMcp(ctx, body),
     computersChanged: noop
   })
@@ -159,7 +158,7 @@ test('remote worker lifecycle: scoped MCP, live activity, answer delivery, conti
     effort: 'high',
     resume: '',
     hasSys: true,
-    toolCount: 7,
+    toolCount: 6,
     workOk: true,
     memOk: true,
     nestedRefused: true,

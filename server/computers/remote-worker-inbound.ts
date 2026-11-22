@@ -17,6 +17,7 @@ export interface InboundHooks {
   peerOf: (computerId: string) => ((frame: WorkerLeaderFrame) => boolean) | undefined
   isSettled: (computerId: string, runId: string) => boolean
   updateSession: (runId: string, sessionId: string) => void
+  clearSession: (chatId: string, sessionId: string) => void
   botExists: (botId: string) => boolean
   handleMcp: (ctx: RemoteWorkerMcpContext, body: string) => Promise<{ status: number; body: string }>
   emitTool: (event: RemoteToolEvent) => void
@@ -50,6 +51,7 @@ export function handleRemoteWorkerInbound(hooks: InboundHooks, computerId: strin
     if (run.stopping) return
     const ev = sanitizeWorkerEvent(frame)
     if (!ev) return
+    if (ev.sessionId || ev.tools.length || ev.activity) run.sawEvent = true
     if (ev.sessionId) {
       run.sessionId = ev.sessionId
       hooks.updateSession(run.runId, ev.sessionId)
@@ -111,16 +113,29 @@ export function handleRemoteWorkerInbound(hooks: InboundHooks, computerId: strin
     }
     const steerItems: ChatItem[] = run.confirmedSteers.map(text => ({ kind: 'user', text }))
     const status: RemoteWorkerResult['status'] = run.stopping ? 'stopped' : done.status === 'completed' ? 'completed' : done.status === 'stopped' ? 'stopped' : 'failed'
+    const resumeFailed =
+      !run.stopping &&
+      done.status === 'failed' &&
+      Boolean(run.resumedFrom) &&
+      (!run.sawEvent || /no conversation|session.*not found|cannot resume|invalid session/i.test(`${done.error ?? ''} ${done.text}`))
+    if (resumeFailed) {
+      hooks.clearSession(run.chatId, run.resumedFrom!)
+      run.sessionId = undefined
+    }
     const text = done.text || (status === 'failed' && done.error ? done.error : '')
     const result: RemoteWorkerResult = {
       status,
       text,
       items: [...done.items, ...steerItems],
-      ...(done.sessionId ? { sessionId: done.sessionId } : run.sessionId ? { sessionId: run.sessionId } : {}),
+      ...(!resumeFailed && (done.sessionId || run.sessionId) ? { sessionId: done.sessionId ?? run.sessionId } : {}),
       ...(done.usage ? { usage: done.usage } : {}),
-      ...(!run.stopping && done.status === 'interrupted' ? { unknownReceipt: true as const, failureReason: 'interrupted' as const } : {})
+      ...(resumeFailed
+        ? { failureReason: 'session_lost' as const }
+        : !run.stopping && done.status === 'interrupted'
+          ? { unknownReceipt: true as const, failureReason: 'interrupted' as const }
+          : {})
     }
-    hooks.settleRun(run.runId, result, done.sessionId)
+    hooks.settleRun(run.runId, result, resumeFailed ? undefined : done.sessionId)
     send({ type: 'worker.ack', runId: run.runId })
   }
 }

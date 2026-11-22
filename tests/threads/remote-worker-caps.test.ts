@@ -32,7 +32,6 @@ function fixture() {
     store: core.bots,
     memory: core.memory,
     skills: core.skills,
-    systemNote: () => '',
     handleMcp: async () => ({ status: 200, body: '{}' }),
     computersChanged: () => {}
   })

@@ -7,7 +7,7 @@ import { ActivityStore } from './activity/activity-store'
 import { createConnections } from './app-connections'
 import { createGoals } from './app-goals'
 import { createMemory } from './app-memory'
-import { createRemoteWorkers } from './app-remote-workers'
+import { createRemoteWorkers, remoteWorkAnswers } from './app-remote-workers'
 import { createThreads } from './app-threads'
 import { createWebhooks, webhookMessages } from './app-webhooks'
 import { createWork, giveFrom } from './app-work'
@@ -158,7 +158,13 @@ export function createAppServices(
   }
   const { webhooks, webhookRuns, gates } = createWebhooks({ webhookStore, messages, bots, rootOf, calls, token, origin: HOOK_ORIGIN, observeRun, publish, repeat })
   const runs = { threadStore, routineStore, webhookStore, rootOf, goalStore: new GoalStore(database), reviewModel: mem.reviewModel }
-  const workDeps = { database, engine, store, prefs, bots, ...runs, libraryStore, workspaces, activity, history: history.store, calls, publish }
+  const remoteWork = remoteWorkAnswers(threadStore, () => ({
+    computerOnline: id => computers.list().some(c => c.id === id && c.online && !c.keyConflict),
+    oscarAnswer: (id, reqId, text) => threads.oscarAnswer(id, reqId, text),
+    changed: () => threads.changed(),
+    stopByChat: (botId, chatId) => remoteWorkers.runner.stopByChat(botId, chatId)
+  }))
+  const workDeps = { database, engine, store, prefs, bots, ...runs, libraryStore, workspaces, activity, history: history.store, calls, publish, remoteWork }
   const { work, links, answers, checks, checkSessions } = createWork(workDeps)
   const redirectUri = ACCESS_HOST ? `https://${ACCESS_HOST}${CALLBACK_PATH}` : undefined
   const connBase = { database, dataDir: DATA_DIR, port: PORT, engineToken: token, redirectUri, callbackEnabled: settings.ACCESS_CALLBACK_ENABLED ?? false }

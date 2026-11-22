@@ -14,6 +14,7 @@ import type { RemoteWorkerMcpContext } from './computers/remote-worker-types'
 import type { MemoryService } from './memory/memory-service'
 import type { SkillsService } from './skills/skills-service'
 import type { RemoteTarget } from './threads/delegation-remote'
+import type { ThreadStore } from './threads/thread-store'
 
 interface RemoteWorkerAppDeps {
   database: Database
@@ -57,7 +58,8 @@ export function createRemoteWorkers(deps: RemoteWorkerAppDeps) {
 
   const resolveRemoteWorker = async (callerId: string, opts: { computer: string; cwd?: string; model?: BotModel; continuation?: boolean }): Promise<RemoteTarget | null> => {
     const all = deps.computers.list()
-    const matches = all.filter(c => c.id === opts.computer || c.name === opts.computer)
+    const exact = all.find(c => c.id === opts.computer)
+    const matches = exact ? [exact] : all.filter(c => c.name === opts.computer)
     if (matches.length === 0) throw new LilBotError('computer_not_found', `Computer "${opts.computer}" not found. Check lilbot_status (area computers).`)
     if (matches.length > 1) throw new LilBotError('computer_ambiguous', `More than one computer is named "${opts.computer}". Use its id from lilbot_status (area computers).`)
     const found = matches[0]
@@ -93,13 +95,25 @@ export function createRemoteWorkers(deps: RemoteWorkerAppDeps) {
       onChat: (chatId: string) => void
     }
   ): Promise<RemoteWorkerResult> => {
+    const existing = runner.store.get(options.runId)
+    if (existing?.status === 'settled' && existing.outcome) {
+      options.onChat(existing.chatId)
+      return existing.outcome
+    }
     const bot = deps.store.get(botId)
     const comp = deps.computers.list().find(c => c.id === options.computer)
-    const agents = comp?.workerAgents ?? []
-    const modelCheck = validateRemoteModel(options.model ?? bot.model, agents.length ? agents : [{ driver: 'claude-code', version: '0' }])
-    if (!modelCheck.ok) return { status: 'failed', text: modelCheck.message, items: [], failureReason: 'invalid_start' }
-    const built = buildSystemPrompt(bot, comp?.name ?? options.computer, options.cwd)
-    if (!built.ok) return { status: 'failed', text: built.error, items: [], failureReason: 'prompt_too_large' }
+    if (!comp)
+      return runner.failRestored(options.runId, {
+        status: 'failed',
+        text: 'The computer was removed.',
+        items: [],
+        failureReason: 'computer_removed'
+      })
+    const agents = comp.workerAgents ?? []
+    const modelCheck = validateRemoteModel(options.model ?? bot.model, agents)
+    if (!modelCheck.ok) return runner.failRestored(options.runId, { status: 'failed', text: modelCheck.message, items: [], failureReason: 'invalid_start' })
+    const built = buildSystemPrompt(bot, comp.name, options.cwd)
+    if (!built.ok) return runner.failRestored(options.runId, { status: 'failed', text: built.error, items: [], failureReason: 'prompt_too_large' })
     const effort = options.reasoningEffort ?? (!options.model ? (bot.reasoningEffort ?? undefined) : undefined)
     const chatId = options.chatId ?? `remote:${options.threadId}`
     return runner.run({
@@ -124,3 +138,31 @@ export function createRemoteWorkers(deps: RemoteWorkerAppDeps) {
 }
 
 export type RemoteWorkers = ReturnType<typeof createRemoteWorkers>
+
+/** Routes work-board answers, send-backs, check failures and interrupts for `remote:<threadId>` chats away from Hermes. */
+export function remoteWorkAnswers(
+  threadStore: ThreadStore,
+  deps: () => {
+    computerOnline: (computerId: string) => boolean
+    oscarAnswer: (threadId: string, id: string, prompt: string) => void
+    changed: () => void
+    stopByChat: (botId: string, chatId: string) => Promise<boolean>
+  }
+) {
+  return {
+    deliver: (threadId: string, runId: string, prompt: string) => {
+      try {
+        const { computer } = threadStore.get(threadId)
+        const d = deps()
+        if (!computer || !d.computerOnline(computer)) return false
+        d.oscarAnswer(threadId, runId, prompt)
+        d.changed()
+        return true
+      } catch (error) {
+        if (error instanceof LilBotError) return false
+        throw error
+      }
+    },
+    stop: (botId: string, chatId: string) => deps().stopByChat(botId, chatId)
+  }
+}

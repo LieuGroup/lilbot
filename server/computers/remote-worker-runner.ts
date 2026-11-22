@@ -25,6 +25,7 @@ export class RemoteWorkerRunner {
       peerOf: id => this.peers.get(id),
       isSettled: (cid, rid) => this.store.isSettled(cid, rid),
       updateSession: (rid, sid) => this.store.updateSession(rid, sid),
+      clearSession: (cid, sid) => this.store.clearSession(cid, sid),
       botExists: id => this.options.botExists(id),
       handleMcp: (ctx, body) => this.options.handleMcp(ctx, body),
       emitTool: ev => {
@@ -47,9 +48,11 @@ export class RemoteWorkerRunner {
   }
 
   activeForComputer(computerId: string): number {
-    let n = 0
-    for (const run of this.runs.values()) if (run.computerId === computerId) n++
-    return n
+    return this.activeThreadsForComputer(computerId).length
+  }
+
+  activeThreadsForComputer(computerId: string): string[] {
+    return [...this.runs.values()].filter(r => r.computerId === computerId).map(r => r.threadId)
   }
 
   readonly bridge: WorkerDoorBridge = {
@@ -82,9 +85,9 @@ export class RemoteWorkerRunner {
     input.onChat?.(input.chatId)
     if (!active) {
       this.store.insert({ runId: input.runId, computerId: input.computerId, botId: input.botId, threadId: input.threadId, chatId: input.chatId, sessionId: resumeSession })
-      active = makeActiveRun({ ...input, sessionId: resumeSession }, false)
+      active = makeActiveRun({ ...input, sessionId: resumeSession }, false, resumeSession)
       this.runs.set(input.runId, active)
-    }
+    } else if (resumeSession && !active.resumedFrom) active.resumedFrom = resumeSession
     active.pendingStart = built.frame
     active.sentStart = false
 
@@ -174,7 +177,11 @@ export class RemoteWorkerRunner {
     if (!entry) return
     this.steers.delete(steerId)
     clearTimeout(entry.timer)
-    if (status === 'steered') this.runs.get(entry.runId)?.confirmedSteers.push(entry.text)
+    const run = status === 'steered' ? this.runs.get(entry.runId) : undefined
+    if (run) {
+      run.confirmedSteers.push(entry.text)
+      this.store.recordSteer(entry.runId, entry.text)
+    }
     entry.resolve(status)
   }
 

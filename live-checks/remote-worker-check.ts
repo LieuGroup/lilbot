@@ -103,7 +103,7 @@ try {
   assert.equal(payload.ok, true)
   assert.equal(payload.effort, 'high')
   assert.equal(payload.hasSys, true)
-  assert.equal(payload.toolCount, 7)
+  assert.equal(payload.toolCount, 6)
   assert.equal(payload.workOk, true)
   assert.equal(payload.memOk, true)
   assert.equal(payload.nestedRefused, true)
@@ -119,7 +119,7 @@ try {
     mem.facts.some((f: any) => f.text === 'Remote worker saved a durable fact.'),
     'scoped MCP memory fact missing'
   )
-  say('remote worker completed end-to-end with scoped 7-tool MCP, work evidence, memory save, and nesting refusal')
+  say('remote worker completed end-to-end with scoped 6-tool MCP, work evidence, memory save, and nesting refusal')
 
   // Verify answer delivery back to main chat completed.
   await eventually(

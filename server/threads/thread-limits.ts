@@ -11,7 +11,8 @@ const isExchangeWork = (kind: string) => kind === 'request' || kind === 'redirec
 export function canStartDelivery(
   d: { kind: string; threadId: string },
   running: Iterable<{ kind: string; threadId: string }>,
-  threadOf: (threadId: string) => { worker?: boolean; computer?: string }
+  threadOf: (threadId: string) => { worker?: boolean; computer?: string },
+  activeRemoteThreads?: (computerId: string) => Iterable<string>
 ) {
   if (isReply(d.kind)) return true
   const info = threadOf(d.threadId)
@@ -19,7 +20,7 @@ export function canStartDelivery(
   const targetComputer = targetWorker ? info.computer : undefined
   let work = 0
   let workers = 0
-  let onComputer = 0
+  const remoteOnComputer = new Set<string>()
   for (const r of running) {
     if (isReply(r.kind)) continue
     work++
@@ -27,13 +28,17 @@ export function canStartDelivery(
       const rInfo = threadOf(r.threadId)
       if (rInfo.worker) {
         workers++
-        if (targetComputer && targetComputer !== 'leader' && rInfo.computer === targetComputer) onComputer++
+        if (targetComputer && targetComputer !== 'leader' && rInfo.computer === targetComputer) remoteOnComputer.add(r.threadId)
       }
     }
   }
   if (work >= THREAD_LIMITS.concurrent) return false
   if (targetWorker && workers >= THREAD_LIMITS.concurrentWorkers) return false
-  if (targetComputer && targetComputer !== 'leader' && onComputer >= THREAD_LIMITS.workersPerComputer) return false
+  if (targetComputer && targetComputer !== 'leader') {
+    const restored = activeRemoteThreads ? [...activeRemoteThreads(targetComputer)] : []
+    for (const id of restored) remoteOnComputer.add(id)
+    if (!restored.includes(d.threadId) && remoteOnComputer.size >= THREAD_LIMITS.workersPerComputer) return false
+  }
   return true
 }
 
