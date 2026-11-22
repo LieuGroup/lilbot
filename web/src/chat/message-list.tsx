@@ -1,14 +1,31 @@
 import { ArrowDownIcon, SparklesIcon } from 'lucide-react'
-import { startTransition, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, startTransition, useEffect, useRef, useState } from 'react'
 
 import { MessageScroller, MessageScrollerButton, MessageScrollerContent, MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport } from '@/ui/message-scroller'
 import { Trace, TraceIcon, TraceLine, TraceTitle } from '@/ui/trace'
 import type { Avatar } from '../../../shared/avatar'
 import { LoadingEarlier } from '../history/history-marks'
 import { useOlderHistory } from '../history/use-older-history'
+import { useHasWaitingGoal } from '../work/work-badge-store'
 import { ChatItem } from './chat-item'
 import type { ChatView } from './chat-state'
 import { MessageRows } from './message-rows'
+
+const GoalChatCards = lazy(() => import('../goals/goal-chat-cards'))
+
+function GoalCardsSlot({ botId }: { botId: string }) {
+  const hasWaiting = useHasWaitingGoal(botId)
+  const [mounted, setMounted] = useState(hasWaiting)
+  useEffect(() => {
+    if (hasWaiting) setMounted(true)
+  }, [hasWaiting])
+  if (!mounted) return null
+  return (
+    <Suspense>
+      <GoalChatCards botId={botId} />
+    </Suspense>
+  )
+}
 
 interface MessageListProps {
   botId: string
@@ -79,6 +96,7 @@ export function MessageList({ botId, botName, avatar, chat, emptyHint }: Message
                 </TraceLine>
               </Trace>
             )}
+            <GoalCardsSlot botId={botId} />
           </MessageScrollerContent>
         </MessageScrollerViewport>
         {/* Scrolled up: back to the newest message. */}

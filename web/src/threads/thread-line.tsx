@@ -1,7 +1,11 @@
+import { Link } from '@tanstack/react-router'
 import { ChevronRightIcon } from 'lucide-react'
 import { Fragment, type ReactNode } from 'react'
 import type { BotThread } from '../../../shared/thread-schema'
 import { useNow } from '../app/use-now'
+import { CheckBadge } from '../work/check-badge'
+import { workBadge } from '../work/work-lines'
+import { useBotWorkItems } from '../work/work-store'
 import { GroupLine } from './group-line'
 import { useThreadNavigation } from './open-thread'
 import { StateText } from './state-text'
@@ -45,6 +49,10 @@ function ThreadRow({ botId, thread, className = '' }: { botId: string; thread: B
   const now = useNow(15_000)
   const { open } = useThreadNavigation(botId)
   const other = thread.participants.find(p => p.id !== botId) ?? thread.participants[1]
+  const receiverId = thread.participants[1]?.id ?? other.id
+  const receiverWork = useBotWorkItems(receiverId)
+  const workItem = receiverWork?.find(item => item.id === thread.id)
+  const badge = workItem ? workBadge(workItem) : null
   const title = lineTitle(thread, botId)
   const state = lineState(thread, botId, now)
   return (
@@ -56,6 +64,16 @@ function ThreadRow({ botId, thread, className = '' }: { botId: string; thread: B
       </div>
       {isTask(thread) && running(thread) && (
         <StopThread botId={botId} thread={thread} className="relative z-10 h-auto rounded-md px-2 py-[3px] text-xs/4 font-medium ring-1 ring-foreground/12 hover:bg-foreground/4" />
+      )}
+      {workItem && badge && (
+        <Link
+          to="/work/items/$itemId"
+          params={{ itemId: workItem.id }}
+          aria-label={`Open work item: ${workItem.title}`}
+          className="relative z-10 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <CheckBadge kind={badge} />
+        </Link>
       )}
       <ChevronRightIcon aria-hidden className="size-3.5 flex-none text-foreground/40" strokeWidth={1.75} />
       <button
