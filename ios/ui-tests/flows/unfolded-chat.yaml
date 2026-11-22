@@ -29,5 +29,6 @@ appId: com.lilbot.app.dev
 - assertVisible: "Test section"
 - assertVisible: "Section Bot"
 - assertVisible: "Hello! I am the fake LilBot server."
+- assertVisible: "Model: claude-sonnet-4-5 · High"
 - tapOn: "Section Bot"
 - assertVisible: "Hello! I am the fake LilBot server."

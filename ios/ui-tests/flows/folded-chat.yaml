@@ -26,6 +26,24 @@ appId: com.lilbot.app.dev
     commands:
       - tapOn: "Not Now"
 - assertVisible: "Hello! I am the fake LilBot server."
+- assertVisible: "Model: claude-sonnet-4-5 · High"
+- tapOn:
+    id: "model-pill"
+- assertVisible: "Find a model"
+- tapOn: "claude-opus-4-1"
+- extendedWaitUntil:
+    visible: "Model: claude-opus-4-1 · High"
+    timeout: 5000
+- tapOn:
+    id: "model-pill"
+- extendedWaitUntil:
+    visible: "Find a model"
+    timeout: 5000
+- tapOn:
+    id: "effort-option-medium"
+- extendedWaitUntil:
+    visible: "Model: claude-opus-4-1 · Medium"
+    timeout: 5000
 # Focus the composer field directly: percentage taps miss the new card layout.
 - tapOn:
     id: "composer-input"

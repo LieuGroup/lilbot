@@ -4,6 +4,7 @@ import { View } from 'react-native'
 import type { Bot } from '../../../shared/bot-schema'
 import { useChat } from '../chat/use-chat'
 import { Composer, MessageList } from '../chat/message-list'
+import { useModelPicker } from '../bots/model-pill'
 import { useTheme } from '../ui/theme'
 import { AppText } from '../ui/text'
 import { BotAvatar } from '../ui/avatar'
@@ -11,6 +12,7 @@ import { BotAvatar } from '../ui/avatar'
 export function ChatScreen({ bot }: { bot: Bot }) {
   const theme = useTheme()
   const chat = useChat(bot.id)
+  const modelPicker = useModelPicker(bot)
   const send = useCallback((text: string) => void chat.send(text), [chat])
 
   return (
@@ -31,9 +33,10 @@ export function ChatScreen({ bot }: { bot: Bot }) {
       ) : (
         <>
           <MessageList botId={bot.id} botName={bot.name} chat={chat.view} emptyHint={chat.ready ? `Message ${bot.name}` : 'Opening the conversation…'} />
-          <Composer botName={bot.name} ready={chat.ready} running={chat.view.running} onSend={send} onStop={() => void chat.stop()} />
+          <Composer botName={bot.name} ready={chat.ready} running={chat.view.running} model={modelPicker.pill} onSend={send} onStop={() => void chat.stop()} />
         </>
       )}
+      {modelPicker.menu}
     </View>
   )
 }

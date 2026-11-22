@@ -1,5 +1,5 @@
 /** The conversation: messages from the end, the bot's live status, and the composer. */
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import { FlatList, KeyboardAvoidingView, Platform, Pressable, TextInput, View } from 'react-native'
 import type { ChatView, MessageItem } from '../../../shared/client/chat/chat-state'
 import { SendIcon } from '../ui/icon'
@@ -50,12 +50,13 @@ interface ComposerProps {
   botName: string
   ready: boolean
   running: boolean
+  model?: ReactNode
   onSend: (text: string) => void
   onStop: () => void
 }
 
-/** The message box, shaped like the web composer's chat box: text on top, send/stop inside. */
-export function Composer({ botName, ready, running, onSend, onStop }: ComposerProps) {
+/** The message box, shaped like the web composer's chat box: text on top, model and send/stop inside. */
+export function Composer({ botName, ready, running, model, onSend, onStop }: ComposerProps) {
   const theme = useTheme()
   const [text, setText] = useState('')
   const hasContent = text.trim().length > 0
@@ -84,7 +85,8 @@ export function Composer({ botName, ready, running, onSend, onStop }: ComposerPr
             blurOnSubmit={false}
             style={{ maxHeight: 120, paddingHorizontal: 0, paddingVertical: 0, fontFamily: 'Inter_400Regular', fontSize: 15, lineHeight: 22, color: theme.foreground }}
           />
-          <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 32, marginTop: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 32, marginTop: 8, gap: 8 }}>
+            {model}
             <View style={{ flex: 1 }} />
             {stopping ? (
               <Pressable onPress={onStop} accessibilityLabel="Stop" style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.foreground }}>

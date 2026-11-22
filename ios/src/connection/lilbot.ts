@@ -20,13 +20,20 @@ export function socketUrl(base: string): string {
 }
 
 let socket: LilBotSocket | null = null
+let socketKey = ''
 
 /** The live socket, created on first use from the saved settings. Null until a server is set. */
 export function ensureSocket(): LilBotSocket | null {
   const { settings } = useConnectionStore.getState()
   if (!settings?.serverUrl) return null
+  const token = settings.accessToken.trim()
+  const key = `${settings.serverUrl}\n${token}`
+  if (socket && socketKey !== key) {
+    socket.stop()
+    socket = null
+    socketKey = ''
+  }
   if (!socket) {
-    const token = settings.accessToken.trim()
     socket = new LilBotSocket({
       url: () => socketUrl(settings.serverUrl),
       // React Native's WebSocket takes headers as a third argument; its types only declare two.
@@ -35,6 +42,7 @@ export function ensureSocket(): LilBotSocket | null {
         return new RNWebSocket(url, null, { headers: token ? { 'cf-access-jwt-assertion': token } : {} })
       }
     })
+    socketKey = key
   }
   return socket
 }
@@ -43,6 +51,7 @@ export function ensureSocket(): LilBotSocket | null {
 export function resetSocket() {
   socket?.stop()
   socket = null
+  socketKey = ''
 }
 
 export { socket as lilbotSocket }
