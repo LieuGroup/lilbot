@@ -12,7 +12,6 @@ import { CALLBACK_PATH } from './connections/mcp-callback'
 import { isT3Enabled, T3_BRIDGE_PATH } from './connections/t3-connection'
 import { deployNotice } from './deploy/deploy-notice'
 import { runningCommit } from './deploy/health'
-import { MEMORY_ADAPTER_VERSION } from './engines/hermes/hermes-memory-setup'
 import { createDefaultEngines } from './engines/registry'
 import { assertServerEnvironment } from './environment'
 import { startAccessDoor } from './http/access-door'
@@ -54,6 +53,7 @@ function botsChanged() {
 
 const T3_ENABLED = isT3Enabled(process.env)
 const engines = createDefaultEngines(process.env)
+const MEMORY_ADAPTER_VERSION = engines.defaultEngine.memoryAdapterVersion ?? 'none'
 const services = createAppServices(engines, {
   DATA_DIR,
   WORKSPACES_DIR,

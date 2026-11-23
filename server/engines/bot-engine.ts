@@ -120,6 +120,8 @@ export interface BotEngine {
   ): () => void
   readonly supportedPermissionModes: readonly PermissionMode[]
   readonly id: string
+  /** Current memory adapter version shipped by this engine, when it uses a profile-installed memory adapter. */
+  readonly memoryAdapterVersion?: string
   /** Only used for the one-time import of runtimes into a new database; each returned `id` is stored only as `engineBotId`. */
   importBots(): Promise<EngineBotDetail[]>
   /** Prepare a new runtime for this LilBot identity; returns its engine-native id. */
