@@ -25,8 +25,8 @@ interface ServiceForwardOptions {
   botIds: () => string[]
   /** Defence-in-depth session gate (webhook runs, check sessions), or null when allowed. */
   refusal?: (botId: string, tool: string, args: unknown) => Promise<string | null>
-  /** Maps an MCP server and raw tool name to the name the engine reports in tool-call events. */
-  toolName?: (server: string, tool: string) => string
+  /** Maps an MCP server and raw tool name to the name the calling bot's engine reports in tool-call events. */
+  toolName?: (server: string, tool: string, botId?: string) => string
   now?: () => number
 }
 
@@ -93,7 +93,7 @@ export function createServiceForward(options: ServiceForwardOptions) {
       const name = message.params?.name
       if (name === STATUS_TOOL) return rpcResult(message.id, { content: [{ type: 'text', text: `${connection.name} is ${connection.state.replaceAll('_', ' ')}.` }] })
       if (!connection.toolNames.includes(name)) return toolError(message.id, `${String(name)} is not one of ${connection.name}'s tools in LilBot.`)
-      const refused = await options.refusal?.(botId, engineToolName(`${ENGINE_PREFIX}${connection.name}`, name), message.params?.arguments)
+      const refused = await options.refusal?.(botId, engineToolName(`${ENGINE_PREFIX}${connection.name}`, name, botId), message.params?.arguments)
       if (refused) return refusedResult(message.id, refused)
     }
 
@@ -148,7 +148,7 @@ export function createServiceForward(options: ServiceForwardOptions) {
     const rebuilt = rebuildResponse(text, response.headers.get('content-type') ?? '', message, connection, new Set(connection.toolNames))
     if ('error' in rebuilt) return rebuilt.error
     if (message.method === 'tools/list' && rebuilt.listed && !message.params?.cursor) {
-      const names = toolNames(rebuilt.listed, tool => engineToolName(`${ENGINE_PREFIX}${connection.name}`, tool))
+      const names = toolNames(rebuilt.listed, tool => engineToolName(`${ENGINE_PREFIX}${connection.name}`, tool, botId))
       const last = toolsUpdatedAt.get(connection.id)
       if (JSON.stringify(names) !== JSON.stringify(connection.toolNames) && (last === undefined || now() - last >= TOOLS_UPDATE_MIN_MS)) {
         toolsUpdatedAt.set(connection.id, now())
