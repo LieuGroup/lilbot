@@ -104,6 +104,16 @@ try {
   if (written.status !== 'completed' || Buffer.from(read.result.output, 'base64').toString() !== 'FILE_OK' || exec.result.output !== 'EXEC_OK')
     throw new Error('Bot computer tools did not complete')
   console.log('PASS: real bot listed computers, executed, wrote and read through plugin')
+  const refusedDirect = await fetch(`http://127.0.0.1:${port}/engine/computers/submit`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}`, 'x-lilbot-bot-capability': botCapability(token, bot.id), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ computer: identity.id, requestId: 'direct-hard-stop', background: true, operation: { kind: 'exec', command: 'if false; then mkfs; fi' } })
+  })
+  const refusedBody = (await refusedDirect.json()) as { error?: string }
+  if (refusedDirect.status !== 422 || !refusedBody.error?.includes('LilBot safety stop')) {
+    throw new Error(`Direct submit did not enforce LilBot safety stop: ${refusedDirect.status} ${JSON.stringify(refusedBody)}`)
+  }
+  console.log('PASS: LilBot safety stop refused destructive direct submission with 422')
   await stopHelper()
   await eventually(async () => !(await call('computers.list')).find((c: any) => c.id === identity.id).online)
   const input = { computer: identity.id, requestId: 'offline-once', background: true, operation: { kind: 'exec', command: `printf ONCE >> '${scratch}/once'` } }
