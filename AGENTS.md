@@ -349,7 +349,7 @@ Full board rules, session attribution, drop/answer routing and `#142` check-leve
 - **Check levels (#142, `lilbot-check` skill):** 0 none (`reply`, `note`), 1 owner evidence (`file`, `computer`, `code`),
   2 second bot reproduces claim (`deploy`, `outside`, `spending`, `figure`; falls back to a fresh isolated same-bot
   session on `LILBOT_REVIEW_MODEL`), 3 Oscar (`work.pass`/`work.sendBack`). Check sessions (`#174`) get no memory,
-  `CHECK_TOOLSETS` only, and MCP blocks all writes except the assigned verdict.
+  the `access: 'check'` scope only, and MCP blocks all writes except the assigned verdict.
 
 ## Goals
 
