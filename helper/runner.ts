@@ -10,10 +10,10 @@ import { outbound } from './outbound'
 import { boundResult } from './result-bounds'
 import { retire } from './retire'
 import { verifyFrame, verifyServer } from './server-trust'
-import { createAgentProbe } from './worker-driver'
+import { type AgentProbeOptions, startAgentProbe } from './worker-driver'
 import { WorkerHost, type WorkerHostOptions } from './worker-host'
 
-type RunnerOptions = Omit<WorkerHostOptions, 'db' | 'send' | 'emitNow'> & { configDir?: string; retire?: () => Promise<void> }
+type RunnerOptions = Omit<WorkerHostOptions, 'db' | 'send' | 'emitNow'> & AgentProbeOptions & { configDir?: string; retire?: () => Promise<void> }
 
 const waitBackoff = (ms: number, signal: AbortSignal) =>
   new Promise<void>(resolve => {
@@ -59,9 +59,9 @@ export async function run(identity: Identity, signal: AbortSignal, options: Runn
     sender.flush()
   }
   const workers = new WorkerHost({ ...options, configDir: dir, db, send: sendWorker, emitNow: emit })
-  const probe = await createAgentProbe(options.drivers, next => sendWorker('worker-capabilities', { type: 'worker.capabilities', agents: next }))
+  const probe = startAgentProbe(options, agents => !signal.aborted && !revoked && sendWorker('worker-capabilities', { type: 'worker.capabilities', agents }))
   const syncWorkers = () => {
-    sendWorker('worker-capabilities', { type: 'worker.capabilities', agents: probe.current() })
+    probe.emit()
     workers.onReconnect()
   }
   const work = async (id: string, operation: ComputerOperation) => {

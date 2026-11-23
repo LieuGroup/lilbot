@@ -67,6 +67,7 @@ export function buildStartFrame(input: RemoteWorkerRunInput, resumeSession?: str
     ...(resumeSession ? { sessionId: resumeSession } : {}),
     cwd: input.cwd,
     model: input.model,
+    ...(input.provider ? { provider: input.provider } : {}),
     ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
     systemPrompt: input.systemPrompt,
     prompt: input.prompt,

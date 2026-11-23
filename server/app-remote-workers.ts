@@ -3,12 +3,14 @@
 import type { Database } from 'bun:sqlite'
 import type { BotModel, ReasoningEffort } from '../shared/bot-schema'
 import { LilBotError } from '../shared/lilbot-error'
+import type { WorkerDriverId } from '../shared/worker-frame-schema'
 import type { BotRecord, BotStore } from './bots/bot-store'
 import { withoutNote } from './bots/system-note'
 import type { ComputerService } from './computers/computer-service'
 import { assembleRemoteWorkerPrompt, REMOTE_WORKER_EXCLUDED_SKILLS } from './computers/remote-worker-prompt'
 import { RemoteWorkerRunner } from './computers/remote-worker-runner'
-import { validateRemoteCwd, validateRemoteModel } from './computers/remote-worker-sanitize'
+import { validateModelForDriver, validateRemoteCwd } from './computers/remote-worker-sanitize'
+import { selectRemoteWorkerEngine } from './computers/remote-worker-select'
 import type { RemoteWorkerResult } from './computers/remote-worker-store'
 import type { RemoteWorkerMcpContext } from './computers/remote-worker-types'
 import type { MemoryService } from './memory/memory-service'
@@ -56,29 +58,42 @@ export function createRemoteWorkers(deps: RemoteWorkerAppDeps) {
     })
   }
 
-  const resolveRemoteWorker = async (callerId: string, opts: { computer: string; cwd?: string; model?: BotModel; continuation?: boolean }): Promise<RemoteTarget | null> => {
+  const resolveRemoteWorker = async (
+    callerId: string,
+    opts: { computer: string; cwd?: string; model?: BotModel; engine?: WorkerDriverId; continuation?: boolean }
+  ): Promise<RemoteTarget | null> => {
     const all = deps.computers.list()
     const exact = all.find(c => c.id === opts.computer)
     const matches = exact ? [exact] : all.filter(c => c.name === opts.computer)
     if (matches.length === 0) throw new LilBotError('computer_not_found', `Computer "${opts.computer}" not found. Check lilbot_status (area computers).`)
     if (matches.length > 1) throw new LilBotError('computer_ambiguous', `More than one computer is named "${opts.computer}". Use its id from lilbot_status (area computers).`)
     const found = matches[0]
+    const bot = deps.store.get(callerId)
     if (found.id === 'leader') {
       if (opts.cwd) throw new LilBotError('invalid_cwd', 'cwd applies only to remote computers; leader workers run in your workspace.')
+      if (opts.engine && opts.engine !== bot.engineId)
+        throw new LilBotError('engine_unavailable', `Leader workers run on your own engine ("${bot.engineId}"), not "${opts.engine}".`)
       return null
     }
     if (found.keyConflict) throw new LilBotError('computer_offline', `Computer "${found.name}" has a key conflict and cannot run workers until re-registered.`)
     if (!found.online) throw new LilBotError('computer_offline', `Computer "${found.name}" is offline. Wait until it is back online or tell Oscar.`)
     const agents = found.workerAgents ?? []
-    if (!found.capabilities.includes('worker') || !agents.length) throw new LilBotError('computer_no_worker', `Computer "${found.name}" does not advertise a coding agent.`)
+    const pick = selectRemoteWorkerEngine({ computerName: found.name, botEngineId: bot.engineId, agents, requestedEngine: opts.engine, requestedModel: opts.model })
+    if (!pick.ok) throw new LilBotError(pick.code, pick.message)
     if (!opts.continuation) {
       const cwdCheck = validateRemoteCwd(opts.cwd ?? '')
       if (!cwdCheck.ok) throw new LilBotError('invalid_cwd', cwdCheck.message)
     }
-    const bot = deps.store.get(callerId)
-    const modelCheck = validateRemoteModel(opts.model ?? bot.model, agents)
+    const fallbackNote = pick.fallback ? `Your engine (${pick.fallbackFrom}) is not available on "${found.name}", so LilBot fell back to ${pick.driver}.` : undefined
+    const modelCheck = validateModelForDriver(opts.model ?? bot.model, pick.driver, fallbackNote)
     if (!modelCheck.ok) throw new LilBotError('invalid_model', modelCheck.message)
-    return { computerId: found.id, computerName: found.name, cwd: opts.cwd }
+    return {
+      computerId: found.id,
+      computerName: found.name,
+      cwd: opts.cwd,
+      engine: pick.driver,
+      ...(pick.fallback ? { fallbackFrom: pick.fallbackFrom } : {})
+    }
   }
 
   const runForBot = async (
@@ -90,6 +105,7 @@ export function createRemoteWorkers(deps: RemoteWorkerAppDeps) {
       chatId?: string
       computer: string
       cwd: string
+      engine?: WorkerDriverId
       model?: BotModel
       reasoningEffort?: ReasoningEffort
       onChat: (chatId: string) => void
@@ -102,28 +118,29 @@ export function createRemoteWorkers(deps: RemoteWorkerAppDeps) {
     }
     const bot = deps.store.get(botId)
     const comp = deps.computers.list().find(c => c.id === options.computer)
-    if (!comp)
-      return runner.failRestored(options.runId, {
-        status: 'failed',
-        text: 'The computer was removed.',
-        items: [],
-        failureReason: 'computer_removed'
-      })
-    const agents = comp.workerAgents ?? []
-    const modelCheck = validateRemoteModel(options.model ?? bot.model, agents)
+    if (!comp) return runner.failRestored(options.runId, { status: 'failed', text: 'The computer was removed.', items: [], failureReason: 'computer_removed' })
+    const pick = selectRemoteWorkerEngine({
+      computerName: comp.name,
+      botEngineId: bot.engineId,
+      agents: comp.workerAgents ?? [],
+      requestedEngine: options.engine,
+      requestedModel: options.model
+    })
+    if (!pick.ok) return runner.failRestored(options.runId, { status: 'failed', text: pick.message, items: [], failureReason: 'invalid_start' })
+    const modelCheck = validateModelForDriver(options.model ?? bot.model, pick.driver)
     if (!modelCheck.ok) return runner.failRestored(options.runId, { status: 'failed', text: modelCheck.message, items: [], failureReason: 'invalid_start' })
     const built = buildSystemPrompt(bot, comp.name, options.cwd)
     if (!built.ok) return runner.failRestored(options.runId, { status: 'failed', text: built.error, items: [], failureReason: 'prompt_too_large' })
     const effort = options.reasoningEffort ?? (!options.model ? (bot.reasoningEffort ?? undefined) : undefined)
-    const chatId = options.chatId ?? `remote:${options.threadId}`
     return runner.run({
       runId: options.runId,
       computerId: options.computer,
       botId,
       threadId: options.threadId,
-      chatId,
+      chatId: options.chatId ?? `remote:${options.threadId}`,
       cwd: options.cwd,
       model: modelCheck.wireModel,
+      ...(modelCheck.provider ? { provider: modelCheck.provider } : {}),
       driver: modelCheck.driver,
       ...(effort ? { reasoningEffort: effort } : {}),
       systemPrompt: built.systemPrompt,

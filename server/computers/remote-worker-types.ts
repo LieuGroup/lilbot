@@ -12,6 +12,7 @@ export interface RemoteWorkerRunInput {
   chatId: string
   cwd: string
   model: string
+  provider?: string
   reasoningEffort?: string
   driver?: WorkerDriverId
   sessionId?: string

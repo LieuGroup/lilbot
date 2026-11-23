@@ -38,7 +38,7 @@ A worker or developer bot starts with no memory of this chat. Every coding brief
 
 ## 5. Other computers
 
-Workers can run on the leader or on any added computer that advertises a coding agent. Follow the machine roles in `~/code/home/AGENTS.md` (when present). From a main or delegated session (not inside a worker), check `lilbot_status` (area `computers`) to see which added computers are online and can host a coding worker, start one there with `lilbot_delegate` (`worker: true`, `computer`, `cwd`; no `files`, see `lilbot_guide` topic `threads`), and keep the Computers tools (`lilbot_guide` topic `computers`) for one-off commands or computers without a coding agent; if a required computer is offline, say so and stop.
+Workers can run on the leader or on any added computer that advertises a coding agent. Follow the machine roles in `~/code/home/AGENTS.md` (when present). From a main or delegated session (not inside a worker), check `lilbot_status` (area `computers`) to see which added computers are online and what engines they report, start a worker with `lilbot_delegate` (`worker: true`, `computer`, `cwd`; optional `engine` if you need a specific one, otherwise LilBot picks your own engine when supported or falls back and tells you; no `files`, see `lilbot_guide` topic `threads`), and keep the Computers tools (`lilbot_guide` topic `computers`) for one-off commands or computers without a coding agent; if a required computer is offline, say so and stop.
 
 ## 6. Questions, progress, evidence, and memory
 

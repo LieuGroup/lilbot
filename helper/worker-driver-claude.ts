@@ -2,6 +2,7 @@
  *  Uses whatever sign-in the machine already has (no LilBot-managed provider key file) and keeps Claude Code's
  *  own session files in place so `--resume <session_id>` works for follow-ups and post-interrupt recovery. */
 import { existsSync, rmSync, statSync } from 'node:fs'
+import { runProbeCommand } from './worker-bin'
 import { expandWorkerCwd, readBoundedLines, readTailText, resolveClaudeBinary, writeRunMcpConfig } from './worker-claude-env'
 import { buildClaudeArgs, claudeUserLine, cleanAgentLine, cleanAgentText, createClaudeStreamState, parseClaudeLine } from './worker-claude-protocol'
 import type { WorkerDriver, WorkerHandle, WorkerOutcome } from './worker-driver'
@@ -38,18 +39,19 @@ export function claudeCodeDriver(options: { bin?: string; configDir?: string; ki
     async detect() {
       const bin = resolveClaudeBinary(options.bin)
       if (!bin) return null
-      try {
-        const child = Bun.spawn([bin, '--version'], { stdout: 'pipe', stderr: 'ignore' })
-        const timer = setTimeout(() => child.kill('SIGKILL'), 5000)
-        const [out, code] = await Promise.all([new Response(child.stdout).text(), child.exited])
-        clearTimeout(timer)
-        if (code !== 0) return null
-        const firstLine = out.split(/\r?\n/)[0] ?? ''
-        const version = cleanAgentLine(firstLine, 200).split(/\s+/)[0]?.slice(0, 64)
-        return version ? { driver: 'claude-code', version } : null
-      } catch {
-        return null
+      const [ver, auth] = await Promise.all([runProbeCommand(bin, ['--version']), runProbeCommand(bin, ['auth', 'status', '--json'])])
+      if (ver?.code !== 0) return null
+      const firstLine = ver.stdout.split(/\r?\n/)[0] ?? ''
+      const version = cleanAgentLine(firstLine, 200).split(/\s+/)[0]?.slice(0, 64)
+      if (!version) return null
+      let signedIn: boolean | undefined
+      if (auth) {
+        try {
+          const parsed = JSON.parse(auth.stdout) as { loggedIn?: unknown }
+          if (typeof parsed?.loggedIn === 'boolean') signedIn = parsed.loggedIn
+        } catch {}
       }
+      return { driver: 'claude-code', version, supported: true, ...(signedIn !== undefined ? { signedIn } : {}) }
     },
     start(request, onEvent): WorkerHandle {
       const bin = resolveClaudeBinary(options.bin)

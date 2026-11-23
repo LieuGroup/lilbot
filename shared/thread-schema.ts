@@ -2,6 +2,7 @@
 import { z } from 'zod'
 import { BotModel, ReasoningEffort } from './bot-schema'
 import type { ChatItem } from './chat-schema'
+import { WorkerDriverId } from './worker-frame-schema'
 
 const text = z.string().trim().min(1).max(20_000)
 const exchangeId = z.string().min(1).max(100)
@@ -25,6 +26,7 @@ const delegateTask = z
     reasoningEffort: ReasoningEffort.optional().describe('Worker only: starting reasoning effort'),
     computer: z.string().trim().min(1).max(100).optional().describe('Worker only: computer id or exact name to run on'),
     cwd: z.string().min(1).max(4096).optional().describe('Remote worker only: absolute or ~/ folder path on that computer'),
+    engine: WorkerDriverId.optional().describe('Worker only: coding engine to run on (defaults to your own engine when available)'),
     task: text,
     files: files.optional(),
     exchangeId: exchangeId.optional().describe('Continue this exchange')
@@ -36,6 +38,7 @@ const delegateTask = z
       ctx.addIssue({ code: 'custom', message: 'model and reasoningEffort apply only when starting a new worker.', path: ['model'] })
     if ((t.computer || t.cwd) && (!t.worker || t.exchangeId))
       ctx.addIssue({ code: 'custom', message: 'computer and cwd apply only when starting a new worker.', path: ['computer'] })
+    if (t.engine && (!t.worker || t.exchangeId)) ctx.addIssue({ code: 'custom', message: 'engine applies only when starting a new worker.', path: ['engine'] })
     if (t.cwd && !t.computer) ctx.addIssue({ code: 'custom', message: 'Give a computer when specifying cwd.', path: ['cwd'] })
     if (t.computer && t.computer !== 'leader' && !t.cwd) ctx.addIssue({ code: 'custom', message: 'Give a folder (cwd) when starting a worker on another computer.', path: ['cwd'] })
   })
@@ -171,6 +174,10 @@ export interface BotThread {
   computerName?: string
   /** Working folder on that computer. */
   cwd?: string
+  /** Coding engine this remote worker runs on. */
+  workerEngine?: WorkerDriverId
+  /** Engine the bot runs on when this remote worker had to fall back to another engine. */
+  workerEngineFallbackFrom?: string
   /** Present when the thread is a temporary group rather than an exchange between two bots. */
   group?: ThreadGroup
 }

@@ -164,7 +164,7 @@ test('F8: version strips format/control chars, capability probe caches across re
   const dir = tempDir()
   const badVer = writeScript(dir, 'bad-ver', "console.log('2.1\\u200b327\\u0085 (Claude Code)')")
   const info = await claudeCodeDriver({ bin: badVer, configDir: dir }).detect()
-  expect(info).toEqual({ driver: 'claude-code', version: '2.1327' })
+  expect(info).toEqual({ driver: 'claude-code', version: '2.1327', supported: true })
   expect(HelperFrame.safeParse({ type: 'worker.capabilities', agents: [info!] }).success).toBe(true)
 
   let calls = 0

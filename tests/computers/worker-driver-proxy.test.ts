@@ -53,7 +53,7 @@ const isAlive = (pid: number) => {
 
 test('detection advertises agent version when present and omits it cleanly when absent', async () => {
   const f = setup()
-  expect(await detectWorkerAgents([f.driver])).toEqual([{ driver: 'claude-code', version: '2.1.327' }])
+  expect(await detectWorkerAgents([f.driver])).toEqual([{ driver: 'claude-code', version: '2.1.327', supported: true }])
   const absent = claudeCodeDriver({ bin: join(f.root, 'does-not-exist'), configDir: f.root })
   expect(await detectWorkerAgents([absent])).toEqual([])
 

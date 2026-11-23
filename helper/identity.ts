@@ -36,7 +36,8 @@ export async function register(url: string, code: string) {
   const privateKey = pair.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()
   const publicKey = pair.publicKey.export({ type: 'spki', format: 'pem' }).toString()
   const workerAgents = await detectWorkerAgents()
-  const capabilities = ['exec', 'read', 'write', 'list', 'copy', ...(workerAgents.length ? ['worker'] : [])]
+  const hasRunnableWorker = workerAgents.some(a => a.supported !== false)
+  const capabilities = ['exec', 'read', 'write', 'list', 'copy', ...(hasRunnableWorker ? ['worker'] : [])]
   const hello = { name: hostname(), os: platform(), home: homedir(), capabilities, ...(workerAgents.length ? { workerAgents } : {}) }
   const body = { codeId: codeId(code), mac: '', publicKey, hello }
   body.mac = registrationMac(codeKey(code), publicKey, body.hello)

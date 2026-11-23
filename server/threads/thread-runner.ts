@@ -17,7 +17,7 @@ import { type Delivery, isWork, type ThreadStore } from './thread-store'
 import type { ThreadWaits } from './thread-waits'
 
 type RunResult = { status: string; text: string; items?: ChatItem[]; unknownReceipt?: true; failureReason?: string }
-type ThreadRunOptions = RoutineOptions & { computer?: string; cwd?: string; threadId?: string }
+type ThreadRunOptions = RoutineOptions & { computer?: string; cwd?: string; threadId?: string; engine?: import('../../shared/worker-frame-schema').WorkerDriverId }
 export interface RunnerHost {
   requireBot(id: string): Promise<{ id: string; name: string }>
   runRoutine(botId: string, prompt: string, options: ThreadRunOptions): Promise<RunResult>

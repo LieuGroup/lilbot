@@ -1,15 +1,21 @@
 /** Resolves and validates remote worker targets (new workers and continuations) before `DelegationService` accepts a batch. */
 import type { BotModel } from '../../shared/bot-schema'
 import { LilBotError } from '../../shared/lilbot-error'
-import type { DelegateInput } from '../../shared/thread-schema'
+import type { BotThread, DelegateInput } from '../../shared/thread-schema'
+import type { WorkerDriverId } from '../../shared/worker-frame-schema'
 
 export interface RemoteTarget {
   computerId: string
   computerName: string
   cwd?: string
+  engine?: WorkerDriverId
+  fallbackFrom?: string
 }
 
-export type ResolveRemoteWorker = (callerId: string, opts: { computer: string; cwd?: string; model?: BotModel; continuation?: boolean }) => Promise<RemoteTarget | null>
+export type ResolveRemoteWorker = (
+  callerId: string,
+  opts: { computer: string; cwd?: string; model?: BotModel; engine?: WorkerDriverId; continuation?: boolean }
+) => Promise<RemoteTarget | null>
 
 export interface ResolvedTask {
   target: { id: string; name: string }
@@ -35,6 +41,7 @@ export async function validateTaskTargets(
         computer: computerRef,
         cwd: t.cwd ?? entry.remote?.cwd,
         model: t.model ?? entry.existingModel,
+        engine: t.engine ?? entry.remote?.engine,
         continuation: Boolean(t.exchangeId)
       })
       if (remote) {
@@ -45,7 +52,23 @@ export async function validateTaskTargets(
       }
       // Resolved to 'leader': treat as a normal local worker.
       entry.remote = undefined
+    } else if (t.engine && host.resolveRemoteWorker) {
+      await host.resolveRemoteWorker(callerId, { computer: 'leader', engine: t.engine })
     }
     if (t.model) await host.validateModel?.(t.model)
   }
+}
+
+/** Remote engine metadata returned on each accepted worker exchange so the bot knows which engine ran and whether it fell back. */
+export function remoteExchangeMeta(thread: BotThread, continuation: boolean) {
+  const computer = thread.computer ? { computer: thread.computerName ?? thread.computer } : {}
+  const engine = thread.workerEngine ? { engine: thread.workerEngine } : {}
+  const fallback =
+    !continuation && thread.workerEngine && thread.workerEngineFallbackFrom
+      ? {
+          fallbackFrom: thread.workerEngineFallbackFrom,
+          fallbackNote: `Your engine (${thread.workerEngineFallbackFrom}) is not available on ${thread.computerName ?? thread.computer}; running on ${thread.workerEngine} instead.`
+        }
+      : {}
+  return { ...computer, ...engine, ...fallback }
 }

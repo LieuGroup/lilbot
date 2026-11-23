@@ -56,9 +56,10 @@ function updateWorkerCapabilities(db: Database, computerId: string, agents: Work
   const parsed = ComputerHello.safeParse(JSON.parse(row.hello))
   if (!parsed.success) return false
   const baseCaps = parsed.data.capabilities.filter(cap => cap !== 'worker')
+  const hasRunnable = agents.some(agent => agent.supported !== false)
   const next = {
     ...parsed.data,
-    capabilities: agents.length ? ([...baseCaps, 'worker'] as ComputerHello['capabilities']) : baseCaps,
+    capabilities: hasRunnable ? ([...baseCaps, 'worker'] as ComputerHello['capabilities']) : baseCaps,
     ...(agents.length ? { workerAgents: agents } : { workerAgents: undefined })
   }
   const nextJson = JSON.stringify(next)

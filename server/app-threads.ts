@@ -58,6 +58,7 @@ export function createThreads(deps: ThreadDeps) {
             chatId: options.chatId,
             computer: options.computer,
             cwd: options.cwd,
+            engine: options.engine,
             model: options.model,
             reasoningEffort: options.reasoningEffort,
             onChat: options.onChat

@@ -4,7 +4,7 @@ import type { BotModel } from '../../shared/bot-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import { AttachInput, DelegateInput } from '../../shared/thread-schema'
 import { refuseUnsafe } from '../memory/memory-safety'
-import { type ResolvedTask, type ResolveRemoteWorker, validateTaskTargets } from './delegation-remote'
+import { type ResolvedTask, type ResolveRemoteWorker, remoteExchangeMeta, validateTaskTargets } from './delegation-remote'
 import { checkFiles, stageFiles, withBatchCopies } from './exchange-files'
 import { THREAD_LIMITS } from './thread-limits'
 import type { ThreadHost, ThreadService } from './thread-service'
@@ -131,7 +131,9 @@ export class DelegationService {
                 reasoningEffort: task.reasoningEffort,
                 computer: remote?.computerId,
                 computerName: remote?.computerName,
-                cwd: remote?.cwd
+                cwd: remote?.cwd,
+                workerEngine: remote?.engine,
+                workerEngineFallbackFrom: remote?.fallbackFrom
               },
               (messageId, thread) => {
                 added = true
@@ -148,7 +150,7 @@ export class DelegationService {
             exchangeId: thread.id,
             to: thread.worker ? 'worker' : target.name,
             ...(thread.worker ? { worker: true as const } : {}),
-            ...(thread.computer ? { computer: thread.computerName ?? thread.computer } : {}),
+            ...remoteExchangeMeta(thread, Boolean(task.exchangeId)),
             status: thread.status,
             batchId: thread.batchId
           })
@@ -171,7 +173,9 @@ export class DelegationService {
     const thread = this.store.get(exchangeId)
     if (thread.worker) {
       if (thread.participants[0].id !== botId) throw new LilBotError('thread_forbidden', 'You are not part of that exchange.')
-      const remote = thread.computer ? { computerId: thread.computer, computerName: thread.computerName ?? thread.computer, cwd: thread.cwd } : undefined
+      const remote = thread.computer
+        ? { computerId: thread.computer, computerName: thread.computerName ?? thread.computer, cwd: thread.cwd, engine: thread.workerEngine }
+        : undefined
       return { target: await this.host.requireBot(botId), worker: true, remote, existingModel: thread.model }
     }
     const other = thread.participants.find(p => p.id !== botId)

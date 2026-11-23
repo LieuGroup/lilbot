@@ -2,6 +2,7 @@
 import type { BotModel, ReasoningEffort } from '../../shared/bot-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import type { BotThread } from '../../shared/thread-schema'
+import type { WorkerDriverId } from '../../shared/worker-frame-schema'
 import { THREAD_LIMITS } from './thread-limits'
 import type { Delivery, ThreadStore } from './thread-store'
 
@@ -22,6 +23,8 @@ export interface Accept {
   computer?: string
   computerName?: string
   cwd?: string
+  workerEngine?: WorkerDriverId
+  workerEngineFallbackFrom?: string
 }
 type Bot = { id: string; name: string }
 export const WORK = "kind IN ('request','redirect','oscar')"
@@ -66,7 +69,9 @@ export function acceptDelivery(store: ThreadStore, caller: Bot, target: Bot, inp
           ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
           ...(input.computer ? { computer: input.computer } : {}),
           ...(input.computerName ? { computerName: input.computerName } : {}),
-          ...(input.cwd ? { cwd: input.cwd } : {})
+          ...(input.cwd ? { cwd: input.cwd } : {}),
+          ...(input.workerEngine ? { workerEngine: input.workerEngine } : {}),
+          ...(input.workerEngineFallbackFrom ? { workerEngineFallbackFrom: input.workerEngineFallbackFrom } : {})
         }
     if (thread.group) throw new LilBotError('thread_forbidden', 'That is a group: use lilbot_group.')
     if (input.threadId && Boolean(thread.worker) !== Boolean(input.worker))
