@@ -1,4 +1,5 @@
-/** Tasks pill swipe-up & sheet swipe-down gesture primitives (R4-G3), each paired with a tap or button fallback. */
+/** Tasks pill swipe-up & sheet swipe-down gesture primitives (R4-G3), each paired with a visible tap/button fallback.
+ *  Sheet dismiss disables its pan gesture whenever inner scrollOffsetY > 0 so scrolling back up is never stolen. */
 import type { ReactNode } from 'react'
 import { Pressable, View } from 'react-native'
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler'
@@ -11,7 +12,7 @@ export interface PillExpandGestureProps {
   children: ReactNode
 }
 
-/** Attaches to the 32 pt Tasks pill: swipe up or tap expands the floating dock. */
+/** Attaches to the 32 pt Tasks pill: swipe up or single tap expands the floating dock. */
 export function PillExpandGesture({ accessibilityLabel, onExpand, children }: PillExpandGestureProps) {
   const pan = usePanGesture({
     runOnJS: true,
@@ -32,16 +33,18 @@ export function PillExpandGesture({ accessibilityLabel, onExpand, children }: Pi
 }
 
 export interface SheetDismissGestureProps {
-  /** Current inner scroll offset; swipe-down dismiss is suppressed while scrolled past y = 0. */
+  /** Current inner scroll offset; swipe-down dismiss is disabled while scrolled past y = 0 so it never steals scroll touches. */
   scrollOffsetY: number
   onDismiss: () => void
   children: ReactNode
 }
 
-/** Grab-handle wrapper for Expanded Dock and Opened Worker phone sheets: swipe down at y <= 0 dismisses. */
+/** Grab-handle wrapper for Expanded Dock and Opened Worker sheets: swipe down at y <= 0 dismisses without fighting scroll.
+ *  Callers must also provide a visible dismiss control (such as "Steer in <bot>" or pane close) so nothing is gesture-only. */
 export function SheetDismissGesture({ scrollOffsetY, onDismiss, children }: SheetDismissGestureProps) {
   const theme = useTheme()
   const pan = usePanGesture({
+    enabled: scrollOffsetY <= 0,
     runOnJS: true,
     activeOffsetY: 14,
     failOffsetX: [-24, 24],

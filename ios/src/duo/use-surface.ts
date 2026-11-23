@@ -1,4 +1,5 @@
-/** Live Duo/iPhone surface hook with ~150 ms fold-transition debounce, keyboard state, and Assistive Access / VoiceOver detection. */
+/** Live Duo/iPhone surface hook with ~150 ms fold-transition debounce, keyboard state, and VoiceOver detection.
+ *  Trusts live UIKit safeAreaInsets directly; does not claim to read iOS Assistive Access (native bars handle that). */
 import { useEffect, useRef, useState } from 'react'
 import { AccessibilityInfo, Keyboard, Platform, useWindowDimensions } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -8,7 +9,8 @@ export interface LiveSurfaceState {
   surface: SurfaceKind
   metrics: WindowMetrics
   keyboardVisible: boolean
-  assistiveAccess: boolean
+  keyboardHeight: number
+  screenReaderEnabled: boolean
 }
 
 export function useLiveSurface(): LiveSurfaceState {
@@ -17,8 +19,8 @@ export function useLiveSurface(): LiveSurfaceState {
   const metrics: WindowMetrics = { width, height, safeAreaRight: insets.right, safeAreaTop: insets.top, safeAreaBottom: insets.bottom }
   const nextSurface = classifySurface(metrics)
   const [surface, setSurface] = useState<SurfaceKind>(nextSurface)
-  const [keyboardVisible, setKeyboardVisible] = useState(false)
-  const [assistiveAccess, setAssistiveAccess] = useState(false)
+  const [keyboardHeight, setKeyboardHeight] = useState(0)
+  const [screenReaderEnabled, setScreenReaderEnabled] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -35,8 +37,8 @@ export function useLiveSurface(): LiveSurfaceState {
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide'
-    const onShow = Keyboard.addListener(showEvent, () => setKeyboardVisible(true))
-    const onHide = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false))
+    const onShow = Keyboard.addListener(showEvent, event => setKeyboardHeight(event.endCoordinates.height))
+    const onHide = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0))
     return () => {
       onShow.remove()
       onHide.remove()
@@ -46,14 +48,14 @@ export function useLiveSurface(): LiveSurfaceState {
   useEffect(() => {
     let active = true
     void AccessibilityInfo.isScreenReaderEnabled().then(enabled => {
-      if (active) setAssistiveAccess(enabled)
+      if (active) setScreenReaderEnabled(enabled)
     })
-    const sub = AccessibilityInfo.addEventListener('screenReaderChanged', enabled => setAssistiveAccess(enabled))
+    const sub = AccessibilityInfo.addEventListener('screenReaderChanged', enabled => setScreenReaderEnabled(enabled))
     return () => {
       active = false
       sub.remove()
     }
   }, [])
 
-  return { surface, metrics, keyboardVisible, assistiveAccess }
+  return { surface, metrics, keyboardVisible: keyboardHeight > 0, keyboardHeight, screenReaderEnabled }
 }

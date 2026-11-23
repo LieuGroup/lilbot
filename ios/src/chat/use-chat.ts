@@ -54,7 +54,7 @@ export function useChat(botId: string) {
           return
         }
         chatId.current = snapshot.chatId
-        updateChat(botId, current => ({ view: chatFromSnapshot(snapshot, current.view), ready: true, error: '' }))
+        updateChat(botId, current => ({ ...current, view: chatFromSnapshot(snapshot, current.view), ready: true, error: '' }))
         stopListening = socket.onChat(snapshot.chatId, event => {
           updateChat(botId, current => ({ ...current, view: applyChatEvent(current.view, event), ready: event.type === 'closed' ? false : current.ready }))
           if (event.type === 'closed') reopenSoon()

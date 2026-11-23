@@ -8,7 +8,7 @@ import { useTheme } from '../ui/theme'
 import { AppText } from '../ui/text'
 import { radius } from '../ui/tokens'
 
-export function SettingsScreen({ onDone }: { onDone: () => void }) {
+export function SettingsScreen({ onDone }: { onDone?: () => void }) {
   const theme = useTheme()
   const settings = useConnectionStore(state => state.settings)
   const connected = useConnectionStore(state => state.connected)
@@ -29,7 +29,7 @@ export function SettingsScreen({ onDone }: { onDone: () => void }) {
     setError('')
     try {
       await save({ serverUrl: serverUrl.trim(), accessToken: accessToken.trim() })
-      onDone()
+      onDone?.()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not save the settings.')
     } finally {
@@ -89,7 +89,7 @@ export function SettingsScreen({ onDone }: { onDone: () => void }) {
         </AppText>
       </View>
 
-      {settings && (
+      {settings && onDone && (
         <Pressable onPress={onDone} style={{ marginTop: 8 }}>
           <AppText variant="name" color={theme.primary}>
             Back

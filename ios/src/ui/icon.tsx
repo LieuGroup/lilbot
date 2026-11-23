@@ -46,7 +46,7 @@ export function InfoIcon({ color, size = 13 }: IconProps) {
 }
 
 /** Bots root tab icon: rounded bot face. */
-export function BotsTabIcon({ color, size = 18 }: IconProps) {
+export function BotsTabIcon({ color, size = 16 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">
       <Rect x="4" y="6" width="16" height="13" rx="4.5" fill="none" stroke={color} strokeWidth={1.75} />
@@ -57,7 +57,7 @@ export function BotsTabIcon({ color, size = 18 }: IconProps) {
 }
 
 /** Work root tab icon: rounded checkbox with tick. */
-export function WorkTabIcon({ color, size = 18 }: IconProps) {
+export function WorkTabIcon({ color, size = 16 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">
       <Rect x="4" y="4" width="16" height="16" rx="4" fill="none" stroke={color} strokeWidth={1.75} />
@@ -67,7 +67,7 @@ export function WorkTabIcon({ color, size = 18 }: IconProps) {
 }
 
 /** Settings root tab icon: 8-tooth gear. */
-export function SettingsTabIcon({ color, size = 18 }: IconProps) {
+export function SettingsTabIcon({ color, size = 16 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">
       <Circle cx="12" cy="12" r="3" fill="none" stroke={color} strokeWidth={1.75} />
@@ -83,7 +83,7 @@ export function SettingsTabIcon({ color, size = 18 }: IconProps) {
   )
 }
 
-export function PlusIcon({ color, size = 18 }: IconProps) {
+export function PlusIcon({ color, size = 16 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">
       <Path d="M12 5v14M5 12h14" fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" />
@@ -91,7 +91,7 @@ export function PlusIcon({ color, size = 18 }: IconProps) {
   )
 }
 
-export function BackIcon({ color, size = 18 }: IconProps) {
+export function BackIcon({ color, size = 16 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">
       <Path d="M15 6l-6 6 6 6" fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" />
@@ -99,7 +99,7 @@ export function BackIcon({ color, size = 18 }: IconProps) {
   )
 }
 
-export function NewChatIcon({ color, size = 18 }: IconProps) {
+export function NewChatIcon({ color, size = 16 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">
       <Path d="M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5" fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" />
@@ -117,7 +117,7 @@ export function SidebarToggleIcon({ color, size = 16 }: IconProps) {
   )
 }
 
-export function DismissKeyboardIcon({ color, size = 18 }: IconProps) {
+export function DismissKeyboardIcon({ color, size = 16 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">
       <Rect x="3.5" y="5" width="17" height="10" rx="2.5" fill="none" stroke={color} strokeWidth={1.75} />

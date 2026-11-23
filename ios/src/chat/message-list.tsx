@@ -1,11 +1,12 @@
 /** The conversation: messages from the end, the bot's live status, and the composer. */
-import { type ReactNode, useState } from 'react'
+import type { ReactNode } from 'react'
 import { FlatList, KeyboardAvoidingView, Platform, Pressable, TextInput, View } from 'react-native'
 import type { ChatView, MessageItem } from '../../../shared/client/chat/chat-state'
 import { SendIcon } from '../ui/icon'
 import { useTheme } from '../ui/theme'
 import { AppText } from '../ui/text'
 import { ChatItem } from './message-item'
+import { useChatStore } from './store'
 
 interface MessageListProps {
   botId: string
@@ -47,6 +48,7 @@ export function MessageList({ botId, botName, chat, emptyHint }: MessageListProp
 }
 
 interface ComposerProps {
+  botId: string
   botName: string
   ready: boolean
   running: boolean
@@ -56,9 +58,10 @@ interface ComposerProps {
 }
 
 /** The message box, shaped like the web composer's chat box: text on top, model and send/stop inside. */
-export function Composer({ botName, ready, running, model, onSend, onStop }: ComposerProps) {
+export function Composer({ botId, botName, ready, running, model, onSend, onStop }: ComposerProps) {
   const theme = useTheme()
-  const [text, setText] = useState('')
+  const text = useChatStore(state => state.slots[botId]?.draft ?? '')
+  const setDraft = useChatStore(state => state.setDraft)
   const hasContent = text.trim().length > 0
   const canSend = ready && hasContent
   const stopping = running && !hasContent
@@ -66,7 +69,7 @@ export function Composer({ botName, ready, running, model, onSend, onStop }: Com
   const submit = () => {
     if (!canSend) return
     onSend(text.trim())
-    setText('')
+    setDraft(botId, '')
   }
 
   return (
@@ -76,7 +79,7 @@ export function Composer({ botName, ready, running, model, onSend, onStop }: Com
           <TextInput
             testID="composer-input"
             value={text}
-            onChangeText={setText}
+            onChangeText={next => setDraft(botId, next)}
             placeholder={`Message ${botName}`}
             placeholderTextColor={theme.mutedForeground}
             multiline

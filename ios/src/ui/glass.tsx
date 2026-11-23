@@ -1,10 +1,42 @@
 /** Floating Liquid Glass primitives for the chrome layer only (tabs, orbs, pills, composer, sheets).
- *  Uses native expo-glass-effect on iOS 26+ and falls back to frosted glass tokens everywhere else. */
-import { GlassView, isLiquidGlassAvailable, type GlassStyle } from 'expo-glass-effect'
-import type { ReactNode } from 'react'
-import { Pressable, type AccessibilityActionEvent, type AccessibilityActionInfo, type PressableProps, type StyleProp, View, type ViewStyle } from 'react-native'
+ *  Guards native expo-glass-effect behind both availability checks and iOS Reduce Transparency. */
+import { GlassView, isGlassEffectAPIAvailable, isLiquidGlassAvailable, type GlassStyle } from 'expo-glass-effect'
+import { type ReactNode, useEffect, useState } from 'react'
+import {
+  AccessibilityInfo,
+  Pressable,
+  type AccessibilityActionEvent,
+  type AccessibilityActionInfo,
+  type PressableProps,
+  type StyleProp,
+  View,
+  type ViewStyle
+} from 'react-native'
 import { useTheme } from './theme'
 import { GLASS_METRICS, radius } from './tokens'
+
+/** Live iOS Reduce Transparency preference; when true, glass surfaces render as opaque solid chrome. */
+export function useReduceTransparency(): boolean {
+  const [reduced, setReduced] = useState(false)
+  useEffect(() => {
+    let active = true
+    void AccessibilityInfo.isReduceTransparencyEnabled().then(enabled => {
+      if (active) setReduced(enabled)
+    })
+    const sub = AccessibilityInfo.addEventListener('reduceTransparencyChanged', enabled => setReduced(enabled))
+    return () => {
+      active = false
+      sub.remove()
+    }
+  }, [])
+  return reduced
+}
+
+/** True only when both the iOS glass API and Liquid Glass material are available and transparency is not reduced. */
+export function canUseNativeLiquidGlass(reduceTransparency: boolean): boolean {
+  if (reduceTransparency) return false
+  return isGlassEffectAPIAvailable() && isLiquidGlassAvailable()
+}
 
 export interface GlassSurfaceProps {
   children: ReactNode
@@ -17,11 +49,13 @@ export interface GlassSurfaceProps {
 
 export function GlassSurface({ children, variant = 'regular', interactive = false, scrim = false, style }: GlassSurfaceProps) {
   const theme = useTheme()
-  const nativeGlass = isLiquidGlassAvailable()
+  const reduceTransparency = useReduceTransparency()
+  const nativeGlass = canUseNativeLiquidGlass(reduceTransparency)
+  const fallbackBg = reduceTransparency ? theme.popover : scrim ? theme.glass.scrim : theme.glass.fill
   const surfaceStyle: ViewStyle = {
     borderWidth: 1,
-    borderColor: theme.glass.border,
-    backgroundColor: nativeGlass ? (scrim ? theme.glass.scrim : 'transparent') : scrim ? theme.glass.scrim : theme.glass.fill,
+    borderColor: reduceTransparency ? theme.border : theme.glass.border,
+    backgroundColor: nativeGlass ? (scrim ? theme.glass.scrim : 'transparent') : fallbackBg,
     overflow: 'hidden'
   }
 
@@ -35,7 +69,9 @@ export function GlassSurface({ children, variant = 'regular', interactive = fals
 
   return (
     <View style={[surfaceStyle, style]}>
-      <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: theme.glass.specular }} />
+      {!reduceTransparency && (
+        <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: theme.glass.specular }} />
+      )}
       {children}
     </View>
   )
