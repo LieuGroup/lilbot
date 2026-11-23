@@ -104,18 +104,22 @@ test('F3/F9/F11/F12 & drain timeout: throwing start leaks nothing, stale configs
   writeFileSync(join(dir, 'worker-runs', 'stale.mcp.json'), '{}')
   const db = new Database(join(dir, 'requests.db'))
   const frames: unknown[] = []
+  let cleanupDir: string | undefined
   let leakedProxyUrl = ''
   const throwingDriver: WorkerDriver = {
     id: 'claude-code',
     detect: async () => ({ driver: 'claude-code', version: '1.0' }),
+    cleanupStale: configDir => {
+      cleanupDir = configDir
+    },
     start: req => {
       leakedProxyUrl = req.mcp?.url ?? ''
       throw new Error('E2BIG boom')
     }
   }
   const host = makeHost(db, dir, throwingDriver, frames)
-  expect(existsSync(join(dir, 'worker-runs', 'stale.mcp.json'))).toBe(false)
-  expect(statSync(join(dir, 'worker-runs')).mode & 0o777).toBe(0o700)
+  expect(cleanupDir).toBe(dir)
+  expect(existsSync(join(dir, 'worker-runs', 'stale.mcp.json'))).toBe(true)
 
   host.handle({ type: 'worker.start', runId: 'throw-1', cwd: dir, model: 'claude-sonnet-5-5', prompt: 'hi', mcpEnabled: true })
   expect(host.activeCount()).toBe(0)
@@ -124,6 +128,8 @@ test('F3/F9/F11/F12 & drain timeout: throwing start leaks nothing, stale configs
 
   const silentExit = writeScript(dir, 'silent-exit', 'process.exit(0)')
   const host2 = makeHost(db, dir, claudeCodeDriver({ bin: silentExit, configDir: dir }), frames)
+  expect(existsSync(join(dir, 'worker-runs', 'stale.mcp.json'))).toBe(false)
+  expect(statSync(join(dir, 'worker-runs')).mode & 0o777).toBe(0o700)
   host2.handle({ type: 'worker.start', runId: 'silent-1', cwd: dir, model: 'claude-sonnet-5-5', prompt: 'hi', mcpEnabled: false })
   await until(() => Boolean(findDone(frames, 'silent-1')))
   expect(findDone(frames, 'silent-1')).toMatchObject({ status: 'failed', error: 'Worker exited without a final result.' })

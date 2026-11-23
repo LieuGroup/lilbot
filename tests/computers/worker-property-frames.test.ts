@@ -4,11 +4,12 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:f
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { readBoundedLines, resolveClaudeBinary } from '../../helper/worker-claude-env'
-import { cleanAgentLine, cleanAgentText, createClaudeStreamState, parseClaudeLine } from '../../helper/worker-claude-protocol'
+import { createClaudeStreamState, parseClaudeLine } from '../../helper/worker-claude-protocol'
 import { detectWorkerAgents } from '../../helper/worker-driver'
 import { claudeCodeDriver } from '../../helper/worker-driver-claude'
 import { WorkerHost } from '../../helper/worker-host'
 import { boundWorkerDone, prepareWorkerJournal, unacknowledgedWorkers } from '../../helper/worker-journal'
+import { cleanAgentLine, cleanAgentText } from '../../helper/worker-text'
 import { HelperFrame } from '../../shared/computer-schema'
 import { WORKER_DONE_MAX_BYTES } from '../../shared/worker-frame-schema'
 

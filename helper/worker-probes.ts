@@ -67,5 +67,5 @@ export function codexProbe(options: { bin?: string; pathEnv?: string; platform?:
 }
 
 export function defaultWorkerProbes(): WorkerAgentProbe[] {
-  return [hermesProbe(), codexProbe()]
+  return [codexProbe()]
 }

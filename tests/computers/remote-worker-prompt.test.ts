@@ -99,6 +99,7 @@ test('assembleRemoteWorkerPrompt fits within 96 KiB, escapes section tags, and u
     if (built.ok) {
       expect(built.systemPrompt).toContain('Stay sharp.')
       expect(built.systemPrompt).toContain('Edit files and run commands directly')
+      expect(built.systemPrompt).toContain('AGENTS.md')
       expect(built.systemPrompt).toContain('ios-notes')
       expect(built.systemPrompt).not.toContain('/srv/leader')
       expect(built.systemPrompt).not.toContain('T3 Code')

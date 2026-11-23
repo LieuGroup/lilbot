@@ -155,14 +155,14 @@ test('helper registration gates worker capability, and server reconciles capabil
     os: 'linux',
     home: dir,
     capabilities: ['exec', 'worker'],
-    workerAgents: [{ driver: 'hermes', version: '0.23.1', supported: true }]
+    workerAgents: [{ driver: 'codex', version: '0.171.0', supported: true }]
   }
   const body = { codeId: codeId(code), mac: registrationMac(codeKey(code), publicKey, bogusHello), publicKey, hello: bogusHello }
   const signature = sign(null, Buffer.from(JSON.stringify(body)), privateKey).toString('base64')
   const { id } = auth.register({ ...body, signature })
   const stored = store.list().find(c => c.id === id)!
   expect(stored.capabilities).not.toContain('worker')
-  expect(stored.workerAgents).toEqual([{ driver: 'hermes', version: '0.23.1', supported: false }])
+  expect(stored.workerAgents).toEqual([{ driver: 'codex', version: '0.171.0', supported: false }])
 
   // Connect-time reconciliation fixes stale/corrupted SQLite hello (bad version, bogus worker cap, unsupported supported=true).
   db.query('UPDATE computers SET hello=? WHERE id=?').run(
