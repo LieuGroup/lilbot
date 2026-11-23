@@ -1,7 +1,7 @@
 /** Keeps the project map in AGENTS.md true: checks which folders import from which (via TypeScript AST). */
 import { expect, test } from 'bun:test'
 import { relative } from 'node:path'
-import { concreteEngineIds, importsOf, sourceFiles } from './engines/boundary-scanner'
+import { concreteDriverIds, concreteEngineIds, forbiddenSubfolderImports, importsOf, sourceFiles } from './engines/boundary-scanner'
 
 /** Every import from a file under `from` into `into`, as "file -> target". */
 function crossings(from: string, into: string, except: string[] = []): string[] {
@@ -33,15 +33,19 @@ test('product code never imports from tests/', () => {
 
 test('only the single engine registration point knows which engines exist (server/main.ts tracked until P6/P5)', () => {
   const engines = concreteEngineIds()
-  const outsiders = sourceFiles('server').filter(file => file !== 'server/engines/registry.ts' && !engines.some(id => file.startsWith(`server/engines/${id}/`)))
-  const leaks = outsiders
-    .flatMap(file =>
-      importsOf(file)
-        .filter(target => engines.some(id => target === `server/engines/${id}` || target.startsWith(`server/engines/${id}/`)))
-        .map(target => `${file} -> ${target}`)
-    )
+  const leaks = sourceFiles('server')
+    .flatMap(file => forbiddenSubfolderImports(file, importsOf(file), 'server/engines', engines, 'server/engines/registry.ts'))
     .sort()
   expect(leaks).toEqual(['server/main.ts -> server/engines/hermes/hermes-engine', 'server/main.ts -> server/engines/hermes/hermes-memory-setup'])
+})
+
+test('only helper/drivers/registry.ts imports concrete helper drivers, and drivers never import each other', () => {
+  const drivers = concreteDriverIds()
+  const leaks = ['server', 'shared', 'web', 'ios', 'helper']
+    .flatMap(sourceFiles)
+    .flatMap(file => forbiddenSubfolderImports(file, importsOf(file), 'helper/drivers', drivers, 'helper/drivers/registry.ts'))
+    .sort()
+  expect(leaks).toEqual([])
 })
 
 test('an engine does not depend on what sits above it', () => {
