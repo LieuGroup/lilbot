@@ -52,6 +52,10 @@ export class BotStore {
     return row ? { bot: fromRow(row), ...JSON.parse(row.deletion) } : null
   }
 
+  incompleteDeletions(): string[] {
+    return (this.db.query("SELECT id FROM bots WHERE deletion IS NOT NULL AND json_extract(deletion, '$.complete') = 0").all() as { id: string }[]).map(r => r.id)
+  }
+
   markDeleted(bot: BotRecord, choices: import('../../shared/bot-delete-schema').BotDeleteDefaults, complete = false) {
     this.db.transaction(() => {
       this.db.query('UPDATE bots SET deletion = ? WHERE id = ?').run(JSON.stringify({ choices, complete }), bot.id)

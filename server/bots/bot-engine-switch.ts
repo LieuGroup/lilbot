@@ -26,7 +26,25 @@ export interface SwitchEngineDeps {
   sessions: SessionSettings
   botMemory: BotMemory
   history?: HistoryService
+  busyReason?: (botId: string) => string | null
   changed: () => void
+}
+
+/** Serializes engine switches per bot so concurrent calls never race or leak an orphaned target runtime. */
+export class BotEngineSwitcher {
+  private queues = new Map<string, Promise<unknown>>()
+  constructor(private deps: SwitchEngineDeps) {}
+
+  switch(botId: string, targetEngineId: string, options: SwitchEngineOptions = {}) {
+    const prior = this.queues.get(botId) ?? Promise.resolve()
+    const task = prior.catch(() => {}).then(() => switchBotEngine(this.deps, botId, targetEngineId, options))
+    this.queues.set(botId, task)
+    const clear = () => {
+      if (this.queues.get(botId) === task) this.queues.delete(botId)
+    }
+    task.then(clear, clear)
+    return task
+  }
 }
 
 export async function switchBotEngine(deps: SwitchEngineDeps, botId: string, targetEngineId: string, options: SwitchEngineOptions = {}) {
@@ -38,19 +56,33 @@ export async function switchBotEngine(deps: SwitchEngineDeps, botId: string, tar
   if (previous.engineId === target.id) {
     return { ok: true as const, changed: false as const, chatId: deps.prefs.mainChat(botId), bot: previous }
   }
+  const busy = deps.busyReason?.(botId)
+  if (busy) throw new LilBotError('bot_busy', `${busy} Wait until it finishes before switching engines.`)
 
   const nextModel = options.model === undefined ? previous.model : options.model
   if (nextModel) await target.validateModel(nextModel)
+
+  const bots = deps.runtimes.store.list()
+  const previousPrimary = deps.prefs.primaryBot()
+  const persistPrimary = previous.isDefault && !bots.some(b => b.id === previousPrimary)
+  const previousState = deps.runtimes.snapshot(previous)
 
   const candidate: BotRecord = { ...previous, model: nextModel, isDefault: false, engineId: target.id, engineBotId: previous.id }
   const nativeId = await target.createRuntime(candidate)
   const nextBot: BotRecord = { ...candidate, engineBotId: nativeId }
 
+  let released = false
+  let primaryPersisted = false
   let bound = false
   try {
     await target.prepareRuntime?.(nativeId, nextBot)
     const workspace = await deps.workspaces.ensure(botId)
     await deps.runtimes.release(botId)
+    released = true
+    if (persistPrimary) {
+      deps.prefs.setPrimaryBot(botId)
+      primaryPersisted = true
+    }
     deps.runtimes.store.bindEngine(botId, target.id, nativeId, nextModel)
     bound = true
     deps.history?.dropSource(botId)
@@ -58,7 +90,8 @@ export async function switchBotEngine(deps: SwitchEngineDeps, botId: string, tar
     await deps.runtimes.state(nextBot)
     await deps.botMemory.connectNew(botId)
 
-    const chat = await target.openChat(nativeId, null, { workspace }, () => {})
+    const reasoningEffort = await deps.sessions.forNewSession(nextBot)
+    const chat = await target.openChat(nativeId, null, { workspace, reasoningEffort }, () => {})
     const newChatId = chat.snapshot.chatId
     chat.close()
     deps.prefs.setMainChat(botId, newChatId)
@@ -70,7 +103,13 @@ export async function switchBotEngine(deps: SwitchEngineDeps, botId: string, tar
     }
   } catch (error) {
     if (bound) deps.runtimes.store.bindEngine(botId, previous.engineId, previous.engineBotId, previous.model, previous.isDefault)
+    if (primaryPersisted) {
+      if (previousPrimary) deps.prefs.setPrimaryBot(previousPrimary)
+      else deps.prefs.clearPrimaryBot()
+    }
+    if (released) deps.runtimes.restoreState(botId, previousState)
     await target.deleteRuntime(nativeId).catch(() => {})
+    if (released || bound || primaryPersisted) deps.changed()
     throw error
   }
 

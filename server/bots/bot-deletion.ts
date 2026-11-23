@@ -25,6 +25,13 @@ export class BotDeletion {
     return task
   }
 
+  /** Retries tombstones left incomplete by an earlier transient engine failure; never throws. */
+  async resumeIncomplete(): Promise<void> {
+    for (const botId of this.runtimes.store.incompleteDeletions()) {
+      await this.delete({ botId }).catch(() => {})
+    }
+  }
+
   private async run(input: BotDeleteInput): Promise<{ ok: true }> {
     await this.runtimes.load()
     const store = this.runtimes.store
@@ -44,7 +51,7 @@ export class BotDeletion {
         try {
           await engine.deleteRuntime(bot.engineBotId)
         } catch (error) {
-          if (!(error instanceof LilBotError && error.code === 'bot_not_found')) throw error
+          if (!(error instanceof LilBotError && (error.code === 'bot_not_found' || error.code === 'protected_bot'))) throw error
         }
       }
       if (choices.privateMemories === 'forget') this.memory.forgetPrivate(bot.id)

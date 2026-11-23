@@ -4,6 +4,7 @@ import type { ActivityEvent } from '../shared/activity-schema'
 import type { EventFrame } from '../shared/protocol'
 import { ActivityService } from './activity/activity-service'
 import { ActivityStore } from './activity/activity-store'
+import { botBusyReason } from './app-bot-busy'
 import { createConnections } from './app-connections'
 import { createGoals } from './app-goals'
 import { createMemory } from './app-memory'
@@ -155,7 +156,8 @@ export function createAppServices(
     memoryConnection: { url: `http://127.0.0.1:${PORT}`, tokenFile: join(DATA_DIR, 'engine-token') },
     connections: botId => [...t3For(botId), system.connection(botId), ...mcp.connections(botId)],
     onConnectionsChanged: botId => mcp.applyBot(botId),
-    systemNote: systemNote(facts)
+    systemNote: systemNote(facts),
+    busyReason: botBusyReason({ database, activity, routineStore, webhookStore })
   })
   const calls = new CallingChats()
   const observeRun = (event: ActivityEvent) => store.exists(event.botId) && activity.observe(event)

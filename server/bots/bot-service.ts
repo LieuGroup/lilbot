@@ -11,7 +11,7 @@ import { BackgroundRuns } from './bot-background-runs'
 import { BotConversations } from './bot-conversations'
 import { BotCreation } from './bot-creation'
 import { BotDeletion } from './bot-deletion'
-import { type SwitchEngineOptions, switchBotEngine } from './bot-engine-switch'
+import { BotEngineSwitcher, type SwitchEngineOptions } from './bot-engine-switch'
 import { BotMemory } from './bot-memory'
 import type { BotPrefsStore } from './bot-prefs-store'
 import { BotRuntimes } from './bot-runtimes'
@@ -34,6 +34,7 @@ export interface BotServiceOptions {
   connections?: (botId: string) => import('../engines/mcp-connection').McpConnection[]
   onConnectionsChanged?: (botId: string) => void
   systemNote?: (bot: BotRecord) => string
+  busyReason?: (botId: string) => string | null
 }
 
 export class BotService {
@@ -51,6 +52,7 @@ export class BotService {
   private sessions: SessionSettings
   private background: BackgroundRuns
   private engines: EngineRegistry
+  private switcher: BotEngineSwitcher
 
   constructor(
     engine: BotEngine | EngineRegistry,
@@ -87,6 +89,23 @@ export class BotService {
       }
     )
     this.botMemory = new BotMemory(this.runtimes, memory, options.memoryConnection, this.memoryChanged)
+    const busyReason = (botId: string) =>
+      this.conversations.hasActiveTurn(botId)
+        ? 'This bot has an active turn running.'
+        : this.background.hasActiveRun(botId)
+          ? 'This bot has a background run in progress.'
+          : (options.busyReason?.(botId) ?? null)
+    this.switcher = new BotEngineSwitcher({
+      engines: this.engines,
+      runtimes: this.runtimes,
+      prefs,
+      workspaces,
+      sessions: this.sessions,
+      botMemory: this.botMemory,
+      history: this.history,
+      busyReason,
+      changed: this.changed
+    })
   }
   deleteBot = (input: BotDeleteInput) => this.deletion.delete(input)
   deleteDefaults = () => this.runtimes.store.deleteDefaults()
@@ -110,7 +129,10 @@ export class BotService {
   }
 
   prepareRuntimes() {
-    return this.runtimes.initialize(bots => this.primaryId(bots)).finally(this.changed)
+    return this.runtimes
+      .initialize(bots => this.primaryId(bots))
+      .then(() => this.deletion.resumeIncomplete())
+      .finally(this.changed)
   }
 
   async listBots(): Promise<Bot[]> {
@@ -158,23 +180,8 @@ export class BotService {
       this.changed()
     }
   }
-  switchEngine(botId: string, engineId: string, options?: SwitchEngineOptions) {
-    return switchBotEngine(
-      {
-        engines: this.engines,
-        runtimes: this.runtimes,
-        prefs: this.prefs,
-        workspaces: this.workspaces,
-        sessions: this.sessions,
-        botMemory: this.botMemory,
-        history: this.history,
-        changed: this.changed
-      },
-      botId,
-      engineId,
-      options
-    )
-  }
+  hasEngine = (botId: string) => this.runtimes.store.exists(botId) && this.engines.has(this.runtimes.store.get(botId).engineId)
+  switchEngine = (botId: string, engineId: string, options?: SwitchEngineOptions) => this.switcher.switch(botId, engineId, options)
 
   async updateBot(input: BotUpdateInput): Promise<BotDetail> {
     const previous = await this.requireBot(input.botId)

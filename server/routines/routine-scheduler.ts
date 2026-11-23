@@ -6,6 +6,8 @@ import { RetryQueue } from '../background'
 export interface RunSource<R extends { id: string; botId: string }> {
   readonly kind: string
   readonly store: { claimDue(now: number): unknown; pending(): R[] }
+  /** False when the bot's engine is not registered, so the run settles cleanly without showing working. */
+  canRun?(run: R): boolean
   run(run: R): Promise<{ status: string }>
 }
 
@@ -19,18 +21,27 @@ export class RoutineScheduler<R extends { id: string; botId: string }> {
     private now = Date.now
   ) {}
   tick(): string[] {
-    this.service.store.claimDue(this.now())
-    const runs = this.service.store.pending().filter(run => this.retries.ready(run.id))
-    for (const run of runs) {
-      // Unknown submission outcome is never marked failed and replaced with a fresh run.
-      // Reconnect and replay the persisted identity instead, even after a process restart.
-      this.retries.run(run.id, async () => {
-        const chatId = `${this.service.kind}:${run.id}`
-        this.observe({ botId: run.botId, chatId, key: `${run.id}:working`, status: 'working' })
-        const result = await this.service.run(run)
-        this.observe({ botId: run.botId, chatId, key: `${run.id}:settled`, status: result.status === 'completed' ? 'finished' : 'failed', spoke: true })
-      })
+    const started: string[] = []
+    for (;;) {
+      this.service.store.claimDue(this.now())
+      const runs = this.service.store.pending().filter(run => this.retries.ready(run.id))
+      if (!runs.length) break
+      let failedFast = false
+      for (const run of runs) {
+        started.push(run.id)
+        const runnable = this.service.canRun?.(run) !== false
+        if (!runnable) failedFast = true
+        // Unknown submission outcome is never marked failed and replaced with a fresh run.
+        // Reconnect and replay the persisted identity instead, even after a process restart.
+        this.retries.run(run.id, async () => {
+          const chatId = `${this.service.kind}:${run.id}`
+          if (runnable) this.observe({ botId: run.botId, chatId, key: `${run.id}:working`, status: 'working' })
+          const result = await this.service.run(run)
+          this.observe({ botId: run.botId, chatId, key: `${run.id}:settled`, status: result.status === 'completed' ? 'finished' : 'failed', spoke: true })
+        })
+      }
+      if (!failedFast) break
     }
-    return runs.map(run => run.id)
+    return started
   }
 }

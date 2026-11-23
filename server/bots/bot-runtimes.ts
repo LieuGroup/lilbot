@@ -74,19 +74,21 @@ export class BotRuntimes {
     return this.readiness.all(bots)
   }
 
-  /** One bot prepared before use, ahead of the rest of the roster; rejects on failure. */
   async use(bot: BotRecord): Promise<RuntimeState> {
+    if (!this.engines.has(bot.engineId)) throw new LilBotError('runtime_unavailable', 'This bot’s engine is not available.')
     await this.readiness.ensure(bot)
     return this.state(bot)
   }
-
-  /** A deleted bot: stop preparing it and wait for a preparation already running. */
   release(botId: string) {
     this.states.delete(botId)
     this.prepared.delete(botId)
     return this.readiness.release(botId)
   }
-
+  restoreState(botId: string, state: RuntimeState | null) {
+    if (!state) return
+    this.states.set(botId, state)
+    this.prepared.add(botId)
+  }
   private async prepareAndState(bot: BotRecord) {
     try {
       await this.prepare(bot)
@@ -139,13 +141,11 @@ export class BotRuntimes {
     const available = this.bound().filter(bot => this.states.get(bot.id))
     if (this.connections) await refreshConnections(this.engines, available, this.connections, this.options.onConnectionsChanged)
   }
-
   snapshot = (bot: BotRecord): RuntimeState | null => this.states.get(bot.id) ?? null
   memoryConnected(id: string) {
     const state = this.states.get(id)
     if (state) this.states.set(id, { ...state, memoryConnected: true })
   }
-
   async runtimeAvailability(nativeId: string, available: boolean, engineId?: string) {
     await this.initialize()
     const bot = this.store.list().find(bot => (engineId ? bot.engineId === engineId : this.engines.has(bot.engineId)) && bot.engineBotId === nativeId)
@@ -155,21 +155,20 @@ export class BotRuntimes {
     if (!available) this.states.set(bot.id, null)
     else await this.readiness.ensure(bot)
   }
-
   pending = (bot: BotRecord): boolean => this.engines.has(bot.engineId) && !this.states.has(bot.id)
-
   async create(input: BotCreateInput, id: string = crypto.randomUUID(), engineId?: string): Promise<BotRecord> {
     await this.load()
     if (this.store.deleted(id)) throw new LilBotError('bot_not_found', 'That bot has been deleted.')
     const existing = this.store.list().find(bot => bot.id === id)
     if (existing) return existing
     const engine = engineId ? this.engines.require(engineId) : this.engines.defaultEngine
+    const model = input.model ?? this.store.list().find(b => b.engineId === engine.id && b.isDefault)?.model ?? null
     const bot: BotRecord = {
       id,
       name: input.name,
       function: input.function,
       instructions: input.instructions,
-      model: input.model ?? this.store.list().find(b => b.engineId === engine.id && b.isDefault)?.model ?? null,
+      model,
       isDefault: false,
       reasoningEffort: null,
       permissionMode: input.permissionMode ?? 'full-access',
