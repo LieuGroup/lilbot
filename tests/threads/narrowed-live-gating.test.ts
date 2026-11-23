@@ -50,9 +50,7 @@ async function appFixture() {
     if (prevSkills === undefined) delete process.env.LILBOT_SKILLS_DIR
     else process.env.LILBOT_SKILLS_DIR = prevSkills
   })
-  await services.bots.createBot({ name: 'Bot One', function: 'One', instructions: '' })
-  await services.bots.createBot({ name: 'Bot Two', function: 'Two', instructions: '' })
-  await services.bots.createBot({ name: 'Bot Three', function: 'Three', instructions: '' })
+  for (const name of ['Bot One', 'Bot Two', 'Bot Three']) await services.bots.createBot({ name, function: name, instructions: '' })
   const [b1, b2, b3] = services.store.list()
   const token = engineToken(join(dir, 'data'))
   const saw = (bot: { engineBotId: string }, chatId: string, tool: string, args: unknown) =>
@@ -68,11 +66,14 @@ async function appFixture() {
     )
     const body = (await res.json()) as { result: { content: Array<{ text: string }>; isError?: boolean } }
     const text = body.result.content[0]?.text ?? ''
-    let refused: string | undefined
-    try {
-      const parsed = JSON.parse(text) as { refused?: unknown }
-      if (typeof parsed.refused === 'string') refused = parsed.refused
-    } catch {}
+    const refused = (() => {
+      try {
+        const p = JSON.parse(text) as { refused?: unknown }
+        return typeof p.refused === 'string' ? p.refused : undefined
+      } catch {
+        return undefined
+      }
+    })()
     return { isError: Boolean(body.result.isError), refused, text }
   }
   const addHook = (botId: string, caps: WebhookCapability[], chatId: string) => {
@@ -81,21 +82,16 @@ async function appFixture() {
     services.threads.store.db.query("INSERT INTO webhook_runs (id, webhook_id, bot_id, created_at, status) VALUES (?, ?, ?, 1, 'running')").run(`run-${chatId}`, hook.id, botId)
     services.webhooks.store.attach(`run-${chatId}`, chatId, 2)
   }
-  const enginePost = (botId: string, path: string, body: Record<string, unknown>, session?: string) =>
-    services.engineApi(
-      new Request(`http://127.0.0.1:3998${path}`, {
-        method: 'POST',
-        headers: {
-          host: '127.0.0.1:3998',
-          authorization: `Bearer ${token}`,
-          'x-lilbot-bot-capability': botCapability(token, botId),
-          ...(session ? { 'x-lilbot-session': session } : {}),
-          'content-type': 'application/json'
-        },
-        body: JSON.stringify(body)
-      }),
-      path
-    )
+  const enginePost = (botId: string, path: string, body: Record<string, unknown>, session?: string) => {
+    const headers: Record<string, string> = {
+      host: '127.0.0.1:3998',
+      authorization: `Bearer ${token}`,
+      'x-lilbot-bot-capability': botCapability(token, botId),
+      'content-type': 'application/json'
+    }
+    if (session) headers['x-lilbot-session'] = session
+    return services.engineApi(new Request(`http://127.0.0.1:3998${path}`, { method: 'POST', headers, body: JSON.stringify(body) }), path)
+  }
   return { services, b1, b2, b3, roots, saw, mcp, addHook, enginePost }
 }
 
@@ -114,19 +110,15 @@ test('requestId replay checks caller, mixed identical-arg calls refuse both with
   await f.services.threads.ask(f.b1.id, { requestId: 'ask-secret', to: f.b2.id, text: 'Secret ask', chatId: 'b1-main' })
 
   // Item 1: replaying an unrestricted requestId from a narrowed session is refused across group start, delegate, redirect, and ask.
-  const replayGrp = { action: 'start', requestId: 'grp-secret' }
-  f.saw(f.b1, 'wh-1', 'lilbot_group', replayGrp)
-  const r1 = await f.mcp(f.b1.id, 'lilbot_group', replayGrp)
-  expect(r1.isError).toBe(true)
-  expect(r1.text).toContain('broader access')
-  f.saw(f.b1, 'wh-1', 'lilbot_delegate', delArgs)
-  const r2 = await f.mcp(f.b1.id, 'lilbot_delegate', delArgs)
-  expect(r2.isError).toBe(true)
-  expect(r2.text).toContain('broader access')
-  f.saw(f.b1, 'wh-1', 'lilbot_delegation', redirArgs)
-  const r3 = await f.mcp(f.b1.id, 'lilbot_delegation', redirArgs)
-  expect(r3.isError).toBe(true)
-  expect(r3.text).toContain('broader access')
+  for (const [tool, args] of [
+    ['lilbot_group', { action: 'start', requestId: 'grp-secret' }],
+    ['lilbot_delegate', delArgs],
+    ['lilbot_delegation', redirArgs]
+  ] as const) {
+    f.saw(f.b1, 'wh-1', tool, args)
+    const r = await f.mcp(f.b1.id, tool, args)
+    expect(r.isError && r.text.includes('broader access')).toBe(true)
+  }
   await expect(f.services.threads.ask(f.b1.id, { requestId: 'ask-secret', to: f.b2.id, text: 'probe', chatId: 'wh-1' })).rejects.toThrow(/broader access/)
 
   // Item 2: concurrent identical-arg status calls from b1-main and wh-1 refuse BOTH with clear retry text (no session swap).
