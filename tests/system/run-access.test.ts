@@ -14,6 +14,7 @@ test('every LilBot tool is either open to webhook runs or in a capability group,
   expect(RUN_TOOLS).toContain('lilbot_skill_read')
   expect(TOOL_GROUPS.memory).toContain('lilbot_memory_pause')
   expect(TOOL_GROUPS.memory).toContain('lilbot_memory_save')
+  expect(TOOL_GROUPS.memory).toContain('lilbot_history_search')
 })
 
 test('a webhook run is refused tools outside its groups, nothing changes, and Oscar can add a group', async () => {
@@ -31,10 +32,12 @@ test('a webhook run is refused tools outside its groups, nothing changes, and Os
   expect((await f.call('b1', 'lilbot_work_list', {})).error).toBeUndefined()
   expect((await f.call('b1', 'lilbot_skill_read', {})).error).toBeUndefined()
   expect((await f.call('b1', 'lilbot_memory_save', { text: 'From webhook.' })).error).toContain('"memory"')
-  await f.webhooks.setCapabilities('b1', f.hook.id, ['bots', 'webhooks', 'delegation'])
+  expect((await f.call('b1', 'lilbot_history_search', { query: 'orchid' })).error).toContain('"memory"')
+  await f.webhooks.setCapabilities('b1', f.hook.id, ['bots', 'webhooks', 'delegation', 'memory'])
   expect((await f.call('b1', 'lilbot_bot_create', CREATE)).error).toBeUndefined()
   expect((await f.call('b1', 'lilbot_webhooks_list', {})).error).toBeUndefined()
   expect((await f.call('b1', 'lilbot_delegation', { action: 'status' })).error).toBeUndefined()
+  expect((await f.call('b1', 'lilbot_history_search', { query: 'orchid' })).error).toBeUndefined()
   expect((await f.service.listBots()).map(bot => bot.name)).toContain('Helper')
 })
 

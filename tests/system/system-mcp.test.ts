@@ -21,6 +21,7 @@ const EXPECTED_TOOLS = [
   'lilbot_memory_pause',
   'lilbot_memory_restore',
   'lilbot_memory_expiry',
+  'lilbot_history_search',
   'lilbot_skill_read',
   'lilbot_delete_defaults_get',
   'lilbot_delete_defaults_set',
@@ -82,7 +83,7 @@ test('the handshake answers like an MCP server and lists exactly the agreed tool
   for (const tool of listed) {
     expect(tool.inputSchema.type).toBe('object')
     expect(tool.inputSchema.$schema).toBeUndefined()
-    expect(tool.annotations.readOnlyHint).toBe(tool.name.match(/_(about|guide|status|list|read|get)$/) !== null)
+    expect(tool.annotations.readOnlyHint).toBe(tool.name.match(/_(about|guide|status|list|read|get|search)$/) !== null)
   }
   const unknown = (await (await f.rpc('b1', 'resources/list')).json()).error
   expect(unknown.code).toBe(-32601)

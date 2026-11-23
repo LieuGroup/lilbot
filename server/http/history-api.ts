@@ -1,10 +1,10 @@
 import { z } from 'zod'
 import { LilBotError } from '../../shared/lilbot-error'
+import { HistorySearchInput } from '../history/history-service'
 import { MemoryCheckpoint } from '../memory/memory-checkpoint'
 import { withoutWebhookNotes } from '../webhooks/webhook-messages'
 import type { EngineApiOptions } from './engine-api'
 
-const Search = z.object({ query: z.string().trim().min(1).max(500), limit: z.number().int().min(1).max(50).default(20) })
 /** Every user and assistant message of the conversation Hermes is about to shorten, oldest first (adapter 0.13.0 on). */
 const Save = z.object({ chatId: z.string().min(1).max(200), messages: z.array(z.object({ role: z.enum(['user', 'assistant']), text: z.string() })).max(200_000) })
 
@@ -21,8 +21,8 @@ export function historyApi({ history, bots, reviewer, chatKind, checkpointStore 
   return async (bot: string, path: string, body: unknown) => {
     if (!history || !bots) throw new LilBotError('unavailable', 'History is unavailable.')
     if (path === 'search') {
-      const input = Search.parse(body)
-      return { matches: history.store.search(bot, input.query, input.limit), import: history.store.progress(bot) }
+      const input = HistorySearchInput.parse(body)
+      return history.search(bot, input.query, input.limit)
     }
     if (path === 'save') {
       const input = Save.parse(body)

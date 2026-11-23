@@ -10,7 +10,7 @@ import type { CheckSessions } from '../work/check-sessions'
 import type { McpTool } from './mcp-tool'
 import { refusalFor, runRefusalForChat } from './run-access'
 
-const CHECK_REFUSED_READS = new Set(['lilbot_memory_list', 'lilbot_computers_list', 'lilbot_computer_request_read'])
+const CHECK_REFUSED_READS = new Set(['lilbot_memory_list', 'lilbot_history_search', 'lilbot_computers_list', 'lilbot_computer_request_read'])
 const IN_CHECK = 'This session is a check: LilBot lets it read and give its verdict (lilbot_work with verdict), nothing else.'
 
 function checkChatRefusal(sessions: Pick<CheckSessions, 'checking' | 'isCheck'>, botId: string, name: string, chatId: string | null): string | null {

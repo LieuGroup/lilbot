@@ -41,7 +41,7 @@ test('engine routes verify x-lilbot-session vs chatId, lock history search, requ
   const handle = createEngineApi(new MemoryService(new MemoryStore(openDatabase(':memory:'))), TOKEN, 3370, {
     bots: { listBots: async () => [{ id: 'bot' }] } as never,
     botExists: id => id === 'bot',
-    history: { store: { search: () => [{ text: 'secret' }], progress: () => ({}) } } as never,
+    history: { search: () => ({ matches: [{ text: 'secret' }], import: {} }) } as never,
     library: { give: async () => ({ id: 'lib-1' }) } as never,
     threads: {
       ask: async (caller: string, raw: { chatId: string }) => {

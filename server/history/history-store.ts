@@ -18,6 +18,12 @@ export interface HistoryRow {
   order: number
   item: ChatItem
 }
+export interface HistorySearchMatch {
+  id: string
+  sessionId: string
+  at: number
+  snippet: string
+}
 
 /** SQL guard: the row is inserted or counted only while its session is not excluded, atomically with the statement. */
 const notExcluded = (bot: string, session: string) => `NOT EXISTS (SELECT 1 FROM history_exclusions x WHERE x.bot=${bot} AND x.session=${session})`
@@ -70,7 +76,7 @@ export class HistoryStore {
       sessions: number
       completed: number
     }
-    const { items } = this.db.query('SELECT count(*) items FROM history_items WHERE bot=?').get(bot) as { items: number }
+    const { items } = this.db.query(`SELECT count(*) items FROM history_items i WHERE bot=? AND ${notExcluded('i.bot', 'i.session')}`).get(bot) as { items: number }
     return { ...p, items, complete: !!this.db.query('SELECT 1 FROM history_imports WHERE bot=?').get(bot) && p.sessions === p.completed }
   }
   /** `main` is the bot's main session: its divider shows while it is still empty (just after New session). */
@@ -145,17 +151,34 @@ export class HistoryStore {
       ON CONFLICT(bot,id) DO ${reason ? 'UPDATE SET item=excluded.item' : 'NOTHING'}`)
       .run(bot, session, `session:${session}`, at, JSON.stringify({ kind: 'session', text: 'New session', ...(reason ? { reason } : {}) }))
   }
-  search(bot: string, query: string, limit = 20) {
+  search(bot: string, query: string, limit = 20, allow?: (sessionId: string) => boolean): HistorySearchMatch[] {
     const terms = query
       .match(/[\p{L}\p{N}_]+/gu)
       ?.map(t => `"${t}"`)
       .join(' AND ')
     if (!terms) return []
-    return this.db
-      .query(`SELECT i.id,i.session sessionId,i.at,snippet(history_search,0,'','',' … ',32) snippet FROM history_search f
-      JOIN history_items i ON i.rowid=f.rowid WHERE history_search MATCH ? AND i.bot=?
-      ORDER BY rank LIMIT ?`)
-      .all(terms, bot, limit)
+    const sql = `SELECT i.id,i.session sessionId,i.at,snippet(history_search,0,'','',' … ',32) snippet FROM history_search f
+      JOIN history_items i ON i.rowid=f.rowid WHERE history_search MATCH ? AND i.bot=? AND ${notExcluded('i.bot', 'i.session')}
+      ORDER BY rank`
+    if (!allow) return this.db.query(`${sql} LIMIT ?`).all(terms, bot, limit) as HistorySearchMatch[]
+    const seen = new Map<string, boolean>()
+    const matches: HistorySearchMatch[] = []
+    const stmt = this.db.prepare(sql)
+    try {
+      for (const row of stmt.iterate(terms, bot) as Iterable<HistorySearchMatch>) {
+        let ok = seen.get(row.sessionId)
+        if (ok === undefined) {
+          ok = allow(row.sessionId)
+          seen.set(row.sessionId, ok)
+        }
+        if (!ok) continue
+        matches.push(row)
+        if (matches.length >= limit) break
+      }
+    } finally {
+      stmt.finalize()
+    }
+    return matches
   }
   /** Whether Oscar sent a visible user message in `(bot, session)` containing `needle`. Hidden prompts, tool output and assistant turns never match. */
   hasUserMessageContaining(bot: string, session: string, needle: string): boolean {

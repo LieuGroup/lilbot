@@ -1,8 +1,11 @@
+import { z } from 'zod'
 import type { ChatEvent, ChatSnapshot } from '../../shared/chat-schema'
 import type { SessionReason } from '../../shared/history-schema'
 import type { BotEngine, ConversationSource } from '../engines/bot-engine'
 import { asEngineRegistry, type EngineRegistry } from '../engines/engine-registry'
 import type { HistoryStore } from './history-store'
+
+export const HistorySearchInput = z.object({ query: z.string().trim().min(1).max(500), limit: z.number().int().min(1).max(50).default(20) })
 
 type Binding = { id: string; engineId?: string; engineBotId: string }
 /** A bounded background page per tick. Checkpoints commit atomically with their rows. */
@@ -112,6 +115,12 @@ export class HistoryService {
       const dirty = this.dirty.get(bot) ?? new Set<string>()
       dirty.add(session)
       this.dirty.set(bot, dirty)
+    }
+  }
+  search(bot: string, query: string, limit = 20) {
+    return {
+      matches: this.store.search(bot, query, limit, session => this.allowed(bot, session)),
+      import: this.store.progress(bot)
     }
   }
   close() {
