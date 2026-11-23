@@ -33,15 +33,16 @@ export interface ReviewOptions {
   onChat: (chatId: string) => void
 }
 
+export type RunAccessScope = 'check'
 export interface RoutineOptions {
   runId: string
-  /** Continue the initiating context when an asynchronous answer arrives. */
   chatId?: string
   hiddenInput?: boolean
   baseline?: (length: number) => number
   onChat: (chatId: string) => void
   origin?: TurnOrigin
-  /** Start the run's session with only these toolsets (webhook runs, `server/webhooks/webhook-access.ts`). */
+  /** LilBot access scope mapped inside each engine; `toolsets` stays only until webhooks migrate. */
+  access?: RunAccessScope
   toolsets?: string[]
   /** The model a new session runs on (a same-bot check or worker); without it, the bot's own. */
   model?: BotModel

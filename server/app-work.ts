@@ -27,7 +27,7 @@ import type { ThreadStore } from './threads/thread-store'
 import type { WebhookStore } from './webhooks/webhook-store'
 import { checkSessions } from './work/check-sessions'
 import { WorkAnswers } from './work/work-answers'
-import { CHECK_TOOLSETS, differentModel } from './work/work-check-rules'
+import { differentModel } from './work/work-check-rules'
 import { WorkCheckRunner } from './work/work-check-runner'
 import { WorkLinks } from './work/work-links'
 import { type SessionOrigin, WorkService } from './work/work-service'
@@ -176,7 +176,7 @@ export function createWork({
   )
   const checks = new WorkCheckRunner(
     work,
-    (botId, prompt, runId, onChat, model) => bots.runRoutine(botId, prompt, { runId, hiddenInput: true, onChat, model, toolsets: CHECK_TOOLSETS, origin: { line: boardLine } }),
+    (botId, prompt, runId, onChat, model) => bots.runRoutine(botId, prompt, { runId, hiddenInput: true, onChat, model, access: 'check', origin: { line: boardLine } }),
     (botId, checkId, working) => {
       if (store.exists(botId)) activity.observe({ botId, chatId: `check:${checkId}`, key: `${checkId}:${working}:${Date.now()}`, status: working ? 'working' : 'finished' })
     },
