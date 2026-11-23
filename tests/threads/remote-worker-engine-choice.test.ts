@@ -163,6 +163,16 @@ test('older helper reporting only driver and version works, and non-hermes bots 
   expect((same.exchanges[0] as Record<string, unknown>).engine).toBe('claude-code')
   expect((same.exchanges[0] as Record<string, unknown>).fallbackFrom).toBeUndefined()
   claudeBot.core.db.close()
+
+  // Bot on a non-Claude default model omitting `model` fails cleanly with fallback context rather than silently switching models.
+  const openAiBot = setup('hermes', [{ driver: 'claude-code', version: '2.1.327', supported: true }], { provider: 'openai', model: 'openai/gpt-5.3-codex' })
+  await expect(
+    openAiBot.delegation.delegate('b1', {
+      requestId: 'oai-1',
+      tasks: [{ worker: true, computer: 'Studio', cwd: openAiBot.cwd, task: 'No model override' }]
+    })
+  ).rejects.toThrow(/fell back to claude-code/)
+  openAiBot.core.db.close()
 })
 
 test('leader worker accepts matching engine and refuses mismatched engine', async () => {

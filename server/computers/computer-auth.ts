@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { codeId, codeKey, registrationMac } from '../../helper/frame-auth'
 import { ComputerHello } from '../../shared/computer-schema'
 import type { ComputerStore } from './computer-store'
+import { reconcileWorkerCapabilities } from './remote-worker-select'
 import type { ServerKey } from './server-key'
 
 export const Registration = z.object({
@@ -57,12 +58,12 @@ export class ComputerAuth {
       )
     )
       throw new Error('Invalid registration.')
-    const hello = ComputerHello.parse(input.hello)
+    const hello = reconcileWorkerCapabilities({ ...ComputerHello.parse(input.hello), name: code.name })
     const { id, device } = this.store.db.transaction(() => {
       const used = this.store.db.query('DELETE FROM computer_codes WHERE hash=? AND expires_at>? RETURNING hash').get(input.codeId, Date.now())
       if (!used) throw new Error('Invalid registration.')
       const id = crypto.randomUUID()
-      this.store.add(id, { ...hello, name: code.name }, input.publicKey)
+      this.store.add(id, hello, input.publicKey)
       this.store.db.query('UPDATE computer_attempts SET computer_id=? WHERE code_id=?').run(id, input.codeId)
       const attempt = this.store.db.query('SELECT device_id FROM computer_attempt_devices WHERE code_id=?').get(input.codeId) as { device_id: string } | null
       return { id, device: attempt?.device_id ?? null }

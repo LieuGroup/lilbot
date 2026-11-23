@@ -7,24 +7,25 @@ export const WORKER_SYSTEM_PROMPT_MAX_BYTES = 96_000
 export const WORKER_DONE_MAX_BYTES = 1_048_576
 export const MAX_WORKER_AGENTS = 8
 export const SAFE_WORKER_SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/
+export const SAFE_WORKER_VERSION = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/
 
 export const WorkerDriverId = z.enum(['hermes', 'claude-code', 'codex'])
 export type WorkerDriverId = z.infer<typeof WorkerDriverId>
 
 export const WorkerAgentInfo = z.object({
   driver: WorkerDriverId,
-  version: z
-    .string()
-    .trim()
-    .min(1)
-    .max(64)
-    .regex(/^[^\p{Cc}\p{Cf}]*$/u),
-  /** True when this helper can run workers on this engine; omitted by older helpers (treated as true). */
+  version: z.string().trim().regex(SAFE_WORKER_VERSION),
+  /** True when this helper can run workers on this engine; omitted by older helpers (server treats as true only for claude-code). */
   supported: z.boolean().optional(),
   /** Advisory sign-in status when it can be told cheaply and safely; omitted when unknown. */
   signedIn: z.boolean().optional()
 })
 export type WorkerAgentInfo = z.infer<typeof WorkerAgentInfo>
+
+export const WorkerAgentList = z
+  .array(WorkerAgentInfo)
+  .max(MAX_WORKER_AGENTS)
+  .refine(agents => new Set(agents.map(a => a.driver)).size === agents.length, 'Duplicate worker driver entries are not allowed.')
 
 export const WorkerToolEvent = z.object({
   toolId: z.string().min(1).max(200),
@@ -102,7 +103,7 @@ export type WorkerLeaderFrame = z.infer<typeof WorkerLeaderFrame>
 /** Helper -> Leader worker frames. */
 export const WorkerCapabilitiesFrame = z.object({
   type: z.literal('worker.capabilities'),
-  agents: z.array(WorkerAgentInfo).max(MAX_WORKER_AGENTS)
+  agents: WorkerAgentList
 })
 export type WorkerCapabilitiesFrame = z.infer<typeof WorkerCapabilitiesFrame>
 

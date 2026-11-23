@@ -78,7 +78,13 @@ export function createRemoteWorkers(deps: RemoteWorkerAppDeps) {
     if (found.keyConflict) throw new LilBotError('computer_offline', `Computer "${found.name}" has a key conflict and cannot run workers until re-registered.`)
     if (!found.online) throw new LilBotError('computer_offline', `Computer "${found.name}" is offline. Wait until it is back online or tell Oscar.`)
     const agents = found.workerAgents ?? []
-    const pick = selectRemoteWorkerEngine({ computerName: found.name, botEngineId: bot.engineId, agents, requestedEngine: opts.engine, requestedModel: opts.model })
+    const pick = selectRemoteWorkerEngine({
+      computerName: found.name,
+      botEngineId: bot.engineId,
+      agents,
+      requestedEngine: opts.engine,
+      requestedModel: opts.model ?? bot.model
+    })
     if (!pick.ok) throw new LilBotError(pick.code, pick.message)
     if (!opts.continuation) {
       const cwdCheck = validateRemoteCwd(opts.cwd ?? '')
@@ -124,7 +130,7 @@ export function createRemoteWorkers(deps: RemoteWorkerAppDeps) {
       botEngineId: bot.engineId,
       agents: comp.workerAgents ?? [],
       requestedEngine: options.engine,
-      requestedModel: options.model
+      requestedModel: options.model ?? bot.model
     })
     if (!pick.ok) return runner.failRestored(options.runId, { status: 'failed', text: pick.message, items: [], failureReason: 'invalid_start' })
     const modelCheck = validateModelForDriver(options.model ?? bot.model, pick.driver)
