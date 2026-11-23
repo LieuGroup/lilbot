@@ -26,13 +26,9 @@ const KNOWN_ENGINE_IMPORT_LEAKS: Record<string, string> = {
 /** Pre-existing engine/driver-name leaks outside engine/driver folders, registration/declaration points, and exact allow-lists.
  *  Adding a new leak fails CI; fixing a listed file requires removing it here so the ratchet only moves to zero. */
 const KNOWN_ENGINE_NAME_LEAKS: Record<string, string> = {
-  'helper/worker-probes.ts': 'LILA-36',
-  'server/computers/remote-worker-sanitize.ts': 'LILA-36',
-  'server/computers/remote-worker-select.ts': 'LILA-36',
   'server/deploy/rollback-profiles.ts': 'Lane A (P5)',
   'server/environment.ts': 'Lane A (P5)',
-  'server/main.ts': 'Lane A (P6 + P5)',
-  'shared/worker-frame-schema.ts': 'LILA-36'
+  'server/main.ts': 'Lane A (P6 + P5)'
 }
 
 function concreteImportLeaks(engines: readonly string[]): string[] {

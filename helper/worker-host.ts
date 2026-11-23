@@ -2,8 +2,8 @@
  *  loopback MCP proxy, stop/steer, reconnect idempotency via SQLite journal, and teardown on revocation. */
 import type { Database } from 'bun:sqlite'
 import { type WorkerDoneFrame, WorkerHelperFrame, type WorkerLeaderFrame, type WorkerStartFrame } from '../shared/worker-frame-schema'
-import { cleanupStaleWorkerConfigs } from './worker-claude-env'
-import { createEventCoalescer, defaultWorkerDrivers, type WorkerDriver, type WorkerHandle } from './worker-driver'
+import { defaultWorkerDrivers } from './drivers/registry'
+import { createEventCoalescer, type WorkerDriver, type WorkerHandle } from './worker-driver'
 import {
   acknowledgeWorker,
   boundWorkerDone,
@@ -49,11 +49,11 @@ export class WorkerHost {
   private sentDone = new Set<string>()
 
   constructor(private options: WorkerHostOptions) {
-    this.drivers = options.drivers ?? defaultWorkerDrivers()
+    this.drivers = options.drivers ?? defaultWorkerDrivers({ configDir: options.configDir, db: options.db })
     this.maxWorkers = options.maxWorkers ?? WORKERS_PER_COMPUTER
     this.coalesceMs = options.coalesceMs ?? WORKER_COALESCE_MS
     prepareWorkerJournal(options.db)
-    cleanupStaleWorkerConfigs(options.configDir)
+    for (const driver of this.drivers) driver.cleanupStale?.(options.configDir)
   }
 
   activeCount() {
@@ -133,7 +133,7 @@ export class WorkerHost {
       return
     }
     if (this.active.size >= this.maxWorkers || !canAdmitWorker(this.options.db)) return this.fail(frame.runId, 'Worker capacity reached on this computer; try again later.', false)
-    const driver = frame.driver ? this.drivers.find(d => d.id === frame.driver) : this.drivers[0]
+    const driver = frame.driver ? this.drivers.find(d => d.id === frame.driver) : (this.drivers.find(d => d.legacyDefault) ?? this.drivers[0])
     if (!driver) return this.fail(frame.runId, 'Requested coding agent driver is not available on this computer.', false)
 
     let proxy: WorkerMcpProxy | undefined
@@ -141,11 +141,11 @@ export class WorkerHost {
       frame.runId,
       this.coalesceMs,
       ev => this.sendFrame(`worker-event:${frame.runId}`, ev),
-      sid => updateWorkerSession(this.options.db, frame.runId, sid)
+      (sid, created) => updateWorkerSession(this.options.db, frame.runId, sid, Boolean(created))
     )
     const entry: ActiveWorker = { runId: frame.runId, cancelEvents: coalescer.cancel }
     try {
-      startWorkerRecord(this.options.db, frame.runId, frame.sessionId)
+      startWorkerRecord(this.options.db, frame.runId, frame.sessionId, driver.id)
       if (frame.mcpEnabled) {
         const { mcpRetryWindowMs: retryWindowMs, mcpRetryIntervalMs: retryIntervalMs, mcpCallTimeoutMs: callTimeoutMs } = this.options
         proxy = startWorkerMcpProxy({
@@ -167,6 +167,7 @@ export class WorkerHost {
         entry.proxy?.close()
         this.active.delete(frame.runId)
         this.emitDone({ type: 'worker.done', runId: frame.runId, ...outcome })
+        void driver.pruneOldSessions?.(this.options.db, outcome.sessionId).catch(() => {})
       }
       void handle.done
         .then(({ sessionId, status, text, items, usage, error }) =>

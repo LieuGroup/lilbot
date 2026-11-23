@@ -94,7 +94,7 @@ test('property: hostile values in every worker.event and worker.done field yield
     { type: 'worker.event', runId: '', activity: 'x' },
     { type: 'worker.event', runId: 'r1', sessionId: '--resume-inject' },
     { type: 'worker.capabilities', agents: [{ driver: 'claude-code', version: '1.0\n2.0' }] },
-    { type: 'worker.capabilities', agents: [{ driver: 'unknown-agent', version: '1.0' }] },
+    { type: 'worker.capabilities', agents: [{ driver: '--bad/agent', version: '1.0' }] },
     { type: 'worker.done', runId: 'r1', status: 'bogus', text: '', items: [] },
     { type: 'worker.done', runId: 'r1', status: 'completed', text: '', items: [], usage: { inputTokens: -5 } },
     { type: 'worker.steer.result', runId: 'r1', status: 'hijacked' },

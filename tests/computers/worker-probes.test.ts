@@ -2,9 +2,11 @@ import { afterEach, expect, test } from 'bun:test'
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { claudeCodeDriver } from '../../helper/drivers/claude-code/worker-driver-claude'
+import { codexProbe } from '../../helper/drivers/codex/worker-probe-codex'
+import { hermesDriver } from '../../helper/drivers/hermes/worker-driver-hermes'
+import { detectHermesSignedIn } from '../../helper/drivers/hermes/worker-hermes-env'
 import { detectWorkerAgents } from '../../helper/worker-driver'
-import { claudeCodeDriver } from '../../helper/worker-driver-claude'
-import { codexProbe, detectHermesSignedIn, hermesProbe } from '../../helper/worker-probes'
 import { ComputerStore } from '../../server/computers/computer-store'
 import { createWorkerSocketState, handleWorkerFrame } from '../../server/computers/worker-door'
 import { openDatabase } from '../../server/database/database'
@@ -75,7 +77,7 @@ process.exit(0)`
   expect(await codexProbe({ bin: codexBin, platform: 'linux' }).detect()).toEqual({ driver: 'codex', version: '0.171.0', supported: false, signedIn: true })
 })
 
-test('hermesProbe and codexProbe report version, supported=false, and safe sign-in status', async () => {
+test('hermesDriver and codexProbe report version, support flag, and safe sign-in status', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'probe-multi-'))
   dirs.push(dir)
   const hermesHome = join(dir, 'hermes-home')
@@ -120,16 +122,16 @@ if (a[0] === 'auth') { console.log('{"loggedIn":true}'); process.exit(0) }
 process.exit(1)`
   )
 
-  const agents = await detectWorkerAgents([claudeCodeDriver({ bin: claudeBin })], [hermesProbe({ bin: hermesAcpBin, hermesHome, env: {} }), codexProbe({ bin: codexBin })])
+  const agents = await detectWorkerAgents([claudeCodeDriver({ bin: claudeBin }), hermesDriver({ bin: hermesAcpBin, hermesHome, env: {} })], [codexProbe({ bin: codexBin })])
   expect(agents).toEqual([
     { driver: 'claude-code', version: '2.1.327', supported: true, signedIn: true },
-    { driver: 'hermes', version: '0.23.1', supported: false, signedIn: true },
+    { driver: 'hermes', version: '0.23.1', supported: true, signedIn: true },
     { driver: 'codex', version: '0.170.0', supported: false, signedIn: true }
   ])
-  expect(await hermesProbe({ bin: hermesFallbackBin, hermesHome, env: {} }).detect()).toEqual({
+  expect(await hermesDriver({ bin: hermesFallbackBin, hermesHome, env: {} }).detect()).toEqual({
     driver: 'hermes',
     version: '0.22.0',
-    supported: false,
+    supported: true,
     signedIn: true
   })
   expect(await codexProbe({ bin: codexOutBin }).detect()).toEqual({ driver: 'codex', version: '0.170.0', supported: false, signedIn: false })
@@ -166,34 +168,29 @@ test('worker-door reconciles worker capability against server-supported drivers,
   const store = new ComputerStore(db)
   store.add('c1', { name: 'Box', os: 'darwin', home: dir, capabilities: ['exec', 'worker'] }, 'pub')
   const state = createWorkerSocketState()
-  // Even if a helper claims supported=true for codex/hermes, the server overrides supported to false and removes worker capability.
-  handleWorkerFrame(
-    db,
-    'c1',
-    {
-      type: 'worker.capabilities',
-      agents: [
-        { driver: 'codex', version: '0.170.0', supported: true, signedIn: true },
-        { driver: 'hermes', version: '0.23.1', supported: true, signedIn: true }
-      ]
-    },
-    state,
-    10_000,
-    100,
-    () => true
-  )
+  const agents = [
+    { driver: 'codex' as const, version: '0.170.0', supported: true, signedIn: true },
+    { driver: 'hermes' as const, version: '0.23.1', supported: false, signedIn: true }
+  ]
+  handleWorkerFrame(db, 'c1', { type: 'worker.capabilities', agents }, state, 10_000, 100, () => true)
   const comp = store.list().find(c => c.id === 'c1')!
   expect(comp.capabilities).not.toContain('worker')
   expect(comp.workerAgents).toEqual([
     { driver: 'codex', version: '0.170.0', supported: false, signedIn: true },
     { driver: 'hermes', version: '0.23.1', supported: false, signedIn: true }
   ])
+  handleWorkerFrame(db, 'c1', { type: 'worker.capabilities', agents: [{ driver: 'hermes', version: '0.23.1', supported: true, signedIn: true }] }, state, 15_000, 100, () => true)
+  expect(store.list().find(c => c.id === 'c1')!.capabilities).toContain('worker')
 
   // Older helper sending only driver + version for claude-code grants worker capability.
   const legacy = [{ driver: 'claude-code' as const, version: '2.1.327' }]
   handleWorkerFrame(db, 'c1', { type: 'worker.capabilities', agents: legacy }, state, 20_000, 100, () => true)
   const upgraded = store.list().find(c => c.id === 'c1')!
   expect(upgraded.capabilities).toContain('worker')
-  expect(upgraded.workerAgents).toEqual(legacy)
+  // Unknown future driver from a newer helper persists cleanly as supported: false without granting worker capability.
+  handleWorkerFrame(db, 'c1', { type: 'worker.capabilities', agents: [{ driver: 'pi', version: '0.5.0', supported: true }] }, state, 25_000, 100, () => true)
+  const future = store.list().find(c => c.id === 'c1')!
+  expect(future.capabilities).not.toContain('worker')
+  expect(future.workerAgents).toEqual([{ driver: 'pi', version: '0.5.0', supported: false }])
   db.close()
 })

@@ -1,6 +1,7 @@
 /** Shared types for the leader-side remote worker runner and its inbound frame dispatcher. */
 import type { Database } from 'bun:sqlite'
 import type { ChatItem } from '../../shared/chat-schema'
+import type { WebhookCapability } from '../../shared/webhook-schema'
 import type { WorkerAgentInfo, WorkerDriverId, WorkerStartFrame } from '../../shared/worker-frame-schema'
 import type { RemoteWorkerResult } from './remote-worker-store'
 
@@ -16,8 +17,9 @@ export interface RemoteWorkerRunInput {
   reasoningEffort?: string
   driver?: WorkerDriverId
   sessionId?: string
-  systemPrompt: string
+  systemPrompt?: string
   prompt: string
+  capabilities?: WebhookCapability[]
   onChat?: (chatId: string) => void
 }
 

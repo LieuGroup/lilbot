@@ -69,9 +69,10 @@ export function buildStartFrame(input: RemoteWorkerRunInput, resumeSession?: str
     model: input.model,
     ...(input.provider ? { provider: input.provider } : {}),
     ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
-    systemPrompt: input.systemPrompt,
+    ...(!resumeSession && input.systemPrompt !== undefined ? { systemPrompt: input.systemPrompt } : {}),
     prompt: input.prompt,
-    mcpEnabled: true
+    mcpEnabled: true,
+    ...(input.capabilities ? { capabilities: input.capabilities } : {})
   })
   if (checked.success) return { ok: true, frame: checked.data }
   const oversized = checked.error.issues.some(i => i.path[0] === 'systemPrompt')
