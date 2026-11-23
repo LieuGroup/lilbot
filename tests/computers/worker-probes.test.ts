@@ -39,8 +39,40 @@ if (a.includes('--version')) { console.log('2.1.327'); process.exit(0) }
 if (a[0] === 'auth' && a[1] === 'status') { console.log(JSON.stringify({ loggedIn: false })); process.exit(0) }
 process.exit(1)`
   )
-  expect(await claudeCodeDriver({ bin: signedInBin }).detect()).toEqual({ driver: 'claude-code', version: '2.1.327', supported: true, signedIn: true })
-  expect(await claudeCodeDriver({ bin: signedOutBin }).detect()).toEqual({ driver: 'claude-code', version: '2.1.327', supported: true, signedIn: false })
+  expect(await claudeCodeDriver({ bin: signedInBin, platform: 'linux' }).detect()).toEqual({ driver: 'claude-code', version: '2.1.327', supported: true, signedIn: true })
+  expect(await claudeCodeDriver({ bin: signedOutBin, platform: 'linux' }).detect()).toEqual({ driver: 'claude-code', version: '2.1.327', supported: true, signedIn: false })
+})
+
+test('macOS skips claude auth status and codex login status while keeping version detection', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'probe-macos-'))
+  dirs.push(dir)
+  const logFile = join(dir, 'invocations.log')
+  const claudeBin = writeScript(
+    dir,
+    'claude-mac',
+    `import { appendFileSync } from 'node:fs'
+const a = process.argv.slice(2)
+appendFileSync(${JSON.stringify(logFile)}, 'claude:' + a.join(' ') + '\\n')
+if (a.includes('--version')) { console.log('2.1.327 (Claude Code)'); process.exit(0) }
+console.log('{"loggedIn":true}')`
+  )
+  const codexBin = writeScript(
+    dir,
+    'codex-mac',
+    `import { appendFileSync } from 'node:fs'
+const a = process.argv.slice(2)
+appendFileSync(${JSON.stringify(logFile)}, 'codex:' + a.join(' ') + '\\n')
+if (a.includes('--version')) { console.log('codex-cli 0.171.0'); process.exit(0) }
+process.exit(0)`
+  )
+
+  expect(await claudeCodeDriver({ bin: claudeBin, platform: 'darwin' }).detect()).toEqual({ driver: 'claude-code', version: '2.1.327', supported: true })
+  expect(await codexProbe({ bin: codexBin, platform: 'darwin' }).detect()).toEqual({ driver: 'codex', version: '0.171.0', supported: false })
+  const calls = (await Bun.file(logFile).text()).trim().split('\n')
+  expect(calls).toEqual(['claude:--version', 'codex:--version'])
+
+  expect(await claudeCodeDriver({ bin: claudeBin, platform: 'linux' }).detect()).toEqual({ driver: 'claude-code', version: '2.1.327', supported: true, signedIn: true })
+  expect(await codexProbe({ bin: codexBin, platform: 'linux' }).detect()).toEqual({ driver: 'codex', version: '0.171.0', supported: false, signedIn: true })
 })
 
 test('hermesProbe and codexProbe report version, supported=false, and safe sign-in status', async () => {

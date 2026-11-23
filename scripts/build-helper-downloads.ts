@@ -1,7 +1,9 @@
 /** Builds the command-line helper downloads (Linux x64/arm64 and macOS arm64/x64) for the LilBot whose data folder
  *  is given (default: LILBOT_DATA_DIR). Reads `helper-settings.json` written by that server and publishes flat
  *  `lilbot-helper-<os>-<arch>.tar.gz` archives (containing only `lilbot-helper` and `lilbot-helper.sha256`) with
- *  sidecars beside them. The signed macOS .app zip comes separately from `scripts/sign-macos-helper.ts` on a Mac. */
+ *  sidecars beside them. The signed macOS .app zip comes separately from `scripts/sign-macos-helper.ts` on a Mac.
+ *  Rollout order: deploy the server first; build, publish, or upgrade helpers after. Rolling the server back past a
+ *  change to what helpers report needs helpers built from the same older code. */
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -32,3 +34,4 @@ for (const { os, arch, bunTarget } of TARGETS) {
     rmSync(work, { recursive: true, force: true })
   }
 }
+console.log('Reminder: deploy the server first; publish or upgrade helpers after. Rolling the server back past a helper-report change needs helpers built from that older code.')

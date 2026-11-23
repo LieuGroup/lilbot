@@ -31,15 +31,21 @@ const killProcessGroup = (pid: number, sig: 'SIGTERM' | 'SIGKILL', fallback?: ()
   }
 }
 
-export function claudeCodeDriver(options: { bin?: string; configDir?: string; killGraceMs?: number; drainTimeoutMs?: number } = {}): WorkerDriver {
+export function claudeCodeDriver(options: { bin?: string; configDir?: string; killGraceMs?: number; drainTimeoutMs?: number; platform?: NodeJS.Platform } = {}): WorkerDriver {
   const killGraceMs = options.killGraceMs ?? 2000
   const drainTimeoutMs = options.drainTimeoutMs ?? 2000
+  const targetPlatform = options.platform ?? process.platform
   return {
     id: 'claude-code',
     async detect() {
       const bin = resolveClaudeBinary(options.bin)
       if (!bin) return null
-      const [ver, auth] = await Promise.all([runProbeCommand(bin, ['--version']), runProbeCommand(bin, ['auth', 'status', '--json'])])
+      // Skip `claude auth status --json` on macOS so a login LaunchAgent never triggers a login Keychain prompt.
+      // Note: on Linux, Claude Code itself may write a small default `.claude/.claude.json` into an empty HOME.
+      const [ver, auth] = await Promise.all([
+        runProbeCommand(bin, ['--version']),
+        targetPlatform === 'darwin' ? Promise.resolve(null) : runProbeCommand(bin, ['auth', 'status', '--json'])
+      ])
       if (ver?.code !== 0) return null
       const version = extractSafeVersion(ver.stdout)
       let signedIn: boolean | undefined

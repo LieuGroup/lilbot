@@ -49,13 +49,15 @@ export function hermesProbe(options: { bin?: string; hermesHome?: string; pathEn
   }
 }
 
-export function codexProbe(options: { bin?: string; pathEnv?: string } = {}): WorkerAgentProbe {
+export function codexProbe(options: { bin?: string; pathEnv?: string; platform?: NodeJS.Platform } = {}): WorkerAgentProbe {
+  const targetPlatform = options.platform ?? process.platform
   return {
     id: 'codex',
     async detect() {
       const bin = resolveTrustedBinary('codex', options.bin, 'LILBOT_WORKER_CODEX_BIN', options.pathEnv)
       if (!bin) return null
-      const [ver, auth] = await Promise.all([runProbeCommand(bin, ['--version']), runProbeCommand(bin, ['login', 'status'])])
+      // Skip `codex login status` on macOS so a login LaunchAgent never triggers a login Keychain prompt.
+      const [ver, auth] = await Promise.all([runProbeCommand(bin, ['--version']), targetPlatform === 'darwin' ? Promise.resolve(null) : runProbeCommand(bin, ['login', 'status'])])
       if (ver?.code !== 0) return null
       const version = extractSafeVersion(ver.stdout)
       const signedIn = auth ? auth.code === 0 : undefined
