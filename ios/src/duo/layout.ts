@@ -15,7 +15,7 @@ export interface WindowMetrics {
   safeAreaBottom?: number
 }
 
-/** Single source of truth for every [UNCONFIRMED UNTIL SIMULATOR] Duo geometry constant (build-spec.md §4A).
+/** Single source of truth for every [UNCONFIRMED UNTIL SIMULATOR] Duo geometry constant.
  *  Live UIKit safeAreaInsets and window metrics override these at runtime whenever present. */
 export const UNCONFIRMED_DUO_METRICS = {
   foldedWidth: 466,

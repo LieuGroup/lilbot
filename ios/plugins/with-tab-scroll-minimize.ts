@@ -96,8 +96,10 @@ static UIScrollView *LilBotFindVerticalScrollView(UIView *rootView) {
       if (scrollView.scrollEnabled) {
         CGSize contentSize = scrollView.contentSize;
         CGSize boundsSize = scrollView.bounds.size;
-        BOOL horizontalOnly = contentSize.width > boundsSize.width + 1.0 &&
-                              contentSize.height <= boundsSize.height + 1.0;
+        BOOL horizontalOnly =
+            (scrollView.alwaysBounceHorizontal && !scrollView.alwaysBounceVertical) ||
+            (contentSize.width > boundsSize.width + 1.0 &&
+             contentSize.height <= boundsSize.height + 1.0);
         if (!horizontalOnly) return scrollView;
       }
     }

@@ -1,16 +1,12 @@
 /** Tests for the iOS 26 nested-stack tab-bar scroll-hiding Expo config plugin (#4145 workaround).
  *
  *  Test coverage split (GitHub CI installs root dependencies only, not `ios/node_modules`):
- *  - Runs on CI and locally:
- *    1. Plugin on/off behavior (`withTabScrollMinimize` writes `LilBotTabScrollMinimize.m` with `overwrite: true` when on,
- *       returns config untouched and leaves the file absent when off, and exports itself as the default Expo plugin).
- *    2. Single-switch wiring in `ios/app.config.ts` (`ENABLE_NESTED_TAB_SCROLL_MINIMIZE = true`) and `ios/AGENTS.md` note.
- *    3. Objective-C source invariants: strict public-header allowlist, zero private selectors/swizzling/KVC,
- *       fail-safe `class_addMethod` + `objc_msgSendSuper` + bounded BFS + bottom-edge / minimize-behavior / inverted-list guards,
- *       and upstream issue `#4145` deletion note.
- *  - Runs locally only (explicitly reported as `(skip)` on CI via `test.skipIf(!hasIosNodeModules)`):
- *    4. End-to-end Expo `xcodeproj` mod pipeline via `ios/app.config.ts` (`buildAppConfig` + `BaseMods` + `evalModsAsync`)
- *       verifying disk write, `project.pbxproj` linking, repeated-run idempotence, and full omission when off. */
+ *  - `[CI + local]` (always run): plugin on/off injection + default export, single switch in `ios/app.config.ts`
+ *    + `ios/AGENTS.md` note + lazy loader target check, and all Obj-C public-API & fail-safe source guards.
+ *  - `[CI only — without ios/node_modules]` (reported as `(skip)` locally): asserts calling the plugin without
+ *    `expo/config-plugins` installed throws loudly naming `expo/config-plugins`.
+ *  - `[local only — requires ios/node_modules]` (reported as `(skip)` on CI): runs the full Expo `xcodeproj`
+ *    mod pipeline (`buildAppConfig` + `BaseMods` + `evalModsAsync`) for on, idempotence, and off. */
 import { afterEach, describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -36,7 +32,7 @@ afterEach(() => {
   }
 })
 
-/** Minimal valid Xcode project structure matching Expo prebuild output for `LilBotDev`. */
+/** Minimal valid Xcode project matching Expo prebuild output for `LilBotDev`. */
 function createSyntheticIosProject(projectName = 'LilBotDev') {
   const projectRoot = mkdtempSync(join(tmpdir(), 'lilbot-plugin-'))
   tempDirs.push(projectRoot)
@@ -46,36 +42,7 @@ function createSyntheticIosProject(projectName = 'LilBotDev') {
   mkdirSync(xcodeprojDir, { recursive: true })
   writeFileSync(join(sourceDir, 'AppDelegate.swift'), '// synthetic app delegate\n', 'utf8')
   const pbxprojPath = join(xcodeprojDir, 'project.pbxproj')
-  const pbxproj = `// !$*UTF8*$!
-{
-\tarchiveVersion = 1;
-\tclasses = {};
-\tobjectVersion = 54;
-\tobjects = {
-/* Begin PBXBuildFile section */
-\t\t13B07FBC1A68108700A75B9A /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13B07FB01A68108700A75B9A /* AppDelegate.swift */; };
-/* End PBXBuildFile section */
-/* Begin PBXFileReference section */
-\t\t13B07F961A680F5B00A75B9A /* ${projectName}.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ${projectName}.app; sourceTree = BUILT_PRODUCTS_DIR; };
-\t\t13B07FB01A68108700A75B9A /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = ${projectName}/AppDelegate.swift; sourceTree = "<group>"; };
-/* End PBXFileReference section */
-/* Begin PBXGroup section */
-\t\t13B07FAE1A68108700A75B9A /* ${projectName} */ = { isa = PBXGroup; children = ( 13B07FB01A68108700A75B9A /* AppDelegate.swift */, ); name = ${projectName}; sourceTree = "<group>"; };
-\t\t83CBB9F61A601CBA00E9B192 = { isa = PBXGroup; children = ( 13B07FAE1A68108700A75B9A /* ${projectName} */, ); sourceTree = "<group>"; };
-/* End PBXGroup section */
-/* Begin PBXNativeTarget section */
-\t\t13B07F861A680F5B00A75B9A /* ${projectName} */ = { isa = PBXNativeTarget; buildPhases = ( 13B07F871A680F5B00A75B9A /* Sources */, ); name = ${projectName}; productName = ${projectName}; productReference = 13B07F961A680F5B00A75B9A /* ${projectName}.app */; productType = "com.apple.product-type.application"; };
-/* End PBXNativeTarget section */
-/* Begin PBXProject section */
-\t\t83CBB9F71A601CBA00E9B192 /* Project object */ = { isa = PBXProject; mainGroup = 83CBB9F61A601CBA00E9B192; targets = ( 13B07F861A680F5B00A75B9A /* ${projectName} */, ); };
-/* End PBXProject section */
-/* Begin PBXSourcesBuildPhase section */
-\t\t13B07F871A680F5B00A75B9A /* Sources */ = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ( 13B07FBC1A68108700A75B9A /* AppDelegate.swift in Sources */, ); runOnlyForDeploymentPostprocessing = 0; };
-/* End PBXSourcesBuildPhase section */
-\t};
-\trootObject = 83CBB9F71A601CBA00E9B192 /* Project object */;
-}
-`
+  const pbxproj = `// !$*UTF8*$!\n{\n\tarchiveVersion = 1;\n\tclasses = {};\n\tobjectVersion = 54;\n\tobjects = {\n/* Begin PBXBuildFile section */\n\t\t13B07FBC1A68108700A75B9A /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13B07FB01A68108700A75B9A /* AppDelegate.swift */; };\n/* End PBXBuildFile section */\n/* Begin PBXFileReference section */\n\t\t13B07F961A680F5B00A75B9A /* ${projectName}.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ${projectName}.app; sourceTree = BUILT_PRODUCTS_DIR; };\n\t\t13B07FB01A68108700A75B9A /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = ${projectName}/AppDelegate.swift; sourceTree = "<group>"; };\n/* End PBXFileReference section */\n/* Begin PBXGroup section */\n\t\t13B07FAE1A68108700A75B9A /* ${projectName} */ = { isa = PBXGroup; children = ( 13B07FB01A68108700A75B9A /* AppDelegate.swift */, ); name = ${projectName}; sourceTree = "<group>"; };\n\t\t83CBB9F61A601CBA00E9B192 = { isa = PBXGroup; children = ( 13B07FAE1A68108700A75B9A /* ${projectName} */, ); sourceTree = "<group>"; };\n/* End PBXGroup section */\n/* Begin PBXNativeTarget section */\n\t\t13B07F861A680F5B00A75B9A /* ${projectName} */ = { isa = PBXNativeTarget; buildPhases = ( 13B07F871A680F5B00A75B9A /* Sources */, ); name = ${projectName}; productName = ${projectName}; productReference = 13B07F961A680F5B00A75B9A /* ${projectName}.app */; productType = "com.apple.product-type.application"; };\n/* End PBXNativeTarget section */\n/* Begin PBXProject section */\n\t\t83CBB9F71A601CBA00E9B192 /* Project object */ = { isa = PBXProject; mainGroup = 83CBB9F61A601CBA00E9B192; targets = ( 13B07F861A680F5B00A75B9A /* ${projectName} */, ); };\n/* End PBXProject section */\n/* Begin PBXSourcesBuildPhase section */\n\t\t13B07F871A680F5B00A75B9A /* Sources */ = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ( 13B07FBC1A68108700A75B9A /* AppDelegate.swift in Sources */, ); runOnlyForDeploymentPostprocessing = 0; };\n/* End PBXSourcesBuildPhase section */\n\t};\n\trootObject = 83CBB9F71A601CBA00E9B192 /* Project object */;\n}\n`
   writeFileSync(pbxprojPath, pbxproj, 'utf8')
   return { projectRoot, pbxprojPath, sourceDir }
 }
@@ -92,8 +59,7 @@ describe('withTabScrollMinimize config plugin', () => {
     }
 
     const base: TabScrollMinimizeConfig = { name: 'LilBot Dev', slug: 'lilbot' }
-    const disabled = withTabScrollMinimize(base, { enabled: false, withBuildSourceFile: stubAddSourceFile })
-    expect(disabled).toBe(base)
+    expect(withTabScrollMinimize(base, { enabled: false, withBuildSourceFile: stubAddSourceFile })).toBe(base)
     expect(calls).toEqual([])
     expect(existsSync(join(sourceDir, TAB_SCROLL_MINIMIZE_FILE))).toBe(false)
 
@@ -103,48 +69,64 @@ describe('withTabScrollMinimize config plugin', () => {
     expect(readFileSync(join(sourceDir, TAB_SCROLL_MINIMIZE_FILE), 'utf8')).toBe(TAB_SCROLL_MINIMIZE_SOURCE)
   })
 
-  test('[CI + local] app.config.ts gates plugin behind ENABLE_NESTED_TAB_SCROLL_MINIMIZE and ios/AGENTS.md notes #4145', () => {
+  test('[CI + local] app.config.ts switch, lazy Expo loader path, and ios/AGENTS.md #4145 note are intact', () => {
     const appConfigSource = readFileSync(join(iosRoot, 'app.config.ts'), 'utf8')
     expect(appConfigSource).toContain('export const ENABLE_NESTED_TAB_SCROLL_MINIMIZE = true')
     expect(appConfigSource).toContain('const enableScrollMinimize = options.enableTabScrollMinimize ?? ENABLE_NESTED_TAB_SCROLL_MINIMIZE')
     expect(appConfigSource).toContain("...(enableScrollMinimize ? ['./plugins/with-tab-scroll-minimize'] : [])")
+
+    const pluginSource = readFileSync(join(iosRoot, 'plugins/with-tab-scroll-minimize.ts'), 'utf8')
+    expect(pluginSource).toContain("require('expo/config-plugins')")
+    expect(pluginSource).toContain('mod.IOSConfig.XcodeProjectFile.withBuildSourceFile')
 
     const agentsDoc = readFileSync(join(iosRoot, 'AGENTS.md'), 'utf8')
     expect(agentsDoc).toContain('with-tab-scroll-minimize.ts')
     expect(agentsDoc).toContain('software-mansion/react-native-screens#4145')
   })
 
-  test('[CI + local] Objective-C source enforces public-API-only, fail-safe, and #4145 tracking invariants', () => {
-    const imports = [...TAB_SCROLL_MINIMIZE_SOURCE.matchAll(/^\s*#(?:import|include)\s+(.+)$/gm)].map(m => m[1].trim())
+  test('[CI + local] Objective-C source enforces public-API-only and every fail-safe guard', () => {
+    const src = TAB_SCROLL_MINIMIZE_SOURCE
+    const imports = [...src.matchAll(/^\s*#(?:import|include)\s+(.+)$/gm)].map(m => m[1].trim())
     expect(imports).toEqual(['<QuartzCore/QuartzCore.h>', '<UIKit/UIKit.h>', '<objc/message.h>', '<objc/runtime.h>'])
 
-    expect(TAB_SCROLL_MINIMIZE_SOURCE).toContain('software-mansion/react-native-screens#4145')
-    expect(TAB_SCROLL_MINIMIZE_SOURCE).toContain('NSClassFromString(className)')
-    expect(TAB_SCROLL_MINIMIZE_SOURCE).toContain('isSubclassOfClass:UIViewController.class')
-    expect(TAB_SCROLL_MINIMIZE_SOURCE).toContain('class_addMethod(')
-    expect(TAB_SCROLL_MINIMIZE_SOURCE).toContain('objc_msgSendSuper')
-    expect(TAB_SCROLL_MINIMIZE_SOURCE).toContain('NSDirectionalRectEdgeBottom')
-    expect(TAB_SCROLL_MINIMIZE_SOURCE).toContain('UITabBarMinimizeBehaviorNever')
-    expect(TAB_SCROLL_MINIMIZE_SOURCE).toContain('UITextView.class')
-    expect(TAB_SCROLL_MINIMIZE_SOURCE).toContain('layer.transform.m22 < 0.0')
-    expect(TAB_SCROLL_MINIMIZE_SOURCE).toContain('kLilBotMaxVisitedViews')
+    // Missing/renamed classes, yielding to super, OS availability, hidden views, horizontal scrollers, BFS caps, inverted/text skips:
+    for (const guard of [
+      'software-mansion/react-native-screens#4145',
+      'if (cls == Nil || ![cls isSubclassOfClass:UIViewController.class]) return;',
+      'class_addMethod(cls, selector, imp, types)',
+      'objc_msgSendSuper',
+      'if (superResult != nil || !LilBotShouldResolveForTabBar(self, edge)) return superResult;',
+      'if (superResult != nil || !LilBotShouldResolveForTabBar(self, edge) || !self.isViewLoaded)',
+      'if ((edge & NSDirectionalRectEdgeBottom) == 0) return NO;',
+      'tabBarController.tabBarMinimizeBehavior != UITabBarMinimizeBehaviorNever',
+      'if (view.isHidden || view.alpha <= 0.01) continue;',
+      'if (view.layer.transform.m22 < 0.0) continue;',
+      'if ([view isKindOfClass:UITextView.class]) continue;',
+      '(scrollView.alwaysBounceHorizontal && !scrollView.alwaysBounceVertical)',
+      'contentSize.width > boundsSize.width + 1.0',
+      'contentSize.height <= boundsSize.height + 1.0',
+      'if (!horizontalOnly) return scrollView;',
+      'while (head < queue.count && visited < kLilBotMaxVisitedViews)',
+      'if (queue.count >= kLilBotMaxVisitedViews) break;'
+    ]) {
+      expect(src).toContain(guard)
+    }
+    expect(src.match(/if \(@available\(iOS 26\.0, \*\)\)/g)?.length).toBeGreaterThanOrEqual(2)
 
-    expect(TAB_SCROLL_MINIMIZE_SOURCE).not.toContain('method_exchangeImplementations')
-    expect(TAB_SCROLL_MINIMIZE_SOURCE).not.toContain('class_replaceMethod')
-    expect(TAB_SCROLL_MINIMIZE_SOURCE).not.toContain('method_setImplementation')
-    expect(TAB_SCROLL_MINIMIZE_SOURCE).not.toContain('NSSelectorFromString')
-    expect(TAB_SCROLL_MINIMIZE_SOURCE).not.toContain('performSelector')
-    expect(TAB_SCROLL_MINIMIZE_SOURCE).not.toContain('valueForKey:')
-    expect(TAB_SCROLL_MINIMIZE_SOURCE).not.toMatch(/@selector\(_/)
+    for (const forbidden of ['method_exchangeImplementations', 'class_replaceMethod', 'method_setImplementation', 'NSSelectorFromString', 'performSelector', 'valueForKey:']) {
+      expect(src).not.toContain(forbidden)
+    }
+    expect(src).not.toMatch(/@selector\(_/)
+  })
+
+  test.skipIf(hasIosNodeModules)('[CI only — without ios/node_modules] default loader throws clearly naming expo/config-plugins', () => {
+    expect(() => withTabScrollMinimize({ name: 'LilBot Dev', slug: 'lilbot' })).toThrow(/expo\/config-plugins/)
   })
 
   test.skipIf(!hasIosNodeModules)('[local only — requires ios/node_modules] runs Expo xcodeproj mod end-to-end (on, idempotent, off)', async () => {
     const iosRequire = createRequire(join(iosRoot, 'package.json'))
     const { BaseMods, evalModsAsync } = iosRequire('expo/config-plugins') as {
-      BaseMods: {
-        withIosBaseMods: (config: unknown, opts: { providers: Record<string, unknown> }) => unknown
-        getIosModFileProviders: () => { xcodeproj: unknown }
-      }
+      BaseMods: { withIosBaseMods: (config: unknown, opts: { providers: Record<string, unknown> }) => unknown; getIosModFileProviders: () => { xcodeproj: unknown } }
       evalModsAsync: (config: unknown, opts: { projectRoot: string; platforms: string[] }) => Promise<unknown>
     }
     const appConfigMod = (await import(pathToFileURL(join(iosRoot, 'app.config.ts')).href)) as {
