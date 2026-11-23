@@ -50,7 +50,8 @@ export class LilBotSocket {
     }
     socket.onmessage = message => this.handleFrame(String(message.data))
     socket.onclose = () => {
-      if (this.socket === socket) this.socket = null
+      if (this.socket !== socket) return
+      this.socket = null
       if (this.disposed) return
       for (const waiting of this.pending.values()) {
         clearTimeout(waiting.timer)

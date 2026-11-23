@@ -176,11 +176,16 @@ describe('LilBotSocket', () => {
     client.connect()
     sockets[2]!.emitOpen()
 
-    sockets[1]!.onclose?.()
-    const afterStale = client.call('bots.list', {})
+    const whileStale = client.call('bots.list', {})
     const frame = JSON.parse(sockets[2]!.sent[0]!) as { id: number }
+    expect(clock.pendingCount()).toBe(1)
+    sockets[1]!.onclose?.()
+    expect(client.connected).toBe(true)
+    expect(states).toEqual([true, false, true, true])
+    expect(clock.pendingCount()).toBe(1)
     sockets[2]!.emitMessage({ id: frame.id, ok: true, result: [] })
-    await expect(afterStale).resolves.toEqual([])
+    await expect(whileStale).resolves.toEqual([])
+    expect(clock.pendingCount()).toBe(0)
 
     client.stop()
     expect(sockets[2]!.closedCount).toBe(1)
