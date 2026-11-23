@@ -29,11 +29,13 @@ test('buildOutsideCommand verifies the local file before unpacking and clears ma
   const linux = buildOutsideCommand({ download: LINUX, helperUrl: 'https://connect.lilbot.example' })!
   expect(linux).toContain('f="$HOME/lilbot-helper-linux-x64.tar.gz"')
   expect(linux).toContain(`printf '%s  %s\\n' '${HASH}' "$f" | sha256sum -c - >/dev/null`)
+  expect(linux).toContain(`"$d/lilbot-helper" install 'https://connect.lilbot.example'`)
   expect(linux).not.toContain('curl')
   expect(linux).not.toContain('xattr')
 
   const mac = buildOutsideCommand({ download: MACOS, helperUrl: 'https://connect.lilbot.example' })!
   expect(mac).toContain('shasum -a 256 -c - >/dev/null')
+  expect(mac).toContain(`"$d/lilbot-helper" install 'https://connect.lilbot.example'`)
   expect(mac.indexOf('shasum -a 256')).toBeLessThan(mac.indexOf('tar -xzf'))
   expect(mac.indexOf('tar -xzf')).toBeLessThan(mac.indexOf('xattr -d com.apple.quarantine'))
 })
@@ -41,6 +43,13 @@ test('buildOutsideCommand verifies the local file before unpacking and clears ma
 test('command builders refuse shell metacharacters, bad hashes, non-tar archives and non-HTTPS remote origins', () => {
   expect(buildPrivateCommand({ privateOrigin: 'http://bot.tailnet.example:8443', download: LINUX, helperUrl: 'https://connect.lilbot.example' })).toBeNull()
   expect(buildPrivateCommand({ privateOrigin: "https://bot.example';rm -rf /", download: LINUX, helperUrl: 'https://connect.lilbot.example' })).toBeNull()
+  // Bun's URL parser accepts quotes, $, backticks, and ; in hostnames — SAFE_ORIGIN must still reject them.
+  for (const sneaky of ["https://a'b.example", 'https://a$b.example', 'https://a;b.example', 'https://a`b.example']) {
+    expect(new URL(sneaky).origin).toBe(sneaky)
+    expect(buildPrivateCommand({ privateOrigin: sneaky, download: LINUX, helperUrl: 'https://connect.lilbot.example' })).toBeNull()
+    expect(buildPrivateCommand({ privateOrigin: 'https://bot.example', download: LINUX, helperUrl: sneaky })).toBeNull()
+    expect(buildOutsideCommand({ download: LINUX, helperUrl: sneaky })).toBeNull()
+  }
   expect(buildPrivateCommand({ privateOrigin: 'https://bot.example', download: { ...LINUX, fileName: '../evil.tar.gz' }, helperUrl: 'https://connect.lilbot.example' })).toBeNull()
   expect(buildPrivateCommand({ privateOrigin: 'https://bot.example', download: { ...LINUX, fileName: 'app.zip' }, helperUrl: 'https://connect.lilbot.example' })).toBeNull()
   expect(buildPrivateCommand({ privateOrigin: 'https://bot.example', download: { ...LINUX, sha256: 'not-a-hash' }, helperUrl: 'https://connect.lilbot.example' })).toBeNull()

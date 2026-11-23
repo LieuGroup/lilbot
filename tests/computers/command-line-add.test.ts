@@ -15,6 +15,8 @@ import { openDatabase } from '../../server/database/database'
 import { DeviceService } from '../../server/devices/device-service'
 import { DeviceStore } from '../../server/devices/device-store'
 import { OriginStore } from '../../server/devices/origin-store'
+import { BrowserSession } from '../../server/http/browser-session'
+import { fakeService } from '../helpers/fake-engine'
 
 const cleanups: (() => void)[] = []
 afterEach(() => {
@@ -117,4 +119,37 @@ test('command-line attempts track live connection without linking the browser de
   expect(() => f.add.status(started.attemptId, 'session-b')).toThrow('unknown')
   // Browser device stayed unlinked.
   expect(f.devices.current(DEVICE, 'Laptop · Chrome').computerId).toBeNull()
+})
+
+test('BrowserSession computerHandlers bind both command-line and add-this attempts to the owning session', async () => {
+  const f = fixture()
+  const DEVICE = '22222222-2222-4222-8222-222222222222'
+  f.devices.current(DEVICE, 'Laptop · Chrome')
+  f.build('lilbot-helper-linux-x64.tar.gz', 'linux', 'x64', '2')
+  f.build('LilBot-Helper-macOS.zip', 'macos', 'universal', '1')
+  const { service: bots } = fakeService()
+
+  const connect = () => {
+    const frames: any[] = []
+    const session = new BrowserSession(bots, frame => frames.push(frame), undefined, undefined, undefined, undefined, undefined, f.service, undefined, undefined, f.add, f.devices)
+    let id = 1
+    return async (method: string, params: unknown = {}) => {
+      const reqId = id++
+      await session.handle(JSON.stringify({ id: reqId, method, params }))
+      return frames.find(frame => frame.id === reqId)
+    }
+  }
+
+  const callA = connect()
+  const callB = connect()
+
+  const cliStart = await callA('computers.commandLine.start', { name: 'Build server', system: { os: 'linux', arch: 'x64' } })
+  expect(cliStart.ok).toBe(true)
+  expect((await callA('computers.addThis.status', { attemptId: cliStart.result.attemptId })).result).toMatchObject({ state: 'waiting' })
+  expect((await callB('computers.addThis.status', { attemptId: cliStart.result.attemptId })).error.code).toBe('not_found')
+
+  const addStart = await callA('computers.addThis.start', { name: 'Mac', system: { os: 'macos', arch: 'arm64' }, deviceId: DEVICE })
+  expect(addStart.ok).toBe(true)
+  expect((await callA('computers.addThis.status', { attemptId: addStart.result.attemptId })).result).toMatchObject({ state: 'waiting' })
+  expect((await callB('computers.addThis.status', { attemptId: addStart.result.attemptId })).error.code).toBe('not_found')
 })
