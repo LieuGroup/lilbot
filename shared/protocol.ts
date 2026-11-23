@@ -72,7 +72,7 @@ export const methods = {
   'sections.create': z.object({ name: sectionName }),
   'sections.rename': z.object({ sectionId: z.string().min(1), name: sectionName }),
   'sections.delete': z.object({ sectionId: z.string().min(1) }),
-  'models.list': z.object({}),
+  'models.list': z.object({ botId: botId.optional(), engineId: z.string().min(1).optional() }),
   /** Everything the bot can see in memory, and whether the bot is connected to it. */
   'memory.list': z.object({ botId }),
   /** The user adds a fact from the app. */

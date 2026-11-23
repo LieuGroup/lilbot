@@ -17,7 +17,7 @@ export interface CompletionDeps {
   cards: SignInCardService
   redirectUri: string | undefined
   now: () => number
-  toolName?: (server: string, tool: string) => string
+  toolName?: (server: string, tool: string, botId?: string) => string
   changed: () => void
   signedIn: (botId: string, chatId: string, name: string, runId: string) => void
   signInFailed?: (botId: string, chatId: string, name: string, reason: string, runId: string) => void
@@ -55,7 +55,7 @@ export async function completeSignIn(deps: CompletionDeps, answer: SignInReturn,
     if (tokens.kind !== 'ok') return fail('token exchange', tokens.kind === 'unreachable' ? 'Could not reach the sign-in service.' : 'The service refused the sign-in.')
     const signedInAt = deps.now()
     deps.credentials.set(connection.id, { ...credential, tokens: tokens.tokens, signedInAt })
-    const mapTool = deps.toolName ? (tool: string) => deps.toolName!(`${ENGINE_PREFIX}${connection.name}`, tool) : undefined
+    const mapTool = deps.toolName ? (tool: string) => deps.toolName!(`${ENGINE_PREFIX}${connection.name}`, tool, flow.botId) : undefined
     const found = await probe(new URL(connection.address), tokens.tokens.accessToken, mapTool)
     if (!deps.store.get(connection.id) || deps.credentials.get(connection.id)?.client.clientId !== credential.client.clientId) return refused('connection changed')
     if (found.kind === 'ok') deps.store.setTools(connection.id, found.tools)
