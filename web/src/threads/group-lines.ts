@@ -1,9 +1,10 @@
 /** What a temporary group's line, view, roster row and Activity row say (#136), from `threads.list` and `bots.list`. Pure:
  *  `now` is passed in so run times keep counting. Every wording is LilBot's own, built from how the group ended and its
  *  counts, never the server's outcome text for an end that was not a close. */
-import type { Bot } from '../../../shared/bot-schema'
 import type { BotThread, GroupEnd, ThreadGroup } from '../../../shared/thread-schema'
 import { type LineState, plural, runTime, shortDate } from './thread-lines'
+
+export { type RunningGroup, runningGroups } from '../../../shared/client/bots/running-groups'
 
 export type GroupThread = BotThread & { group: ThreadGroup }
 
@@ -118,24 +119,3 @@ export function groupActivityRow(thread: GroupThread, now: number) {
 const NUMBERS = ['no', 'one', 'two', 'three', 'four', 'five']
 /** The stop dialog's sentence before the shared rest: "All four bots stop working on it now." */
 export const stopSentence = (thread: BotThread) => `All ${NUMBERS[thread.participants.length] ?? thread.participants.length} bots stop working on it now.`
-
-export interface RunningGroup {
-  id: string
-  purpose: string
-  round: number
-  /** The leader first, then the members in roster order. */
-  bots: Bot[]
-}
-
-/** The roster's "Working together" rows: every running group in `bots.list`, with its bots gathered from each bot's `groups`. */
-export function runningGroups(bots: Bot[]): RunningGroup[] {
-  const byId = new Map<string, RunningGroup>()
-  for (const bot of bots)
-    for (const group of bot.groups ?? []) {
-      const entry = byId.get(group.id) ?? { id: group.id, purpose: group.purpose, round: group.round, bots: [] }
-      if (group.leading) entry.bots.unshift(bot)
-      else entry.bots.push(bot)
-      byId.set(group.id, entry)
-    }
-  return [...byId.values()]
-}

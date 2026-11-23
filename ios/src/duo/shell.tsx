@@ -8,6 +8,7 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { Pressable, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { Bot } from '../../../shared/bot-schema'
+import { BotMenuHost } from '../bots/bot-menu-sheet'
 import { Roster } from '../bots/roster'
 import { useBotStore } from '../bots/store'
 import { ChatScreen } from '../chat/screen'
@@ -133,8 +134,15 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
       }}
     >
       <View key="roster-pane" style={rosterStyle}>
-        <Roster bots={bots} sections={sections} selectedId={layout.splitMode ? (selected?.id ?? null) : null} onSelect={handleSelectBot} />
+        <Roster
+          bots={bots}
+          sections={sections}
+          selectedId={layout.splitMode ? (selected?.id ?? null) : null}
+          compactCardSurface={layout.splitMode || layout.hasSideStrip}
+          onSelect={handleSelectBot}
+        />
       </View>
+      <BotMenuHost />
       {layout.splitMode && (
         <View key="chat-pane" style={{ flex: 1 }}>
           {selected ? <ChatScreen bot={selected} headerLeading={sidebarToggle} /> : <EmptyDetail />}

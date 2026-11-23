@@ -133,3 +133,20 @@ export function CloseIcon({ color, size = 16 }: IconProps) {
     </Svg>
   )
 }
+
+export function SearchIcon({ color, size = 16 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Circle cx="11" cy="11" r="7" fill="none" stroke={color} strokeWidth={1.75} />
+      <Path d="M20 20l-3.8-3.8" fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" />
+    </Svg>
+  )
+}
+
+export function ChevronRightIcon({ color, size = 14 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Path d="M9 6l6 6-6 6" fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  )
+}

@@ -23,6 +23,10 @@ export interface SwipeRowProps {
   actions: SwipeRowAction[]
   /** Invoked on sighted tap and VoiceOver double-tap (`accessibilityActivate`). */
   onPress?: () => void
+  /** Invoked on long-press (opens the Bot menu fallback on Roster rows). */
+  onLongPress?: () => void
+  rowBackground?: string
+  testID?: string
   accessibilityLabel: string
   accessibilityHint?: string
   accessibilityState?: AccessibilityState
@@ -38,6 +42,9 @@ export function SwipeRow({
   children,
   actions,
   onPress,
+  onLongPress,
+  rowBackground,
+  testID,
   accessibilityLabel,
   accessibilityHint,
   accessibilityState,
@@ -134,6 +141,7 @@ export function SwipeRow({
       </View>
       <GestureDetector gesture={pan}>
         <Animated.View
+          testID={testID}
           accessible
           accessibilityRole={onPress ? 'button' : undefined}
           accessibilityLabel={accessibilityLabel}
@@ -142,10 +150,10 @@ export function SwipeRow({
           accessibilityActions={accessibilityActions ?? actions.map(action => ({ name: action.id, label: action.label }))}
           onAccessibilityTap={onPress}
           onAccessibilityAction={handleA11yAction}
-          style={[{ backgroundColor: theme.card }, rowStyle]}
+          style={[{ backgroundColor: rowBackground ?? theme.card }, rowStyle]}
         >
-          {onPress ? (
-            <Pressable onPress={onPress} accessible={false}>
+          {onPress || onLongPress ? (
+            <Pressable onPress={onPress} onLongPress={onLongPress} delayLongPress={320} accessible={false}>
               {children}
             </Pressable>
           ) : (
