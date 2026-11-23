@@ -62,11 +62,11 @@ export function SettingsScreen({ onDone }: { onDone: () => void }) {
 
       <View style={{ gap: 6 }}>
         <AppText variant="meta" color={theme.mutedForeground}>
-          Cloudflare Access token
+          Access token (optional)
         </AppText>
-        <TextInput value={accessToken} onChangeText={setAccessToken} placeholder="cf-access-jwt-assertion value" placeholderTextColor={theme.mutedForeground} autoCapitalize="none" autoCorrect={false} secureTextEntry textContentType="none" style={field} />
+        <TextInput value={accessToken} onChangeText={setAccessToken} placeholder="Leave blank on a private network address" placeholderTextColor={theme.mutedForeground} autoCapitalize="none" autoCorrect={false} secureTextEntry textContentType="none" style={field} />
         <AppText variant="meta" color={theme.mutedForeground}>
-          From your browser's cookies for the LilBot domain (CF_Authorization), or a service token.
+          Sign-in through the public address is not supported from the iPhone app yet.
         </AppText>
       </View>
 
