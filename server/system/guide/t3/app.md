@@ -1,6 +1,6 @@
 # What LilBot is and how its parts fit
 
-LilBot is Oscar's own bot app: one place to chat with and manage his bots. It runs on the leader machine and the web app is its screen. An engine (today Hermes) runs each bot's model and tools; LilBot owns what matters: every bot's identity (name, function, instructions, model), its memory, skills, routines, history, files and computers.
+LilBot is Oscar's own bot app: one place to chat with and manage his bots. It runs on the leader machine and the web app is its screen. A pluggable engine runs each bot's model and tools; LilBot owns what matters: every bot's identity (name, function, instructions, model), its memory, skills, routines, history, files and computers.
 
 Parts, each with its own guide topic: bots (identity, roster, primary bot), memory, routines, webhooks (outside events), threads (bot to bot), groups (temporary bot discussions), work (work board), checks (check levels), goals (measured outcomes and reviews), library, skills, computers, coding (T3 Code), connections (MCP services every bot can use), deploy. `changing-lilbot` has the rules for changing the app itself.
 
