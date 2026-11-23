@@ -5,7 +5,7 @@ import { z } from 'zod'
 
 declare const LILBOT_HELPER_SETTINGS: string | undefined
 
-export const HELPER_VERSION = '1'
+export const HELPER_VERSION = '2'
 /** The loopback port a freshly opened helper listens on for the page's hand-over. */
 export const HANDOVER_PORT = 47613
 export const HelperSettings = z.object({
@@ -23,6 +23,8 @@ export const settingsHash = (settings: HelperSettings) => createHash('sha256').u
 export const bakedSettings: HelperSettings | null = typeof LILBOT_HELPER_SETTINGS === 'string' ? HelperSettings.parse(JSON.parse(LILBOT_HELPER_SETTINGS)) : null
 /** The page hands over only the random part; the fingerprint comes from the build. */
 export const SHORT_CODE = /^[A-Za-z0-9_-]{32}$/
+/** Full command-line install code: random token plus 64-hex server key fingerprint. */
+export const INSTALL_CODE = /^[A-Za-z0-9_-]{32}\.[a-f0-9]{64}$/
 
 /** A downloaded build belongs to one LilBot: its command-line install registers only at the baked door. */
 export function assertBakedDoor(url: string, baked: HelperSettings | null) {

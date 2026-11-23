@@ -6,8 +6,8 @@ const DOT: Record<ComputerStatus, string> = { online: 'bg-success', offline: 'bg
 const ACTION =
   'rounded-[6px] px-2 py-1 text-xs font-medium whitespace-nowrap text-muted-foreground outline-none hover:bg-foreground/4 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50'
 
-/** One machine: status dot, name (with the Main tag), the 12px line, then two fixed slots so the actions line up:
- *  "Make main" (not on the main computer) and "Remove" (not on the leader). */
+/** One machine: status dot, name (with the Main tag), the 12px line (including coding-worker status), then two fixed
+ *  slots so the actions line up: "Make main" (not on the main computer) and "Remove" (not on the leader). */
 export function ComputerRow({ row, onMakeMain, onRemove }: { row: Row; onMakeMain: () => void; onRemove: () => void }) {
   const conflict = row.status === 'conflict'
   return (
@@ -23,7 +23,16 @@ export function ComputerRow({ row, onMakeMain, onRemove }: { row: Row; onMakeMai
             </span>
           )}
         </div>
-        <span className={cn('text-xs text-muted-foreground', conflict && 'text-destructive')}>{row.line}</span>
+        <span className={cn('text-xs text-muted-foreground', conflict && 'text-destructive')}>
+          {row.line}
+          {row.workerText && (
+            <>
+              {' · '}
+              <span className={cn(row.workerReady && 'font-medium text-foreground')}>{row.workerText}</span>
+            </>
+          )}
+          {row.thisDevice && ' · this device runs on it'}
+        </span>
       </div>
       <div className="flex w-21 flex-none justify-end">
         {!row.main && (

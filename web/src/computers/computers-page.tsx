@@ -40,7 +40,8 @@ export default function ComputersPage() {
           </ul>
         )}
         <p className="text-xs text-muted-foreground">
-          Every bot can use every computer here. The main computer is the one bots use when you write from a phone, or from a device that is not one of these.
+          Every bot can use every computer here. Computers marked “Coding workers” can run coding tasks on their own. The main computer is used when you write from a phone, or from
+          a device that is not one of these.
         </p>
       </section>
       <div className="flex-1" />

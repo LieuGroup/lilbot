@@ -12,15 +12,17 @@ that apply everywhere (the helper door's two paths, secrets, full access, untrus
   `full-access`.
 - Migration 15: computer records, Ed25519 public keys, one-time install codes, replay nonces and durable request
   identities. Migration 16: persistent receive allowances and an active-only bot request index.
-- Browser methods `computers.list`, `computers.installCode`, `computers.remove`, `computers.addThis.*` and the
-  `computers.changed` push exist; Settings > Computers ([screens.md](screens.md)) lists machines live, removes after
-  confirmation, mints one-time commands in "Add by command line" and runs the three-step "Add this computer" dialog.
-  Helpers connect only through the helper door.
-- `computers.installCode({ name })` lasts 10 minutes and is single use, and also returns `helperUrl` (the helper door
-  origin) when `LILBOT_HELPER_URL` is set so the command-line dialog builds its command from it (no hostname in web
-  code) and says so when missing. The minted name wins over the helper's advisory hostname. OS is an enum; home is at
-  most 512 characters with control and hidden formatting characters refused. `keyConflict` reports a competing key
-  connection.
+- Browser methods `computers.list`, `computers.installCode`, `computers.downloads`, `computers.commandLine.start`,
+  `computers.remove`, `computers.addThis.*` and the `computers.changed` push exist; Settings > Computers
+  ([screens.md](screens.md)) lists machines live (showing each machine's detected coding engines), removes after
+  confirmation, guides "Add by command line" with a verified zero-secret command and hidden code prompt, and runs the
+  three-step "Add this computer" dialog. Helpers connect only through the helper door.
+- `computers.commandLine.start({ name, system })` and `computers.addThis.start(...)` create an attempt whose
+  `computers.addThis.status({ attemptId })` polling is scoped strictly to the browser WebSocket session that created it
+  (command-line attempts never link the browser's "this device" mapping). `computers.installCode({ name })` remains
+  available for scripts; all codes last 10 minutes and are single use. The minted name wins over the helper's advisory
+  hostname. OS is an enum; home is at most 512 characters with control and hidden formatting characters refused.
+  `keyConflict` reports a competing key connection.
 - LilBot creates `computer-server-key.pem` (0600) in its data directory; back it up with the database and preserve it on
   redeploy.
 - Computer hard stops (Hermes' `detect_hardline_command`) are a guard for full-access bots, not a security boundary:
@@ -203,8 +205,26 @@ the detail for the screen (#68), the hand-over, the builds and signing.
 
 - The server writes `<data>/helper-settings.json` at start-up when `LILBOT_HELPER_URL` is set. Rebuild after changing
   `LILBOT_HELPER_URL`, `LILBOT_ALLOWED_HOSTS`, the Access host or the server key: old builds stop being offered.
-- Linux, on the leader: `bun run build:helper-downloads [data dir]` (default `LILBOT_DATA_DIR`).
-- macOS, on the Mac with Xcode command-line tools and Bun, from a checkout of the same commit:
+- Command-line helper archives (Linux `x64`/`arm64` and macOS `arm64`/`x64`, `HELPER_VERSION = '2'`), built on the
+  leader: `bun run build:helper-downloads [data dir]` (default `LILBOT_DATA_DIR`). Produces flat `.tar.gz` archives
+  (`lilbot-helper-<os>-<arch>.tar.gz`, holding only `lilbot-helper` and `lilbot-helper.sha256`) and `.json` sidecars
+  beside them without touching `LilBot-Helper-macOS.zip`. `HelperDownloads` verifies each offered file's on-disk
+  SHA-256 against its sidecar before listing or serving it, serves only on the private and Access listeners (never the
+  helper door), and exposes `privateOrigin` from non-loopback `LILBOT_ALLOWED_HOSTS` only (never the Access host).
+- Command-line install flow (`web/src/computers/command-line-script.ts`, `helper/code-prompt.ts`):
+  - Private network (Tailscale): subshell (`set -e; umask 077; mktemp -d` with `EXIT`/`INT`/`TERM` cleanup trap) fetches
+    via `curl -fsSL --proto '=https' --max-redirs 0`, verifies the server's exact SHA-256 (`sha256sum -c` on Linux,
+    `shasum -a 256 -c` on macOS) before extracting only `lilbot-helper` and `lilbot-helper.sha256`, and runs
+    `lilbot-helper install <door>`. Nothing secret enters the command or shell history; on an interactive TTY,
+    `lilbot-helper install` turns terminal echo off (`setRawMode(true)`, restored on exit/SIGINT/SIGTERM), prompts
+    "Paste only the one-time code from LilBot", and rejects pasted commands locally without echoing them. Piped stdin
+    keeps working for scripts and tests.
+  - Outside private network: browser downloads the `.tar.gz` over its existing session, user copies it (`scp`) to the
+    target machine's home folder, and runs the same SHA-256-verified local command. On macOS, `curl` does not attach
+    `com.apple.quarantine`, whereas a browser download unpacked locally on the same Mac can carry it; the outside-network
+    macOS command clears `com.apple.quarantine` on `$d/lilbot-helper` only after `shasum -a 256 -c` succeeds.
+- Signed macOS `.app` bundle (for double-click "Add this computer" only; untouched by `build:helper-downloads`), on a
+  Mac with Xcode command-line tools and Bun, from a checkout of the same commit:
   1. Copy the server's `helper-settings.json` to the Mac (public data).
   2. Provide the signing settings, outside the repo, as environment variables or keys of
      `~/.config/lilbot-signing/signing.json` (0600; `LILBOT_SIGNING_CONFIG` moves it): `LILBOT_SIGN_IDENTITY` (the

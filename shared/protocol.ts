@@ -4,7 +4,7 @@ import { AttachmentFile } from './attachment-schema'
 import { BotDeleteDefaults, BotDeleteInput } from './bot-delete-schema'
 import { type Bot, BotCreateInput, type BotDetail, BotPrefsInput, BotUpdateInput, type ModelProvider, type Section, sectionName } from './bot-schema'
 import type { ChatEvent, ChatSnapshot } from './chat-schema'
-import { AddThisSystem } from './computer-add-schema'
+import { AddThisSystem, CommandLineSystem } from './computer-add-schema'
 import { type ConnectionResults, connectionMethods } from './connections-schema'
 import { DeviceId, DeviceName } from './device-schema'
 import { type GoalResults, goalMethods } from './goal-schema'
@@ -41,6 +41,10 @@ export const methods = {
   /** Starts "Add this computer" on this device: a fresh code, the hand-over address and the matching download. */
   'computers.addThis.start': z.object({ name: z.string().trim().min(1).max(100), system: AddThisSystem, deviceId: DeviceId.optional() }),
   'computers.addThis.status': z.object({ attemptId: z.string().uuid() }),
+  /** Read-only metadata about offered helper installers (no code minted). */
+  'computers.downloads': z.object({}),
+  /** Starts "Add by command line": a fresh one-time code, tracked attempt and matching archive metadata. */
+  'computers.commandLine.start': z.object({ name: z.string().trim().min(1).max(100), system: CommandLineSystem }),
   'skills.list': z.object({ botId }),
   'skills.read': z.object({ botId, name: z.string() }),
   'skills.setEnabled': z.object({ botId, name: z.string(), enabled: z.boolean() }),
@@ -125,6 +129,8 @@ export interface Results extends WorkResults, GoalResults, WebhookResults, Conne
   'devices.linkComputer': import('./device-schema').Device
   'computers.addThis.start': import('./computer-add-schema').AddThisStart
   'computers.addThis.status': import('./computer-add-schema').AddThisStatus
+  'computers.downloads': import('./computer-add-schema').ComputerDownloadsInfo
+  'computers.commandLine.start': import('./computer-add-schema').CommandLineStart
   'skills.list': import('./skills-schema').Skill[]
   'skills.read': Record<string, string>
   'skills.setEnabled': { ok: true }
