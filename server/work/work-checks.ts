@@ -65,15 +65,19 @@ export class WorkChecks {
     const chatId = await this.work.host.callingChat(callerId, 'lilbot_work', input.requestId)
     const saved = refusalLogged(() =>
       this.store.db.transaction(() => {
+        const callerCheck = this.checks.checkOfChat(chatId)
+        if (!callerCheck) throw new LilBotError('work_forbidden', 'Give the verdict from the check session LilBot started, not from another conversation.')
         const item = this.store.get(itemId)
         const check = this.checks.open(itemId)
-        // A retry repeats a verdict already given. While a check of this same bot is open, the same request id (a bot that checks
-        // twice, as the owner of a same-bot check does) is its new verdict.
-        if (check?.by.id !== callerId && this.checks.byVerdict(itemId, callerId, input.requestId)) return null
+        // A retry repeats a verdict already given from that same check session. While a check of this same bot is open,
+        // the same request id (a bot that checks twice, as the owner of a same-bot check does) is its new verdict.
+        if (check?.by.id !== callerId) {
+          const prior = this.checks.byVerdict(itemId, callerId, input.requestId)
+          if (prior && prior.id === callerCheck) return null
+        }
         if (item?.status !== 'checking' || check?.by.id !== callerId)
           throw new LilBotError('work_forbidden', 'Only the bot LilBot asked to check this item gives a verdict, while its check is open.')
-        if (this.checks.checkOfChat(chatId) !== check.id)
-          throw new LilBotError('work_forbidden', 'Give the verdict from the check session LilBot started, not from another conversation.')
+        if (callerCheck !== check.id) throw new LilBotError('work_forbidden', 'Give the verdict from the check session LilBot started, not from another conversation.')
         if (!input.result) throw new LilBotError('work_no_result', 'Say what you saw yourself (result), or why you could not check.')
         if (verdict !== 'could_not_check' && !input.evidence?.length) throw new LilBotError('work_no_evidence', 'A verdict needs evidence of what you read yourself.')
         const at = this.now()

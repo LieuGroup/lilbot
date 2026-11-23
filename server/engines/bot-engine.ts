@@ -158,7 +158,8 @@ export interface BotEngine {
   refreshMemory(bots: RuntimeBinding[], connection?: MemoryConnection): Promise<string[]>
   /** Run `prompt` as a hidden memory-only session for the after-chat review. */
   reviewMemory(engineBotId: string, prompt: string, options: ReviewOptions): Promise<void>
-  /** Run or recover one scheduled task, using runId as a durable execution identity. */
+  /** Run or recover one scheduled task, using runId as a durable execution identity. Throws `session_not_found` only
+   *  after confirming a named `chatId` no longer exists (never on a single transient failure). */
   runRoutine(
     engineBotId: string,
     prompt: string,

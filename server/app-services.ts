@@ -93,8 +93,7 @@ export function createAppServices(
   )
   repeat('computers', 1000, () => computers.tick())
   const devices = createDevices(database, computers, publish)
-  const routineStore = new RoutineStore(database)
-  const libraryStore = new LibraryStore(database)
+  const [routineStore, libraryStore] = [new RoutineStore(database), new LibraryStore(database)]
   const webhookStore = new WebhookStore(database)
   const checkStore = new WorkCheckStore(database)
   const ownChat = (chat: string) => routineStore.isRoutineChat(chat) || threadStore.isInternal(chat) || webhookStore.isWebhookChat(chat) || checkStore.isCheckChat(chat)
@@ -157,7 +156,8 @@ export function createAppServices(
     memoryConnection: { url: `http://127.0.0.1:${PORT}`, tokenFile: join(DATA_DIR, 'engine-token') },
     connections: botId => [...t3For(botId), system.connection(botId), ...mcp.connections(botId)],
     onConnectionsChanged: botId => mcp.applyBot(botId),
-    systemNote: systemNote(facts)
+    systemNote: systemNote(facts),
+    readOnlyChat: (botId, chatId) => gates.sessionCapabilities(botId, chatId) !== null
   })
   const calls = new CallingChats()
   const observeRun = (event: ActivityEvent) => store.exists(event.botId) && activity.observe(event)
