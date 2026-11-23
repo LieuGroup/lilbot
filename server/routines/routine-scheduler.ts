@@ -7,6 +7,7 @@ export interface RunSource<R extends { id: string; botId: string }> {
   readonly kind: string
   readonly store: { claimDue(now: number): unknown; pending(): R[] }
   run(run: R): Promise<{ status: string }>
+  backfillTick?(): void
 }
 
 /** Persist before dispatch. Retrying the SAME run uses the engine's durable request identities.
@@ -19,6 +20,7 @@ export class RoutineScheduler<R extends { id: string; botId: string }> {
     private now = Date.now
   ) {}
   tick(): string[] {
+    this.service.backfillTick?.()
     this.service.store.claimDue(this.now())
     const runs = this.service.store.pending().filter(run => this.retries.ready(run.id))
     for (const run of runs) {

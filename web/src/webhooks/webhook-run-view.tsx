@@ -21,6 +21,7 @@ export default function WebhookRunView({ botId, runId }: { botId: string; runId:
       title="Webhook run"
       when={run && runTitle(run)}
       asked={webhook && { label: 'The webhook asked', text: webhook.description }}
+      summary={run?.result || undefined}
       gone={webhooks && !run ? 'This run is no longer in the webhook’s list.' : undefined}
       close={() => void close()}
     />

@@ -118,6 +118,8 @@ export const ChatSnapshot = z.object({
   /** Current context size of this conversation against its model's window, when reported. */
   context: BotContext.optional(),
   history: z.custom<import('./history-schema').HistoryPage>().optional(),
+  /** Set on a finished routine or webhook run whose transcript was no longer available to save. */
+  transcriptNotKept: z.boolean().optional(),
   items: z.array(ChatItem)
 })
 export type ChatSnapshot = z.infer<typeof ChatSnapshot>

@@ -19,6 +19,7 @@ export default function RunView({ botId, runId }: { botId: string; runId: string
       title="Routine run"
       when={run && runHeader(run)}
       asked={routine && { label: 'The routine asked', text: routine.description }}
+      summary={run?.result || undefined}
       gone={routines && !run ? 'This run is no longer in the routine’s list.' : undefined}
       close={() => void close()}
     />
