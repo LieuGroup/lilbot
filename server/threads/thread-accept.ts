@@ -3,6 +3,7 @@ import type { BotModel, ReasoningEffort } from '../../shared/bot-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import type { BotThread } from '../../shared/thread-schema'
 import type { WebhookCapability } from '../../shared/webhook-schema'
+import { NOT_SEEN } from './calling-chats'
 import { THREAD_LIMITS } from './thread-limits'
 import type { Delivery, ThreadStore } from './thread-store'
 
@@ -28,13 +29,32 @@ export interface Accept {
 type Bot = { id: string; name: string }
 export const WORK = "kind IN ('request','redirect','oscar')"
 
+/** Whether a narrowed run's capabilities cover an existing exchange or group (true when unrestricted). */
+export function withinNarrowed(capabilities: WebhookCapability[] | null | undefined, existing: Pick<BotThread, 'computer' | 'capabilities'>): boolean {
+  if (!capabilities) return true
+  if (existing.computer && !capabilities.includes('computers')) return false
+  return existing.capabilities !== undefined && !existing.capabilities.some(c => !capabilities.includes(c))
+}
+
 /** Refuses a narrowed run from naming a computer without `computers` or entering a broader exchange/group. */
 export function assertNarrowedAllowed(capabilities: WebhookCapability[] | null | undefined, opts: { computer?: string; existing?: Pick<BotThread, 'computer' | 'capabilities'> }) {
   if (!capabilities) return
   if ((opts.computer || opts.existing?.computer) && !capabilities.includes('computers'))
     throw new LilBotError('capability_denied', 'A narrowed run cannot delegate to a computer without the "computers" capability.')
-  if (opts.existing && (opts.existing.capabilities === undefined || opts.existing.capabilities.some(c => !capabilities.includes(c))))
+  if (opts.existing && !withinNarrowed(capabilities, opts.existing))
     throw new LilBotError('capability_denied', 'A narrowed run cannot continue an exchange or group with broader access than its own.')
+}
+
+/** Resolves a caller's narrowed capabilities when this bot has any narrowed session active; fails closed if unplaced. */
+export async function narrowedCaller(
+  botId: string,
+  host: { hasNarrowed?(botId: string): boolean; sessionCapabilities?(botId: string, chatId: string | undefined): WebhookCapability[] | null },
+  place: () => Promise<string | null>
+): Promise<WebhookCapability[] | null> {
+  if (!host.hasNarrowed?.(botId)) return null
+  const chatId = await place()
+  if (!chatId) throw new LilBotError('session_unknown', NOT_SEEN)
+  return host.sessionCapabilities?.(botId, chatId) ?? null
 }
 
 /** Throws when `chatId` belongs to a worker session (or its compression continuation), or when its lineage cannot be read. */

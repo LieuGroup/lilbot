@@ -100,6 +100,11 @@ export class ThreadStore {
       return false
     }
   }
+  /** Whether a thread/worker/group carries narrowed capabilities (unknown fails closed). */
+  isNarrowed(threadId: string): boolean {
+    const row = this.db.query("SELECT json_type(data, '$.capabilities') AS t FROM threads WHERE id=?").get(threadId) as { t: string | null } | null
+    return !row || row.t === 'array'
+  }
   /** Whether this bot has any thread/worker/group session carrying narrowed capabilities. */
   hasNarrowed(botId: string): boolean {
     return !!this.db.query("SELECT 1 FROM thread_chats c JOIN threads t ON t.id=c.thread_id WHERE c.bot_id=? AND json_type(t.data, '$.capabilities')='array' LIMIT 1").get(botId)

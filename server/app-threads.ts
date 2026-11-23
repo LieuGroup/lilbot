@@ -71,6 +71,7 @@ export function createThreads(deps: ThreadDeps) {
     sessionCapabilities: deps.callers?.forChat,
     hasNarrowed: deps.callers?.hasRuns,
     narrowedAccess: caps => webhookRunAccess(caps, Boolean(deps.t3Enabled)),
+    callingDelegation: (botId, raw) => calls.claim(botId, 'lilbot_delegation', raw, chat => deps.callers?.forChat(botId, chat) !== null),
     folder: botId => workspaces.ensure(botId),
     stopRun: async (botId, chatId) =>
       chatId.startsWith('remote:') && remoteWorkers ? remoteWorkers.runner.stopByChat(botId, chatId) : ((await engine.stopRun?.(native(botId), chatId)) ?? false),
@@ -97,6 +98,7 @@ export function createThreads(deps: ThreadDeps) {
       await deps.library.give(botId, { path, title, chatId })
     },
     callingChat: (botId, requestId) => calls.find(botId, 'lilbot_group', requestId),
+    callingAction: (botId, raw) => calls.claim(botId, 'lilbot_group', raw, chat => deps.callers?.forChat(botId, chat) !== null),
     rootOf: deps.rootOf,
     work,
     rosterChanged: deps.botsChanged

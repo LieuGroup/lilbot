@@ -168,5 +168,18 @@ test('remote worker resolution and dispatch require full-access permissionMode',
   expect(outcome.status).toBe('failed')
   expect(outcome.failureReason).toBe('invalid_start')
   expect(outcome.text).toMatch(/full-access mode/)
+
+  f.bots.save({ ...bot, permissionMode: 'full-access' })
+  const narrowed = await f.rw.runForBot('b1', 'run', {
+    runId: 'rw-narrow-run',
+    threadId: 'rw-narrow-thread',
+    computer: compId,
+    cwd: '/work/app',
+    capabilities: ['delegation'],
+    onChat: () => {}
+  })
+  expect(narrowed.status).toBe('failed')
+  expect(narrowed.failureReason).toBe('invalid_start')
+  expect(narrowed.text).toMatch(/computers capability/)
   f.db.close()
 })

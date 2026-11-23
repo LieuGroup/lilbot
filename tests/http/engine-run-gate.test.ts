@@ -21,6 +21,7 @@ test('plug-in calls are named as the tool the engine reported, with the groups t
   expect(pluginCall('/engine/history/search', {})).toBeNull()
   // Routes older adapters call are in the groups of the tools that replaced them.
   expect(pluginCall('/engine/bots/create', {})?.groups).toEqual(['bots'])
+  expect(pluginCall('/engine/library/give', {})?.groups).toEqual(['shell'])
   expect(pluginCall('/engine/routines/create', {})?.groups).toEqual(['routines'])
   expect(pluginCall('/engine/threads/ask', {})?.groups).toEqual(['delegation'])
 })
@@ -36,6 +37,8 @@ test('checkUse maps every mutating and computer engine route to its check-sessio
   expect(checkUse('/engine/skills/read')).toBeNull()
   expect(checkUse('/engine/bots/create')).toBe('changes')
   expect(checkUse('/engine/routines/create')).toBe('changes')
+  expect(checkUse('/engine/routines/pause')).toBe('changes')
+  expect(checkUse('/engine/routines/resume')).toBe('changes')
   expect(checkUse('/engine/routines/delete')).toBe('changes')
   expect(checkUse('/engine/routines/list')).toBeNull()
   expect(checkUse('/engine/threads/ask')).toBe('changes')

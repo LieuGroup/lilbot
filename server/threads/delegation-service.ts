@@ -6,6 +6,7 @@ import { AttachInput, DelegateInput } from '../../shared/thread-schema'
 import { refuseUnsafe } from '../memory/memory-safety'
 import { type ResolvedTask, type ResolveRemoteWorker, validateTaskTargets } from './delegation-remote'
 import { checkFiles, stageFiles, withBatchCopies } from './exchange-files'
+import { assertNarrowedAllowed, narrowedCaller } from './thread-accept'
 import { THREAD_LIMITS } from './thread-limits'
 import type { ThreadHost, ThreadService } from './thread-service'
 
@@ -14,15 +15,13 @@ export interface DelegationHost extends ThreadHost {
   steerRun?(botId: string, chatId: string, text: string): Promise<'steered' | 'not_running'>
   validateModel?(model: BotModel): Promise<void>
   resolveRemoteWorker?: ResolveRemoteWorker
+  callingDelegation?(botId: string, raw: unknown): Promise<string | null>
 }
 type Bot = { id: string; name: string }
 /** The work board (#141), so work handed out inside an item hangs under it as the receiver's own item. */
 export interface DelegationWork {
-  /** The caller's item this delegation from `chatId` belongs to, or null; refuses an item that is not the caller's. */
   parentFor(callerId: string, chatId: string, itemId?: string): string | null
-  /** Runs inside the new exchange's transaction. */
   child(parentId: string, exchange: { id: string; owner: Bot; asker: Bot; task: string }): void
-  /** Opens a `code` work item for a worker exchange (with or without a parent item), inside the exchange's transaction. */
   workerChild?(parentId: string | null, exchange: { id: string; owner: Bot; task: string }): void
 }
 
@@ -183,10 +182,13 @@ export class DelegationService {
   }
 
   /** The receiver's files for its answer: checked now, copied to the other bot when the answer goes out. */
-  async attach(botId: string, raw: { exchangeId: string; files: string[] }) {
+  async attach(botId: string, raw: { exchangeId: string; files: string[] }, callArgs?: unknown) {
     const input = AttachInput.parse(raw)
     await this.host.requireBot(botId)
-    if (this.store.get(input.exchangeId).group) throw new LilBotError('thread_forbidden', 'That is a group: attach with lilbot_group.')
+    const thread = this.store.get(input.exchangeId)
+    if (thread.group) throw new LilBotError('thread_forbidden', 'That is a group: attach with lilbot_group.')
+    const place = () => this.host.callingDelegation?.(botId, callArgs ?? { action: 'attach', ...raw }) ?? Promise.resolve(null)
+    assertNarrowedAllowed(await narrowedCaller(botId, this.host, place), { existing: thread })
     const running = this.threads.runner.runningFor(input.exchangeId)
     if (!running || running.target !== botId) throw new LilBotError('not_running', 'Attach files while you work on that exchange; they go back with your answer.')
     const at = { threadId: input.exchangeId, messageId: `${running.id}:reply`, sender: botId }

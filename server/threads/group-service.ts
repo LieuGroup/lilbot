@@ -12,7 +12,7 @@ import { groupFolder, makeGroupFolder } from './group-folder'
 import { openRound } from './group-open'
 import { type GroupStore, memberItemId } from './group-store'
 import { botStatus } from './group-view'
-import { assertNarrowedAllowed } from './thread-accept'
+import { assertNarrowedAllowed, narrowedCaller } from './thread-accept'
 import { type GroupLimits, THREAD_LIMITS } from './thread-limits'
 import type { ThreadHost, ThreadService } from './thread-service'
 
@@ -44,11 +44,15 @@ export class GroupService {
     if (input.action === 'start') return this.start(caller, input)
     const thread = this.store.get(need(input.groupId, 'the groupId'))
     if (!thread.group || !thread.participants.some(p => p.id === caller.id)) throw new LilBotError('thread_forbidden', 'You are not in that group.')
+    const caps = await narrowedCaller(caller.id, this.host, () =>
+      this.host.callingAction ? this.host.callingAction(caller.id, input) : input.requestId ? this.host.callingChat(caller.id, input.requestId) : Promise.resolve(null)
+    )
+    assertNarrowedAllowed(caps, { existing: thread })
     if (input.action === 'status') return botStatus(this.threads.view(thread))
     if (input.action === 'attach') return this.attach(caller, thread, need(input.files, 'files'))
     if (thread.participants[0].id !== caller.id)
       throw new LilBotError('thread_forbidden', 'Only the leader says the next point and closes the group; reply in your final response.')
-    return input.action === 'say' ? this.say(caller, thread, input) : this.close(caller, thread, input)
+    return input.action === 'say' ? this.say(caller, thread, input) : this.close(caller, thread, input, caps)
   }
 
   private async start(caller: Bot, input: GroupInput) {
@@ -135,10 +139,6 @@ export class GroupService {
     if (g.end) throw new LilBotError('group_ended', 'This group has ended; it is read-only.')
     const busy = () => this.groups.unfinished(thread.id).some(d => d.kind === 'point')
     if (busy()) throw new LilBotError('group_busy', `Round ${g.rounds.length} is under way: its replies reach you in the group's session. Say the next point after them.`)
-    if (this.host.hasNarrowed?.(caller.id)) {
-      const calling = await this.host.callingChat(caller.id, requestId)
-      assertNarrowedAllowed(this.host.sessionCapabilities?.(caller.id, calling) ?? null, { existing: thread })
-    }
     const text = need(input.text, 'the point (text)')
     refuseUnsafe(text)
     const to = this.audience(thread.participants.slice(1), input.to)
@@ -167,11 +167,11 @@ export class GroupService {
     return { groupId: thread.id, files: names, note: 'They are copied into the group folder with your reply.' }
   }
 
-  private async close(caller: Bot, thread: BotThread, input: GroupInput) {
+  private async close(caller: Bot, thread: BotThread, input: GroupInput, caps: import('../../shared/webhook-schema').WebhookCapability[] | null) {
     if (thread.group!.end) return botStatus(this.threads.view(thread))
     const outcome = need(input.text, 'the outcome (text)')
     refuseUnsafe(outcome)
-    if (input.keep?.length && thread.capabilities && !thread.capabilities.includes('shell'))
+    if (input.keep?.length && ((caps && !caps.includes('shell')) || (thread.capabilities && !thread.capabilities.includes('shell'))))
       throw new LilBotError('capability_denied', 'A narrowed group cannot deliver kept files to the Library without the "shell" capability.')
     const source = this.groups.row(thread.id)!.source_chat
     const kept = await keepFiles(this.threads.files, thread, await this.folder(caller.id), input.keep ?? [], (path, title) => this.host.give(caller.id, path, title, source))

@@ -63,6 +63,7 @@ function fixture(hookCaps: WebhookCapability[] = ['delegation']) {
     folder: async (id: string) => join(dir, 'ws', id),
     sessionCapabilities: callers.forChat,
     hasNarrowed: callers.hasRuns,
+    callingDelegation: async () => activeChat,
     narrowedAccess: (caps: WebhookCapability[]) => webhookRunAccess(caps, false),
     runRoutine: async (botId: string, prompt: string, opts: any) => {
       const id = opts.chatId ?? `hidden:${botId}:${runs.length + 1}`
@@ -76,6 +77,7 @@ function fixture(hookCaps: WebhookCapability[] = ['delegation']) {
     journal: (botId: string, text: string) => void journals.push(`${botId}:${text}`),
     give: async () => {},
     callingChat: async () => activeChat,
+    callingAction: async () => activeChat,
     rootOf,
     rosterChanged: () => {}
   }

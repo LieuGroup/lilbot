@@ -9,7 +9,10 @@ const xml = (s: string) => s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').re
 type UninstallStep = { args: string[]; required?: boolean } | { remove: string }
 
 /** Everything is best effort and the step that stops the running helper comes last, so a failure cannot leave a
- *  half-removed service restarting a helper that has no identity (the helper may be the process being stopped). */
+ *  half-removed service restarting a helper that has no identity (the helper may be the process being stopped). On
+ *  macOS, if `launchctl bootout` fails after the plist is removed, launchd keeps the KeepAlive job in memory and
+ *  respawns it every 10 s until logout/reboot or manual bootout; without identity.json it cannot reconnect, and it does
+ *  not return after the next login. */
 export function uninstallPlan(mac: boolean, uid: number, path: string): UninstallStep[] {
   if (mac) return [{ remove: path }, { args: ['launchctl', 'bootout', `gui/${uid}/${label}`] }]
   return [

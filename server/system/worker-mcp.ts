@@ -70,7 +70,7 @@ export function createWorkerMcp(deps: Pick<SystemDeps, 'store' | 'work' | 'chang
         if (rawArgs.itemId !== ctx.threadId) return toolErr(msg.id, `A remote worker can only update its own work item (${ctx.threadId}).`)
         const parsed = WorkInput.parse(rawArgs)
         parsedArgs = parsed as unknown as Record<string, unknown>
-        result = fenceRunText(await deps.work.actFrom(ctx.botId, parsed, ctx.chatId))
+        result = fenceRunText(await deps.work.actFrom(ctx.botId, parsed, ctx.chatId), deps.work.host.isNarrowedOrigin)
       } else if (name === 'lilbot_work_list') {
         if (rawArgs.mine === false || rawArgs.goals !== undefined || rawArgs.goalId !== undefined)
           return toolErr(msg.id, "A remote worker can only read its own bot's work items (no mine: false or goals).")

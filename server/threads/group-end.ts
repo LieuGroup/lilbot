@@ -33,6 +33,8 @@ export interface GroupHost {
   give(botId: string, path: string, title: string, chatId: string): Promise<void>
   /** The bot's session that made this call (matched by its request id); refuses when that cannot be known. */
   callingChat(botId: string, requestId: string): Promise<string>
+  /** Places a `lilbot_group` call without requiring a requestId (for close/attach/status when narrowed runs are active). */
+  callingAction?(botId: string, raw: unknown): Promise<string | null>
   /** The session a chat's compression lineage began as; null when it cannot be read just now. */
   rootOf(botId: string, chatId: string): string | null
   work?: GroupWork

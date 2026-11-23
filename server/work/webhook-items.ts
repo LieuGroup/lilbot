@@ -13,7 +13,10 @@ const RUN_ITEMS = 3
 /** An item's fields a webhook run wrote. */
 const RUN_TEXT = ['title', 'done', 'question', 'result', 'dropReason', 'evidence'] as const
 
-export const fromWebhook = (origin: WorkOrigin) => origin.kind === 'webhook_run'
+export type OriginCheck = (origin: WorkOrigin) => boolean
+
+export const fromWebhook = (origin: WorkOrigin, narrowed?: OriginCheck) => origin.kind === 'webhook_run' || Boolean(narrowed?.(origin))
+export const sameOrigin = (a: WorkOrigin, b: WorkOrigin) => a.kind === b.kind && a.id === b.id
 
 /** The level an item a webhook run opens gets: its kind's, with Oscar checking what a bot would. */
 export const webhookLevel = (least: number) => (least >= 2 ? 3 : least)
@@ -25,25 +28,27 @@ export function webhookRefusal(
   input: Pick<WorkInput, 'level' | 'goalId' | 'itemId' | 'requestId'>,
   store: Pick<WorkStore, 'countFrom' | 'byRequest'>,
   callerId: string,
-  item?: Pick<StoredItem, 'origin'>
+  item?: Pick<StoredItem, 'origin'>,
+  narrowed?: OriginCheck
 ) {
-  if (!fromWebhook(session)) return
+  if (!fromWebhook(session, narrowed)) return
   if (input.level !== undefined) throw new LilBotError('work_webhook_level', 'A webhook run does not set check levels: its items get their kind’s level.')
   if (input.goalId !== undefined) throw new LilBotError('work_webhook_goal', 'A webhook run does not work for goals. Open the item without goalId.')
   if (!input.itemId && !item && !store.byRequest(callerId, input.requestId) && store.countFrom(session) >= RUN_ITEMS)
     throw new LilBotError('work_webhook_items', `A webhook run opens at most ${RUN_ITEMS} items. Put the rest in your result.`)
-  if (item && !(fromWebhook(item.origin) && item.origin.id === session.id))
+  if (item && !(fromWebhook(item.origin, narrowed) && sameOrigin(item.origin, session)))
     throw new LilBotError('work_webhook_other', 'A webhook run reports only on the items this run opened. Open one for this work.')
 }
 
 /** What a bot reads of the board, with the text of every item a webhook run opened fenced as outside data, wherever it
  *  appears (an item, a list, a goal's items, an item's children). */
-export function fenceRunText<T>(value: T): T {
-  if (Array.isArray(value)) return value.map(fenceRunText) as T
+export function fenceRunText<T>(value: T, narrowed?: OriginCheck): T {
+  if (Array.isArray(value)) return value.map(item => fenceRunText(item, narrowed)) as T
   if (!value || typeof value !== 'object') return value
   const record = value as Record<string, unknown>
-  const out = Object.fromEntries(Object.entries(record).map(([key, field]) => [key, fenceRunText(field)]))
-  if ((record.origin as WorkOrigin | undefined)?.kind !== 'webhook_run') return out as T
+  const out = Object.fromEntries(Object.entries(record).map(([key, field]) => [key, fenceRunText(field, narrowed)]))
+  const origin = record.origin as WorkOrigin | undefined
+  if (!origin || !fromWebhook(origin, narrowed)) return out as T
   for (const key of RUN_TEXT) if (record[key] !== undefined && record[key] !== null && record[key] !== '') out[key] = fenced('webhook-work-item', record[key])
   return out as T
 }

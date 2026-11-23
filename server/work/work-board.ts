@@ -3,6 +3,7 @@ import { LilBotError } from '../../shared/lilbot-error'
 import type { WorkKind } from '../../shared/work-check-schema'
 import { type WorkBrief, WorkListInput } from '../../shared/work-schema'
 import { backgroundFailure } from '../background'
+import { fromWebhook } from './webhook-items'
 import { answerPrompt, dropPrompt, type WorkAnswers } from './work-answers'
 import { isFinal, refuseUnsafe } from './work-rules'
 import type { WorkService } from './work-service'
@@ -90,9 +91,9 @@ export class WorkBoard {
     return this.work.view(itemId)
   }
 
-  /** False when the exchange cannot take another message (full, failed): the receiver then still gets the answer in its own session. */
+  /** False when the exchange cannot take another message (full, failed) or is narrowed: the receiver then follows WorkAnswers rules. */
   private viaExchange(item: StoredItem, id: string, prompt: string) {
-    if (item.origin.kind !== 'exchange') return false
+    if (item.origin.kind !== 'exchange' || fromWebhook(item.origin, this.work.host.isNarrowedOrigin)) return false
     try {
       this.exchanges.oscarAnswer(item.origin.id, id, prompt)
       return true

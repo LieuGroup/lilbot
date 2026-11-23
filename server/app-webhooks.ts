@@ -74,6 +74,7 @@ export function createWebhooks({ webhookStore, messages, bots, rootOf, calls, to
       const allowed = callers.forChat(botId, chatId)
       return allowed === null || allowed.includes('memory') ? null : 'A webhook run cannot use memory or give files. Put what matters in your result.'
     },
+    sessionCapabilities: (botId: string, chatId: string | undefined) => callers.forChat(botId, chatId),
     pluginRefusal: async (botId: string, pathname: string, request: Request) => {
       const body = await request
         .clone()

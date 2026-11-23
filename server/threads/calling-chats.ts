@@ -106,30 +106,46 @@ export class CallingChats {
     }
   }
 
-  /** For a gate: the session of this call's own exact-arg or request-id start since `since` that no gate has taken yet.
+  /** For a gate or service claim: the session of this call's own exact-arg or request-id start since `since` not yet taken in `slot`.
    *  When `prefer` is given and several starts match, a preferred session (e.g. a restricted run/check) is taken first. */
-  take(botId: string, tool: string, since: number, args: string, requestId: string | null, prefer?: (chatId: string) => boolean): string | null {
+  take(
+    botId: string,
+    tool: string,
+    since: number,
+    args: string,
+    requestId: string | null,
+    prefer?: (chatId: string) => boolean,
+    slot: 'gated' | 'claimed' = 'gated'
+  ): string | null {
     const matches = this.seen.filter(
-      s => !s.gated && s.botId === botId && s.at >= since && names(s.tool, tool) && (s.args === args || (requestId !== null && s.requestId === requestId))
+      s => !s[slot] && s.botId === botId && s.at >= since && names(s.tool, tool) && (s.args === args || (requestId !== null && s.requestId === requestId))
     )
     if (!matches.length) return null
     const own = (prefer && matches.find(s => prefer(s.chatId))) ?? matches[0]
-    own.gated = true
+    own[slot] = true
     return own.chatId
   }
 
   /** Fail-closed fallback for tools without requestId whose raw model arguments differ after coercion or truncation:
    *  succeeds only when strictly ONE unmatched start of `tool` exists in `[since, maxAt]`, never when zero or multiple exist. */
-  takeSingle(botId: string, tool: string, since: number, maxAt: number): string | null {
-    const unmatched = this.seen.filter(s => !s.gated && s.botId === botId && s.at >= since && names(s.tool, tool))
+  takeSingle(botId: string, tool: string, since: number, maxAt: number, slot: 'gated' | 'claimed' = 'gated'): string | null {
+    const unmatched = this.seen.filter(s => !s[slot] && s.botId === botId && s.at >= since && names(s.tool, tool))
     if (unmatched.length !== 1 || unmatched[0].at > maxAt) return null
-    unmatched[0].gated = true
+    unmatched[0][slot] = true
     return unmatched[0].chatId
   }
 
-  /** Places an MCP call once for session gates: exact argument/requestId match immediately; for calls without requestId,
-   *  falls back to `takeSingle` only after a grace window so concurrent restricted-session starts arrive first. Null when unplaced (fail closed). */
-  async gate(botId: string, tool: string, raw: unknown, prefer?: (chatId: string) => boolean): Promise<string | null> {
+  /** Places an MCP call once for session gates (`gated` slot). Null when unplaced (fail closed). */
+  gate(botId: string, tool: string, raw: unknown, prefer?: (chatId: string) => boolean): Promise<string | null> {
+    return this.place(botId, tool, raw, prefer, 'gated')
+  }
+
+  /** Places an MCP call once for service-level checks (`claimed` slot, independent of `gate`). Null when unplaced (fail closed). */
+  claim(botId: string, tool: string, raw: unknown, prefer?: (chatId: string) => boolean): Promise<string | null> {
+    return this.place(botId, tool, raw, prefer, 'claimed')
+  }
+
+  private async place(botId: string, tool: string, raw: unknown, prefer: ((chatId: string) => boolean) | undefined, slot: 'gated' | 'claimed'): Promise<string | null> {
     const args = record(raw)
     const key = argsKey(args)
     const requestId = typeof args.requestId === 'string' ? args.requestId : null
@@ -137,11 +153,11 @@ export class CallingChats {
     const graceMs = Math.min(FALLBACK_GRACE_MS, Math.floor(this.waitMs / 2))
     const stepMs = Math.min(50, Math.max(10, Math.floor(this.waitMs / 5)))
     for (;;) {
-      const own = this.take(botId, tool, asked - EARLY_MS, key, requestId, prefer)
+      const own = this.take(botId, tool, asked - EARLY_MS, key, requestId, prefer, slot)
       if (own !== null) return own
       const now = Date.now()
       if (requestId === null && now - asked >= graceMs) {
-        const single = this.takeSingle(botId, tool, asked - EARLY_MS, now - graceMs)
+        const single = this.takeSingle(botId, tool, asked - EARLY_MS, now - graceMs, slot)
         if (single !== null) return single
       }
       if (now - asked >= this.waitMs) return null

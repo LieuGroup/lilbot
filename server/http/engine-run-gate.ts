@@ -2,6 +2,7 @@
  *  Hermes adds the computers and skills plug-ins back to every session, whatever toolsets it was started with. The
  *  plug-ins name the session that made the call (`x-lilbot-session`, Hermes' `session_id`, which its background review
  *  forks share); routes only older adapters call name none. */
+import { LilBotError } from '../../shared/lilbot-error'
 import type { WebhookCapability } from '../../shared/webhook-schema'
 import type { CheckUse } from '../work/check-sessions'
 
@@ -10,11 +11,19 @@ const ACTIONS: Record<string, string> = { list: 'list_computers', read: 'compute
 /** Routes kept for sessions that loaded an older adapter, and the group each belongs to. */
 const LEGACY: [test: (pathname: string) => boolean, tool: string, groups: WebhookCapability[]][] = [
   [p => p === '/engine/bots/create', 'create_bot', ['bots']],
+  [p => p === '/engine/library/give', 'lilbot_give_file', ['shell']],
   [p => p.startsWith('/engine/routines/'), 'routine tools', ['routines']],
   [p => p.startsWith('/engine/threads/'), 'ask_bot', ['delegation']]
 ]
 
 export const SESSION_HEADER = 'x-lilbot-session'
+
+/** Verified session id for an engine API call: refuses when `x-lilbot-session` and body `chatId` disagree. */
+export function verifiedSession(request: Request, bodyChat: string | undefined): string | undefined {
+  const header = request.headers.get(SESSION_HEADER) || undefined
+  if (header && bodyChat && header !== bodyChat) throw new LilBotError('session_mismatch', 'Session header does not match chatId.')
+  return header ?? bodyChat
+}
 
 /** The tool and the groups that allow it (none: no webhook run may), or null for calls every run may make. The tests
  *  are the handlers' own (`engine-api.ts`), so every path a handler serves is covered. */

@@ -10,16 +10,17 @@ export function delegationTools({ delegation: { hand, control } }: SystemDeps): 
     'lilbot_delegation',
     'Control work you handed out, or attach files to an exchange answer. action: status (exchangeIds/batchId), cancel (exchangeId), redirect (exchangeId, requestId, message), wait (exchangeIds/batchId), attach (receiver: exchangeId, files).',
     DelegationActionInput,
-    async (caller, { action, exchangeId, exchangeIds, batchId, requestId, message, files }) => {
+    async (caller, raw) => {
+      const { action, exchangeId, exchangeIds, batchId, requestId, message, files } = raw
       const pick = { exchangeIds: exchangeIds ?? (exchangeId ? [exchangeId] : undefined), batchId }
-      if (action === 'status') return control.status(caller, pick)
-      if (action === 'wait') return control.wait(caller, pick)
+      if (action === 'status') return control.status(caller, pick, raw)
+      if (action === 'wait') return control.wait(caller, pick, raw)
       if (action === 'cancel') {
         if (!exchangeId) throw new LilBotError('exchange_id_missing', 'Give the exchangeId to cancel.')
-        return control.cancel(caller, exchangeId)
+        return control.cancel(caller, exchangeId, raw)
       }
-      if (action === 'redirect') return control.redirect(caller, RedirectInput.parse({ requestId, exchangeId, message }))
-      return hand.attach(caller, AttachInput.parse({ exchangeId, files }))
+      if (action === 'redirect') return control.redirect(caller, RedirectInput.parse({ requestId, exchangeId, message }), raw)
+      return hand.attach(caller, AttachInput.parse({ exchangeId, files }), raw)
     }
   )
   return [
