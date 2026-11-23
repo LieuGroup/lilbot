@@ -101,19 +101,21 @@ test('narrowed exchange sessions follow webhook work-board rules: Oscar checks l
   expect(listed.title).toContain('<webhook-work-item>')
   expect(listed.result).toContain('<webhook-work-item>')
 
-  // Oscar's sendBack routes to main chat fenced and NEVER resumes the narrowed exchange session unrestricted.
+  // Oscar's answer and sendBack route to main chat fenced and NEVER resume the narrowed exchange via viaExchange.
+  const question = await f.act(b2.id, { requestId: 'n6', title: 'Need input', kind: 'reply', done: 'Answered', status: 'needs_oscar', question: 'Proceed?' }, 'ex-narrow-chat')
   const runs: Array<{ chatId?: string; prompt: string }> = []
   f.engine.runRoutine = async (_bot, prompt, opts) => {
     runs.push({ chatId: opts.chatId, prompt })
     return { status: 'completed', text: 'ok' }
   }
+  f.board.answer(question.id, 'Approved by Oscar')
   f.board.sendBack(deploy.id, 'Check manually')
   f.answers.tick()
-  await until(() => runs.length > 0)
-  expect(runs[0].chatId).toBe('b2-main')
-  expect(runs[0].prompt).toContain('<webhook-work-item>')
-  expect(runs[0].prompt).toContain('Check manually')
+  await until(() => runs.length >= 2)
   expect(f.oscarAnswers).toEqual([])
+  expect(runs.every(r => r.chatId === 'b2-main')).toBe(true)
+  expect(runs.some(r => r.prompt.includes('Approved by Oscar') && r.prompt.includes('<webhook-work-item>'))).toBe(true)
+  expect(runs.some(r => r.prompt.includes('Check manually') && r.prompt.includes('<webhook-work-item>'))).toBe(true)
 })
 
 test('narrowed remote worker cannot raise level and routes level-2 code checks to Oscar; unrestricted exchanges still use bot checks', async () => {

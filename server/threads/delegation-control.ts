@@ -84,11 +84,11 @@ export class DelegationControl {
     const input = RedirectInput.parse(raw)
     const caller = await this.host.requireBot(botId)
     const [thread] = this.mine(botId, { exchangeIds: [input.exchangeId] })
+    assertNarrowedAllowed(await this.callerCapabilities(botId, callArgs ?? { action: 'redirect', ...raw }, input.requestId), { existing: thread })
     const prior = this.store.delivery(`${botId}:${input.requestId}`)
     if (prior) return { exchangeId: thread.id, applied: prior.status === 'steered' ? 'now' : 'queued' }
     if (thread.status !== 'waiting' && thread.status !== 'working')
       throw new LilBotError('not_running', 'That exchange is not under way. Continue it with lilbot_delegate and its exchangeId.')
-    assertNarrowedAllowed(await this.callerCapabilities(botId, callArgs ?? { action: 'redirect', ...raw }, input.requestId), { existing: thread })
     refuseUnsafe(input.message)
     const receiver = thread.participants[1]
     const origin = this.store.origin(thread.id, receiver.id)

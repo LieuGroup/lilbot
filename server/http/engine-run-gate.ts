@@ -8,7 +8,9 @@ import type { CheckUse } from '../work/check-sessions'
 
 const SUBMITTED: Record<string, string> = { exec: 'computer_exec', read: 'computer_read_file', write: 'computer_write_file', list: 'computer_list_folder' }
 const ACTIONS: Record<string, string> = { list: 'list_computers', read: 'computer_request', cancel: 'computer_cancel', copy: 'computer_copy' }
-/** Routes kept for sessions that loaded an older adapter, and the group each belongs to. */
+/** Routes kept for sessions that loaded an older adapter, and the group each belongs to.
+ *  `/engine/library/give` has no current Hermes callers (modern bots use `lilbot_give_file` over MCP), so calls
+ *  without `x-lilbot-session` while a narrowed run is active stay refused (fail closed). */
 const LEGACY: [test: (pathname: string) => boolean, tool: string, groups: WebhookCapability[]][] = [
   [p => p === '/engine/bots/create', 'create_bot', ['bots']],
   [p => p === '/engine/library/give', 'lilbot_give_file', ['shell']],

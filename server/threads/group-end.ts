@@ -5,6 +5,7 @@
 import { LilBotError } from '../../shared/lilbot-error'
 import type { GroupEnd } from '../../shared/thread-schema'
 import { backgroundFailure } from '../background'
+import type { Match } from './calling-chats'
 import { type KeptFile, recordKept } from './group-files'
 import { archiveGroupFolder, groupArchive } from './group-folder'
 import { endPrompt, endReason, filesLine, journalTexts, newsFor } from './group-prompts'
@@ -34,7 +35,7 @@ export interface GroupHost {
   /** The bot's session that made this call (matched by its request id); refuses when that cannot be known. */
   callingChat(botId: string, requestId: string): Promise<string>
   /** Places a `lilbot_group` call without requiring a requestId (for close/attach/status when narrowed runs are active). */
-  callingAction?(botId: string, raw: unknown): Promise<string | null>
+  callingAction?(botId: string, raw: unknown): Promise<Match>
   /** The session a chat's compression lineage began as; null when it cannot be read just now. */
   rootOf(botId: string, chatId: string): string | null
   work?: GroupWork

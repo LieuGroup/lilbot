@@ -2,7 +2,7 @@ import type { Database } from 'bun:sqlite'
 import { LilBotError } from '../../shared/lilbot-error'
 import type { BotThread, ThreadMessage } from '../../shared/thread-schema'
 import type { WebhookCapability } from '../../shared/webhook-schema'
-import { type Accept, acceptDelivery, assertNotWorker, WORK } from './thread-accept'
+import { type Accept, acceptDelivery, activeNarrowedCaps, assertNotWorker, WORK } from './thread-accept'
 import { THREAD_LIMITS } from './thread-limits'
 
 /** request, redirect and oscar (his answer to its question on its work item) are work for the receiver; answer is a reply back; notice is LilBot's own word.
@@ -108,6 +108,9 @@ export class ThreadStore {
   /** Whether this bot has any thread/worker/group session carrying narrowed capabilities. */
   hasNarrowed(botId: string): boolean {
     return !!this.db.query("SELECT 1 FROM thread_chats c JOIN threads t ON t.id=c.thread_id WHERE c.bot_id=? AND json_type(t.data, '$.capabilities')='array' LIMIT 1").get(botId)
+  }
+  activeNarrowedCaps(botId: string): WebhookCapability[] | null {
+    return activeNarrowedCaps(this, botId)
   }
   /** Narrowed capabilities of a thread session (following compression), null if unrestricted, undefined if lineage unreadable. */
   narrowedForChat(botId: string, chatId: string): WebhookCapability[] | null | undefined {

@@ -3,7 +3,7 @@ import type { BotModel, ReasoningEffort } from '../../shared/bot-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import type { BotThread } from '../../shared/thread-schema'
 import type { WebhookCapability } from '../../shared/webhook-schema'
-import { NOT_SEEN } from './calling-chats'
+import { AMBIGUOUS, AMBIGUOUS_MATCH, type Match, NOT_SEEN } from './calling-chats'
 import { THREAD_LIMITS } from './thread-limits'
 import type { Delivery, ThreadStore } from './thread-store'
 
@@ -45,16 +45,41 @@ export function assertNarrowedAllowed(capabilities: WebhookCapability[] | null |
     throw new LilBotError('capability_denied', 'A narrowed run cannot continue an exchange or group with broader access than its own.')
 }
 
-/** Resolves a caller's narrowed capabilities when this bot has any narrowed session active; fails closed if unplaced. */
+/** Resolves a caller's narrowed capabilities when this bot has any narrowed session active; fails closed if unplaced or ambiguous. */
 export async function narrowedCaller(
   botId: string,
   host: { hasNarrowed?(botId: string): boolean; sessionCapabilities?(botId: string, chatId: string | undefined): WebhookCapability[] | null },
-  place: () => Promise<string | null>
+  place: () => Promise<Match>
 ): Promise<WebhookCapability[] | null> {
   if (!host.hasNarrowed?.(botId)) return null
   const chatId = await place()
+  if (chatId === AMBIGUOUS_MATCH) throw new LilBotError('session_ambiguous', AMBIGUOUS)
   if (!chatId) throw new LilBotError('session_unknown', NOT_SEEN)
   return host.sessionCapabilities?.(botId, chatId) ?? null
+}
+
+/** Intersection of capabilities across currently-live local narrowed deliveries for `botId`, or null when none are live.
+ *  Remote workers (`computer` set) are excluded because they only reach `worker-mcp.ts` (scoped by `ctx.threadId`). */
+export function activeNarrowedCaps(store: ThreadStore, botId: string): WebhookCapability[] | null {
+  const rows = store.db.query("SELECT threadId, kind, sourceChat FROM thread_deliveries WHERE target=? AND status!='done'").all(botId) as Pick<
+    Delivery,
+    'threadId' | 'kind' | 'sourceChat'
+  >[]
+  let caps: WebhookCapability[] | null = null
+  const intersect = (next: WebhookCapability[]) => {
+    caps = caps === null ? [...next] : caps.filter(c => next.includes(c))
+  }
+  for (const row of rows) {
+    if (row.kind === 'answer' || row.kind === 'notice') {
+      const parent = store.narrowedForChat(botId, row.sourceChat)
+      if (parent === undefined) return []
+      if (parent !== null) intersect(parent)
+      continue
+    }
+    const thread = store.get(row.threadId)
+    if (thread.capabilities !== undefined && !thread.computer) intersect(thread.capabilities)
+  }
+  return caps
 }
 
 /** Throws when `chatId` belongs to a worker session (or its compression continuation), or when its lineage cannot be read. */

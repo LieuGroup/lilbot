@@ -119,6 +119,8 @@ test('delegated exchanges and local workers carry narrowed capabilities transiti
   const [exId, workerId] = res.exchanges.map(e => e.exchangeId)
   expect(f.threadStore.get(exId).capabilities).toEqual(['delegation'])
   expect(f.threadStore.get(workerId).capabilities).toEqual(['delegation'])
+  // While Bot Two's narrowed delivery is live, hasRuns('b2') is true and unreadable lineage fails closed.
+  expect(f.callers.hasRuns('b2')).toBe(true)
 
   f.threads.tick()
   await Bun.sleep(40)
@@ -128,8 +130,8 @@ test('delegated exchanges and local workers carry narrowed capabilities transiti
   expect(wRun.toolsets).toEqual(['lilbot_system'])
   expect(b2Run.prompt).toContain('You cannot')
 
-  // Bot Two has no webhooks of its own, yet its narrowed thread chat (and compression child) is gated while b2-main stays unrestricted.
-  expect(f.callers.hasRuns('b2')).toBe(true)
+  // Once settled, Bot Two has no live narrowed runs (no permanent MCP gating), yet its settled narrowed chat & compression child stay locked.
+  expect(f.callers.hasRuns('b2')).toBe(false)
   expect(f.callers.forChat('b2', b2Run.chatId)).toEqual(['delegation'])
   expect(f.callers.forChat('b2', 'b2-main')).toBeNull()
   expect(refusalFor(f.callers.forChat('b2', b2Run.chatId), 'computer_exec', ['computers'])).toContain('cannot use computer_exec')
@@ -191,9 +193,8 @@ test('a narrowed remote worker with delegation+computers (no memory) omits memor
   const ctx = { botId: 'b1', threadId: exId, runId: 'r1', chatId: `remote:${exId}`, computerId: 'c1' }
   const readRes = await workerMcp(ctx, JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'lilbot_memory_list', arguments: {} } }))
   const saveRes = await workerMcp(ctx, JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'lilbot_memory_save', arguments: { text: 'leaked' } } }))
-  expect(JSON.parse(readRes.body).result.isError).toBe(true)
-  expect(JSON.parse(readRes.body).result.content[0].text).toContain('cannot read memory')
-  expect(JSON.parse(saveRes.body).result.isError).toBe(true)
-  expect(JSON.parse(saveRes.body).result.content[0].text).toContain('cannot save memory')
+  const [readJson, saveJson] = [JSON.parse(readRes.body).result, JSON.parse(saveRes.body).result]
+  expect(readJson.isError && readJson.content[0].text.includes('cannot read memory')).toBe(true)
+  expect(saveJson.isError && saveJson.content[0].text.includes('cannot save memory')).toBe(true)
   f.db.close()
 })

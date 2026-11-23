@@ -4,6 +4,7 @@ import type { BotModel } from '../../shared/bot-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import { AttachInput, DelegateInput } from '../../shared/thread-schema'
 import { refuseUnsafe } from '../memory/memory-safety'
+import type { Match } from './calling-chats'
 import { type ResolvedTask, type ResolveRemoteWorker, validateTaskTargets } from './delegation-remote'
 import { checkFiles, stageFiles, withBatchCopies } from './exchange-files'
 import { assertNarrowedAllowed, narrowedCaller } from './thread-accept'
@@ -15,7 +16,7 @@ export interface DelegationHost extends ThreadHost {
   steerRun?(botId: string, chatId: string, text: string): Promise<'steered' | 'not_running'>
   validateModel?(model: BotModel): Promise<void>
   resolveRemoteWorker?: ResolveRemoteWorker
-  callingDelegation?(botId: string, raw: unknown): Promise<string | null>
+  callingDelegation?(botId: string, raw: unknown): Promise<Match>
 }
 type Bot = { id: string; name: string }
 /** The work board (#141), so work handed out inside an item hangs under it as the receiver's own item. */
@@ -46,16 +47,12 @@ export class DelegationService {
       opening++
       if (resolved[i].worker) openingWorkers++
     }
-    if (opening && this.store.open(callerId) + opening > THREAD_LIMITS.openPerBot)
-      throw new LilBotError(
-        'thread_limit',
-        `At most ${THREAD_LIMITS.openPerBot} delegations can be under way at once; ${this.store.open(callerId)} are. Wait for answers or stop one.`
-      )
-    if (openingWorkers && this.store.openWorkers(callerId) + openingWorkers > THREAD_LIMITS.workersPerBot)
-      throw new LilBotError(
-        'thread_limit',
-        `At most ${THREAD_LIMITS.workersPerBot} workers can be under way at once; ${this.store.openWorkers(callerId)} are. Wait for answers or stop one.`
-      )
+    const open = this.store.open(callerId)
+    if (opening && open + opening > THREAD_LIMITS.openPerBot)
+      throw new LilBotError('thread_limit', `At most ${THREAD_LIMITS.openPerBot} delegations can be under way at once; ${open} are. Wait for answers or stop one.`)
+    const openW = this.store.openWorkers(callerId)
+    if (openingWorkers && openW + openingWorkers > THREAD_LIMITS.workersPerBot)
+      throw new LilBotError('thread_limit', `At most ${THREAD_LIMITS.workersPerBot} workers can be under way at once; ${openW} are. Wait for answers or stop one.`)
   }
 
   async delegate(callerId: string, raw: DelegateInput) {
@@ -63,8 +60,8 @@ export class DelegationService {
     const caller = await this.host.requireBot(callerId)
     const ids = input.tasks.map((_, i) => `${input.requestId}:${i}`)
     const fresh = input.tasks.filter((_, i) => !this.store.delivery(`${callerId}:${ids[i]}`))
-    const chatId = fresh.length ? await this.callingChat(callerId, input.requestId) : null
-    if (chatId)
+    const chatId = fresh.length || this.host.hasNarrowed?.(callerId) ? await this.callingChat(callerId, input.requestId) : null
+    if (chatId && fresh.length)
       this.store.assertNotWorker(
         callerId,
         chatId,
@@ -90,8 +87,11 @@ export class DelegationService {
     if (new Set(continuations).size !== continuations.length) throw new LilBotError('thread_target', 'One task per exchange in a call.')
     for (const t of input.tasks) refuseUnsafe(t.task)
     const capabilities = chatId ? (this.host.sessionCapabilities?.(callerId, chatId) ?? null) : null
-    const narrow = { capabilities, threadOf: (id: string) => this.store.get(id) }
-    await validateTaskTargets(callerId, input.tasks, resolved, i => !this.store.delivery(`${callerId}:${ids[i]}`), this.host, narrow)
+    for (const id of ids) {
+      const prior = this.store.delivery(`${callerId}:${id}`)
+      if (prior) assertNarrowedAllowed(capabilities, { existing: this.store.get(prior.threadId) })
+    }
+    await validateTaskTargets(callerId, input.tasks, resolved, i => !this.store.delivery(`${callerId}:${ids[i]}`), this.host, { capabilities, threadOf: id => this.store.get(id) })
     this.checkCaps(callerId, input.tasks, ids, resolved)
     const root = await this.host.folder(callerId)
     for (const t of fresh) await checkFiles(root, t.files ?? [])

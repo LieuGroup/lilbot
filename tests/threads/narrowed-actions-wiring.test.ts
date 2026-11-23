@@ -37,11 +37,11 @@ function threadFixture() {
     async () => [],
     () => true
   )
-  const runs: Array<{ botId: string; capabilities?: WebhookCapability[]; chatId?: string }> = []
-  fake.service.runRoutine = async (botId, _prompt, opts) => {
+  const runs: Array<{ botId: string; prompt: string; toolsets?: string[]; capabilities?: WebhookCapability[]; chatId?: string }> = []
+  fake.service.runRoutine = async (botId, prompt, opts) => {
     const id = opts.chatId ?? `hidden:${botId}:${runs.length + 1}`
     opts.onChat?.(id)
-    runs.push({ botId, capabilities: (opts as { capabilities?: WebhookCapability[] }).capabilities, chatId: id })
+    runs.push({ botId, prompt, toolsets: opts.toolsets, capabilities: (opts as { capabilities?: WebhookCapability[] }).capabilities, chatId: id })
     return { status: 'completed', text: 'ok' }
   }
   const { threads, delegation } = createThreads({
@@ -133,13 +133,16 @@ test('createThreads gates group close/attach/status and delegation cancel/redire
   expect(() => f.threadStore.accept(b1, b2, { requestId: 'br-2', text: 'y', chatId: 'wh-chat', threadId: broad.threadId, capabilities: ['delegation'] })).toThrow(/broader access/)
   f.threads.tick()
   await Bun.sleep(20)
-  expect(f.runs.some(r => r.capabilities?.join(',') === 'delegation')).toBe(true)
+  const narrowRun = f.runs.find(r => r.capabilities?.join(',') === 'delegation')
+  expect(narrowRun?.toolsets).toEqual(['lilbot_system'])
+  expect(narrowRun?.prompt).toContain('You cannot')
   expect(f.threadStore.allowsWorkerMemory('missing-thread')).toBe(false)
   expect(f.threadStore.isNarrowed('missing-thread')).toBe(true)
-  // webhookCallers.forCall prefers narrowed thread session (forChat, not just runOf) over unrestricted main chat.
-  const b2NarrowChat = f.runs.find(r => r.capabilities?.join(',') === 'delegation')?.chatId ?? ''
+  // While a narrowed delivery is live on b2, webhookCallers.forCall detects mixed restricted/unrestricted starts (using forChat, not runOf) and refuses as ambiguous.
+  f.threadStore.accept(b1, b2, { requestId: 'live-b2', text: 'live', chatId: 'wh-chat', threadId: narrowEx.exchangeId, capabilities: ['delegation'] })
+  const b2NarrowChat = narrowRun?.chatId ?? ''
   expect(b2NarrowChat).not.toBe('')
   f.saw(b2.id, 'b2-main', 'lilbot_status', {})
   f.saw(b2.id, b2NarrowChat, 'lilbot_status', {})
-  expect(await f.callers.forCall(b2.id, 'lilbot_status', {})).toEqual(['delegation'])
+  expect(await f.callers.forCall(b2.id, 'lilbot_status', {})).toEqual([])
 })

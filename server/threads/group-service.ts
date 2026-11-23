@@ -38,14 +38,15 @@ export class GroupService {
     return this.host.folder(botId)
   }
 
-  async act(callerId: string, raw: GroupInput) {
+  async act(callerId: string, raw: GroupInput, callArgs?: unknown) {
     const input = GroupInput.parse(raw)
     const caller = await this.host.requireBot(callerId)
-    if (input.action === 'start') return this.start(caller, input)
+    const matchArgs = callArgs ?? raw
+    if (input.action === 'start') return this.start(caller, input, matchArgs)
     const thread = this.store.get(need(input.groupId, 'the groupId'))
     if (!thread.group || !thread.participants.some(p => p.id === caller.id)) throw new LilBotError('thread_forbidden', 'You are not in that group.')
     const caps = await narrowedCaller(caller.id, this.host, () =>
-      this.host.callingAction ? this.host.callingAction(caller.id, input) : input.requestId ? this.host.callingChat(caller.id, input.requestId) : Promise.resolve(null)
+      this.host.callingAction ? this.host.callingAction(caller.id, matchArgs) : input.requestId ? this.host.callingChat(caller.id, input.requestId) : Promise.resolve(null)
     )
     assertNarrowedAllowed(caps, { existing: thread })
     if (input.action === 'status') return botStatus(this.threads.view(thread))
@@ -55,10 +56,15 @@ export class GroupService {
     return input.action === 'say' ? this.say(caller, thread, input) : this.close(caller, thread, input, caps)
   }
 
-  private async start(caller: Bot, input: GroupInput) {
+  private async start(caller: Bot, input: GroupInput, matchArgs: unknown) {
     const requestId = need(input.requestId, 'a requestId')
     const prior = this.groups.byRequest(caller.id, requestId)
-    if (prior) return botStatus(this.threads.view(this.store.get(prior)))
+    if (prior) {
+      const existing = this.store.get(prior)
+      const place = () => (this.host.callingAction ? this.host.callingAction(caller.id, matchArgs) : this.host.callingChat(caller.id, requestId))
+      assertNarrowedAllowed(await narrowedCaller(caller.id, this.host, place), { existing })
+      return botStatus(this.threads.view(existing))
+    }
     const [purpose, text] = [need(input.purpose, 'the purpose'), need(input.text, 'the first point (text)')]
     refuseUnsafe(purpose)
     refuseUnsafe(text)
