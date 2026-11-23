@@ -2,8 +2,34 @@
  *  `tabBarMinimizeBehavior="onScrollDown"` works when a NativeTabs tab hosts a nested native Stack.
  *  Controlled by `ENABLE_NESTED_TAB_SCROLL_MINIMIZE` in `ios/app.config.ts`. Delete both once
  *  react-native-screens resolves #4145 natively without `RNS_GAMMA_ENABLED=1`. */
-import type { ExpoConfig } from 'expo/config'
-import { IOSConfig } from 'expo/config-plugins'
+
+export interface TabScrollMinimizeConfig {
+  name?: string
+  slug?: string
+  plugins?: unknown[]
+  [key: string]: unknown
+}
+
+export type WithBuildSourceFile = <T extends TabScrollMinimizeConfig>(
+  config: T,
+  props: { filePath: string; contents: string; overwrite?: boolean }
+) => T
+
+export interface TabScrollMinimizeOptions {
+  enabled?: boolean
+  withBuildSourceFile?: WithBuildSourceFile
+}
+
+declare function require(id: string): unknown
+
+function defaultWithBuildSourceFile(): WithBuildSourceFile {
+  // Loaded lazily so root-only TypeScript checks and unit tests can import this file
+  // without `ios/node_modules` installed while Expo prebuild resolves `expo/config-plugins`.
+  const mod = require('expo/config-plugins') as {
+    IOSConfig: { XcodeProjectFile: { withBuildSourceFile: WithBuildSourceFile } }
+  }
+  return mod.IOSConfig.XcodeProjectFile.withBuildSourceFile
+}
 
 export const TAB_SCROLL_MINIMIZE_FILE = 'LilBotTabScrollMinimize.m'
 
@@ -156,9 +182,10 @@ static void LilBotInstallTabScrollMinimize(void) {
 #endif
 `
 
-export function withTabScrollMinimize(config: ExpoConfig, options: { enabled?: boolean } = {}): ExpoConfig {
+export function withTabScrollMinimize<T extends TabScrollMinimizeConfig>(config: T, options: TabScrollMinimizeOptions = {}): T {
   if (options.enabled === false) return config
-  return IOSConfig.XcodeProjectFile.withBuildSourceFile(config, {
+  const addSourceFile = options.withBuildSourceFile ?? defaultWithBuildSourceFile()
+  return addSourceFile(config, {
     filePath: TAB_SCROLL_MINIMIZE_FILE,
     contents: TAB_SCROLL_MINIMIZE_SOURCE,
     overwrite: true
