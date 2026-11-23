@@ -75,11 +75,7 @@ async function makeHarness() {
     }
   }
   let closed = false
-  const threads = new ThreadService(threadStore, host, () => {
-    queueMicrotask(() => {
-      if (!closed) threads.tick()
-    })
-  })
+  const threads = new ThreadService(threadStore, host, () => queueMicrotask(() => !closed && threads.tick()))
   rw.runner.onToolCall(ev => threads.runner.sawTool(ev.chatId, ev.activity))
   const delegation = new DelegationService(threads, host, async () => 'main-chat', new WorkLinks(work, { clearFor: noop } as any))
   const control = new DelegationControl(threads, host)
@@ -113,6 +109,7 @@ async function makeHarness() {
     engineToken: 'tok',
     port: 1
   })
+  expect(rw.runner.bridge.eventSpacingMs).toBeUndefined()
   const door = startPublicDoor(core.computers, 0, { workers: { ...rw.runner.bridge, eventSpacingMs: 0 } })
   const driver = claudeCodeDriver({ bin: writeDelegationFakeClaude(root), configDir: root, killGraceMs: 300 })
   const controller = new AbortController()

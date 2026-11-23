@@ -173,3 +173,20 @@ test('offline grace reconnect, offline timeout, revocation, deleted bot, and lea
   expect(await restarted.run(f.runInput('restart-1', 't4'))).toMatchObject({ status: 'completed', text: 'during-restart', sessionId: 'sess-r1' })
   d2()
 })
+
+test('production RemoteWorkerRunner bridge leaves eventSpacingMs unset and enforces 250 ms worker.event spacing', () => {
+  const f = makeRunner()
+  expect(f.runner.bridge.eventSpacingMs).toBeUndefined()
+  const disconnect = f.connect('c1')
+  const activities: string[] = []
+  f.runner.onToolCall(ev => activities.push(ev.activity))
+  void f.runner.run(f.runInput('rate-1', 'tr'))
+  const sock = createWorkerSocketState()
+  const send = f.sendTo('c1')
+  const ev = (id: string, name: string) => ({ type: 'worker.event' as const, runId: 'rate-1', tools: [{ toolId: id, name, detail: '', running: true }] })
+  handleWorkerFrame(f.db, 'c1', ev('t1', 'Bash'), sock, 1000, 64, send, f.runner.bridge)
+  handleWorkerFrame(f.db, 'c1', ev('t2', 'Edit'), sock, 1249, 64, send, f.runner.bridge)
+  handleWorkerFrame(f.db, 'c1', ev('t3', 'WebFetch'), sock, 1250, 64, send, f.runner.bridge)
+  expect(activities).toEqual(['Running commands', 'Searching the web'])
+  disconnect()
+})
