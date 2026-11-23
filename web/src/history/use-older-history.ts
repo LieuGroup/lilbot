@@ -1,9 +1,9 @@
 /** React hook: fetches the earlier parts of a bot's conversation, one at a time, as the reader
  *  scrolls up, and reads the earliest part again when the history import brings in more. */
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { canLoadOlder, olderRequest, withOlder } from '../../../shared/client/chat/history-view'
 import { lilbot } from '../app/lilbot-socket'
 import { updateChat, useChatStore } from '../chat/chat-store'
-import { canLoadOlder, olderRequest, withOlder } from './history-view'
 
 /** While importing, the earliest part is read again at most this often. */
 const REREAD_MS = 3000

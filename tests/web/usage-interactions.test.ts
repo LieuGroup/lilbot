@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 
-import { applyChatEvent, emptyChat } from '../../web/src/chat/chat-state'
-import { withUserMessage } from '../../web/src/chat/user-messages'
-import { withOlder } from '../../web/src/history/history-view'
+import { applyChatEvent, emptyChat } from '../../shared/client/chat/chat-state'
+import { withOlder } from '../../shared/client/chat/history-view'
+import { withUserMessage } from '../../shared/client/chat/user-messages'
 import { contextMeterOnClick, toggleOnClick } from '../../web/src/history/usage-trigger'
 import { play } from './chat-helpers'
 

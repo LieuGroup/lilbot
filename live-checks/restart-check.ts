@@ -5,7 +5,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { botCapability } from '../server/bots/bot-capability'
 import type { ChatSnapshot } from '../shared/chat-schema'
-import { applyChatEvent, chatFromSnapshot } from '../web/src/chat/chat-state'
+import { applyChatEvent, chatFromSnapshot } from '../shared/client/chat/chat-state'
 import { RestartServer, reopenChat, waitFor } from './restart-server'
 
 const server = await RestartServer.create()

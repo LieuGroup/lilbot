@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { BotModel, ModelProvider, ReasoningEffort } from '../../shared/bot-schema'
-import { modelFromKey, modelGroups, modelKey, modelLabel, modelPillView } from '../../web/src/bots/model-choice'
+import { modelFromKey, modelGroups, modelKey, modelLabel, modelPillView } from '../../shared/client/bots/model-choice'
 
 const providers: ModelProvider[] = [
   { provider: 'anthropic', name: 'Anthropic', models: ['claude-sonnet-5-5', 'claude-opus-5-5'], capabilities: [] },

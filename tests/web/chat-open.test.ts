@@ -1,8 +1,7 @@
 import { describe, expect, test } from 'bun:test'
-
+import { applyChatEvent, chatFromHistory, chatFromSnapshot, emptyChat, withNewSession } from '../../shared/client/chat/chat-state'
+import { withSentMessage, withUserMessage } from '../../shared/client/chat/user-messages'
 import type { HistoryPage } from '../../shared/history-schema'
-import { applyChatEvent, chatFromHistory, chatFromSnapshot, emptyChat, withNewSession } from '../../web/src/chat/chat-state'
-import { withSentMessage, withUserMessage } from '../../web/src/chat/user-messages'
 import { play, snapshot, texts } from './chat-helpers'
 
 describe('messages with files', () => {
