@@ -1,5 +1,6 @@
 /** What the Computers list says about each machine. Pure. */
 import type { Computer } from '../../../shared/computer-schema'
+import { workerRowSummary } from './coding-engines'
 
 export type ComputerStatus = 'online' | 'offline' | 'conflict'
 
@@ -7,8 +8,14 @@ export interface ComputerRow {
   id: string
   name: string
   status: ComputerStatus
-  /** The 12px line under the name. */
+  /** Base 12px line under the name (OS, status, last seen). */
   line: string
+  /** Coding worker readiness shown after the base line; null for the leader or a key conflict. */
+  workerText: string | null
+  /** Highlighted in ink when the machine is online and ready to host coding workers. */
+  workerReady: boolean
+  /** Trailing note when this browser runs on the computer. */
+  thisDevice: boolean
   isLeader: boolean
   /** The computer bots use when a message comes from a device that is not a computer. */
   main: boolean
@@ -53,13 +60,18 @@ export function computerRows(computers: Computer[], now: number, deviceComputer:
   return computers
     .map(computer => {
       const status = statusOf(computer)
-      const line = lineOf(computer, status, now)
+      const isLeader = computer.id === 'leader'
+      const showWorker = !isLeader && status !== 'conflict' && (status === 'online' || computer.lastSeen !== null)
+      const worker = showWorker ? workerRowSummary(computer) : null
       return {
         id: computer.id,
         name: computer.name,
         status,
-        line: computer.id === deviceComputer && status !== 'conflict' ? `${line} · this device runs on it` : line,
-        isLeader: computer.id === 'leader',
+        line: lineOf(computer, status, now),
+        workerText: worker?.text ?? null,
+        workerReady: status === 'online' && Boolean(worker?.ready),
+        thisDevice: computer.id === deviceComputer && status !== 'conflict',
+        isLeader,
         main: computer.main
       }
     })

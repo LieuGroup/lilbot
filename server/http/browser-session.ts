@@ -15,6 +15,7 @@ import type { WebhookService } from '../webhooks/webhook-service'
 import type { WorkBoard } from '../work/work-board'
 import { boardHandlers } from './board-handlers'
 import { type AfterResponse, BrowserChats } from './browser-chats'
+import { computerHandlers } from './computer-handlers'
 import { type BrowserConnections, connectionHandlers } from './connection-handlers'
 
 function requireService<T>(service: T | undefined, message: string): T {
@@ -28,6 +29,7 @@ export type Handlers = { [M in Method]: (params: z.output<(typeof methods)[M]>, 
 
 export class BrowserSession {
   private chats: BrowserChats
+  private sessionId = crypto.randomUUID()
 
   constructor(
     private bots: BotService,
@@ -67,18 +69,13 @@ export class BrowserSession {
       () => requireService(this.work, 'The work board is unavailable.'),
       () => requireService(this.goals, 'Goals are unavailable.')
     ),
-    'computers.list': async () => requireService(this.computers, 'Computers unavailable.').list(),
-    'computers.installCode': async ({ name }) => ({
-      ...requireService(this.computers, 'Computers unavailable.').auth.code(name),
-      helperUrl: this.addThis?.helperUrl
-    }),
-    'computers.remove': async ({ computer }) => requireService(this.computers, 'Computers unavailable.').remove(computer),
-    'computers.setMain': async ({ computer }) => requireService(this.devices, 'Devices are unavailable.').main.set(computer),
-    'devices.current': async ({ deviceId, name }) => requireService(this.devices, 'Devices are unavailable.').current(deviceId, name),
-    'devices.rename': async ({ deviceId, name }) => requireService(this.devices, 'Devices are unavailable.').rename(deviceId, name),
-    'devices.linkComputer': async ({ deviceId, computer }) => requireService(this.devices, 'Devices are unavailable.').linkComputer(deviceId, computer),
-    'computers.addThis.start': async ({ name, system, deviceId }) => requireService(this.addThis, 'Computers unavailable.').start(name, system, deviceId),
-    'computers.addThis.status': async ({ attemptId }) => requireService(this.addThis, 'Computers unavailable.').status(attemptId),
+    ...computerHandlers(
+      () => requireService(this.computers, 'Computers unavailable.'),
+      () => requireService(this.addThis, 'Computers unavailable.'),
+      () => requireService(this.devices, 'Devices are unavailable.'),
+      () => this.addThis?.helperUrl,
+      this.sessionId
+    ),
     'skills.list': ({ botId }) => this.skills().list(botId),
     'skills.read': ({ botId, name }) => this.skills().read(botId, name),
     'skills.setEnabled': ({ botId, name, enabled }) => this.skills().setEnabled(botId, name, enabled),

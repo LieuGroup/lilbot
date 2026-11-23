@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Dialog, DialogContent } from '@/ui/dialog'
+import { lilbot } from '../app/lilbot-socket'
 import { AddStep } from './add-step'
 import { browserFacts, browserFactsWithChip, canRunHelper, defaultName, detectSystem } from './add-this-system'
 import { useAddAttempt } from './use-add-attempt'
@@ -19,9 +20,36 @@ export default function AddComputerDialog({ onClose, onCommandLine }: { onClose:
 function Body({ onClose, onCommandLine }: { onClose: () => void; onCommandLine: () => void }) {
   const [detected, setDetected] = useState(() => detectSystem(browserFacts()))
   const [name, setName] = useState(() => defaultName(detected.system))
+  const [olderMacVersion, setOlderMacVersion] = useState<string | undefined>()
   useEffect(() => {
     void browserFactsWithChip().then(facts => setDetected(detectSystem(facts)))
   }, [])
+  useEffect(() => {
+    if (detected.system.os !== 'macos') return setOlderMacVersion(undefined)
+    let cancelled = false
+    void lilbot
+      .call('computers.downloads', {})
+      .then(info => {
+        if (cancelled) return
+        const macApp = info.appDownloads.find(download => download.os === 'macos')
+        setOlderMacVersion(macApp && Number(macApp.version) < 2 ? macApp.version : undefined)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [detected.system.os])
   const attempt = useAddAttempt(name, detected.system)
-  return <AddStep attempt={attempt} detected={detected} supported={canRunHelper(detected.system)} name={name} onName={setName} onClose={onClose} onCommandLine={onCommandLine} />
+  return (
+    <AddStep
+      attempt={attempt}
+      detected={detected}
+      supported={canRunHelper(detected.system)}
+      olderMacVersion={olderMacVersion}
+      name={name}
+      onName={setName}
+      onClose={onClose}
+      onCommandLine={onCommandLine}
+    />
+  )
 }

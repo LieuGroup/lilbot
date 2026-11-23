@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test'
-import { generateKeyPairSync, sign } from 'node:crypto'
+import { createHash, generateKeyPairSync, sign } from 'node:crypto'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -37,7 +37,7 @@ function fixture() {
   )
   const settings = helperSettings(env, 3370, 'bot.example.com', service.auth.serverKey.fingerprint)!
   const dir = join(root, 'helper-downloads')
-  const downloads = new HelperDownloads(dir, settings)
+  const downloads = new HelperDownloads(dir, settings, 'https://bot.tail.ts.net:8443')
   cleanups.push(() => {
     service.close()
     db.close()
@@ -45,10 +45,11 @@ function fixture() {
   })
   const build = (file: string, os: string, arch: string, hash = settingsHash(settings)) => {
     const content = `installer ${file}`
+    const sha256 = createHash('sha256').update(content).digest('hex')
     writeFileSync(join(dir, file), content)
     writeFileSync(
       join(dir, `${file}.json`),
-      JSON.stringify({ os, arch, sha256: 'a'.repeat(64), size: content.length, signed: true, link: os === 'macos', version: '1', settings: hash })
+      JSON.stringify({ os, arch, sha256, size: content.length, signed: file.endsWith('.zip'), link: file.endsWith('.zip'), version: '2', settings: hash })
     )
   }
   return { db, service, settings, dir, downloads, build, add: new AddThisComputer(service, downloads), root }
