@@ -20,7 +20,7 @@ const PLUGIN = 'lilbot-memory'
 /** The adapter's source in this repo: the only memory code that is specific to Hermes. */
 const PLUGIN_SOURCE = join(import.meta.dir, 'memory-adapter')
 const SETTINGS_FILE = `${PLUGIN}.json`
-const HERMES_BIN = process.env.LILBOT_HERMES_BIN ?? 'hermes'
+const hermesBin = () => process.env.LILBOT_HERMES_BIN ?? 'hermes'
 const PROFILE_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/
 
 /** The version of the plug-in in this repo, read from its `plugin.yaml`. */
@@ -43,7 +43,7 @@ function installedFolders(home: string): string[] {
 
 async function configSet(botId: string, key: string, value: string) {
   const args = [...(botId === 'default' ? [] : ['-p', botId]), 'config', 'set', key, value]
-  const child = Bun.spawn([HERMES_BIN, ...args], { env: process.env, stdout: 'ignore', stderr: 'pipe' })
+  const child = Bun.spawn([hermesBin(), ...args], { env: process.env, stdout: 'ignore', stderr: 'pipe' })
   const [stderr, code] = await Promise.all([new Response(child.stderr).text(), child.exited])
   if (code !== 0) throw new Error(`hermes config set ${key} exited ${code}: ${stderr.trim().slice(0, 200)}`)
 }

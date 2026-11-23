@@ -9,12 +9,12 @@ interface HermesGrant {
   protocols: string[]
 }
 
-const HERMES_BIN = process.env.LILBOT_HERMES_BIN ?? 'hermes'
+const hermesBin = () => process.env.LILBOT_HERMES_BIN ?? 'hermes'
 
 /** `profile` empty means the default Hermes profile. Never log the result: the ticket is a credential. */
 export async function attachToHermes(profile: string): Promise<HermesGrant> {
   const args = [...(profile ? ['-p', profile] : []), 'gateway', 'attach', '--json']
-  const child = Bun.spawn([HERMES_BIN, ...args], { env: process.env, stdout: 'pipe', stderr: 'pipe' })
+  const child = Bun.spawn([hermesBin(), ...args], { env: process.env, stdout: 'pipe', stderr: 'pipe' })
   const [stdout, stderr, exitCode] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited])
 
   if (exitCode !== 0) {

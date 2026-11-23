@@ -17,13 +17,6 @@ import { join } from 'node:path'
 import { HELPER_REGISTRATION_POINT, isNameExempt, NAME_ALLOWLIST, SCANNED_ROOTS, SERVER_REGISTRATION_POINT } from './boundary-rules'
 import { allEngineAndDriverIds, concreteDriverIds, concreteEngineIds, engineNamesInSource, forbiddenSubfolderImports, importsOf, ROOT, sourceFiles } from './boundary-scanner'
 
-/** Pre-existing engine/driver-name leaks outside engine/driver folders, registration/declaration points, and exact allow-lists.
- *  Adding a new leak fails CI; fixing a listed file requires removing it here so the ratchet only moves to zero. */
-const KNOWN_ENGINE_NAME_LEAKS: Record<string, string> = {
-  'server/deploy/rollback-profiles.ts': 'Lane A (P5)',
-  'server/environment.ts': 'Lane A (P5)'
-}
-
 function concreteImportLeaks(engines: readonly string[]): string[] {
   return SCANNED_ROOTS.flatMap(sourceFiles)
     .flatMap(file => forbiddenSubfolderImports(file, importsOf(file), 'server/engines', engines, SERVER_REGISTRATION_POINT))
@@ -65,11 +58,11 @@ describe('north-star engine & helper driver boundary guard', () => {
     expect(concreteDriverImportLeaks(concreteDriverIds())).toEqual([])
   })
 
-  test('no new file outside engine/driver folders, registration/declaration points, and exact allow-lists names any engine or driver (ratchet)', () => {
-    expect(filesNamingIds(allEngineAndDriverIds())).toEqual(Object.keys(KNOWN_ENGINE_NAME_LEAKS).sort())
+  test('zero files outside engine/driver folders, registration/declaration points, and exact allow-lists name any engine or driver', () => {
+    expect(filesNamingIds(allEngineAndDriverIds())).toEqual([])
   })
 
-  test.failing('[Lane A P5] zero server, shared, or helper files outside engine/driver folders and registration points name any engine or driver', () => {
+  test('zero server, shared, or helper files outside engine/driver folders and registration points name any engine or driver', () => {
     const hits = filesNamingIds(allEngineAndDriverIds()).filter(file => file.startsWith('server/') || file.startsWith('shared/') || file.startsWith('helper/'))
     expect(hits).toEqual([])
   })

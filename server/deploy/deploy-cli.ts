@@ -1,12 +1,14 @@
 import { cp, mkdir, readFile, realpath, rm } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { registeredEngineRollbackHooks } from '../engines/registry'
 import type { Deployment } from './deploy-state'
 import { readJson, writeJson } from './files'
 import { health } from './health'
 import { runMaintenance } from './maintenance'
 import { cleanHead, git, systemctl } from './process'
 import { buildRelease, currentRelease, pruneReleases, releaseCommit } from './releases'
+import { freezeRollbackHooks } from './rollback-profiles'
 
 const checkout = await realpath(process.cwd())
 const dataDir = resolve(process.env.LILBOT_DATA_DIR ?? join(homedir(), '.local/share/lilbot'))
@@ -66,6 +68,7 @@ try {
   try {
     await rm(join(root, 'runner'), { recursive: true, force: true })
     await cp(import.meta.dir, join(root, 'runner'), { recursive: true })
+    await freezeRollbackHooks(join(root, 'runner'), registeredEngineRollbackHooks())
     const release = await buildRelease(checkout, releaseRoot, commit)
     await pruneReleases(releaseRoot, [release, ...(previousRelease ? [previousRelease] : [])])
     if ((await cleanHead(checkout)) !== commit) throw new Error('Source checkout changed during the release build.')
