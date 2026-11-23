@@ -3,7 +3,7 @@ import { accessSync, constants, existsSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { SAFE_WORKER_VERSION } from '../shared/worker-frame-schema'
-import { cleanAgentLine } from './worker-claude-protocol'
+import { cleanAgentLine } from './worker-text'
 
 export const PROBE_MAX_BYTES = 16_384
 

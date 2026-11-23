@@ -19,7 +19,7 @@ async function boot(options?: Parameters<typeof startConformanceApp>[0]) {
 }
 
 describe('engine conformance: safety stop, System MCP completeness, secrets & prompt stability', () => {
-  test.failing('[Lane B PR #251] ComputerService.submit refuses plainly destructive shell commands with no engine plugin', async () => {
+  test('ComputerService.submit refuses plainly destructive shell commands with no engine plugin', async () => {
     const { services, bot } = await boot()
     // Target an offline dummy computer so a pre-fix queue never executes on the real host.
     services.computers.store.add('offline-box', { name: 'Offline Box', os: 'linux', home: '/home/test', capabilities: ['exec'] }, 'dummy-public-key')
@@ -95,7 +95,7 @@ describe('engine conformance: safety stop, System MCP completeness, secrets & pr
     expect(searchText).toContain('alpaca')
   })
 
-  test.failing('[Lane B P1] computer tools are reachable over LilBot System MCP without an engine plugin', async () => {
+  test('computer tools are reachable over LilBot System MCP without an engine plugin', async () => {
     const { engine, services, bot } = await boot()
     let listedOk = false
     let listedText = ''

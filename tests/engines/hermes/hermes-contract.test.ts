@@ -45,11 +45,15 @@ const methods: Record<string, Uses> = {
   },
   'session.create': {
     table: 'x-canonical-methods',
-    sends: ['source', 'request_id', 'client', 'cwd', 'cwd_explicit', 'hidden', 'yolo', 'toolsets', 'model', 'provider', 'reasoning'],
-    reads: ['session_id', 'stored_session_id', 'running', 'execution_generation', 'info']
+    sends: ['source', 'request_id', 'client', 'cwd', 'cwd_explicit', 'hidden', 'yolo', 'ignore_rules', 'toolsets', 'model', 'provider', 'reasoning', 'client_env', 'editor'],
+    reads: ['session_id', 'stored_session_id', 'running', 'execution_generation', 'revision', 'info', 'prompts', 'open_requests']
   },
-  // Operations `model` ({model, provider, reasoning}) and `reasoning` ({effort}); their payloads are not in the schema, so `check:reasoning` exercises both.
-  'session.mutate': { table: 'x-canonical-methods', sends: ['session_id', 'request_id', 'expected_revision', 'expected_generation', 'operation', 'payload'], reads: ['revision'] },
+  // Operations `model`, `reasoning`, plus helper worker ops `edit_policy` ({policy}), `editor_mcp` ({mcp_servers}) and `delete` ({}).
+  'session.mutate': {
+    table: 'x-canonical-methods',
+    sends: ['session_id', 'request_id', 'expected_revision', 'expected_generation', 'operation', 'payload'],
+    reads: ['session_id', 'operation', 'revision']
+  },
   'session.transcript': { table: 'x-canonical-methods', sends: ['session_id', 'cursor', 'limit', 'order'], reads: ['rows', 'next_cursor', 'reset'] },
   // `enabled_toolsets`, `usage` and `tools.show`: what `check:webhooks` reads of a webhook run's session.
   'session.info': { table: 'x-canonical-methods', sends: ['session_id'], reads: ['system_prompt', 'enabled_toolsets', 'usage', 'context_length'] },
@@ -62,9 +66,13 @@ const methods: Record<string, Uses> = {
   'session.resume': {
     table: 'x-canonical-methods',
     sends: ['session_id', 'source', 'display_projection', 'omit_messages'],
-    reads: ['session_id', 'stored_session_id', 'display_messages', 'messages', 'running', 'execution_generation', 'revision', 'info']
+    reads: ['session_id', 'stored_session_id', 'display_messages', 'messages', 'running', 'execution_generation', 'revision', 'info', 'prompts', 'open_requests']
   },
-  'prompt.submit': { table: 'x-canonical-methods', sends: ['session_id', 'text', 'input_id', 'display_kind', 'queued', 'attachments', 'api_text'], reads: ['admission_id'] },
+  'prompt.submit': {
+    table: 'x-canonical-methods',
+    sends: ['session_id', 'text', 'input_id', 'display_kind', 'queued', 'attachments', 'api_text'],
+    reads: ['admission_id', 'execution_generation']
+  },
   'image.attach_bytes': { table: 'x-canonical-methods', sends: ['session_id', 'content_base64'], reads: ['attached', 'path', 'mime'] },
   'prompt.receipt': { table: 'x-canonical-methods', sends: ['session_id', 'admission_id'], reads: ['status', 'outcome'] },
   'session.interrupt': { table: 'x-canonical-methods', sends: ['session_id', 'execution_generation'], reads: [] },
@@ -75,6 +83,7 @@ const methods: Record<string, Uses> = {
   'profiles.create': { table: 'methods', sends: ['name', 'description', 'soul', 'no_alias', 'clone_from', 'model', 'provider'], reads: [] },
   'profiles.configure': { table: 'methods', sends: ['name', 'description', 'soul', 'model', 'provider'], reads: ['ok', 'confirm_required', 'confirm_message'] },
   'approval.pending': { table: 'methods', sends: ['session_id'], reads: ['approvals'] },
+  'approval.respond': { table: 'x-canonical-methods', sends: ['session_id', 'execution_generation', 'prompt_id', 'choice'], reads: ['status', 'prompt_id'] },
   'plugins.manage': { table: 'methods', sends: ['action', 'name', 'enable'], reads: ['ok', 'unchanged'] },
   'config.get': { table: 'methods', sends: ['key'], reads: ['value', 'config'] },
   'config.set': { table: 'methods', sends: ['key', 'value'], reads: ['value'] },
@@ -86,7 +95,7 @@ const methods: Record<string, Uses> = {
   'mcp.servers.add': { table: 'methods', sends: ['name', 'config', 'bearer_token'], reads: [] },
   // With a live chat's `session_id` it commits the profile's servers to that chat in place (`session`: applied, unchanged or busy).
   'reload.mcp': { table: 'methods', sends: ['confirm', 'session_id'], reads: ['session', 'unavailable'] },
-  'model.options': { table: 'methods', sends: [], reads: ['providers'] }
+  'model.options': { table: 'methods', sends: [], reads: ['providers', 'model', 'provider'] }
 }
 
 const events: Record<string, string[]> = {
@@ -97,7 +106,7 @@ const events: Record<string, string[]> = {
   'message.delta': ['text'],
   'tool.start': ['tool_id', 'name', 'context', 'args'],
   'tool.complete': ['tool_id', 'result'],
-  'message.complete': ['status', 'text', 'usage', 'persisted_turn'],
+  'message.complete': ['status', 'text', 'error', 'usage', 'persisted_turn'],
   'session.title': ['title'],
   'session.info': ['model', 'provider', 'reasoning_effort', 'reasoning_effort_wire', 'usage'],
   'session.usage': [
@@ -136,60 +145,44 @@ describe.skipIf(!installed)('Hermes wire contract', () => {
     })
   }
 
-  test('activity replay and list fields are declared', () => {
-    for (const [name, used] of Object.entries({
-      CanonicalSessionListRow: ['session_id', 'id', 'source', 'running', 'started_at'],
-      CanonicalReplayEvent: ['type', 'payload', 'seq'],
-      CanonicalEventsResult: ['replay_epoch', 'last_sequence', 'open_requests', 'truncated']
-    })) {
-      expect(used.filter(key => !fields(contract.components.schemas[name]).has(key))).toEqual([])
-    }
-  })
-
-  test('reload.mcp names what it did to the calling chat and mcp.servers.status rows declare connection state', () => {
-    expect(contract.components.schemas.ReloadMcpSession.enum).toEqual(expect.arrayContaining(['applied', 'unchanged', 'busy']))
-    expect(['name', 'connected', 'status'].filter(key => !fields(contract.components.schemas.McpServerRuntimeRow).has(key))).toEqual([])
-  })
-
-  test('model inventory declares the provider fields used for validation and the per-model capabilities', () => {
+  test('declared schemas keep every field LilBot and the helper driver read', () => {
     const schemas = contract.components.schemas
-    expect(['slug', 'name', 'authenticated', 'models', 'capabilities'].filter(key => !fields(schemas.ModelOptionProvider).has(key))).toEqual([])
-    expect(['reasoning', 'can_disable_reasoning'].filter(key => !fields(schemas.ModelCapabilities).has(key))).toEqual([])
+    const required: Record<string, string[]> = {
+      CanonicalSessionListRow: ['session_id', 'id', 'resolved_id', 'source', 'running', 'started_at'],
+      CanonicalReplayEvent: ['type', 'payload', 'seq'],
+      CanonicalEventsResult: ['replay_epoch', 'last_sequence', 'open_requests', 'truncated'],
+      McpServerRuntimeRow: ['name', 'connected', 'status'],
+      ModelOptionProvider: ['slug', 'name', 'authenticated', 'models', 'capabilities'],
+      ModelCapabilities: ['reasoning', 'can_disable_reasoning'],
+      CanonicalSnapshotInfo: ['model', 'provider', 'reasoning_effort', 'reasoning_effort_wire', 'context_length', 'usage', 'source', 'launch_request'],
+      CanonicalAttachment: ['path', 'mime'],
+      StoredTranscriptRow: ['row_id', 'row_kind', 'timestamp', 'display_kind', 'role', 'text', 'tool_call_id', 'name', 'context', 'content', 'compacted_messages'],
+      TranscriptMessage: ['role', 'text', 'tool_call_id', 'name', 'context', 'content', 'display_kind', 'timestamp'],
+      Usage: ['input', 'output', 'cache_read', 'cache_write', 'context_used', 'context_max', 'compressions', 'calls'],
+      PersistedTurn: ['final_assistant_row_id'],
+      CanonicalPendingPrompt: ['kind', 'prompt_id', 'execution_generation', 'choices'],
+      OpenRequestEntry: ['id', 'method', 'params']
+    }
+    for (const [name, used] of Object.entries(required)) expect(used.filter(k => !fields(schemas[name]).has(k))).toEqual([])
+    expect(schemas.ReloadMcpSession.enum).toEqual(expect.arrayContaining(['applied', 'unchanged', 'busy']))
+    expect(schemas.StoredTranscriptRow.properties?.row_kind?.enum ?? []).toContain('compaction')
+    expect(schemas.TurnStatus?.enum ?? []).toEqual(expect.arrayContaining(['complete', 'error', 'interrupted']))
+    expect(schemas.CanonicalCreateParams.properties.source.enum).toContain('acp')
+    expect(schemas.CanonicalListParams.properties.scope.enum).toEqual(expect.arrayContaining(['live', 'stored']))
+    expect(schemas.CanonicalCorrectionAck.properties.status.enum).toEqual(expect.arrayContaining(['queued', 'redirected']))
   })
 
-  test('a session reports the effort it chose and the one it really sends, plus context window and usage', () => {
-    const info = fields(contract.components.schemas.CanonicalSnapshotInfo)
-    expect(['model', 'provider', 'reasoning_effort', 'reasoning_effort_wire', 'context_length', 'usage'].filter(key => !info.has(key))).toEqual([])
-  })
-
-  test('attachment input fields remain declared', () => {
-    expect(['path', 'mime'].filter(key => !fields(contract.components.schemas.CanonicalAttachment).has(key))).toEqual([])
-  })
-
-  test('history transcript fields and compaction row kind remain declared', () => {
-    const rowSchema = contract.components.schemas.StoredTranscriptRow
-    expect(
-      ['row_id', 'row_kind', 'timestamp', 'display_kind', 'role', 'text', 'tool_call_id', 'name', 'context', 'content', 'compacted_messages'].filter(
-        key => !fields(rowSchema).has(key)
-      )
-    ).toEqual([])
-    expect(rowSchema.properties?.row_kind?.enum ?? []).toContain('compaction')
-  })
-
-  test('thread transcript fields remain declared', () => {
-    expect(
-      ['role', 'text', 'tool_call_id', 'name', 'context', 'content', 'display_kind', 'timestamp'].filter(key => !fields(contract.components.schemas.TranscriptMessage).has(key))
-    ).toEqual([])
-  })
-
-  test('usage and persisted_turn declare token, cache, context and assistant row fields', () => {
-    const usageFields = fields(contract.components.schemas.Usage)
-    expect(['input', 'output', 'cache_read', 'cache_write', 'context_used', 'context_max', 'compressions', 'calls'].filter(key => !usageFields.has(key))).toEqual([])
-    expect(fields(contract.components.schemas.PersistedTurn).has('final_assistant_row_id')).toBe(true)
-  })
-
-  test('message.complete status still has the values LilBot maps', () => {
-    const statuses: string[] = contract.components.schemas.TurnStatus?.enum ?? []
-    for (const status of ['complete', 'error', 'interrupted']) expect(statuses).toContain(status)
+  // Note: Hermes's gateway/session_pending_controls.py publishes live turn approvals as `approval.request`
+  // notifications carrying the declared `CanonicalPendingPrompt` shape (answered via the declared `approval.respond`
+  // method), even though OpenRPC `x-notifications` omits `approval.request` and only lists `x-server-requests: approval`.
+  // The helper driver handles both paths so approvals settle under either gateway delivery path.
+  test('helper Hermes worker driver server-requests (approval, clarify) remain declared', () => {
+    const approvalReq = entry('x-server-requests', 'approval')
+    expect(approvalReq).toBeDefined()
+    expect(['session_id', 'request_id'].filter(k => !fields(approvalReq.params?.[0]?.schema).has(k))).toEqual([])
+    expect(fields(approvalReq.result?.schema).has('choice')).toBe(true)
+    const clarifyReq = entry('x-server-requests', 'clarify')
+    expect(clarifyReq).toBeDefined()
+    expect(['answers', 'outcome'].filter(k => !fields(clarifyReq.result?.schema).has(k))).toEqual([])
   })
 })

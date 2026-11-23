@@ -2,6 +2,7 @@ import { homedir, hostname, platform } from 'node:os'
 import { operate } from '../../helper/operations'
 import { ComputerCopy, ComputerRequestRef, ComputerSubmit } from '../../shared/computer-schema'
 import { backgroundFailure, backgroundTask } from '../background'
+import { assertCommandSafe } from './command-safety'
 import { ComputerAuth } from './computer-auth'
 import type { ComputerStore } from './computer-store'
 import type { ServerKey } from './server-key'
@@ -158,6 +159,7 @@ export class ComputerService {
   async submit(bot: string, raw: unknown) {
     const input = ComputerSubmit.parse(raw)
     const computer = this.require(bot, input.computer)
+    if (input.operation.kind === 'exec') assertCommandSafe(input.operation.command, computer.home)
     const old = this.store.get(bot, input.computer, input.requestId)
     if (!computer.online && !input.background && !old) throw new Error('Computer offline. Retry when online, or explicitly queue a background request.')
     if (!computer.capabilities.includes(input.operation.kind)) throw new Error('Computer does not support this operation.')

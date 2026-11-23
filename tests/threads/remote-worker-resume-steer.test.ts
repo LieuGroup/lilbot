@@ -79,17 +79,22 @@ test('PR #235 Medium #2 & #4: unsafe replies withheld; lost --resume cleared; un
   expect(threadStore.get(badEx).messages.at(-1)?.withheld).toBe(true)
 
   // Medium #4a: lost --resume session clears persisted sessionId so the 3rd run starts fresh.
+  // Also verifies P7b: continuation omits systemPrompt (does not rebuild or re-send), while fresh retry rebuilds it.
   outbound.length = 0
   const ex1 = (await delegation.delegate('b1', { requestId: 'm4a-1', tasks: [{ worker: true, computer: compId, cwd: '/tmp', task: 'R1' }] })).exchanges[0].exchangeId
   threads.tick()
   await until(() => starts().length === 1)
+  expect(starts()[0].systemPrompt).toContain('<lilbot-remote-worker>')
   rw.runner.bridge.onFrame(compId, { type: 'worker.done', runId: starts()[0].runId, status: 'completed', sessionId: 'sess-dead', text: 'ok 1', items: [] }, () => true)
   await until(() => threadStore.get(ex1).status === 'finished')
 
+  // Mutate memory mid-task; continuation must not rebuild or re-send systemPrompt.
+  core.memory.write({ botId: 'b1', author: 'bot', kind: 'profile', scope: 'bot', text: 'Mid-task memory canary 9812.' })
   await delegation.delegate('b1', { requestId: 'm4a-2', tasks: [{ exchangeId: ex1, task: 'R2' }] })
   threads.tick()
   await until(() => starts().length === 2)
   expect(starts()[1].sessionId).toBe('sess-dead')
+  expect(starts()[1].systemPrompt).toBeUndefined()
   rw.runner.bridge.onFrame(
     compId,
     { type: 'worker.done', runId: starts()[1].runId, status: 'failed', error: 'No conversation found with session ID: sess-dead', text: '', items: [] },
@@ -103,6 +108,7 @@ test('PR #235 Medium #2 & #4: unsafe replies withheld; lost --resume cleared; un
   threads.tick()
   await until(() => starts().length === 3)
   expect(starts()[2].sessionId).toBeUndefined()
+  expect(starts()[2].systemPrompt).toContain('Mid-task memory canary 9812.')
   rw.runner.bridge.onFrame(compId, { type: 'worker.done', runId: starts()[2].runId, status: 'completed', sessionId: 'sess-fresh', text: 'ok 3', items: [] }, () => true)
   await until(() => threadStore.get(ex1).status === 'finished')
 

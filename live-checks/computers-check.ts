@@ -2,6 +2,7 @@ import { devScratch } from '../scripts/dev-env'
 import { startServer, deleteProfile } from './check-process'
 import { checkLifecycle } from './computers-lifecycle'
 import { checkPinning } from './computers-pinning'
+import { checkSafetyStops } from './computers-safety'
 /** Isolated server + compiled helper. Never installs a service or changes real bots. */
 
 import { createPublicKey, generateKeyPairSync } from 'node:crypto'
@@ -104,6 +105,7 @@ try {
   if (written.status !== 'completed' || Buffer.from(read.result.output, 'base64').toString() !== 'FILE_OK' || exec.result.output !== 'EXEC_OK')
     throw new Error('Bot computer tools did not complete')
   console.log('PASS: real bot listed computers, executed, wrote and read through plugin')
+  await checkSafetyStops({ port, token, botId: bot.id, computerId: identity.id })
   await stopHelper()
   await eventually(async () => !(await call('computers.list')).find((c: any) => c.id === identity.id).online)
   const input = { computer: identity.id, requestId: 'offline-once', background: true, operation: { kind: 'exec', command: `printf ONCE >> '${scratch}/once'` } }

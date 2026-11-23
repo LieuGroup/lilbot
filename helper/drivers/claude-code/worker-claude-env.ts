@@ -2,9 +2,8 @@
 import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { resolveTrustedBinary } from './worker-bin'
+import { resolveTrustedBinary } from '../../worker-bin'
 
-export const expandWorkerCwd = (raw: string) => (raw === '~' ? homedir() : raw.startsWith('~/') ? join(homedir(), raw.slice(2)) : raw)
 const workerRunsDir = (dir?: string) => join(dir ?? process.env.LILBOT_HELPER_CONFIG_DIR ?? join(homedir(), '.config', 'lilbot-helper'), 'worker-runs')
 
 /** Removes stale per-run MCP config files left behind by an abrupt crash or SIGKILL. */

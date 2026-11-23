@@ -37,7 +37,13 @@ const TOKEN = 'engine-token-for-tests'
 const PORT = 3997
 const COMMIT = 'abcdef0123456789abcdef0123456789abcdef01'
 
-export function systemFixture({ t3Enabled = false }: { t3Enabled?: boolean } = {}) {
+const DEFAULT_COMPUTERS = [
+  { id: 'leader', name: 'leader-box', os: 'linux', online: true, lastSeen: 1700000000000, keyConflict: false, main: false },
+  { id: 'mac', name: 'MacBook', os: 'darwin', online: false, lastSeen: 1700000000000, keyConflict: false, main: true }
+]
+type FixtureOpts = { t3Enabled?: boolean; makeComputers?: (fake: ReturnType<typeof fakeService>, workspaces: Workspaces) => ComputerService }
+
+export function systemFixture({ t3Enabled = false, makeComputers }: FixtureOpts = {}) {
   const fake = fakeService()
   const state = { memoryPushes: 0, t3: { state: 'connected', expiresAt: Date.now() + 86_400_000 } as T3ConnectionStatus }
   const changes = new SystemChanges(fake.database)
@@ -45,13 +51,8 @@ export function systemFixture({ t3Enabled = false }: { t3Enabled?: boolean } = {
   const routineStore = new RoutineStore(fake.database)
   const threadStore = new ThreadStore(fake.database)
   const webhooks = new WebhookService(webhookStore, fake.service, TOKEN, 'https://door.example')
-  const computers = {
-    list: () => [
-      { id: 'leader', name: 'leader-box', os: 'linux', online: true, lastSeen: 1700000000000, keyConflict: false, main: false },
-      { id: 'mac', name: 'MacBook', os: 'darwin', online: false, lastSeen: 1700000000000, keyConflict: false, main: true }
-    ]
-  } as unknown as ComputerService
   const workspaces = new Workspaces(fake.root)
+  const computers = makeComputers?.(fake, workspaces) ?? ({ list: () => DEFAULT_COMPUTERS } as unknown as ComputerService)
   const host = {
     requireBot: (id: string) => fake.service.requireBot(id),
     listBots: () => fake.service.listBots(),

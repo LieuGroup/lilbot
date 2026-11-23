@@ -25,9 +25,10 @@ that apply everywhere (the helper door's two paths, secrets, full access, untrus
   `keyConflict` reports a competing key connection.
 - LilBot creates `computer-server-key.pem` (0600) in its data directory; back it up with the database and preserve it on
   redeploy.
-- Computer hard stops (Hermes' `detect_hardline_command`) are a guard for full-access bots, not a security boundary:
-  direct engine submissions and write/copy operations do not enforce Hermes' protected-path refusals. Full-access bots
-  share the OS user's authority. Machine output is untrusted data.
+- Computer hard stops are enforced by LilBot in `ComputerService.submit` (`server/computers/command-safety.ts`) for
+  every caller regardless of engine. They are a guard for full-access bots, not a security boundary: write/copy
+  operations do not enforce protected-path refusals, and full-access bots share the OS user's authority. Machine output
+  is untrusted data.
 - Deliver the helper binary and its `.sha256` from a trusted channel; the sidecar detects corruption, not tampering.
 - A failure to configure the computers plug-in is logged without making the bot unavailable.
 
@@ -309,13 +310,17 @@ macOS and Linux helpers are covered; Windows is not covered (process-group termi
   `'worker'` in `ComputerHello.capabilities` and their `{ driver, version }` entries in `workerAgents` (also refreshed
   via signed `worker.capabilities` frames). A computer with no coding agent stays usable for commands and simply omits
   the `worker` capability.
-- **Driver interface and Claude Code CLI:** `helper/worker-driver.ts` defines the engine-neutral `WorkerDriver`
-  contract so additional agents can plug in beside it. `helper/worker-claude-protocol.ts` and
-  `helper/worker-driver-claude.ts` implement the Claude Code CLI driver (`claude -p --output-format stream-json
+- **Driver interface and per-driver folders:** `helper/worker-driver.ts` defines the engine-neutral `WorkerDriver`
+  contract; concrete drivers and detect-only probes live under `helper/drivers/<id>/` and register only in
+  `helper/drivers/registry.ts` (declared on the leader only in `server/computers/remote-worker-drivers.ts`).
+  `helper/drivers/claude-code/` implements the Claude Code CLI driver (`claude -p --output-format stream-json
   --input-format stream-json --verbose --permission-mode bypassPermissions --strict-mcp-config --mcp-config <file>
-  --model <model>` with optional `--effort`, `--append-system-prompt`, and `--resume`). LilBot passes the bot's model
-  and effort through and stores no provider key file on added computers: the agent uses whatever sign-in that machine
-  already has, and model refusals surface as a failed worker with the agent's plain reason.
+  --model <model>` with optional `--effort`, `--append-system-prompt`, and `--resume`), and `helper/drivers/hermes/`
+  implements the Hermes canonical-gateway driver (passing `no_mcp` so personal `config.yaml` MCP servers are never
+  inherited, holding LilBot's scoped MCP tools in gateway RAM via `editor.mcp_servers`, and refusing fast when
+  `compression.checkpoint_required` is enabled). LilBot passes the bot's model and effort through and stores no
+  provider key file on added computers: the agent uses whatever sign-in that machine already has, and model refusals
+  surface as a failed worker with the agent's plain reason.
 - **Session files:** the Claude Code driver intentionally leaves Claude Code's own session persistence enabled (it does
   not pass `--no-session-persistence`) because follow-up turns and post-interrupt recovery depend on `--resume
   <session_id>`. Claude Code manages those files under its own home folder; LilBot never writes secrets into prompts
