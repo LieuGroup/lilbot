@@ -1,7 +1,7 @@
 /** Shared boundary constants and exact display/copy allow-lists for the engine and helper-driver guard. */
 import type { NameScanAllowlist } from './boundary-scanner'
 
-export const SERVER_REGISTRATION_POINT = 'server/engines/registry.ts'
+export const SERVER_REGISTRATION_POINTS = ['server/engines/registry.ts', 'server/engines/metadata.ts'] as const
 export const HELPER_REGISTRATION_POINT = 'helper/drivers/registry.ts'
 export const LEADER_DRIVER_DECLARATION = 'server/computers/remote-worker-drivers.ts'
 export const SCANNED_ROOTS = ['server', 'shared', 'web', 'ios', 'helper'] as const
@@ -28,6 +28,6 @@ export const NAME_ALLOWLIST: Record<string, NameScanAllowlist> = {
 }
 
 export function isNameExempt(file: string, engines: readonly string[], drivers: readonly string[]): boolean {
-  if (file === SERVER_REGISTRATION_POINT || file === HELPER_REGISTRATION_POINT || file === LEADER_DRIVER_DECLARATION) return true
+  if ((SERVER_REGISTRATION_POINTS as readonly string[]).includes(file) || file === HELPER_REGISTRATION_POINT || file === LEADER_DRIVER_DECLARATION) return true
   return engines.some(id => file.startsWith(`server/engines/${id}/`)) || drivers.some(id => file.startsWith(`helper/drivers/${id}/`))
 }

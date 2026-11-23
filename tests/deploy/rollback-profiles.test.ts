@@ -3,9 +3,10 @@ import { expect, test } from 'bun:test'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { freezeRollbackHooks, loadRollbackHooks, runEngineRollbacks } from '../../server/deploy/rollback-profiles'
+import { loadRollbackHooks, runEngineRollbacks } from '../../server/deploy/rollback-profiles'
+import { freezeRollbackHooks } from '../../server/deploy/stage-runner'
 import { rollbackHook as hermesRollbackHook, rollbackProfiles, serviceEnvironment } from '../../server/engines/hermes/hermes-rollback'
-import { registeredEngineRollbackHooks } from '../../server/engines/registry'
+import { registeredEngineRollbackHooks } from '../../server/engines/metadata'
 
 const dev = { LILBOT_ENV: 'development', HERMES_HOME: '/home/u/lilbot-dev/hermes' }
 
@@ -43,13 +44,14 @@ test('a rollback clears the flag only where it is set, for bound bots that are n
       mode: 0o755
     })
     const printed = `LILBOT_ENV=development HERMES_HOME=${dev.HERMES_HOME} LILBOT_HERMES_BIN=${hermes}`
-    expect(await runEngineRollbacks(database, printed, { hooks: [hermesRollbackHook] })).toEqual({ cleared: 1, failed: 0 })
+    // lilbot-4 belongs to engine 'other' which has no matching hook -> counted as 1 failure alongside hermes's 1 clear.
+    expect(await runEngineRollbacks(database, printed, { hooks: [hermesRollbackHook] })).toEqual({ cleared: 1, failed: 1 })
     expect(readFileSync(log, 'utf8').trim().split('\n')).toEqual([
       `${dev.HERMES_HOME} -p dev-on config get compression.checkpoint_required`,
       `${dev.HERMES_HOME} -p dev-on config set compression.checkpoint_required false`,
       `${dev.HERMES_HOME} -p dev-off config get compression.checkpoint_required`
     ])
-    expect(await runEngineRollbacks(database, null, { hooks: [hermesRollbackHook] })).toEqual({ cleared: 0, failed: 2 })
+    expect(await runEngineRollbacks(database, null, { hooks: [hermesRollbackHook] })).toEqual({ cleared: 0, failed: 3 })
     expect(await runEngineRollbacks(join(root, 'missing.db'), printed, { hooks: [hermesRollbackHook] })).toEqual({ cleared: 0, failed: 1 })
   } finally {
     rmSync(root, { recursive: true, force: true })
@@ -105,7 +107,8 @@ export const rollbackHook = {
     db2.close()
     const loaded = await loadRollbackHooks(hooksDir)
     expect(loaded.map(h => h.engineId)).toEqual(['broken', 'second'])
-    expect(await runEngineRollbacks(database, printed, { hooksDir })).toEqual({ cleared: 1, failed: 1 })
+    // b2 ('second') clears; b4 ('broken') fails via stub; b1 ('hermes') has no hook in manifest so also counts as failed.
+    expect(await runEngineRollbacks(database, printed, { hooksDir })).toEqual({ cleared: 1, failed: 2 })
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

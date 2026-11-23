@@ -109,6 +109,40 @@ test('environment guards enforce arbitrary registered engines without naming the
   expect(() => assertServerEnvironment({ ...baseDev, SECOND_LOCKS: undefined }, [secondEngine])).toThrow('Development requires SECOND_LOCKS')
 })
 
+test('environment guards fail closed when rules are empty or malformed', () => {
+  expect(() => assertDevelopmentTarget({ HERMES_HOME: join(homedir(), '.hermes') }, [])).toThrow('at least one registered engine rule')
+  expect(() => assertServerEnvironment({ ...development, HERMES_HOME: join(homedir(), '.hermes') }, [])).toThrow('at least one registered engine rule')
+  expect(() => assertServerEnvironment({ LILBOT_ENV: 'production' }, [])).toThrow('at least one registered engine rule')
+  const badRules: unknown[][] = [
+    [null],
+    [{ engineId: '', protectedDevPaths: () => ({}), requiredDevPathVars: [] }],
+    [{ engineId: '../bad', protectedDevPaths: () => ({}), requiredDevPathVars: [] }],
+    [{ engineId: 'a', protectedDevPaths: 'not-a-fn', requiredDevPathVars: [] }],
+    [{ engineId: 'a', protectedDevPaths: () => null, requiredDevPathVars: [] }],
+    [{ engineId: 'a', protectedDevPaths: () => ['bad'], requiredDevPathVars: [] }],
+    [{ engineId: 'a', protectedDevPaths: () => ({ FOO: '' }), requiredDevPathVars: [] }],
+    [
+      {
+        engineId: 'a',
+        protectedDevPaths: () => {
+          throw new Error('rule boom')
+        },
+        requiredDevPathVars: []
+      }
+    ],
+    [{ engineId: 'a', protectedDevPaths: () => ({}), requiredDevPathVars: 'not-an-array' }],
+    [{ engineId: 'a', protectedDevPaths: () => ({}), requiredDevPathVars: [''] }],
+    [
+      { engineId: 'dup', protectedDevPaths: () => ({}), requiredDevPathVars: [] },
+      { engineId: 'dup', protectedDevPaths: () => ({}), requiredDevPathVars: [] }
+    ]
+  ]
+  for (const rules of badRules) {
+    expect(() => assertDevelopmentTarget(development, rules as any)).toThrow()
+    expect(() => assertServerEnvironment(development, rules as any)).toThrow()
+  }
+})
+
 test('importing reusable check helpers does not select a development environment', async () => {
   const child = Bun.spawn(
     [

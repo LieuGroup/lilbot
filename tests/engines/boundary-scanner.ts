@@ -127,10 +127,9 @@ export function relativeImportsInSource(source: string, filePath: string): strin
 
 export const importsOf = (file: string) => relativeImportsInSource(readFileSync(join(ROOT, file), 'utf8'), file)
 
-/** Returns disallowed imports from `file` into any concrete subfolder under `baseDir` (e.g. `server/engines` or `helper/drivers`).
- *  Only `registrationPoint` and files inside the same `<baseDir>/<id>/` folder may import from `<baseDir>/<id>/`. */
-export function forbiddenSubfolderImports(file: string, targets: readonly string[], baseDir: string, ids: readonly string[], registrationPoint: string): string[] {
-  if (file === registrationPoint) return []
+/** Disallowed imports from `file` into `<baseDir>/<id>/`; only `allowed` registration points and the same folder may import it. */
+export function forbiddenSubfolderImports(file: string, targets: readonly string[], baseDir: string, ids: readonly string[], allowed: string | readonly string[]): string[] {
+  if (Array.isArray(allowed) ? allowed.includes(file) : file === allowed) return []
   const ownId = ids.find(id => file.startsWith(`${baseDir}/${id}/`))
   return targets.filter(target => ids.some(id => id !== ownId && (target === `${baseDir}/${id}` || target.startsWith(`${baseDir}/${id}/`)))).map(target => `${file} -> ${target}`)
 }

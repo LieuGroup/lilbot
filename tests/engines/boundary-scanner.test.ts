@@ -1,7 +1,7 @@
 /** Self-tests for the AST boundary scanner: verifies every import dodge, cross-driver isolation,
  *  registration/declaration points, built-string/comment-marker tricks, exact allow-lists, and harmless cases. */
 import { describe, expect, test } from 'bun:test'
-import { HELPER_REGISTRATION_POINT, isNameExempt, LEADER_DRIVER_DECLARATION, NAME_ALLOWLIST, SERVER_REGISTRATION_POINT } from './boundary-rules'
+import { HELPER_REGISTRATION_POINT, isNameExempt, LEADER_DRIVER_DECLARATION, NAME_ALLOWLIST, SERVER_REGISTRATION_POINTS } from './boundary-rules'
 import { engineNamesInSource, forbiddenSubfolderImports, relativeImportsInSource } from './boundary-scanner'
 
 describe('boundary scanner self-tests', () => {
@@ -22,7 +22,7 @@ describe('boundary scanner self-tests', () => {
     ]
     for (const [label, code] of engineCases) {
       const targets = relativeImportsInSource(code, 'server/bots/example.ts')
-      expect(forbiddenSubfolderImports('server/bots/example.ts', targets, 'server/engines', engines, SERVER_REGISTRATION_POINT).length, label).toBeGreaterThan(0)
+      expect(forbiddenSubfolderImports('server/bots/example.ts', targets, 'server/engines', engines, SERVER_REGISTRATION_POINTS).length, label).toBeGreaterThan(0)
     }
 
     const testCases: [string, string][] = [
@@ -57,7 +57,7 @@ describe('boundary scanner self-tests', () => {
         relativeImportsInSource(`import { x } from '../hermes/hermes-engine'`, 'server/engines/scripted/scripted-engine.ts'),
         'server/engines',
         engines,
-        SERVER_REGISTRATION_POINT
+        SERVER_REGISTRATION_POINTS
       )
     ).toEqual(['server/engines/scripted/scripted-engine.ts -> server/engines/hermes/hermes-engine'])
     expect(
@@ -66,16 +66,16 @@ describe('boundary scanner self-tests', () => {
         relativeImportsInSource(`import { x } from '../engines/hermes/hermes-engine'`, LEADER_DRIVER_DECLARATION),
         'server/engines',
         engines,
-        SERVER_REGISTRATION_POINT
+        SERVER_REGISTRATION_POINTS
       )
     ).toEqual([`${LEADER_DRIVER_DECLARATION} -> server/engines/hermes/hermes-engine`])
 
-    // Name exemptions cover only engine/driver folders and the three registration/declaration points.
+    // Name exemptions cover only engine/driver folders and the registration/declaration points.
     expect(isNameExempt('helper/drivers/hermes/session.ts', engines, drivers)).toBe(true)
     expect(isNameExempt('helper/drivers/claude-code/driver.ts', engines, drivers)).toBe(true)
     expect(isNameExempt(HELPER_REGISTRATION_POINT, engines, drivers)).toBe(true)
     expect(isNameExempt(LEADER_DRIVER_DECLARATION, engines, drivers)).toBe(true)
-    expect(isNameExempt(SERVER_REGISTRATION_POINT, engines, drivers)).toBe(true)
+    for (const point of SERVER_REGISTRATION_POINTS) expect(isNameExempt(point, engines, drivers)).toBe(true)
     expect(isNameExempt('helper/worker-host.ts', engines, drivers)).toBe(false)
     expect(isNameExempt('server/computers/remote-worker-select.ts', engines, drivers)).toBe(false)
   })

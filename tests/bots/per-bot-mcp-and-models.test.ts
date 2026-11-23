@@ -137,6 +137,17 @@ test('MCP probe and service forwarding resolve mcpToolName from the calling botâ
     { botId: botB.id, tool: 'b::lilbot_c_svc_b::a-b' },
     { botId: botA.id, tool: 'a_lilbot_c_svc_b_a_b' }
   ])
+
+  // Forwarding tools/list refreshes stored toolNames using the calling bot's own engine normalizer (not default engine-a).
+  const keyB = connectionKey(f.token, serviceKeyPurpose(addedByA.id), botB.id)
+  const listReq = new Request(`http://127.0.0.1:${f.port}/engine/connections/${addedByA.id}/mcp`, {
+    method: 'POST',
+    headers: { host: `127.0.0.1:${f.port}`, authorization: `Bearer ${keyB}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} })
+  })
+  const listRes = await f.connections.forward(listReq, `/engine/connections/${addedByA.id}/mcp`)
+  expect(listRes.status).toBe(200)
+  expect(f.connections.services.get(addedByA.id)?.toolNames).toEqual(['a-b', 'a.b'])
 })
 
 test('models.list and lilbot_models_list return models for the requested bot or engine', async () => {

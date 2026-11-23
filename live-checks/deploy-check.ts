@@ -96,6 +96,10 @@ try {
   restored.close()
   assert.equal(await readFile(join(f.data, 'computer-server-key.pem'), 'utf8'), key)
   assert.equal((await stat(join(f.data, 'deploy/notice.json'))).mode & 0o777, 0o600)
+  assert.equal((await stat(join(f.data, 'deploy/runner'))).mode & 0o777, 0o700)
+  assert.equal((await stat(join(f.data, 'deploy/runner/engine-hooks'))).mode & 0o777, 0o700)
+  assert.equal((await stat(join(f.data, 'deploy/runner/engine-hooks/manifest.json'))).mode & 0o777, 0o600)
+  assert.equal((await stat(join(f.data, 'deploy/runner/engine-hooks/hermes.ts'))).mode & 0o777, 0o600)
   const socket = new WebSocket(`ws://127.0.0.1:${f.port}/ws`)
   try {
     await within(

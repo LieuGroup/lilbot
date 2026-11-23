@@ -1,10 +1,11 @@
 /** North-star boundary guard:
- *  - Server engines live under `server/engines/<id>/` and register only in `server/engines/registry.ts`.
+ *  - Server engines live under `server/engines/<id>/` and register only in `server/engines/registry.ts` (runtime)
+ *    and `server/engines/metadata.ts` (pure environment/rollback metadata with zero runtime engine imports).
  *  - Helper drivers live under `helper/drivers/<id>/`, register only in `helper/drivers/registry.ts`,
  *    and are declared on the leader only in `server/computers/remote-worker-drivers.ts`.
  *  - No file outside an engine/driver's own folder and its registration point may import into it (including
  *    cross-engine and cross-driver imports), no product folder may import from `tests/`, and no file outside
- *    those folders, the three registration/declaration points, and exact display/copy allow-lists may name any
+ *    those folders, the registration/declaration points, and exact display/copy allow-lists may name any
  *    server engine or helper driver id.
  *
  *  Accepted lexical limits (so this guard is not mistaken for formal proof):
@@ -14,12 +15,12 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { HELPER_REGISTRATION_POINT, isNameExempt, NAME_ALLOWLIST, SCANNED_ROOTS, SERVER_REGISTRATION_POINT } from './boundary-rules'
+import { HELPER_REGISTRATION_POINT, isNameExempt, NAME_ALLOWLIST, SCANNED_ROOTS, SERVER_REGISTRATION_POINTS } from './boundary-rules'
 import { allEngineAndDriverIds, concreteDriverIds, concreteEngineIds, engineNamesInSource, forbiddenSubfolderImports, importsOf, ROOT, sourceFiles } from './boundary-scanner'
 
 function concreteImportLeaks(engines: readonly string[]): string[] {
   return SCANNED_ROOTS.flatMap(sourceFiles)
-    .flatMap(file => forbiddenSubfolderImports(file, importsOf(file), 'server/engines', engines, SERVER_REGISTRATION_POINT))
+    .flatMap(file => forbiddenSubfolderImports(file, importsOf(file), 'server/engines', engines, SERVER_REGISTRATION_POINTS))
     .sort()
 }
 
@@ -48,10 +49,11 @@ describe('north-star engine & helper driver boundary guard', () => {
     expect(testImports).toEqual([])
   })
 
-  test('zero files outside engine folders and server/engines/registry.ts import a concrete engine', () => {
+  test('zero files outside engine folders and server/engines/{registry,metadata}.ts import a concrete engine', () => {
     const engines = concreteEngineIds()
     expect(engines).toContain('scripted')
     expect(concreteImportLeaks(engines)).toEqual([])
+    expect(importsOf('server/engines/metadata.ts').filter(target => target.endsWith('-engine'))).toEqual([])
   })
 
   test('zero files outside a helper driver folder and helper/drivers/registry.ts import from any helper driver folder', () => {
