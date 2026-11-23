@@ -6,9 +6,8 @@ import type { WorkCheckStore } from './work-check-store'
 
 export const NO_MEMORY = 'This session is a check: it has no memory and no earlier conversations. Check the claim from the real thing.'
 export const NO_SKILLS = 'A check of yours is under way, and a skill change cannot say which session it comes from: skills are not changed meanwhile. Try again once it ends.'
-export const NO_COMPUTERS = 'This session is a check: computer tools are not allowed during a check.'
 export const NO_CHANGES = 'This session is a check: LilBot lets it read and give its verdict, nothing else.'
-export type CheckUse = 'memory' | 'skills' | 'computers' | 'changes'
+export type CheckUse = 'memory' | 'skills' | 'changes'
 
 /** `rootOf`: the session a chat's compression lineage began as, null while it cannot be read (`bots/hidden-chats.ts`). */
 export function checkSessions(checks: Pick<WorkCheckStore, 'checkOfChat' | 'running'>, rootOf: (botId: string, chatId: string) => string | null) {
@@ -30,7 +29,6 @@ export function checkSessions(checks: Pick<WorkCheckStore, 'checkOfChat' | 'runn
       if (!(chatId ? isCheck(botId, chatId) : checking(botId))) return null
       if (use === 'memory') return NO_MEMORY
       if (use === 'skills') return NO_SKILLS
-      if (use === 'computers') return NO_COMPUTERS
       return NO_CHANGES
     }
   }

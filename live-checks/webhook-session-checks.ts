@@ -35,11 +35,11 @@ export async function afterRun(c: Context, run: Run) {
   const main = (await c.call('chat.open', { botId: c.botId })).chatId as string
   const [skillsBefore, changesBefore] = [skills(), changes()]
 
-  // 1. The ended run's session, as a plug-in names it (Hermes' background review forks share its id): still refused.
+  // 1. The ended run's session, as a plug-in names it (Hermes' background review forks share its id): still refused; retired /engine/computers/* returns 410.
   const skill = { name: 'webhook-probe', action: 'create', content: '---\nname: webhook-probe\ndescription: probe\n---\nProbe.' }
   assert.equal(await engineCall(c, '/engine/skills/write', skill, run.chatId), 422, "a skill write named the ended run's session and was let through")
-  assert.equal(await engineCall(c, '/engine/computers/list', {}, run.chatId), 422, "list_computers from the ended run's session was let through")
-  assert.equal(await engineCall(c, '/engine/computers/list', {}, main), 200, "the main conversation's list_computers was refused")
+  assert.equal(await engineCall(c, '/engine/computers/list', {}, run.chatId), 410, 'retired /engine/computers/list did not return 410')
+  assert.equal(await engineCall(c, '/engine/computers/list', {}, main), 410, 'retired /engine/computers/list did not return 410')
 
   // 2. Oscar answers the run's question: the main conversation hears it, the run's session takes no turn.
   const asked = (await c.call('work.list', { botId: c.botId })).find(
@@ -122,7 +122,7 @@ export const createDelegationHook = () => ({
   signing: { scheme: 'github' },
   description: [
     '1. Call lilbot_delegate once with requestId "del-comp" and tasks [{"worker":true,"computer":"leader","task":"echo hi"}]. Note whether LilBot refused it.',
-    '2. Call lilbot_delegate once with requestId "del-local" and tasks [{"worker":true,"task":"Try computer_exec on computer leader with command echo delegated-probe and reply briefly with whether it was refused."}].',
+    '2. Call lilbot_delegate once with requestId "del-local" and tasks [{"worker":true,"task":"Try lilbot_computer_exec on computer leader with command echo delegated-probe and reply briefly with whether it was refused."}].',
     'Reply briefly with "computer_delegate: refused" or "computer_delegate: allowed".'
   ].join(' ')
 })
@@ -167,7 +167,7 @@ export async function delegationOnlyCheck(
       [],
       `narrowed worker had ${names.join(', ')}`
     )
-  assert.equal(await engineCall(c, '/engine/computers/list', {}, workerRow!.chat_id!), 422, 'narrowed worker reached /engine/computers/list')
+  assert.equal(await engineCall(c, '/engine/computers/list', {}, workerRow!.chat_id!), 410, 'retired /engine/computers/list did not return 410')
   assert.equal((c.db.query('SELECT COUNT(*) AS n FROM computer_requests WHERE bot_id = ?').get(c.botId) as { n: number }).n, 0, 'narrowed delegation ran a computer request')
   await c.call('webhooks.delete', { botId: c.botId, id: hook.id })
 }

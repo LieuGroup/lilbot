@@ -4,10 +4,10 @@
  *
  *  Two layers. The engine starts the run's session with only `toolsets`: naming LilBot's own MCP server leaves every
  *  other server out (T3 included), and the engine's file tools are left out because reading comes with writing there
- *  (`lilbot_workspace_read` reads instead). Hermes adds plug-in toolsets back to any session (the computers and skills
- *  plug-ins), and LilBot's own server lists every tool, so LilBot also refuses, at the call, whatever a run may not do
- *  (`webhook-callers.ts`, `system/run-access.ts`). `memory` stays out unless granted: with it a run could write facts
- *  every later turn reads, past both memory reviews. */
+ *  (`lilbot_workspace_read` reads instead). Hermes adds the skills plug-in back to any session, and LilBot's own server
+ *  lists every tool, so LilBot also refuses, at the call, whatever a run may not do (`webhook-callers.ts`,
+ *  `system/run-access.ts`). `memory` stays out unless granted: with it a run could write facts every later turn reads,
+ *  past both memory reviews. */
 import type { WebhookCapability } from '../../shared/webhook-schema'
 
 const NARROW = ['lilbot_system']
@@ -15,7 +15,7 @@ const NARROW = ['lilbot_system']
 const ENGINE_TOOLSETS: Record<WebhookCapability, string[]> = {
   web: ['web'],
   shell: ['terminal', 'code_execution', 'file'],
-  computers: ['lilbot_computers'],
+  computers: [],
   coding: ['lilbot_t3'],
   memory: ['memory'],
   bots: [],

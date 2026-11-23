@@ -96,7 +96,7 @@ try {
   const bot = await call('bots.create', {
     name: 'My computer check',
     instructions:
-      'This is a test bot. For anything on a computer, use only the LilBot computer tools (list_computers, computer_exec, computer_write_file, computer_read_file). Never use other tools to run commands.',
+      'This is a test bot. For anything on a computer, use only the LilBot computer tools (lilbot_computers_list, lilbot_computer_exec, lilbot_computer_write_file, lilbot_computer_read_file). Never use other tools to run commands.',
     model: { provider: 'cliproxyapi', model: 'anthropic/claude-sonnet-5-5' }
   })
   const laptop = await call('devices.current', { deviceId: LAPTOP, name: 'Test laptop · Chrome' })

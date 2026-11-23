@@ -86,7 +86,7 @@ export async function observeChat(server: RestartServer, native: string, chatId:
   }
 }
 
-/** Confirms `/engine/computers/*` and mutating legacy engine routes refuse a check session while another session passes. */
+/** Confirms retired `/engine/computers/*` answers 410 and mutating legacy engine routes refuse a check session while another session passes. */
 export async function assertCheckEngineRefusals(port: number, token: string, botId: string, checkChat: string, allowedChat: string) {
   const post = (path: string, body: object, session: string) =>
     fetch(`http://127.0.0.1:${port}${path}`, {
@@ -101,8 +101,8 @@ export async function assertCheckEngineRefusals(port: number, token: string, bot
       post('/engine/computers/list', {}, checkChat),
       post('/engine/computers/submit', exec, checkChat),
       post('/engine/bots/create', badBot, checkChat),
-      post('/engine/computers/list', {}, allowedChat)
+      post('/engine/routines/list', {}, allowedChat)
     ]),
-    [422, 422, 422, 200]
+    [410, 410, 422, 200]
   )
 }

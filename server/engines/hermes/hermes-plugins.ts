@@ -53,3 +53,36 @@ export async function configurePlugin(id: string, plugin: string, values: Record
     socket.close()
   }
 }
+
+type PluginSocket = { request(method: string, params?: Record<string, unknown>): Promise<{ ok?: boolean }>; close(): void }
+
+/** Disables and removes a retired user plug-in through Hermes' own `plugins.manage` RPC, serialized on the shared install lock. */
+export async function removePlugin(
+  id: string,
+  plugin: string,
+  connect: (profile: string) => Promise<PluginSocket> = profile => HermesSocket.connect(profile),
+  pauseMs = PAUSE_MS
+): Promise<void> {
+  const socket = await connect(id === 'default' ? '' : id)
+  const run = turn
+    .catch(() => {})
+    .then(async () => {
+      for (let attempt = 1; ; attempt++) {
+        try {
+          await socket.request('plugins.manage', { action: 'toggle', name: plugin, enable: false }).catch(() => {})
+          const removed = await socket.request('plugins.manage', { action: 'remove', name: plugin })
+          if (!removed.ok) throw new Error(`Plugin ${plugin} removal failed`)
+          return
+        } catch (error) {
+          if (attempt >= ATTEMPTS) throw error
+          await Bun.sleep(pauseMs * attempt)
+        }
+      }
+    })
+  turn = run
+  try {
+    await run
+  } finally {
+    socket.close()
+  }
+}

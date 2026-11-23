@@ -61,7 +61,7 @@ afterEach(() => {
   for (const fn of cleanups.splice(0).reverse()) fn()
 })
 
-test('ComputerService.submit and /engine/computers/submit enforce the safety stop before queueing', async () => {
+test('ComputerService.submit enforces the safety stop before queueing and retired /engine/computers/* answers 410', async () => {
   const root = mkdtempSync(join(tmpdir(), 'cmd-safety-'))
   const db = openDatabase(':memory:')
   const store = new ComputerStore(db)
@@ -90,8 +90,7 @@ test('ComputerService.submit and /engine/computers/submit enforce the safety sto
   const token = 'test-token'
   const api = createEngineApi(new MemoryService(new MemoryStore(db)), token, 3370, {
     botExists: id => id === 'bot-1',
-    bots: { listBots: async () => [{ id: 'bot-1' }] } as any,
-    computers: service
+    bots: { listBots: async () => [{ id: 'bot-1' }] } as any
   })
   const res = await api(
     new Request('http://127.0.0.1:3370/engine/computers/submit', {
@@ -101,7 +100,7 @@ test('ComputerService.submit and /engine/computers/submit enforce the safety sto
     }),
     '/engine/computers/submit'
   )
-  expect(res.status).toBe(422)
-  expect(((await res.json()) as { error: string }).error).toContain('LilBot safety stop')
+  expect(res.status).toBe(410)
+  expect(((await res.json()) as { error: string }).error).toContain('lilbot_computer_exec')
   expect(store.pending('leader')).toHaveLength(0)
 })

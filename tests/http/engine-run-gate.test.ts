@@ -9,16 +9,12 @@ import { MemoryStore } from '../../server/memory/memory-store'
 const TOKEN = 'test-token'
 
 test('plug-in calls are named as the tool the engine reported, with the groups that allow them', () => {
-  expect(pluginCall('/engine/computers/submit', { operation: { kind: 'exec', command: 'ls' } })).toEqual({ tool: 'computer_exec', groups: ['computers'] })
-  expect(pluginCall('/engine/computers/submit', { operation: { kind: 'write' } })?.tool).toBe('computer_write_file')
-  expect(pluginCall('/engine/computers/list', {})?.tool).toBe('list_computers')
-  expect(pluginCall('/engine/computers/read', {})?.tool).toBe('computer_request')
-  expect(pluginCall('/engine/computers/submit', null)?.tool).toBe('computer_exec')
   expect(pluginCall('/engine/skills/write', {})).toEqual({ tool: 'skill_manage', groups: [] })
   // The skills handler serves any path that ends with /write: the gate uses the same test.
   expect(pluginCall('/engine/skills/x/write', {})).toEqual({ tool: 'skill_manage', groups: [] })
   expect(pluginCall('/engine/skills/read', {})).toBeNull()
   expect(pluginCall('/engine/history/search', {})).toBeNull()
+  expect(pluginCall('/engine/computers/submit', {})).toBeNull()
   // Routes older adapters call are in the groups of the tools that replaced them.
   expect(pluginCall('/engine/bots/create', {})?.groups).toEqual(['bots'])
   expect(pluginCall('/engine/library/give', {})?.groups).toEqual(['shell'])
@@ -26,10 +22,7 @@ test('plug-in calls are named as the tool the engine reported, with the groups t
   expect(pluginCall('/engine/threads/ask', {})?.groups).toEqual(['delegation'])
 })
 
-test('checkUse maps every mutating and computer engine route to its check-session refusal and leaves read-only routes open', () => {
-  expect(checkUse('/engine/computers/list')).toBe('computers')
-  expect(checkUse('/engine/computers/submit')).toBe('computers')
-  expect(checkUse('/engine/computers/copy')).toBe('computers')
+test('checkUse maps every mutating engine route to its check-session refusal and leaves read-only routes open', () => {
   expect(checkUse('/engine/history/search')).toBe('memory')
   expect(checkUse('/engine/history/save')).toBeNull()
   expect(checkUse('/engine/skills/write')).toBe('skills')
@@ -92,23 +85,39 @@ test('a session locked out of memory gets an empty memory block and cannot write
   expect((await call('turn', { botId: 'b', chatId: 'webhook-chat', user: 'u', assistant: 'a' })).status).toBe(200)
 })
 
-test('a plug-in call refused to its session answers 422 and never reaches the computers', async () => {
-  const submitted: unknown[] = []
+test('a plug-in call refused to its session answers 422 and retired /engine/computers/* answers 410 with MCP guidance', async () => {
+  let skillWrites = 0
   const handle = createEngineApi(new MemoryService(new MemoryStore(openDatabase(':memory:'))), TOKEN, 3370, {
     bots: { listBots: async () => [{ id: 'bot' }] } as never,
     botExists: id => id === 'bot',
-    computers: { submit: async (_bot: string, body: unknown) => submitted.push(body) } as never,
-    pluginRefusal: async (_bot, pathname) => (pathname === '/engine/computers/submit' ? 'A webhook run cannot use computer_exec.' : null)
+    skills: { write: () => ++skillWrites } as never,
+    pluginRefusal: async (_bot, pathname) => (pathname === '/engine/skills/write' ? 'A webhook run cannot use skill_manage.' : null)
   })
   const response = await handle(
-    new Request('http://127.0.0.1:3370/engine/computers/submit', {
+    new Request('http://127.0.0.1:3370/engine/skills/write', {
       method: 'POST',
       headers: { host: '127.0.0.1:3370', authorization: `Bearer ${TOKEN}`, 'x-lilbot-bot-capability': botCapability(TOKEN, 'bot'), 'content-type': 'application/json' },
-      body: JSON.stringify({ computer: 'leader', requestId: 'r', operation: { kind: 'exec', command: 'echo hi' } })
+      body: JSON.stringify({ name: 'x', action: 'create', content: 'y' })
+    }),
+    '/engine/skills/write'
+  )
+  expect(response.status).toBe(422)
+  expect(((await response.json()) as { error: string }).error).toBe('A webhook run cannot use skill_manage.')
+  expect(skillWrites).toBe(0)
+
+  const unauth = await handle(
+    new Request('http://127.0.0.1:3370/engine/computers/submit', { method: 'POST', headers: { host: '127.0.0.1:3370' }, body: '{}' }),
+    '/engine/computers/submit'
+  )
+  expect(unauth.status).toBe(403)
+  const retired = await handle(
+    new Request('http://127.0.0.1:3370/engine/computers/submit', {
+      method: 'POST',
+      headers: { host: '127.0.0.1:3370', authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+      body: '{}'
     }),
     '/engine/computers/submit'
   )
-  expect(response.status).toBe(422)
-  expect(((await response.json()) as { error: string }).error).toBe('A webhook run cannot use computer_exec.')
-  expect(submitted).toEqual([])
+  expect(retired.status).toBe(410)
+  expect(((await retired.json()) as { error: string }).error).toContain('lilbot_computer_exec')
 })

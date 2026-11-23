@@ -23,7 +23,6 @@ export interface ScriptedRuntime {
   identity: RuntimeIdentity
   connections: McpConnection[]
   skills?: SkillSettings
-  computers?: { url: string; tokenFile: string; botId: string }
   memoryConnection?: MemoryConnection
   memoryConnected: boolean
 }

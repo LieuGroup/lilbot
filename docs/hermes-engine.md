@@ -223,6 +223,9 @@ own `cronjob` tool stays on, so the adapter's system-prompt rules tell the bot t
   Measured on dev (#174, 60 calls): the start arrived before the MCP request in all but one case, median 4 ms, at most 3.0 s
   before; the latest was 4 ms after.
 
-## Computers plug-in (`computers-adapter/`, `lilbot-computers-v1`)
+## Computers plug-in (retired)
 
-Independent of the memory adapter. `computer_exec` calls Hermes' own `detect_hardline_command` before submitting.
+The `lilbot-computers-v1` plug-in (`computers-adapter/`) is retired: all eight computer tools now live on LilBot's own
+System MCP server (`server/system/tool-computers.ts`) and command safety is enforced in `ComputerService.submit`.
+During normal start-up (`HermesEngine.prepareRuntime`), `retireComputersPlugin` removes any leftover
+`plugins/lilbot-computers-v1` through Hermes' own `plugins.manage` RPC and deletes `lilbot-computers.json`.

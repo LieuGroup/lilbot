@@ -242,7 +242,7 @@ errors with a plain 500.
   helper door) with Host/Origin checks, no cross-site fetches, attachment disposition, no-sniff, sandbox and no-store.
 - **Engine API** (`server/http/engine-api.ts`, `/engine/*` on private listener): loopback only, token from
   `<data>/engine-token`, caller taken strictly from the bot-bound capability (ignores body bot ids, refuses unknown and
-  deleted bots). Serves remaining plug-in tools (memory, skills, computers, conversation search) and legacy adapter
+  deleted bots). Serves remaining plug-in tools (memory, skills, conversation search) and legacy adapter
   routes; T3, bot-added MCP services and System MCP use per-bot HMAC keys.
 - **Cloudflare:** `lilbot-connect` tunnel; touch only LilBot's own tunnels and DNS names. Detail:
   [docs/cloudflare.md](docs/cloudflare.md).

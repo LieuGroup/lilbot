@@ -99,4 +99,9 @@ test('engine routes verify x-lilbot-session vs chatId, lock history search, requ
   // Verified body chatId without header: limited session refused on library/give, ordinary main session allowed.
   expect((await post('/engine/library/give', { path: 'a.txt', title: 'A', chatId: 'webhook-chat' })).status).toBe(422)
   expect((await post('/engine/library/give', { path: 'a.txt', title: 'A', chatId: 'main' })).status).toBe(200)
+
+  // Retired /engine/computers/* answers 410 unconditionally (webhook, mismatched, or main session) and executes nothing.
+  expect((await post('/engine/computers/submit', { chatId: 'webhook-chat' })).status).toBe(410)
+  expect((await post('/engine/computers/submit', { chatId: 'main' }, 'webhook-chat')).status).toBe(410)
+  expect((await post('/engine/computers/list', {}, 'main')).status).toBe(410)
 })
