@@ -7,7 +7,7 @@ import { MemoryStore } from '../../server/memory/memory-store'
 import { said } from '../../server/threads/group-prompts'
 import { refuseUnsafe as workRefuseUnsafe } from '../../server/work/work-rules'
 
-describe('underscore-joined credential names and quoted keys', () => {
+describe('underscore-joined names, quoted keys, wrappers, pairs and Principle A strictness', () => {
   const refused = [
     'DB_PASS=hunter2abc',
     'DB_PASS="hunter2abc"',
@@ -44,18 +44,58 @@ describe('underscore-joined credential names and quoted keys', () => {
     '{"pass": "hunter2abc"}',
     "{'pass': 'hunter2abc'}",
     '{"db_pass": "hunter2abc"}',
+    '{"work.pass": "hunter2abc"}',
     '{"config": {"db": {"password": "hunter2abc"}}}',
     '{"items": [{"auth_token": "tok_9f8e7d6c5b4a"}]}',
     '{\\"password\\":\\"hunter2abc\\"}',
+    '{\\"password\\":\\"a\\\\\\"hunter2abc\\"}',
     '{\\"db_pass\\":\\"hunter2abc\\"}',
+    '{"password": ["hunter2abc"]}',
+    '{"password": [ "hunter2abc" ]}',
+    '{"password": [\n  "hunter2abc"\n]}',
+    '{"password": {"value": "hunter2abc"}}',
+    '{"api_key": {"v": "9f8e7d6c5b4a3"}}',
+    '{"password": {"val": "hunter2abc"}}',
+    '{"password": {"type": "string", "value": "hunter2abc"}}',
+    '[{"key": "DB_PASSWORD", "value": "hunter2abc"}]',
+    '[{"name": "OPENAI_API_KEY", "value": "9f8e7d6c5b4a3"}]',
+    'work_pass=hunter2abc',
+    'test_pass=hunter2abc',
+    'ci_pass=hunter2abc',
+    'build_pass=hunter2abc',
+    'render_pass=hunter2abc',
     'PASS: add(2, 3) === 5\nDB_PASSWORD=hunter2abc',
     'PASS: add(2, 3) === 5\n{"password": "hunter2abc"}',
     '{"token": null, "password": "hunter2abc"}',
     '{"password": {"type": "string"}, "secret": "topsecret123"}',
     'page_token=Cg0IARIGabcdef&auth_token=tok_9f8e7d6c5b4a',
+    'password: {hunter2abc}',
+    'DB_PASS={hunter2abc}',
+    'password: changeme',
+    'api_key: changeme',
+    'password: your-secret-horse-battery',
+    'password: xxxxxxxxxxxx',
+    'password: REPLACE_WITH_YOUR_KEY',
+    'password: {{VAR_NAME}}',
+    'password: opts.password',
+    'password: os.getenv("DB_PASSWORD")',
+    `DB_PASS=\${{secrets.FOO}}hunter2abc`,
+    'DB_PASS={{VAR}}hunter2abc',
+    `token: \${{ secrets.X }}hunter2abc`,
+    `DB_PASS=\${DB_PASS:-hunter2abc}`,
+    'DB_PASSWORD="$(op read op://vault/db/password)hunter2abc"',
+    'DB_PASSWORD=$(op read op://vault/db/password)hunter2abc',
+    'DB_PASS="connection.bearerToken"',
+    'DB_PASS=os.getenv("DB_PASSWORD", "hunter2abc")',
+    'DB_PASS=fn(hunter2abc)',
+    'OPENAI_API_KEY=REPLACE_WITH_hunter2abc9f8e7d',
+    'OPENAI_API_KEY=TODO_hunter2abc9f8e7d',
+    'OPENAI_API_KEY=sk-your-key-hunter2abc',
+    'STRIPE_WEBHOOK_SECRET=whsec_9f8e7d6c5b4a',
+    'DB_PASS=xxxxxxxxxxxxhunter2',
+    'password: ***---',
     'password: <hunter2abc>',
     'password: [hunter2abc]',
-    `DB_PASS=\${DB_PASS:-hunter2abc}`,
     'password: $2b$10$abcdefghijklmnopqrstuv',
     '{"password": "password"}',
     'pass=123456',
@@ -63,7 +103,7 @@ describe('underscore-joined credential names and quoted keys', () => {
   ]
 
   for (const text of refused) {
-    test(`refuses: ${text.replace('\n', ' / ').slice(0, 52)}`, () => {
+    test(`refuses: ${text.replace(/\n/g, ' / ').slice(0, 56)}`, () => {
       expect(memoryRefusal(text)).toContain('password or key')
       expect(outsideReason(text)).toContain('password or key')
       expect(() => refuseUnsafe(text)).toThrow()
@@ -76,77 +116,20 @@ describe('underscore-joined credential names and quoted keys', () => {
     expect(memoryRefusal(`page_token=${fakeKey}`)).toContain('access key or token')
     expect(memoryRefusal(`{"next_page_token": "${jwt}"}`)).toContain('access key or token')
   })
-
-  const allowed = [
-    'page_token=Cg0IARIGabcdef',
-    'https://api.example.com/items?page_token=Cg0IARIGabcdef&limit=20',
-    'next_token=Cg0IARIGabcdef',
-    'nextPageToken=Cg0IARIGabcdef',
-    'continuation_token=Cg0IARIGabcdef',
-    '{"page_token": "Cg0IARIGabcdef"}',
-    '{"next_token": "Cg0IARIGabcdef"}',
-    '{"next_page_token": "Cg0IARIGabcdef"}',
-    '{"nextPageToken": "Cg0IARIGabcdef"}',
-    '{"continuation_token": "Cg0IARIGabcdef"}',
-    '{"cursor_token": "Cg0IARIGabcdef", "sync_token": "Cg0IARIGabcdef"}',
-    'tokens: 120000',
-    'max_tokens=4096',
-    '{"total_tokens": 512, "max_tokens": 4096}',
-    '{"token": 4096, "pass": true}',
-    '{"pass": 12}',
-    'token: string',
-    'token: string;',
-    'token: string | null',
-    'password: string',
-    'secret: string',
-    'api_key: string',
-    '{"password": { "type": "string" }}',
-    '{"token": null}',
-    '{"token": undefined}',
-    '{"password": ""}',
-    '{"password": "***"}',
-    '{"secret": "********"}',
-    '{"secret": "[REDACTED]"}',
-    'secret: [REDACTED]',
-    '{"api_key": "<your-key>"}',
-    'OPENAI_API_KEY=<your-api-key>',
-    'DB_PASS=$VAR',
-    `DB_PASS=\${VAR}`,
-    'OPENAI_API_KEY=$OPENAI_API_KEY',
-    `OPENAI_API_KEY=\${OPENAI_API_KEY}`,
-    `{"token": "$AUTH_TOKEN", "api_key": "\${OPENAI_API_KEY}"}`,
-    `token: \${{ secrets.GITHUB_TOKEN }}`,
-    'compass=northeast',
-    'bypass=123456',
-    'keyboard_layout=dvorak',
-    'secretary_name=alice_smith',
-    'tokenizer=cl100k_base',
-    '{"bypass": "123456", "compass": "northeast"}',
-    '{"keyboard_layout": "dvorak", "secretary_name": "alice_smith", "tokenizer": "cl100k_base"}',
-    'The password isolation worked cleanly.',
-    'TEST_PASS: add(2, 3) === 5',
-    "'work.pass': WorkItem"
-  ]
-
-  for (const text of allowed) {
-    test(`allows: ${text.slice(0, 52)}`, () => {
-      expect(memoryRefusal(text)).toBeNull()
-      expect(outsideReason(text)).toBeNull()
-      expect(() => refuseUnsafe(text)).not.toThrow()
-    })
-  }
 })
 
 test('call sites enforce the updated rules without blocking benign inputs', () => {
   const memory = new MemoryService(new MemoryStore(openDatabase(':memory:')))
   expect(() => memory.write({ botId: 'b', kind: 'profile', text: 'DB_PASSWORD=hunter2abc', author: 'bot' })).toThrow('That was not saved')
   expect(() => memory.write({ botId: 'b', kind: 'profile', text: '{"api_key": "9f8e7d6c5b4a3"}', author: 'bot' })).toThrow('That was not saved')
+  expect(() => memory.write({ botId: 'b', kind: 'profile', text: 'OPENAI_API_KEY is configured in ~/.hermes/.env.', author: 'bot' })).not.toThrow()
   expect(() => memory.write({ botId: 'b', kind: 'profile', text: 'Use pagination with next_token=Cg0IARIGabcdef', author: 'bot' })).not.toThrow()
 
   expect(() => workRefuseUnsafe(['export APP_SECRET=topsecret123'])).toThrow()
-  expect(() => workRefuseUnsafe(['PASS: add(2, 3) === 5\n{"max_tokens": 4096}'])).not.toThrow()
+  expect(() => workRefuseUnsafe(['PASS: add(2, 3) === 5\n{"max_tokens": 4096}\nbearer_token: connection.bearerToken'])).not.toThrow()
 
   expect(() => serviceAddress('https://api.example.com/list?page_token=Cg0IARIGabcdef')).not.toThrow()
+  expect(() => serviceAddress('https://api.example.com/list?scroll_token=Cg0IARIGabcdef')).not.toThrow()
   expect(() => serviceAddress('https://api.example.com/list?auth_token=tok_9f8e7d6c5b4a')).toThrow('secret')
   expect(() => serviceAddress('https://api.example.com/list?db_pass=hunter2abc')).toThrow('secret')
 

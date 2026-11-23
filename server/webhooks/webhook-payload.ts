@@ -2,9 +2,42 @@
  *  receive time (the body decoded, addresses blanked, cut to size); it is scanned, and the run's fence joins the stored
  *  strings unchanged, so nothing can differ between what was checked and what the model reads.
  *  Headers are the sender's claims: only a few are kept, and only as data. */
-import { escapeJson, fenceJson, outsideReason } from '../memory/memory-safety'
+import { escapeJson, fenceJson, isQuotedCredentialKey, isQuotedCredentialSecret, outsideReason } from '../memory/memory-safety'
 import { blank, decodedBody, folded, MAX_DEPTH, strings } from './webhook-decode'
 import { WEBHOOK_LIMITS } from './webhook-limits'
+
+const WRAPPER_FIELD = /^(?:value|val|v)$/i
+
+function redactValue(value: unknown): unknown {
+  if (isQuotedCredentialSecret(value)) return '[withheld]'
+  if (Array.isArray(value)) return value.map(item => (isQuotedCredentialSecret(item) ? '[withheld]' : redactBody(item)))
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (WRAPPER_FIELD.test(k) && isQuotedCredentialSecret(v)) out[k] = '[withheld]'
+      else if (isQuotedCredentialKey(k)) out[k] = redactValue(v)
+      else out[k] = redactBody(v)
+    }
+    return out
+  }
+  return value
+}
+
+/** Replaces quoted credential fields on a parsed webhook body with `[withheld]` so deliveries such as Slack Events API
+ *  (which always carry a top-level `token`) still reach the bot without leaking the field value. */
+function redactBody(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(redactBody)
+  if (!node || typeof node !== 'object') return node
+  const entries = Object.entries(node as Record<string, unknown>)
+  const pairKey = entries.find(([k, v]) => (k.toLowerCase() === 'key' || k.toLowerCase() === 'name') && typeof v === 'string' && isQuotedCredentialKey(v))
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of entries) {
+    if (pairKey && k.toLowerCase() === 'value' && isQuotedCredentialSecret(v)) out[k] = '[withheld]'
+    else if (isQuotedCredentialKey(k)) out[k] = redactValue(v)
+    else out[k] = redactBody(v)
+  }
+  return out
+}
 
 /** One event as stored: `item` is empty when the check withheld it; `size` is its length inside the fence. */
 export interface EventView {
@@ -50,10 +83,11 @@ export function eventView(raw: Uint8Array, headers: Headers, deliveryId: string 
     .find(Boolean)
   if (words) return refused(words)
   const view = { receivedAt: new Date(receivedAt).toISOString(), deliveryId, headers: kept }
-  const bodyJson = JSON.stringify(decoded.body)
+  const body = typeof decoded.body === 'object' && decoded.body !== null ? redactBody(decoded.body) : decoded.body
+  const bodyJson = JSON.stringify(body)
   // Blanking only shortens, so the whole view is blanked only once it fits; a cut view is blanked as it is cut.
   const whole = `${JSON.stringify(view).slice(0, -1)},"body":${bodyJson}}`
-  const item = fits(whole) ? blank(whole, token) : cut(view, typeof decoded.body === 'string' ? decoded.body : bodyJson, token)
+  const item = fits(whole) ? blank(whole, token) : cut(view, typeof body === 'string' ? body : bodyJson, token)
   const refusal = outsideReason(item)
   return refusal ? refused(refusal) : { item, size: escapeJson(item).length, refusal: null }
 }
