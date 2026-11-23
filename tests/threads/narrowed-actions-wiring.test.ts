@@ -37,11 +37,11 @@ function threadFixture() {
     async () => [],
     () => true
   )
-  const runs: Array<{ botId: string; prompt: string; toolsets?: string[]; capabilities?: WebhookCapability[]; chatId?: string }> = []
+  const runs: Array<{ botId: string; prompt: string; access?: unknown; capabilities?: WebhookCapability[]; chatId?: string }> = []
   fake.service.runRoutine = async (botId, prompt, opts) => {
     const id = opts.chatId ?? `hidden:${botId}:${runs.length + 1}`
     opts.onChat?.(id)
-    runs.push({ botId, prompt, toolsets: opts.toolsets, capabilities: (opts as { capabilities?: WebhookCapability[] }).capabilities, chatId: id })
+    runs.push({ botId, prompt, access: opts.access, capabilities: (opts as { capabilities?: WebhookCapability[] }).capabilities, chatId: id })
     return { status: 'completed', text: 'ok' }
   }
   const { threads, delegation } = createThreads({
@@ -134,7 +134,7 @@ test('createThreads gates group close/attach/status and delegation cancel/redire
   f.threads.tick()
   await Bun.sleep(20)
   const narrowRun = f.runs.find(r => r.capabilities?.join(',') === 'delegation')
-  expect(narrowRun?.toolsets).toEqual(['lilbot_system'])
+  expect(narrowRun?.access).toEqual({ kind: 'webhook', capabilities: ['delegation'] })
   expect(narrowRun?.prompt).toContain('You cannot')
   expect(f.threadStore.allowsWorkerMemory('missing-thread')).toBe(false)
   expect(f.threadStore.isNarrowed('missing-thread')).toBe(true)

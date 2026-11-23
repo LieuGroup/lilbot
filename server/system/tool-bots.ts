@@ -64,8 +64,11 @@ export function botTools({ bots, activity }: SystemDeps): McpTool[] {
     actionTool('lilbot_primary_set', "Make a bot the user's primary bot (listed first, opened on entry).", z.object({ botId: z.string().min(1) }), (_caller, { botId }) =>
       bots.setPrimary(botId)
     ),
-    readTool('lilbot_models_list', 'The models a bot can use, by provider. Use provider and model exactly as listed when editing a bot.', z.object({}), async () =>
-      bots.listModels()
+    readTool(
+      'lilbot_models_list',
+      'The models a bot can use, by provider (yours by default, or pass botId for another bot). Use provider and model exactly as listed when editing a bot.',
+      z.object(target),
+      async (caller, { botId }) => bots.listModels({ botId: botId ?? caller })
     )
   ]
 }

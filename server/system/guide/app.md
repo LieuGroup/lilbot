@@ -6,4 +6,4 @@ Parts, each with its own guide topic: bots (identity, roster, primary bot), memo
 
 Your `lilbot_*` tools do what Oscar does on the screens, as you: the same checks, the same live updates in his app. `lilbot_history_search` searches your own past conversations with Oscar. You can delete your own routines and webhooks, and remove an MCP connection you added; deleting a bot, removing a computer and forgetting another bot's private facts are Oscar's to do (there is no tool for them). Every change a tool makes is logged with your name (`lilbot_about` shows the latest).
 
-Your other tools (memory recall/forget, skills management) come from the engine and work as before; they describe themselves.
+Your other tools (skills management) come from the engine and work as before; they describe themselves.

@@ -1,5 +1,6 @@
 /** What a check session may do with LilBot's own tools (#174): read, and give its verdict. Every changing call is refused,
- *  and so is reading memory (`lilbot_memory_list`), which could tell it what its owner meant to have done. MCP calls carry
+ *  and so are reading memory (`lilbot_memory_list`, `lilbot_memory_recall`) and searching past conversations (`lilbot_history_search`),
+ *  which could tell it what its owner meant to have done. MCP calls carry
  *  no session, so while a check of the calling bot is under way a call is matched to the tool starts the engine reported
  *  (`CallingChats.gate`: exact request id or arguments first, falling back after a grace window only when strictly one
  *  unmatched start exists for a call without request id); one that cannot be placed is refused (it fails closed).
@@ -10,7 +11,7 @@ import type { CheckSessions } from '../work/check-sessions'
 import type { McpTool } from './mcp-tool'
 import { refusalFor, runRefusalForChat } from './run-access'
 
-const CHECK_REFUSED_READS = new Set(['lilbot_memory_list', 'lilbot_history_search', 'lilbot_computers_list', 'lilbot_computer_request_read'])
+const CHECK_REFUSED_READS = new Set(['lilbot_memory_list', 'lilbot_memory_recall', 'lilbot_history_search', 'lilbot_computers_list', 'lilbot_computer_request_read'])
 const IN_CHECK = 'This session is a check: LilBot lets it read and give its verdict (lilbot_work with verdict), nothing else.'
 
 function checkChatRefusal(sessions: Pick<CheckSessions, 'checking' | 'isCheck'>, botId: string, name: string, chatId: string | null): string | null {
