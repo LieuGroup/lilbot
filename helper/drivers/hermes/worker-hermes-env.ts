@@ -1,10 +1,12 @@
-/** Hermes binary discovery, scrubbed gateway attach, narrow toolset mapping, and read-only checkpoint compat overlay.
- *  Never edits the user's `config.yaml`, profiles, default model, or other sessions, and never logs attach tickets. */
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+/** Hermes binary discovery, scrubbed gateway attach, narrow toolset mapping, and read-only config checks.
+ *  Never edits the user's `config.yaml`, profiles, default model, or other sessions, never opens credential files,
+ *  and never logs attach tickets. */
+import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { WebhookCapability } from '../../../shared/webhook-schema'
-import { resolveTrustedBinary } from '../../worker-bin'
+import type { WorkerAgentInfo } from '../../../shared/worker-frame-schema'
+import { extractSafeVersion, resolveTrustedBinary, runProbeCommand } from '../../worker-bin'
 import { cleanAgentLine } from '../../worker-text'
 
 export interface HermesGrant {
@@ -15,11 +17,13 @@ export interface HermesGrant {
 export interface HermesAttachTarget {
   hermesHome: string
   lockDir?: string
-  compat: boolean
 }
 
-const DEFAULT_TOOLSETS = ['terminal', 'file', 'web', 'code_execution', 'todo'] as const
-const COMPAT_SYMLINKS = ['.env', 'auth.json', 'models_dev_cache.json', 'installs'] as const
+const CHECKPOINT_REQUIRED_REASON = 'checkpoint_required'
+export const CHECKPOINT_REQUIRED_ERROR =
+  "Could not use Hermes on this computer because compression.checkpoint_required is enabled in its config.yaml. Set compression.checkpoint_required: false in that computer's Hermes config.yaml and try again."
+
+const DEFAULT_TOOLSETS = ['terminal', 'file', 'web', 'code_execution', 'todo', 'no_mcp'] as const
 const HERMES_ENV_VARS = ['OPENROUTER_API_KEY', 'ANTHROPIC_API_KEY', 'ANTHROPIC_TOKEN', 'OPENAI_API_KEY', 'OPENAI_BASE_URL']
 
 /** Checks non-secret Hermes provider configuration without opening `auth.json` or `.env` (credential files). */
@@ -54,10 +58,11 @@ export function resolveHermesHome(explicit?: string, env: Record<string, string 
   return explicit ?? env.HERMES_HOME ?? join(homedir(), '.hermes')
 }
 
-/** Maps optional narrowed webhook capabilities into Hermes coding toolsets (unrestricted keeps full coding toolsets). */
+/** Maps optional narrowed webhook capabilities into Hermes coding toolsets. Always includes `no_mcp` so remote
+ *  workers never inherit personal `mcp_servers` from the remote `config.yaml` (scoped tools come via `editor.mcp_servers`). */
 export function hermesToolsets(capabilities?: WebhookCapability[]): string[] {
   if (!capabilities) return [...DEFAULT_TOOLSETS]
-  const out: string[] = []
+  const out: string[] = ['no_mcp']
   if (capabilities.includes('shell')) out.push('terminal', 'file', 'code_execution')
   if (capabilities.includes('web')) out.push('web')
   return out
@@ -72,60 +77,46 @@ export function scrubHermesEnv(baseEnv: Record<string, string | undefined>, targ
     env[key] = value
   }
   env.HERMES_HOME = target.hermesHome
-  if (target.lockDir) env.HERMES_GATEWAY_LOCK_DIR = target.lockDir
-  else if (!target.compat && baseEnv.HERMES_GATEWAY_LOCK_DIR) env.HERMES_GATEWAY_LOCK_DIR = baseEnv.HERMES_GATEWAY_LOCK_DIR
+  const lockDir = target.lockDir ?? baseEnv.HERMES_GATEWAY_LOCK_DIR
+  if (lockDir) env.HERMES_GATEWAY_LOCK_DIR = lockDir
   return env
 }
 
+/** Probes Hermes binary version, read-only sign-in hint, and `compression.checkpoint_required` availability. */
+export async function detectHermesAgent(options: {
+  bin?: string
+  hermesHome?: string
+  pathEnv?: string
+  env?: Record<string, string | undefined>
+}): Promise<WorkerAgentInfo | null> {
+  const bin = resolveHermesBinary(options.bin, options.pathEnv)
+  if (!bin) return null
+  let res = await runProbeCommand(bin, ['acp', '--version'], 3000)
+  if (res?.code !== 0) res = await runProbeCommand(bin, ['--version'], 2500)
+  if (res?.code !== 0) return null
+  const env = options.env ?? process.env
+  const hermesHome = resolveHermesHome(options.hermesHome, env)
+  const signedIn = detectHermesSignedIn(hermesHome, env)
+  const blocked = hasCheckpointRequired(hermesHome)
+  return {
+    driver: 'hermes',
+    version: extractSafeVersion(res.stdout),
+    supported: !blocked,
+    ...(blocked ? { unavailableReason: CHECKPOINT_REQUIRED_REASON } : {}),
+    ...(signedIn !== undefined ? { signedIn } : {})
+  }
+}
+
 /** Checks whether `<hermesHome>/config.yaml` enables `compression.checkpoint_required` (read-only). */
-export function needsCheckpointCompat(hermesHome: string): boolean {
+export function hasCheckpointRequired(hermesHome: string): boolean {
   try {
     const configPath = join(hermesHome, 'config.yaml')
     if (!existsSync(configPath)) return false
     const parsed = Bun.YAML.parse(readFileSync(configPath, 'utf8')) as { compression?: { checkpoint_required?: unknown } } | null
-    return Boolean(parsed && typeof parsed === 'object' && isTruthyConfig(parsed.compression?.checkpoint_required))
+    return isTruthyConfig(parsed?.compression?.checkpoint_required)
   } catch {
     return false
   }
-}
-
-function ensurePrivateDir(dir: string) {
-  mkdirSync(dir, { recursive: true, mode: 0o700 })
-  if (lstatSync(dir).isSymbolicLink()) throw new Error('Helper Hermes directory cannot be a symlink.')
-  chmodSync(dir, 0o700)
-}
-
-function syncSymlink(source: string, linkPath: string) {
-  try {
-    const st = lstatSync(linkPath)
-    if (st.isSymbolicLink() || st.isFile()) rmSync(linkPath, { force: true })
-  } catch {}
-  if (existsSync(source)) symlinkSync(source, linkPath)
-}
-
-/** When the user's `config.yaml` enables `compression.checkpoint_required: true`, prepares an isolated helper-owned
- *  Hermes home with `checkpoint_required: false` and read-only symlinks to `.env`/`auth.json`, leaving the user's
- *  `config.yaml`, profiles, and sessions untouched. */
-export function resolveAttachTarget(userHome: string, configDir?: string, lockDir?: string): HermesAttachTarget {
-  if (!needsCheckpointCompat(userHome)) return { hermesHome: userHome, ...(lockDir ? { lockDir } : {}), compat: false }
-  const baseDir = configDir ?? process.env.LILBOT_HELPER_CONFIG_DIR ?? join(homedir(), '.config', 'lilbot-helper')
-  const compatHome = join(baseDir, 'hermes-compat')
-  const compatLocks = join(baseDir, 'hermes-compat-locks')
-  ensurePrivateDir(baseDir)
-  ensurePrivateDir(compatHome)
-  ensurePrivateDir(compatLocks)
-  const raw = readFileSync(join(userHome, 'config.yaml'), 'utf8')
-  const parsed = (Bun.YAML.parse(raw) as Record<string, unknown> | null) ?? {}
-  const compression = parsed.compression && typeof parsed.compression === 'object' ? { ...(parsed.compression as Record<string, unknown>) } : {}
-  compression.checkpoint_required = false
-  const gateway = parsed.gateway && typeof parsed.gateway === 'object' ? { ...(parsed.gateway as Record<string, unknown>) } : {}
-  gateway.multiplex_profiles = false
-  const compatYaml = Bun.YAML.stringify({ ...parsed, compression, gateway }, null, 2)
-  const cfgPath = join(compatHome, 'config.yaml')
-  writeFileSync(cfgPath, compatYaml, { mode: 0o600 })
-  chmodSync(cfgPath, 0o600)
-  for (const name of COMPAT_SYMLINKS) syncSymlink(join(userHome, name), join(compatHome, name))
-  return { hermesHome: compatHome, lockDir: compatLocks, compat: true }
 }
 
 /** Runs `hermes gateway attach --json --start` from `homedir()` (never `request.cwd`) so Hermes boots unmanaged with

@@ -148,13 +148,13 @@ describe.skipIf(!installed)('Hermes wire contract', () => {
   test('declared schemas keep every field LilBot and the helper driver read', () => {
     const schemas = contract.components.schemas
     const required: Record<string, string[]> = {
-      CanonicalSessionListRow: ['session_id', 'id', 'source', 'running', 'started_at'],
+      CanonicalSessionListRow: ['session_id', 'id', 'resolved_id', 'source', 'running', 'started_at'],
       CanonicalReplayEvent: ['type', 'payload', 'seq'],
       CanonicalEventsResult: ['replay_epoch', 'last_sequence', 'open_requests', 'truncated'],
       McpServerRuntimeRow: ['name', 'connected', 'status'],
       ModelOptionProvider: ['slug', 'name', 'authenticated', 'models', 'capabilities'],
       ModelCapabilities: ['reasoning', 'can_disable_reasoning'],
-      CanonicalSnapshotInfo: ['model', 'provider', 'reasoning_effort', 'reasoning_effort_wire', 'context_length', 'usage'],
+      CanonicalSnapshotInfo: ['model', 'provider', 'reasoning_effort', 'reasoning_effort_wire', 'context_length', 'usage', 'source', 'launch_request'],
       CanonicalAttachment: ['path', 'mime'],
       StoredTranscriptRow: ['row_id', 'row_kind', 'timestamp', 'display_kind', 'role', 'text', 'tool_call_id', 'name', 'context', 'content', 'compacted_messages'],
       TranscriptMessage: ['role', 'text', 'tool_call_id', 'name', 'context', 'content', 'display_kind', 'timestamp'],
@@ -171,6 +171,10 @@ describe.skipIf(!installed)('Hermes wire contract', () => {
     expect(schemas.CanonicalCorrectionAck.properties.status.enum).toEqual(expect.arrayContaining(['queued', 'redirected']))
   })
 
+  // Note: Hermes's gateway/session_pending_controls.py publishes live turn approvals as `approval.request`
+  // notifications carrying the declared `CanonicalPendingPrompt` shape (answered via the declared `approval.respond`
+  // method), even though OpenRPC `x-notifications` omits `approval.request` and only lists `x-server-requests: approval`.
+  // The helper driver handles both paths so approvals settle under either gateway delivery path.
   test('helper Hermes worker driver server-requests (approval, clarify) remain declared', () => {
     const approvalReq = entry('x-server-requests', 'approval')
     expect(approvalReq).toBeDefined()

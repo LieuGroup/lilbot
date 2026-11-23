@@ -2,11 +2,14 @@
 
 export interface MockHermesBehavior {
   modelOptions?: Record<string, unknown>
+  onOpen?: (ws: any) => void
   onSubmit?: (ws: any, params: Record<string, any>, reqs: { method: string; params: any }[]) => void
   onSteer?: (params: Record<string, any>) => { result?: any; error?: any }
   onInterrupt?: (ws: any, params: Record<string, any>) => void
   resumeDisplayMessages?: any[]
   resumeRunning?: boolean
+  sessionInfoFor?: (sessionId: string) => Record<string, unknown>
+  visibleSessions?: Array<{ session_id: string; id?: string; resolved_id?: string; source?: string }>
   receipt?: Record<string, any>
 }
 
@@ -25,6 +28,7 @@ export function startMockHermesGateway(behavior: MockHermesBehavior = {}, regist
     websocket: {
       open(ws) {
         ws.send(JSON.stringify({ jsonrpc: '2.0', method: 'event', params: { type: 'gateway.ready', payload: {} } }))
+        behavior.onOpen?.(ws)
       },
       message(ws, raw) {
         const frame = JSON.parse(String(raw))
@@ -46,12 +50,28 @@ export function startMockHermesGateway(behavior: MockHermesBehavior = {}, regist
             behavior.modelOptions ?? { providers: [{ slug: 'cliproxyapi', authenticated: true, models: ['anthropic/claude-sonnet-5-5'] }], model: 'anthropic/claude-sonnet-5-5' }
           )
         }
+        if (method === 'session.list') {
+          return reply({ sessions: behavior.visibleSessions ?? [], scope: params?.scope ?? 'stored' })
+        }
         if (method === 'session.create') {
           rev = 0
           gen = 0
-          return reply({ session_id: 'local-s1', stored_session_id: 'local-s1', revision: rev, execution_generation: gen, running: false, prompts: [], open_requests: [] })
+          return reply({
+            session_id: 'local-s1',
+            stored_session_id: 'local-s1',
+            revision: rev,
+            execution_generation: gen,
+            running: false,
+            prompts: [],
+            open_requests: [],
+            info: { source: 'acp', launch_request: { source: 'acp', yolo: true, ignore_rules: true } }
+          })
         }
         if (method === 'session.resume') {
+          const info = behavior.sessionInfoFor?.(params.session_id) ?? {
+            source: 'acp',
+            launch_request: { source: 'acp', yolo: true, ignore_rules: true }
+          }
           return reply({
             session_id: params.session_id,
             stored_session_id: params.session_id,
@@ -60,7 +80,8 @@ export function startMockHermesGateway(behavior: MockHermesBehavior = {}, regist
             running: behavior.resumeRunning ?? false,
             display_messages: behavior.resumeDisplayMessages ?? [],
             prompts: [],
-            open_requests: []
+            open_requests: [],
+            info
           })
         }
         if (method === 'session.stats') return reply({ input_tokens: 10, output_tokens: 5, context_length: 200_000 })

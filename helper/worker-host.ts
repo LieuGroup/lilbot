@@ -141,7 +141,7 @@ export class WorkerHost {
       frame.runId,
       this.coalesceMs,
       ev => this.sendFrame(`worker-event:${frame.runId}`, ev),
-      sid => updateWorkerSession(this.options.db, frame.runId, sid)
+      (sid, created) => updateWorkerSession(this.options.db, frame.runId, sid, Boolean(created))
     )
     const entry: ActiveWorker = { runId: frame.runId, cancelEvents: coalescer.cancel }
     try {
@@ -167,6 +167,7 @@ export class WorkerHost {
         entry.proxy?.close()
         this.active.delete(frame.runId)
         this.emitDone({ type: 'worker.done', runId: frame.runId, ...outcome })
+        void driver.pruneOldSessions?.(this.options.db, outcome.sessionId).catch(() => {})
       }
       void handle.done
         .then(({ sessionId, status, text, items, usage, error }) =>

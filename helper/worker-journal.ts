@@ -85,7 +85,8 @@ export function prepareWorkerJournal(db: Database) {
       finished_at INTEGER,
       driver TEXT,
       updated_at INTEGER,
-      pruned_at INTEGER
+      pruned_at INTEGER,
+      created_by_helper INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS worker_runs_unacked ON worker_runs(finished_at, run_id) WHERE finished_at IS NOT NULL;
   `)
@@ -93,6 +94,7 @@ export function prepareWorkerJournal(db: Database) {
   if (!cols.has('driver')) db.exec('ALTER TABLE worker_runs ADD COLUMN driver TEXT')
   if (!cols.has('updated_at')) db.exec('ALTER TABLE worker_runs ADD COLUMN updated_at INTEGER')
   if (!cols.has('pruned_at')) db.exec('ALTER TABLE worker_runs ADD COLUMN pruned_at INTEGER')
+  if (!cols.has('created_by_helper')) db.exec('ALTER TABLE worker_runs ADD COLUMN created_by_helper INTEGER NOT NULL DEFAULT 0')
   const unfinished = db.query('SELECT run_id, session_id FROM worker_runs WHERE done_frame IS NULL').all() as { run_id: string; session_id: string | null }[]
   const now = Date.now()
   for (const row of unfinished) {
@@ -128,8 +130,9 @@ export function startWorkerRecord(db: Database, runId: string, sessionId?: strin
   db.query('INSERT INTO worker_runs(run_id, session_id, driver, updated_at) VALUES(?, ?, ?, ?)').run(runId, sessionId ?? null, driver ?? null, Date.now())
 }
 
-export function updateWorkerSession(db: Database, runId: string, sessionId: string) {
-  db.query('UPDATE worker_runs SET session_id=?, updated_at=? WHERE run_id=?').run(sessionId, Date.now(), runId)
+export function updateWorkerSession(db: Database, runId: string, sessionId: string, createdByHelper = false) {
+  if (createdByHelper) db.query('UPDATE worker_runs SET session_id=?, created_by_helper=1, updated_at=? WHERE run_id=?').run(sessionId, Date.now(), runId)
+  else db.query('UPDATE worker_runs SET session_id=?, updated_at=? WHERE run_id=?').run(sessionId, Date.now(), runId)
 }
 
 export function finishWorkerRecord(db: Database, frame: WorkerDoneFrame) {
@@ -156,14 +159,14 @@ export function acknowledgeWorker(db: Database, runId: string) {
   db.query('UPDATE worker_runs SET done_frame=?, finished_at=NULL, updated_at=COALESCE(updated_at, ?) WHERE run_id=?').run(JSON.stringify(tombstone), Date.now(), runId)
 }
 
-/** Distinct worker session ids for `driver` whose runs are all settled, acknowledged, unpruned, and older than `cutoffMs`. */
+/** Distinct helper-created session ids for `driver` whose runs are all settled, acknowledged, unpruned, and older than `cutoffMs`. */
 export function sessionsToPrune(db: Database, driver: string, cutoffMs: number, limit = 10): string[] {
   const rows = db
     .query(
       `SELECT session_id FROM worker_runs
        WHERE driver = ? AND session_id IS NOT NULL AND pruned_at IS NULL
        GROUP BY session_id
-       HAVING MAX(COALESCE(updated_at, 0)) < ? AND SUM(CASE WHEN done_frame IS NULL OR finished_at IS NOT NULL THEN 1 ELSE 0 END) = 0
+       HAVING MAX(created_by_helper) = 1 AND MAX(COALESCE(updated_at, 0)) < ? AND SUM(CASE WHEN done_frame IS NULL OR finished_at IS NOT NULL THEN 1 ELSE 0 END) = 0
        ORDER BY MAX(COALESCE(updated_at, 0)) ASC
        LIMIT ?`
     )

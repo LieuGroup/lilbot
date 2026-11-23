@@ -1,8 +1,8 @@
 /** Session open/resume, approval helpers, and generation-safe steering for the helper Hermes worker driver. */
-import type { WorkerStartRequest } from '../../worker-driver'
+import type { WorkerOutcome, WorkerStartRequest } from '../../worker-driver'
 import { hermesToolsets } from './worker-hermes-env'
 import { buildEditorMcpServers, type HermesModelOptions, resolveHermesModel } from './worker-hermes-model'
-import { type HermesStreamState, seedHermesUsage } from './worker-hermes-protocol'
+import { type HermesStreamState, mapHermesTranscript, seedHermesUsage } from './worker-hermes-protocol'
 import { HermesRpcError, type HermesWorkerSocket } from './worker-hermes-socket'
 
 export interface OpenedHermesSession {
@@ -10,6 +10,7 @@ export interface OpenedHermesSession {
   storedSessionId: string
   generation: number
   baselineMessages: number
+  created: boolean
   fallbackNote?: string
 }
 
@@ -17,7 +18,7 @@ export function approvePrompt(socket: HermesWorkerSocket, sessionId: string, pro
   void socket.request('approval.respond', { session_id: sessionId, execution_generation: generation, prompt_id: promptId, choice: 'once' }).catch(() => {})
 }
 
-export function approveSnapshotPrompts(socket: HermesWorkerSocket, snap: Record<string, any>, fallbackSessionId?: string, fallbackGen = 0) {
+function approveSnapshotPrompts(socket: HermesWorkerSocket, snap: Record<string, any>, fallbackSessionId?: string, fallbackGen = 0) {
   const sid = typeof snap.session_id === 'string' ? snap.session_id : fallbackSessionId
   if (!sid) return
   if (Array.isArray(snap.prompts)) {
@@ -28,7 +29,9 @@ export function approveSnapshotPrompts(socket: HermesWorkerSocket, snap: Record<
     }
   }
   if (Array.isArray(snap.open_requests)) {
-    for (const r of snap.open_requests) if (r?.method === 'approval' && typeof r.id === 'string') socket.respond(r.id, { choice: 'once' })
+    for (const r of snap.open_requests) {
+      if (r?.method === 'approval' && typeof r.id === 'string' && r?.params?.session_id === sid) socket.respond(r.id, { choice: 'once' })
+    }
   }
 }
 
@@ -79,7 +82,7 @@ export async function openHermesSession(
       payload: { policy: 'session' }
     })
     approveSnapshotPrompts(socket, snap, liveSessionId, generation)
-    return { ok: true, session: { liveSessionId, storedSessionId, generation, baselineMessages: 0, fallbackNote } }
+    return { ok: true, session: { liveSessionId, storedSessionId, generation, baselineMessages: 0, created: true, fallbackNote } }
   }
 
   const snap = await socket.request('session.resume', { session_id: request.sessionId, source: 'acp', display_projection: true })
@@ -99,7 +102,7 @@ export async function openHermesSession(
     })
   }
   approveSnapshotPrompts(socket, snap, liveSessionId, generation)
-  return { ok: true, session: { liveSessionId, storedSessionId, generation, baselineMessages } }
+  return { ok: true, session: { liveSessionId, storedSessionId, generation, baselineMessages, created: false } }
 }
 
 export async function steerHermesSession(
@@ -127,4 +130,55 @@ export async function steerHermesSession(
     }
     return 'not_running'
   }
+}
+
+export async function recoverDroppedHermesTurn(
+  dial: () => Promise<HermesWorkerSocket>,
+  storedSessionId: string,
+  admissionId: string | undefined,
+  state: HermesStreamState,
+  waitTurn: () => Promise<'event' | 'closed' | 'stop_timeout'>,
+  onResumed: (socket: HermesWorkerSocket, liveSessionId: string, generation: number) => void
+) {
+  try {
+    const socket = await dial()
+    const res = await socket.request('session.resume', { session_id: storedSessionId, source: 'acp', display_projection: true })
+    const liveSessionId = String(res.session_id)
+    const generation = typeof res.execution_generation === 'number' ? res.execution_generation : 0
+    onResumed(socket, liveSessionId, generation)
+    approveSnapshotPrompts(socket, res, liveSessionId, generation)
+    const receipt = admissionId ? await socket.request('prompt.receipt', { session_id: storedSessionId, admission_id: admissionId }).catch(() => null) : null
+    if (receipt?.status === 'terminal' || res.running === false) {
+      const ok = receipt?.outcome === 'completed' || !receipt
+      state.complete = { status: ok ? 'completed' : receipt?.outcome === 'interrupted' ? 'stopped' : 'failed', text: state.text }
+    } else await waitTurn()
+  } catch {}
+}
+
+export function buildHermesOutcome(
+  state: HermesStreamState,
+  finalSnap: Record<string, any> | null,
+  baselineMessages: number,
+  storedSessionId: string | undefined,
+  stopped: boolean,
+  fallbackNote?: string,
+  secret?: string
+): WorkerOutcome {
+  for (const item of state.tools.values()) item.running = false
+  const mapped = finalSnap ? mapHermesTranscript(finalSnap.display_messages, baselineMessages, secret) : []
+  const finalItems = mapped.length ? mapped : state.items
+  const baseText =
+    state.complete?.text ||
+    finalItems
+      .filter(i => i.kind === 'assistant')
+      .map(i => i.text)
+      .join('\n\n') ||
+    state.text
+  const session = storedSessionId ? { sessionId: storedSessionId } : {}
+  if (stopped || state.complete?.status === 'stopped') return { ...session, status: 'stopped', text: baseText, items: finalItems, usage: state.usage }
+  if (!state.complete) return { ...session, status: 'interrupted', text: baseText, items: finalItems, usage: state.usage, error: 'Connection to Hermes gateway was lost.' }
+  if (state.complete.status === 'failed')
+    return { ...session, status: 'failed', text: '', items: finalItems, usage: state.usage, error: state.complete.error ?? 'Hermes worker failed.' }
+  const text = fallbackNote ? `[${fallbackNote}]${baseText ? `\n\n${baseText}` : ''}` : baseText
+  return { ...session, status: 'completed', text, items: finalItems, usage: state.usage }
 }

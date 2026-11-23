@@ -309,13 +309,17 @@ macOS and Linux helpers are covered; Windows is not covered (process-group termi
   `'worker'` in `ComputerHello.capabilities` and their `{ driver, version }` entries in `workerAgents` (also refreshed
   via signed `worker.capabilities` frames). A computer with no coding agent stays usable for commands and simply omits
   the `worker` capability.
-- **Driver interface and Claude Code CLI:** `helper/worker-driver.ts` defines the engine-neutral `WorkerDriver`
-  contract so additional agents can plug in beside it. `helper/worker-claude-protocol.ts` and
-  `helper/worker-driver-claude.ts` implement the Claude Code CLI driver (`claude -p --output-format stream-json
+- **Driver interface and per-driver folders:** `helper/worker-driver.ts` defines the engine-neutral `WorkerDriver`
+  contract; concrete drivers and detect-only probes live under `helper/drivers/<id>/` and register only in
+  `helper/drivers/registry.ts` (declared on the leader only in `server/computers/remote-worker-drivers.ts`).
+  `helper/drivers/claude-code/` implements the Claude Code CLI driver (`claude -p --output-format stream-json
   --input-format stream-json --verbose --permission-mode bypassPermissions --strict-mcp-config --mcp-config <file>
-  --model <model>` with optional `--effort`, `--append-system-prompt`, and `--resume`). LilBot passes the bot's model
-  and effort through and stores no provider key file on added computers: the agent uses whatever sign-in that machine
-  already has, and model refusals surface as a failed worker with the agent's plain reason.
+  --model <model>` with optional `--effort`, `--append-system-prompt`, and `--resume`), and `helper/drivers/hermes/`
+  implements the Hermes canonical-gateway driver (passing `no_mcp` so personal `config.yaml` MCP servers are never
+  inherited, holding LilBot's scoped MCP tools in gateway RAM via `editor.mcp_servers`, and refusing fast when
+  `compression.checkpoint_required` is enabled). LilBot passes the bot's model and effort through and stores no
+  provider key file on added computers: the agent uses whatever sign-in that machine already has, and model refusals
+  surface as a failed worker with the agent's plain reason.
 - **Session files:** the Claude Code driver intentionally leaves Claude Code's own session persistence enabled (it does
   not pass `--no-session-persistence`) because follow-up turns and post-interrupt recovery depend on `--resume
   <session_id>`. Claude Code manages those files under its own home folder; LilBot never writes secrets into prompts

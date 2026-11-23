@@ -26,7 +26,7 @@ const devHermes = join(homedir(), 'lilbot-dev', 'hermes')
 for (const dir of [helperConfig, workDir, remoteHome, remoteLocks]) mkdirSync(dir, { recursive: true, mode: 0o700 })
 
 const baseCfg = readFileSync(join(devHermes, 'config.yaml'), 'utf8')
-const remoteCfg = baseCfg.replace(/gateway:\n(?:\s+.*\n)*/, 'gateway:\n  multiplex_profiles: false\n  unmanaged_idle_exit_seconds: 8\n')
+const remoteCfg = `${baseCfg.replace(/gateway:\n(?:\s+.*\n)*/, 'gateway:\n  multiplex_profiles: false\n  unmanaged_idle_exit_seconds: 8\n')}\nmcp_servers:\n  personal_secret_mcp:\n    command: /bin/echo\n    args: ["personal"]\n`
 writeFileSync(join(remoteHome, 'config.yaml'), remoteCfg, { mode: 0o600 })
 copyFileSync(join(devHermes, '.env'), join(remoteHome, '.env'))
 chmodSync(join(remoteHome, '.env'), 0o600)

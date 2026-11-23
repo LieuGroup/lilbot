@@ -10,6 +10,7 @@ export const MAX_WORKER_AGENTS = 8
 export const SAFE_WORKER_SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/
 export const SAFE_WORKER_VERSION = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/
 const SAFE_WORKER_DRIVER_ID = /^[a-z][a-z0-9-]{0,31}$/
+const SAFE_WORKER_REASON = /^[a-z][a-z0-9_-]{0,47}$/
 
 export const WorkerDriverId = z.string().regex(SAFE_WORKER_DRIVER_ID, 'Invalid coding engine id.')
 export type WorkerDriverId = z.infer<typeof WorkerDriverId>
@@ -20,7 +21,9 @@ export const WorkerAgentInfo = z.object({
   /** True when this helper can run workers on this engine; omitted by older helpers (server treats as true only for claude-code). */
   supported: z.boolean().optional(),
   /** Advisory sign-in status when it can be told cheaply and safely; omitted when unknown. */
-  signedIn: z.boolean().optional()
+  signedIn: z.boolean().optional(),
+  /** Safe machine-readable code when an installed driver cannot run workers right now due to local configuration. */
+  unavailableReason: z.string().regex(SAFE_WORKER_REASON).optional()
 })
 export type WorkerAgentInfo = z.infer<typeof WorkerAgentInfo>
 

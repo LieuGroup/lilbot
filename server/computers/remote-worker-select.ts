@@ -4,7 +4,7 @@
 import type { BotModel } from '../../shared/bot-schema'
 import type { ComputerHello } from '../../shared/computer-schema'
 import { SAFE_WORKER_VERSION, type WorkerAgentInfo, type WorkerDriverId } from '../../shared/worker-frame-schema'
-import { driverPriority, isLegacyImplicitDriver, SERVER_SUPPORTED_WORKER_DRIVERS } from './remote-worker-drivers'
+import { driverPriority, driverUnavailableDetail, isLegacyImplicitDriver, SERVER_SUPPORTED_WORKER_DRIVERS } from './remote-worker-drivers'
 import { validateModelForDriver } from './remote-worker-sanitize'
 
 export { SERVER_SUPPORTED_WORKER_DRIVERS }
@@ -18,7 +18,7 @@ export function sanitizeWorkerVersion(version: string): string {
 /** Server-authoritative runnability check: the server must support the driver AND the helper must report it supported
  *  (omitted `supported` counts as true only for a legacy driver older helpers reported before adding `supported`). */
 export function isSupportedWorkerAgent(agent: WorkerAgentInfo, serverDrivers: ReadonlySet<WorkerDriverId> = SERVER_SUPPORTED_WORKER_DRIVERS): boolean {
-  if (!serverDrivers.has(agent.driver)) return false
+  if (!serverDrivers.has(agent.driver) || agent.unavailableReason) return false
   return agent.supported ?? isLegacyImplicitDriver(agent.driver)
 }
 
@@ -30,11 +30,14 @@ export function normalizeWorkerAgents(agents: WorkerAgentInfo[] | undefined, ser
   for (const agent of agents) {
     if (seen.has(agent.driver)) continue
     seen.add(agent.driver)
+    const knownReason = serverDrivers.has(agent.driver) && driverUnavailableDetail(agent.driver, agent.unavailableReason) ? agent.unavailableReason : undefined
     const runnable = isSupportedWorkerAgent(agent, serverDrivers)
+    const { unavailableReason: _rawReason, ...rest } = agent
     out.push({
-      ...agent,
+      ...rest,
       version: sanitizeWorkerVersion(agent.version),
-      ...(agent.supported !== undefined || !runnable ? { supported: runnable } : {})
+      ...(agent.supported !== undefined || !runnable ? { supported: runnable } : {}),
+      ...(knownReason ? { unavailableReason: knownReason } : {})
     })
   }
   return out
@@ -89,16 +92,28 @@ export function selectRemoteWorkerEngine(input: RemoteEngineSelectionInput): Rem
       }
     }
     if (!isSupportedWorkerAgent(match, serverDrivers)) {
+      const detail = driverUnavailableDetail(match.driver, match.unavailableReason)
       return {
         ok: false,
         code: 'engine_unsupported',
-        message: `Computer "${computerName}" has "${requestedEngine}" installed, but LilBot does not support running workers on it yet.${runnableNames ? ` Supported engines there: ${runnableNames}.` : ''}`
+        message: detail
+          ? `Could not use "${requestedEngine}" on computer "${computerName}": ${detail}.${runnableNames ? ` Supported engines there: ${runnableNames}.` : ''}`
+          : `Computer "${computerName}" has "${requestedEngine}" installed, but LilBot does not support running workers on it yet.${runnableNames ? ` Supported engines there: ${runnableNames}.` : ''}`
       }
     }
     return { ok: true, driver: match.driver, fallback: false }
   }
 
   if (!runnable.length) {
+    const blocked = agents.find(a => Boolean(driverUnavailableDetail(a.driver, a.unavailableReason)))
+    const blockedDetail = blocked ? driverUnavailableDetail(blocked.driver, blocked.unavailableReason) : undefined
+    if (blocked && blockedDetail) {
+      return {
+        ok: false,
+        code: 'computer_no_worker',
+        message: `Could not use "${blocked.driver}" on computer "${computerName}": ${blockedDetail}.`
+      }
+    }
     const unsupported = agents.map(a => a.driver).join(', ')
     return {
       ok: false,

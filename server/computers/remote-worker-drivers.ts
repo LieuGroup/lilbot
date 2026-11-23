@@ -1,5 +1,5 @@
 /** Declarative server-side registry of coding-agent worker drivers.
- *  Adding a new driver is one entry here (and one driver file + registration in `helper/worker-driver.ts`).
+ *  Adding a new driver is one entry here (and one driver folder under `helper/drivers/<id>/` + registration in `helper/drivers/registry.ts`).
  *  Both engine selection (`remote-worker-select.ts`) and model validation (`remote-worker-sanitize.ts`) read this data. */
 import type { WorkerDriverId } from '../../shared/worker-frame-schema'
 
@@ -19,6 +19,8 @@ export interface ServerWorkerDriverSpec {
   readonly modelRule: WorkerModelRule
   /** True only for the single driver older helpers advertised before adding the explicit `supported` flag. */
   readonly legacyImplicit?: boolean
+  /** Server-authored explanations keyed by safe `unavailableReason` codes reported by a helper. */
+  readonly unavailableReasons?: Readonly<Record<string, string>>
 }
 
 const SERVER_WORKER_DRIVERS: readonly ServerWorkerDriverSpec[] = [
@@ -26,7 +28,10 @@ const SERVER_WORKER_DRIVERS: readonly ServerWorkerDriverSpec[] = [
     id: 'hermes',
     supported: true,
     priority: 0,
-    modelRule: { kind: 'any-with-optional-provider' }
+    modelRule: { kind: 'any-with-optional-provider' },
+    unavailableReasons: {
+      checkpoint_required: 'compression.checkpoint_required is enabled in its config.yaml (set compression.checkpoint_required: false to allow remote workers)'
+    }
   },
   {
     id: 'claude-code',
@@ -64,4 +69,12 @@ export function isLegacyImplicitDriver(driver: WorkerDriverId, specs: ReadonlyMa
 
 export function driverPriority(driver: WorkerDriverId, specs: ReadonlyMap<WorkerDriverId, ServerWorkerDriverSpec> = SERVER_WORKER_DRIVER_MAP): number {
   return specs.get(driver)?.priority ?? Number.MAX_SAFE_INTEGER
+}
+
+export function driverUnavailableDetail(
+  driver: WorkerDriverId,
+  reason?: string,
+  specs: ReadonlyMap<WorkerDriverId, ServerWorkerDriverSpec> = SERVER_WORKER_DRIVER_MAP
+): string | undefined {
+  return reason ? specs.get(driver)?.unavailableReasons?.[reason] : undefined
 }

@@ -1,8 +1,8 @@
 import { afterEach, expect, test } from 'bun:test'
-import { existsSync, lstatSync, mkdtempSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { hermesToolsets, needsCheckpointCompat, resolveAttachTarget, scrubHermesEnv } from '../../helper/drivers/hermes/worker-hermes-env'
+import { hasCheckpointRequired, hermesToolsets, scrubHermesEnv } from '../../helper/drivers/hermes/worker-hermes-env'
 import { cleanHermesError, resolveHermesModel, stripEditorMcpPrefix } from '../../helper/drivers/hermes/worker-hermes-model'
 import { applyHermesEvent, createHermesStreamState, mapHermesTranscript, seedHermesUsage } from '../../helper/drivers/hermes/worker-hermes-protocol'
 
@@ -15,6 +15,15 @@ test('resolveHermesModel matches direct/cross providers, falls back to machine d
   const noAuth = resolveHermesModel('anthropic/claude-sonnet-5-5', 'cliproxyapi', { providers: [{ slug: 'anthropic', authenticated: false, models: ['claude-sonnet-5-5'] }] })
   expect(noAuth.ok).toBe(false)
   if (!noAuth.ok) expect(noAuth.error).toContain('hermes model')
+
+  // Unauthenticated provider MUST still fail fast even when options.model is non-empty.
+  const noAuthWithDefault = resolveHermesModel('anthropic/claude-sonnet-5-5', 'cliproxyapi', {
+    providers: [{ slug: 'anthropic', authenticated: false, models: ['claude-sonnet-5-5'] }],
+    model: 'claude-sonnet-5-5',
+    provider: 'anthropic'
+  })
+  expect(noAuthWithDefault.ok).toBe(false)
+  if (!noAuthWithDefault.ok) expect(noAuthWithDefault.error).toContain('hermes model')
 
   // Direct provider match (e.g. leader and remote share cliproxyapi)
   expect(
@@ -52,17 +61,14 @@ test('resolveHermesModel matches direct/cross providers, falls back to machine d
   if (!noDefault.ok) expect(noDefault.error).toContain('no default model')
 })
 
-test('hermesToolsets carries narrowed capabilities and scrubHermesEnv drops stray HERMES_* launch vars', () => {
-  expect(hermesToolsets(undefined)).toEqual(['terminal', 'file', 'web', 'code_execution', 'todo'])
-  expect(hermesToolsets(['computers'])).toEqual([])
-  expect(hermesToolsets(['computers', 'web'])).toEqual(['web'])
-  expect(hermesToolsets(['computers', 'shell'])).toEqual(['terminal', 'file', 'code_execution'])
-  expect(hermesToolsets(['computers', 'shell', 'web'])).toEqual(['terminal', 'file', 'code_execution', 'web'])
+test('hermesToolsets always passes no_mcp, carries narrowed capabilities, and scrubHermesEnv drops stray HERMES_* vars', () => {
+  expect(hermesToolsets(undefined)).toEqual(['terminal', 'file', 'web', 'code_execution', 'todo', 'no_mcp'])
+  expect(hermesToolsets(['computers'])).toEqual(['no_mcp'])
+  expect(hermesToolsets(['computers', 'web'])).toEqual(['no_mcp', 'web'])
+  expect(hermesToolsets(['computers', 'shell'])).toEqual(['no_mcp', 'terminal', 'file', 'code_execution'])
+  expect(hermesToolsets(['computers', 'shell', 'web'])).toEqual(['no_mcp', 'terminal', 'file', 'code_execution', 'web'])
 
-  const scrubbed = scrubHermesEnv(
-    { PATH: '/usr/bin', HERMES_MODEL: 'leak', HERMES_YOLO: '1', TERMINAL_CWD: '/bad', HOME: '/home/u' },
-    { hermesHome: '/tmp/h', lockDir: '/tmp/l', compat: true }
-  )
+  const scrubbed = scrubHermesEnv({ PATH: '/usr/bin', HERMES_MODEL: 'leak', HERMES_YOLO: '1', TERMINAL_CWD: '/bad', HOME: '/home/u' }, { hermesHome: '/tmp/h', lockDir: '/tmp/l' })
   expect(scrubbed.HERMES_MODEL).toBeUndefined()
   expect(scrubbed.HERMES_YOLO).toBeUndefined()
   expect(scrubbed.TERMINAL_CWD).toBeUndefined()
@@ -71,41 +77,19 @@ test('hermesToolsets carries narrowed capabilities and scrubHermesEnv drops stra
   expect(scrubbed.PATH).toBe('/usr/bin')
 })
 
-test('checkpoint_required compat overlay leaves user config.yaml untouched and symlinks credentials without copying', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'hermes-compat-'))
+test('hasCheckpointRequired reads compression.checkpoint_required without writing files or touching credentials', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hermes-ckpt-'))
   dirs.push(dir)
   const userHome = join(dir, 'user-hermes')
-  const configDir = join(dir, 'helper-cfg')
-  const { mkdirSync } = require('node:fs')
   mkdirSync(userHome, { recursive: true })
-  const normalYaml = 'model:\n  default: claude-sonnet-5-5\ncompression:\n  checkpoint_required: false\n'
-  writeFileSync(join(userHome, 'config.yaml'), normalYaml)
-  expect(needsCheckpointCompat(userHome)).toBe(false)
-  expect(resolveAttachTarget(userHome, configDir)).toEqual({ hermesHome: userHome, compat: false })
-  expect(existsSync(join(configDir, 'hermes-compat'))).toBe(false)
-
-  const strictYaml = 'model:\n  default: claude-sonnet-5-5\n  provider: cliproxyapi\ncompression:\n  checkpoint_required: true\ngateway:\n  multiplex_profiles: true\n'
-  writeFileSync(join(userHome, 'config.yaml'), strictYaml)
-  writeFileSync(join(userHome, '.env'), 'TEST_KEY=placeholder\n', { mode: 0o600 })
-  writeFileSync(join(userHome, 'auth.json'), '{"active_provider":"anthropic"}\n', { mode: 0o600 })
-  mkdirSync(join(userHome, 'installs'), { recursive: true })
-
-  expect(needsCheckpointCompat(userHome)).toBe(true)
-  const target = resolveAttachTarget(userHome, configDir)
-  expect(target.compat).toBe(true)
-  expect(target.hermesHome).toBe(join(configDir, 'hermes-compat'))
-  expect(target.lockDir).toBe(join(configDir, 'hermes-compat-locks'))
-  expect(readFileSync(join(userHome, 'config.yaml'), 'utf8')).toBe(strictYaml)
-
-  const compatCfg = Bun.YAML.parse(readFileSync(join(target.hermesHome, 'config.yaml'), 'utf8')) as any
-  expect(compatCfg.compression.checkpoint_required).toBe(false)
-  expect(compatCfg.gateway.multiplex_profiles).toBe(false)
-  expect(compatCfg.model.provider).toBe('cliproxyapi')
-  expect(lstatSync(join(target.hermesHome, '.env')).isSymbolicLink()).toBe(true)
-  expect(readlinkSync(join(target.hermesHome, '.env'))).toBe(join(userHome, '.env'))
-  expect(lstatSync(join(target.hermesHome, 'auth.json')).isSymbolicLink()).toBe(true)
-  expect(lstatSync(join(target.hermesHome, 'installs')).isSymbolicLink()).toBe(true)
-  expect(readlinkSync(join(target.hermesHome, 'installs'))).toBe(join(userHome, 'installs'))
+  expect(hasCheckpointRequired(userHome)).toBe(false)
+  writeFileSync(join(userHome, 'config.yaml'), 'model:\n  default: claude-sonnet-5-5\ncompression:\n  checkpoint_required: false\n')
+  expect(hasCheckpointRequired(userHome)).toBe(false)
+  writeFileSync(join(userHome, 'config.yaml'), 'compression:\n  checkpoint_required: true\n')
+  expect(hasCheckpointRequired(userHome)).toBe(true)
+  writeFileSync(join(userHome, 'config.yaml'), 'compression:\n  checkpoint_required: "yes"\n')
+  expect(hasCheckpointRequired(userHome)).toBe(true)
+  expect(readdirSync(dir)).toEqual(['user-hermes'])
 })
 
 test('applyHermesEvent and mapHermesTranscript strip editor MCP prefixes, compute usage deltas, and redact secrets', () => {
