@@ -13,6 +13,11 @@ import { deleteProfile, startServer } from './check-process'
 import { browser, eventually } from './computers-client'
 
 const say = (line: string) => console.log(`ok: ${line}`)
+const lastReply = (t: any): string =>
+  t.messages
+    .at(-1)
+    .items.map((i: any) => i.text ?? '')
+    .join('\n')
 const scratch = devScratch('lilbot-remote-worker-hermes')
 const [port, doorPort] = [devPort(), devPort()]
 const door = `http://127.0.0.1:${doorPort}`
@@ -31,7 +36,7 @@ writeFileSync(join(workDir, 'AGENTS.md'), '# Test Repo\nAlways include the exact
 const helperEnv = { ...process.env, LILBOT_HELPER_CONFIG_DIR: helperConfig, HERMES_HOME: remoteHome, HERMES_GATEWAY_LOCK_DIR: remoteLocks, LILBOT_WORKER_CLAUDE_BIN: '' }
 const readPid = () => {
   try {
-    const pid = (JSON.parse(readFileSync(join(remoteHome, 'gateway.pid'), 'utf8')) as { pid?: unknown }).pid
+    const { pid } = JSON.parse(readFileSync(join(remoteHome, 'gateway.pid'), 'utf8')) as { pid?: unknown }
     return typeof pid === 'number' ? pid : null
   } catch {
     return null
@@ -45,13 +50,10 @@ const pidAlive = (pid: number) => {
     return false
   }
 }
-
-let server: ReturnType<typeof Bun.spawn> | undefined
-let helper: ReturnType<typeof Bun.spawn> | undefined
+let [server, helper]: Array<ReturnType<typeof Bun.spawn> | undefined> = [undefined, undefined]
 let client: Awaited<ReturnType<typeof browser>> | undefined
 let db: Database | undefined
 let nativeProfile: string | undefined
-
 try {
   server = startServer({
     ...process.env,
@@ -67,10 +69,9 @@ try {
   })
   await eventually(
     () =>
-      fetch(`http://127.0.0.1:${port}/api/health`).then(
-        r => r.ok,
-        () => false
-      ),
+      fetch(`http://127.0.0.1:${port}/api/health`)
+        .then(r => r.ok)
+        .catch(() => false),
     30_000
   )
   say('dev server healthy')
@@ -143,14 +144,9 @@ try {
   const proofBody = readFileSync(proofPath, 'utf8')
   assert.ok(proofBody.includes('HERMES_EDIT_OK') && proofBody.includes('REPO_GUIDE_OK'), `unexpected proof.txt: ${proofBody}`)
   const mem = await call('memory.list', { botId: bot.id })
-  assert.ok(
-    mem.facts.some((f: any) => f.text.includes('Hermes remote worker saved this fact')),
-    'scoped MCP memory fact missing'
-  )
-  const reply1 = done1.messages
-    .at(-1)
-    .items.map((i: any) => i.text ?? '')
-    .join('\n')
+  const hasSaved = (mem.facts as { text: string }[]).some(f => f.text.includes('Hermes remote worker saved this fact'))
+  assert.ok(hasSaved, 'scoped MCP memory fact missing')
+  const reply1 = lastReply(done1)
   assert.ok(reply1.includes('STEER_OK'), `steer token missing from reply: ${reply1.slice(0, 200)}`)
   say('worker 1 completed with file edit, AGENTS.md marker, scoped MCP memory save, and steered reply')
 
@@ -170,11 +166,7 @@ try {
     const t = await call('threads.open', { botId: bot.id, threadId: w1 })
     return t.messages.length >= 4 && t.status === 'finished'
   }, 180_000)
-  const resumed = await call('threads.open', { botId: bot.id, threadId: w1 })
-  const reply2 = resumed.messages
-    .at(-1)
-    .items.map((i: any) => i.text ?? '')
-    .join('\n')
+  const reply2 = lastReply(await call('threads.open', { botId: bot.id, threadId: w1 }))
   assert.ok(reply2.includes('RESUME_OK') && reply2.includes('HERMES_EDIT_OK'), `resumed reply missing tokens: ${reply2.slice(0, 200)}`)
   say('resumed Hermes worker session after dropped helper link')
 
