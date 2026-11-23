@@ -246,6 +246,7 @@ Every tool acts as the calling bot and calls the function the screen uses. Reads
 | `lilbot_webhook_message` | only from a webhook run: its one message to its own bot, saved on the run and sent hidden into the bot's main conversation (opened like a new bot's greeting), fenced as outside data (`webhooks/webhook-messages.ts`) |
 | `lilbot_workspace_read` | a text file (first 100 kB) or folder in the caller's own folder, through the Library's no-follow opens; for webhook runs, which have no engine file tools |
 | `lilbot_connection` | the MCP services bots add (#187): `action` add (name, address), sign_in (id: a fresh link), finish (the address Oscar's browser ended on), remove (id, one the caller added); `McpConnections` in `server/connections/` |
+| `lilbot_computers_list`, `lilbot_computer_exec`, `_read_file`, `_write_file`, `_list_folder`, `_request_read`, `_cancel`, `_copy` | `ComputerService` (`list`, `submit`, `read`, `cancel`, `copy`): the eight computer tools (#113), gated under `computers` for webhook runs and refused in check sessions; caller taken from the bot's key |
 
 Not offered, by decision: deleting a bot, removing a computer, forgetting another bot's private facts, changing a bot's
 permission mode, registering computers. The deletes a bot has are of its own webhooks (Oscar's decision on #12) and its own routines (it always could: `delete_routine`),

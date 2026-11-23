@@ -23,7 +23,17 @@ export const TOOL_GROUPS: Partial<Record<WebhookCapability, string[]>> = {
     'lilbot_delete_defaults_set'
   ],
   delegation: ['lilbot_bots_list', 'lilbot_delegate', 'lilbot_delegation', 'lilbot_group'],
-  computers: ['lilbot_status'],
+  computers: [
+    'lilbot_status',
+    'lilbot_computers_list',
+    'lilbot_computer_exec',
+    'lilbot_computer_read_file',
+    'lilbot_computer_write_file',
+    'lilbot_computer_list_folder',
+    'lilbot_computer_request_read',
+    'lilbot_computer_cancel',
+    'lilbot_computer_copy'
+  ],
   coding: ['lilbot_status'],
   memory: ['lilbot_memory_list', 'lilbot_memory_save', 'lilbot_memory_pause', 'lilbot_memory_restore', 'lilbot_memory_expiry'],
   routines: ['lilbot_routine', 'lilbot_routines_list'],
