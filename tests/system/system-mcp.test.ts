@@ -17,7 +17,9 @@ const EXPECTED_TOOLS = [
   'lilbot_section_create',
   'lilbot_unread_set',
   'lilbot_memory_list',
+  'lilbot_memory_recall',
   'lilbot_memory_save',
+  'lilbot_memory_forget',
   'lilbot_memory_pause',
   'lilbot_memory_restore',
   'lilbot_memory_expiry',
@@ -82,17 +84,17 @@ test('the handshake answers like an MCP server and lists exactly the agreed tool
   for (const tool of listed) {
     expect(tool.inputSchema.type).toBe('object')
     expect(tool.inputSchema.$schema).toBeUndefined()
-    expect(tool.annotations.readOnlyHint).toBe(tool.name.match(/_(about|guide|status|list|read|get)$/) !== null)
+    expect(tool.annotations.readOnlyHint).toBe(tool.name.match(/_(about|guide|status|list|read|get|recall)$/) !== null)
   }
   const unknown = (await (await f.rpc('b1', 'resources/list')).json()).error
   expect(unknown.code).toBe(-32601)
 })
 
-test("nothing destructive is offered: no delete, remove or forget of bots, computers or facts; only the bot's own webhooks and routines", async () => {
+test('nothing permanently destructive is offered: no delete/remove of bots or computers; memory forget is bot-scoped and reversible', async () => {
   const f = systemFixture()
   const names = f.tools.map(tool => tool.name)
-  expect(names.filter(name => /delete|remove|forget|destroy|revoke/.test(name))).toEqual(['lilbot_delete_defaults_get', 'lilbot_delete_defaults_set'])
-  for (const forbidden of ['lilbot_bot_delete', 'lilbot_computer_remove', 'lilbot_memory_forget']) {
+  expect(names.filter(name => /delete|remove|forget|destroy|revoke/.test(name))).toEqual(['lilbot_memory_forget', 'lilbot_delete_defaults_get', 'lilbot_delete_defaults_set'])
+  for (const forbidden of ['lilbot_bot_delete', 'lilbot_computer_remove']) {
     const result = (await (await f.rpc('b1', 'tools/call', { name: forbidden, arguments: { botId: 'b1' } })).json()).result
     expect(result.isError).toBe(true)
     expect(result.content[0].text).toContain('is not a LilBot tool')
