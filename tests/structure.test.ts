@@ -19,8 +19,12 @@ function concreteEngineCrossings(from: string, except: string[] = []): string[] 
   return concreteEngineIds().flatMap(id => crossings(from, `server/engines/${id}`, except))
 }
 
-test('shared holds definitions only: it imports nothing from the server or the web app', () => {
-  expect([...crossings('shared', 'server'), ...crossings('shared', 'web')]).toEqual([])
+test('shared holds protocol definitions and shared client logic: it imports nothing from server, web, ios or helper', () => {
+  expect([...crossings('shared', 'server'), ...crossings('shared', 'web'), ...crossings('shared', 'ios'), ...crossings('shared', 'helper')]).toEqual([])
+})
+
+test('server and helper never import client-only code from shared/client/', () => {
+  expect([...crossings('server', 'shared/client'), ...crossings('helper', 'shared/client')]).toEqual([])
 })
 
 test('the web and iOS apps never reach into the server', () => {
