@@ -1,7 +1,9 @@
 import type { Database } from 'bun:sqlite'
+import type { ChatItem } from '../../shared/chat-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import type { Routine, RoutineCreate, RoutineRun } from '../../shared/routine-schema'
 import { nextRun, scheduleText } from './routine-schedule'
+import { RunTranscriptStore } from './run-transcripts'
 
 type Row = {
   id: string
@@ -38,7 +40,10 @@ const runFrom = (r: RunRow): RoutineRun => ({
 })
 
 export class RoutineStore {
-  constructor(private db: Database) {}
+  readonly transcripts: RunTranscriptStore
+  constructor(private db: Database) {
+    this.transcripts = new RunTranscriptStore(db, 'routine')
+  }
   private from(row: Row): Routine {
     const schedule = JSON.parse(row.schedule)
     return {
@@ -86,7 +91,10 @@ export class RoutineStore {
   delete(botId: string, id: string) {
     this.get(botId, id)
     // Keep the request-id tombstone: a delayed create retry must not resurrect this routine.
-    this.db.query('UPDATE routines SET deleted = 1, paused = 1 WHERE id = ?').run(id)
+    this.db.transaction(() => {
+      this.db.query('UPDATE routines SET deleted = 1, paused = 1 WHERE id = ?').run(id)
+      this.transcripts.deleteForParent(id)
+    })()
   }
   forgetBot(botId: string) {
     this.db.query('DELETE FROM routines WHERE bot_id = ?').run(botId)
@@ -138,7 +146,10 @@ export class RoutineStore {
   isRoutineChat(chatId: string) {
     return !!this.db.query('SELECT 1 FROM routine_chats WHERE chat_id = ?').get(chatId)
   }
-  finish(id: string, status: RoutineRun['status'], result: string, now: number) {
-    this.db.query('UPDATE routine_runs SET status = ?, result = ?, finished_at = ? WHERE id = ?').run(status, result.slice(0, 200_000), now, id)
+  finish(id: string, status: RoutineRun['status'], result: string, now: number, items?: ChatItem[]) {
+    this.db.transaction(() => {
+      this.db.query('UPDATE routine_runs SET status = ?, result = ?, finished_at = ? WHERE id = ?').run(status, result.slice(0, 200_000), now, id)
+      if (items !== undefined) this.transcripts.saveIfLive(id, items, now)
+    })()
   }
 }

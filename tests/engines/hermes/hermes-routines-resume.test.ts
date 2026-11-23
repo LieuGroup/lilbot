@@ -77,3 +77,31 @@ test('unknown receipt on a resumed or running session never sends session.interr
   expect(res.unknownReceipt).toBe(true)
   expect(calls).not.toContain('session.interrupt')
 })
+
+test('a run recovered on a fresh connection after one not_found still records turn usage on its saved items', async () => {
+  let n = 0
+  const connect = async (_profile: string, onEvent: (e: any) => void) => {
+    const id = ++n
+    return {
+      request: async (method: string) => {
+        if (method === 'config.get') return { value: 'off' }
+        if (method === 'session.resume') {
+          if (id === 1) throw notFound()
+          return { session_id: 'live-2', stored_session_id: 'stored-2', display_messages: [{ role: 'assistant', text: 'Recovered answer.' }], info: { usage: { calls: 0 } } }
+        }
+        if (method === 'prompt.submit') {
+          onEvent({ sessionId: 'live-2', type: 'message.start', payload: {} })
+          onEvent({ sessionId: 'live-2', type: 'session.usage', payload: { input_tokens: 9, output_tokens: 4, cache_read_tokens: 30, context_tokens: 43 } })
+          onEvent({ sessionId: 'live-2', type: 'message.complete', payload: { usage: { context_used: 43 } } })
+          return { admission_id: 'adm-2' }
+        }
+        if (method === 'prompt.receipt') return { status: 'terminal', outcome: 'completed' }
+        return {}
+      },
+      close: () => {}
+    } as unknown as HermesSocket
+  }
+  const res = await runRoutine('native-id', 'reply', { workspace: '/test', runId: 'r-usage', chatId: 'stored-2', onChat: () => {} }, connect)
+  expect(res.status).toBe('completed')
+  expect(res.items).toEqual([{ kind: 'assistant', text: 'Recovered answer.', usage: { inputTokens: 9, cacheReadTokens: 30, outputTokens: 4, contextTokens: 43 } }])
+})

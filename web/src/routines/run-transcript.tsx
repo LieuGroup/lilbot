@@ -15,17 +15,23 @@ type OpenRun = 'routines.openRun' | 'webhooks.openRun'
 function useRunChat(open: OpenRun, botId: string, runId: string) {
   const connected = useBotStore(state => state.connected)
   const [chat, setChat] = useState<ChatView>(emptyChat)
+  const [loaded, setLoaded] = useState(false)
+  const [notKept, setNotKept] = useState(false)
   const [error, setError] = useState('')
   useEffect(() => {
     if (!connected) return
     let cancelled = false
     let chatId = ''
     let stopListening = () => {}
+    setLoaded(false)
+    setNotKept(false)
     lilbot.call(open, { botId, runId }).then(
       snapshot => {
         chatId = snapshot.chatId
         if (cancelled) return void lilbot.call('chat.close', { chatId }).catch(() => {})
         setError('')
+        setLoaded(true)
+        setNotKept(Boolean(snapshot.transcriptNotKept))
         setChat(previous => chatFromSnapshot(snapshot, previous))
         stopListening = lilbot.onChat(chatId, event => setChat(previous => applyChatEvent(previous, event)))
       },
@@ -37,7 +43,7 @@ function useRunChat(open: OpenRun, botId: string, runId: string) {
       if (chatId && lilbot.connected) void lilbot.call('chat.close', { chatId }).catch(() => {})
     }
   }, [open, botId, runId, connected])
-  return { chat, error }
+  return { chat, loaded, notKept, error }
 }
 
 interface RunTranscriptProps {
@@ -50,6 +56,8 @@ interface RunTranscriptProps {
   when: string | undefined
   /** The routine's or webhook's own words, standing in for LilBot's wrapper prompt. */
   asked: { label: string; text: string } | undefined
+  /** Saved final result shown when the full transcript was not kept. */
+  summary?: string
   /** Said once the list is read without the run. */
   gone: string | undefined
   close: () => void
@@ -58,8 +66,8 @@ interface RunTranscriptProps {
 /** A routine or webhook run's transcript, opened in the conversation column (Paper "07 Routines" panel 3): what it was
  *  asked, then the bot's tool lines and text. Read-only. The prompt LilBot wrapped the task in (and a webhook's events) is
  *  its only user message, so user messages are left out and the task's own words stand in for it. */
-export function RunTranscript({ botId, runId, open, icon: Icon, title, when, asked, gone, close }: RunTranscriptProps) {
-  const { chat, error } = useRunChat(open, botId, runId)
+export function RunTranscript({ botId, runId, open, icon: Icon, title, when, asked, summary, gone, close }: RunTranscriptProps) {
+  const { chat, loaded, notKept, error } = useRunChat(open, botId, runId)
   const items = chat.items.filter((item): item is MessageItem => item.kind !== 'session' && item.kind !== 'user')
   return (
     <>
@@ -102,6 +110,13 @@ export function RunTranscript({ botId, runId, open, icon: Icon, title, when, ask
               </TraceLine>
             </Trace>
           )}
+          {notKept && !error && !gone && (
+            <div className="flex flex-col gap-3">
+              <p className="text-[13px]/[18px] text-muted-foreground">Transcript not kept.</p>
+              {summary && <ChatItem item={{ kind: 'assistant', text: summary }} botId={botId} />}
+            </div>
+          )}
+          {loaded && !chat.running && !notKept && items.length === 0 && summary && !error && !gone && <ChatItem item={{ kind: 'assistant', text: summary }} botId={botId} />}
           {(error || gone) && <p className="text-[13px]/[18px] text-muted-foreground">{error || gone}</p>}
         </div>
       </div>
