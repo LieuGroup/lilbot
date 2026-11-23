@@ -25,9 +25,10 @@ that apply everywhere (the helper door's two paths, secrets, full access, untrus
   `keyConflict` reports a competing key connection.
 - LilBot creates `computer-server-key.pem` (0600) in its data directory; back it up with the database and preserve it on
   redeploy.
-- Computer hard stops (Hermes' `detect_hardline_command`) are a guard for full-access bots, not a security boundary:
-  direct engine submissions and write/copy operations do not enforce Hermes' protected-path refusals. Full-access bots
-  share the OS user's authority. Machine output is untrusted data.
+- Computer hard stops are enforced by LilBot in `ComputerService.submit` (`server/computers/command-safety.ts`) for
+  every caller regardless of engine. They are a guard for full-access bots, not a security boundary: write/copy
+  operations do not enforce protected-path refusals, and full-access bots share the OS user's authority. Machine output
+  is untrusted data.
 - Deliver the helper binary and its `.sha256` from a trusted channel; the sidecar detects corruption, not tampering.
 - A failure to configure the computers plug-in is logged without making the bot unavailable.
 
