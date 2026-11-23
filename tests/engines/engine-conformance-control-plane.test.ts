@@ -19,7 +19,7 @@ async function boot(options?: Parameters<typeof startConformanceApp>[0]) {
 }
 
 describe('engine conformance: safety stop, System MCP completeness, secrets & prompt stability', () => {
-  test.failing('[Lane B PR #251] ComputerService.submit refuses plainly destructive shell commands with no engine plugin', async () => {
+  test('ComputerService.submit refuses plainly destructive shell commands with no engine plugin', async () => {
     const { services, bot } = await boot()
     // Target an offline dummy computer so a pre-fix queue never executes on the real host.
     services.computers.store.add('offline-box', { name: 'Offline Box', os: 'linux', home: '/home/test', capabilities: ['exec'] }, 'dummy-public-key')
@@ -129,7 +129,7 @@ describe('engine conformance: safety stop, System MCP completeness, secrets & pr
     if (masterToken) expect(handed).not.toContain(masterToken)
   })
 
-  test.failing('[Lane C PR #256] system note at the top of a bot prompt is byte-identical across release, roster, and computer changes', async () => {
+  test('system note at the top of a bot prompt is byte-identical across release, roster, and computer changes', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'lilbot-note-stable-'))
     cleanups.push(() => rmSync(dir, { recursive: true, force: true }))
 
