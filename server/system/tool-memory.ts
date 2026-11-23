@@ -1,5 +1,5 @@
-/** Memory tools: what Oscar does in a bot's Memory panel, except forgetting (screen only). A fact is named by the
- *  short id the bot sees, and only facts in that bot's own panel can be named. */
+/** Memory tools: what Oscar does in a bot's Memory panel, plus bot-scoped recall and reversible forget of the calling
+ *  bot's own visible memory (own private facts and shared facts; never another bot's private facts). */
 import { z } from 'zod'
 import { LilBotError } from '../../shared/lilbot-error'
 import { factText, type MemoryFact, MemoryKind, MemoryScope } from '../../shared/memory-schema'
@@ -14,7 +14,7 @@ const day = (ms: number) => new Date(ms).toISOString().slice(0, 10)
 const target = { botId: z.string().min(1).optional() }
 const fact = z.string().trim().min(4).max(64)
 
-const view = (f: MemoryFact) => ({
+const view = (f: MemoryFact, reader?: string) => ({
   id: shortId(f),
   kind: f.kind,
   scope: f.scope,
@@ -23,7 +23,8 @@ const view = (f: MemoryFact) => ({
   via: f.via,
   date: day(f.learnedAt),
   ...(f.paused ? { paused: true } : {}),
-  ...(f.expiresAt ? { until: day(f.expiresAt) } : {})
+  ...(f.expiresAt ? { until: day(f.expiresAt) } : {}),
+  ...(reader && f.botId !== reader ? { from: f.botId } : {})
 })
 
 function named(facts: MemoryFact[], id: string): MemoryFact {
@@ -43,10 +44,28 @@ export function memoryTools({ bots, memory, memoryChanged }: SystemDeps): McpToo
         const panel = await bots.listMemory(botId ?? caller)
         return {
           bot: panel.botName,
-          facts: panel.facts.slice(0, SHOWN).map(view),
+          facts: panel.facts.slice(0, SHOWN).map(f => view(f)),
           moreFacts: Math.max(0, panel.facts.length - SHOWN),
-          forgotten: panel.forgotten.slice(0, SHOWN).map(view)
+          forgotten: panel.forgotten.slice(0, SHOWN).map(f => view(f))
         }
+      }
+    ),
+    readTool(
+      'lilbot_memory_recall',
+      'Search your visible memory (your private facts and shared facts) by words; empty lists newest. Optional kind and limit (default 20, max 50).',
+      z.object({ query: z.string().max(500).default(''), kind: MemoryKind.optional(), limit: z.number().int().optional() }),
+      async (caller, { query, kind, limit }) => ({
+        facts: memory.recall(caller, query, { kind, limit }).map(f => view(f, caller))
+      })
+    ),
+    actionTool(
+      'lilbot_memory_forget',
+      'Mark one of your visible facts (your own or shared) as forgotten by short or full id. Reversible: Oscar can restore it in Memory.',
+      z.object({ id: fact }),
+      async (caller, { id }) => {
+        const forgotten = memory.forgetAsBot(caller, id)
+        memoryChanged()
+        return view(forgotten, caller)
       }
     ),
     actionTool(

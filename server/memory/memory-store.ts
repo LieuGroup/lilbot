@@ -112,7 +112,7 @@ export class MemoryStore {
   /** Visible facts whose id starts with `prefix`; bots refer to facts by a short id. */
   byIdPrefix(botId: string, now: number, prefix: string): MemoryFact[] {
     return this.db
-      .query<FactRow, { botId: string; now: number; prefix: string }>(`SELECT * FROM memory_facts WHERE ${VISIBLE} AND id LIKE $prefix || '%' LIMIT 2`)
+      .query<FactRow, { botId: string; now: number; prefix: string }>(`SELECT * FROM memory_facts WHERE ${VISIBLE} AND substr(id, 1, length($prefix)) = $prefix LIMIT 2`)
       .all({ botId, now, prefix })
       .map(factFrom)
   }
