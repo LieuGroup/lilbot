@@ -5,7 +5,14 @@ import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { archiveKeychainArg, type ParsedProfile, parseProvisioningProfileXml, selectProvisioningProfile } from './provisioning-profile'
+import {
+  archiveKeychainArg,
+  type ParsedProfile,
+  parseProvisioningProfileXml,
+  readFlagValue,
+  selectProvisioningProfile,
+  validateKeychainFile
+} from './provisioning-profile'
 
 const VARIANTS = {
   preview: { scheme: 'LilBotPreview', bundleId: 'com.lilbot.app.preview' },
@@ -62,7 +69,10 @@ function resolveProfile(profileName: string, bundleId: string, keychainPath: str
     }
   }
   const matched = selectProvisioningProfile(parsed, profileName, bundleId, localIds)
-  if (!matched) throw new Error(`No unexpired installed provisioning profile named "${profileName}" matching ${bundleId}.`)
+  if (!matched) {
+    const scope = keychainPath ? ` matching a signing identity in ${keychainPath}` : ' matching a local signing identity'
+    throw new Error(`No valid App Store provisioning profile named "${profileName}" for ${bundleId}${scope}.`)
+  }
   return matched
 }
 
@@ -93,28 +103,23 @@ function writeExportOptions(file: string, opts: { teamId: string; signingStyle: 
   writeFileSync(file, lines.join('\n'), 'utf8')
 }
 
-function argValue(flag: string): string | undefined {
-  const idx = process.argv.indexOf(flag)
-  return idx >= 0 ? process.argv[idx + 1] : undefined
-}
-
 function expandHome(path: string): string {
   return path.startsWith('~/') ? join(homedir(), path.slice(2)) : path
 }
 
 function main() {
   if (process.platform !== 'darwin') throw new Error('TestFlight builds must run on macOS with Xcode.')
-  const rawVariant = argValue('--variant') ?? process.env.APP_VARIANT ?? 'production'
+  const rawVariant = readFlagValue(process.argv, '--variant') ?? process.env.APP_VARIANT ?? 'production'
   if (rawVariant !== 'production' && rawVariant !== 'preview') throw new Error(`APP_VARIANT must be production or preview (got ${rawVariant}).`)
   const variant: ReleaseVariant = rawVariant
   const { scheme, bundleId } = VARIANTS[variant]
-  const buildNumber = argValue('--build-number') ?? process.env.APP_BUILD_NUMBER ?? utcBuildNumber()
+  const buildNumber = readFlagValue(process.argv, '--build-number') ?? process.env.APP_BUILD_NUMBER ?? utcBuildNumber()
   const unsigned = process.argv.includes('--unsigned')
   const upload = process.argv.includes('--upload')
   const skipPods = process.argv.includes('--skip-pods')
-  const rawKeychain = argValue('--keychain') ?? process.env.IOS_KEYCHAIN
+  const rawKeychain = readFlagValue(process.argv, '--keychain') ?? process.env.IOS_KEYCHAIN
   const keychainPath = rawKeychain?.trim() ? resolve(expandHome(rawKeychain.trim())) : undefined
-  if (keychainPath && !existsSync(keychainPath)) throw new Error(`Keychain file not found: ${keychainPath}`)
+  if (keychainPath) validateKeychainFile(keychainPath)
 
   const iosRoot = resolve(fileURLToPath(new URL('..', import.meta.url)))
   const nativeDir = join(iosRoot, 'ios')
@@ -134,7 +139,6 @@ function main() {
       const resolved = resolveProfile(profileName, bundleId, keychainPath, env)
       if (!teamId) teamId = resolved.teamId
       if (!identity) identity = resolved.identitySha1
-      if (!identity) throw new Error(`Installed profile "${profileName}" has no matching signing identity${keychainPath ? ` in ${keychainPath}` : ' in local keychains'}.`)
     }
     if (!teamId) throw new Error('Set APPLE_TEAM_ID or IOS_PROVISIONING_PROFILE_NAME for a signed TestFlight build.')
     env.APPLE_TEAM_ID = teamId

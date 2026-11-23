@@ -1,7 +1,11 @@
-/** Pure-TypeScript Apple XML plist reader for `.mobileprovision` payloads (`security cms -D`).
+/** Pure-TypeScript Apple XML plist reader and App Store profile selector for `.mobileprovision` payloads.
  *  Apple's `plutil -convert json` rejects `<date>` and `<data>` tags present in every profile,
- *  so we parse the XML directly with zero platform dependencies. */
+ *  so we parse the XML directly with explicit size/depth bounds and zero platform dependencies. */
 import { createHash } from 'node:crypto'
+import { accessSync, constants, statSync } from 'node:fs'
+
+export const MAX_PLIST_BYTES = 1024 * 1024
+export const MAX_PLIST_DEPTH = 32
 
 export type PlistValue = string | number | boolean | Buffer | Date | PlistValue[] | { [key: string]: PlistValue }
 
@@ -12,29 +16,41 @@ export interface ParsedProfile {
   applicationIdentifier: string
   expirationDate: Date | null
   certificateSha1s: string[]
+  getTaskAllow: boolean
+  hasProvisionedDevices: boolean
+  provisionsAllDevices: boolean
+}
+
+export interface MatchedProfile {
+  name: string
+  uuid: string
+  teamId: string
+  identitySha1: string
+  expirationDate: Date
 }
 
 const TOKEN = /<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<!DOCTYPE[\s\S]*?>|<\/?([A-Za-z][A-Za-z0-9-]*)(?:\s[^<>]*?)?(\/)?>/g
+const SAFE_KEYCHAIN_PATH = /^[A-Za-z0-9/._ +-]+$/
 
 function decodeXml(text: string): string {
-  return text
-    .replaceAll('&lt;', '<')
-    .replaceAll('&gt;', '>')
-    .replaceAll('&quot;', '"')
-    .replaceAll('&apos;', "'")
-    .replaceAll('&amp;', '&')
+  return text.replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&quot;', '"').replaceAll('&apos;', "'").replaceAll('&amp;', '&')
+}
+
+function isPlistDict(value: PlistValue | undefined): value is { [key: string]: PlistValue } {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value) && !Buffer.isBuffer(value) && !(value instanceof Date)
 }
 
 export function parsePlistXml(xml: string): PlistValue {
+  if (Buffer.byteLength(xml, 'utf8') > MAX_PLIST_BYTES) throw new Error(`Plist XML exceeds ${MAX_PLIST_BYTES}-byte limit.`)
   let cursor = 0
-  const nextTag = (): { raw: string; name: string; closing: boolean; selfClosing: boolean; start: number; end: number } | null => {
+  const nextTag = (): { raw: string; name: string; closing: boolean; selfClosing: boolean; start: number } | null => {
     TOKEN.lastIndex = cursor
     while (true) {
       const m = TOKEN.exec(xml)
       if (!m) return null
       cursor = TOKEN.lastIndex
       if (!m[1]) continue
-      return { raw: m[0], name: m[1], closing: m[0].startsWith('</'), selfClosing: Boolean(m[2]), start: m.index, end: cursor }
+      return { raw: m[0], name: m[1], closing: m[0].startsWith('</'), selfClosing: Boolean(m[2]), start: m.index }
     }
   }
   const readTextUntil = (closingTag: string): string => {
@@ -43,7 +59,8 @@ export function parsePlistXml(xml: string): PlistValue {
     if (!close || !close.closing || close.name !== closingTag) throw new Error(`Malformed plist: expected </${closingTag}>.`)
     return xml.slice(start, close.start)
   }
-  const parseNode = (tag: NonNullable<ReturnType<typeof nextTag>>): PlistValue => {
+  const parseNode = (tag: NonNullable<ReturnType<typeof nextTag>>, depth: number): PlistValue => {
+    if (depth > MAX_PLIST_DEPTH) throw new Error(`Plist XML exceeds maximum nesting depth (${MAX_PLIST_DEPTH}).`)
     if (tag.name === 'true') return true
     if (tag.name === 'false') return false
     if (tag.name === 'string') return tag.selfClosing ? '' : decodeXml(readTextUntil('string'))
@@ -58,12 +75,13 @@ export function parsePlistXml(xml: string): PlistValue {
         const child = nextTag()
         if (!child) throw new Error('Malformed plist: unclosed <array>.')
         if (child.closing && child.name === 'array') return items
-        items.push(parseNode(child))
+        if (child.closing) throw new Error(`Malformed plist: unexpected ${child.raw} inside <array>.`)
+        items.push(parseNode(child, depth + 1))
       }
     }
     if (tag.name === 'dict') {
-      if (tag.selfClosing) return {}
-      const obj: { [key: string]: PlistValue } = {}
+      const obj = Object.create(null) as { [key: string]: PlistValue }
+      if (tag.selfClosing) return obj
       while (true) {
         const keyTag = nextTag()
         if (!keyTag) throw new Error('Malformed plist: unclosed <dict>.')
@@ -72,25 +90,29 @@ export function parsePlistXml(xml: string): PlistValue {
         const key = decodeXml(readTextUntil('key'))
         const valTag = nextTag()
         if (!valTag || valTag.closing) throw new Error(`Malformed plist: missing value for key "${key}".`)
-        obj[key] = parseNode(valTag)
+        obj[key] = parseNode(valTag, depth + 1)
       }
     }
     throw new Error(`Unsupported plist tag <${tag.name}>.`)
   }
 
   let root = nextTag()
-  if (root?.name === 'plist') root = nextTag()
+  const wrapped = root?.name === 'plist' && !root.closing && !root.selfClosing
+  if (wrapped) root = nextTag()
   if (!root || root.closing) throw new Error('Malformed plist: empty document.')
-  return parseNode(root)
+  const result = parseNode(root, 1)
+  if (wrapped) {
+    const closePlist = nextTag()
+    if (!closePlist || !closePlist.closing || closePlist.name !== 'plist') throw new Error('Malformed plist: expected </plist>.')
+  }
+  return result
 }
 
 export function parseProvisioningProfileXml(xml: string): ParsedProfile {
   const root = parsePlistXml(xml)
-  if (!root || typeof root !== 'object' || Array.isArray(root) || Buffer.isBuffer(root) || root instanceof Date) {
-    throw new Error('Provisioning profile plist root must be a <dict>.')
-  }
+  if (!isPlistDict(root)) throw new Error('Provisioning profile plist root must be a <dict>.')
   const teamIds = Array.isArray(root.TeamIdentifier) ? root.TeamIdentifier.filter((v): v is string => typeof v === 'string') : []
-  const entitlements = root.Entitlements && typeof root.Entitlements === 'object' && !Array.isArray(root.Entitlements) && !Buffer.isBuffer(root.Entitlements) && !(root.Entitlements instanceof Date) ? root.Entitlements : {}
+  const entitlements = isPlistDict(root.Entitlements) ? root.Entitlements : (Object.create(null) as { [key: string]: PlistValue })
   const certs = Array.isArray(root.DeveloperCertificates) ? root.DeveloperCertificates.filter((v): v is Buffer => Buffer.isBuffer(v)) : []
   return {
     name: typeof root.Name === 'string' ? root.Name : '',
@@ -98,42 +120,58 @@ export function parseProvisioningProfileXml(xml: string): ParsedProfile {
     teamId: teamIds[0] ?? '',
     applicationIdentifier: typeof entitlements['application-identifier'] === 'string' ? entitlements['application-identifier'] : '',
     expirationDate: root.ExpirationDate instanceof Date && !Number.isNaN(root.ExpirationDate.getTime()) ? root.ExpirationDate : null,
-    certificateSha1s: certs.map(der => createHash('sha1').update(der).digest('hex').toUpperCase())
+    certificateSha1s: certs.map(der => createHash('sha1').update(der).digest('hex').toUpperCase()),
+    getTaskAllow: entitlements['get-task-allow'] === true,
+    hasProvisionedDevices: Array.isArray(root.ProvisionedDevices) || Object.hasOwn(root, 'ProvisionedDevices'),
+    provisionsAllDevices: root.ProvisionsAllDevices === true
   }
 }
 
-export interface MatchedProfile {
-  name: string
-  uuid: string
-  teamId: string
-  identitySha1: string
-  expirationDate: Date | null
-}
-
-/** Picks the newest unexpired profile matching `profileName` and `bundleId` (preferring one with a local signing identity). */
+/** Fails closed for App Store / TestFlight distribution: rejects development, ad-hoc and enterprise profiles,
+ *  missing/expired dates, and profiles with no certificate matching a local signing identity. */
 export function selectProvisioningProfile(profiles: ParsedProfile[], profileName: string, bundleId: string, localIdentitySha1s: Set<string>, now = new Date()): MatchedProfile | null {
-  const matching = profiles
-    .filter(p => p.name === profileName && p.teamId && p.applicationIdentifier === `${p.teamId}.${bundleId}`)
-    .filter(p => !p.expirationDate || p.expirationDate.getTime() > now.getTime())
-    .map(p => ({
-      name: p.name,
-      uuid: p.uuid,
-      teamId: p.teamId,
-      identitySha1: p.certificateSha1s.find(sha1 => localIdentitySha1s.has(sha1)) ?? '',
-      expirationDate: p.expirationDate
-    }))
+  const matching: MatchedProfile[] = []
+  for (const p of profiles) {
+    if (p.name !== profileName || !p.teamId || p.applicationIdentifier !== `${p.teamId}.${bundleId}`) continue
+    if (p.getTaskAllow || p.hasProvisionedDevices || p.provisionsAllDevices) continue
+    if (!p.expirationDate || p.expirationDate.getTime() <= now.getTime()) continue
+    const identitySha1 = p.certificateSha1s.find(sha1 => localIdentitySha1s.has(sha1))
+    if (!identitySha1) continue
+    matching.push({ name: p.name, uuid: p.uuid, teamId: p.teamId, identitySha1, expirationDate: p.expirationDate })
+  }
   if (matching.length === 0) return null
-  matching.sort((a, b) => {
-    if (Boolean(a.identitySha1) !== Boolean(b.identitySha1)) return a.identitySha1 ? -1 : 1
-    return (b.expirationDate?.getTime() ?? 0) - (a.expirationDate?.getTime() ?? 0)
-  })
+  matching.sort((a, b) => b.expirationDate.getTime() - a.expirationDate.getTime())
   return matching[0]
 }
 
-/** Builds the xcodebuild `OTHER_CODE_SIGN_FLAGS` argument to sign from a specific keychain path. */
+export function readFlagValue(argv: string[], flag: string): string | undefined {
+  const idx = argv.indexOf(flag)
+  if (idx < 0) return undefined
+  const value = argv[idx + 1]
+  if (!value || value.startsWith('--')) throw new Error(`Option ${flag} requires a value.`)
+  return value
+}
+
+export function validateKeychainFile(keychainPath: string): void {
+  let stat: ReturnType<typeof statSync>
+  try {
+    stat = statSync(keychainPath)
+  } catch {
+    throw new Error(`Keychain file not found: ${keychainPath}`)
+  }
+  if (!stat.isFile()) throw new Error(`Keychain path is not a regular file: ${keychainPath}`)
+  try {
+    accessSync(keychainPath, constants.R_OK)
+  } catch {
+    throw new Error(`Keychain file is not readable: ${keychainPath}`)
+  }
+}
+
+/** Builds `OTHER_CODE_SIGN_FLAGS` for a specific keychain path using a strict safe-character allowlist. */
 export function archiveKeychainArg(keychainPath: string): string {
   const trimmed = keychainPath.trim()
-  if (!trimmed) throw new Error('Keychain path cannot be empty.')
-  if (/[\0\r\n"'`$;&|<>]/.test(trimmed)) throw new Error('Keychain path contains unsupported shell characters.')
+  if (!trimmed || trimmed.startsWith('-') || !SAFE_KEYCHAIN_PATH.test(trimmed)) {
+    throw new Error('Keychain path is empty or contains unsupported characters.')
+  }
   return trimmed.includes(' ') ? `OTHER_CODE_SIGN_FLAGS=--keychain '${trimmed}'` : `OTHER_CODE_SIGN_FLAGS=--keychain ${trimmed}`
 }

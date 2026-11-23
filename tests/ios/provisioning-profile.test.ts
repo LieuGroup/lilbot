@@ -1,146 +1,147 @@
 import { describe, expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
-import { archiveKeychainArg, parseProvisioningProfileXml, selectProvisioningProfile } from '../../ios/scripts/provisioning-profile'
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import {
+  archiveKeychainArg,
+  MAX_PLIST_BYTES,
+  MAX_PLIST_DEPTH,
+  parsePlistXml,
+  parseProvisioningProfileXml,
+  readFlagValue,
+  selectProvisioningProfile,
+  validateKeychainFile
+} from '../../ios/scripts/provisioning-profile'
 
-function syntheticCert(label: string): { base64Multiline: string; sha1: string } {
+function syntheticCert(label: string): { b64: string; sha1: string } {
   const bytes = Buffer.from(`synthetic-der-certificate-${label}`, 'utf8')
   const sha1 = createHash('sha1').update(bytes).digest('hex').toUpperCase()
   const raw = bytes.toString('base64')
-  const base64Multiline = `\n\t\t\t${raw.slice(0, 16)}\n\t\t\t${raw.slice(16)}\n\t\t`
-  return { base64Multiline, sha1 }
+  return { b64: `\n\t\t\t${raw.slice(0, 16)}\n\t\t\t${raw.slice(16)}\n\t\t`, sha1 }
 }
 
-function syntheticProfileXml(opts: { name: string; uuid: string; teamId: string; bundleId: string; expiration: string; certs: string[] }): string {
-  const certTags = opts.certs.map(c => `<data>${c}</data>`).join('\n\t')
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-\t<key>AppIDName</key>
-\t<string>Example App</string>
-\t<key>CreationDate</key>
-\t<date>2026-01-01T00:00:00Z</date>
-\t<key>DeveloperCertificates</key>
-\t<array>
-\t\t${certTags}
-\t</array>
-\t<key>Entitlements</key>
-\t<dict>
-\t\t<key>application-identifier</key>
-\t\t<string>${opts.teamId}.${opts.bundleId}</string>
-\t\t<key>beta-reports-active</key>
-\t\t<true/>
-\t\t<key>get-task-allow</key>
-\t\t<false/>
-\t\t<key>keychain-access-groups</key>
-\t\t<array>
-\t\t\t<string>${opts.teamId}.*</string>
-\t\t</array>
-\t</dict>
-\t<key>ExpirationDate</key>
-\t<date>${opts.expiration}</date>
-\t<key>Name</key>
-\t<string>${opts.name}</string>
-\t<key>TimeToLive</key>
-\t<integer>365</integer>
-\t<key>TeamIdentifier</key>
-\t<array>
-\t\t<string>${opts.teamId}</string>
-\t</array>
-\t<key>UUID</key>
-\t<string>${opts.uuid}</string>
-</dict>
-</plist>`
+interface ProfileOpts {
+  name?: string
+  uuid?: string
+  teamId?: string
+  bundleId?: string
+  expiration?: string | null
+  certs?: string[]
+  getTaskAllow?: boolean
+  devices?: string[]
+  allDevices?: boolean
 }
+
+function syntheticProfile(opts: ProfileOpts = {}) {
+  const teamId = opts.teamId ?? 'ABCDE12345'
+  const bundleId = opts.bundleId ?? 'com.example.app'
+  const certs = (opts.certs ?? []).map(c => `<data>${c}</data>`).join('')
+  const expBlock = opts.expiration === null ? '' : `<key>ExpirationDate</key><date>${opts.expiration ?? '2027-11-16T00:00:00Z'}</date>`
+  const devBlock = opts.devices ? `<key>ProvisionedDevices</key><array>${opts.devices.map(d => `<string>${d}</string>`).join('')}</array>` : ''
+  const entBlock = opts.allDevices ? '<key>ProvisionsAllDevices</key><true/>' : ''
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CreationDate</key><date>2026-01-01T00:00:00Z</date>
+  <key>DeveloperCertificates</key><array>${certs}</array>
+  <key>Entitlements</key><dict>
+    <key>application-identifier</key><string>${teamId}.${bundleId}</string>
+    <key>beta-reports-active</key><true/>
+    <key>get-task-allow</key><${opts.getTaskAllow ? 'true' : 'false'}/>
+  </dict>
+  ${expBlock}${devBlock}${entBlock}
+  <key>Name</key><string>${opts.name ?? 'App Store Profile'}</string>
+  <key>TeamIdentifier</key><array><string>${teamId}</string></array>
+  <key>UUID</key><string>${opts.uuid ?? '00000000-0000-4000-8000-000000000001'}</string>
+</dict></plist>`
+  return parseProvisioningProfileXml(xml)
+}
+
+const NOW = new Date('2026-11-24T00:00:00Z')
+const LOCAL = syntheticCert('local')
+const OTHER = syntheticCert('other')
+const LOCAL_IDS = new Set([LOCAL.sha1])
 
 describe('provisioning-profile XML parsing and selection', () => {
-  test('parses a realistic .mobileprovision plist containing <date>, multiline <data>, and nested <dict>', () => {
-    const certA = syntheticCert('cert-a')
-    const certB = syntheticCert('cert-b')
-    const xml = syntheticProfileXml({
-      name: 'Example &amp; Test Profile',
-      uuid: '00000000-0000-4000-8000-000000000001',
-      teamId: 'ABCDE12345',
-      bundleId: 'com.example.app',
-      expiration: '2027-11-16T00:00:00Z',
-      certs: [certA.base64Multiline, certB.base64Multiline]
-    })
-
-    const parsed = parseProvisioningProfileXml(xml)
-    expect(parsed.name).toBe('Example & Test Profile')
-    expect(parsed.uuid).toBe('00000000-0000-4000-8000-000000000001')
+  test('parses realistic .mobileprovision XML including <date>, multiline <data>, entities, and null-prototype dicts', () => {
+    const parsed = syntheticProfile({ name: 'Example &amp; Test', certs: [OTHER.b64, LOCAL.b64] })
+    expect(parsed.name).toBe('Example & Test')
     expect(parsed.teamId).toBe('ABCDE12345')
     expect(parsed.applicationIdentifier).toBe('ABCDE12345.com.example.app')
     expect(parsed.expirationDate?.toISOString()).toBe('2027-11-16T00:00:00.000Z')
-    expect(parsed.certificateSha1s).toEqual([certA.sha1, certB.sha1])
+    expect(parsed.certificateSha1s).toEqual([OTHER.sha1, LOCAL.sha1])
+    expect(parsed.getTaskAllow).toBe(false)
+    expect(parsed.hasProvisionedDevices).toBe(false)
+    expect(parsed.provisionsAllDevices).toBe(false)
+
+    const protoPlist = parsePlistXml('<plist version="1.0"><dict><key>__proto__</key><dict><key>polluted</key><true/></dict></dict></plist>') as Record<string, unknown>
+    expect(Object.getPrototypeOf(protoPlist)).toBeNull()
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined()
+    expect(Object.hasOwn(protoPlist, '__proto__')).toBe(true)
   })
 
-  test('selects the unexpired profile matching bundle id and prefers one with a local identity and latest expiry', () => {
-    const oldCert = syntheticCert('old')
-    const localCert = syntheticCert('local')
-    const now = new Date('2026-11-24T00:00:00Z')
-
-    const expired = parseProvisioningProfileXml(
-      syntheticProfileXml({
-        name: 'App Store Profile',
-        uuid: 'expired-uuid',
-        teamId: 'ABCDE12345',
-        bundleId: 'com.example.app',
-        expiration: '2026-01-01T00:00:00Z',
-        certs: [localCert.base64Multiline]
-      })
-    )
-    const wrongBundle = parseProvisioningProfileXml(
-      syntheticProfileXml({
-        name: 'App Store Profile',
-        uuid: 'wrong-bundle-uuid',
-        teamId: 'ABCDE12345',
-        bundleId: 'com.example.other',
-        expiration: '2028-01-01T00:00:00Z',
-        certs: [localCert.base64Multiline]
-      })
-    )
-    const noLocalKey = parseProvisioningProfileXml(
-      syntheticProfileXml({
-        name: 'App Store Profile',
-        uuid: 'no-key-uuid',
-        teamId: 'ABCDE12345',
-        bundleId: 'com.example.app',
-        expiration: '2028-06-01T00:00:00Z',
-        certs: [oldCert.base64Multiline]
-      })
-    )
-    const olderMatch = parseProvisioningProfileXml(
-      syntheticProfileXml({
-        name: 'App Store Profile',
-        uuid: 'older-match-uuid',
-        teamId: 'ABCDE12345',
-        bundleId: 'com.example.app',
-        expiration: '2027-05-01T00:00:00Z',
-        certs: [localCert.base64Multiline]
-      })
-    )
-    const newestMatch = parseProvisioningProfileXml(
-      syntheticProfileXml({
-        name: 'App Store Profile',
-        uuid: 'newest-match-uuid',
-        teamId: 'ABCDE12345',
-        bundleId: 'com.example.app',
-        expiration: '2027-11-16T00:00:00Z',
-        certs: [oldCert.base64Multiline, localCert.base64Multiline]
-      })
-    )
-
-    const picked = selectProvisioningProfile([expired, wrongBundle, noLocalKey, olderMatch, newestMatch], 'App Store Profile', 'com.example.app', new Set([localCert.sha1]), now)
-    expect(picked?.uuid).toBe('newest-match-uuid')
-    expect(picked?.teamId).toBe('ABCDE12345')
-    expect(picked?.identitySha1).toBe(localCert.sha1)
+  test('selects the newest valid App Store profile matching name, bundle id, and local identity', () => {
+    const older = syntheticProfile({ uuid: 'older', expiration: '2027-05-01T00:00:00Z', certs: [LOCAL.b64] })
+    const newest = syntheticProfile({ uuid: 'newest', expiration: '2027-11-16T00:00:00Z', certs: [OTHER.b64, LOCAL.b64] })
+    const picked = selectProvisioningProfile([older, newest], 'App Store Profile', 'com.example.app', LOCAL_IDS, NOW)
+    expect(picked?.uuid).toBe('newest')
+    expect(picked?.identitySha1).toBe(LOCAL.sha1)
   })
 
-  test('formats OTHER_CODE_SIGN_FLAGS for an explicit keychain and rejects unsafe characters', () => {
+  test('fails closed in isolated negative cases so every selection rule is enforced', () => {
+    const pick = (opts: ProfileOpts) => selectProvisioningProfile([syntheticProfile({ certs: [LOCAL.b64], ...opts })], 'App Store Profile', 'com.example.app', LOCAL_IDS, NOW)
+    expect(pick({ expiration: '2026-01-01T00:00:00Z' })).toBeNull()
+    expect(pick({ expiration: NOW.toISOString() })).toBeNull()
+    expect(pick({ expiration: null })).toBeNull()
+    expect(pick({ expiration: 'not-a-date' })).toBeNull()
+    expect(pick({ name: 'Other Profile', expiration: '2030-01-01T00:00:00Z' })).toBeNull()
+    expect(pick({ bundleId: 'com.example.other', expiration: '2030-01-01T00:00:00Z' })).toBeNull()
+    expect(pick({ certs: [OTHER.b64] })).toBeNull()
+    expect(pick({ getTaskAllow: true })).toBeNull()
+    expect(pick({ devices: ['00008110-0000000000000001'] })).toBeNull()
+    expect(pick({ devices: [] })).toBeNull()
+    expect(pick({ allDevices: true })).toBeNull()
+  })
+
+  test('rejects oversized, deeply nested, truncated, and malformed plist XML', () => {
+    const oversized = `<plist version="1.0"><string>${'a'.repeat(MAX_PLIST_BYTES + 1)}</string></plist>`
+    expect(() => parsePlistXml(oversized)).toThrow(/limit/i)
+    const tooDeep = `<plist version="1.0">${'<array>'.repeat(MAX_PLIST_DEPTH + 2)}${'</array>'.repeat(MAX_PLIST_DEPTH + 2)}</plist>`
+    expect(() => parsePlistXml(tooDeep)).toThrow(/depth/i)
+    expect(() => parsePlistXml('')).toThrow()
+    expect(() => parsePlistXml('<plist version="1.0"><dict><key>Name</key><string>Ok</string></dict>')).toThrow(/<\/plist>/)
+    expect(() => parsePlistXml('<plist version="1.0"><dict><key>Name</key><string>unterminated')).toThrow()
+    expect(() => parsePlistXml('<plist version="1.0"><dict><string>missing-key</string></dict></plist>')).toThrow()
+    expect(() => parseProvisioningProfileXml('<plist version="1.0"><array/></plist>')).toThrow(/<dict>/)
+  })
+
+  test('validates keychain path characters, readability, and required CLI flag values', () => {
     expect(archiveKeychainArg('/Users/example/Library/Keychains/login.keychain-db')).toBe('OTHER_CODE_SIGN_FLAGS=--keychain /Users/example/Library/Keychains/login.keychain-db')
     expect(archiveKeychainArg('/Users/example/My Keychains/login.keychain-db')).toBe("OTHER_CODE_SIGN_FLAGS=--keychain '/Users/example/My Keychains/login.keychain-db'")
-    expect(() => archiveKeychainArg('')).toThrow()
-    expect(() => archiveKeychainArg('/tmp/bad;rm.keychain-db')).toThrow()
+    for (const bad of ['', '-leading', '/tmp/a\tb', '/tmp/a\\b', '/tmp/a(b)', '/tmp/a*b', '/tmp/a?b', '/tmp/a[b]', '/tmp/a;b', '/tmp/$HOME']) {
+      expect(() => archiveKeychainArg(bad)).toThrow()
+    }
+
+    expect(readFlagValue(['bun', 'script.ts', '--keychain', '/tmp/k'], '--keychain')).toBe('/tmp/k')
+    expect(readFlagValue(['bun', 'script.ts'], '--keychain')).toBeUndefined()
+    expect(() => readFlagValue(['bun', 'script.ts', '--keychain'], '--keychain')).toThrow(/requires a value/)
+    expect(() => readFlagValue(['bun', 'script.ts', '--keychain', '--upload'], '--keychain')).toThrow(/requires a value/)
+
+    const dir = mkdtempSync(join(tmpdir(), 'lilbot-kc-test-'))
+    try {
+      const readable = join(dir, 'ok.keychain-db')
+      const unreadable = join(dir, 'nope.keychain-db')
+      writeFileSync(readable, 'stub')
+      writeFileSync(unreadable, 'stub')
+      chmodSync(unreadable, 0o000)
+      expect(() => validateKeychainFile(readable)).not.toThrow()
+      expect(() => validateKeychainFile(join(dir, 'missing.keychain-db'))).toThrow(/not found/)
+      expect(() => validateKeychainFile(dir)).toThrow(/regular file/)
+      if (process.getuid?.() !== 0) expect(() => validateKeychainFile(unreadable)).toThrow(/not readable/)
+    } finally {
+      chmodSync(join(dir, 'nope.keychain-db'), 0o600)
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
