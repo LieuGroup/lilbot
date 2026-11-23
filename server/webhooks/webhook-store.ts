@@ -1,8 +1,10 @@
 /** Webhooks, their runs and the sessions those runs used (`webhooks`, `webhook_runs`, `webhook_chats`). A deleted
  *  webhook stays as a tombstone so a repeated create request cannot bring it back. */
 import type { Database } from 'bun:sqlite'
+import type { ChatItem } from '../../shared/chat-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import type { Webhook, WebhookCapability, WebhookCreate, WebhookRun } from '../../shared/webhook-schema'
+import { RunTranscriptStore } from '../routines/run-transcripts'
 import { newAddressNonce } from './webhook-address'
 import { WebhookEvents } from './webhook-events'
 import { WEBHOOK_LIMITS } from './webhook-limits'
@@ -34,13 +36,14 @@ export interface LiveWebhook {
 /** A run row as `WebhookRun`, named in SQL. */
 const RUN = (r: string) =>
   `${r}.id, ${r}.webhook_id AS webhookId, ${r}.bot_id AS botId, ${r}.created_at AS createdAt, ${r}.events, ${r}.started_at AS startedAt, ${r}.finished_at AS finishedAt, ${r}.chat_id AS chatId, ${r}.status, ${r}.result, ${r}.message`
-const UNDER_WAY = "r.status IN ('pending', 'running')"
-const UNSETTLED = `SELECT ${RUN('r')} FROM webhook_runs r JOIN webhooks w ON w.id = r.webhook_id JOIN bots b ON b.id = r.bot_id WHERE w.deleted = 0 AND b.deletion IS NULL AND ${UNDER_WAY}`
+const UNSETTLED = `SELECT ${RUN('r')} FROM webhook_runs r JOIN webhooks w ON w.id = r.webhook_id JOIN bots b ON b.id = r.bot_id WHERE w.deleted = 0 AND b.deletion IS NULL AND r.status IN ('pending', 'running')`
 
 export class WebhookStore {
   readonly events: WebhookEvents
+  readonly transcripts: RunTranscriptStore
   constructor(private db: Database) {
     this.events = new WebhookEvents(db)
+    this.transcripts = new RunTranscriptStore(db, 'webhook')
   }
   private from(row: Row): Webhook {
     return {
@@ -102,12 +105,12 @@ export class WebhookStore {
     this.db.query('UPDATE webhooks SET paused = ? WHERE id = ?').run(Number(paused), id)
     if (paused) this.events.drop(id)
   }
-  /** The address and signing secret end at once; runs not started yet never start. */
   delete(botId: string, id: string) {
     this.row(botId, id)
     this.db.transaction(() => {
       this.db.query('UPDATE webhooks SET deleted = 1, paused = 1, signing = NULL WHERE id = ?').run(id)
       this.db.query("UPDATE webhook_runs SET status = 'stopped', result = 'The webhook was deleted before this run started.' WHERE webhook_id = ? AND status = 'pending'").run(id)
+      this.transcripts.deleteForParent(id)
       this.events.forget(id)
     })()
   }
@@ -145,10 +148,7 @@ export class WebhookStore {
           if (!waiting.count || (now - waiting.last! < WEBHOOK_LIMITS.quietMs && now - waiting.first! < WEBHOOK_LIMITS.maxWaitMs)) continue
           const recent = this.db
             .query('SELECT COUNT(*) AS count, MAX(created_at) AS last FROM webhook_runs WHERE webhook_id = ? AND created_at > ?')
-            .get(hook.id, now - 3_600_000) as {
-            count: number
-            last: number | null
-          }
+            .get(hook.id, now - 3_600_000) as { count: number; last: number | null }
           if (recent.count >= WEBHOOK_LIMITS.runsPerHour || (recent.last !== null && now - recent.last < WEBHOOK_LIMITS.gapMs)) continue
           const id = crypto.randomUUID()
           this.db.query('INSERT INTO webhook_runs (id, webhook_id, bot_id, created_at) VALUES (?, ?, ?, ?)').run(id, hook.id, hook.bot_id, now)
@@ -190,9 +190,10 @@ export class WebhookStore {
   isWebhookChat(chatId: string) {
     return !!this.db.query('SELECT 1 FROM webhook_chats WHERE chat_id = ?').get(chatId)
   }
-  finish(id: string, status: WebhookRun['status'], result: string, now: number) {
+  finish(id: string, status: WebhookRun['status'], result: string, now: number, items?: ChatItem[]) {
     this.db.transaction(() => {
       this.db.query('UPDATE webhook_runs SET status = ?, result = ?, finished_at = ? WHERE id = ?').run(status, result.slice(0, 200_000), now, id)
+      if (items !== undefined) this.transcripts.saveIfLive(id, items, now)
       this.events.clear(id)
     })()
   }

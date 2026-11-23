@@ -60,11 +60,21 @@ test('only a second "not found" starts a new session, and the chat says why', as
   expect(g.calls.filter(call => call.endsWith('session.create'))).toEqual(['attached1:session.create'])
 })
 
-test('any other refusal, or a chat that must exist, is an error and never a new session', async () => {
+test('a chat that must exist recovers from a stale spare-socket not_found on a fresh connection without creating a new session', async () => {
+  const g = gateway([notFound(), 'resumed'])
+  const chat = await g.open(true)
+  expect(chat.snapshot.chatId).toBe('main')
+  expect(chat.resumeRefused).toBeUndefined()
+  expect(g.calls).toEqual(['spare:config.get', 'spare:session.resume', 'spare:close', 'attached1:session.resume'])
+  expect(g.events).toEqual([])
+})
+
+test('any other refusal, or a chat that must exist after confirmation, is an error and never a new session', async () => {
   for (const [outcomes, requireExisting] of [
     [[new LilBotError('hermes_request_failed', 'Hermes refused the request (request failed).')], false],
     [[notFound(), new LilBotError('engine_unavailable', 'The connection to Hermes was lost.')], false],
-    [[notFound()], true]
+    [[notFound(), notFound()], true],
+    [[notFound(), new LilBotError('engine_unavailable', 'The connection to Hermes was lost.')], true]
   ] as const) {
     const g = gateway([...outcomes])
     await expect(g.open(requireExisting)).rejects.toThrow()

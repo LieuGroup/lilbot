@@ -75,3 +75,10 @@ export const REMOTE_WORKER_TABLES = `CREATE TABLE IF NOT EXISTS remote_worker_ru
      chat_id TEXT NOT NULL, session_id TEXT, status TEXT NOT NULL DEFAULT 'running', outcome TEXT, started_at INTEGER NOT NULL, ended_at INTEGER);
    CREATE INDEX IF NOT EXISTS remote_worker_runs_active ON remote_worker_runs(computer_id, status) WHERE status = 'running';
    CREATE INDEX IF NOT EXISTS remote_worker_runs_chat ON remote_worker_runs(chat_id, started_at DESC);`
+
+/** Schema step 40, persisted routine and webhook run transcripts (P4). Stores the settled `ChatItem[]` JSON or marks
+ *  runs whose engine session was already gone (`'missing'`), cascading when the parent run is removed. Repeatable. */
+export const RUN_TRANSCRIPT_TABLES = `CREATE TABLE IF NOT EXISTS routine_run_transcripts(run_id TEXT PRIMARY KEY REFERENCES routine_runs(id) ON DELETE CASCADE,
+     status TEXT NOT NULL CHECK(status IN ('saved', 'missing')), items TEXT, saved_at INTEGER NOT NULL);
+   CREATE TABLE IF NOT EXISTS webhook_run_transcripts(run_id TEXT PRIMARY KEY REFERENCES webhook_runs(id) ON DELETE CASCADE,
+     status TEXT NOT NULL CHECK(status IN ('saved', 'missing')), items TEXT, saved_at INTEGER NOT NULL);`
