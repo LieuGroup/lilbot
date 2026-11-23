@@ -1,6 +1,6 @@
 /** TypeScript AST-based import and engine-name scanner for boundary and structure tests.
  *  Accepted lexical limits: runtime variable assembly (`const a = 'her'; a + 'mes'`, `import(varPath)`),
- *  odd mixed case (`'HeRmEs'`), and non-JS/TS config files (`.json`, `.yaml`, `.py`) are not scanned here. */
+ *  odd mixed case (`'HeRmEs'`), and non-JS/TS config or Markdown guide/skill files (`.json`, `.yaml`, `.py`, `.md`; left to review) are not scanned here. */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, normalize } from 'node:path'
 import ts from 'typescript'
@@ -16,18 +16,29 @@ const JS_BUILTIN_OBJECTS = new Set(
 )
 
 /** Exact display-label entry (`const <table> = { <key>: '<label>' }`) allowed to name an engine for UI display. */
-export interface DisplayLabelEntry {
+interface DisplayLabelEntry {
   table: string
   key: string
   label: string
 }
 
-export function concreteEngineIds(): string[] {
-  const dir = join(ROOT, 'server/engines')
+export interface NameScanAllowlist {
+  labels?: readonly DisplayLabelEntry[]
+  /** Exact trimmed literal/JSX/template-chunk copy strings (e.g. `(for example, Claude Code)`); never matches identifiers. */
+  copy?: readonly string[]
+}
+
+function subdirsOf(folder: string): string[] {
+  const dir = join(ROOT, folder)
+  if (!existsSync(dir)) return []
   return readdirSync(dir)
     .filter(name => statSync(join(dir, name)).isDirectory())
     .sort()
 }
+
+export const concreteEngineIds = () => subdirsOf('server/engines')
+export const concreteDriverIds = () => subdirsOf('helper/drivers')
+export const allEngineAndDriverIds = () => [...new Set([...concreteEngineIds(), ...concreteDriverIds()])].sort()
 
 export function sourceFiles(folder: string): string[] {
   const full = join(ROOT, folder)
@@ -114,8 +125,14 @@ export function relativeImportsInSource(source: string, filePath: string): strin
   return specs
 }
 
-export function importsOf(file: string): string[] {
-  return relativeImportsInSource(readFileSync(join(ROOT, file), 'utf8'), file)
+export const importsOf = (file: string) => relativeImportsInSource(readFileSync(join(ROOT, file), 'utf8'), file)
+
+/** Returns disallowed imports from `file` into any concrete subfolder under `baseDir` (e.g. `server/engines` or `helper/drivers`).
+ *  Only `registrationPoint` and files inside the same `<baseDir>/<id>/` folder may import from `<baseDir>/<id>/`. */
+export function forbiddenSubfolderImports(file: string, targets: readonly string[], baseDir: string, ids: readonly string[], registrationPoint: string): string[] {
+  if (file === registrationPoint) return []
+  const ownId = ids.find(id => file.startsWith(`${baseDir}/${id}/`))
+  return targets.filter(target => ids.some(id => id !== ownId && (target === `${baseDir}/${id}` || target.startsWith(`${baseDir}/${id}/`)))).map(target => `${file} -> ${target}`)
 }
 
 function tokenizeWords(text: string): string[] {
@@ -152,24 +169,27 @@ function isAllowedDisplayEntry(node: ts.Node, allowed: readonly DisplayLabelEntr
   return !!table && allowed.some(entry => entry.table === table && entry.key === key && entry.label === label)
 }
 
-/** Returns engine ids appearing as whole tokens in code (identifiers, strings, templates, built strings, JSX text).
- *  Comments, exact `allowedLabels` display entries, and property reads on JS built-in objects (`Math.PI`, etc.) are ignored. */
-export function engineNamesInSource(source: string, filePath: string, engines: readonly string[], allowedLabels: readonly DisplayLabelEntry[] = []): string[] {
+/** Returns engine/driver ids appearing as whole tokens in code (identifiers, strings, templates, built strings, JSX text).
+ *  Comments, exact `allowlist.labels` display entries, exact `allowlist.copy` strings, and JS built-in properties are ignored. */
+export function engineNamesInSource(source: string, filePath: string, engines: readonly string[], allowlist: NameScanAllowlist = {}): string[] {
   const sf = parseSource(source, filePath)
   const targets = engines.map(id => ({ id, words: tokenizeWords(id) })).filter(t => t.words.length > 0)
+  const labels = allowlist.labels ?? []
+  const copy = new Set(allowlist.copy ?? [])
   const found = new Set<string>()
   const check = (text: string) => {
     const words = tokenizeWords(text)
     for (const target of targets) if (!found.has(target.id) && hasWordSequence(words, target.words)) found.add(target.id)
   }
   const visit = (node: ts.Node) => {
-    if (found.size === targets.length || isAllowedDisplayEntry(node, allowedLabels)) return
+    if (found.size === targets.length || isAllowedDisplayEntry(node, labels)) return
     if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && JS_BUILTIN_OBJECTS.has(node.expression.text)) return
-    if (ts.isIdentifier(node) || ts.isPrivateIdentifier(node) || ts.isStringLiteralLike(node) || ts.isJsxText(node)) check(node.text)
-    else if (ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) check(node.text)
-    else if (ts.isBinaryExpression(node) || ts.isTemplateExpression(node) || ts.isCallExpression(node)) {
+    if (ts.isIdentifier(node) || ts.isPrivateIdentifier(node)) check(node.text)
+    else if (ts.isStringLiteralLike(node) || ts.isJsxText(node) || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) {
+      if (!copy.has(node.text.trim())) check(node.text)
+    } else if (ts.isBinaryExpression(node) || ts.isTemplateExpression(node) || ts.isCallExpression(node)) {
       const built = evalStaticString(node)
-      if (built !== null) check(built)
+      if (built !== null && !copy.has(built.trim())) check(built)
     }
     ts.forEachChild(node, visit)
   }
