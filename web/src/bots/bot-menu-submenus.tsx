@@ -35,7 +35,7 @@ export function SectionSubmenu({ bot, onNewSection }: { bot: Bot; onNewSection: 
                 </DropdownMenuRadioItem>
               ))}
               <DropdownMenuRadioItem value={NONE} closeOnClick>
-                No section
+                {BOT_MENU_LABELS.noSection}
               </DropdownMenuRadioItem>
             </DropdownMenuRadioGroup>
             <DropdownMenuSeparator className="my-1" />

@@ -8,10 +8,10 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { Pressable, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { Bot } from '../../../shared/bot-schema'
-import { BotMenuHost } from '../bots/bot-menu-sheet'
 import { Roster } from '../bots/roster'
 import { useBotStore } from '../bots/store'
 import { ChatScreen } from '../chat/screen'
+import { useConnectionStore } from '../connection/store'
 import { CloseIcon, SidebarToggleIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
@@ -33,7 +33,7 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
   const bots = useBotStore(state => state.bots)
   const sections = useBotStore(state => state.sections)
   const loaded = useBotStore(state => state.loaded)
-  const connected = useBotStore(state => state.connected)
+  const connected = useConnectionStore(state => state.connected)
   const error = useBotStore(state => state.error)
   const selectedId = useBotSelection(state => state.selectedId)
   const pendingInitialPush = useBotSelection(state => state.pendingInitialPush)
@@ -149,7 +149,6 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
           onSelect={handleSelectBot}
         />
       </View>
-      <BotMenuHost />
       {layout.splitMode && (
         <View key="chat-pane" style={{ flex: 1 }}>
           {selected ? <ChatScreen bot={selected} headerLeading={sidebarToggle} /> : <EmptyDetail />}

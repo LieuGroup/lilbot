@@ -41,17 +41,67 @@ export interface RosterMenuActionSpec {
 }
 
 export interface DetachedTabTriggerSpec {
-  action: 'new-bot' | 'new-chat'
+  action: 'new-bot' | 'new-session'
   sf: 'plus' | 'square.and.pencil'
   label: string
   testID: string
 }
 
-/** Detached native tab-bar trigger spec: New bot (+) on compact phones/folded Duo, New chat on unfolded Duo/iPad split. */
+/** Detached native tab-bar trigger spec: New bot (+) on compact phones/folded Duo, New session on unfolded Duo/iPad split. */
 export function detachedTabTriggerSpec(splitMode: boolean): DetachedTabTriggerSpec {
   return splitMode
-    ? { action: 'new-chat', sf: 'square.and.pencil', label: 'New chat', testID: 'new-chat-trigger' }
+    ? { action: 'new-session', sf: 'square.and.pencil', label: 'New session', testID: 'new-session-trigger' }
     : { action: 'new-bot', sf: 'plus', label: 'New bot', testID: 'new-bot-trigger' }
+}
+
+/** Returns true when Expo Router segments are on the Bots tab rather than Settings. */
+export function isBotsTabSegments(segments: readonly string[]): boolean {
+  if (segments.includes('settings')) return false
+  return segments.includes('(bots)') || segments.length <= 1
+}
+
+/** Split-mode New session orb only fires when connected, on the Bots tab, and the selected bot's chat is ready. */
+export function canStartNewSession(state: {
+  connected: boolean
+  ready: boolean
+  botsTabActive: boolean
+  selectedId: string | null
+}): boolean {
+  return Boolean(state.connected && state.ready && state.botsTabActive && state.selectedId)
+}
+
+/** Value-compares every Bot field rendered or acted on by RosterRow so fresh bots.list payloads skip unchanged rows. */
+export function sameRosterBotDisplay(a: Bot, b: Bot): boolean {
+  if (a === b) return true
+  if (
+    a.id !== b.id ||
+    a.name !== b.name ||
+    a.function !== b.function ||
+    a.isPrimary !== b.isPrimary ||
+    a.runnable !== b.runnable ||
+    a.runtimePending !== b.runtimePending ||
+    a.prefs.pinned !== b.prefs.pinned ||
+    a.prefs.hidden !== b.prefs.hidden ||
+    a.prefs.sectionId !== b.prefs.sectionId ||
+    a.prefs.avatar.shape !== b.prefs.avatar.shape ||
+    a.prefs.avatar.color !== b.prefs.avatar.color ||
+    a.prefs.avatar.faceColor !== b.prefs.avatar.faceColor ||
+    a.activity?.status !== b.activity?.status ||
+    a.activity?.text !== b.activity?.text ||
+    a.activity?.unread !== b.activity?.unread ||
+    a.workingFor?.name !== b.workingFor?.name ||
+    a.workers?.count !== b.workers?.count ||
+    a.workers?.activity !== b.workers?.activity
+  ) {
+    return false
+  }
+  const ag = a.groups ?? []
+  const bg = b.groups ?? []
+  if (ag.length !== bg.length) return false
+  for (let i = 0; i < ag.length; i++) {
+    if (ag[i].id !== bg[i].id || ag[i].leading !== bg[i].leading || ag[i].activity !== bg[i].activity) return false
+  }
+  return true
 }
 
 /** Maps shared rowState(bot) into compact single-line Roster row presentation without suppressing simultaneous unread + status. */

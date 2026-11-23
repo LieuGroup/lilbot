@@ -11,7 +11,6 @@ export interface BotRosterSocket {
 }
 
 export interface BotStore {
-  connected: boolean
   bots: Bot[]
   sections: Section[]
   loaded: boolean
@@ -23,7 +22,6 @@ export interface BotStore {
 export function createBotStore(getSocket: () => BotRosterSocket | null) {
   let loadSeq = 0
   return create<BotStore>((set, get) => ({
-    connected: false,
     bots: [],
     sections: [],
     loaded: false,

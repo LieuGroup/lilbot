@@ -1,13 +1,17 @@
 /** Native iOS tab bar (Expo Router NativeTabs): UIKit draws Liquid Glass on iPhone,
  *  places tabs in the Duo 84 pt side strip, renders the detached native orb via `role="search"`
  *  with native selection prevented (`disabled`) — `+` (New bot) on compact phones/folded Duo and
- *  `square.and.pencil` (New chat) on unfolded Duo/iPad split — hides the bottom bar while focused
+ *  `square.and.pencil` (New session) on unfolded Duo/iPad split — hides the bottom bar while focused
  *  in compact iPhone Chat, and pins minimizeBehavior to `never` on Duo Unfolded Portrait. */
+import { useSegments } from 'expo-router'
 import { NativeTabs } from 'expo-router/native-tabs'
+import { BotMenuHost } from '../../bots/bot-menu-sheet'
 import { useBotMenuStore } from '../../bots/menu-store'
 import { NewBotSheet } from '../../bots/new-bot-sheet'
-import { detachedTabTriggerSpec } from '../../bots/roster-state'
+import { canStartNewSession, detachedTabTriggerSpec, isBotsTabSegments } from '../../bots/roster-state'
+import { useChatStore } from '../../chat/store'
 import { startNewChat } from '../../chat/use-chat'
+import { useConnectionStore } from '../../connection/store'
 import { computeShellLayout } from '../../duo/layout'
 import { useBotSelection } from '../../duo/selection'
 import { shouldHideNativeTabBar } from '../../duo/stack-sync'
@@ -16,16 +20,25 @@ import { useTheme } from '../../ui/theme'
 
 export default function TabsLayout() {
   const theme = useTheme()
+  const segments = useSegments()
   const { surface, metrics } = useLiveSurface()
+  const connected = useConnectionStore(state => state.connected)
   const chatFocused = useBotSelection(state => state.chatFocusCount > 0)
   const selectedId = useBotSelection(state => state.selectedId)
+  const chatReady = useChatStore(state => (selectedId ? (state.slots[selectedId]?.ready ?? false) : false))
   const openNewBot = useBotMenuStore(state => state.openNewBot)
   const layout = computeShellLayout(surface, metrics)
   const trigger = detachedTabTriggerSpec(layout.splitMode)
+  const newSessionAllowed = canStartNewSession({
+    connected,
+    ready: chatReady,
+    botsTabActive: isBotsTabSegments(segments),
+    selectedId
+  })
 
   const handleDetachedPress = () => {
-    if (trigger.action === 'new-chat') {
-      if (selectedId) startNewChat(selectedId)
+    if (trigger.action === 'new-session') {
+      if (newSessionAllowed && selectedId) startNewChat(selectedId)
       return
     }
     openNewBot()
@@ -62,6 +75,7 @@ export default function TabsLayout() {
         </NativeTabs.Trigger>
       </NativeTabs>
       <NewBotSheet />
+      <BotMenuHost />
     </>
   )
 }

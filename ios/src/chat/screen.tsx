@@ -1,12 +1,14 @@
 /** One bot's conversation screen: header, transcript and composer with live keyboard & safe-area clearance. */
 import { type ComponentRef, type ReactNode, useCallback, useRef, useState } from 'react'
-import { KeyboardAvoidingView, Platform, View } from 'react-native'
+import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { Bot } from '../../../shared/bot-schema'
+import { useBotMenuStore } from '../bots/menu-store'
 import { useModelPicker } from '../bots/model-pill'
 import { Composer, MessageList } from '../chat/message-list'
 import { useChat } from '../chat/use-chat'
 import { BotAvatar } from '../ui/avatar'
+import { MoreHorizontalIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 
@@ -21,6 +23,7 @@ export interface ChatScreenProps {
 export function ChatScreen({ bot, hideHeader = false, headerLeading }: ChatScreenProps) {
   const theme = useTheme()
   const insets = useSafeAreaInsets()
+  const openMenu = useBotMenuStore(state => state.openMenu)
   const chat = useChat(bot.id)
   const modelPicker = useModelPicker(bot)
   const send = useCallback((text: string) => void chat.send(text), [chat])
@@ -50,6 +53,23 @@ export function ChatScreen({ bot, hideHeader = false, headerLeading }: ChatScree
               Working
             </AppText>
           )}
+          <Pressable
+            testID="chat-bot-menu-button"
+            onPress={() => openMenu(bot.id)}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={`More for ${bot.name}`}
+            style={({ pressed }) => ({
+              width: 28,
+              height: 28,
+              borderRadius: 14,
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: pressed ? 0.6 : 1
+            })}
+          >
+            <MoreHorizontalIcon color={theme.mutedForeground} size={16} />
+          </Pressable>
         </View>
       )}
       {chat.error ? (

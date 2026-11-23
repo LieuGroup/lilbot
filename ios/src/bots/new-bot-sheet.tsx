@@ -17,9 +17,9 @@ import { useTheme } from '../ui/theme'
 import { radius } from '../ui/tokens'
 import { createBot } from './actions'
 import { AvatarPicker, randomAvatar } from './avatar-picker'
+import { useConnectionStore } from '../connection/store'
 import { useBotMenuStore } from './menu-store'
 import { useModelProviders } from './model-list'
-import { useBotStore } from './store'
 
 export function NewBotSheet() {
   const open = useBotMenuStore(state => state.newBotOpen)
@@ -34,7 +34,7 @@ export function NewBotSheet() {
 function NewBotForm({ onClose }: { onClose: () => void }) {
   const theme = useTheme()
   const router = useRouter()
-  const connected = useBotStore(state => state.connected)
+  const connected = useConnectionStore(state => state.connected)
   const providers = useModelProviders(connected)
   const select = useBotSelection(state => state.select)
   const { surface, metrics } = useLiveSurface()

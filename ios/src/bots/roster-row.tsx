@@ -1,20 +1,20 @@
 /** Memoized single-line 44 pt Roster row: 28 pt avatar, name (+ primary star when not tiled), inline rowState,
- *  and simultaneous trailing status/unread marks inside scroll-gated SwipeRow. Long-press or Manage mode opens bot menu. */
+ *  and simultaneous trailing status/unread marks inside scroll-gated SwipeRow. Long-press or VoiceOver opens bot menu. */
 import { memo, useCallback, useMemo } from 'react'
-import { Pressable, View } from 'react-native'
+import { View } from 'react-native'
 import type { SharedValue } from 'react-native-reanimated'
 import type { Bot } from '../../../shared/bot-schema'
 import { canArrange, isUnread } from '../../../shared/client/bots/bot-menu-rules'
 import { BotAvatar } from '../ui/avatar'
 import { rowAccessibilityActions } from '../ui/gestures/rules'
 import { SwipeRow, type SwipeRowAction } from '../ui/gestures/swipe-row'
-import { MoreHorizontalIcon, StarIcon } from '../ui/icon'
+import { StarIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { radius } from '../ui/tokens'
 import { setBotPrefs, setBotUnread } from './actions'
 import { useBotMenuStore } from './menu-store'
-import { rosterRowDisplay, rosterSwipeActionSpecs } from './roster-state'
+import { rosterRowDisplay, rosterSwipeActionSpecs, sameRosterBotDisplay } from './roster-state'
 import { RowStatusMarks } from './status-marks'
 
 interface RosterRowProps {
@@ -24,9 +24,21 @@ interface RosterRowProps {
   isFirst: boolean
   isLast: boolean
   spacedTop: boolean
-  manageMode: boolean
   scrollingVertically: SharedValue<boolean>
   onSelect: (bot: Bot) => void
+}
+
+function areRosterRowPropsEqual(prev: RosterRowProps, next: RosterRowProps): boolean {
+  return (
+    prev.selected === next.selected &&
+    prev.compactCardSurface === next.compactCardSurface &&
+    prev.isFirst === next.isFirst &&
+    prev.isLast === next.isLast &&
+    prev.spacedTop === next.spacedTop &&
+    prev.scrollingVertically === next.scrollingVertically &&
+    prev.onSelect === next.onSelect &&
+    sameRosterBotDisplay(prev.bot, next.bot)
+  )
 }
 
 export const RosterRow = memo(function RosterRow({
@@ -36,7 +48,6 @@ export const RosterRow = memo(function RosterRow({
   isFirst,
   isLast,
   spacedTop,
-  manageMode,
   scrollingVertically,
   onSelect
 }: RosterRowProps) {
@@ -157,20 +168,8 @@ export const RosterRow = memo(function RosterRow({
             ) : null}
           </View>
           <RowStatusMarks statusMark={display.statusMark} unread={display.unread} />
-          {manageMode && (
-            <Pressable
-              testID={`roster-row-menu-${bot.id}`}
-              onPress={handleLongPress}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={`More for ${bot.name}`}
-              style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }}
-            >
-              <MoreHorizontalIcon color={theme.mutedForeground} size={16} />
-            </Pressable>
-          )}
         </View>
       </SwipeRow>
     </View>
   )
-})
+}, areRosterRowPropsEqual)

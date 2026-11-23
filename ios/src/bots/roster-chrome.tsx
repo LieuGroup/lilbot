@@ -1,97 +1,52 @@
-/** Roster search bar, always-visible fallback utility bar (Search, Manage, and split-mode New bot),
- *  and collapsible Unassigned/Hidden section header. */
-import { memo } from 'react'
+/** Pull-down / screen-reader Roster search bar, collapsible Unassigned/Hidden header,
+ *  and zero-row-cost inline New bot (+) button for split surfaces. */
+import { memo, type ReactNode, useCallback } from 'react'
 import { Pressable, TextInput, View } from 'react-native'
-import { ChevronDownIcon, ChevronRightIcon, CloseIcon, MoreHorizontalIcon, PlusIcon, SearchIcon } from '../ui/icon'
+import { ChevronDownIcon, ChevronRightIcon, CloseIcon, PlusIcon, SearchIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { radius } from '../ui/tokens'
 
-/** Compact top-right utility strip ensuring Search and Bot menu are always reachable without gestures,
- *  and exposing New bot (+) in split surfaces where the detached native rail orb holds New chat. */
-export const RosterUtilityBar = memo(function RosterUtilityBar({
-  showNewBot,
-  searchOpen,
-  manageMode,
-  onNewBot,
-  onToggleSearch,
-  onToggleManage
-}: {
-  showNewBot: boolean
-  searchOpen: boolean
-  manageMode: boolean
-  onNewBot: () => void
-  onToggleSearch: () => void
-  onToggleManage: () => void
-}) {
+export const SplitNewBotFooter = memo(function SplitNewBotFooter({ onPress }: { onPress: () => void }) {
   const theme = useTheme()
   return (
-    <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingTop: 2, paddingBottom: 2 }}>
-      {showNewBot && (
-        <Pressable
-          testID="roster-new-bot-button"
-          onPress={onNewBot}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel="New bot"
-          style={({ pressed }) => ({
-            width: 32,
-            height: 32,
-            borderRadius: 16,
-            alignItems: 'center',
-            justifyContent: 'center',
-            opacity: pressed ? 0.6 : 1
-          })}
-        >
-          <PlusIcon color={theme.mutedForeground} size={16} />
-        </Pressable>
-      )}
+    <View style={{ paddingHorizontal: 16, paddingTop: 12, alignItems: 'flex-start' }}>
       <Pressable
-        testID="roster-search-button"
-        onPress={onToggleSearch}
-        hitSlop={8}
+        testID="roster-new-bot-button"
+        onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel="Search bots"
-        accessibilityState={{ expanded: searchOpen }}
-        style={({ pressed }) => ({
-          width: 32,
-          height: 32,
-          borderRadius: 16,
-          backgroundColor: searchOpen ? theme.muted : 'transparent',
-          alignItems: 'center',
-          justifyContent: 'center',
-          opacity: pressed ? 0.6 : 1
-        })}
+        accessibilityLabel="New bot"
+        style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, opacity: pressed ? 0.6 : 1 })}
       >
-        <SearchIcon color={searchOpen ? theme.foreground : theme.mutedForeground} size={15} />
-      </Pressable>
-      <Pressable
-        testID="roster-manage-button"
-        onPress={onToggleManage}
-        hitSlop={8}
-        accessibilityRole="button"
-        accessibilityLabel={manageMode ? 'Done managing bots' : 'Manage bots'}
-        accessibilityState={{ selected: manageMode }}
-        style={({ pressed }) => ({
-          minWidth: 32,
-          height: 32,
-          paddingHorizontal: manageMode ? 10 : 0,
-          borderRadius: 16,
-          backgroundColor: manageMode ? theme.muted : 'transparent',
-          alignItems: 'center',
-          justifyContent: 'center',
-          opacity: pressed ? 0.6 : 1
-        })}
-      >
-        {manageMode ? (
-          <AppText variant="meta" color={theme.foreground} style={{ fontFamily: 'Inter_600SemiBold' }}>
-            Done
-          </AppText>
-        ) : (
-          <MoreHorizontalIcon color={theme.mutedForeground} size={16} />
-        )}
+        <PlusIcon color={theme.mutedForeground} size={14} />
+        <AppText variant="meta" color={theme.mutedForeground} style={{ fontFamily: 'Inter_500Medium' }}>
+          New bot
+        </AppText>
       </Pressable>
     </View>
+  )
+})
+
+export const SplitNewBotButton = memo(function SplitNewBotButton({ onPress }: { onPress: () => void }) {
+  const theme = useTheme()
+  return (
+    <Pressable
+      testID="roster-new-bot-button"
+      onPress={onPress}
+      hitSlop={10}
+      accessibilityRole="button"
+      accessibilityLabel="New bot"
+      style={({ pressed }) => ({
+        width: 24,
+        height: 18,
+        borderRadius: 9,
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: pressed ? 0.6 : 1
+      })}
+    >
+      <PlusIcon color={theme.mutedForeground} size={14} />
+    </Pressable>
   )
 })
 
@@ -108,7 +63,7 @@ export const RosterSearchBar = memo(function RosterSearchBar({
 }) {
   const theme = useTheme()
   return (
-    <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
+    <View style={{ paddingHorizontal: 12, paddingTop: 6, paddingBottom: 8 }}>
       <View
         style={{
           flexDirection: 'row',
@@ -152,31 +107,39 @@ export const RosterSearchBar = memo(function RosterSearchBar({
 
 export const CollapsedGroupHeader = memo(function CollapsedGroupHeader({
   testID,
+  groupId,
   name,
   count,
   open,
-  onToggle
+  onToggle,
+  trailing
 }: {
   testID: string
+  groupId: 'unassigned' | 'hidden'
   name: string
   count: number
   open: boolean
-  onToggle: () => void
+  onToggle: (groupId: 'unassigned' | 'hidden') => void
+  trailing?: ReactNode
 }) {
   const theme = useTheme()
+  const handlePress = useCallback(() => onToggle(groupId), [groupId, onToggle])
   return (
-    <Pressable
-      testID={testID}
-      onPress={onToggle}
-      accessibilityRole="button"
-      accessibilityState={{ expanded: open }}
-      accessibilityLabel={`${name}, ${count}`}
-      style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 6 }}
-    >
-      {open ? <ChevronDownIcon color={theme.mutedForeground} size={13} /> : <ChevronRightIcon color={theme.mutedForeground} size={13} />}
-      <AppText variant="meta" color={theme.mutedForeground} style={{ fontFamily: 'Inter_500Medium' }}>
-        {name} · {count}
-      </AppText>
-    </Pressable>
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 6 }}>
+      <Pressable
+        testID={testID}
+        onPress={handlePress}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        accessibilityLabel={`${name}, ${count}`}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+      >
+        {open ? <ChevronDownIcon color={theme.mutedForeground} size={13} /> : <ChevronRightIcon color={theme.mutedForeground} size={13} />}
+        <AppText variant="meta" color={theme.mutedForeground} style={{ fontFamily: 'Inter_500Medium' }}>
+          {name} · {count}
+        </AppText>
+      </Pressable>
+      {trailing}
+    </View>
   )
 })
