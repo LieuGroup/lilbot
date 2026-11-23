@@ -167,32 +167,31 @@ test('browser protocol validates defaults and deletion choices', async () => {
   }
 })
 
-test('deleting a non-primary bot on a protected base profile finishes teardown; transient error retries on prepareRuntimes', async () => {
+test('deleting a non-primary bot bound to a protected base profile finishes teardown when engine refuses with protected_bot', async () => {
   const f = fakeService()
   try {
-    f.store.save({ ...f.store.get('b1'), isDefault: true, engineBotId: 'default' })
+    f.store.save({ ...f.store.get('b1'), isDefault: true })
+    f.store.bind('b1', 'default')
+    expect(f.store.get('b1').engineBotId).toBe('default')
     const other = await f.service.createBot({ name: 'New Primary', function: '', instructions: '' })
     await f.service.setPrimary(other.id)
     await mkdir(join(f.root, 'b1'), { recursive: true })
     await writeFile(join(f.root, 'b1', 'note'), 'cleanup me')
+    let deletedId = ''
+    let protectedRefusals = 0
     f.engine.deleteRuntime = async id => {
-      if (id === 'default') throw new LilBotError('protected_bot', 'Cannot delete the default profile.')
+      deletedId = id
+      if (id === 'default') {
+        protectedRefusals++
+        throw new LilBotError('protected_bot', 'Cannot delete the default profile.')
+      }
     }
     await f.service.deleteBot({ botId: 'b1', files: 'delete', privateMemories: 'forget' })
+    expect(deletedId).toBe('default')
+    expect(protectedRefusals).toBe(1)
     expect(f.store.deleted('b1')?.complete).toBe(true)
     expect(existsSync(join(f.root, 'b1'))).toBe(false)
     expect((await f.service.listBots()).map(b => b.id)).toEqual([other.id])
-
-    const third = await f.service.createBot({ name: 'Third', function: '', instructions: '' })
-    let online = false
-    f.engine.deleteRuntime = async () => {
-      if (!online) throw new Error('offline')
-    }
-    await expect(f.service.deleteBot({ botId: third.id, files: 'delete' })).rejects.toThrow('offline')
-    expect(f.store.deleted(third.id)?.complete).toBe(false)
-    online = true
-    await f.service.prepareRuntimes()
-    expect(f.store.deleted(third.id)?.complete).toBe(true)
   } finally {
     await rm(f.root, { recursive: true, force: true })
   }

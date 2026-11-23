@@ -35,6 +35,7 @@ export interface BotServiceOptions {
   onConnectionsChanged?: (botId: string) => void
   systemNote?: (bot: BotRecord) => string
   busyReason?: (botId: string) => string | null
+  deletionRetry?: import('./bot-deletion').BotDeletionOptions
 }
 
 export class BotService {
@@ -86,7 +87,8 @@ export class BotService {
       () => {
         this.changed()
         this.memoryChanged()
-      }
+      },
+      options.deletionRetry
     )
     this.botMemory = new BotMemory(this.runtimes, memory, options.memoryConnection, this.memoryChanged)
     const busyReason = (botId: string) =>
@@ -129,11 +131,9 @@ export class BotService {
   }
 
   prepareRuntimes() {
-    return this.runtimes
-      .initialize(bots => this.primaryId(bots))
-      .then(() => this.deletion.resumeIncomplete())
-      .finally(this.changed)
+    return this.runtimes.initialize(bots => this.primaryId(bots)).finally(this.changed)
   }
+  resumeIncompleteDeletions = () => this.deletion.resumeIncomplete()
 
   async listBots(): Promise<Bot[]> {
     await this.runtimes.load()

@@ -15,6 +15,7 @@ export interface RunSource<R extends { id: string; botId: string }> {
  * One routine never overlaps itself. Pause/delete stop future dispatch; an admitted run may finish. */
 export class RoutineScheduler<R extends { id: string; botId: string }> {
   private retries = new RetryQueue('routine run', () => this.now())
+  private missingEngineNotified = new Set<string>()
   constructor(
     private service: RunSource<R>,
     private observe: (event: ActivityEvent) => void = () => {},
@@ -35,9 +36,17 @@ export class RoutineScheduler<R extends { id: string; botId: string }> {
         // Reconnect and replay the persisted identity instead, even after a process restart.
         this.retries.run(run.id, async () => {
           const chatId = `${this.service.kind}:${run.id}`
-          if (runnable) this.observe({ botId: run.botId, chatId, key: `${run.id}:working`, status: 'working' })
+          if (runnable) {
+            this.missingEngineNotified.delete(run.botId)
+            this.observe({ botId: run.botId, chatId, key: `${run.id}:working`, status: 'working' })
+          }
           const result = await this.service.run(run)
-          this.observe({ botId: run.botId, chatId, key: `${run.id}:settled`, status: result.status === 'completed' ? 'finished' : 'failed', spoke: true })
+          if (runnable) {
+            this.observe({ botId: run.botId, chatId, key: `${run.id}:settled`, status: result.status === 'completed' ? 'finished' : 'failed', spoke: true })
+          } else if (!this.missingEngineNotified.has(run.botId)) {
+            this.missingEngineNotified.add(run.botId)
+            this.observe({ botId: run.botId, chatId, key: `${run.id}:settled`, status: 'failed' })
+          }
         })
       }
       if (!failedFast) break

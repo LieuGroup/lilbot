@@ -191,6 +191,7 @@ try {
   mcp.onCodingSkillsReady(false)
 }
 prepareMemory().catch(error => console.error('[memory] could not prepare memory for the bots:', error instanceof Error ? error.message : error))
+bots.resumeIncompleteDeletions()
 
 console.log(`LilBot listening on http://${server.hostname}:${server.port} (engines: ${engines.ids().join(', ')})`)
 

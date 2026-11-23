@@ -111,11 +111,35 @@ test('unregistered-engine routine fails cleanly without working status or retry 
   expect(ghostRun.result).toContain('engine is not available')
   expect(f.observed.filter(e => e.botId === 'ghost-rt' && e.status === 'working')).toEqual([])
   expect(f.activity.state('ghost-rt').status).not.toBe('working')
+  expect(f.activity.state('ghost-rt').unread).toBe(true)
 
   const healthyRun = routines.store.list(healthy.id)[0]!.runs[0]!
   expect(healthyRun.status).toBe('completed')
   // Subsequent ticks do not spin or re-run the settled ghost routine.
   expect(scheduler.tick()).toEqual([])
+
+  // Clearing unread and hitting another scheduled interval records the failed run without re-raising unread.
+  f.activity.setUnread('ghost-rt', false)
+  now += 400_000
+  expect(scheduler.tick()).toHaveLength(2)
+  for (let i = 0; i < 40 && routineStore.pending().length > 0; i++) await Bun.sleep(20)
+  expect(routines.store.list('ghost-rt')[0]!.runs).toHaveLength(2)
+  expect(routines.store.list('ghost-rt')[0]!.runs.every(r => r.status === 'failed')).toBe(true)
+  expect(f.activity.state('ghost-rt').unread).toBe(false)
+
+  // Once the bot's engine returns, the routine succeeds and a later missing-engine outage notifies once again.
+  const nativeId = await f.engine.createRuntime(f.store.get('ghost-rt'))
+  f.store.bindEngine('ghost-rt', 'scripted-a', nativeId, null)
+  now += 400_000
+  expect(scheduler.tick()).toHaveLength(2)
+  for (let i = 0; i < 40 && routineStore.pending().length > 0; i++) await Bun.sleep(20)
+  expect(routines.store.list('ghost-rt')[0]!.runs[0]!.status).toBe('completed')
+  f.activity.setUnread('ghost-rt', false)
+  f.store.bindEngine('ghost-rt', 'missing-engine', 'native-ghost-rt', null)
+  now += 400_000
+  expect(scheduler.tick()).toHaveLength(2)
+  for (let i = 0; i < 40 && routineStore.pending().length > 0; i++) await Bun.sleep(20)
+  expect(f.activity.state('ghost-rt').unread).toBe(true)
   f.activity.close()
 })
 
