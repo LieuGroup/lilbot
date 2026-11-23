@@ -1,0 +1,34 @@
+# Unfolded layout (iPad/wide): roster and conversation are visible side by side.
+# Run with the fake server up: `bun ui-tests/fake-lilbot.ts` (port 3399).
+appId: com.lilbot.app.dev
+---
+- launchApp:
+    clearState: true
+- assertVisible: "Server address"
+- tapOn: "https://lilbot.example.com"
+- inputText: "http://localhost:3399"
+- tapOn: "cf-access-jwt-assertion value"
+- inputText: "test-token"
+- hideKeyboard
+- runFlow:
+    when:
+      visible: "Not Now"
+    commands:
+      - tapOn: "Not Now"
+- tapOn: "Save and connect"
+- extendedWaitUntil:
+    visible: "Not Now"
+    timeout: 10000
+    optional: true
+- runFlow:
+    when:
+      visible: "Not Now"
+    commands:
+      - tapOn: "Not Now"
+- assertVisible: "Test Bot"
+- assertVisible: "Test section"
+- assertVisible: "Section Bot"
+- assertVisible: "Hello! I am the fake LilBot server."
+- assertVisible: "Model: claude-sonnet-4-5 · High"
+- tapOn: "Section Bot"
+- assertVisible: "Hello! I am the fake LilBot server."

@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { ModelProvider } from '../../shared/bot-schema'
-import { capabilityOf, effortLabel, effortValue, reasons, sentDiffers } from '../../web/src/bots/reasoning-effort'
+import { capabilityOf, effortLabel, effortValue, reasons, sentDiffers } from '../../shared/client/bots/reasoning-effort'
 
 test('levels read as the menu names them; no level is the engine default; an unknown level shows as sent', () => {
   expect(['none', 'minimal', 'xhigh', 'max'].map(effortLabel)).toEqual(['Off', 'Minimal', 'Extra high', 'Max'])

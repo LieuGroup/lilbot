@@ -3,13 +3,13 @@
  *  reopens it after a reconnect so the transcript always comes from the server. */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Attachment } from '../../../shared/attachment-schema'
+import { applyChatEvent, chatFromHistory, chatFromSnapshot, type UserItem, withError, withNewSession } from '../../../shared/client/chat/chat-state'
+import { withSentMessage, withUserMessage } from '../../../shared/client/chat/user-messages'
 import { lilbot, messageOf } from '../app/lilbot-socket'
 import { newMessageId } from '../attachments/attachment-rules'
 import { useBotStore } from '../bots/bot-store'
 import { thisDeviceId } from '../devices/this-device'
-import { applyChatEvent, chatFromHistory, chatFromSnapshot, type UserItem, withError, withNewSession } from './chat-state'
 import { emptySlot, updateChat, useChatStore } from './chat-store'
-import { withSentMessage, withUserMessage } from './user-messages'
 
 const REOPEN_DELAY_MS = 3000
 

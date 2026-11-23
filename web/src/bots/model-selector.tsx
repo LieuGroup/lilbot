@@ -2,7 +2,7 @@ import { ChevronDownIcon } from 'lucide-react'
 import { Button } from '@/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '@/ui/dropdown-menu'
 import type { BotModel, ModelProvider } from '../../../shared/bot-schema'
-import { type ModelGroup, modelFromKey, modelGroups, modelKey, modelLabel } from './model-choice'
+import { type ModelGroup, modelFromKey, modelGroups, modelKey, modelLabel } from '../../../shared/client/bots/model-choice'
 
 // Paper "14 Model picker": the tick sits before the current model, other names are indented to line up with it.
 export const choiceRow =

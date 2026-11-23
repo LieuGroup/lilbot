@@ -1,5 +1,5 @@
 import type { Avatar } from '../../../shared/avatar'
-import { avatarColors, lightFace } from './avatar-colors'
+import { avatarColors, lightFace } from '../../../shared/avatar-colors'
 import { AvatarShape, shapeMetrics } from './avatar-shape'
 
 /** LilBot's vector cover and face, drawn at any size without changing the artwork. */
