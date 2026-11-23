@@ -1,74 +1,67 @@
-/** Minimal quote-aware POSIX shell scanner for command-safety inspection. */
-import { decodeAnsiC, scanBraceVar, scanSubst } from './command-text'
+/** Quote- and heredoc-aware POSIX shell scanner for command-safety inspection. */
+import { consumeHeredocs, type Heredoc, type PendingRedirect, type QueuedHeredoc, scanAnsiC, scanQuoted, scanRedirectOp } from './command-heredoc'
+import { isLineContinuation, scanBraceVar, scanSubst } from './command-text'
 
-interface ShellSegment {
+export interface ShellSegment {
   words: string[]
   redirects: string[]
+  heredocs: Heredoc[]
+  hereStrings: string[]
+  pipeFromPrev: boolean
+  subshellDepth: number
 }
 
-interface ParsedShell {
+export interface ParsedShell {
   segments: ShellSegment[]
   substitutions: string[]
   masked: string
+  unterminated: boolean
 }
 
 const IFS_VAR = /^\$(?:IFS(?![A-Za-z0-9_])|\{IFS(?::[^}]*|[^A-Za-z0-9_][^}]*)?\})/
 
-function scanQuoted(src: string, start: number, q: "'" | '"', substitutions: string[], masked: string[]): { text: string; end: number } {
-  masked.push(q)
-  let i = start + 1
-  let text = ''
-  while (i < src.length && src[i] !== q) {
-    if (q === '"' && src[i] === '\\' && i + 1 < src.length) {
-      const next = src[i + 1]
-      text += next === '"' || next === '\\' || next === '$' || next === '`' ? next : `\\${next}`
-      masked.push('  ')
-      i += 2
-      continue
-    }
-    if (q === '"' && (src[i] === '`' || (src[i] === '$' && src[i + 1] === '('))) {
-      const sub = scanSubst(src, i, substitutions, masked)
-      text += sub.text
-      i = sub.end
-      continue
-    }
-    text += src[i]
-    masked.push(' ')
-    i++
-  }
-  if (i < src.length) {
-    masked.push(q)
-    i++
-  }
-  return { text, end: i }
+function emptySegment(pipeFromPrev: boolean, subshellDepth: number): ShellSegment {
+  return { words: [], redirects: [], heredocs: [], hereStrings: [], pipeFromPrev, subshellDepth }
 }
 
 export function parseShellSegments(src: string): ParsedShell {
   const segments: ShellSegment[] = []
   const substitutions: string[] = []
   const masked: string[] = []
-  let words: string[] = []
-  let redirects: string[] = []
+  const queuedHeredocs: QueuedHeredoc[] = []
+  let subshellDepth = 0
+  let cur = emptySegment(false, 0)
   let word = ''
   let inWord = false
-  let pendingRedirect = false
+  let wordHadQuote = false
+  let pendingRedirect: PendingRedirect = 'none'
+  let unterminated = false
+
   const flushWord = () => {
     if (!inWord) return
-    if (pendingRedirect) redirects.push(word)
-    else words.push(word)
-    pendingRedirect = false
+    if (pendingRedirect === 'output') cur.redirects.push(word)
+    else if (pendingRedirect === 'herestring') cur.hereStrings.push(word)
+    else if (pendingRedirect === 'heredoc' || pendingRedirect === 'heredoc_strip') {
+      queuedHeredocs.push({ delim: word, stripTabs: pendingRedirect === 'heredoc_strip', quoted: wordHadQuote, heredocs: cur.heredocs })
+    } else if (pendingRedirect === 'none') cur.words.push(word)
+    pendingRedirect = 'none'
     word = ''
     inWord = false
+    wordHadQuote = false
   }
-  const flushSegment = () => {
+
+  const flushSegment = (nextPipe: boolean) => {
     flushWord()
-    if (words.length || redirects.length) {
-      segments.push({ words, redirects })
-      words = []
-      redirects = []
+    if (cur.words.length || cur.redirects.length || cur.heredocs.length || cur.hereStrings.length) {
+      segments.push(cur)
+      cur = emptySegment(nextPipe, subshellDepth)
+    } else {
+      cur.pipeFromPrev = nextPipe
+      cur.subshellDepth = subshellDepth
     }
-    pendingRedirect = false
+    pendingRedirect = 'none'
   }
+
   let i = 0
   while (i < src.length) {
     const ch = src[i]
@@ -81,31 +74,26 @@ export function parseShellSegments(src: string): ParsedShell {
     }
     if (ch === "'" || ch === '"') {
       inWord = true
+      wordHadQuote = true
       const q = scanQuoted(src, i, ch, substitutions, masked)
+      if (q.unterminated) unterminated = true
       word += q.text
       i = q.end
       continue
     }
     if (ch === '$' && src[i + 1] === "'") {
       inWord = true
-      masked.push("$'")
-      i += 2
-      const start = i
-      while (i < src.length && src[i] !== "'") {
-        const step = src[i] === '\\' && i + 1 < src.length ? 2 : 1
-        masked.push(step === 2 ? '  ' : ' ')
-        i += step
-      }
-      word += decodeAnsiC(src.slice(start, i))
-      if (i < src.length) {
-        masked.push("'")
-        i++
-      }
+      wordHadQuote = true
+      const a = scanAnsiC(src, i, masked)
+      if (a.unterminated) unterminated = true
+      word += a.text
+      i = a.end
       continue
     }
-    if (ch === '`' || (ch === '$' && src[i + 1] === '(')) {
+    if (ch === '`' || ((ch === '$' || ch === '<' || ch === '>') && src[i + 1] === '(')) {
       inWord = true
       const sub = scanSubst(src, i, substitutions, masked)
+      if (sub.unterminated) unterminated = true
       word += sub.text
       i = sub.end
       continue
@@ -128,12 +116,20 @@ export function parseShellSegments(src: string): ParsedShell {
         continue
       }
     }
-    if (ch === '\\' && i + 1 < src.length) {
-      inWord = true
-      word += src[i + 1]
-      masked.push(src[i + 1])
-      i += 2
-      continue
+    if (ch === '\\') {
+      const cont = isLineContinuation(src, i)
+      if (cont > 0) {
+        i += cont
+        continue
+      }
+      if (i + 1 < src.length) {
+        inWord = true
+        wordHadQuote = true
+        word += src[i + 1]
+        masked.push(src[i + 1])
+        i += 2
+        continue
+      }
     }
     if (ch === ' ' || ch === '\t' || ch === '\r') {
       flushWord()
@@ -141,23 +137,46 @@ export function parseShellSegments(src: string): ParsedShell {
       i++
       continue
     }
-    if (ch === '>' || (ch === '&' && src[i + 1] === '>')) {
-      if (inWord && /^\d+$/.test(word)) {
+    if (ch === '>' || ch === '<' || (ch === '&' && src[i + 1] === '>')) {
+      if (inWord && !wordHadQuote && /^\d+$/.test(word)) {
         word = ''
         inWord = false
       } else flushWord()
-      const start = i
-      i += ch === '&' ? 2 : 1
-      if (src[i] === '>' || src[i] === '|') i++
-      masked.push(src.slice(start, i))
-      if (src[i] === '&') {
-        masked.push('&')
-        i++
-      } else pendingRedirect = true
+      const op = scanRedirectOp(src, i, masked)
+      pendingRedirect = op.kind
+      i = op.end
       continue
     }
-    if (';&|\n()'.includes(ch) || ((ch === '{' || ch === '}') && !inWord)) {
-      flushSegment()
+    if (ch === '|' || (ch === '&' && src[i + 1] === '&')) {
+      const two = ch === '&' || src[i + 1] === '|' || src[i + 1] === '&'
+      flushSegment(ch === '|' && src[i + 1] !== '|')
+      masked.push(two ? src.slice(i, i + 2) : ch)
+      i += two ? 2 : 1
+      continue
+    }
+    if (ch === '\n') {
+      flushSegment(false)
+      masked.push('\n')
+      i++
+      if (queuedHeredocs.length) {
+        const res = consumeHeredocs(src, i, queuedHeredocs.splice(0), substitutions, masked)
+        if (res.unterminated) unterminated = true
+        i = res.end
+      }
+      continue
+    }
+    if (ch === '(' || ch === ')') {
+      flushSegment(false)
+      subshellDepth = ch === '(' ? subshellDepth + 1 : Math.max(0, subshellDepth - 1)
+      cur.subshellDepth = subshellDepth
+      masked.push(ch)
+      i++
+      continue
+    }
+    const isBraceOpener = ch === '{' && !inWord && (i + 1 >= src.length || ' \t\r\n'.includes(src[i + 1]))
+    const isBraceCloser = ch === '}' && !inWord && (i + 1 >= src.length || ' \t\r\n;&|)'.includes(src[i + 1]))
+    if (';&'.includes(ch) || isBraceOpener || isBraceCloser) {
+      flushSegment(false)
       masked.push(ch)
       i++
       continue
@@ -167,6 +186,6 @@ export function parseShellSegments(src: string): ParsedShell {
     masked.push(ch)
     i++
   }
-  flushSegment()
-  return { segments, substitutions, masked: masked.join('') }
+  flushSegment(false)
+  return { segments, substitutions, masked: masked.join(''), unterminated }
 }

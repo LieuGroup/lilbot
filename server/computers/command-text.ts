@@ -1,7 +1,6 @@
 /** Text normalization, parser bounds, and shell sub-span scanners for command safety checks. */
 
 const MAX_COMMAND_CHARS = 128_000
-const MAX_SEPARATOR_FREE_CHARS = 4_096
 const MAX_SEPARATORS = 25_000
 const ESC = String.fromCharCode(0x1b)
 const BEL = String.fromCharCode(0x07)
@@ -30,15 +29,18 @@ export function exceedsParserLimits(command: string): boolean {
     const ch = command[i]
     if (ch === ';' || ch === '&' || ch === '|' || ch === '\n') separators++
   }
-  return (command.length > MAX_SEPARATOR_FREE_CHARS && separators === 0) || separators >= MAX_SEPARATORS
+  return separators >= MAX_SEPARATORS
 }
 
 export function normalizeCommand(command: string): string {
-  return command
-    .replace(ANSI_ESCAPE, '')
-    .replace(INVISIBLE_CHARS, '')
-    .normalize('NFKC')
-    .replace(/\\\r?\n/g, '')
+  return command.replace(ANSI_ESCAPE, '').replace(INVISIBLE_CHARS, '').normalize('NFKC')
+}
+
+export function isLineContinuation(src: string, i: number): number {
+  if (src[i] !== '\\') return 0
+  if (src[i + 1] === '\n') return 2
+  if (src[i + 1] === '\r' && src[i + 2] === '\n') return 3
+  return 0
 }
 
 export function decodeAnsiC(body: string): string {
@@ -50,14 +52,14 @@ export function decodeAnsiC(body: string): string {
   })
 }
 
-function scanSubshell(src: string, start: number): number {
+function scanSubshell(src: string, start: number): { end: number; closed: boolean } {
+  const stack: { depth: number; quote: "'" | '"' | null }[] = [{ depth: 1, quote: null }]
   let i = start
-  let depth = 1
-  let quote: "'" | '"' | null = null
-  while (i < src.length && depth > 0) {
+  while (i < src.length && stack.length > 0) {
+    const top = stack[stack.length - 1]
     const ch = src[i]
-    if (quote === "'") {
-      if (ch === "'") quote = null
+    if (top.quote === "'") {
+      if (ch === "'") top.quote = null
       i++
       continue
     }
@@ -65,42 +67,46 @@ function scanSubshell(src: string, start: number): number {
       i += 2
       continue
     }
-    if (quote === '"') {
-      if (ch === '"') quote = null
+    if (top.quote === '"') {
+      if (ch === '"') top.quote = null
       else if (ch === '$' && src[i + 1] === '(') {
-        i = scanSubshell(src, i + 2)
+        stack.push({ depth: 1, quote: null })
+        i += 2
         continue
       }
       i++
       continue
     }
-    if (ch === "'" || ch === '"') quote = ch
-    else if (ch === '(') depth++
-    else if (ch === ')') depth--
+    if (ch === "'" || ch === '"') top.quote = ch
+    else if (ch === '(') top.depth++
+    else if (ch === ')') {
+      top.depth--
+      if (top.depth === 0) stack.pop()
+    }
     i++
   }
-  return i
+  return { end: i, closed: stack.length === 0 }
 }
 
-function scanBacktick(src: string, start: number): number {
+function scanBacktick(src: string, start: number): { end: number; closed: boolean } {
   let i = start
   while (i < src.length) {
     if (src[i] === '\\' && i + 1 < src.length) i += 2
-    else if (src[i] === '`') return i + 1
+    else if (src[i] === '`') return { end: i + 1, closed: true }
     else i++
   }
-  return i
+  return { end: i, closed: false }
 }
 
-export function scanSubst(src: string, start: number, substitutions: string[], masked: string[]): { text: string; end: number } {
-  const isSub = src[start] === '$'
-  const openLen = isSub ? 2 : 1
-  const closeChar = isSub ? ')' : '`'
-  const end = isSub ? scanSubshell(src, start + 2) : scanBacktick(src, start + 1)
-  substitutions.push(src.slice(start + openLen, end > start + openLen && src[end - 1] === closeChar ? end - 1 : end))
-  const raw = src.slice(start, end)
+export function scanSubst(src: string, start: number, substitutions: string[], masked: string[]): { text: string; end: number; unterminated: boolean } {
+  const isBacktick = src[start] === '`'
+  const openLen = isBacktick ? 1 : 2
+  const res = isBacktick ? scanBacktick(src, start + 1) : scanSubshell(src, start + 2)
+  const innerEnd = res.closed ? res.end - 1 : res.end
+  substitutions.push(src.slice(start + openLen, innerEnd))
+  const raw = src.slice(start, res.end)
   masked.push(raw)
-  return { text: raw, end }
+  return { text: raw, end: res.end, unterminated: !res.closed }
 }
 
 export function scanBraceVar(src: string, start: number): number {

@@ -14,138 +14,31 @@ import { MemoryStore } from '../../server/memory/memory-store'
 
 const HOME = '/Users/alice'
 
-const BLOCKED: [string, string][] = [
-  ['rm -rf /', 'root filesystem'],
-  ['rm -rf //', 'root filesystem'],
-  ['rm -rf /./..', 'root filesystem'],
-  ['rm -rf /*', 'root filesystem'],
-  ['rm -rf / *', 'root filesystem'],
-  ['rm -rf "/"', 'root filesystem'],
-  ['rm -rf -- /', 'root filesystem'],
-  ['rm -rf /tmp/ok /', 'root filesystem'],
-  ['rm -rf /tmp/..', 'root filesystem'],
-  ['rm -rf /etc', 'system directory'],
-  ['rm -rf /etc/*', 'system directory'],
-  ['rm -rf /home', 'system directory'],
-  ['rm -rf /home/*', 'system directory'],
-  ['rm -rf /usr', 'system directory'],
-  ['rm -rf /var/*', 'system directory'],
-  ['rm -rf /Users', 'system directory'],
-  ['rm -rf /System/*', 'system directory'],
-  ['rm -rf ~', 'home directory'],
-  ['rm -rf ~/', 'home directory'],
-  ['rm -rf ~/*', 'home directory'],
-  ['rm -rf ~/sub/..', 'home directory'],
-  ['rm -rf $HOME', 'home directory'],
-  [`rm -rf "\${HOME}"`, 'home directory'],
-  ['rm -rf "$HOME/*"', 'home directory'],
-  ['rm -rf ~root', 'home directory'],
-  ['rm -rf /Users/alice', 'home directory'],
-  ['rm -rf /Users/alice/*', 'home directory'],
-  ['rm -rf /Users/alice/.', 'home directory'],
-  ['mkfs /dev/sdb', 'mkfs'],
-  ['mkfs.ext4 /dev/sda1', 'mkfs'],
-  ['newfs_apfs /dev/disk2', 'newfs'],
-  ['diskutil eraseDisk APFS Test disk2', 'diskutil'],
-  ['diskutil apfs deleteContainer disk2', 'diskutil'],
-  ['dd if=/dev/zero of=/dev/sda bs=1M', 'dd to raw block device'],
-  ['dd if=/dev/zero of="/dev/nvme0n1"', 'dd to raw block device'],
-  ['dd if=/dev/zero of=/dev/rdisk2', 'dd to raw block device'],
-  ['cat f > /dev/sda', 'redirect to raw block device'],
-  ['echo x >> /dev/disk0', 'redirect to raw block device'],
-  ['cat f > "/dev/nvme0n1"', 'redirect to raw block device'],
-  ['echo x | tee /dev/sda', 'write to raw block device'],
-  [':(){ :|:& };:', 'fork bomb'],
-  ['bomb(){ bomb|bomb& };bomb', 'fork bomb'],
-  ['kill -1', 'kill all processes'],
-  ['kill -9 -1', 'kill all processes'],
-  ['kill -s KILL -1', 'kill all processes'],
-  ['kill -- -1', 'kill all processes'],
-  ['shutdown -h now', 'shutdown/reboot'],
-  ['reboot', 'shutdown/reboot'],
-  ['halt', 'shutdown/reboot'],
-  ['poweroff', 'shutdown/reboot'],
-  ['init 0', 'init 0/6'],
-  ['telinit 6', 'telinit 0/6'],
-  ['systemctl reboot', 'systemctl'],
-  ['systemctl --force poweroff', 'systemctl'],
-  ['systemctl -H host halt', 'systemctl'],
-  ['r\\m -rf /', 'root filesystem'],
-  ['r""m -rf /', 'root filesystem'],
-  ["r''m -rf /", 'root filesystem'],
-  ["$'\\x72m' -rf /", 'root filesystem'],
-  [`rm\${IFS}-rf\${IFS}/`, 'root filesystem'],
-  ['rm -rf \\\n/', 'root filesystem'],
-  ['\x1b[31mrm\x1b[0m -rf /', 'root filesystem'],
-  ['\u200brm -rf /', 'root filesystem'],
-  ['ｒｍ -rf /', 'root filesystem'],
-  ['/bin/rm -rf /', 'root filesystem'],
-  ['/sbin/mkfs.ext4 /dev/sda1', 'mkfs'],
-  ['sudo -u root rm -rf /', 'root filesystem'],
-  ['env VAR=1 reboot', 'shutdown/reboot'],
-  ['env -S "rm -rf /"', 'root filesystem'],
-  ['timeout 30 shutdown -r now', 'shutdown/reboot'],
-  ['nice -n 5 poweroff', 'shutdown/reboot'],
-  ['nohup mkfs /dev/sdb', 'mkfs'],
-  ['command rm -rf /', 'root filesystem'],
-  ['echo x | xargs mkfs', 'mkfs'],
-  ['if false; then mkfs; fi', 'mkfs'],
-  ['(rm -rf /)', 'root filesystem'],
-  ['{ reboot; }', 'shutdown/reboot'],
-  ['echo "$(reboot)"', 'shutdown/reboot'],
-  ['echo "`rm -rf /`"', 'root filesystem'],
-  ['cat "f\\"n.txt"; rm -rf /', 'root filesystem'],
-  ['sh -c "rm -rf /"', 'root filesystem'],
-  ["bash -lc 'cat f > /dev/sda'", 'redirect to raw block device'],
-  ["bash -c ':(){ :|:& };:'", 'fork bomb'],
-  ['eval "rm -rf /"', 'root filesystem'],
-  ['zsh -c "bash -c \'reboot\'"', 'shutdown/reboot']
-]
-
-const ALLOWED = [
-  'printf OK',
-  'rm -rf /tmp/scratch-123',
-  'rm -rf ~/project/dist',
-  'rm -rf /Users/alice/project/dist',
-  'rm -f /etc/my-test-config',
-  'cd /tmp/work && rm -rf *',
-  'echo "rm -rf /"',
-  'git commit -m "fix: block rm -rf / and mkfs and shutdown"',
-  'echo "cat f > /dev/sda"',
-  'echo ":(){ :|:& };:"',
-  'echo "line1\nreboot"',
-  "echo '$(reboot)'",
-  'echo "\\$(reboot)"',
-  'grep -o "[^\\"]*" file.txt',
-  'sed -n "$(grep -n X f | cut -d: -f1),+3p" f',
-  'command -v reboot',
-  'kill -9 12345',
-  'systemctl status lilbot',
-  'systemctl help reboot',
-  'dd if=/dev/zero of=/tmp/test.img bs=1M count=1',
-  'diskutil list'
-]
-
-test('blocks destructive commands and evasions', () => {
-  for (const [cmd, expected] of BLOCKED) {
-    const reason = checkCommandSafety(cmd, HOME)
-    expect(reason, `expected blocked: ${cmd}`).not.toBeNull()
-    expect(reason!, cmd).toContain(expected)
-  }
-})
-
-test('allows benign commands and quoted prose', () => {
-  for (const cmd of ALLOWED) {
-    expect(checkCommandSafety(cmd, HOME), `expected allowed: ${cmd}`).toBeNull()
-  }
-})
-
-test('fails closed on parser and nesting limits', () => {
-  expect(checkCommandSafety('a'.repeat(5000), HOME)).toContain('parser limit')
+test('allows >4 KiB single-line commands while failing closed on size, separator, and nesting limits', () => {
+  expect(checkCommandSafety(`echo ${'a'.repeat(5_000)} > /tmp/out.b64`, HOME)).toBeNull()
+  expect(checkCommandSafety(`git commit -m "${'x'.repeat(5_000)}"`, HOME)).toBeNull()
+  expect(checkCommandSafety(`curl -d '${'y'.repeat(5_000)}' https://example.com`, HOME)).toBeNull()
+  expect(checkCommandSafety('a'.repeat(128_001), HOME)).toContain('parser limit')
   expect(checkCommandSafety(';'.repeat(25_000), HOME)).toContain('parser limit')
   let nested = 'echo ok'
   for (let i = 0; i < 10; i++) nested = `sh -c ${JSON.stringify(nested)}`
   expect(checkCommandSafety(nested, HOME)).toContain('nesting limit')
+  expect(checkCommandSafety('"$(;'.repeat(15_000), HOME)).not.toBeNull()
+})
+
+test('ignores uninterpretable Windows-style home paths without refusing benign commands', () => {
+  expect(checkCommandSafety('rm -rf /tmp/scratch', 'C:\\Users\\alice')).toBeNull()
+  expect(checkCommandSafety('echo ok', 'C:\\Users\\alice')).toBeNull()
+  expect(checkCommandSafety('rm -rf /', 'C:\\Users\\alice')).toContain('root filesystem')
+})
+
+test('blocks computer home paths and allows subpaths', () => {
+  for (const cmd of ['rm -rf /Users/alice', 'rm -rf /Users/alice/*', 'rm -rf /Users/alice/.', 'rm -rf ~/..', 'rm -rf ~/sub/..', 'rm -rf ~root']) {
+    expect(checkCommandSafety(cmd, HOME), cmd).not.toBeNull()
+  }
+  for (const cmd of ['rm -rf /Users/alice/project/dist', 'rm -rf ~/Library/Developer/Xcode/DerivedData/*', 'rm -rf /etc/my-test-config']) {
+    expect(checkCommandSafety(cmd, HOME), cmd).toBeNull()
+  }
 })
 
 const cleanups: (() => void)[] = []

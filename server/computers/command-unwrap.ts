@@ -1,9 +1,23 @@
-/** Unwraps shell control-flow keywords, command wrappers, and shell carriers (`sh -c`, `eval`, `env -S`). */
+/** Unwraps shell control-flow keywords, command wrappers, and POSIX shell carriers. */
+import { extractReadToolExecPayloads } from './command-exec-flags'
 
 const ENV_ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/
 const TRANSITIONS = new Set(['if', 'then', 'else', 'elif', 'do', 'while', 'until', '!', 'coproc'])
-const SHELL_CARRIERS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'ash'])
-const SHELL_ARG_OPTS = new Set(['-o', '+o', '-O', '+O', '--init-file', '--rcfile'])
+export const SHELL_CARRIERS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'ash'])
+const SHELL_LONG_ARG_OPTS = new Set(['--init-file', '--rcfile'])
+const SYSTEM_BIN_DIRS = new Set([
+  'bin',
+  'sbin',
+  'usr/bin',
+  'usr/sbin',
+  'usr/local/bin',
+  'usr/local/sbin',
+  'opt/homebrew/bin',
+  'opt/homebrew/sbin',
+  'opt/local/bin',
+  'opt/local/sbin',
+  'run/current-system/sw/bin'
+])
 
 const WRAPPERS: Record<string, { argOpts: Set<string>; stopOpts?: Set<string>; positionals?: number }> = {
   sudo: {
@@ -38,7 +52,7 @@ const WRAPPERS: Record<string, { argOpts: Set<string>; stopOpts?: Set<string>; p
   nohup: { argOpts: new Set() },
   setsid: { argOpts: new Set() },
   builtin: { argOpts: new Set() },
-  command: { argOpts: new Set(), stopOpts: new Set(['-v', '-V']) },
+  command: { argOpts: new Set() },
   time: { argOpts: new Set(['-f', '--format', '-o', '--output']) },
   nice: { argOpts: new Set(['-n', '--adjustment']) },
   timeout: { argOpts: new Set(['-k', '--kill-after', '-s', '--signal']), positionals: 1 },
@@ -47,46 +61,77 @@ const WRAPPERS: Record<string, { argOpts: Set<string>; stopOpts?: Set<string>; p
   chrt: { argOpts: new Set(), stopOpts: new Set(['-p', '--pid']), positionals: 1 },
   taskset: { argOpts: new Set(), stopOpts: new Set(['-p', '--pid']), positionals: 1 },
   chroot: { argOpts: new Set(['--userspec', '--groups']), positionals: 1 },
-  xargs: { argOpts: new Set(['-I', '-L', '-n', '-P', '-s', '-d', '-E', '-a', '-J', '--max-args', '--max-procs', '--replace', '--delimiter', '--eof', '--arg-file']) }
+  xargs: { argOpts: new Set(['-I', '-L', '-n', '-P', '-s', '-d', '-E', '-a', '-J', '--max-args', '--max-procs', '--replace', '--delimiter', '--eof', '--arg-file']) },
+  busybox: { argOpts: new Set() }
 }
 
-function commandBasename(word: string): string {
-  const parts = word.split(/[/\\]/)
-  return (parts[parts.length - 1] ?? '').toLowerCase().replace(/\.exe$/, '')
+function resolveCommandName(word: string): string {
+  const lower = word.toLowerCase()
+  if (!lower.includes('/') || !lower.startsWith('/')) return lower
+  const parts: string[] = []
+  for (const part of lower.split('/')) {
+    if (!part || part === '.') continue
+    if (part === '..') parts.pop()
+    else parts.push(part)
+  }
+  if (parts.length < 2) return lower
+  const dir = parts.slice(0, -1).join('/')
+  const isNixBin = parts.length >= 4 && parts[0] === 'nix' && parts[1] === 'store' && parts[parts.length - 2] === 'bin'
+  if (SYSTEM_BIN_DIRS.has(dir) || isNixBin) return parts[parts.length - 1]
+  return lower
 }
 
 function shellDashCPayload(args: string[]): string | null {
-  for (let i = 0; i < args.length; i++) {
+  let hasC = false
+  let i = 0
+  while (i < args.length) {
     const token = args[i]
-    if (token === '--') return null
-    if (SHELL_ARG_OPTS.has(token)) {
+    if (token === '--' || token === '-') {
       i++
+      break
+    }
+    if (!token.startsWith('-') && !token.startsWith('+')) break
+    if (token.startsWith('--')) {
+      i += !token.includes('=') && SHELL_LONG_ARG_OPTS.has(token) ? 2 : 1
       continue
     }
-    if (token === '-c' || (token.startsWith('-') && !token.startsWith('--') && token.includes('c'))) return args[i + 1] ?? null
-    if (!token.startsWith('-') && !token.startsWith('+')) return null
+    let extra = 0
+    for (let j = 1; j < token.length; j++) {
+      const ch = token[j]
+      if (token[0] === '-' && ch === 'c') hasC = true
+      if (ch === 'o' || ch === 'O') extra++
+    }
+    i += 1 + extra
   }
-  return null
+  return hasC ? (args[i] ?? null) : null
 }
 
-export function unwrapCommand(words: string[]): { command: string; args: string[]; subcommands: string[] } | null {
+export interface UnwrappedCommand {
+  command: string
+  args: string[]
+  subcommands: string[]
+  viaXargs: boolean
+}
+
+export function unwrapCommand(words: string[]): UnwrappedCommand | null {
   const subcommands: string[] = []
+  let viaXargs = false
   let idx = 0
   while (idx < words.length) {
     while (idx < words.length && (TRANSITIONS.has(words[idx].toLowerCase()) || ENV_ASSIGNMENT.test(words[idx]))) idx++
     if (idx >= words.length) return null
-    const base = commandBasename(words[idx])
+    const base = resolveCommandName(words[idx])
     const wrapper = WRAPPERS[base]
     if (!wrapper) {
       const args = words.slice(idx + 1)
       if (base === 'eval' && args.length) subcommands.push(args.join(' '))
-      else if (base === 'cmd' && args.length >= 2 && /^\/[ck]$/i.test(args[0])) subcommands.push(args.slice(1).join(' '))
       else if (SHELL_CARRIERS.has(base)) {
         const payload = shellDashCPayload(args)
         if (payload) subcommands.push(payload)
-      }
-      return { command: base, args, subcommands }
+      } else extractReadToolExecPayloads(base, args, subcommands)
+      return { command: base, args, subcommands, viaXargs }
     }
+    if (base === 'xargs') viaXargs = true
     idx++
     let positionals = wrapper.positionals ?? 0
     let opts = true
@@ -109,7 +154,7 @@ export function unwrapCommand(words: string[]): { command: string; args: string[
         if (base === 'env' && (opt === '--split-string' || token.startsWith('-S'))) {
           const payload = opt === '--split-string' ? (eq !== -1 ? token.slice(eq + 1) : words[++idx]) : token.length > 2 ? token.slice(2) : words[++idx]
           if (payload) subcommands.push([payload, ...words.slice(idx + 1)].join(' '))
-          return { command: base, args: words.slice(idx + 1), subcommands }
+          return { command: base, args: words.slice(idx + 1), subcommands, viaXargs }
         }
         idx += eq === -1 && wrapper.argOpts.has(opt) ? 2 : 1
         continue
