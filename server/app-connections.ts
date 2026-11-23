@@ -25,7 +25,7 @@ import { T3_DEFAULT_MCP_URL } from './connections/t3-connection'
 import type { T3Grants } from './connections/t3-grant'
 import { watchT3SignIn } from './connections/t3-watch'
 import { connectionLine } from './devices/origin-line'
-import type { BotEngine } from './engines/bot-engine'
+import type { EngineRegistry } from './engines/engine-registry'
 import type { HistoryStore } from './history/history-store'
 import type { BrowserConnections } from './http/connection-handlers'
 import type { CallingChats } from './threads/calling-chats'
@@ -39,7 +39,7 @@ interface ConnectionDeps {
   redirectUri: string | undefined
   /** Whether GET `/api/connections/callback` is mounted on the Access door. */
   callbackEnabled: boolean
-  engine: BotEngine
+  engines: EngineRegistry
   store: BotStore
   prefs: BotPrefsStore
   bots: BotService
@@ -69,7 +69,7 @@ export function createConnections({
   engineToken,
   redirectUri,
   callbackEnabled,
-  engine,
+  engines,
   store,
   prefs,
   bots,
@@ -122,7 +122,7 @@ export function createConnections({
         publish({ event: 'history.changed', botId: card.botId })
       },
       changed: soon,
-      toolName: engine.mcpToolName
+      toolName: engines.defaultEngine.mcpToolName
     },
     redirectUri,
     Date.now,
@@ -130,10 +130,12 @@ export function createConnections({
   )
   const applier: ConnectionApplier = new ConnectionApplier(
     {
-      bots: () => store.list().filter(bot => bot.engineId === engine.id),
+      bots: () => store.list().filter(bot => engines.has(bot.engineId)),
       mainChat: id => prefs.mainChat(id),
       refresh: () => bots.refreshConnections(),
-      apply: async (engineBotId, chatIds) => (await engine.applyConnections?.(engineBotId, chatIds)) ?? chatIds.map(chatId => ({ chatId, state: 'not_open' as const })),
+      apply: async (engineBotId, chatIds, engineId) =>
+        (await (engineId ? engines.get(engineId) : engines.defaultEngine)?.applyConnections?.(engineBotId, chatIds)) ??
+        chatIds.map(chatId => ({ chatId, state: 'not_open' as const })),
       tell: (botId, chatId, prompt, runId) => bots.runRoutine(botId, prompt, { runId, chatId, hiddenInput: true, onChat: () => {}, origin: { line: connectionLine } })
     },
     () => engineGeneration(services),
@@ -158,7 +160,7 @@ export function createConnections({
       port,
       botIds,
       refusal: serviceRefusal,
-      toolName: engine.mcpToolName
+      toolName: engines.defaultEngine.mcpToolName
     }),
     callback: connectionCallback(services),
     browser: (t3: () => T3ConnectionStatus): BrowserConnections => ({

@@ -31,7 +31,7 @@ export async function validateTaskTargets(
   tasks: DelegateInput['tasks'],
   resolved: ResolvedTask[],
   isFresh: (i: number) => boolean,
-  host: { resolveRemoteWorker?: ResolveRemoteWorker; validateModel?: (model: BotModel) => Promise<void> },
+  host: { resolveRemoteWorker?: ResolveRemoteWorker; validateModel?: (model: BotModel, botId?: string) => Promise<void> },
   narrow?: { capabilities: WebhookCapability[] | null; threadOf: (id: string) => { computer?: string; capabilities?: WebhookCapability[] } }
 ) {
   for (const [i, t] of tasks.entries()) {
@@ -63,7 +63,7 @@ export async function validateTaskTargets(
     } else if (t.engine && host.resolveRemoteWorker) {
       await host.resolveRemoteWorker(callerId, { computer: 'leader', engine: t.engine })
     }
-    if (t.model) await host.validateModel?.(t.model)
+    if (t.model) await host.validateModel?.(t.model, callerId)
   }
 }
 

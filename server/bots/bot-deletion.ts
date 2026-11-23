@@ -31,18 +31,21 @@ export class BotDeletion {
     const tombstone = store.deleted(input.botId)
     if (tombstone?.complete) return { ok: true }
     const bot = tombstone?.bot ?? store.get(input.botId)
-    if (bot.isDefault) throw new LilBotError('protected_bot', 'The engine’s default bot cannot be deleted.')
-    if (this.prefs.primaryBot() === bot.id) throw new LilBotError('primary_bot', 'Choose another primary bot before deleting this one.')
-    const engine = this.runtimes.engineFor(bot)
+    const bots = store.list()
+    const primaryId = bots.find(b => b.id === this.prefs.primaryBot())?.id ?? bots.find(b => b.isDefault)?.id
+    if (primaryId === bot.id) throw new LilBotError('primary_bot', 'Choose another primary bot before deleting this one.')
+    const engine = this.runtimes.engineIfAvailable(bot)
     const defaults = store.deleteDefaults()
     const choices = tombstone?.choices ?? { files: input.files ?? defaults.files, privateMemories: input.privateMemories ?? defaults.privateMemories }
     store.markDeleted(bot, choices)
     try {
       await this.runtimes.release(bot.id)
-      try {
-        await engine.deleteRuntime(bot.engineBotId)
-      } catch (error) {
-        if (!(error instanceof LilBotError && error.code === 'bot_not_found')) throw error
+      if (engine) {
+        try {
+          await engine.deleteRuntime(bot.engineBotId)
+        } catch (error) {
+          if (!(error instanceof LilBotError && error.code === 'bot_not_found')) throw error
+        }
       }
       if (choices.privateMemories === 'forget') this.memory.forgetPrivate(bot.id)
       await this.workspaces.remove(bot.id, choices.files)

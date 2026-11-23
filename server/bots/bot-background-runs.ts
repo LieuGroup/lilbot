@@ -17,7 +17,7 @@ export class BackgroundRuns {
   async routine(bot: BotRecord, prompt: string, options: RoutineOptions) {
     await this.runtimes.use(bot)
     const reasoningEffort = options.reasoningEffort
-      ? (await this.sessions.thinks(options.model ?? bot.model))
+      ? (await this.sessions.thinks(options.model ?? bot.model, bot.engineId))
         ? options.reasoningEffort
         : undefined
       : options.model

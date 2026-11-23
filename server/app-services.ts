@@ -31,6 +31,7 @@ import { openDatabase } from './database/database'
 import { deployNotice } from './deploy/deploy-notice'
 import { createDevices } from './devices/device-service'
 import type { BotEngine } from './engines/bot-engine'
+import { asEngineRegistry, type EngineRegistry } from './engines/engine-registry'
 import { GoalStore } from './goals/goal-store'
 import { HistoryService } from './history/history-service'
 import { HistoryStore } from './history/history-store'
@@ -51,25 +52,22 @@ import { WorkCheckStore } from './work/work-check-store'
 
 /** Construct services and their background tasks independently of the HTTP listeners. */
 export function createAppServices(
-  engine: BotEngine,
+  engineOrRegistry: BotEngine | EngineRegistry,
   settings: {
     DATA_DIR: string
     WORKSPACES_DIR: string
     PORT: number
     MEMORY_ADAPTER_VERSION: string
-    /** The running release. */
     COMMIT: string
-    /** The helper door's public origin, where webhook addresses point. */
     HOOK_ORIGIN: string | undefined
-    /** The Access door's hostname: services' sign-ins return there. */
     ACCESS_HOST: string | undefined
-    /** Whether GET `/api/connections/callback` is mounted on the Access door. */
     ACCESS_CALLBACK_ENABLED?: boolean
     T3_ENABLED?: boolean
     publish: (frame: EventFrame) => void
     botsChanged: () => void
   }
 ) {
+  const engines = asEngineRegistry(engineOrRegistry)
   const { DATA_DIR, WORKSPACES_DIR, PORT, MEMORY_ADAPTER_VERSION, COMMIT, HOOK_ORIGIN, ACCESS_HOST, publish, botsChanged } = settings
   const t3Enabled = settings.T3_ENABLED ?? isT3Enabled(process.env)
   const repeat = (name: string, interval: number, run: () => unknown | Promise<unknown>) => setInterval(backgroundTask(name, run), interval)
@@ -77,11 +75,11 @@ export function createAppServices(
   const database = openDatabase(join(DATA_DIR, 'lilbot.db'))
   const activity = new ActivityService(new ActivityStore(database), botsChanged)
   const mem = createMemory(database)
-  const memory = mem.memory
+  const { memory } = mem
   const memoryChanged = () => publish({ event: 'memory.changed' })
   const token = engineToken(DATA_DIR)
   const store = new BotStore(database)
-  const rootOf = sessionRoots(engine, store)
+  const rootOf = sessionRoots(engines, store)
   const threadStore = new ThreadStore(database, rootOf)
   const computers = new ComputerService(
     new ComputerStore(database),
@@ -121,10 +119,10 @@ export function createAppServices(
   const facts = { store, workspaces, computers, t3: () => t3Grants.status(), t3Enabled, commit: COMMIT, dataDir: DATA_DIR }
   const history = new HistoryService(
     new HistoryStore(database),
-    engine,
+    engines,
     async () => {
       await bots.listBots()
-      return store.list().filter(b => b.engineId === engine.id)
+      return store.list().filter(b => engines.has(b.engineId))
     },
     (bot, session) => store.exists(bot) && !hiddenChat(bot, session),
     (botId, chatId, rows) => devices.mergeRows(botId, rows).map(row => ({ ...row, item: attachments.mergeItem(botId, chatId, row.item) })),
@@ -134,7 +132,7 @@ export function createAppServices(
   const messages = webhookMessages(database, { store, prefs, history: history.store, activity, bots: () => bots }, publish)
   const codingSwitch = new CodingSwitchNotice(join(DATA_DIR, 'coding-switch.json'))
   const t3For = (botId: string) => (t3Enabled ? [t3Connection(`http://127.0.0.1:${PORT}`, token, botId, t3Grants.generation())] : [])
-  const bots = new BotService(engine, store, prefs, workspaces, memory, {
+  const bots = new BotService(engines, store, prefs, workspaces, memory, {
     skills,
     history,
     turnNotes: combineTurnNotes(messages, codingSwitch),
@@ -170,15 +168,15 @@ export function createAppServices(
     changed: () => threads.changed(),
     stopByChat: (botId, chatId) => remoteWorkers.runner.stopByChat(botId, chatId)
   }))
-  const workDeps = { database, engine, store, prefs, bots, ...runs, libraryStore, workspaces, activity, history: history.store, calls, publish, remoteWork }
+  const workDeps = { database, engine: engines, store, prefs, bots, ...runs, libraryStore, workspaces, activity, history: history.store, calls, publish, remoteWork }
   const { work, links, answers, checks, checkSessions } = createWork(workDeps)
   const redirectUri = ACCESS_HOST ? `https://${ACCESS_HOST}${CALLBACK_PATH}` : undefined
   const connBase = { database, dataDir: DATA_DIR, port: PORT, engineToken: token, redirectUri, callbackEnabled: settings.ACCESS_CALLBACK_ENABLED ?? false, t3Enabled }
-  const connBots = { engine, store, prefs, bots, activity, history: history.store, hiddenChat, calls, codingSwitch, t3Grants }
+  const connBots = { engines, store, prefs, bots, activity, history: history.store, hiddenChat, calls, codingSwitch, t3Grants }
   const mcp = createConnections({ ...connBase, ...connBots, t3Refusal: gates.t3Refusal, serviceRefusal: gates.serviceRefusal(checkSessions), publish, repeat })
   const rwDeps = { database, computers, store, memory, skills, computersChanged: () => publish({ event: 'computers.changed' }) }
   const remoteWorkers = createRemoteWorkers({ ...rwDeps, handleMcp: (ctx, body) => system.workerMcp(ctx, body) })
-  const threadCore = { engine, store, prefs, bots, workspaces, history, activity, threadStore, calls, work: links, callers: webhookRuns.callers, t3Enabled }
+  const threadCore = { engine: engines, store, prefs, bots, workspaces, history, activity, threadStore, calls, work: links, callers: webhookRuns.callers, t3Enabled }
   const { threads, delegation } = createThreads({ ...threadCore, memory, library, root: WORKSPACES_DIR, rootOf, remoteWorkers, publish, botsChanged, memoryChanged })
   const routines = new RoutineService(routineStore, bots, () => publish({ event: 'routines.changed' }), routineSettings(process.env))
   const { goals, boards } = createGoals({ goalStore: runs.goalStore, work, answers, threads, routines, activity, store, publish, repeat })

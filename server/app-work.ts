@@ -16,6 +16,7 @@ import type { SessionRoot } from './bots/hidden-chats'
 import type { Workspaces } from './bots/workspaces'
 import { boardLine } from './devices/origin-line'
 import type { BotEngine } from './engines/bot-engine'
+import { asEngineRegistry, type EngineRegistry } from './engines/engine-registry'
 import { requireAgreed } from './goals/goal-rules'
 import type { GoalStore } from './goals/goal-store'
 import type { HistoryStore } from './history/history-store'
@@ -35,7 +36,7 @@ import { type StoredItem, WorkStore } from './work/work-store'
 
 interface WorkDeps {
   database: Database
-  engine: BotEngine
+  engine: BotEngine | EngineRegistry
   store: BotStore
   prefs: BotPrefsStore
   bots: BotService
@@ -170,7 +171,10 @@ export function createWork({
     async (botId, chatId) => {
       if (chatId?.startsWith('remote:')) return void (await remoteWork?.stop(botId, chatId))
       const session = sessionOf(botId, chatId)
-      if (session && store.exists(botId)) await engine.stopRun?.(store.get(botId).engineBotId, session)
+      if (session && store.exists(botId)) {
+        const bot = store.get(botId)
+        await asEngineRegistry(engine).get(bot.engineId)?.stopRun?.(bot.engineBotId, session)
+      }
     },
     isNarrowedOrigin
   )

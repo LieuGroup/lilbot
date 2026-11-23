@@ -5,11 +5,13 @@ import type { ChatEvent } from '../../shared/chat-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import type { MemoryFact, MemoryWriteInput } from '../../shared/memory-schema'
 import type { ActivityCursor, BotEngine, MemoryConnection } from '../engines/bot-engine'
+import { asEngineRegistry, type EngineRegistry } from '../engines/engine-registry'
 import type { MemoryService } from '../memory/memory-service'
 import { BackgroundRuns } from './bot-background-runs'
 import { BotConversations } from './bot-conversations'
 import { BotCreation } from './bot-creation'
 import { BotDeletion } from './bot-deletion'
+import { type SwitchEngineOptions, switchBotEngine } from './bot-engine-switch'
 import { BotMemory } from './bot-memory'
 import type { BotPrefsStore } from './bot-prefs-store'
 import { BotRuntimes } from './bot-runtimes'
@@ -48,21 +50,23 @@ export class BotService {
   private botMemory: BotMemory
   private sessions: SessionSettings
   private background: BackgroundRuns
+  private engines: EngineRegistry
 
   constructor(
-    private engine: BotEngine,
+    engine: BotEngine | EngineRegistry,
     store: BotStore,
     private prefs: BotPrefsStore,
     private workspaces: Workspaces,
     private memory: MemoryService,
     options: BotServiceOptions = {}
   ) {
+    this.engines = asEngineRegistry(engine)
     this.history = options.history
     this.library = options.skills
-    this.runtimes = new BotRuntimes(store, engine, options.skills, options.memoryConnection, options.connections, options)
+    this.runtimes = new BotRuntimes(store, this.engines, options.skills, options.memoryConnection, options.connections, options)
     this.changed = options.changed ?? (() => {})
-    if (options.skills) this.skills = new BotSkills(options.skills, this.runtimes, engine, this.changed)
-    this.sessions = new SessionSettings(engine, prefs, this.changed)
+    if (options.skills) this.skills = new BotSkills(options.skills, this.runtimes, this.engines, this.changed)
+    this.sessions = new SessionSettings(this.engines, prefs, this.changed)
     this.background = new BackgroundRuns(this.runtimes, workspaces, this.sessions)
     this.conversations = new BotConversations(this.runtimes, prefs, workspaces, this.sessions, options.history, options.turnNotes)
     this.creation = new BotCreation(this, store)
@@ -84,35 +88,20 @@ export class BotService {
     )
     this.botMemory = new BotMemory(this.runtimes, memory, options.memoryConnection, this.memoryChanged)
   }
-  deleteBot(input: BotDeleteInput) {
-    return this.deletion.delete(input)
-  }
-  deleteDefaults() {
-    return this.runtimes.store.deleteDefaults()
-  }
-  setDeleteDefaults(input: BotDeleteDefaults) {
-    return this.runtimes.store.setDeleteDefaults(input)
-  }
+  deleteBot = (input: BotDeleteInput) => this.deletion.delete(input)
+  deleteDefaults = () => this.runtimes.store.deleteDefaults()
+  setDeleteDefaults = (input: BotDeleteDefaults) => this.runtimes.store.setDeleteDefaults(input)
 
   watchActivity(listener: (event: ActivityEvent) => void, cursor: ActivityCursor): () => void {
-    return (
-      this.engine.watchActivity?.(
-        async () => {
-          await this.runtimes.load()
-          return this.runtimes.store.list().filter(bot => bot.engineId === this.engine.id)
-        },
-        event => {
-          if (!this.runtimes.store.deleted(event.botId)) listener(event)
-        },
-        cursor,
-        (nativeId, available) => {
-          void this.runtimes
-            .runtimeAvailability(nativeId, available)
-            .then(this.changed)
-            .catch(() => this.changed())
-        },
-        (botId, chatId, event, key) => this.conversations.observe(botId, chatId, event, key)
-      ) ?? (() => {})
+    return this.engines.watchActivity(
+      async engineId => {
+        await this.runtimes.load()
+        return this.runtimes.store.list().filter(bot => bot.engineId === engineId)
+      },
+      event => !this.runtimes.store.deleted(event.botId) && listener(event),
+      cursor,
+      (engineId, nativeId, available) => void this.runtimes.runtimeAvailability(nativeId, available, engineId).then(this.changed, this.changed),
+      (botId, chatId, event, key) => this.conversations.observe(botId, chatId, event, key)
     )
   }
 
@@ -158,9 +147,9 @@ export class BotService {
     }
   }
 
-  async createBot(input: BotCreateInput, id?: string): Promise<Bot> {
+  async createBot(input: BotCreateInput, id?: string, engineId?: string): Promise<Bot> {
     try {
-      const identity = await this.runtimes.create(input, id)
+      const identity = await this.runtimes.create(input, id, engineId)
       if (input.avatar) this.prefs.setPrefs(identity.id, { avatar: input.avatar })
       await this.workspaces.ensure(identity.id)
       await this.botMemory.connectNew(identity.id)
@@ -168,6 +157,23 @@ export class BotService {
     } finally {
       this.changed()
     }
+  }
+  switchEngine(botId: string, engineId: string, options?: SwitchEngineOptions) {
+    return switchBotEngine(
+      {
+        engines: this.engines,
+        runtimes: this.runtimes,
+        prefs: this.prefs,
+        workspaces: this.workspaces,
+        sessions: this.sessions,
+        botMemory: this.botMemory,
+        history: this.history,
+        changed: this.changed
+      },
+      botId,
+      engineId,
+      options
+    )
   }
 
   async updateBot(input: BotUpdateInput): Promise<BotDetail> {
@@ -212,22 +218,11 @@ export class BotService {
     this.memoryChanged()
   }
 
-  listMemory(botId: string) {
-    return this.botMemory.list(botId)
-  }
-  connectMemory(botId: string, options?: { keepOwnNotes: boolean }) {
-    return this.botMemory.connect(botId, options)
-  }
-  connectAllMemory() {
-    return this.botMemory.connectAll()
-  }
-
-  async listModels(): Promise<ModelProvider[]> {
-    return this.engine.listModels()
-  }
-  listSections(): Section[] {
-    return this.prefs.sections()
-  }
+  listMemory = (botId: string) => this.botMemory.list(botId)
+  connectMemory = (botId: string, options?: { keepOwnNotes: boolean }) => this.botMemory.connect(botId, options)
+  connectAllMemory = () => this.botMemory.connectAll()
+  listModels = (engineId?: string): Promise<ModelProvider[]> => (engineId ? this.engines.require(engineId) : this.engines.defaultEngine).listModels()
+  listSections = (): Section[] => this.prefs.sections()
   createSection(name: string): Section {
     const section = this.prefs.createSection(name)
     this.changed()

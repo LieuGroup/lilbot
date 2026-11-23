@@ -2,6 +2,7 @@
 import type { BotCreateInput, BotUpdateInput } from '../../shared/bot-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import type { BotEngine, RuntimeState } from '../engines/bot-engine'
+import { asEngineRegistry, type EngineRegistry } from '../engines/engine-registry'
 import type { BotRecord, BotStore } from './bot-store'
 import { importBots } from './runtime-import'
 import { Readiness } from './runtime-readiness'
@@ -21,14 +22,16 @@ export class BotRuntimes {
   private prepared = new Set<string>()
   private states = new Map<string, RuntimeState | null>()
   private readiness: Readiness
+  readonly engines: EngineRegistry
   constructor(
     readonly store: BotStore,
-    private engine: BotEngine,
+    engine: BotEngine | EngineRegistry,
     private skills?: import('../skills/skills-service').SkillsService,
     private connection?: import('../engines/bot-engine').MemoryConnection,
     private connections?: (botId: string) => import('../engines/mcp-connection').McpConnection[],
     private options: RuntimeOptions = {}
   ) {
+    this.engines = asEngineRegistry(engine)
     this.readiness = new Readiness(
       bot => this.prepareAndState(bot),
       id => (this.store.exists(id) ? this.store.get(id) : undefined),
@@ -38,10 +41,13 @@ export class BotRuntimes {
 
   private loading?: Promise<void>
   load(): Promise<void> {
-    this.loading ??= importBots(this.store, this.engine).catch(error => {
-      this.loading = undefined
-      throw error
-    })
+    this.loading ??= Promise.all(this.engines.list().map(e => importBots(this.store, e))).then(
+      () => {},
+      error => {
+        this.loading = undefined
+        throw error
+      }
+    )
     return this.loading
   }
 
@@ -58,12 +64,12 @@ export class BotRuntimes {
     return this.importing
   }
 
-  /** Every bot bound to this engine that has not been deleted. */
-  bound = () => this.store.list().filter(bot => bot.engineId === this.engine.id)
+  /** Every non-deleted bot whose engine is registered (optionally narrowed to one engine id). */
+  bound = (engineId?: string) => this.store.list().filter(bot => (engineId ? bot.engineId === engineId : this.engines.has(bot.engineId)))
 
   /** A changed skills switch: each bound bot prepares its tools again, with the usual retries. */
-  reapplySkills(): Promise<void> {
-    const bots = this.bound()
+  reapplySkills(engineId?: string): Promise<void> {
+    const bots = this.bound(engineId)
     for (const bot of bots) this.readiness.invalidate(bot.id)
     return this.readiness.all(bots)
   }
@@ -96,10 +102,8 @@ export class BotRuntimes {
     return this.store.get(id)
   }
 
-  engineFor(bot: BotRecord): BotEngine {
-    if (bot.engineId !== this.engine.id) throw new LilBotError('runtime_unavailable', 'This bot’s engine is not available.')
-    return this.engine
-  }
+  engineFor = (bot: BotRecord): BotEngine => this.engines.require(bot.engineId)
+  engineIfAvailable = (bot: BotRecord): BotEngine | undefined => this.engines.get(bot.engineId)
 
   private async prepare(bot: BotRecord) {
     if (this.prepared.has(bot.id)) return
@@ -108,19 +112,21 @@ export class BotRuntimes {
     this.prepared.add(bot.id)
   }
 
-  private validateMode(bot: Pick<BotRecord, 'permissionMode'>) {
-    if (!this.engine.supportedPermissionModes.includes(bot.permissionMode)) {
-      throw new LilBotError('unsupported_permission_mode', `Engine ${this.engine.id} does not support permission mode "${bot.permissionMode}".`)
+  private validateMode(bot: Pick<BotRecord, 'engineId' | 'permissionMode'>) {
+    const engine = this.engines.require(bot.engineId)
+    if (!engine.supportedPermissionModes.includes(bot.permissionMode)) {
+      throw new LilBotError('unsupported_permission_mode', `Engine ${engine.id} does not support permission mode "${bot.permissionMode}".`)
     }
   }
 
   async state(bot: BotRecord): Promise<RuntimeState> {
     this.validateMode(bot)
     try {
+      const engine = this.engineFor(bot)
       const { skills, connection, connections } = this
-      await prepareTools(this.engine, bot, { skills, connection, connections, onConnectionsChanged: this.options.onConnectionsChanged })
+      await prepareTools(engine, bot, { skills, connection, connections, onConnectionsChanged: this.options.onConnectionsChanged })
       const identity = this.options.systemNote ? { ...bot, instructions: withNote(bot.instructions, this.options.systemNote(bot)) } : bot
-      const state = await this.engineFor(bot).applyIdentity(bot.engineBotId, identity)
+      const state = await engine.applyIdentity(bot.engineBotId, identity)
       this.states.set(bot.id, state)
       return state
     } catch (error) {
@@ -131,21 +137,18 @@ export class BotRuntimes {
 
   async refreshConnections(): Promise<void> {
     const available = this.bound().filter(bot => this.states.get(bot.id))
-    if (this.connections) await refreshConnections(this.engine, available, this.connections, this.options.onConnectionsChanged)
+    if (this.connections) await refreshConnections(this.engines, available, this.connections, this.options.onConnectionsChanged)
   }
 
-  snapshot(bot: BotRecord): RuntimeState | null {
-    return this.states.get(bot.id) ?? null
-  }
-
+  snapshot = (bot: BotRecord): RuntimeState | null => this.states.get(bot.id) ?? null
   memoryConnected(id: string) {
     const state = this.states.get(id)
     if (state) this.states.set(id, { ...state, memoryConnected: true })
   }
 
-  async runtimeAvailability(nativeId: string, available: boolean) {
+  async runtimeAvailability(nativeId: string, available: boolean, engineId?: string) {
     await this.initialize()
-    const bot = this.store.list().find(bot => bot.engineId === this.engine.id && bot.engineBotId === nativeId)
+    const bot = this.store.list().find(bot => (engineId ? bot.engineId === engineId : this.engines.has(bot.engineId)) && bot.engineBotId === nativeId)
     if (!bot) return
     this.readiness.invalidate(bot.id)
     this.prepared.delete(bot.id)
@@ -153,32 +156,31 @@ export class BotRuntimes {
     else await this.readiness.ensure(bot)
   }
 
-  pending(bot: BotRecord): boolean {
-    return bot.engineId === this.engine.id && !this.states.has(bot.id)
-  }
+  pending = (bot: BotRecord): boolean => this.engines.has(bot.engineId) && !this.states.has(bot.id)
 
-  async create(input: BotCreateInput, id: string = crypto.randomUUID()): Promise<BotRecord> {
+  async create(input: BotCreateInput, id: string = crypto.randomUUID(), engineId?: string): Promise<BotRecord> {
     await this.load()
     if (this.store.deleted(id)) throw new LilBotError('bot_not_found', 'That bot has been deleted.')
     const existing = this.store.list().find(bot => bot.id === id)
     if (existing) return existing
+    const engine = engineId ? this.engines.require(engineId) : this.engines.defaultEngine
     const bot: BotRecord = {
       id,
       name: input.name,
       function: input.function,
       instructions: input.instructions,
-      model: input.model ?? this.store.list().find(bot => bot.isDefault)?.model ?? null,
+      model: input.model ?? this.store.list().find(b => b.engineId === engine.id && b.isDefault)?.model ?? null,
       isDefault: false,
       reasoningEffort: null,
       permissionMode: input.permissionMode ?? 'full-access',
-      engineId: this.engine.id,
+      engineId: engine.id,
       engineBotId: ''
     }
     this.validateMode(bot)
     // Persist before asking the runtime. A failed creation leaves a recoverable, visible bot.
     bot.engineBotId = bot.id
     this.store.save(bot)
-    const nativeId = await this.engine.createRuntime(bot)
+    const nativeId = await engine.createRuntime(bot)
     if (nativeId !== bot.engineBotId) this.store.bind(bot.id, nativeId)
     this.skills?.markBotImported(bot.id)
     const saved = this.store.get(bot.id)

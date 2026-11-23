@@ -38,8 +38,8 @@ test('the web app never reaches into the server', () => {
   expect(crossings('web/src', 'server')).toEqual([])
 })
 
-test('only main.ts knows which engine is used: nothing else in the server imports the Hermes engine', () => {
-  const outsiders = sourceFiles('server').filter(file => !file.startsWith('server/engines/hermes/') && file !== 'server/main.ts')
+test('only the engine registration point knows which engine is used: nothing else in the server imports the Hermes engine', () => {
+  const outsiders = sourceFiles('server').filter(file => !file.startsWith('server/engines/hermes/') && file !== 'server/main.ts' && file !== 'server/engines/registry.ts')
   const leaks = outsiders.flatMap(file =>
     importsOf(file)
       .filter(target => target.startsWith('server/engines/hermes'))

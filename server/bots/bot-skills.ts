@@ -4,16 +4,20 @@ import { LilBotError } from '../../shared/lilbot-error'
 import type { SkillEngine } from '../../shared/skills-schema'
 import { backgroundFailure } from '../background'
 import type { BotEngine } from '../engines/bot-engine'
+import { asEngineRegistry, type EngineRegistry } from '../engines/engine-registry'
 import type { SkillsService } from '../skills/skills-service'
 import type { BotRuntimes } from './bot-runtimes'
 
 export class BotSkills {
+  private enginesRegistry: EngineRegistry
   constructor(
     private library: SkillsService,
     private runtimes: BotRuntimes,
-    private engine: BotEngine,
+    engine: BotEngine | EngineRegistry,
     private changed: () => void
-  ) {}
+  ) {
+    this.enginesRegistry = asEngineRegistry(engine)
+  }
 
   async list(botId: string) {
     await this.runtimes.require(botId)
@@ -31,25 +35,28 @@ export class BotSkills {
     return { ok: true as const }
   }
 
-  /** The engine that runs the bots, then any other with a switch or imported skills. Bundled skills are counted over its available bots. */
+  /** Every registered engine, then any other with a switch or imported skills. Bundled skills are counted over its available bots. */
   engines(): SkillEngine[] {
-    const available = this.runtimes.bound().filter(bot => this.runtimes.snapshot(bot))
-    const bundled = new Set(available.flatMap(bot => this.engine.bundledSkills?.(bot.engineBotId) ?? []))
-    return this.engineIds().map(id => ({
-      id,
-      included: this.library.engineIncluded(id),
-      imported: this.library.importedFrom(id),
-      bundled: id === this.engine.id ? bundled.size : 0,
-      alwaysOn: id === this.engine.id ? [...(this.engine.alwaysOnSkills ?? [])] : []
-    }))
+    return this.engineIds().map(id => {
+      const engine = this.enginesRegistry.get(id)
+      const available = engine ? this.runtimes.bound(id).filter(bot => this.runtimes.snapshot(bot)) : []
+      const bundled = new Set(available.flatMap(bot => engine?.bundledSkills?.(bot.engineBotId) ?? []))
+      return {
+        id,
+        included: this.library.engineIncluded(id),
+        imported: this.library.importedFrom(id),
+        bundled: bundled.size,
+        alwaysOn: [...(engine?.alwaysOnSkills ?? [])]
+      }
+    })
   }
-  private engineIds = () => [...new Set([this.engine.id, ...this.library.engineIds()])]
+  private engineIds = () => [...new Set([...this.enginesRegistry.ids(), ...this.library.engineIds()])]
 
   /** Saves the switch and answers at once; the bots prepare their tools again in the background, retrying as at start-up. */
   setEngine(engineId: string, included: boolean) {
     if (!this.engineIds().includes(engineId)) throw new LilBotError('unknown_engine', 'That engine is not known.')
     this.library.setEngineIncluded(engineId, included)
-    if (engineId === this.engine.id) this.runtimes.reapplySkills().catch(() => backgroundFailure('skills switch'))
+    if (this.enginesRegistry.has(engineId)) this.runtimes.reapplySkills(engineId).catch(() => backgroundFailure('skills switch'))
     return { ok: true as const }
   }
 }

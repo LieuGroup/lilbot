@@ -106,6 +106,12 @@ export class BotStore {
     this.db.query('UPDATE bots SET engine_bot_id = ? WHERE id = ?').run(engineBotId, id)
   }
 
+  bindEngine(id: string, engineId: string, engineBotId: string, model: BotIdentity['model'], isDefault = false) {
+    this.db
+      .query('UPDATE bots SET engine_id = ?, engine_bot_id = ?, model = ?, is_default = ? WHERE id = ?')
+      .run(engineId, engineBotId, model ? JSON.stringify(model) : null, Number(isDefault), id)
+  }
+
   imported(engineId: string): boolean {
     return Boolean(this.db.query('SELECT 1 FROM bot_imports WHERE engine_id = ?').get(engineId))
   }
