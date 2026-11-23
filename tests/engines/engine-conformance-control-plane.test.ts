@@ -129,7 +129,7 @@ describe('engine conformance: safety stop, System MCP completeness, secrets & pr
     if (masterToken) expect(handed).not.toContain(masterToken)
   })
 
-  test.failing('[Lane C PR #256] system note at the top of a bot prompt is byte-identical across release, roster, and computer changes', async () => {
+  test('system note at the top of a bot prompt is byte-identical across release, roster, and computer changes', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'lilbot-note-stable-'))
     cleanups.push(() => rmSync(dir, { recursive: true, force: true }))
 

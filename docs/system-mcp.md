@@ -6,20 +6,18 @@ app. Rules and the short version are in `AGENTS.md` under "System". Code: `serve
 
 ## The note
 
-- Written by LilBot, about 250 words: the bot's name, id, folder and model; that it runs in LilBot on the leader; the
-  other bots (up to eight, then a count); the computers; the standing rules for choosing a computer (static text
-  that adds no online state and no main mark: the per-message origin line and `lilbot_about` give those); native coding
-  guidance (`lilbot-coding`, or T3 Code status when `LILBOT_T3_ENABLED=1`); two static lines on when to open a work item
-  (#141); the running release; and two lines
-  pointing at `lilbot_about` and `lilbot_guide` with the rules for changing LilBot.
+- Written by LilBot, about 200 words: ONLY this bot's own stable identity (name, id, folder and model), that it runs
+  in LilBot on the leader, the standing rules for choosing a computer (per-message origin line and `lilbot_guide` topic
+  `computers`), native coding guidance (`lilbot-coding`, or T3 Code pointer when `LILBOT_T3_ENABLED=1`), two static
+  lines on when to open a work item (#141), and two lines pointing at `lilbot_about`, `lilbot_bots_list`,
+  `lilbot_status` and `lilbot_guide` with the rules for changing LilBot.
 - Delivered through the one engine-neutral system-prompt path: `BotRuntimes.state()` hands every engine
   `withNote(instructions, note)` as the bot's instructions. LilBot's database and the Setup panel keep the user's own
   text; `importBots` strips a note an engine still holds (`withoutNote`).
-- Static per session. Each engine builds its prompt once per session, so prompt caching holds; the note is rebuilt on
-  every `state()` and applied only when it differs from what the engine holds, so a new session sees current facts
-  and a running one keeps its own. Facts that change mid-session (a computer going online, the release after a
-  deploy) come from `lilbot_about`, not from the note: keep volatile facts out of it, because any change rewrites the
-  instructions of every bot.
+- Prefix-cache stable across deploys and roster/computer changes. Because the note sits at the very top of every
+  engine's system prompt, volatile facts (the running release id, other bots, computers, T3 sign-in expiry) stay out of
+  it and are fetched live via `lilbot_about`, `lilbot_bots_list` or `lilbot_status`. A deploy, computer change, T3
+  renewal or edit to another bot produces a byte-identical note for every unchanged bot.
 
 ### Why not the other two ways (spike, dev Hermes, 2026-11-20)
 

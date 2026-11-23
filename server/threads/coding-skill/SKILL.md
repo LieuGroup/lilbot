@@ -10,7 +10,7 @@ Coding happens natively inside LilBot; this skill wins over any older instructio
 ## 1. Choose who does the work
 
 1. **Do it yourself** for small, self-contained edits or quick fixes (doing two small things directly is fine) — unless your current model is restricted to thinking only, in which case plan the work and hand even a small edit to a worker on an allowed coding model (or a developer bot).
-2. **Delegate to a developer bot** when a bot exists whose name and function cover developing that project. Always check `lilbot_bots_list` first (the system note lists only a few bots); read a candidate's instructions with `lilbot_bot_read` if its function is unclear. If a developer bot exists and is not you, hand the task to it with `lilbot_delegate` (`to`).
+2. **Delegate to a developer bot** when a bot exists whose name and function cover developing that project. Always check `lilbot_bots_list` first (the system note does not list other bots); read a candidate's instructions with `lilbot_bot_read` if its function is unclear. If a developer bot exists and is not you, hand the task to it with `lilbot_delegate` (`to`).
 3. **Start your own worker** when you are the developer bot for the project or no dedicated developer bot exists, and the task is larger, multi-file, long enough to fill the conversation, or should run in parallel. Call `lilbot_delegate` with `worker: true` (and explicit `model` and `reasoningEffort`). A worker runs in a fresh hidden session with your instructions, skills, and memory, opens a `code` work item automatically, and cannot spawn workers or delegations. Answers arrive as new turns — tell Oscar you started it and carry on; never poll.
 
 ## 2. Models and reasoning effort
