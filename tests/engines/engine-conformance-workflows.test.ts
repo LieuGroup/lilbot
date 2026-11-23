@@ -51,7 +51,7 @@ describe('engine conformance: routines, webhooks, delegation, workers & checks',
     opened.close()
   })
 
-  test.failing('[Lane C P4] past routine run transcript still opens after engine drops sessions', async () => {
+  test('past routine run transcript still opens after engine drops sessions', async () => {
     const { engine, services, alpha } = await boot()
     engine.setTurnHandler(async () => 'durable routine output')
     const { due } = await runRoutineOnce(services, alpha.id, 'rt-durable')
@@ -86,7 +86,7 @@ describe('engine conformance: routines, webhooks, delegation, workers & checks',
     expect(memoryBlocked).toBe(true)
   })
 
-  test.failing('[Lane C P4] past webhook run transcript still opens after engine drops sessions', async () => {
+  test('past webhook run transcript still opens after engine drops sessions', async () => {
     const { engine, services, alpha } = await boot()
     engine.setTurnHandler(async () => 'durable webhook output')
     const hook = await services.webhooks.create(alpha.id, { requestId: 'wh-durable', description: 'Durable hook', source: 'CI', createdBy: 'oscar' })
