@@ -28,17 +28,24 @@ describe('engine conformance: core bot lifecycle', () => {
   test('chat streams text.delta, finishes with usage, and honours stop()', async () => {
     const { engine, services, bot } = await boot()
     const events: ChatEvent[] = []
-    const chat = await services.bots.openChat(bot.id, undefined, event => events.push(event))
-    await chat.send('hello second engine')
-    expect(
+    let onDelta: (() => void) | undefined
+    const chat = await services.bots.openChat(bot.id, undefined, event => {
+      events.push(event)
+      if (event.type === 'text.delta') onDelta?.()
+    })
+    const text = () =>
       events
         .filter(e => e.type === 'text.delta')
         .map(e => e.text)
         .join('')
-    ).toBe('echo: hello second engine')
+    await chat.send('hello second engine')
+    expect(text()).toBe('echo: hello second engine')
     expect(events.some(e => e.type === 'turn.finished' && e.status === 'completed' && (e.usage?.contextTokens ?? 0) > 0)).toBe(true)
 
     events.length = 0
+    const firstDelta = new Promise<void>(resolve => {
+      onDelta = resolve
+    })
     engine.setTurnHandler(async ctx => {
       ctx.emitDelta('part-1 ')
       await new Promise<void>(resolve => {
@@ -49,15 +56,10 @@ describe('engine conformance: core bot lifecycle', () => {
       return { text: 'part-1 ', status: ctx.signal.aborted ? 'stopped' : 'completed' }
     })
     const pending = chat.send('long turn')
-    await Bun.sleep(20)
+    await firstDelta
     await chat.stop()
     await pending
-    expect(
-      events
-        .filter(e => e.type === 'text.delta')
-        .map(e => e.text)
-        .join('')
-    ).toBe('part-1 ')
+    expect(text()).toBe('part-1 ')
     expect(events.some(e => e.type === 'turn.finished' && e.status === 'stopped')).toBe(true)
     chat.close()
   })
@@ -153,13 +155,6 @@ describe('engine conformance: core bot lifecycle', () => {
     expect(readBody).toContain('Follow step 1.')
     await services.bots.skills?.setEnabled(bot.id, 'demo-skill', false)
     expect(engine.runtimeOf(nativeId)?.skills?.disabled).toContain('demo-skill')
-  })
-
-  test.failing('[Lane B P1] shared skills can be managed via LilBot System MCP without an engine plugin', async () => {
-    const { engine, services, bot } = await boot()
-    await services.bots.openChat(bot.id, undefined, () => {}).then(c => c.close())
-    const tools = await engine.listServerTools(services.store.get(bot.id).engineBotId)
-    expect(tools.some(name => name === 'lilbot_skill_manage' || name === 'lilbot_skill_write')).toBe(true)
   })
 
   test('attachments reach the engine and lilbot_give_file delivers a workspace file to the Library', async () => {

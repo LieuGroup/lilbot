@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createAppServices } from '../../server/app-services'
+import type { BotEngine } from '../../server/engines/bot-engine'
 import { ScriptedEngine, type ScriptedEngineOptions } from '../../server/engines/scripted/scripted-engine'
 import { SYSTEM_PATH } from '../../server/system/system-connection'
 
@@ -22,8 +23,56 @@ export const HERMES_LIVE_PARITY = [
   'check:restart'
 ] as const
 
-export async function startConformanceApp(options: ScriptedEngineOptions = {}) {
-  const dir = mkdtempSync(join(tmpdir(), 'lilbot-conformance-'))
+/** Reference-counted timer tracker so neither setInterval nor Readiness/service setTimeout leaks past close(). */
+const origSetInterval = globalThis.setInterval
+const origSetTimeout = globalThis.setTimeout
+const origClearTimeout = globalThis.clearTimeout
+const activeTrackers = new Set<{ intervals: Set<ReturnType<typeof setInterval>>; timeouts: Set<ReturnType<typeof setTimeout>> }>()
+
+function installTimerHook() {
+  if (activeTrackers.size > 0) return
+  ;(globalThis as { setInterval: typeof setInterval }).setInterval = ((...args: Parameters<typeof setInterval>) => {
+    const id = origSetInterval(...args)
+    for (const t of activeTrackers) t.intervals.add(id)
+    return id
+  }) as typeof setInterval
+  ;(globalThis as { setTimeout: typeof setTimeout }).setTimeout = ((fn: (...a: unknown[]) => void, ms?: number, ...rest: unknown[]) => {
+    const id = origSetTimeout(
+      (...a: unknown[]) => {
+        for (const t of activeTrackers) t.timeouts.delete(id)
+        fn(...a)
+      },
+      ms,
+      ...rest
+    )
+    for (const t of activeTrackers) t.timeouts.add(id)
+    return id
+  }) as typeof setTimeout
+  ;(globalThis as { clearTimeout: typeof clearTimeout }).clearTimeout = ((id?: ReturnType<typeof setTimeout>) => {
+    if (id !== undefined) for (const t of activeTrackers) t.timeouts.delete(id)
+    return origClearTimeout(id)
+  }) as typeof clearTimeout
+}
+
+function uninstallTimerHookIfIdle() {
+  if (activeTrackers.size > 0) return
+  globalThis.setInterval = origSetInterval
+  globalThis.setTimeout = origSetTimeout
+  globalThis.clearTimeout = origClearTimeout
+}
+
+export interface ConformanceAppOptions extends ScriptedEngineOptions {
+  /** Override the engine (or multi-engine registry once P6 lands). */
+  engine?: BotEngine
+  /** Override the release commit string passed to createAppServices. */
+  commit?: string
+  /** Reuse an existing temp directory (for reboot tests); caller owns deletion when supplied. */
+  dir?: string
+}
+
+export async function startConformanceApp(options: ConformanceAppOptions = {}) {
+  const ownsDir = !options.dir
+  const dir = options.dir ?? mkdtempSync(join(tmpdir(), 'lilbot-conformance-'))
   const dataDir = join(dir, 'data')
   const workspacesDir = join(dir, 'workspaces')
   const skillsDir = join(dir, 'skills')
@@ -34,13 +83,9 @@ export async function startConformanceApp(options: ScriptedEngineOptions = {}) {
   const prevSkills = process.env.LILBOT_SKILLS_DIR
   process.env.LILBOT_SKILLS_DIR = skillsDir
 
-  const intervals: ReturnType<typeof setInterval>[] = []
-  const origSetInterval = globalThis.setInterval
-  ;(globalThis as { setInterval: typeof setInterval }).setInterval = ((...args: Parameters<typeof setInterval>) => {
-    const id = origSetInterval(...args)
-    intervals.push(id)
-    return id
-  }) as typeof setInterval
+  installTimerHook()
+  const tracker = { intervals: new Set<ReturnType<typeof setInterval>>(), timeouts: new Set<ReturnType<typeof setTimeout>>() }
+  activeTrackers.add(tracker)
 
   let services!: ReturnType<typeof createAppServices>
   const server = Bun.serve({
@@ -55,29 +100,29 @@ export async function startConformanceApp(options: ScriptedEngineOptions = {}) {
     }
   })
 
-  const engine = new ScriptedEngine(options)
-  try {
-    services = createAppServices(engine, {
-      DATA_DIR: dataDir,
-      WORKSPACES_DIR: workspacesDir,
-      PORT: server.port!,
-      MEMORY_ADAPTER_VERSION: '0.14.0',
-      COMMIT: 'conformance-test',
-      HOOK_ORIGIN: 'https://hooks.example.test',
-      ACCESS_HOST: undefined,
-      publish: () => {},
-      botsChanged: () => {}
-    })
-  } finally {
-    globalThis.setInterval = origSetInterval
-  }
+  const engine = options.engine instanceof ScriptedEngine ? options.engine : new ScriptedEngine(options)
+  const runtimeEngine = options.engine ?? engine
+  services = createAppServices(runtimeEngine, {
+    DATA_DIR: dataDir,
+    WORKSPACES_DIR: workspacesDir,
+    PORT: server.port!,
+    MEMORY_ADAPTER_VERSION: '0.14.0',
+    COMMIT: options.commit ?? 'conformance-test',
+    HOOK_ORIGIN: 'https://hooks.example.test',
+    ACCESS_HOST: undefined,
+    publish: () => {},
+    botsChanged: () => {}
+  })
 
   const close = () => {
-    for (const id of intervals) clearInterval(id)
+    activeTrackers.delete(tracker)
+    uninstallTimerHookIfIdle()
+    for (const id of tracker.intervals) clearInterval(id)
+    for (const id of tracker.timeouts) origClearTimeout(id)
     server.stop(true)
     services.computers.close()
     services.remoteWorkers.runner.close()
-    rmSync(dir, { recursive: true, force: true })
+    if (ownsDir) rmSync(dir, { recursive: true, force: true })
     if (prevSkills === undefined) delete process.env.LILBOT_SKILLS_DIR
     else process.env.LILBOT_SKILLS_DIR = prevSkills
   }

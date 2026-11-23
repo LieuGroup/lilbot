@@ -1,23 +1,7 @@
-/** Keeps the project map in AGENTS.md true: checks which folders import from which. */
+/** Keeps the project map in AGENTS.md true: checks which folders import from which (via TypeScript AST). */
 import { expect, test } from 'bun:test'
-import { readdirSync, readFileSync, statSync } from 'node:fs'
-import { dirname, join, normalize, relative } from 'node:path'
-
-const ROOT = join(import.meta.dir, '..')
-
-function sourceFiles(folder: string): string[] {
-  return readdirSync(join(ROOT, folder)).flatMap(name => {
-    const path = join(folder, name)
-    if (statSync(join(ROOT, path)).isDirectory()) return sourceFiles(path)
-    return /\.tsx?$/.test(name) ? [path] : []
-  })
-}
-
-/** The project-relative paths a file imports from (relative imports only). */
-function importsOf(file: string): string[] {
-  const text = readFileSync(join(ROOT, file), 'utf8')
-  return [...text.matchAll(/(?:from|import)\s+['"](\.{1,2}\/[^'"]+)['"]/g)].map(match => normalize(join(dirname(file), match[1])))
-}
+import { relative } from 'node:path'
+import { concreteEngineIds, importsOf, sourceFiles } from './engines/boundary-scanner'
 
 /** Every import from a file under `from` into `into`, as "file -> target". */
 function crossings(from: string, into: string, except: string[] = []): string[] {
@@ -30,6 +14,11 @@ function crossings(from: string, into: string, except: string[] = []): string[] 
     )
 }
 
+/** Every import from `from` into any concrete engine folder under `server/engines/<id>/`. */
+function concreteEngineCrossings(from: string, except: string[] = []): string[] {
+  return concreteEngineIds().flatMap(id => crossings(from, `server/engines/${id}`, except))
+}
+
 test('shared holds definitions only: it imports nothing from the server or the web app', () => {
   expect([...crossings('shared', 'server'), ...crossings('shared', 'web')]).toEqual([])
 })
@@ -38,17 +27,17 @@ test('the web and iOS apps never reach into the server', () => {
   expect([...crossings('web/src', 'server'), ...crossings('ios/src', 'server')]).toEqual([])
 })
 
-test('only the registration point knows which engines exist: nothing else in the server imports a concrete engine', () => {
-  const engines = readdirSync(join(ROOT, 'server/engines')).filter(name => statSync(join(ROOT, 'server/engines', name)).isDirectory())
-  const outsiders = sourceFiles('server').filter(
-    file => !engines.some(id => file.startsWith(`server/engines/${id}/`)) && file !== 'server/main.ts' && file !== 'server/engines/registry.ts'
-  )
-  const leaks = outsiders.flatMap(file =>
-    importsOf(file)
-      .filter(target => engines.some(id => target === `server/engines/${id}` || target.startsWith(`server/engines/${id}/`)))
-      .map(target => `${file} -> ${target}`)
-  )
-  expect(leaks).toEqual([])
+test('only the single engine registration point knows which engines exist (server/main.ts tracked until P6/P5)', () => {
+  const engines = concreteEngineIds()
+  const outsiders = sourceFiles('server').filter(file => file !== 'server/engines/registry.ts' && !engines.some(id => file.startsWith(`server/engines/${id}/`)))
+  const leaks = outsiders
+    .flatMap(file =>
+      importsOf(file)
+        .filter(target => engines.some(id => target === `server/engines/${id}` || target.startsWith(`server/engines/${id}/`)))
+        .map(target => `${file} -> ${target}`)
+    )
+    .sort()
+  expect(leaks).toEqual(['server/main.ts -> server/engines/hermes/hermes-engine', 'server/main.ts -> server/engines/hermes/hermes-memory-setup'])
 })
 
 test('an engine does not depend on what sits above it', () => {
@@ -75,34 +64,34 @@ test('the database folder is the bottom: it imports nothing else from the server
 })
 
 test('routines do not depend on HTTP or a concrete engine', () => {
-  expect([...crossings('server/routines', 'server/http'), ...crossings('server/routines', 'server/engines/hermes')]).toEqual([])
+  expect([...crossings('server/routines', 'server/http'), ...concreteEngineCrossings('server/routines')]).toEqual([])
 })
 
 test('webhooks do not depend on HTTP, the system server or a concrete engine', () => {
-  expect([...crossings('server/webhooks', 'server/http'), ...crossings('server/webhooks', 'server/system'), ...crossings('server/webhooks', 'server/engines/hermes')]).toEqual([])
+  expect([...crossings('server/webhooks', 'server/http'), ...crossings('server/webhooks', 'server/system'), ...concreteEngineCrossings('server/webhooks')]).toEqual([])
 })
 
 test('threads depend only on neutral engine contracts and lower services', () => {
-  expect([...crossings('server/threads', 'server/http'), ...crossings('server/threads', 'server/bots'), ...crossings('server/threads', 'server/engines/hermes')]).toEqual([])
+  expect([...crossings('server/threads', 'server/http'), ...crossings('server/threads', 'server/bots'), ...concreteEngineCrossings('server/threads')]).toEqual([])
 })
 
 test('computers are engine-neutral and never depend on HTTP or bot service', () => {
-  expect([...crossings('server/computers', 'server/http'), ...crossings('server/computers', 'server/bots'), ...crossings('server/computers', 'server/engines/hermes')]).toEqual([])
+  expect([...crossings('server/computers', 'server/http'), ...crossings('server/computers', 'server/bots'), ...concreteEngineCrossings('server/computers')]).toEqual([])
   expect([...crossings('helper', 'server'), ...crossings('helper', 'web')]).toEqual([])
 })
 
 test('attachments do not depend on HTTP or a concrete engine', () => {
-  expect([...crossings('server/attachments', 'server/http'), ...crossings('server/attachments', 'server/engines/hermes')]).toEqual([])
+  expect([...crossings('server/attachments', 'server/http'), ...concreteEngineCrossings('server/attachments')]).toEqual([])
 })
 
 test('history depends on neutral engine contracts and storage, not HTTP or bot orchestration', () => {
-  expect([...crossings('server/history', 'server/http'), ...crossings('server/history', 'server/bots'), ...crossings('server/history', 'server/engines/hermes')]).toEqual([])
+  expect([...crossings('server/history', 'server/http'), ...crossings('server/history', 'server/bots'), ...concreteEngineCrossings('server/history')]).toEqual([])
 })
 
 test('the system server and the note work for every engine: no HTTP layer, no concrete engine, and bots never import it', () => {
   expect([
     ...crossings('server/system', 'server/http'),
-    ...crossings('server/system', 'server/engines/hermes'),
+    ...concreteEngineCrossings('server/system'),
     ...crossings('server/bots', 'server/system'),
     ...crossings('server/memory', 'server/system')
   ]).toEqual([])
@@ -127,7 +116,7 @@ test('devices sit on computers and neutral engine contracts: no HTTP, bots, syst
     ...crossings('server/devices', 'server/http'),
     ...crossings('server/devices', 'server/bots'),
     ...crossings('server/devices', 'server/system'),
-    ...crossings('server/devices', 'server/engines/hermes'),
+    ...concreteEngineCrossings('server/devices'),
     ...crossings('server/computers', 'server/devices'),
     ...crossings('server/bots', 'server/devices')
   ]).toEqual([])
@@ -155,7 +144,7 @@ test('connections work for every engine and sit below the bots: no HTTP, bots, s
     ...crossings('server/connections', 'server/http'),
     ...crossings('server/connections', 'server/bots'),
     ...crossings('server/connections', 'server/system'),
-    ...crossings('server/connections', 'server/engines/hermes'),
+    ...concreteEngineCrossings('server/connections'),
     ...crossings('server/bots', 'server/connections')
   ]).toEqual([])
 })

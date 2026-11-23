@@ -5,7 +5,7 @@ import { LilBotError } from '../../../shared/lilbot-error'
 import type { BotEngine, ChatOptions, MemoryConnection, ReviewOptions, RoutineOptions, RuntimeIdentity, SessionChange, SkillSettings, ToolCallSeen } from '../bot-engine'
 import type { McpConnection } from '../mcp-connection'
 import { conversationSource, newSession, openScriptedChat, runScriptedTurn, type ScriptedSession, type ScriptedTurnHandler } from './scripted-chat'
-import { callMcpServer, listMcpTools } from './scripted-mcp'
+import { callMcpServer } from './scripted-mcp'
 
 const DEFAULT_MODELS: ModelProvider[] = [
   {
@@ -24,18 +24,20 @@ interface ScriptedRuntime {
   identity: RuntimeIdentity
   connections: McpConnection[]
   skills?: SkillSettings
+  computers?: { url: string; tokenFile: string; botId: string }
   memoryConnection?: MemoryConnection
   memoryConnected: boolean
 }
 
 export interface ScriptedEngineOptions {
+  id?: string
   onTurn?: ScriptedTurnHandler
   mcpToolName?: (server: string, tool: string) => string
   models?: ModelProvider[]
 }
 
 export class ScriptedEngine implements BotEngine {
-  readonly id = 'scripted'
+  readonly id: string
   readonly supportedPermissionModes = ['full-access'] as const
   private runtimes = new Map<string, ScriptedRuntime>()
   private sessions = new Map<string, ScriptedSession>()
@@ -49,6 +51,7 @@ export class ScriptedEngine implements BotEngine {
   readonly routineCalls: { nativeId: string; prompt: string; options: RoutineOptions & ChatOptions }[] = []
 
   constructor(options: ScriptedEngineOptions = {}) {
+    this.id = options.id ?? 'scripted'
     this.onTurn = options.onTurn
     this.models = options.models ?? DEFAULT_MODELS
     this.mcpToolName = options.mcpToolName ?? ((_server, tool) => tool)
@@ -63,18 +66,12 @@ export class ScriptedEngine implements BotEngine {
   sessionOf(chatId: string) {
     return this.sessions.get(chatId)
   }
-  /** Simulates an engine restart or swap by dropping in-memory engine sessions. */
   dropSessions() {
     this.sessions.clear()
   }
-  async listServerTools(nativeId: string, server = 'lilbot_system'): Promise<string[]> {
-    const conn = this.requireRuntime(nativeId).connections.find(c => c.name === server)
-    if (!conn) throw new LilBotError('unavailable', `No MCP connection ${server}`)
-    return listMcpTools(conn)
-  }
   importBots = async () => []
   async createRuntime(identity: RuntimeIdentity): Promise<string> {
-    const nativeId = `scripted-${identity.id}`
+    const nativeId = `${this.id}-${identity.id}`
     this.runtimes.set(nativeId, { nativeId, identity, connections: [], memoryConnected: false })
     return nativeId
   }
@@ -96,17 +93,19 @@ export class ScriptedEngine implements BotEngine {
   async applyConnections(engineBotId: string, chatIds: string[]) {
     this.requireRuntime(engineBotId)
     return chatIds.map(chatId => {
-      const session = this.sessions.get(chatId)
-      if (!session) return { chatId, state: 'not_open' as const }
-      return { chatId, state: session.running ? ('busy' as const) : ('applied' as const) }
+      const s = this.sessions.get(chatId)
+      return { chatId, state: !s ? ('not_open' as const) : s.running ? ('busy' as const) : ('applied' as const) }
     })
+  }
+  async configureComputers(engineBotId: string, settings: { url: string; tokenFile: string; botId: string }) {
+    this.requireRuntime(engineBotId).computers = { ...settings }
   }
   async configureSkills(engineBotId: string, settings: SkillSettings) {
     this.requireRuntime(engineBotId).skills = { ...settings, disabled: [...settings.disabled], names: [...settings.names] }
   }
   async validateModel(model: BotModel) {
-    const provider = this.models.find(p => p.provider === model.provider)
-    if (!provider?.models.includes(model.model)) throw new LilBotError('invalid_model', `Unknown model: ${model.provider}::${model.model}`)
+    if (!this.models.find(p => p.provider === model.provider)?.models.includes(model.model))
+      throw new LilBotError('invalid_model', `Unknown model: ${model.provider}::${model.model}`)
   }
   listModels = async () => this.models
   async updateSession(engineBotId: string, chatId: string, change: SessionChange) {
@@ -179,7 +178,7 @@ export class ScriptedEngine implements BotEngine {
     return session && session.nativeId === engineBotId && session.running ? ('steered' as const) : ('not_running' as const)
   }
   private createSession(nativeId: string, workspace: string, hidden: boolean): ScriptedSession {
-    const chatId = `scripted-chat-${++this.nextChat}`
+    const chatId = `${this.id}-chat-${++this.nextChat}`
     const session = newSession(chatId, nativeId, workspace, hidden, Date.now() + this.nextChat)
     this.sessions.set(chatId, session)
     return session

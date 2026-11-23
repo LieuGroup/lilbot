@@ -30,14 +30,3 @@ export async function callMcpServer(conn: McpConnection, tool: string, args: Rec
     return { ok: true, text }
   }
 }
-
-export async function listMcpTools(conn: McpConnection): Promise<string[]> {
-  const response = await fetch(conn.url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${conn.bearerToken}` },
-    body: JSON.stringify({ jsonrpc: '2.0', id: crypto.randomUUID(), method: 'tools/list' })
-  })
-  if (!response.ok) throw new Error(`tools/list failed: HTTP ${response.status}`)
-  const payload = (await response.json()) as { result?: { tools?: { name: string }[] } }
-  return (payload.result?.tools ?? []).map(t => t.name)
-}

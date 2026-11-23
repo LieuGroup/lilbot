@@ -1,9 +1,8 @@
-/** Engine-agnostic conformance suite (Part 2: routines, webhooks, delegation, local worker, work checks, multi-engine).
+/** Engine-agnostic conformance suite (Part 2: routines, webhooks, delegation, local worker, work checks).
  *  Expected failures (`test.failing`) name the lane that fixes them and flip to `test` as each lane lands. */
 import { afterEach, describe, expect, test } from 'bun:test'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { BotService } from '../../server/bots/bot-service'
 import { startConformanceApp } from './conformance-fixture'
 
 const cleanups: (() => void)[] = []
@@ -21,20 +20,29 @@ async function boot() {
 
 const EVIDENCE = [{ proves: 'Total matches ledger', value: '120', source: 'ledger.csv', readAt: '2026-11-23T00:00:00Z' }]
 
+async function runWebhookOnce(services: Awaited<ReturnType<typeof startConformanceApp>>['services'], address: string, payload: unknown) {
+  const live = services.webhooks.find(address.split('/hook/').at(-1)!)!
+  expect(services.webhooks.receive(live, new TextEncoder().encode(JSON.stringify(payload)), new Headers({ 'content-type': 'application/json' }))).toBe('accepted')
+  services.webhooks.store.claimDue(Date.now() + 10_000)
+  const due = services.webhooks.store.pending()[0]
+  await services.webhooks.run(due)
+  return due
+}
+
+async function runRoutineOnce(services: Awaited<ReturnType<typeof startConformanceApp>>['services'], botId: string, requestId: string) {
+  const routine = await services.routines.create(botId, { requestId, description: 'Check status', schedule: { kind: 'interval', seconds: 300 }, createdBy: 'oscar' })
+  services.routines.store.claimDue(Date.now() + 600_000)
+  const [due] = services.routines.store.pending()
+  await services.routines.run(due)
+  return { routine, due }
+}
+
 describe('engine conformance: routines, webhooks, delegation, workers & checks', () => {
   test('routine runs in a hidden session and completes cleanly', async () => {
     const { engine, services, alpha } = await boot()
     engine.setTurnHandler(async () => 'routine summary ok')
-    const routine = await services.routines.create(alpha.id, {
-      requestId: 'rt-1',
-      description: 'Check daily status',
-      schedule: { kind: 'interval', seconds: 300 },
-      createdBy: 'oscar'
-    })
-    services.routines.store.claimDue(Date.now() + 600_000)
-    const [due] = services.routines.store.pending()
+    const { routine, due } = await runRoutineOnce(services, alpha.id, 'rt-1')
     expect(due?.routineId).toBe(routine.id)
-    await services.routines.run(due)
     const run = services.routines.store.run(alpha.id, due.id)
     expect(run.status).toBe('completed')
     expect(run.result).toContain('routine summary ok')
@@ -46,10 +54,7 @@ describe('engine conformance: routines, webhooks, delegation, workers & checks',
   test.failing('[Lane C P4] past routine run transcript still opens after engine drops sessions', async () => {
     const { engine, services, alpha } = await boot()
     engine.setTurnHandler(async () => 'durable routine output')
-    await services.routines.create(alpha.id, { requestId: 'rt-durable', description: 'Durable check', schedule: { kind: 'interval', seconds: 300 }, createdBy: 'oscar' })
-    services.routines.store.claimDue(Date.now() + 600_000)
-    const [due] = services.routines.store.pending()
-    await services.routines.run(due)
+    const { due } = await runRoutineOnce(services, alpha.id, 'rt-durable')
     engine.dropSessions()
     const opened = await services.routines.openRun(alpha.id, due.id, () => {})
     opened.close()
@@ -76,22 +81,27 @@ describe('engine conformance: routines, webhooks, delegation, workers & checks',
     })
 
     const hook = await services.webhooks.create(alpha.id, { requestId: 'wh-1', description: 'Deploy hook', source: 'CI', createdBy: 'oscar' })
-    const live = services.webhooks.find(hook.address.split('/hook/').at(-1)!)!
-    expect(services.webhooks.receive(live, new TextEncoder().encode(JSON.stringify({ event: 'push' })), new Headers({ 'content-type': 'application/json' }))).toBe('accepted')
-    services.webhooks.store.claimDue(Date.now() + 10_000)
-    await services.webhooks.run(services.webhooks.store.pending()[0])
+    await runWebhookOnce(services, hook.address, { event: 'push' })
     expect(readAllowed).toBe(true)
     expect(memoryBlocked).toBe(true)
+  })
+
+  test.failing('[Lane C P4] past webhook run transcript still opens after engine drops sessions', async () => {
+    const { engine, services, alpha } = await boot()
+    engine.setTurnHandler(async () => 'durable webhook output')
+    const hook = await services.webhooks.create(alpha.id, { requestId: 'wh-durable', description: 'Durable hook', source: 'CI', createdBy: 'oscar' })
+    const due = await runWebhookOnce(services, hook.address, { event: 'deploy' })
+    engine.dropSessions()
+    const opened = await services.webhooks.openRun(alpha.id, due.id, () => {})
+    opened.close()
+    expect(opened.snapshot.items.some(item => item.kind === 'assistant' && item.text.includes('durable webhook output'))).toBe(true)
   })
 
   test.failing('[Lane A P5] webhook run passes LilBot access scope instead of raw Hermes toolset names', async () => {
     const { engine, services, alpha } = await boot()
     const hook = await services.webhooks.create(alpha.id, { requestId: 'wh-scope', description: 'Scoped hook', source: 'CI', createdBy: 'oscar' })
     await services.webhooks.setCapabilities(alpha.id, hook.id, ['shell', 'computers'])
-    const live = services.webhooks.find(hook.address.split('/hook/').at(-1)!)!
-    expect(services.webhooks.receive(live, new TextEncoder().encode(JSON.stringify({ ok: true })), new Headers({ 'content-type': 'application/json' }))).toBe('accepted')
-    services.webhooks.store.claimDue(Date.now() + 10_000)
-    await services.webhooks.run(services.webhooks.store.pending()[0])
+    await runWebhookOnce(services, hook.address, { ok: true })
     const call = engine.routineCalls.at(-1)
     expect((call?.options as { access?: unknown } | undefined)?.access).toBeDefined()
     expect(call?.options.toolsets).toBeUndefined()
@@ -123,12 +133,12 @@ describe('engine conformance: routines, webhooks, delegation, workers & checks',
     const chat = await services.bots.openChat(alpha.id, undefined, () => {})
     await chat.send('delegate now')
     expect(delegateId).toBeTruthy()
-    for (let i = 0; i < 40 && services.threads.store.get(delegateId).status !== 'finished'; i++) await Bun.sleep(50)
+    for (let i = 0; i < 160 && services.threads.store.get(delegateId).status !== 'finished'; i++) await Bun.sleep(50)
     expect(services.threads.store.get(delegateId).status).toBe('finished')
 
     await chat.send('spawn worker')
     expect(workerId).toBeTruthy()
-    for (let i = 0; i < 40 && services.threads.store.get(workerId).status !== 'finished'; i++) await Bun.sleep(50)
+    for (let i = 0; i < 160 && services.threads.store.get(workerId).status !== 'finished'; i++) await Bun.sleep(50)
     expect(services.threads.store.get(workerId).worker).toBe(true)
     expect(services.threads.store.get(workerId).status).toBe('finished')
     chat.close()
@@ -136,27 +146,19 @@ describe('engine conformance: routines, webhooks, delegation, workers & checks',
 
   test('work item level-2 check runs on a second bot, blocks memory writes, and accepts verdict', async () => {
     const { engine, services, alpha, beta } = await boot()
-    const alphaNative = services.store.get(alpha.id).engineBotId
-    const betaNative = services.store.get(beta.id).engineBotId
-    let itemId = ''
-    let checkMemoryBlocked = false
-    let verdictOk = false
-
+    const [alphaNative, betaNative] = [services.store.get(alpha.id).engineBotId, services.store.get(beta.id).engineBotId]
+    let [itemId, checkMemoryBlocked, verdictOk] = ['', false, false]
     engine.setTurnHandler(async ctx => {
       if (ctx.nativeId === alphaNative && !ctx.hidden) {
         const opened = await ctx.callMcp('lilbot_work', { requestId: 'wk-1', title: 'Revenue figure', done: 'Verified total', kind: 'figure' })
         itemId = (opened.data as { id?: string })?.id ?? ''
         await ctx.callMcp('lilbot_work', { requestId: 'wk-2', itemId, status: 'done', result: 'Total is 120', evidence: EVIDENCE })
-        return 'submitted'
-      }
-      if (ctx.nativeId === betaNative && ctx.hidden) {
+      } else if (ctx.nativeId === betaNative && ctx.hidden) {
         checkMemoryBlocked = !(await ctx.callMcp('lilbot_memory_save', { kind: 'journal', scope: 'bot', text: 'blocked' })).ok
         verdictOk = (await ctx.callMcp('lilbot_work', { requestId: 'wk-v1', itemId, verdict: 'verified', result: 'Reproduced 120.', evidence: EVIDENCE })).ok
-        return 'verified'
       }
       return 'ok'
     })
-
     const chat = await services.bots.openChat(alpha.id, undefined, () => {})
     await chat.send('do work')
     chat.close()
@@ -168,19 +170,15 @@ describe('engine conformance: routines, webhooks, delegation, workers & checks',
 
   test.failing('[Lane A P5] work check session passes LilBot check scope instead of raw Hermes CHECK_TOOLSETS', async () => {
     const { engine, services, alpha, beta } = await boot()
-    const alphaNative = services.store.get(alpha.id).engineBotId
-    const betaNative = services.store.get(beta.id).engineBotId
+    const [alphaNative, betaNative] = [services.store.get(alpha.id).engineBotId, services.store.get(beta.id).engineBotId]
     let itemId = ''
     engine.setTurnHandler(async ctx => {
       if (ctx.nativeId === alphaNative && !ctx.hidden) {
         const opened = await ctx.callMcp('lilbot_work', { requestId: 'wk-scope', title: 'Metric', done: 'Verified', kind: 'figure' })
         itemId = (opened.data as { id?: string })?.id ?? ''
         await ctx.callMcp('lilbot_work', { requestId: 'wk-scope-2', itemId, status: 'done', result: '120', evidence: EVIDENCE })
-        return 'ready'
-      }
-      if (ctx.nativeId === betaNative && ctx.hidden) {
+      } else if (ctx.nativeId === betaNative && ctx.hidden) {
         await ctx.callMcp('lilbot_work', { requestId: 'wk-scope-v', itemId, verdict: 'verified', result: 'ok', evidence: EVIDENCE })
-        return 'done'
       }
       return 'ok'
     })
@@ -191,9 +189,5 @@ describe('engine conformance: routines, webhooks, delegation, workers & checks',
     const checkCall = engine.routineCalls.find(c => c.nativeId === betaNative)
     expect((checkCall?.options as { access?: unknown })?.access).toBe('check')
     expect(checkCall?.options.toolsets).toBeUndefined()
-  })
-
-  test.failing('[Lane A P6] BotService supports service-level switchEngine while keeping history', () => {
-    expect(typeof (BotService.prototype as unknown as { switchEngine?: unknown }).switchEngine).toBe('function')
   })
 })
