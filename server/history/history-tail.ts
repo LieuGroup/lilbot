@@ -5,13 +5,26 @@ import type { HistoryRow, HistoryStore } from './history-store'
 
 type EventRow = { rowid: number; at: number; event: string; key: string }
 type ExistingRow = { id: string; at: number; position: number; item: string }
+export interface PlannedSessionTail {
+  session: string
+  firstAt: number
+  rows: HistoryRow[]
+}
 
 function itemKey(item: ChatItem): string | null {
   if (item.kind === 'user') return `user:${item.text.trim()}`
   if (item.kind === 'assistant') return `assistant:${item.text.trim()}`
   if (item.kind === 'tool') return `tool:${item.toolId}`
+  if (item.kind === 'compaction') return `compaction:${item.beforeTokens ?? ''}:${item.afterTokens ?? ''}`
   if (item.kind === 'error') return `error:${item.reason ?? ''}:${item.text.trim()}`
   return null
+}
+
+function embeddedRowId(id: string, session: string): string | null {
+  const prefixA = `journal:${session}:a:`
+  if (id.startsWith(prefixA)) return id.slice(prefixA.length)
+  const prefixF = `journal:${session}:f:`
+  return id.startsWith(prefixF) ? id.slice(prefixF.length) : null
 }
 
 function reconstructFromEvents(session: string, events: EventRow[]): HistoryRow[] {
@@ -19,11 +32,9 @@ function reconstructFromEvents(session: string, events: EventRow[]): HistoryRow[
   const seenUsers = new Set<string>()
   const tools = new Map<string, { index: number; item: Extract<ChatItem, { kind: 'tool' }> }>()
   let [streamText, streamAt, streamKey] = ['', 0, '']
-
+  const push = (id: string, at: number, item: ChatItem) => candidates.push({ id, at, order: candidates.length, item })
   const flushStream = () => {
-    if (streamText.trim()) {
-      candidates.push({ id: `journal:${session}:s:${streamKey}`, at: streamAt, order: candidates.length, item: { kind: 'assistant', text: streamText, stopped: true } })
-    }
+    if (streamText.trim()) push(`journal:${session}:s:${streamKey}`, streamAt, { kind: 'assistant', text: streamText, stopped: true })
     streamText = ''
   }
 
@@ -38,24 +49,19 @@ function reconstructFromEvents(session: string, events: EventRow[]): HistoryRow[
       flushStream()
       if (event.messageId && seenUsers.has(event.messageId)) continue
       if (event.messageId) seenUsers.add(event.messageId)
-      candidates.push({
-        id: event.messageId ? `journal:${session}:u:${event.messageId}` : `journal:${session}:e:${row.rowid}`,
-        at: row.at,
-        order: candidates.length,
-        item: {
-          kind: 'user',
-          text: event.text,
-          ...(event.messageId ? { messageId: event.messageId } : {}),
-          ...(event.attachments.length ? { attachments: event.attachments } : {}),
-          ...(event.images ? { images: event.images } : {}),
-          ...(event.origin ? { origin: event.origin } : {})
-        }
+      push(event.messageId ? `journal:${session}:u:${event.messageId}` : `journal:${session}:e:${row.rowid}`, row.at, {
+        kind: 'user',
+        text: event.text,
+        ...(event.messageId ? { messageId: event.messageId } : {}),
+        ...(event.attachments.length ? { attachments: event.attachments } : {}),
+        ...(event.images ? { images: event.images } : {}),
+        ...(event.origin ? { origin: event.origin } : {})
       })
     } else if (event.type === 'tool.started') {
       if (tools.has(event.toolId)) continue
       const item: Extract<ChatItem, { kind: 'tool' }> = { kind: 'tool', toolId: event.toolId, name: event.name, detail: event.detail, running: false }
       tools.set(event.toolId, { index: candidates.length, item })
-      candidates.push({ id: `journal:${session}:t:${event.toolId}`, at: row.at, order: candidates.length, item })
+      push(`journal:${session}:t:${event.toolId}`, row.at, item)
     } else if (event.type === 'tool.finished') {
       const hit = tools.get(event.toolId)
       if (hit && event.failed) {
@@ -69,19 +75,26 @@ function reconstructFromEvents(session: string, events: EventRow[]): HistoryRow[
       streamText += event.text
     } else if (event.type === 'turn.finished') {
       streamText = ''
-      if (event.failure) {
-        candidates.push({ id: event.rowId ?? `journal:${session}:f:${row.key}`, at: row.at, order: candidates.length, item: { kind: 'error', text: '', reason: event.failure } })
-      } else if (event.text.trim() || event.status === 'stopped') {
-        candidates.push({
-          id: event.rowId ?? `journal:${session}:a:${row.key}`,
-          at: row.at,
-          order: candidates.length,
-          item: { kind: 'assistant', text: event.text, ...(event.status === 'stopped' ? { stopped: true } : {}), ...(event.usage ? { usage: event.usage } : {}) }
+      if (event.compacted && (event.compacted.beforeTokens !== undefined || event.compacted.afterTokens !== undefined)) {
+        push(`journal:${session}:c:${row.key}`, row.at, {
+          kind: 'compaction',
+          ...(event.compacted.beforeTokens !== undefined ? { beforeTokens: event.compacted.beforeTokens } : {}),
+          ...(event.compacted.afterTokens !== undefined ? { afterTokens: event.compacted.afterTokens } : {})
+        })
+      }
+      const suffix = event.rowId ?? row.key
+      if (event.failure) push(`journal:${session}:f:${suffix}`, row.at, { kind: 'error', text: '', reason: event.failure })
+      else if (event.text.trim() || event.status === 'stopped') {
+        push(`journal:${session}:a:${suffix}`, row.at, {
+          kind: 'assistant',
+          text: event.text,
+          ...(event.status === 'stopped' ? { stopped: true } : {}),
+          ...(event.usage ? { usage: event.usage } : {})
         })
       }
     } else if (event.type === 'error' && event.message.trim()) {
       flushStream()
-      candidates.push({ id: `journal:${session}:err:${row.key}`, at: row.at, order: candidates.length, item: { kind: 'error', text: event.message } })
+      push(`journal:${session}:err:${row.key}`, row.at, { kind: 'error', text: event.message })
     }
   }
   flushStream()
@@ -94,15 +107,11 @@ export function pruneSupersededJournalRows(db: Database, bot: string, session: s
   if (!canonical.length) return
   const journalRows = db
     .query("SELECT id, item FROM history_items WHERE bot=? AND id >= 'journal:' AND id < 'journal;' AND session=? ORDER BY at, position, id")
-    .all(bot, session) as {
-    id: string
-    item: string
-  }[]
+    .all(bot, session) as { id: string; item: string }[]
   if (!journalRows.length) return
-  const incomingTools = new Set<string>()
-  const incomingMsgs = new Set<string>()
-  const incomingKeys = new Map<string, number>()
+  const [incomingIds, incomingTools, incomingMsgs, incomingKeys] = [new Set<string>(), new Set<string>(), new Set<string>(), new Map<string, number>()]
   for (const row of canonical) {
+    incomingIds.add(row.id)
     if (row.item.kind === 'tool') incomingTools.add(row.item.toolId)
     if (row.item.kind === 'user' && row.item.messageId) incomingMsgs.add(row.item.messageId)
     const key = itemKey(row.item)
@@ -113,7 +122,11 @@ export function pruneSupersededJournalRows(db: Database, bot: string, session: s
     try {
       const parsed = JSON.parse(row.item) as ChatItem
       const key = itemKey(parsed)
-      const exact = (parsed.kind === 'tool' && incomingTools.has(parsed.toolId)) || (parsed.kind === 'user' && !!parsed.messageId && incomingMsgs.has(parsed.messageId))
+      const rowRef = embeddedRowId(row.id, session)
+      const exact =
+        (rowRef !== null && incomingIds.has(rowRef)) ||
+        (parsed.kind === 'tool' && incomingTools.has(parsed.toolId)) ||
+        (parsed.kind === 'user' && !!parsed.messageId && incomingMsgs.has(parsed.messageId))
       if (exact || (key && (incomingKeys.get(key) ?? 0) > 0)) {
         if (key && (incomingKeys.get(key) ?? 0) > 0) incomingKeys.set(key, incomingKeys.get(key)! - 1)
         del.run(bot, row.id)
@@ -122,18 +135,18 @@ export function pruneSupersededJournalRows(db: Database, bot: string, session: s
   }
 }
 
-/** Reconciles unimported tail items from `history_events` into `history_items` for one bot, fail-closed on hidden/excluded sessions. */
-export function reconcileBotJournal(
+/** Computes unimported tail rows from `history_events` without mutating SQLite, evaluated fail-closed against `allowed`. */
+export function planBotJournalTail(
   store: HistoryStore,
   bot: string,
   allowed: (bot: string, session: string) => boolean,
   project: (bot: string, session: string, rows: HistoryRow[]) => HistoryRow[]
-): number {
+): PlannedSessionTail[] {
   const sessions = store.db.query('SELECT session, MIN(at) AS firstAt FROM history_events WHERE bot=? GROUP BY session ORDER BY MIN(rowid)').all(bot) as {
     session: string
     firstAt: number
   }[]
-  let written = 0
+  const plan: PlannedSessionTail[] = []
   for (const { session, firstAt } of sessions) {
     if (!allowed(bot, session) || store.excluded(bot, session)) continue
     const events = store.db.query('SELECT rowid, at, event, key FROM history_events WHERE bot=? AND session=? ORDER BY rowid').all(bot, session) as EventRow[]
@@ -161,8 +174,10 @@ export function reconcileBotJournal(
     const kept: HistoryRow[] = []
     for (const cand of candidates) {
       const key = itemKey(cand.item)
+      const rowRef = embeddedRowId(cand.id, session)
       const exact =
         existingIds.has(cand.id) ||
+        (rowRef !== null && existingIds.has(rowRef)) ||
         (cand.item.kind === 'tool' && existingTools.has(cand.item.toolId)) ||
         (cand.item.kind === 'user' && !!cand.item.messageId && existingMsgs.has(cand.item.messageId))
       if (exact || (key && (counts.get(key) ?? 0) > 0)) {
@@ -172,10 +187,7 @@ export function reconcileBotJournal(
       const at = Math.max(cand.at, maxAt)
       kept.push({ ...cand, at, order: at === maxAt ? ++maxPosAtMaxAt : kept.length })
     }
-    if (!kept.length) continue
-    store.session(bot, session, firstAt)
-    store.write(bot, session, project(bot, session, kept))
-    written += kept.length
+    if (kept.length) plan.push({ session, firstAt, rows: project(bot, session, kept) })
   }
-  return written
+  return plan
 }

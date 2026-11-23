@@ -1,8 +1,9 @@
-/** Bounded pre-switch engine drain with deadline enforcement and journal fallback. */
+/** Bounded pre-switch engine drain with deadline enforcement and non-blocking post-turn catch-up.
+ *  Gap divider rule (`engine_switched_gap`): written on a committed engine switch only when the drain could not finish
+ *  AND unconfirmed history state existed (discovery/sessions incomplete, a dirty session, or journal fallback rows). */
 import type { ConversationSource } from '../engines/bot-engine'
 import type { EngineRegistry } from '../engines/engine-registry'
 import type { HistoryRow, HistoryStore } from './history-store'
-import { reconcileBotJournal } from './history-tail'
 
 export interface HistoryFlushOptions {
   timeoutMs?: number
@@ -11,7 +12,6 @@ export interface HistoryFlushOptions {
 export interface HistoryFlushResult {
   incomplete: boolean
   imported: number
-  reconciled: number
 }
 
 const DEFAULT_FLUSH_MS = 5_000
@@ -24,7 +24,7 @@ class FlushTimeoutError extends Error {
 }
 
 /** Races an async engine call against a shared deadline, closing late-resolving resources on timeout. */
-function raceDeadline<T>(work: Promise<T>, remainingMs: () => number, onLate?: (value: T) => void): Promise<T> {
+export function raceDeadline<T>(work: Promise<T>, remainingMs: () => number, onLate?: (value: T) => void): Promise<T> {
   const ms = remainingMs()
   if (ms <= 0) {
     void work.then(
@@ -70,12 +70,12 @@ export function syncHistoryDividers(store: HistoryStore, botId: string) {
   return sessions
 }
 
-/** Drains dirty, incomplete, and newest sessions for one bot within time/page caps; never throws. */
+/** Drains dirty, incomplete, and newest sessions for one bot within time/page caps without writing temporary journal rows. */
 export async function flushBotHistory(
   deps: {
     store: HistoryStore
     engines: EngineRegistry
-    dirty: Map<string, Set<string>>
+    dirty: Map<string, Map<string, number>>
     allowed: (bot: string, session: string) => boolean
     project: (bot: string, session: string, rows: HistoryRow[]) => HistoryRow[]
     changed: (bot: string) => void
@@ -88,14 +88,7 @@ export async function flushBotHistory(
   const remaining = () => Math.max(0, deadline - Date.now())
   const engineId = bot.engineId ?? deps.engines.defaultId
   const engine = deps.engines.get(engineId)
-  if (!engine?.conversations) {
-    const reconciled = reconcileBotJournal(deps.store, bot.id, deps.allowed, deps.project)
-    if (reconciled > 0) {
-      syncHistoryDividers(deps.store, bot.id)
-      deps.changed(bot.id)
-    }
-    return { incomplete: !engine, imported: 0, reconciled }
-  }
+  if (!engine?.conversations) return { incomplete: !engine, imported: 0 }
 
   let imported = 0
   let incomplete = false
@@ -103,7 +96,7 @@ export async function flushBotHistory(
   try {
     source = await raceDeadline(engine.conversations(bot.engineBotId), remaining, s => s.close())
     const listed = await raceDeadline(source.list(), remaining)
-    if (!deps.allowed(bot.id, '')) return { incomplete: false, imported: 0, reconciled: 0 }
+    if (!deps.allowed(bot.id, '')) return { incomplete: false, imported: 0 }
     for (const s of listed) if (deps.allowed(bot.id, s.id)) deps.store.session(bot.id, s.id, s.at)
     deps.store.discovered(bot.id)
     const all = syncHistoryDividers(deps.store, bot.id)
@@ -117,6 +110,7 @@ export async function flushBotHistory(
     while (required.size > 0 && pages < maxPages && remaining() > 0) {
       const next = [...required.values()].find(s => dirty?.has(s.id)) ?? [...required.values()].find(s => !s.complete) ?? [...required.values()][0]
       pages++
+      const seenGen = dirty?.get(next.id)
       const page = await raceDeadline(source.read(next.id, next.cursor), remaining)
       if (!deps.allowed(bot.id, next.id)) {
         required.delete(next.id)
@@ -129,8 +123,8 @@ export async function flushBotHistory(
       next.cursor = page.cursor
       if (done) {
         next.complete = 1
-        dirty?.delete(next.id)
-        required.delete(next.id)
+        if (seenGen !== undefined && dirty?.get(next.id) === seenGen) dirty.delete(next.id)
+        if (seenGen === undefined || dirty?.get(next.id) === undefined) required.delete(next.id)
       }
     }
     if (required.size > 0) incomplete = true
@@ -142,13 +136,11 @@ export async function flushBotHistory(
     } catch {}
   }
 
-  const reconciled = incomplete ? reconcileBotJournal(deps.store, bot.id, deps.allowed, deps.project) : 0
-  if (reconciled > 0) syncHistoryDividers(deps.store, bot.id)
-  if (imported > 0 || reconciled > 0) deps.changed(bot.id)
-  return { incomplete, imported, reconciled }
+  if (imported > 0) deps.changed(bot.id)
+  return { incomplete, imported }
 }
 
-/** Non-blocking post-turn catch-up for one bot's dirty sessions (bounded to a few pages per burst). */
+/** Non-blocking post-turn catch-up for one bot's dirty sessions (bounded to 5 pages/burst), using per-session generations. */
 export async function catchUpDirtySessions(
   deps: {
     store: HistoryStore
@@ -158,12 +150,12 @@ export async function catchUpDirtySessions(
   },
   botId: string,
   value: { source: ConversationSource; known: Set<string> },
-  dirty: Set<string>,
+  dirty: Map<string, number>,
   stopped: () => boolean,
   maxPages = 5
 ) {
   let pages = 0
-  for (const sessionId of [...dirty]) {
+  for (const sessionId of [...dirty.keys()]) {
     if (stopped() || pages >= maxPages) break
     if (!deps.allowed(botId, sessionId) || deps.store.excluded(botId, sessionId)) {
       dirty.delete(sessionId)
@@ -177,16 +169,20 @@ export async function catchUpDirtySessions(
     }
     if (!session) continue
     while (pages < maxPages && !stopped()) {
+      const seenGen = dirty.get(sessionId)
       pages++
       const page = await value.source.read(sessionId, session.cursor)
-      if (!deps.allowed(botId, sessionId)) break
+      if (stopped() || !deps.allowed(botId, sessionId)) break
       const done = page.empty || (page.rows.length === 0 && page.cursor === session.cursor)
       deps.store.write(botId, sessionId, deps.project(botId, sessionId, page.rows), page.cursor, done || !!session.complete)
       session.cursor = page.cursor
       if (page.rows.length || !session.complete) deps.changed(botId)
       if (done) {
-        dirty.delete(sessionId)
-        break
+        if (seenGen !== undefined && dirty.get(sessionId) === seenGen) {
+          dirty.delete(sessionId)
+          break
+        }
+        // A newer turn finished while read() was in flight; keep draining this session while page budget permits.
       }
     }
   }

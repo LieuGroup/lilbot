@@ -1,4 +1,4 @@
-/** Pre-switch bounded flush, unreachable-engine journal reconciliation, gap divider, and non-blocking post-turn catch-up. */
+/** Pre-switch bounded flush, unreachable/hanging engine journal fallback, compaction recovery, and clean-vs-gap divider. */
 import { afterEach, expect, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -26,7 +26,6 @@ function fixture() {
   const [engineA, engineB] = [new ScriptedEngine({ id: 'scripted-a' }), new ScriptedEngine({ id: 'scripted-b' })]
   const registry = new EngineRegistry([engineA, engineB])
   const store = new BotStore(db)
-  const prefs = new BotPrefsStore(db)
   const memory = {
     list: () => [],
     forgetPrivate: () => {},
@@ -36,15 +35,14 @@ function fixture() {
     }
   } as any
   const historyStore = new HistoryStore(db)
-  const hidden = new Set<string>()
   const history = new HistoryService(
     historyStore,
     registry,
     async () => store.list().filter(b => registry.has(b.engineId)),
-    (_bot, session) => !hidden.has(session)
+    () => true
   )
-  const bots = new BotService(registry, store, prefs, new Workspaces(join(root, 'ws')), memory, { history })
-  return { db, engineA, engineB, registry, store, prefs, historyStore, history, bots, hidden }
+  const bots = new BotService(registry, store, new BotPrefsStore(db), new Workspaces(join(root, 'ws')), memory, { history })
+  return { db, engineA, engineB, store, historyStore, history, bots }
 }
 
 test('switchEngine flushes unimported tail before deleting old runtime and writes clean engine_switched divider', async () => {
@@ -52,9 +50,7 @@ test('switchEngine flushes unimported tail before deleting old runtime and write
   try {
     f.engineA.setTurnHandler(async ctx => `reply:${ctx.input.text}`)
     const bot = await f.bots.createBot({ name: 'Alpha', function: '', instructions: '' }, undefined, 'scripted-a')
-    // Seed an older session directly on engineA without running tick() so both sessions are unimported.
-    const nativeId = f.store.get(bot.id).engineBotId
-    const oldChat = await f.engineA.openChat(nativeId, null, { workspace: '/tmp' }, () => {})
+    const oldChat = await f.engineA.openChat(f.store.get(bot.id).engineBotId, null, { workspace: '/tmp' }, () => {})
     await oldChat.send('earlier offline turn')
     oldChat.close()
 
@@ -74,7 +70,6 @@ test('switchEngine flushes unimported tail before deleting old runtime and write
     expect(page.items.some(r => r.item.kind === 'session' && r.item.reason === 'engine_switched')).toBe(true)
     expect(page.items.some(r => r.item.kind === 'session' && r.item.reason === 'engine_switched_gap')).toBe(false)
 
-    // Subsequent tick on engineB never polls or fails on engineA's sealed sessions.
     await f.history.tick()
     expect(f.historyStore.progress(bot.id).complete).toBe(true)
   } finally {
@@ -83,53 +78,72 @@ test('switchEngine flushes unimported tail before deleting old runtime and write
   }
 })
 
-test('unreachable old engine never blocks switchEngine, reconciles tail from journal without duplicating repeated text, and shows gap divider', async () => {
+test('unreachable old engine reconciles tail + compaction (PROBE_1C) with gap divider (M7); already-complete bot stays clean (PROBE_1D)', async () => {
   const f = fixture()
   try {
     f.engineA.setTurnHandler(async ctx => `ans:${ctx.input.text}`)
     const bot = await f.bots.createBot({ name: 'Mover', function: '', instructions: '' }, undefined, 'scripted-a')
+    const cleanBot = await f.bots.createBot({ name: 'Clean', function: '', instructions: '' }, undefined, 'scripted-a')
     const chat = await f.bots.openChat(bot.id, undefined, () => {})
     await chat.send('same')
+    const cleanChat = await f.bots.openChat(cleanBot.id, undefined, () => {})
+    await cleanChat.send('all imported')
+    cleanChat.close()
     await f.history.tick()
     await f.history.tick()
-    // Now make engineA unreachable before sending a second turn with identical text + a distinct third turn.
+    expect(f.historyStore.progress(cleanBot.id).complete).toBe(true)
+
     f.engineA.conversations = async () => {
       throw new Error('engine unreachable')
     }
+    // PROBE_1D: already 100% imported with zero dirty/unimported events -> clean engine_switched divider.
+    await f.bots.switchEngine(cleanBot.id, 'scripted-b')
+    const cleanPage = await f.bots.historyPage(cleanBot.id)
+    expect(cleanPage.items.some(r => r.item.kind === 'session' && r.item.reason === 'engine_switched')).toBe(true)
+    expect(cleanPage.items.some(r => r.item.kind === 'session' && r.item.reason === 'engine_switched_gap')).toBe(false)
+
+    // PROBE_1C + repeated text while engineA is unreachable.
     await chat.send('same')
-    await chat.send('unimported tail')
+    f.history.record(
+      bot.id,
+      chat.snapshot.chatId,
+      { type: 'user.message', messageId: 'mc1', text: 'compacted prompt', attachments: [], images: { support: 'unknown', imageCount: 0 } },
+      'kc1'
+    )
+    f.history.record(
+      bot.id,
+      chat.snapshot.chatId,
+      { type: 'turn.finished', status: 'completed', text: 'after compact', rowId: 'eng:after-c', compacted: { beforeTokens: 120_000, afterTokens: 24_000 } },
+      'kc2'
+    )
     chat.close()
 
-    const switched = await f.bots.switchEngine(bot.id, 'scripted-b')
-    expect(switched.changed).toBe(true)
-
+    await f.bots.switchEngine(bot.id, 'scripted-b')
     const page = await f.bots.historyPage(bot.id)
-    const userTexts = page.items.filter(r => r.item.kind === 'user').map(r => (r.item.kind === 'user' ? r.item.text : ''))
-    const botTexts = page.items.filter(r => r.item.kind === 'assistant').map(r => (r.item.kind === 'assistant' ? r.item.text : ''))
-    expect(userTexts).toEqual(['same', 'same', 'unimported tail'])
-    expect(botTexts).toEqual(['ans:same', 'ans:same', 'ans:unimported tail'])
+    expect(page.items.filter(r => r.item.kind === 'user').map(r => (r.item.kind === 'user' ? r.item.text : ''))).toEqual(['same', 'same', 'compacted prompt'])
+    expect(page.items.filter(r => r.item.kind === 'assistant').map(r => (r.item.kind === 'assistant' ? r.item.text : ''))).toEqual(['ans:same', 'ans:same', 'after compact'])
+    expect(page.items.filter(r => r.item.kind === 'compaction').map(r => r.item)).toEqual([{ kind: 'compaction', beforeTokens: 120_000, afterTokens: 24_000 }])
     expect(page.items.some(r => r.item.kind === 'session' && r.item.reason === 'engine_switched_gap')).toBe(true)
 
-    // Gap divider remains visible even if Oscar immediately starts another new session without speaking.
+    // M7: gap divider stays visible even if Oscar starts another new session without speaking.
     const next = await f.bots.newChat(bot.id, () => {})
     next.close()
-    const afterNew = await f.bots.historyPage(bot.id)
-    expect(afterNew.items.some(r => r.item.kind === 'session' && r.item.reason === 'engine_switched_gap')).toBe(true)
+    expect((await f.bots.historyPage(bot.id)).items.some(r => r.item.kind === 'session' && r.item.reason === 'engine_switched_gap')).toBe(true)
   } finally {
     f.history.close()
     f.db.close()
   }
 })
 
-test('hanging old engine is bounded by flush timeout, closes late source cleanly, and reconciles from journal', async () => {
+test('hanging old engine is bounded by flush timeout, closes late source cleanly, and reconciles only on commit', async () => {
   const db = openDatabase(':memory:')
   let closedLate = false
   let resolveHang!: (s: ConversationSource) => void
   const hangingEngine = {
     id: 'hang',
     conversations: () =>
-      new Promise<ConversationSource>(resolve => {
-        resolveHang = resolve
+      new Promise<ConversationSource>(r => {
+        resolveHang = r
       })
   } as unknown as BotEngine
   const store = new HistoryStore(db)
@@ -141,16 +155,14 @@ test('hanging old engine is bounded by flush timeout, closes late source cleanly
   )
   try {
     store.event('b1', 's1', { type: 'user.message', messageId: 'm1', text: 'kept via journal', attachments: [], images: { support: 'unknown', imageCount: 0 } }, 'k1')
-    store.event('b1', 's1', { type: 'turn.finished', status: 'completed', text: 'journal reply' }, 'k2')
+    store.event('b1', 's1', { type: 'turn.finished', status: 'completed', text: 'journal reply', rowId: 'eng:j1' }, 'k2')
 
     const t0 = performance.now()
-    const res = await history.flush({ id: 'b1', engineId: 'hang', engineBotId: 'n1' }, { timeoutMs: 80 })
-    const elapsed = performance.now() - t0
-    expect(res.incomplete).toBe(true)
-    expect(res.reconciled).toBe(2)
-    expect(elapsed).toBeLessThan(500)
+    const prepared = await history.prepareEngineSwitch({ id: 'b1', engineId: 'hang', engineBotId: 'n1' }, { timeoutMs: 80 })
+    expect(performance.now() - t0).toBeLessThan(500)
+    expect(store.page('b1').items).toEqual([])
+    prepared.commit('s2')
 
-    // Late-resolving source is closed automatically instead of leaking.
     resolveHang({
       list: async () => [],
       read: async () => ({ rows: [], cursor: null, reset: false, empty: true }),
@@ -160,32 +172,11 @@ test('hanging old engine is bounded by flush timeout, closes late source cleanly
     })
     await Bun.sleep(10)
     expect(closedLate).toBe(true)
-    expect(store.page('b1').items.map(r => ('text' in r.item ? r.item.text : ''))).toEqual(['kept via journal', 'journal reply'])
+    const items = store.page('b1').items
+    expect(items.filter(r => r.item.kind !== 'session').map(r => ('text' in r.item ? r.item.text : ''))).toEqual(['kept via journal', 'journal reply'])
+    expect(items.some(r => r.item.kind === 'session' && r.item.reason === 'engine_switched_gap')).toBe(true)
   } finally {
     history.close()
     db.close()
-  }
-})
-
-test('completed turn triggers non-blocking catch-up without calling tick()', async () => {
-  const f = fixture()
-  try {
-    f.engineA.setTurnHandler(async () => 'fast catch-up')
-    const bot = await f.bots.createBot({ name: 'Fast', function: '', instructions: '' }, undefined, 'scripted-a')
-    const chat = await f.bots.openChat(bot.id, undefined, () => {})
-    await chat.send('ping')
-    chat.close()
-
-    for (let i = 0; i < 40; i++) {
-      const page = await f.bots.historyPage(bot.id)
-      if (page.items.some(r => r.item.kind === 'assistant' && r.item.text === 'fast catch-up')) break
-      await Bun.sleep(15)
-    }
-    const page = await f.bots.historyPage(bot.id)
-    expect(page.items.some(r => r.item.kind === 'user' && r.item.text === 'ping')).toBe(true)
-    expect(page.items.some(r => r.item.kind === 'assistant' && r.item.text === 'fast catch-up')).toBe(true)
-  } finally {
-    f.history.close()
-    f.db.close()
   }
 })

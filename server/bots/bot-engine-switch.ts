@@ -74,6 +74,7 @@ async function switchBotEngine(deps: SwitchEngineDeps, botId: string, targetEngi
   let released = false
   let primaryPersisted = false
   let bound = false
+  let historySwitch: Awaited<ReturnType<HistoryService['prepareEngineSwitch']>> | undefined
   try {
     await target.prepareRuntime?.(nativeId, nextBot)
     const workspace = await deps.workspaces.ensure(botId)
@@ -83,7 +84,7 @@ async function switchBotEngine(deps: SwitchEngineDeps, botId: string, targetEngi
       deps.prefs.setPrimaryBot(botId)
       primaryPersisted = true
     }
-    const finishHistory = await deps.history?.prepareEngineSwitch(previous)
+    historySwitch = await deps.history?.prepareEngineSwitch(previous)
     deps.runtimes.store.bindEngine(botId, target.id, nativeId, nextModel)
     bound = true
     deps.sessions.forget(botId)
@@ -96,7 +97,7 @@ async function switchBotEngine(deps: SwitchEngineDeps, botId: string, targetEngi
     chat.close()
     deps.prefs.setMainChat(botId, newChatId)
     deps.sessions.resetContext(botId, newChatId)
-    finishHistory?.(newChatId)
+    historySwitch?.commit(newChatId)
   } catch (error) {
     if (bound) deps.runtimes.store.bindEngine(botId, previous.engineId, previous.engineBotId, previous.model, previous.isDefault)
     if (primaryPersisted) {
@@ -107,6 +108,8 @@ async function switchBotEngine(deps: SwitchEngineDeps, botId: string, targetEngi
     await target.deleteRuntime(nativeId).catch(() => {})
     if (released || bound || primaryPersisted) deps.changed()
     throw error
+  } finally {
+    historySwitch?.release()
   }
 
   if (options.deleteOldRuntime) {

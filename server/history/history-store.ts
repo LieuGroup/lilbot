@@ -43,22 +43,21 @@ export class HistoryStore {
   discovered(bot: string) {
     this.db.query('INSERT OR IGNORE INTO history_imports VALUES(?)').run(bot)
   }
-  write(bot: string, session: string, rows: HistoryRow[], cursor?: string | null, complete = false) {
-    this.db
-      .transaction(() => {
-        // Checked under the write lock, so an exclusion committed meanwhile is never undone by a late page.
-        if (this.excluded(bot, session)) return
-        const enriched = this.meta.mergeRows(bot, session, rows)
-        pruneSupersededJournalRows(this.db, bot, session, enriched)
-        const insert = this.db.query(`INSERT INTO history_items(bot,session,id,at,position,item,text) VALUES(?,?,?,?,?,?,?)
+  writeUnchecked(bot: string, session: string, rows: HistoryRow[], cursor?: string | null, complete = false) {
+    // Checked under the write lock, so an exclusion committed meanwhile is never undone by a late page.
+    if (this.excluded(bot, session)) return
+    const enriched = this.meta.mergeRows(bot, session, rows)
+    pruneSupersededJournalRows(this.db, bot, session, enriched)
+    const insert = this.db.query(`INSERT INTO history_items(bot,session,id,at,position,item,text) VALUES(?,?,?,?,?,?,?)
         ON CONFLICT(bot,id) DO UPDATE SET item=excluded.item,text=excluded.text`)
-        for (const row of enriched) {
-          const text = 'text' in row.item ? row.item.text : ''
-          insert.run(bot, session, row.id, row.at, row.order, JSON.stringify(row.item), text)
-        }
-        if (cursor !== undefined) this.db.query('UPDATE history_sessions SET cursor=?,complete=? WHERE bot=? AND id=?').run(cursor, +complete, bot, session)
-      })
-      .immediate()
+    for (const row of enriched) {
+      const text = 'text' in row.item ? row.item.text : ''
+      insert.run(bot, session, row.id, row.at, row.order, JSON.stringify(row.item), text)
+    }
+    if (cursor !== undefined) this.db.query('UPDATE history_sessions SET cursor=?,complete=? WHERE bot=? AND id=?').run(cursor, +complete, bot, session)
+  }
+  write(bot: string, session: string, rows: HistoryRow[], cursor?: string | null, complete = false) {
+    this.db.transaction(() => this.writeUnchecked(bot, session, rows, cursor, complete)).immediate()
   }
   event(bot: string, session: string, event: ChatEvent, key: string = crypto.randomUUID()) {
     const now = Date.now()

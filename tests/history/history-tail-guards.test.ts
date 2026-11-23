@@ -1,4 +1,4 @@
-/** Idempotency, tick/flush racing, canonical row replacement, and fail-closed hidden/excluded session guards. */
+/** Guard-removal mutation killers (M1-M6, M11): flush allowed/maxPages, catchUp allowed/excluded, and fail-closed journal tail. */
 import { expect, test } from 'bun:test'
 import { openDatabase } from '../../server/database/database'
 import type { BotEngine, ConversationSource } from '../../server/engines/bot-engine'
@@ -6,123 +6,175 @@ import { excludeSession } from '../../server/history/history-exclusion'
 import { HistoryService } from '../../server/history/history-service'
 import { HistoryStore } from '../../server/history/history-store'
 
-test('repeated flush, tick race, and later engine recovery after journal reconciliation never duplicate or reorder rows', async () => {
+test('M1-M3: flushBotHistory enforces allowed on bot deletion after list(), listed hidden sessions, and mid-read disallow', async () => {
+  // M1: bot deleted / disallowed during source.list().
+  {
+    const db = openDatabase(':memory:')
+    let botAllowed = true
+    const source: ConversationSource = {
+      list: async () => {
+        botAllowed = false
+        return [{ id: 's1', at: 10 }]
+      },
+      read: async () => ({ rows: [{ id: 'r1', at: 11, order: 0, item: { kind: 'user', text: 'x' } }], cursor: 'c', reset: false, empty: true }),
+      close: () => {}
+    }
+    const store = new HistoryStore(db)
+    const history = new HistoryService(
+      store,
+      { id: 'e', conversations: async () => source } as unknown as BotEngine,
+      async () => [],
+      () => botAllowed
+    )
+    try {
+      await history.flush({ id: 'b1', engineId: 'e', engineBotId: 'n1' })
+      expect(store.sessions('b1')).toEqual([])
+      expect(store.progress('b1').complete).toBe(false)
+    } finally {
+      history.close()
+      db.close()
+    }
+  }
+
+  // M2 + M3: hidden listed session is never registered in history_sessions, and session disallowed mid-read writes zero rows.
+  {
+    const db = openDatabase(':memory:')
+    const disallowed = new Set<string>(['hidden-listed'])
+    const source: ConversationSource = {
+      list: async () => [
+        { id: 'hidden-listed', at: 10 },
+        { id: 'flips-mid-read', at: 20 }
+      ],
+      read: async id => {
+        if (id === 'flips-mid-read') disallowed.add('flips-mid-read')
+        return { rows: [{ id: `row:${id}`, at: 25, order: 0, item: { kind: 'user', text: `secret:${id}` } }], cursor: 'c', reset: false, empty: true }
+      },
+      close: () => {}
+    }
+    const store = new HistoryStore(db)
+    const history = new HistoryService(
+      store,
+      { id: 'e', conversations: async () => source } as unknown as BotEngine,
+      async () => [],
+      (_b, s) => !disallowed.has(s)
+    )
+    try {
+      await history.flush({ id: 'b1', engineId: 'e', engineBotId: 'n1' })
+      expect(store.sessions('b1').map(s => s.id)).toEqual(['flips-mid-read'])
+      expect(store.page('b1').items.some(r => r.id === 'row:flips-mid-read')).toBe(false)
+    } finally {
+      history.close()
+      db.close()
+    }
+  }
+})
+
+test('M4: catchUpDirtySessions skips disallowed, excluded, and mid-read disallowed sessions', async () => {
   const db = openDatabase(':memory:')
-  let failEngine = true
-  const engineRows = [
-    { id: 'eng:1', at: 100, order: 0, item: { kind: 'user' as const, text: 'hello' } },
-    { id: 'eng:tool:t1', at: 101, order: 1, item: { kind: 'tool' as const, toolId: 't1', name: 'terminal', detail: 'ls', running: false } },
-    { id: 'eng:2', at: 102, order: 2, item: { kind: 'assistant' as const, text: 'world' } }
-  ]
+  const disallowed = new Set<string>()
+  const readSessions: string[] = []
   const source: ConversationSource = {
-    list: async () => [{ id: 's1', at: 100 }],
-    read: async (_id, cursor) => ({ rows: cursor ? [] : engineRows, cursor: 'end', reset: false, empty: !!cursor }),
+    list: async () => [],
+    read: async id => {
+      readSessions.push(id)
+      if (id === 's-mid') disallowed.add('s-mid')
+      return { rows: [{ id: `row:${id}`, at: 50, order: 0, item: { kind: 'user', text: `msg:${id}` } }], cursor: 'c', reset: false, empty: true }
+    },
     close: () => {}
   }
-  const engine = {
-    id: 'test-engine',
-    conversations: async () => {
-      if (failEngine) throw new Error('offline')
-      return source
-    }
-  } as unknown as BotEngine
   const store = new HistoryStore(db)
   const history = new HistoryService(
     store,
-    engine,
-    async () => [{ id: 'b1', engineId: 'test-engine', engineBotId: 'n1' }],
-    () => true
+    { id: 'e', conversations: async () => source } as unknown as BotEngine,
+    async () => [{ id: 'b1', engineId: 'e', engineBotId: 'n1' }],
+    (_b, s) => !disallowed.has(s)
   )
   try {
-    store.event('b1', 's1', { type: 'user.message', messageId: 'u1', text: 'hello', attachments: [], images: { support: 'unknown', imageCount: 0 } }, 'e1')
-    store.event('b1', 's1', { type: 'tool.started', toolId: 't1', name: 'terminal', detail: 'ls' }, 'e2')
-    store.event('b1', 's1', { type: 'tool.finished', toolId: 't1', failed: false }, 'e3')
-    store.event('b1', 's1', { type: 'turn.finished', status: 'completed', text: 'world' }, 'e4')
+    // Seed s-excl so excludeSession accepts it, then queue s-dis, s-excl, and s-mid before the 25 ms catch-up timer fires.
+    store.session('b1', 's-excl', 10)
+    store.write('b1', 's-excl', [{ id: 'seed', at: 11, order: 0, item: { kind: 'user', text: 'old' } }])
+    history.record('b1', 's-dis', { type: 'turn.finished', status: 'completed', text: 'a' }, 'k1')
+    history.record('b1', 's-excl', { type: 'turn.finished', status: 'completed', text: 'b' }, 'k2')
+    history.record('b1', 's-mid', { type: 'turn.finished', status: 'completed', text: 'c' }, 'k3')
+    disallowed.add('s-dis')
+    excludeSession(db, 'b1', 's-excl', 'operator')
 
-    // Reconcile twice while offline: second call must write zero duplicates.
-    const r1 = await history.flush({ id: 'b1', engineId: 'test-engine', engineBotId: 'n1' })
-    const r2 = await history.flush({ id: 'b1', engineId: 'test-engine', engineBotId: 'n1' })
-    expect(r1).toEqual({ incomplete: true, imported: 0, reconciled: 3 })
-    expect(r2).toEqual({ incomplete: true, imported: 0, reconciled: 0 })
-    expect(store.page('b1').items.map(r => r.item.kind)).toEqual(['user', 'tool', 'assistant'])
-
-    // Now the engine recovers and tick() races with flush(): canonical engine rows supersede journal placeholders without duplicating!
-    failEngine = false
-    const [f1, , f2] = await Promise.all([
-      history.flush({ id: 'b1', engineId: 'test-engine', engineBotId: 'n1' }),
-      history.tick(),
-      history.flush({ id: 'b1', engineId: 'test-engine', engineBotId: 'n1' })
-    ])
-    expect(f1.incomplete).toBe(false)
-    expect(f2.incomplete).toBe(false)
-    const items = store.page('b1').items
-    expect(items.map(r => r.id)).toEqual(['eng:1', 'eng:tool:t1', 'eng:2'])
-    expect(items.map(r => r.item.kind)).toEqual(['user', 'tool', 'assistant'])
+    await Bun.sleep(60)
+    expect(readSessions).toEqual(['s-mid'])
+    expect(store.page('b1').items).toEqual([])
   } finally {
     history.close()
     db.close()
   }
 })
 
-test('hidden and operator-excluded sessions stay fail-closed across flush, journal reconciliation, and post-turn catch-up', async () => {
+test('M5: hidden and operator-excluded journal rows stay fail-closed on committed engine switch', async () => {
   const db = openDatabase(':memory:')
-  const source: ConversationSource = {
-    list: async () => [
-      { id: 'visible', at: 10 },
-      { id: 'hidden-compressed', at: 20 },
-      { id: 'excluded-op', at: 30 }
-    ],
-    read: async (id, cursor) => ({
-      rows: cursor ? [] : [{ id: `row:${id}`, at: 50, order: 0, item: { kind: 'user' as const, text: `msg in ${id}` } }],
-      cursor: 'done',
-      reset: false,
-      empty: !!cursor
-    }),
-    close: () => {}
-  }
-  let offline = false
   const engine = {
-    id: 'test-engine',
+    id: 'e-down',
     conversations: async () => {
-      if (offline) throw new Error('offline')
-      return source
+      throw new Error('offline')
     }
   } as unknown as BotEngine
   const store = new HistoryStore(db)
-  // Seed excluded-op then exclude it via operator API.
   store.session('b1', 'excluded-op', 30)
   store.write('b1', 'excluded-op', [{ id: 'seed', at: 31, order: 0, item: { kind: 'user', text: 'secret' } }])
   excludeSession(db, 'b1', 'excluded-op', 'operator removal')
-  // Seed raw journal rows for both hidden-compressed and excluded-op to prove journal reconciliation stays fail-closed.
-  db.query('INSERT INTO history_events(bot,session,at,event,key) VALUES(?,?,?,?,?)').run(
-    'b1',
-    'hidden-compressed',
-    21,
-    JSON.stringify({ type: 'user.message', messageId: 'h1', text: 'leaked hidden', attachments: [], images: { support: 'unknown', imageCount: 0 } }),
-    'hk1'
-  )
-  db.query('INSERT INTO history_events(bot,session,at,event,key) VALUES(?,?,?,?,?)').run(
-    'b1',
-    'excluded-op',
-    32,
-    JSON.stringify({ type: 'user.message', messageId: 'x1', text: 'leaked excluded', attachments: [], images: { support: 'unknown', imageCount: 0 } }),
-    'xk1'
-  )
-
-  // Fail-closed allowed(): hidden-compressed is denied (simulating unreadable compression lineage or hidden root).
+  for (const [sess, text, key] of [
+    ['visible', 'keep visible', 'vk1'],
+    ['hidden-compressed', 'leaked hidden', 'hk1'],
+    ['excluded-op', 'leaked excluded', 'xk1']
+  ] as const) {
+    db.query('INSERT INTO history_events(bot,session,at,event,key) VALUES(?,?,?,?,?)').run(
+      'b1',
+      sess,
+      40,
+      JSON.stringify({ type: 'user.message', messageId: key, text, attachments: [], images: { support: 'unknown', imageCount: 0 } }),
+      key
+    )
+  }
   const history = new HistoryService(
     store,
     engine,
-    async () => [{ id: 'b1', engineId: 'test-engine', engineBotId: 'n1' }],
+    async () => [],
     (_b, s) => s !== 'hidden-compressed'
   )
   try {
-    await history.flush({ id: 'b1', engineId: 'test-engine', engineBotId: 'n1' })
-    offline = true
-    await history.flush({ id: 'b1', engineId: 'test-engine', engineBotId: 'n1' })
-    const items = store.page('b1').items
-    expect(items.map(r => r.sessionId)).toEqual(['visible'])
-    expect(items.some(r => 'text' in r.item && (r.item.text.includes('hidden') || r.item.text.includes('excluded')))).toBe(false)
+    const sw = await history.prepareEngineSwitch({ id: 'b1', engineId: 'e-down', engineBotId: 'n1' })
+    sw.commit('new-chat')
+    const userItems = store.page('b1').items.filter(r => r.item.kind === 'user')
+    expect(userItems.map(r => r.sessionId)).toEqual(['visible'])
+    expect(userItems.some(r => r.item.kind === 'user' && (r.item.text.includes('hidden') || r.item.text.includes('excluded')))).toBe(false)
+  } finally {
+    history.close()
+    db.close()
+  }
+})
+
+test('M11: flushBotHistory enforces maxPages cap and returns incomplete: true', async () => {
+  const db = openDatabase(':memory:')
+  let readCalls = 0
+  const source: ConversationSource = {
+    list: async () => [{ id: 'big', at: 10 }],
+    read: async (_id, cursor) => {
+      readCalls++
+      const n = Number(cursor ?? 0)
+      if (n >= 10) return { rows: [], cursor: '10', reset: false, empty: true }
+      return { rows: [{ id: `p:${n}`, at: 100 + n, order: n, item: { kind: 'user', text: `page ${n}` } }], cursor: String(n + 1), reset: false, empty: false }
+    },
+    close: () => {}
+  }
+  const store = new HistoryStore(db)
+  const history = new HistoryService(
+    store,
+    { id: 'e', conversations: async () => source } as unknown as BotEngine,
+    async () => [],
+    () => true
+  )
+  try {
+    const res = await history.flush({ id: 'b1', engineId: 'e', engineBotId: 'n1' }, { maxPages: 3 })
+    expect(readCalls).toBe(3)
+    expect(res).toEqual({ incomplete: true, imported: 3 })
   } finally {
     history.close()
     db.close()
