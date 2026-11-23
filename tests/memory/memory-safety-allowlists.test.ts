@@ -1,0 +1,177 @@
+import { describe, expect, test } from 'bun:test'
+import { memoryRefusal, outsideReason, refuseUnsafe } from '../../server/memory/memory-safety'
+
+describe('every allow-list entry and benign branch is directly exercised', () => {
+  const allowed = [
+    // PAGING_OR_SYNC_TOKEN (all 14 words + next_/prev_ prefixes)
+    'page_token=Cg0IARIGabcdef',
+    'next_page_token=Cg0IARIGabcdef',
+    'prev_page_token=Cg0IARIGabcdef',
+    'next_token=Cg0IARIGabcdef',
+    'prev_token=Cg0IARIGabcdef',
+    'cursor_token=Cg0IARIGabcdef',
+    'continuation_token=Cg0IARIGabcdef',
+    'scroll_token=Cg0IARIGabcdef',
+    'delta_token=Cg0IARIGabcdef',
+    'change_token=Cg0IARIGabcdef',
+    'sync_token=Cg0IARIGabcdef',
+    'resume_token=Cg0IARIGabcdef',
+    'pagination_token=Cg0IARIGabcdef',
+    'idempotency_token=Cg0IARIGabcdef',
+    'version_token=Cg0IARIGabcdef',
+    'cancel_token=Cg0IARIGabcdef',
+    'nextPageToken=Cg0IARIGabcdef',
+    '{"next_page_token": "Cg0IARIGabcdef", "scroll_token": "Cg0IARIGabcdef"}',
+    '[{"key": "page_token", "value": "Cg0IARIGabcdef"}]',
+    // TEST_PASS_COLON (colon only, every entry with a 6+ char value)
+    'TEST_PASS: TestAuthFlow',
+    'TESTS_PASS: TestAuthFlow',
+    'CHECK_PASS: TestAuthFlow',
+    'CHECKS_PASS: TestAuthFlow',
+    'BUILD_PASS: TestAuthFlow',
+    'CI_PASS: TestAuthFlow',
+    'SMOKE_PASS: homepage 200 OK',
+    'FIRST_PASS: refactored',
+    'SECOND_PASS: cleaned_up',
+    'RENDER_PASS: shadow_map',
+    // Counters, settings, compact JSON non-trailing values & non-secret identifiers
+    'tokens: 120000',
+    'max_tokens=4096',
+    '{"total_tokens": 512, "max_tokens": 4096, "token": 4096, "pass": true}',
+    '{"has_secret":true,"password_changed_at":"2026-11-23T00:00:00Z","id":1}',
+    '{"has_secret":true,"id":1}',
+    '{"token":null,"user":"alice"}',
+    '{"token":4096,"model":"claude"}',
+    '{"pass":true,"tests":12}',
+    '{"secret":false,"active":true}',
+    'Response: {"has_secret":true,"id":1}',
+    'Response: {"token":null,"user":"alice"}',
+    'Response: {"token":4096,"model":"x"}',
+    'Response: {"pass":12,"status":"ok"}',
+    '{"pass": 12}',
+    'password: "abc"',
+    'password: "****"',
+    'password: {"type": "string"}',
+    'compass=northeast',
+    'bypass=123456',
+    'keyboard_layout=dvorak',
+    'secretary_name=alice_smith',
+    'tokenizer=cl100k_base',
+    '{"bypass": "123456", "compass": "northeast"}',
+    '{"keyboard_layout": "dvorak", "secretary_name": "alice_smith", "tokenizer": "cl100k_base"}',
+    // TYPE_WORDS + array suffix (all 6 entries)
+    'token: string',
+    'token: string;',
+    'secret: string[]',
+    'token: string[] | null',
+    'api_key: number',
+    'token: number[]',
+    'token: boolean',
+    'token: object',
+    'token: undefined',
+    'token: unknown',
+    '{"password": {"type": "string"}}',
+    '{"token": null, "password": ""}',
+    // MASK_CHAR (all 5 single-char masks) & X_MASK (new rules only)
+    'password: ******',
+    'password: ••••••',
+    'password: ......',
+    'password: ------',
+    'password: ______',
+    '{"secret": "********"}',
+    '{\\"secret\\":\\"********\\"}',
+    'OPENAI_API_KEY=xxxxxxxxxxxx',
+    'OPENAI_API_KEY=XXXXXXXXXXXX',
+    // BRACKET_PLACEHOLDER (every keyword, verb cue, and field name)
+    'secret: [REDACTED]',
+    '{"token": "[withheld]"}',
+    'secret: [omitted]',
+    'secret: [hidden]',
+    'secret: [masked]',
+    'secret: [placeholder]',
+    'api_key: <your-key>',
+    'DB_PASSWORD=<set-in-production>',
+    'api_key: <insert-key-here>',
+    'APP_SECRET=<generate-with-openssl>',
+    'secret: <replace-me>',
+    'api_key: <API_KEY>',
+    'password: <DB_PASSWORD>',
+    'secret: <secret>',
+    'token: <token>',
+    '{"password": ["[REDACTED]"]}',
+    '{"password": {"value": "[REDACTED]"}}',
+    '[{"key": "DB_PASSWORD", "value": "[REDACTED]"}]',
+    // EXAMPLE_PLACEHOLDER (new rules only)
+    'OPENAI_API_KEY=REPLACE_WITH_YOUR_KEY',
+    'OPENAI_API_KEY=TODO_SET_THIS',
+    'DB_PASSWORD=change_this_password',
+    'OPENAI_API_KEY=YOUR_API_KEY',
+    'AUTH_TOKEN=YOUR_SECRET_TOKEN',
+    'OPENAI_API_KEY=sk-...',
+    'OPENAI_API_KEY=sk-your-key-here',
+    'STRIPE_WEBHOOK_SECRET=whsec_placeholder',
+    // Principle B: variable/template refs, command substitutions & code references
+    'DB_PASS=$DB_PASSWORD',
+    `OPENAI_API_KEY=\${OPENAI_API_KEY}`,
+    `AUTH_TOKEN=\${{ secrets.AUTH_TOKEN }}`,
+    `token: \${{ secrets.GITHUB_TOKEN }}`,
+    'DB_PASS={{VAR_NAME}}',
+    '{"token": "{{ AUTH_TOKEN }}"}',
+    'DB_PASSWORD=$(op read op://vault/db/password)',
+    'refresh_token: refreshToken',
+    "headers: { 'x-api-key': apiKey }",
+    'client_secret: clientSecret',
+    'DB_PASSWORD=dbPassword',
+    'DB_PASSWORD = db_password',
+    'access_token: accessToken',
+    'db_password: opts?.password',
+    'auth_token: config?.auth?.token',
+    'auth_token: this.config.auth.token',
+    'auth_token: this.app.config?.auth?.token',
+    'bearer_token: connection.bearerToken',
+    'const db_pass = config.db.password',
+    'OPENAI_API_KEY: env.OPENAI_API_KEY',
+    'OPENAI_API_KEY: import.meta.env.OPENAI_API_KEY',
+    'db_password: opts.password',
+    "const DB_PASS = process.env['DB_PASS']",
+    'DB_PASSWORD = os.environ["DB_PASSWORD"]',
+    "headers: { 'x-api-key': req.headers['x-api-key'] }",
+    'DB_PASSWORD = os.getenv("DB_PASSWORD")',
+    'self._token = Path(str(settings.get("token_file") or DEFAULT_TOKEN_FILE)).expanduser().read_text().strip()',
+    // Underscore env-var prose, pass is, matching quotes & LilBot RPC schema
+    'OPENAI_API_KEY is configured in ~/.hermes/.env.',
+    'DB_PASSWORD is stored in 1Password.',
+    'GITHUB_TOKEN is required for releases.',
+    'APP_SECRET is rotated monthly.',
+    'AUTH_TOKEN is refreshed 30s before expiry.',
+    'first_pass is complete',
+    'The password isolation worked cleanly.',
+    '"tests pass": everything',
+    "'work.pass': WorkItem"
+  ]
+
+  for (const text of allowed) {
+    test(`allows: ${text.slice(0, 56)}`, () => {
+      expect(memoryRefusal(text)).toBeNull()
+      expect(outsideReason(text)).toBeNull()
+      expect(() => refuseUnsafe(text)).not.toThrow()
+    })
+  }
+
+  for (const text of [
+    'DB_PASSWORD=password',
+    'APP_SECRET=secret',
+    'DB_PASSWORD=dbpassword',
+    'ADMIN_PASSWORD=adminpassword',
+    'DB_PASSWORD=ssword',
+    'STRIPE_SECRET=pesecret',
+    'GITHUB_TOKEN=hubtoken',
+    'OPENAI_API_KEY=aiapikey',
+    "'password': password"
+  ]) {
+    test(`refuses single-word, run-together, or mid-word key-echo: ${text}`, () => {
+      expect(memoryRefusal(text)).toContain('password or key')
+      expect(outsideReason(text)).toContain('password or key')
+    })
+  }
+})

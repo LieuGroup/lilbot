@@ -7,7 +7,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { WebSocketHandler } from 'bun'
 import { AddThisComputer } from './computers/add-this-computer'
-import { HelperDownloads, helperSettings } from './computers/helper-downloads'
+import { HelperDownloads, helperSettings, privateDownloadOrigin } from './computers/helper-downloads'
 import { CALLBACK_PATH } from './connections/mcp-callback'
 import { isT3Enabled, T3_BRIDGE_PATH } from './connections/t3-connection'
 import { deployNotice } from './deploy/deploy-notice'
@@ -90,7 +90,8 @@ bots.watchActivity(event => {
   if (!hiddenChat(event.botId, event.chatId)) activity.observe(event)
 }, activity.cursor)
 const DIST = join(import.meta.dir, '..', 'dist')
-const downloads = new HelperDownloads(join(DATA_DIR, 'helper-downloads'), helperSettings(process.env, PORT, ACCESS?.host, computers.auth.serverKey.fingerprint))
+const helperCfg = helperSettings(process.env, PORT, ACCESS?.host, computers.auth.serverKey.fingerprint)
+const downloads = new HelperDownloads(join(DATA_DIR, 'helper-downloads'), helperCfg, privateDownloadOrigin(process.env, PORT))
 const addThis = new AddThisComputer(computers, downloads)
 
 const ALLOWED_HOSTS = allowedHosts(PORT, process.env.LILBOT_ALLOWED_HOSTS)

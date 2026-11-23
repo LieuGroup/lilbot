@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from 'bun:test'
 import { listenForHandover } from '../../helper/handover-listener'
 import { lsofOwned, procOwner } from '../../helper/loopback-peer'
+import { HELPER_VERSION } from '../../helper/settings'
 
 const settings = { door: 'https://door.example', origins: ['https://bot.example'], port: 1, fingerprint: 'f'.repeat(64) }
 const servers: { stop: (force: boolean) => void }[] = []
@@ -27,7 +28,7 @@ test("only LilBot's own page origin on the loopback host gets an answer, and ref
   const hello = await l.call('/v1/hello')
   expect(hello.status).toBe(200)
   expect(hello.headers.get('access-control-allow-origin')).toBe('https://bot.example')
-  expect(await hello.json()).toEqual({ app: 'lilbot-helper', version: '1', state: 'waiting' })
+  expect(await hello.json()).toEqual({ app: 'lilbot-helper', version: HELPER_VERSION, state: 'waiting' })
   const preflight = await l.call('/v1/handover', { method: 'OPTIONS' })
   expect(preflight.status).toBe(204)
   expect(preflight.headers.get('access-control-allow-private-network')).toBe('true')
