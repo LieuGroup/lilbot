@@ -1,6 +1,6 @@
 import type { ChatEvent } from '../../shared/chat-schema'
+import { applyChatEvent, type ChatView } from '../../shared/client/chat/chat-state'
 import type { HistoryPage } from '../../shared/history-schema'
-import { applyChatEvent, type ChatView } from '../../web/src/chat/chat-state'
 
 export const play = (chat: ChatView, ...events: ChatEvent[]) => events.reduce(applyChatEvent, chat)
 export const texts = (chat: ChatView) =>

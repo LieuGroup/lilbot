@@ -1,4 +1,4 @@
-import type { Avatar } from '../../../shared/avatar'
+import type { Avatar } from './avatar'
 
 /** Fixed artwork pigments, independent of the surrounding UI theme. */
 export const avatarColors: Record<Avatar['color'], string> = {

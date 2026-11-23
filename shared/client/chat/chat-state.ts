@@ -1,7 +1,7 @@
 /** What a chat looks like on screen, and how each live event changes it. Pure functions only. */
-import type { ChatEvent, ChatItem, ChatSnapshot } from '../../../shared/chat-schema'
-import type { HistoryPage, SessionReason } from '../../../shared/history-schema'
-import { reuseItems, withLatest } from '../history/history-view'
+import type { ChatEvent, ChatItem, ChatSnapshot } from '../../chat-schema'
+import type { HistoryPage, SessionReason } from '../../history-schema'
+import { reuseItems, withLatest } from './history-view'
 import { withArrivedMessage } from './user-messages'
 
 /** Where a new session began, inside the one continuous conversation. */

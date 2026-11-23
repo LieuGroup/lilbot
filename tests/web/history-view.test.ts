@@ -1,9 +1,8 @@
 import { describe, expect, test } from 'bun:test'
-
+import { type ChatView, chatFromHistory, chatFromSnapshot } from '../../shared/client/chat/chat-state'
+import { canLoadOlder, olderRequest, reuseItems, withOlder } from '../../shared/client/chat/history-view'
+import { withUserMessage } from '../../shared/client/chat/user-messages'
 import type { HistoryPage } from '../../shared/history-schema'
-import { type ChatView, chatFromHistory, chatFromSnapshot } from '../../web/src/chat/chat-state'
-import { withUserMessage } from '../../web/src/chat/user-messages'
-import { canLoadOlder, olderRequest, reuseItems, withOlder } from '../../web/src/history/history-view'
 import { snapshot } from './chat-helpers'
 
 /** Rows `from` to `to - 1` of one long conversation, as the server pages them. */

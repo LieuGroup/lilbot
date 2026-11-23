@@ -1,0 +1,57 @@
+# Folded layout (iPhone): settings gate, auto-opened chat, send, then roster.
+# Run with the fake server up: `bun ui-tests/fake-lilbot.ts` (port 3399).
+appId: com.lilbot.app.dev
+---
+- launchApp:
+    clearState: true
+- assertVisible: "Server address"
+- tapOn: "https://lilbot.example.com"
+- inputText: "http://localhost:3399"
+- tapOn: "cf-access-jwt-assertion value"
+- inputText: "test-token"
+- hideKeyboard
+- runFlow:
+    when:
+      visible: "Not Now"
+    commands:
+      - tapOn: "Not Now"
+- tapOn: "Save and connect"
+- extendedWaitUntil:
+    visible: "Not Now"
+    timeout: 10000
+    optional: true
+- runFlow:
+    when:
+      visible: "Not Now"
+    commands:
+      - tapOn: "Not Now"
+- assertVisible: "Hello! I am the fake LilBot server."
+- assertVisible: "Model: claude-sonnet-4-5 · High"
+- tapOn:
+    id: "model-pill"
+- assertVisible: "Find a model"
+- tapOn: "claude-opus-4-1"
+- extendedWaitUntil:
+    visible: "Model: claude-opus-4-1 · High"
+    timeout: 5000
+- tapOn:
+    id: "model-pill"
+- extendedWaitUntil:
+    visible: "Find a model"
+    timeout: 5000
+- tapOn:
+    id: "effort-option-medium"
+- extendedWaitUntil:
+    visible: "Model: claude-opus-4-1 · Medium"
+    timeout: 5000
+# Focus the composer field directly: percentage taps miss the new card layout.
+- tapOn:
+    id: "composer-input"
+- inputText: "Hi there"
+- hideKeyboard
+- tapOn: "Send"
+- assertVisible: "Hi there"
+- tapOn: "Back"
+- assertVisible: "Test Bot"
+- assertVisible: "Test section"
+- assertVisible: "Section Bot"

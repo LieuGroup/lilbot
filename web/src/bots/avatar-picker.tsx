@@ -1,7 +1,7 @@
-import { avatarColors } from '@/ui/avatar-colors'
 import { AvatarShape } from '@/ui/avatar-shape'
 import { Button } from '@/ui/button'
 import { AVATAR_COLORS, AVATAR_SHAPES, type Avatar } from '../../../shared/avatar'
+import { avatarColors } from '../../../shared/avatar-colors'
 
 const colors = ['bone', 'ink', ...AVATAR_COLORS.filter(color => color !== 'bone' && color !== 'ink')] as const
 const shapes = ['squircle', ...AVATAR_SHAPES.filter(shape => shape !== 'squircle')] as const

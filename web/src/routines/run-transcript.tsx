@@ -2,10 +2,10 @@ import { type LucideIcon, SparklesIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Button } from '@/ui/button'
 import { Trace, TraceIcon, TraceLine, TraceTitle } from '@/ui/trace'
+import { applyChatEvent, type ChatView, chatFromSnapshot, emptyChat, type MessageItem } from '../../../shared/client/chat/chat-state'
 import { lilbot, messageOf } from '../app/lilbot-socket'
 import { useBotStore } from '../bots/bot-store'
 import { ChatItem } from '../chat/chat-item'
-import { applyChatEvent, type ChatView, chatFromSnapshot, emptyChat, type MessageItem } from '../chat/chat-state'
 
 type OpenRun = 'routines.openRun' | 'webhooks.openRun'
 
