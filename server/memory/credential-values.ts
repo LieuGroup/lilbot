@@ -35,11 +35,26 @@ export function isSchemaMetaKey(key: string) {
 }
 
 function isKeyEchoRef(v: string, keyName?: string) {
-  if (!keyName || !LETTERS_ONLY.test(v)) return false
-  return keyName
-    .replace(/[_. -]+/g, '')
+  if (!keyName) return false
+  const words = keyName
     .toLowerCase()
-    .endsWith(v.toLowerCase())
+    .split(/[_. -]+/)
+    .filter(Boolean)
+  if (words.length < 2) return false
+  const sep = /[_. -]/.exec(keyName)?.[0] ?? ''
+  for (let start = 0; start <= words.length - 2; start++) {
+    const tail = words.slice(start)
+    if (!tail.every(w => LETTERS_ONLY.test(w))) continue
+    const camel =
+      tail[0] +
+      tail
+        .slice(1)
+        .map(w => w[0].toUpperCase() + w.slice(1))
+        .join('')
+    if (v === camel) return true
+    if (sep && sep !== ' ' && v.toLowerCase() === tail.join(sep)) return true
+  }
+  return false
 }
 
 function isDottedCodeMember(v: string) {
@@ -82,8 +97,9 @@ export function hasSecretInParsedValue(value: unknown, isOldRule: boolean, check
   const obj = value as Record<string, unknown>
   const schema = !isOldRule && isSchemaObject(obj)
   for (const [k, v] of Object.entries(obj)) {
-    if (schema && isSchemaMetaKey(k)) {
-      if (typeof v === 'string' && checkText?.(v)) return true
+    if (checkText?.(k)) return true
+    if (schema && isSchemaMetaKey(k) && typeof v === 'string') {
+      if (checkText?.(v)) return true
       continue
     }
     if (hasSecretInParsedValue(v, isOldRule, checkText)) return true

@@ -85,7 +85,7 @@ function hasCredentialInJson(node: unknown, underCred: boolean): boolean {
   const schema = underCred && isSchemaObject(obj)
   for (const [k, v] of entries) {
     if (hasCredentialInText(k)) return true
-    const childCred = schema && isSchemaMetaKey(k) ? false : underCred || isQuotedCredentialKey(k) || (pair && k.toLowerCase() === 'value')
+    const childCred = schema && isSchemaMetaKey(k) && typeof v === 'string' ? false : underCred || isQuotedCredentialKey(k) || (pair && k.toLowerCase() === 'value')
     if (hasCredentialInJson(v, childCred)) return true
   }
   return false

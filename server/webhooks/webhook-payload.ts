@@ -71,7 +71,10 @@ function redactEvent(body: unknown, kept: Record<string, string>): { body: unkno
       })
       const schema = underCred && isSchemaObject(obj)
       return Object.fromEntries(
-        entries.map(([k, v]) => [k, walk(v, schema && isSchemaMetaKey(k) ? false : underCred || isQuotedCredentialKey(k) || (pair && k.toLowerCase() === 'value'))])
+        entries.map(([k, v]) => [
+          k,
+          walk(v, schema && isSchemaMetaKey(k) && typeof v === 'string' ? false : underCred || isQuotedCredentialKey(k) || (pair && k.toLowerCase() === 'value'))
+        ])
       )
     }
     return node

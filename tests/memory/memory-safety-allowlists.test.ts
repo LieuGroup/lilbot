@@ -122,6 +122,7 @@ describe('every allow-list entry and benign branch is directly exercised', () =>
     "headers: { 'x-api-key': apiKey }",
     'client_secret: clientSecret',
     'DB_PASSWORD=dbPassword',
+    'DB_PASSWORD = db_password',
     'access_token: accessToken',
     'db_password: opts?.password',
     'auth_token: config?.auth?.token',
@@ -154,6 +155,23 @@ describe('every allow-list entry and benign branch is directly exercised', () =>
       expect(memoryRefusal(text)).toBeNull()
       expect(outsideReason(text)).toBeNull()
       expect(() => refuseUnsafe(text)).not.toThrow()
+    })
+  }
+
+  for (const text of [
+    'DB_PASSWORD=password',
+    'APP_SECRET=secret',
+    'DB_PASSWORD=dbpassword',
+    'ADMIN_PASSWORD=adminpassword',
+    'DB_PASSWORD=ssword',
+    'STRIPE_SECRET=pesecret',
+    'GITHUB_TOKEN=hubtoken',
+    'OPENAI_API_KEY=aiapikey',
+    "'password': password"
+  ]) {
+    test(`refuses single-word, run-together, or mid-word key-echo: ${text}`, () => {
+      expect(memoryRefusal(text)).toContain('password or key')
+      expect(outsideReason(text)).toContain('password or key')
     })
   }
 })

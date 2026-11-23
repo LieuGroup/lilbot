@@ -45,7 +45,14 @@ describe('JSON Schema descriptive keys under credential properties (MCP tools/li
     JSON.stringify({ type: 'object', properties: { password: { type: 'string', value: 'hunter2abc' } } }),
     JSON.stringify({ type: 'object', properties: { password: { description: 'hunter2abc' } } }),
     JSON.stringify({ type: 'object', properties: { password: { type: 'string', description: 'Use DB_PASSWORD=hunter2abc' } } }),
+    JSON.stringify({ type: 'object', properties: { password: { type: 'string', description: ['hunter2abc'] } } }),
     'Schema: {"password": {"type": "string", "description": "Use DB_PASSWORD=hunter2abc"}}',
+    'Schema: {"password": {"type": "string", "description": ["password=hunter2abc"]}}',
+    'Schema: {"password": {"type": "string", "description": {"note": "password=hunter2abc"}}}',
+    'Schema: {"password": {"type": "string", "description": {"secret": "hunter2abc"}}}',
+    'db_password: {"type": "string", "description": ["password=hunter2abc"]}',
+    'password: {"password=hunter2abc": true}',
+    'Schema: {"password": {"type": "string", "password=hunter2abc": true}}',
     'password: {"type": "string", "description": "hunter2abc"}'
   ]
 
@@ -56,10 +63,14 @@ describe('JSON Schema descriptive keys under credential properties (MCP tools/li
     })
   }
 
-  test('webhook schema redacts literal default while keeping descriptive metadata intact', () => {
+  test('webhook schema redacts literal default and non-string metadata while keeping string metadata intact', () => {
     const shown = view({ type: 'object', properties: { password: { type: 'string', description: 'Account password', default: 'hunter2abc' } } })
     expect(shown.refusal).toBeNull()
     expect(shown.item).not.toContain('hunter2abc')
     expect(JSON.parse(shown.item).body.properties.password).toEqual({ type: 'string', description: 'Account password', default: '[withheld]' })
+    const badMeta = view({ type: 'object', properties: { password: { type: 'string', description: ['hunter2abc'] } } })
+    expect(badMeta.refusal).toBeNull()
+    expect(badMeta.item).not.toContain('hunter2abc')
+    expect(JSON.parse(badMeta.item).body.properties.password.description).toEqual(['[withheld]'])
   })
 })
