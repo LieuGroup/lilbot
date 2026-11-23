@@ -11,20 +11,17 @@ import type { BotEngine } from '../../server/engines/bot-engine'
 import { MemoryService } from '../../server/memory/memory-service'
 import { MemoryStore } from '../../server/memory/memory-store'
 import { toolsVersion } from '../../server/system/system-connection'
-import { codingState } from '../../server/system/system-note-facts'
+import { codingState, systemNote } from '../../server/system/system-note-facts'
 import { detail, fakeEngine } from '../helpers/fake-engine'
 import { systemFixture } from './system-fixture'
 
 const words = (text: string) => text.split(/\s+/).filter(Boolean).length
-const facts = (others: NoteFacts['others'] = [{ name: 'Writer', function: 'Drafts posts' }], coding?: string): NoteFacts => ({
+const facts = (t3Enabled = false): NoteFacts => ({
   bot: { id: 'b1', name: 'Bot One', workspace: '/srv/lilbot/workspaces/b1', model: { provider: 'cliproxyapi', model: 'anthropic/claude-sonnet-5-5' } },
-  others,
-  computers: ['leader-box', 'MacBook'],
-  ...(coding ? { coding } : {}),
-  release: 'abcdef012345'
+  ...(t3Enabled ? { t3Enabled: true } : {})
 })
 
-test('the note states who the bot is, where it runs and points at the two tools, in about 250 words', () => {
+test('the note states stable identity and standing rules and points at live tools, in about 200 words', () => {
   const note = buildNote(facts())
   for (const part of [
     '"Bot One"',
@@ -32,14 +29,13 @@ test('the note states who the bot is, where it runs and points at the two tools,
     '/srv/lilbot/workspaces/b1',
     'cliproxyapi/anthropic/claude-sonnet-5-5',
     'leader machine',
-    'Writer (Drafts posts)',
-    'leader-box, MacBook',
-    'abcdef012345',
     '[LilBot origin]',
     'lilbot_guide topic `computers`',
     'never guess for a command that changes something',
     'ask Oscar in your reply',
     'lilbot_about',
+    'lilbot_bots_list',
+    'lilbot_status',
     'lilbot_guide',
     'lilbot-coding',
     'lilbot_delegate (worker: true)',
@@ -51,21 +47,52 @@ test('the note states who the bot is, where it runs and points at the two tools,
     expect(note).toContain(part)
   }
   expect(note).not.toMatch(/t3/i)
+  expect(note).not.toContain('Other bots:')
+  expect(note).not.toContain('Computers:')
+  expect(note).not.toContain('LilBot release:')
   expect(words(note)).toBeGreaterThan(90)
-  expect(words(note)).toBeLessThan(260)
-  expect(buildNote({ ...facts([]), bot: { ...facts().bot, model: null } })).toContain("the engine's default")
-  const withT3 = buildNote(facts(undefined, 'available, signed in until 2026-12-01'))
-  expect(withT3).toContain('Coding through T3 Code: available, signed in until 2026-12-01.')
+  expect(words(note)).toBeLessThan(240)
+  expect(buildNote({ bot: { ...facts().bot, model: null } })).toContain("the engine's default")
+  const withT3 = buildNote(facts(true))
+  expect(withT3).toContain('Coding through T3 Code: check lilbot_status (area `t3`) or lilbot_about for current sign-in status.')
   expect(withT3).toContain('code changes go through T3 Code')
-  expect(words(withT3)).toBeLessThan(260)
+  expect(withT3).not.toContain('signed in until')
+  expect(words(withT3)).toBeLessThan(240)
 })
 
-test('a long roster stays short: a few bots are named and the rest counted', () => {
-  const many = Array.from({ length: 40 }, (_, i) => ({ name: `Bot number ${i}`, function: 'x'.repeat(300) }))
-  const note = buildNote(facts(many))
-  expect(note).toContain('and 32 more')
-  expect(words(note)).toBeLessThan(310)
-  expect(note).not.toContain('x'.repeat(60))
+test('systemNote is byte-identical across deploys, roster changes, computer changes, and T3 sign-in renewals', () => {
+  const db = openDatabase(':memory:')
+  const store = new BotStore(db)
+  const workspaces = new Workspaces('/tmp/lilbot-note-stable')
+  const bot = {
+    id: 'b1',
+    name: 'Bot One',
+    function: 'Primary',
+    instructions: 'Be brief.',
+    model: null,
+    reasoningEffort: null,
+    isDefault: false,
+    permissionMode: 'full-access' as const,
+    engineId: 'test',
+    engineBotId: 'native-b1'
+  }
+  const makeFacts = (commit: string, computerNames: string[], expiresAt: number, t3Enabled: boolean) => ({
+    store,
+    workspaces,
+    computers: { list: () => computerNames.map(name => ({ id: name, name })) } as never,
+    t3: () => ({ state: 'connected' as const, expiresAt }),
+    t3Enabled,
+    commit
+  })
+  const before = withNote(bot.instructions, systemNote(makeFacts('111111111111', ['leader'], 1700000000000, false))(bot))
+  store.import('test', [{ ...detail, id: 'other', name: 'Writer', engineId: 'test', engineBotId: 'native-other' }])
+  const after = withNote(bot.instructions, systemNote(makeFacts('222222222222', ['leader', 'mac-mini'], 1800000000000, false))(bot))
+  expect(after).toBe(before)
+  const t3Before = withNote(bot.instructions, systemNote(makeFacts('111111111111', ['leader'], 1700000000000, true))(bot))
+  const t3After = withNote(bot.instructions, systemNote(makeFacts('222222222222', ['leader', 'mac-mini'], 1800000000000, true))(bot))
+  expect(t3After).toBe(t3Before)
+  expect(t3Before).not.toMatch(/\d{4}-\d{2}-\d{2}/)
+  db.close()
 })
 
 test('the note sits after the user’s instructions and comes off again, leaving the user’s text as written', () => {
