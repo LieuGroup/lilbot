@@ -15,12 +15,21 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { HELPER_REGISTRATION_POINT, isNameExempt, NAME_ALLOWLIST, SCANNED_ROOTS, SERVER_REGISTRATION_POINTS } from './boundary-rules'
+import {
+  bunUsagesInSource,
+  forbiddenServerEngineImports,
+  HELPER_REGISTRATION_POINT,
+  isEngineMetadataModule,
+  isNameExempt,
+  NAME_ALLOWLIST,
+  SCANNED_ROOTS,
+  SERVER_METADATA_POINT
+} from './boundary-rules'
 import { allEngineAndDriverIds, concreteDriverIds, concreteEngineIds, engineNamesInSource, forbiddenSubfolderImports, importsOf, ROOT, sourceFiles } from './boundary-scanner'
 
 function concreteImportLeaks(engines: readonly string[]): string[] {
   return SCANNED_ROOTS.flatMap(sourceFiles)
-    .flatMap(file => forbiddenSubfolderImports(file, importsOf(file), 'server/engines', engines, SERVER_REGISTRATION_POINTS))
+    .flatMap(file => forbiddenServerEngineImports(file, importsOf(file), engines))
     .sort()
 }
 
@@ -49,11 +58,14 @@ describe('north-star engine & helper driver boundary guard', () => {
     expect(testImports).toEqual([])
   })
 
-  test('zero files outside engine folders and server/engines/{registry,metadata}.ts import a concrete engine', () => {
+  test('zero files outside engine folders and server/engines/{registry,metadata}.ts import a concrete engine, and metadata stays strictly declarative and Bun-free', () => {
     const engines = concreteEngineIds()
     expect(engines).toContain('scripted')
     expect(concreteImportLeaks(engines)).toEqual([])
-    expect(importsOf('server/engines/metadata.ts').filter(target => target.endsWith('-engine'))).toEqual([])
+    const metadataFiles = [SERVER_METADATA_POINT, ...sourceFiles('server/engines').filter(file => isEngineMetadataModule(file, engines))]
+    expect(metadataFiles.length).toBeGreaterThan(1)
+    const bunLeaks = metadataFiles.flatMap(file => bunUsagesInSource(readFileSync(join(ROOT, file), 'utf8'), file)).sort()
+    expect(bunLeaks).toEqual([])
   })
 
   test('zero files outside a helper driver folder and helper/drivers/registry.ts import from any helper driver folder', () => {

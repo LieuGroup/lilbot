@@ -66,8 +66,13 @@ test('loadRollbackHooks rejects empty, unsafe, duplicate, or path-escaping manif
   // Module exporting a hook with a mismatched engineId becomes a failing stub instead of running under the wrong engine.
   const mismatchDir = writeManifest('mismatch', [{ engineId: 'expected-eng', file: 'expected-eng.ts' }])
   writeFileSync(join(mismatchDir, 'expected-eng.ts'), 'export const rollbackHook = { engineId: "wrong-eng", async rollback() { return { cleared: 99, failed: 0 } } }\n')
-  const db = makeDb(root, [['b1', 'expected-eng', 'p1']])
-  expect(await runEngineRollbacks(db, 'LILBOT_ENV=production', { hooksDir: mismatchDir })).toEqual({ cleared: 0, failed: 1 })
+  const loadedMismatch = await loadRollbackHooks(mismatchDir)
+  expect(loadedMismatch.map(h => h.engineId)).toEqual(['expected-eng'])
+  const db = makeDb(root, [
+    ['b1', 'expected-eng', 'p1'],
+    ['b2', 'wrong-eng', 'p2']
+  ])
+  expect(await runEngineRollbacks(db, 'LILBOT_ENV=production', { hooksDir: mismatchDir })).toEqual({ cleared: 0, failed: 2 })
 })
 
 test('runEngineRollbacks fails closed on null printedEnvironment without calling hooks, on empty manifest, and on unmatched engines', async () => {
@@ -133,6 +138,37 @@ test('hanging hooks time out without blocking other engines, and malformed or th
   expect(Date.now() - started).toBeLessThan(2_000)
   expect(outcome).toEqual({ cleared: 1, failed: 5 })
   expect(Number.isNaN(outcome.cleared) || Number.isNaN(outcome.failed)).toBe(false)
+})
+
+test('aggregate rollback budget caps total runtime across multiple hanging hooks and skips hooks once exhausted', async () => {
+  const root = tempDir('lilbot-total-budget-')
+  const db = makeDb(root, [
+    ['b1', 'eng-1', 'p1'],
+    ['b2', 'eng-2', 'p2'],
+    ['b3', 'eng-3', 'p3']
+  ])
+  const startedHooks: string[] = []
+  const hanging = (engineId: string): EngineRollbackHook => ({
+    engineId,
+    rollback: () => {
+      startedHooks.push(engineId)
+      return new Promise(() => {})
+    }
+  })
+  const started = Date.now()
+  const outcome = await runEngineRollbacks(db, 'LILBOT_ENV=production', {
+    hooks: [hanging('eng-1'), hanging('eng-2'), hanging('eng-3')],
+    hookTimeoutMs: 90,
+    totalTimeoutMs: 120
+  })
+  expect(outcome).toEqual({ cleared: 0, failed: 3 })
+  expect(Date.now() - started).toBeLessThan(240)
+  expect(startedHooks).toEqual(['eng-1', 'eng-2'])
+  expect(
+    readFileSync(join(import.meta.dir, '../../server/deploy/watchdog.ts'), 'utf8')
+      .trim()
+      .endsWith('process.exit(process.exitCode ?? 0)')
+  ).toBe(true)
 })
 
 test('stageDeployRunner and freezeRollbackHooks stage atomically with 0700 dirs, 0600 files, and preserve prior state on failure', async () => {

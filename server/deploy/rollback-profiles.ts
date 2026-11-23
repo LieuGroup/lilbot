@@ -12,6 +12,7 @@ export const MANIFEST_FILE = 'manifest.json'
 export const SAFE_ENGINE_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/
 const SAFE_HOOK_FILE = /^[a-z0-9][a-z0-9_-]{0,63}\.ts$/
 const DEFAULT_HOOK_TIMEOUT_MS = 90_000
+const DEFAULT_TOTAL_TIMEOUT_MS = 120_000
 
 export interface HookManifestEntry {
   engineId: string
@@ -38,9 +39,14 @@ function validRollbackResult(value: unknown): value is EngineRollbackResult {
   return typeof cleared === 'number' && Number.isInteger(cleared) && cleared >= 0 && typeof failed === 'number' && Number.isInteger(failed) && failed >= 0
 }
 
-/** Loads frozen engine rollback hooks from `<hooksDir>/manifest.json`. A single broken hook module
- *  returns a failing stub so other engines' rollback hooks still run. */
-export async function loadRollbackHooks(hooksDir = join(import.meta.dir, HOOKS_DIR), hookTimeoutMs = DEFAULT_HOOK_TIMEOUT_MS): Promise<EngineRollbackHook[]> {
+/** Loads frozen engine rollback hooks from `<hooksDir>/manifest.json`. A single broken or timed-out hook
+ *  returns a failing stub so other engines' rollback hooks still run within the remaining total budget. */
+export async function loadRollbackHooks(
+  hooksDir = join(import.meta.dir, HOOKS_DIR),
+  hookTimeoutMs = DEFAULT_HOOK_TIMEOUT_MS,
+  deadline = Date.now() + DEFAULT_TOTAL_TIMEOUT_MS,
+  now = Date.now
+): Promise<EngineRollbackHook[]> {
   const raw = JSON.parse(await readFile(join(hooksDir, MANIFEST_FILE), 'utf8')) as unknown
   if (!Array.isArray(raw) || raw.length === 0) throw new Error('Invalid or empty rollback hook manifest')
   const hooks: EngineRollbackHook[] = []
@@ -53,21 +59,23 @@ export async function loadRollbackHooks(hooksDir = join(import.meta.dir, HOOKS_D
     }
     if (seen.has(engineId)) throw new Error(`Duplicate rollback hook entry for ${engineId}`)
     seen.add(engineId)
+    const failingStub: EngineRollbackHook = {
+      engineId,
+      rollback: async context => ({ cleared: 0, failed: context.profiles.length || 1 })
+    }
+    const budget = Math.min(hookTimeoutMs, Math.max(0, deadline - now()))
+    if (budget <= 0) {
+      hooks.push(failingStub)
+      continue
+    }
     try {
-      const mod = await withTimeout(
-        () => import(join(hooksDir, file)) as Promise<{ rollbackHook?: EngineRollbackHook }>,
-        hookTimeoutMs,
-        `Timed out loading rollback hook for ${engineId}`
-      )
+      const mod = await withTimeout(() => import(join(hooksDir, file)) as Promise<{ rollbackHook?: EngineRollbackHook }>, budget, `Timed out loading rollback hook for ${engineId}`)
       if (!mod.rollbackHook || mod.rollbackHook.engineId !== engineId || typeof mod.rollbackHook.rollback !== 'function') {
         throw new Error(`Invalid rollback hook module for ${engineId}`)
       }
       hooks.push(mod.rollbackHook)
     } catch {
-      hooks.push({
-        engineId,
-        rollback: async context => ({ cleared: 0, failed: context.profiles.length || 1 })
-      })
+      hooks.push(failingStub)
     }
   }
   return hooks
@@ -75,13 +83,16 @@ export async function loadRollbackHooks(hooksDir = join(import.meta.dir, HOOKS_D
 
 /** Runs every frozen engine rollback hook against the restored database and the service unit's printed
  *  `Environment` (null when systemd could not say). Never throws or stalls rollback: unreadable DB,
- *  missing/empty manifest, unmatched engines, hook timeouts, or malformed results are counted as failed. */
+ *  missing/empty manifest, unmatched engines, hook/total timeouts, or malformed results are counted as failed. */
 export async function runEngineRollbacks(
   database: string,
   printed: string | null,
-  options: { hooksDir?: string; hooks?: readonly EngineRollbackHook[]; hookTimeoutMs?: number } = {}
+  options: { hooksDir?: string; hooks?: readonly EngineRollbackHook[]; hookTimeoutMs?: number; totalTimeoutMs?: number; now?: () => number } = {}
 ): Promise<EngineRollbackResult> {
   const hookTimeoutMs = options.hookTimeoutMs ?? DEFAULT_HOOK_TIMEOUT_MS
+  const totalTimeoutMs = options.totalTimeoutMs ?? DEFAULT_TOTAL_TIMEOUT_MS
+  const now = options.now ?? Date.now
+  const deadline = now() + totalTimeoutMs
   const profilesByEngine = new Map<string, string[]>()
   let totalProfiles = 0
   try {
@@ -102,23 +113,24 @@ export async function runEngineRollbacks(
   }
   let hooks: readonly EngineRollbackHook[]
   try {
-    hooks = options.hooks ?? (await loadRollbackHooks(options.hooksDir, hookTimeoutMs))
+    hooks = options.hooks ?? (await loadRollbackHooks(options.hooksDir, hookTimeoutMs, deadline, now))
   } catch {
     return { cleared: 0, failed: totalProfiles || 1 }
   }
   if (hooks.length === 0 || printed === null) return { cleared: 0, failed: totalProfiles || 1 }
   const hooksByEngine = new Map<string, EngineRollbackHook>()
   for (const hook of hooks) hooksByEngine.set(hook.engineId, hook)
-  const runCommand = (args: string[], timeoutMs = 30_000, env?: NodeJS.ProcessEnv) => command(args, undefined, timeoutMs, env)
+  const runCommand = (args: string[], timeoutMs = 30_000, env?: NodeJS.ProcessEnv) => command(args, undefined, Math.min(timeoutMs, Math.max(1, deadline - now())), env)
   const result = { cleared: 0, failed: 0 }
   for (const [engineId, profiles] of profilesByEngine) {
     const hook = hooksByEngine.get(engineId)
-    if (!hook) {
+    const budget = Math.min(hookTimeoutMs, Math.max(0, deadline - now()))
+    if (!hook || budget <= 0) {
       result.failed += profiles.length
       continue
     }
     try {
-      const outcome = await withTimeout(() => hook.rollback({ profiles, printedEnvironment: printed, runCommand }), hookTimeoutMs, `Rollback hook for ${engineId} timed out`)
+      const outcome = await withTimeout(() => hook.rollback({ profiles, printedEnvironment: printed, runCommand }), budget, `Rollback hook for ${engineId} timed out`)
       if (!validRollbackResult(outcome)) {
         result.failed += profiles.length
         continue

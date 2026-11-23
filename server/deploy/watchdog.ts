@@ -76,3 +76,5 @@ try {
 } finally {
   if (releaseLock) await rm(join(root, 'lock'), { recursive: true, force: true })
 }
+// Exit explicitly after releasing the lock so a timed-out rollback hook with a lingering timer cannot hold the unit open.
+process.exit(process.exitCode ?? 0)
