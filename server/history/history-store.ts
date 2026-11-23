@@ -3,6 +3,7 @@ import type { ChatEvent, ChatItem } from '../../shared/chat-schema'
 import type { HistoryItem, HistoryPage, SessionReason } from '../../shared/history-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import { HistoryMetaStore } from './history-meta-store'
+import { pruneSupersededJournalRows } from './history-tail'
 
 interface HistorySession {
   bot: string
@@ -48,6 +49,7 @@ export class HistoryStore {
         // Checked under the write lock, so an exclusion committed meanwhile is never undone by a late page.
         if (this.excluded(bot, session)) return
         const enriched = this.meta.mergeRows(bot, session, rows)
+        pruneSupersededJournalRows(this.db, bot, session, enriched)
         const insert = this.db.query(`INSERT INTO history_items(bot,session,id,at,position,item,text) VALUES(?,?,?,?,?,?,?)
         ON CONFLICT(bot,id) DO UPDATE SET item=excluded.item,text=excluded.text`)
         for (const row of enriched) {
@@ -98,7 +100,9 @@ export class HistoryStore {
     const rows: (StoredRow & { session_at: number; session_id: string })[] = []
     // A session without a user or assistant message (another client's empty session, one left behind) shows no
     // divider. Decided here, when the page is built, so stored and re-imported rows follow the same rule.
-    const spoken = this.db.query(`SELECT 1 FROM history_items WHERE bot=? AND session=? AND json_extract(item,'$.kind') IN ('user','assistant') LIMIT 1`)
+    const spoken = this.db.query(
+      `SELECT 1 FROM history_items WHERE bot=? AND session=? AND (json_extract(item,'$.kind') IN ('user','assistant') OR json_extract(item,'$.reason')='engine_switched_gap') LIMIT 1`
+    )
     // Seek within each session's index instead of sorting every row across a join.
     for (const session of this.sessions(bot).reverse()) {
       if (key && (session.at > key[0] || (session.at === key[0] && session.id > key[1]))) continue
@@ -165,6 +169,10 @@ export class HistoryStore {
       .get(bot, session, needle)
     if (inEvents) return true
     return !!this.db.query(`SELECT 1 FROM history_items WHERE bot=? AND session=? AND json_extract(item,'$.kind')='user' AND instr(text,?)>0 LIMIT 1`).get(bot, session, needle)
+  }
+  /** Marks all existing sessions for a bot complete (used when committing an engine switch so the new engine never polls old sessions). */
+  sealSessions(bot: string) {
+    this.db.query('UPDATE history_sessions SET complete=1 WHERE bot=?').run(bot)
   }
   forget(bot: string) {
     this.db.transaction(() => {

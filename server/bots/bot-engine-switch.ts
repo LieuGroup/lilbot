@@ -83,9 +83,9 @@ async function switchBotEngine(deps: SwitchEngineDeps, botId: string, targetEngi
       deps.prefs.setPrimaryBot(botId)
       primaryPersisted = true
     }
+    const finishHistory = await deps.history?.prepareEngineSwitch(previous)
     deps.runtimes.store.bindEngine(botId, target.id, nativeId, nextModel)
     bound = true
-    deps.history?.dropSource(botId)
     deps.sessions.forget(botId)
     await deps.runtimes.state(nextBot)
     await deps.botMemory.connectNew(botId)
@@ -96,11 +96,7 @@ async function switchBotEngine(deps: SwitchEngineDeps, botId: string, targetEngi
     chat.close()
     deps.prefs.setMainChat(botId, newChatId)
     deps.sessions.resetContext(botId, newChatId)
-    if (deps.history) {
-      const now = Date.now()
-      deps.history.store.session(botId, newChatId, now)
-      deps.history.store.divider(botId, newChatId, now, 'engine_switched')
-    }
+    finishHistory?.(newChatId)
   } catch (error) {
     if (bound) deps.runtimes.store.bindEngine(botId, previous.engineId, previous.engineBotId, previous.model, previous.isDefault)
     if (primaryPersisted) {
