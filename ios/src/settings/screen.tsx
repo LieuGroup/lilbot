@@ -50,7 +50,7 @@ export function SettingsScreen({ onDone }: { onDone?: () => void }) {
   } as const
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: theme.background }} contentContainerStyle={{ padding: 20, gap: 16 }}>
+    <ScrollView style={{ flex: 1, backgroundColor: theme.background }} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ padding: 20, gap: 16 }}>
       <AppText variant="title">Settings</AppText>
 
       <View style={{ gap: 6 }}>

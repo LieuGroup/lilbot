@@ -1,6 +1,6 @@
 /** Unit tests for the mobile Liquid Glass token layer mapped onto LilBot's existing web palette. */
 import { describe, expect, test } from 'bun:test'
-import { GLASS_METRICS, palettes, radius, SURFACE_LAYER, type } from '../../ios/src/ui/tokens'
+import { GLASS_METRICS, glassFallbackBackground, palettes, radius, SURFACE_LAYER, type } from '../../ios/src/ui/tokens'
 
 describe('iOS Liquid Glass tokens', () => {
   test('light and dark palettes preserve exact web token values and expose complete glass sub-tokens', () => {
@@ -23,6 +23,15 @@ describe('iOS Liquid Glass tokens', () => {
     // Light glass fill is warm-frosted (not pure #ffffff) so floating pills separate cleanly over the white chat canvas.
     expect(palettes.light.glass.fill).toBe('rgba(248,248,246,0.82)')
     expect(palettes.dark.glass.fill).toBe('rgba(30,34,42,0.80)')
+  })
+
+  test('Reduce Transparency keeps standard chrome on theme.popover and media scrims opaque dark', () => {
+    expect(glassFallbackBackground(palettes.light, { reduceTransparency: true, scrim: false })).toBe(palettes.light.popover)
+    expect(glassFallbackBackground(palettes.dark, { reduceTransparency: true, scrim: false })).toBe(palettes.dark.popover)
+    expect(glassFallbackBackground(palettes.light, { reduceTransparency: true, scrim: true })).toBe('#0f1115')
+    expect(glassFallbackBackground(palettes.dark, { reduceTransparency: true, scrim: true })).toBe('#0f1115')
+    expect(glassFallbackBackground(palettes.light, { reduceTransparency: false, scrim: true })).toBe(palettes.light.glass.scrim)
+    expect(glassFallbackBackground(palettes.light, { reduceTransparency: false, scrim: false })).toBe(palettes.light.glass.fill)
   })
 
   test('enforces strict two-layer material contract, closed type scale, and 44 pt minimum touch target', () => {

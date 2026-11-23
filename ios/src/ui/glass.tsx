@@ -13,7 +13,7 @@ import {
   type ViewStyle
 } from 'react-native'
 import { useTheme } from './theme'
-import { GLASS_METRICS, radius } from './tokens'
+import { GLASS_METRICS, glassFallbackBackground, radius } from './tokens'
 
 /** Live iOS Reduce Transparency preference; when true, glass surfaces render as opaque solid chrome. */
 export function useReduceTransparency(): boolean {
@@ -51,7 +51,7 @@ export function GlassSurface({ children, variant = 'regular', interactive = fals
   const theme = useTheme()
   const reduceTransparency = useReduceTransparency()
   const nativeGlass = canUseNativeLiquidGlass(reduceTransparency)
-  const fallbackBg = reduceTransparency ? theme.popover : scrim ? theme.glass.scrim : theme.glass.fill
+  const fallbackBg = glassFallbackBackground(theme, { reduceTransparency, scrim })
   const surfaceStyle: ViewStyle = {
     borderWidth: 1,
     borderColor: reduceTransparency ? theme.border : theme.glass.border,

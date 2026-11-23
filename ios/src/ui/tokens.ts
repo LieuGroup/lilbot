@@ -11,6 +11,8 @@ export interface GlassPalette {
   activePill: string
   /** Backdrop scrim behind Clear-glass overlay controls on bright media. */
   scrim: string
+  /** Opaque dark scrim used when Clear-glass media overlays fall back under iOS Reduce Transparency. */
+  scrimSolid: string
 }
 
 export interface Palette {
@@ -55,7 +57,8 @@ const light: Palette = {
     border: 'rgba(27,28,31,0.10)',
     specular: 'rgba(255,255,255,0.70)',
     activePill: 'rgba(27,28,31,0.08)',
-    scrim: 'rgba(15,17,21,0.35)'
+    scrim: 'rgba(15,17,21,0.35)',
+    scrimSolid: '#0f1115'
   }
 }
 
@@ -81,7 +84,8 @@ const dark: Palette = {
     border: 'rgba(255,255,255,0.16)',
     specular: 'rgba(255,255,255,0.14)',
     activePill: 'rgba(255,255,255,0.12)',
-    scrim: 'rgba(15,17,21,0.45)'
+    scrim: 'rgba(15,17,21,0.45)',
+    scrimSolid: '#0f1115'
   }
 }
 
@@ -112,3 +116,9 @@ export const GLASS_METRICS = {
   composerRestHeight: 42,
   minTouchTarget: 44
 } as const
+
+/** Resolves the non-glass background color for a glass surface, keeping media scrim overlays opaque dark under Reduce Transparency. */
+export function glassFallbackBackground(theme: Palette, options: { reduceTransparency: boolean; scrim: boolean }): string {
+  if (options.reduceTransparency) return options.scrim ? theme.glass.scrimSolid : theme.popover
+  return options.scrim ? theme.glass.scrim : theme.glass.fill
+}

@@ -20,7 +20,7 @@ export function Roster({ bots, sections, selectedId, onSelect }: RosterProps) {
   const groups = rosterGroups(bots, sections)
 
   return (
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, gap: 4 }}>
+    <ScrollView style={{ flex: 1 }} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ padding: 12, gap: 4 }}>
       <View style={{ gap: 2 }}>
         {groups.top.map(bot => (
           <RosterRow key={bot.id} bot={bot} selected={bot.id === selectedId} onPress={() => onSelect(bot)} />
