@@ -29,6 +29,7 @@ test('every safety rule scans a 256 KiB adversarial text in well under a second'
     repeat('"password": {'),
     `${repeat('"password": {').slice(0, SIZE - 1)}}`,
     repeat('"password": {"a":1} '),
+    `${'['.repeat(20000)}${']'.repeat(20000)}`,
     repeat('{"key": "DB_PASSWORD", "value": ""} '),
     repeat('\\"password\\":\\"\\" '),
     `${repeat('a_').slice(0, SIZE - 12)}pass=12345`,

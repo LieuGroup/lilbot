@@ -2,9 +2,9 @@
  *  that carries instructions for the model, or a secret, would do harm for as long as it lives.
  *  The same idea as Hermes' scan of its own memory files. */
 import { LilBotError } from '../../shared/lilbot-error'
-import { hasCredential, isQuotedCredentialKey, isQuotedCredentialSecret } from './credential-safety'
+import { hasCredential, isQuotedCredentialKey, isQuotedCredentialSecret, isSchemaMetaKey, isSchemaObject } from './credential-safety'
 
-export { isQuotedCredentialKey, isQuotedCredentialSecret }
+export { isQuotedCredentialKey, isQuotedCredentialSecret, isSchemaMetaKey, isSchemaObject }
 
 const SLASH = String.raw`(?:\\{0,16}\/|%(?:25){0,3}2F|&#0{0,4}47;|&#x0{0,4}2f;|&sol;|\uFF0F|\u2215)`
 /** A webhook's address, which is its secret (`server/webhooks/webhook-address.ts`), in the common encodings: escaped,

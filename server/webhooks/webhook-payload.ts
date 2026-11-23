@@ -2,7 +2,7 @@
  *  receive time (the body decoded, addresses blanked, cut to size); it is scanned, and the run's fence joins the stored
  *  strings unchanged, so nothing can differ between what was checked and what the model reads.
  *  Headers are the sender's claims: only a few are kept, and only as data. */
-import { escapeJson, fenceJson, isQuotedCredentialKey, isQuotedCredentialSecret, outsideReason, stripInvisibleLine } from '../memory/memory-safety'
+import { escapeJson, fenceJson, isQuotedCredentialKey, isQuotedCredentialSecret, isSchemaMetaKey, isSchemaObject, outsideReason, stripInvisibleLine } from '../memory/memory-safety'
 import { blank, decodedBody, folded, MAX_DEPTH, strings } from './webhook-decode'
 import { WEBHOOK_LIMITS } from './webhook-limits'
 
@@ -63,12 +63,16 @@ function redactEvent(body: unknown, kept: Record<string, string>): { body: unkno
     }
     if (Array.isArray(node)) return node.map(item => walk(item, underCred))
     if (node && typeof node === 'object') {
-      const entries = Object.entries(node as Record<string, unknown>)
+      const obj = node as Record<string, unknown>
+      const entries = Object.entries(obj)
       const pair = entries.some(([k, v]) => {
         const low = k.toLowerCase()
         return (low === 'key' || low === 'name') && typeof v === 'string' && isQuotedCredentialKey(v)
       })
-      return Object.fromEntries(entries.map(([k, v]) => [k, walk(v, underCred || isQuotedCredentialKey(k) || (pair && k.toLowerCase() === 'value'))]))
+      const schema = underCred && isSchemaObject(obj)
+      return Object.fromEntries(
+        entries.map(([k, v]) => [k, walk(v, schema && isSchemaMetaKey(k) ? false : underCred || isQuotedCredentialKey(k) || (pair && k.toLowerCase() === 'value'))])
+      )
     }
     return node
   }

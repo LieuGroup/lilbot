@@ -2,7 +2,9 @@
  *  objects) in linear time while keeping main's rules strict (Principle A) and letting benign references, pagination
  *  tokens, types, masks, placeholders, and bare `PASS:` test output pass (Principle B). */
 import { extractValue, hasSecretInArraySnippet, tryParseEmbeddedJson } from './credential-extract'
-import { hasSecretInParsedValue, isBenignValue } from './credential-values'
+import { hasSecretInParsedValue, isBenignValue, isSchemaMetaKey, isSchemaObject } from './credential-values'
+
+export { isSchemaMetaKey, isSchemaObject }
 
 const CRED_WORD = /(?<![A-Za-z0-9])(pass(?:word|wd|phrase)?|secret(?:[_ -]?key)?|api[_ -]?key|token)(\\?["'])?\s*(\bis\b|=|:)\s*/gi
 const PAIR_KEY = /\\?["'](?:key|name)\\?["']\s*:\s*(\\?["'])([A-Za-z0-9_. -]{3,64})\1\s*,\s*\\?["']value\\?["']\s*:\s*/gi
@@ -77,11 +79,13 @@ function hasCredentialInJson(node: unknown, underCred: boolean): boolean {
   if (typeof node === 'number') return underCred && !isBenignValue(String(node), false, false)
   if (node === null || typeof node !== 'object') return false
   if (Array.isArray(node)) return node.some(item => hasCredentialInJson(item, underCred))
-  const entries = Object.entries(node as Record<string, unknown>)
+  const obj = node as Record<string, unknown>
+  const entries = Object.entries(obj)
   const pair = isPairObject(entries)
+  const schema = underCred && isSchemaObject(obj)
   for (const [k, v] of entries) {
     if (hasCredentialInText(k)) return true
-    const childCred = underCred || isQuotedCredentialKey(k) || (pair && k.toLowerCase() === 'value')
+    const childCred = schema && isSchemaMetaKey(k) ? false : underCred || isQuotedCredentialKey(k) || (pair && k.toLowerCase() === 'value')
     if (hasCredentialInJson(v, childCred)) return true
   }
   return false
@@ -117,7 +121,7 @@ function hasCredentialInText(text: string): boolean {
     if (ch === '{' || ch === '[') {
       const parsed = tryParseEmbeddedJson(text, valStart, lastCloseOf(ch))
       if (parsed) {
-        if (hasSecretInParsedValue(parsed.value, isOldRule)) return true
+        if (hasSecretInParsedValue(parsed.value, isOldRule, hasCredentialInText)) return true
         CRED_WORD.lastIndex = Math.max(CRED_WORD.lastIndex, parsed.end)
         continue
       }
@@ -129,7 +133,7 @@ function hasCredentialInText(text: string): boolean {
     if (word === 'pass' && delim === ':' && hasMatchingQuote && fullKey.toLowerCase() === 'work.pass' && !extracted.quoted) continue
     const envStyle = !isOldRule && !hasMatchingQuote && delim === '='
     const looseEq = delim === ':' || (delim === '=' && m[0].includes(' = '))
-    if (!isBenignValue(extracted.value, extracted.quoted, isOldRule, { envStyle, looseEq })) return true
+    if (!isBenignValue(extracted.value, extracted.quoted, isOldRule, { envStyle, looseEq, keyName: fullKey })) return true
   }
   PAIR_KEY.lastIndex = 0
   for (let m = PAIR_KEY.exec(text); m; m = PAIR_KEY.exec(text)) {
@@ -139,7 +143,7 @@ function hasCredentialInText(text: string): boolean {
     if (ch === '{' || ch === '[') {
       const parsed = tryParseEmbeddedJson(text, valStart, lastCloseOf(ch))
       if (parsed) {
-        if (hasSecretInParsedValue(parsed.value, false)) return true
+        if (hasSecretInParsedValue(parsed.value, false, hasCredentialInText)) return true
         PAIR_KEY.lastIndex = Math.max(PAIR_KEY.lastIndex, parsed.end)
         continue
       }

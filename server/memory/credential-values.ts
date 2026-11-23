@@ -1,5 +1,7 @@
 /** Principle A/B classification of extracted or parsed values under credential keys. */
 const TYPE_WORDS = new Set(['string', 'number', 'boolean', 'object', 'undefined', 'unknown'])
+const SCHEMA_TYPES = new Set(['string', 'number', 'integer', 'boolean', 'object', 'array', 'null'])
+const SCHEMA_META_KEYS = new Set(['description', 'title', 'format', '$comment'])
 const MASK_CHAR = /^([*•.\-_])\1{3,}$/
 const X_MASK = /^([xX])\1{5,}$/
 const BRACKET_PLACEHOLDER =
@@ -13,19 +15,36 @@ const CODE_CALL =
   /^(?:[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+)\([^,\n]{0,80}\)(?:\.[A-Za-z_][A-Za-z0-9_]*\(\))*$|^[A-Za-z_][A-Za-z0-9_]*\([^,\n]{0,80}\)(?:\.[A-Za-z_][A-Za-z0-9_]*\(\))+$/
 const MEMBER_SEG = /^[A-Za-z_]{1,24}$/
 const CRED_PROP = /(?:pass|secret|token|key|auth|cred|pwd|bearer)/i
+const LETTERS_ONLY = /^[A-Za-z]+$/
 const HEX_OR_DIGITS = /[0-9]{4,}|^[0-9a-f]{12,}$/i
 const EX_W = '(?:your|this|here|set|placeholder|api|key|password|token|secret)'
 const EXAMPLE_PLACEHOLDER = new RegExp(`^(?:(?:replace[-_]with|todo|change|your)[-_]${EX_W}(?:[-_]${EX_W}){0,3}|(?:sk|whsec)[-_](?:\\.{3,}|${EX_W}(?:[-_]${EX_W}){0,3}))$`, 'i')
-const MAX_WALK_DEPTH = 12
 
 export interface ValueOpts {
   envStyle?: boolean
   looseEq?: boolean
+  keyName?: string
+}
+
+export function isSchemaObject(node: Record<string, unknown>) {
+  return typeof node.type === 'string' && SCHEMA_TYPES.has(node.type)
+}
+
+export function isSchemaMetaKey(key: string) {
+  return key === 'type' || SCHEMA_META_KEYS.has(key)
+}
+
+function isKeyEchoRef(v: string, keyName?: string) {
+  if (!keyName || !LETTERS_ONLY.test(v)) return false
+  return keyName
+    .replace(/[_. -]+/g, '')
+    .toLowerCase()
+    .endsWith(v.toLowerCase())
 }
 
 function isDottedCodeMember(v: string) {
-  const segs = v.split('.')
-  if (segs.length < 2 || segs.length > 3) return false
+  const segs = v.split(/\??\./)
+  if (segs.length < 2 || segs.length > 5) return false
   for (const seg of segs) {
     if (!MEMBER_SEG.test(seg)) return false
     if ((seg.match(/[a-z][A-Z]/g)?.length ?? 0) > 3) return false
@@ -33,11 +52,12 @@ function isDottedCodeMember(v: string) {
   return CRED_PROP.test(segs[segs.length - 1])
 }
 
-function isCodeRef(v: string, looseEq: boolean) {
+function isCodeRef(v: string, opts?: ValueOpts) {
+  if (isKeyEchoRef(v, opts?.keyName)) return true
   const env = ENV_LOOKUP.exec(v)
   if (env) return !env[1] || !HEX_OR_DIGITS.test(env[1])
   if (SUBSCRIPT_REF.test(v) || CODE_CALL.test(v)) return true
-  return looseEq && isDottedCodeMember(v)
+  return !!opts?.looseEq && isDottedCodeMember(v)
 }
 
 export function isBenignValue(val: string, quoted: boolean, isOldRule: boolean, opts?: ValueOpts) {
@@ -51,14 +71,22 @@ export function isBenignValue(val: string, quoted: boolean, isOldRule: boolean, 
   if (X_MASK.test(v) || ENV_REF.test(v) || TEMPLATE_REF.test(v) || EXAMPLE_PLACEHOLDER.test(v)) return true
   if (quoted) return false
   if (opts?.envStyle && CMD_SUB.test(v)) return true
-  return isCodeRef(v, !!opts?.looseEq)
+  return isCodeRef(v, opts)
 }
 
-export function hasSecretInParsedValue(value: unknown, isOldRule: boolean, depth = 0): boolean {
+export function hasSecretInParsedValue(value: unknown, isOldRule: boolean, checkText?: (text: string) => boolean): boolean {
   if (typeof value === 'string') return !isBenignValue(value, true, isOldRule)
   if (typeof value === 'number') return !isBenignValue(String(value), false, isOldRule)
   if (value === null || typeof value !== 'object') return false
-  if (depth >= MAX_WALK_DEPTH) return true
-  if (Array.isArray(value)) return value.some(item => hasSecretInParsedValue(item, isOldRule, depth + 1))
-  return Object.values(value).some(item => hasSecretInParsedValue(item, isOldRule, depth + 1))
+  if (Array.isArray(value)) return value.some(item => hasSecretInParsedValue(item, isOldRule, checkText))
+  const obj = value as Record<string, unknown>
+  const schema = !isOldRule && isSchemaObject(obj)
+  for (const [k, v] of Object.entries(obj)) {
+    if (schema && isSchemaMetaKey(k)) {
+      if (typeof v === 'string' && checkText?.(v)) return true
+      continue
+    }
+    if (hasSecretInParsedValue(v, isOldRule, checkText)) return true
+  }
+  return false
 }
