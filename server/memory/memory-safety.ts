@@ -2,6 +2,9 @@
  *  that carries instructions for the model, or a secret, would do harm for as long as it lives.
  *  The same idea as Hermes' scan of its own memory files. */
 import { LilBotError } from '../../shared/lilbot-error'
+import { hasCredential, isQuotedCredentialKey, isQuotedCredentialSecret, isSchemaMetaKey, isSchemaObject } from './credential-safety'
+
+export { isQuotedCredentialKey, isQuotedCredentialSecret, isSchemaMetaKey, isSchemaObject }
 
 const SLASH = String.raw`(?:\\{0,16}\/|%(?:25){0,3}2F|&#0{0,4}47;|&#x0{0,4}2f;|&sol;|\uFF0F|\u2215)`
 /** A webhook's address, which is its secret (`server/webhooks/webhook-address.ts`), in the common encodings: escaped,
@@ -55,8 +58,7 @@ const rules: Rule[] = [
   matches(/-----BEGIN [A-Z ]*PRIVATE KEY-----/, 'it contains a private key'),
   matches(/\b(sk|pk|rk)-[A-Za-z0-9_-]{20,}|\bAKIA[0-9A-Z]{16}\b|\bgh[pousr]_[A-Za-z0-9]{30,}|\bxox[abprs]-[A-Za-z0-9-]{10,}/, 'it contains what looks like an access key or token'),
   { test: hasJwt, reason: 'it contains what looks like an access key or token' },
-  matches(/\b(pass(word|wd|phrase)|secret|api[_ -]?key|token)\b\s*(is|=|:)\s*\S{6,}/i, 'it contains what looks like a password or key'),
-  matches(/\bpass\b\s*=\s*\S{6,}/i, 'it contains what looks like a password or key'),
+  { test: hasCredential, reason: 'it contains what looks like a password or key' },
   matches(new RegExp(WEBHOOK_ADDRESS.source, 'i'), 'it contains a webhook address'),
   // Sending data out, or running fetched code.
   matches(/\b(curl|wget)\b[^\n]{0,80}\|\s*(ba|z)?sh\b/i, 'it contains a command that runs downloaded code'),

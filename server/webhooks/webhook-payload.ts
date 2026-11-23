@@ -2,9 +2,93 @@
  *  receive time (the body decoded, addresses blanked, cut to size); it is scanned, and the run's fence joins the stored
  *  strings unchanged, so nothing can differ between what was checked and what the model reads.
  *  Headers are the sender's claims: only a few are kept, and only as data. */
-import { escapeJson, fenceJson, outsideReason } from '../memory/memory-safety'
+import { escapeJson, fenceJson, isQuotedCredentialKey, isQuotedCredentialSecret, isSchemaMetaKey, isSchemaObject, outsideReason, stripInvisibleLine } from '../memory/memory-safety'
 import { blank, decodedBody, folded, MAX_DEPTH, strings } from './webhook-decode'
 import { WEBHOOK_LIMITS } from './webhook-limits'
+
+const RAW_CONTROL = /[^\P{Cc}\t\n\r]/u
+const MAX_SUBSTR_NEEDLES = 32
+
+function blockedFieldReason(value: string) {
+  return outsideReason(value) ?? (RAW_CONTROL.test(value) ? 'it contains invisible characters' : null)
+}
+
+function scrubNode(node: unknown, stringsSet: Set<string>, numbersSet: Set<number>, needles: string[] | null): unknown {
+  if (typeof node === 'string') {
+    if (stringsSet.has(node) || stringsSet.has(node.trim())) return '[withheld]'
+    if (!needles) return node
+    let out = node
+    for (const needle of needles) if (out.includes(needle)) out = out.replaceAll(needle, '[withheld]')
+    return out
+  }
+  if (typeof node === 'number') return numbersSet.has(node) || stringsSet.has(String(node)) ? '[withheld]' : node
+  if (Array.isArray(node)) return node.map(item => scrubNode(item, stringsSet, numbersSet, needles))
+  if (node && typeof node === 'object') {
+    return Object.fromEntries(
+      Object.entries(node as Record<string, unknown>).map(([k, v]) => [stringsSet.has(k) ? '[withheld]' : k, scrubNode(v, stringsSet, numbersSet, needles)])
+    )
+  }
+  return node
+}
+
+/** Walks a parsed webhook body, replacing any secret value anywhere under a credential key (at any object or array
+ *  depth, and in `key`/`name`+`value` pair objects) with `[withheld]` and scrubbing every other occurrence of each
+ *  withheld value in the same event. Withholds the whole event if a redacted field contained invisible/control chars. */
+function redactEvent(body: unknown, kept: Record<string, string>): { body: unknown; kept: Record<string, string>; blocked: string | null } {
+  const withheldStrings = new Set<string>()
+  const withheldNumbers = new Set<number>()
+  let blocked: string | null = null
+
+  const walk = (node: unknown, underCred: boolean): unknown => {
+    if (blocked) return node
+    if (typeof node === 'string') {
+      if (!underCred || !isQuotedCredentialSecret(node)) return node
+      const reason = blockedFieldReason(node)
+      if (reason) {
+        blocked = reason
+        return node
+      }
+      withheldStrings.add(node)
+      const trimmed = node.trim()
+      if (trimmed.length >= 6) withheldStrings.add(trimmed)
+      const clean = stripInvisibleLine(node).trim()
+      if (clean.length >= 6) withheldStrings.add(clean)
+      return '[withheld]'
+    }
+    if (typeof node === 'number') {
+      if (!underCred || !isQuotedCredentialSecret(node)) return node
+      withheldNumbers.add(node)
+      withheldStrings.add(String(node))
+      return '[withheld]'
+    }
+    if (Array.isArray(node)) return node.map(item => walk(item, underCred))
+    if (node && typeof node === 'object') {
+      const obj = node as Record<string, unknown>
+      const entries = Object.entries(obj)
+      const pair = entries.some(([k, v]) => {
+        const low = k.toLowerCase()
+        return (low === 'key' || low === 'name') && typeof v === 'string' && isQuotedCredentialKey(v)
+      })
+      const schema = underCred && isSchemaObject(obj)
+      return Object.fromEntries(
+        entries.map(([k, v]) => [
+          k,
+          walk(v, schema && isSchemaMetaKey(k) && typeof v === 'string' ? false : underCred || isQuotedCredentialKey(k) || (pair && k.toLowerCase() === 'value'))
+        ])
+      )
+    }
+    return node
+  }
+
+  const first = walk(body, false)
+  if (blocked || (withheldStrings.size === 0 && withheldNumbers.size === 0)) return { body: first, kept, blocked }
+  const needles = withheldStrings.size <= MAX_SUBSTR_NEEDLES ? [...withheldStrings].sort((a, b) => b.length - a.length) : null
+  return {
+    body: scrubNode(first, withheldStrings, withheldNumbers, needles),
+    kept: scrubNode(kept, withheldStrings, withheldNumbers, needles) as Record<string, string>,
+    blocked: null
+  }
+}
 
 /** One event as stored: `item` is empty when the check withheld it; `size` is its length inside the fence. */
 export interface EventView {
@@ -49,11 +133,13 @@ export function eventView(raw: Uint8Array, headers: Headers, deliveryId: string 
     .map(outsideReason)
     .find(Boolean)
   if (words) return refused(words)
-  const view = { receivedAt: new Date(receivedAt).toISOString(), deliveryId, headers: kept }
-  const bodyJson = JSON.stringify(decoded.body)
+  const redacted = typeof decoded.body === 'object' && decoded.body !== null ? redactEvent(decoded.body, kept) : { body: decoded.body, kept, blocked: null }
+  if (redacted.blocked) return refused(redacted.blocked)
+  const view = { receivedAt: new Date(receivedAt).toISOString(), deliveryId, headers: redacted.kept }
+  const bodyJson = JSON.stringify(redacted.body)
   // Blanking only shortens, so the whole view is blanked only once it fits; a cut view is blanked as it is cut.
   const whole = `${JSON.stringify(view).slice(0, -1)},"body":${bodyJson}}`
-  const item = fits(whole) ? blank(whole, token) : cut(view, typeof decoded.body === 'string' ? decoded.body : bodyJson, token)
+  const item = fits(whole) ? blank(whole, token) : cut(view, typeof redacted.body === 'string' ? redacted.body : bodyJson, token)
   const refusal = outsideReason(item)
   return refusal ? refused(refusal) : { item, size: escapeJson(item).length, refusal: null }
 }
