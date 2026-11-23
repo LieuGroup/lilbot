@@ -44,6 +44,8 @@ IOS_PROVISIONING_PROFILE_NAME="<profile name>" bun run testflight -- --upload
 ## Rules
 
 - `ios/` and `android/` native directories are generated (Continuous Native Generation). Never create or edit them by hand — configure native behavior in `app.config.ts` and config plugins.
+- `plugins/with-tab-scroll-minimize.ts` (controlled by `ENABLE_NESTED_TAB_SCROLL_MINIMIZE` in `app.config.ts`) works around `software-mansion/react-native-screens#4145` for iOS 26 nested-stack tab-bar scroll hiding; delete it once `react-native-screens` fixes `#4145` natively without `RNS_GAMMA_ENABLED=1`.
+- Minimized tab bar & Work alerts: Option A is active for now — no bottom accessory bar when the tab bar minimizes; the Work tab carries the native system count badge and the bottom stays clean (simulator trials: Option A `24-cand1a-role-search-plus-orb.png`, Option B `26-cand2a-bottom-accessory-regular.png` and `27-cand2a-bottom-accessory-inline.png`). Keep `NativeTabs` layout clean so Option B (`NativeTabs.BottomAccessory`) remains straightforward to add later if revisited.
 - Use `bunx expo install <package>` for dependencies, never a plain package-manager add.
 - The app talks to the same LilBot server over its existing socket protocol (`shared/client/socket.ts`); no server changes for a client feature.
 - Never test against production or any live bot: point a dev build at a development server with temporary bots only (repo `AGENTS.md`, Safety).

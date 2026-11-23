@@ -3,6 +3,10 @@
 import type { ConfigContext, ExpoConfig } from 'expo/config'
 import { withXcodeProject } from 'expo/config-plugins'
 
+/** Workaround for software-mansion/react-native-screens#4145 (nested Stack inside NativeTabs on iOS 26).
+ *  Flip to `false` to omit the native file completely from prebuild; delete once upstream resolves #4145. */
+export const ENABLE_NESTED_TAB_SCROLL_MINIMIZE = true
+
 const VARIANTS = {
   development: { name: 'LilBot Dev', bundleIdentifier: 'com.lilbot.app.dev', scheme: 'lilbot-dev' },
   preview: { name: 'LilBot Preview', bundleIdentifier: 'com.lilbot.app.preview', scheme: 'lilbot-preview' },
@@ -43,9 +47,10 @@ function withReleaseSigning(config: ExpoConfig, bundleId: string): ExpoConfig {
   })
 }
 
-export default ({ config }: ConfigContext): ExpoConfig => {
+export function buildAppConfig({ config }: ConfigContext, options: { enableTabScrollMinimize?: boolean } = {}): ExpoConfig {
   const variant = variantName()
   const chosen = VARIANTS[variant]
+  const enableScrollMinimize = options.enableTabScrollMinimize ?? ENABLE_NESTED_TAB_SCROLL_MINIMIZE
   const base: ExpoConfig = {
     ...config,
     name: chosen.name,
@@ -67,9 +72,12 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     plugins: [
       'expo-router',
       'expo-secure-store',
-      ['expo-splash-screen', { image: './assets/images/splash-icon.png', resizeMode: 'contain', backgroundColor: '#f6f6f4' }]
+      ['expo-splash-screen', { image: './assets/images/splash-icon.png', resizeMode: 'contain', backgroundColor: '#f6f6f4' }],
+      ...(enableScrollMinimize ? ['./plugins/with-tab-scroll-minimize'] : [])
     ],
     experiments: { typedRoutes: true }
   }
   return withReleaseSigning(base, chosen.bundleIdentifier)
 }
+
+export default (context: ConfigContext): ExpoConfig => buildAppConfig(context)
