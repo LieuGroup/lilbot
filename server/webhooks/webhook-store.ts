@@ -174,16 +174,16 @@ export class WebhookStore {
       this.db.query('INSERT OR IGNORE INTO webhook_chats VALUES (?, ?)').run(chatId, id)
     })()
   }
-  /** The webhook run a bot's session belongs to, with its webhook's task (kept for a deleted one) and what it may do. */
   runForChat(botId: string, chatId: string) {
-    const row = this.db
-      .query(
-        'SELECT r.id AS runId, w.id AS webhookId, w.description AS task, w.capabilities FROM webhook_chats c JOIN webhook_runs r ON r.id = c.run_id JOIN webhooks w ON w.id = r.webhook_id WHERE c.chat_id = ? AND r.bot_id = ?'
-      )
-      .get(chatId, botId) as { runId: string; webhookId: string; task: string; capabilities: string } | null
+    const sql =
+      'SELECT r.id AS runId, w.id AS webhookId, w.description AS task, w.capabilities FROM webhook_chats c JOIN webhook_runs r ON r.id = c.run_id JOIN webhooks w ON w.id = r.webhook_id WHERE c.chat_id = ? AND r.bot_id = ?'
+    const row = this.db.query(sql).get(chatId, botId) as { runId: string; webhookId: string; task: string; capabilities: string } | null
     return row && { ...row, capabilities: JSON.parse(row.capabilities) as WebhookCapability[] }
   }
-  /** Whether the bot ever had a webhook run, so a session of it could be a webhook run's (its runs are kept until it is deleted). */
+  activeRunCaps(botId: string): WebhookCapability[][] {
+    const sql = `SELECT w.capabilities FROM webhook_runs r JOIN webhooks w ON w.id = r.webhook_id WHERE r.bot_id = ? AND ${UNDER_WAY}`
+    return (this.db.query(sql).all(botId) as { capabilities: string }[]).map(row => JSON.parse(row.capabilities))
+  }
   hasRuns(botId: string) {
     return !!this.db.query('SELECT 1 FROM webhook_runs WHERE bot_id = ? LIMIT 1').get(botId)
   }

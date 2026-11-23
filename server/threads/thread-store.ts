@@ -109,8 +109,8 @@ export class ThreadStore {
   hasNarrowed(botId: string): boolean {
     return !!this.db.query("SELECT 1 FROM thread_chats c JOIN threads t ON t.id=c.thread_id WHERE c.bot_id=? AND json_type(t.data, '$.capabilities')='array' LIMIT 1").get(botId)
   }
-  activeNarrowedCaps(botId: string): WebhookCapability[] | null {
-    return activeNarrowedCaps(this, botId)
+  activeNarrowedCaps(botId: string, sessionCaps?: (botId: string, chatId: string) => WebhookCapability[] | null | undefined): WebhookCapability[] | null {
+    return activeNarrowedCaps(this, botId, sessionCaps)
   }
   /** Narrowed capabilities of a thread session (following compression), null if unrestricted, undefined if lineage unreadable. */
   narrowedForChat(botId: string, chatId: string): WebhookCapability[] | null | undefined {

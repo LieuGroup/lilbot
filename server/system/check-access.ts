@@ -26,19 +26,26 @@ function checkChatRefusal(sessions: Pick<CheckSessions, 'checking' | 'isCheck'>,
   return null
 }
 
-type GateCallers = Pick<WebhookCallers, 'hasRuns' | 'forChat'> & Partial<Pick<WebhookCallers, 'unplacedCapabilities'>>
+type GateCallers = Pick<WebhookCallers, 'hasRuns' | 'forChat'> & Partial<Pick<WebhookCallers, 'unplacedCapabilities' | 'hasHistory'>>
+type GateCalls = Pick<CallingChats, 'gate'> & Partial<Pick<CallingChats, 'dropClaim' | 'peek'>>
 const unplacedOf = (callers: GateCallers, botId: string) => (callers.unplacedCapabilities ? callers.unplacedCapabilities(botId) : callers.hasRuns(botId) ? [] : null)
 
 /** Single-placement gate for outside MCP tools: places the call once in `CallingChats` and applies both webhook and check rules. */
-export function serviceSessionRefusal(callers: GateCallers, sessions: Pick<CheckSessions, 'checking' | 'isCheck'>, calls: Pick<CallingChats, 'gate'>) {
+export function serviceSessionRefusal(callers: GateCallers, sessions: Pick<CheckSessions, 'checking' | 'isCheck'>, calls: GateCalls) {
   return async (botId: string, name: string, raw: unknown): Promise<string | null> => {
     const unplaced = unplacedOf(callers, botId)
     const hasHook = unplaced !== null
     const checking = sessions.checking(botId)
-    if (!hasHook && !checking) return null
-    const chatId = await calls.gate(botId, name, raw, chat => (hasHook && callers.forChat(botId, chat) !== null) || (checking && sessions.isCheck(botId, chat)))
+    const hasHistory = Boolean(callers.hasHistory?.(botId))
+    if (!hasHook && !checking) {
+      if (!hasHistory || !calls.peek) return null
+      const seen = calls.peek(botId, name, raw, chat => callers.forChat(botId, chat) !== null)
+      if (seen === AMBIGUOUS_MATCH) return AMBIGUOUS
+      return seen ? refusalFor(callers.forChat(botId, seen), name, []) : null
+    }
+    const chatId = await calls.gate(botId, name, raw, chat => ((hasHook || hasHistory) && callers.forChat(botId, chat) !== null) || (checking && sessions.isCheck(botId, chat)))
     if (chatId === AMBIGUOUS_MATCH) return AMBIGUOUS
-    if (hasHook) {
+    if (hasHook || (hasHistory && chatId !== null)) {
       if (chatId === null) console.warn(`[webhook-session] ${name}: no tool start seen; treated as a webhook run's call`)
       const hook = refusalFor(chatId === null ? unplaced : callers.forChat(botId, chatId), name, [])
       if (hook) return hook
@@ -52,7 +59,7 @@ export function systemSessionRefusal(
   tools: McpTool[],
   sessions: Pick<CheckSessions, 'checking' | 'isCheck'>,
   callers: GateCallers,
-  calls: Pick<CallingChats, 'gate'> & Partial<Pick<CallingChats, 'dropClaim'>>,
+  calls: GateCalls,
   beyondOwn: (botId: string, tool: string, args: unknown) => boolean,
   t3Enabled = false
 ) {
@@ -64,8 +71,26 @@ export function systemSessionRefusal(
     const needCheck = !!tool && sessions.checking(botId) && !((reads && !READS_MEMORY.has(name)) || (name === 'lilbot_work' && args.verdict !== undefined))
     const unplaced = unplacedOf(callers, botId)
     const needHook = unplaced !== null && runRefusalForChat(unplaced, botId, name, raw, beyondOwn, t3Enabled) !== null
-    if (!needCheck && !needHook) return null
-    const chatId = await calls.gate(botId, name, raw, chat => (needCheck && sessions.isCheck(botId, chat)) || (needHook && callers.forChat(botId, chat) !== null))
+    const canPeek = Boolean(callers.hasHistory?.(botId)) && runRefusalForChat([], botId, name, raw, beyondOwn, t3Enabled) !== null
+    const refusesChat = (chat: string) => {
+      const caps = callers.forChat(botId, chat)
+      return caps !== null && runRefusalForChat(caps, botId, name, raw, beyondOwn, t3Enabled) !== null
+    }
+    if (!needCheck && !needHook) {
+      if (!canPeek || !calls.peek) return null
+      const seen = calls.peek(botId, name, raw, refusesChat)
+      if (seen === AMBIGUOUS_MATCH) return AMBIGUOUS
+      if (!seen) return null
+      const refused = runRefusalForChat(callers.forChat(botId, seen), botId, name, raw, beyondOwn, t3Enabled)
+      if (refused) calls.dropClaim?.(botId, name, seen)
+      return refused
+    }
+    const chatId = await calls.gate(
+      botId,
+      name,
+      raw,
+      chat => (needCheck && sessions.isCheck(botId, chat)) || (needHook ? callers.forChat(botId, chat) !== null : canPeek && refusesChat(chat))
+    )
     if (chatId === AMBIGUOUS_MATCH) return AMBIGUOUS
     if (needCheck) {
       const check = checkChatRefusal(sessions, botId, name, chatId)
@@ -74,7 +99,7 @@ export function systemSessionRefusal(
         return check
       }
     }
-    if (!needHook) return null
+    if (!needHook && !(canPeek && chatId !== null)) return null
     if (chatId === null) console.warn(`[webhook-session] ${name}: no tool start seen; treated as a webhook run's call`)
     const refused = runRefusalForChat(chatId === null ? unplaced : callers.forChat(botId, chatId), botId, name, raw, beyondOwn, t3Enabled)
     if (refused && chatId) calls.dropClaim?.(botId, name, chatId)

@@ -121,7 +121,6 @@ export class CallingChats {
     const marked = matches.find(s => s[slot] === 'ambiguous')
     if (marked) {
       marked[slot] = 'taken'
-      if (slot === 'gated') marked.claimed = 'taken'
       return AMBIGUOUS_MATCH
     }
     if (new Set(matches.map(s => s.chatId)).size > 1 && prefer && matches.some(s => prefer(s.chatId))) {
@@ -148,6 +147,12 @@ export class CallingChats {
   /** Places an MCP call once for session gates (`gated` slot). Null when unplaced (fail closed). */
   gate(botId: string, tool: string, raw: unknown, prefer?: (chatId: string) => boolean): Promise<Match> {
     return this.place(botId, tool, raw, prefer, 'gated')
+  }
+
+  /** Synchronous 0ms match in the `gated` slot without waiting: catches reported starts of settled limited sessions without delaying unmatched calls. */
+  peek(botId: string, tool: string, raw: unknown, prefer?: (chatId: string) => boolean): Match {
+    const args = record(raw)
+    return this.take(botId, tool, Date.now() - EARLY_MS, argsKey(args), typeof args.requestId === 'string' ? args.requestId : null, prefer, 'gated')
   }
 
   /** Places an MCP call once for service-level checks (`claimed` slot, independent of `gate`). Null when unplaced (fail closed). */

@@ -66,7 +66,11 @@ export async function narrowedCaller(
 
 /** Intersection of capabilities across currently-live local narrowed deliveries for `botId`, or null when none are live.
  *  Remote workers (`computer` set) are excluded because they only reach `worker-mcp.ts` (scoped by `ctx.threadId`). */
-export function activeNarrowedCaps(store: ThreadStore, botId: string): WebhookCapability[] | null {
+export function activeNarrowedCaps(
+  store: ThreadStore,
+  botId: string,
+  sessionCaps?: (botId: string, chatId: string) => WebhookCapability[] | null | undefined
+): WebhookCapability[] | null {
   const rows = store.db.query("SELECT threadId, kind, sourceChat FROM thread_deliveries WHERE target=? AND status!='done'").all(botId) as Pick<
     Delivery,
     'threadId' | 'kind' | 'sourceChat'
@@ -77,7 +81,7 @@ export function activeNarrowedCaps(store: ThreadStore, botId: string): WebhookCa
   }
   for (const row of rows) {
     if (row.kind === 'answer' || row.kind === 'notice') {
-      const parent = store.narrowedForChat(botId, row.sourceChat)
+      const parent = sessionCaps ? sessionCaps(botId, row.sourceChat) : store.narrowedForChat(botId, row.sourceChat)
       if (parent === undefined) return []
       if (parent !== null) intersect(parent)
       continue

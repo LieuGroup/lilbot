@@ -83,7 +83,10 @@ export class ThreadRunner {
           value: d,
           onError: async error => {
             if (error instanceof LilBotError && error.code === 'thread_cancelled') this.store.setStatus(d.id, 'done')
-            else if (error instanceof LilBotError && TERMINAL.includes(error.code))
+            else if (error instanceof LilBotError && error.code === 'session_not_found' && isReply(d.kind)) {
+              console.warn('[thread] reply target session no longer exists; settled delivery')
+              this.store.setStatus(d.id, 'done')
+            } else if (error instanceof LilBotError && TERMINAL.includes(error.code))
               await (this.groups?.owns(d.threadId) ? this.groups.failed(d) : failExchange(this.store, this.waits, this.host, d, error))
             else return false
             return true
