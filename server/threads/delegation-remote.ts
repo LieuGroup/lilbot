@@ -2,6 +2,8 @@
 import type { BotModel } from '../../shared/bot-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import type { DelegateInput } from '../../shared/thread-schema'
+import type { WebhookCapability } from '../../shared/webhook-schema'
+import { assertNarrowedAllowed } from './thread-accept'
 
 export interface RemoteTarget {
   computerId: string
@@ -23,12 +25,14 @@ export async function validateTaskTargets(
   tasks: DelegateInput['tasks'],
   resolved: ResolvedTask[],
   isFresh: (i: number) => boolean,
-  host: { resolveRemoteWorker?: ResolveRemoteWorker; validateModel?: (model: BotModel) => Promise<void> }
+  host: { resolveRemoteWorker?: ResolveRemoteWorker; validateModel?: (model: BotModel) => Promise<void> },
+  narrow?: { capabilities: WebhookCapability[] | null; threadOf: (id: string) => { computer?: string; capabilities?: WebhookCapability[] } }
 ) {
   for (const [i, t] of tasks.entries()) {
     if (!isFresh(i)) continue
     const entry = resolved[i]
     const computerRef = t.computer ?? entry.remote?.computerId
+    assertNarrowedAllowed(narrow?.capabilities, { computer: computerRef, existing: t.exchangeId && narrow ? narrow.threadOf(t.exchangeId) : undefined })
     if (computerRef) {
       if (!host.resolveRemoteWorker) throw new LilBotError('computer_unavailable', 'Remote computers are not configured.')
       const remote = await host.resolveRemoteWorker(callerId, {

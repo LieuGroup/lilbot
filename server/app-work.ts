@@ -7,6 +7,7 @@ import type { ChatItem } from '../shared/chat-schema'
 import type { GiveFileInput } from '../shared/library-schema'
 import { LilBotError } from '../shared/lilbot-error'
 import type { EventFrame } from '../shared/protocol'
+import type { WorkOrigin } from '../shared/work-schema'
 import type { ActivityService } from './activity/activity-service'
 import type { BotPrefsStore } from './bots/bot-prefs-store'
 import type { BotService } from './bots/bot-service'
@@ -136,12 +137,14 @@ export function createWork({
   publish,
   remoteWork
 }: WorkDeps) {
+  const isNarrowedOrigin = (origin: WorkOrigin) => (origin.kind === 'exchange' || origin.kind === 'group') && threadStore.isNarrowed(origin.id)
   const work = new WorkService(new WorkStore(database), {
     requireBot: id => bots.requireBot(id),
     checkers: async () => (await bots.listBots()).filter(bot => bot.runnable || bot.runtimePending).map(({ id, name }) => ({ id, name })),
     checkModel: async botId => differentModel((await bots.requireBot(botId)).model, reviewModel),
     callingChat: (botId, tool, requestId) => calls.find(botId, tool, requestId),
     session: workSessions(threadStore, routineStore, webhookStore, rootOf),
+    isNarrowedOrigin,
     libraryTitle: (botId, itemId) => libraryStore.get(botId, itemId)?.title ?? null,
     checkGoal: (botId, goalId) => requireAgreed(goalStore.get(goalId), botId),
     waiting: (botId, itemId, key, on) => {
@@ -168,7 +171,8 @@ export function createWork({
       if (chatId?.startsWith('remote:')) return void (await remoteWork?.stop(botId, chatId))
       const session = sessionOf(botId, chatId)
       if (session && store.exists(botId)) await engine.stopRun?.(store.get(botId).engineBotId, session)
-    }
+    },
+    isNarrowedOrigin
   )
   const checks = new WorkCheckRunner(
     work,

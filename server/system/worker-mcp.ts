@@ -39,7 +39,7 @@ const errorText = (error: unknown) => {
 
 const isRecord = (v: unknown): v is Record<string, unknown> => Boolean(v) && typeof v === 'object' && !Array.isArray(v)
 
-export function createWorkerMcp(deps: Pick<SystemDeps, 'store' | 'work' | 'changes'>, allTools: McpTool[]) {
+export function createWorkerMcp(deps: Pick<SystemDeps, 'store' | 'work' | 'changes' | 'workerAllowMemory'>, allTools: McpTool[]) {
   const allowed = new Map(allTools.filter(t => ALLOWED_SET.has(t.name)).map(t => [t.name, t]))
   const listed = [...allowed.values()].map(tool => ({
     name: tool.name,
@@ -70,7 +70,7 @@ export function createWorkerMcp(deps: Pick<SystemDeps, 'store' | 'work' | 'chang
         if (rawArgs.itemId !== ctx.threadId) return toolErr(msg.id, `A remote worker can only update its own work item (${ctx.threadId}).`)
         const parsed = WorkInput.parse(rawArgs)
         parsedArgs = parsed as unknown as Record<string, unknown>
-        result = fenceRunText(await deps.work.actFrom(ctx.botId, parsed, ctx.chatId))
+        result = fenceRunText(await deps.work.actFrom(ctx.botId, parsed, ctx.chatId), deps.work.host.isNarrowedOrigin)
       } else if (name === 'lilbot_work_list') {
         if (rawArgs.mine === false || rawArgs.goals !== undefined || rawArgs.goalId !== undefined)
           return toolErr(msg.id, "A remote worker can only read its own bot's work items (no mine: false or goals).")
@@ -83,10 +83,12 @@ export function createWorkerMcp(deps: Pick<SystemDeps, 'store' | 'work' | 'chang
             ? { ...raw, children: (raw as unknown as WorkItem).children.filter(c => c.ownerId === ctx.botId) }
             : raw
       } else if (name === 'lilbot_memory_list') {
+        if (deps.workerAllowMemory && !deps.workerAllowMemory(ctx.threadId)) return toolErr(msg.id, 'This narrowed remote worker cannot read memory.')
         if (rawArgs.botId !== undefined && rawArgs.botId !== ctx.botId) return toolErr(msg.id, "A remote worker can only read its own bot's memory.")
         parsedArgs = tool.input.parse({}) as Record<string, unknown>
         result = await tool.run(ctx.botId, parsedArgs)
       } else if (name === 'lilbot_memory_save') {
+        if (deps.workerAllowMemory && !deps.workerAllowMemory(ctx.threadId)) return toolErr(msg.id, 'This narrowed remote worker cannot save memory.')
         if (rawArgs.scope !== undefined && rawArgs.scope !== 'bot') return toolErr(msg.id, 'A remote worker can only save bot-private memory (scope "bot"), never shared memory.')
         const count = memorySaves.get(ctx.runId) ?? 0
         if (count >= MAX_MEMORY_SAVES_PER_RUN) return toolErr(msg.id, `Remote worker memory save limit (${MAX_MEMORY_SAVES_PER_RUN} per run) reached.`)

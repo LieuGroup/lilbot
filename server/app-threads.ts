@@ -20,6 +20,8 @@ import type { GroupHost } from './threads/group-end'
 import { groupLimits } from './threads/thread-limits'
 import { ThreadService } from './threads/thread-service'
 import type { ThreadStore } from './threads/thread-store'
+import { webhookRunAccess } from './webhooks/webhook-access'
+import type { WebhookCallers } from './webhooks/webhook-callers'
 import type { WorkLinks } from './work/work-links'
 
 interface ThreadDeps {
@@ -39,6 +41,8 @@ interface ThreadDeps {
   root: string
   rootOf: SessionRoot
   remoteWorkers?: RemoteWorkers
+  callers?: Pick<WebhookCallers, 'forChat' | 'hasRuns'>
+  t3Enabled?: boolean
   publish: (frame: EventFrame) => void
   botsChanged: () => void
   memoryChanged: () => void
@@ -60,9 +64,14 @@ export function createThreads(deps: ThreadDeps) {
             cwd: options.cwd,
             model: options.model,
             reasoningEffort: options.reasoningEffort,
+            capabilities: options.capabilities,
             onChat: options.onChat
           })
         : bots.runRoutine(botId, prompt, options),
+    sessionCapabilities: deps.callers?.forChat,
+    hasNarrowed: deps.callers?.hasRuns,
+    narrowedAccess: caps => webhookRunAccess(caps, Boolean(deps.t3Enabled)),
+    callingDelegation: (botId, raw) => calls.claim(botId, 'lilbot_delegation', raw, chat => deps.callers?.forChat(botId, chat) !== null),
     folder: botId => workspaces.ensure(botId),
     stopRun: async (botId, chatId) =>
       chatId.startsWith('remote:') && remoteWorkers ? remoteWorkers.runner.stopByChat(botId, chatId) : ((await engine.stopRun?.(native(botId), chatId)) ?? false),
@@ -89,6 +98,7 @@ export function createThreads(deps: ThreadDeps) {
       await deps.library.give(botId, { path, title, chatId })
     },
     callingChat: (botId, requestId) => calls.find(botId, 'lilbot_group', requestId),
+    callingAction: (botId, raw) => calls.claim(botId, 'lilbot_group', raw, chat => deps.callers?.forChat(botId, chat) !== null),
     rootOf: deps.rootOf,
     work,
     rosterChanged: deps.botsChanged
@@ -120,5 +130,6 @@ export function createThreads(deps: ThreadDeps) {
   })
   remoteWorkers?.runner.onToolCall(call => threads.runner.sawTool(call.chatId, call.activity))
   const hand = new DelegationService(threads, host, (botId, requestId) => calls.find(botId, 'lilbot_delegate', requestId), work)
-  return { threads, delegation: { hand, control: new DelegationControl(threads, host), groups: threads.groups! } }
+  const control = new DelegationControl(threads, host, (botId, requestId) => calls.find(botId, 'lilbot_delegation', requestId))
+  return { threads, delegation: { hand, control, groups: threads.groups! } }
 }

@@ -3,6 +3,7 @@
 import type { Database } from 'bun:sqlite'
 import type { BotModel, ReasoningEffort } from '../shared/bot-schema'
 import { LilBotError } from '../shared/lilbot-error'
+import type { WebhookCapability } from '../shared/webhook-schema'
 import type { BotRecord, BotStore } from './bots/bot-store'
 import { withoutNote } from './bots/system-note'
 import type { ComputerService } from './computers/computer-service'
@@ -36,7 +37,7 @@ export function createRemoteWorkers(deps: RemoteWorkerAppDeps) {
   })
   deps.computers.onRevoke = id => runner.onRevoke(id)
 
-  const buildSystemPrompt = (bot: BotRecord, computerName: string, cwd: string) => {
+  const buildSystemPrompt = (bot: BotRecord, computerName: string, cwd: string, capabilities?: WebhookCapability[]) => {
     const offered = deps.skills.offered(bot.id).filter(s => !REMOTE_WORKER_EXCLUDED_SKILLS.has(s.name))
     let codingSkillBody: string | undefined
     if (offered.some(s => s.name === 'lilbot-coding')) {
@@ -50,7 +51,7 @@ export function createRemoteWorkers(deps: RemoteWorkerAppDeps) {
       botId: bot.id,
       computerName,
       cwd,
-      memoryBlock: deps.memory.contextBlock(bot.id).text,
+      memoryBlock: !capabilities || capabilities.includes('memory') ? deps.memory.contextBlock(bot.id).text : '',
       skills: offered.map(s => ({ name: s.name, description: s.description })),
       codingSkillBody
     })
@@ -67,6 +68,8 @@ export function createRemoteWorkers(deps: RemoteWorkerAppDeps) {
       if (opts.cwd) throw new LilBotError('invalid_cwd', 'cwd applies only to remote computers; leader workers run in your workspace.')
       return null
     }
+    const bot = deps.store.get(callerId)
+    if (bot.permissionMode !== 'full-access') throw new LilBotError('permission_denied', 'Remote workers require full-access mode.')
     if (found.keyConflict) throw new LilBotError('computer_offline', `Computer "${found.name}" has a key conflict and cannot run workers until re-registered.`)
     if (!found.online) throw new LilBotError('computer_offline', `Computer "${found.name}" is offline. Wait until it is back online or tell Oscar.`)
     const agents = found.workerAgents ?? []
@@ -75,7 +78,6 @@ export function createRemoteWorkers(deps: RemoteWorkerAppDeps) {
       const cwdCheck = validateRemoteCwd(opts.cwd ?? '')
       if (!cwdCheck.ok) throw new LilBotError('invalid_cwd', cwdCheck.message)
     }
-    const bot = deps.store.get(callerId)
     const modelCheck = validateRemoteModel(opts.model ?? bot.model, agents)
     if (!modelCheck.ok) throw new LilBotError('invalid_model', modelCheck.message)
     return { computerId: found.id, computerName: found.name, cwd: opts.cwd }
@@ -92,6 +94,7 @@ export function createRemoteWorkers(deps: RemoteWorkerAppDeps) {
       cwd: string
       model?: BotModel
       reasoningEffort?: ReasoningEffort
+      capabilities?: WebhookCapability[]
       onChat: (chatId: string) => void
     }
   ): Promise<RemoteWorkerResult> => {
@@ -101,6 +104,15 @@ export function createRemoteWorkers(deps: RemoteWorkerAppDeps) {
       return existing.outcome
     }
     const bot = deps.store.get(botId)
+    if (bot.permissionMode !== 'full-access')
+      return runner.failRestored(options.runId, { status: 'failed', text: 'Remote workers require full-access mode.', items: [], failureReason: 'invalid_start' })
+    if (options.capabilities && !options.capabilities.includes('computers'))
+      return runner.failRestored(options.runId, {
+        status: 'failed',
+        text: 'A narrowed run cannot run a remote worker without the computers capability.',
+        items: [],
+        failureReason: 'invalid_start'
+      })
     const comp = deps.computers.list().find(c => c.id === options.computer)
     if (!comp)
       return runner.failRestored(options.runId, {
@@ -112,7 +124,7 @@ export function createRemoteWorkers(deps: RemoteWorkerAppDeps) {
     const agents = comp.workerAgents ?? []
     const modelCheck = validateRemoteModel(options.model ?? bot.model, agents)
     if (!modelCheck.ok) return runner.failRestored(options.runId, { status: 'failed', text: modelCheck.message, items: [], failureReason: 'invalid_start' })
-    const built = buildSystemPrompt(bot, comp.name, options.cwd)
+    const built = buildSystemPrompt(bot, comp.name, options.cwd, options.capabilities)
     if (!built.ok) return runner.failRestored(options.runId, { status: 'failed', text: built.error, items: [], failureReason: 'prompt_too_large' })
     const effort = options.reasoningEffort ?? (!options.model ? (bot.reasoningEffort ?? undefined) : undefined)
     const chatId = options.chatId ?? `remote:${options.threadId}`

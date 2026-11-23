@@ -3,6 +3,7 @@
 import { LilBotError } from '../../shared/lilbot-error'
 import type { WorkKind } from '../../shared/work-check-schema'
 import type { WorkOrigin } from '../../shared/work-schema'
+import { fromWebhook, sameOrigin, webhookLevel } from './webhook-items'
 import type { WorkAnswers } from './work-answers'
 import { isFinal, titleOf } from './work-rules'
 import type { WorkService } from './work-service'
@@ -23,14 +24,18 @@ export class WorkLinks {
   /** The caller's item a delegation from `chatId` belongs to: the one it names, else its only unfinished item in that
    *  session (an exchange's own item counts in the exchange's session). Null when there is none or several. */
   parentFor(callerId: string, chatId: string, itemId?: string): string | null {
+    const session = this.work.host.session(callerId, chatId).origin
+    const narrowed = this.work.host.isNarrowedOrigin
     if (itemId) {
       const item = this.store.get(itemId)
       if (item?.ownerId !== callerId) throw new LilBotError('work_forbidden', 'Hand work over under one of your own items.')
+      if (fromWebhook(session, narrowed) && !(fromWebhook(item.origin, narrowed) && sameOrigin(item.origin, session)))
+        throw new LilBotError('work_webhook_other', 'A webhook run hands work over only under an item this run opened.')
       if (isFinal(item.status)) throw new LilBotError('work_final', `That item is ${item.status}. Open a new item for new work.`)
       return itemId
     }
     const ids = new Set(this.store.unfinishedIn(callerId, chatId))
-    const own = this.store.prepared(callerId, this.work.host.session(callerId, chatId).origin)
+    const own = this.store.prepared(callerId, session)
     if (own && !isFinal(own.status)) ids.add(own.id)
     return ids.size === 1 ? [...ids][0] : null
   }
@@ -45,8 +50,10 @@ export class WorkLinks {
   /** A `code` work item LilBot opens for every same-bot worker exchange (under `parentId` when one exists, else
    *  top-level), at the bot's effective default check level for `code`. Runs inside the exchange's own transaction. */
   workerChild(parentId: string | null, exchange: { id: string; owner: Bot; task: string }) {
-    const floor = this.work.levels.floor('code', exchange.owner.id)
-    this.prepare(parentId, { ...exchange, asker: exchange.owner }, { kind: 'exchange', id: exchange.id }, { kind: 'code', floor, self: true })
+    const origin: WorkOrigin = { kind: 'exchange', id: exchange.id }
+    const raw = this.work.levels.floor('code', exchange.owner.id)
+    const floor = fromWebhook(origin, this.work.host.isNarrowedOrigin) ? webhookLevel(raw) : raw
+    this.prepare(parentId, { ...exchange, asker: exchange.owner }, origin, { kind: 'code', floor, self: true })
     this.work.host.changed()
   }
 

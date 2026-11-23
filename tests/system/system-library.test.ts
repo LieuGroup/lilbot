@@ -71,7 +71,7 @@ test('a webhook run, even continued after compressing, gives only once Oscar add
   const [run] = f.webhookStore.claimDue(60_000)
   f.webhookStore.attach(run.id, 'hook-session', 60_000)
   f.roots.set('hook-continued', 'hook-session')
-  f.calls.saw('b1', 'hook-session', 'mcp__lilbot_system__lilbot_give_file', { requestId: 'narrow' })
+  f.from.set('b1', 'hook-session')
   expect((await give(f, { requestId: 'narrow', title: 'narrow' })).error).toContain('A webhook run cannot use lilbot_give_file')
   f.webhookStore.setCapabilities('b1', hook.id, ['shell'])
   for (const [requestId, chat] of [

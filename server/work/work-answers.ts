@@ -5,7 +5,7 @@ import type { Database } from 'bun:sqlite'
 import { LilBotError } from '../../shared/lilbot-error'
 import { backgroundFailure, RetryQueue } from '../background'
 import { fenced } from '../memory/memory-safety'
-import { fromWebhook } from './webhook-items'
+import { fromWebhook, type OriginCheck } from './webhook-items'
 import type { StoredItem } from './work-store'
 
 type Row = { id: string; item_id: string; bot_id: string; chat_id: string | null; text: string; status: 'pending' | 'stopping' }
@@ -33,13 +33,14 @@ export class WorkAnswers {
   constructor(
     private db: Database,
     private deliver: Deliver,
-    private interrupt: Interrupt
+    private interrupt: Interrupt,
+    private isNarrowedOrigin?: OriginCheck
   ) {}
 
   /** Work from a conversation continues in the bot's main conversation; other work in the session it came from. `stop`: the row
    *  waits as `stopping` until the turn the session is running has been ended (once), so the bot reads this and not its own last words. */
   queue(id: string, item: StoredItem, prompt: string, stop = false, oscar?: string) {
-    if (!fromWebhook(item.origin)) return this.add(id, item.id, item.ownerId, item.origin.kind === 'conversation' ? null : item.chatId, prompt, stop)
+    if (!fromWebhook(item.origin, this.isNarrowedOrigin)) return this.add(id, item.id, item.ownerId, item.origin.kind === 'conversation' ? null : item.chatId, prompt, stop)
     // A webhook run's item: its running turn may be ended, but its session never takes another turn. Only Oscar's own
     // words go on, to the main conversation; LilBot's notices without them (a drop, a failed check) are not sent.
     if (stop) void this.interrupt(item.ownerId, item.chatId).catch(() => backgroundFailure('work answer'))

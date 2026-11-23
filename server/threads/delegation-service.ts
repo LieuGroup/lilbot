@@ -4,8 +4,10 @@ import type { BotModel } from '../../shared/bot-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import { AttachInput, DelegateInput } from '../../shared/thread-schema'
 import { refuseUnsafe } from '../memory/memory-safety'
+import type { Match } from './calling-chats'
 import { type ResolvedTask, type ResolveRemoteWorker, validateTaskTargets } from './delegation-remote'
 import { checkFiles, stageFiles, withBatchCopies } from './exchange-files'
+import { assertNarrowedAllowed, narrowedCaller } from './thread-accept'
 import { THREAD_LIMITS } from './thread-limits'
 import type { ThreadHost, ThreadService } from './thread-service'
 
@@ -14,15 +16,13 @@ export interface DelegationHost extends ThreadHost {
   steerRun?(botId: string, chatId: string, text: string): Promise<'steered' | 'not_running'>
   validateModel?(model: BotModel): Promise<void>
   resolveRemoteWorker?: ResolveRemoteWorker
+  callingDelegation?(botId: string, raw: unknown): Promise<Match>
 }
 type Bot = { id: string; name: string }
 /** The work board (#141), so work handed out inside an item hangs under it as the receiver's own item. */
 export interface DelegationWork {
-  /** The caller's item this delegation from `chatId` belongs to, or null; refuses an item that is not the caller's. */
   parentFor(callerId: string, chatId: string, itemId?: string): string | null
-  /** Runs inside the new exchange's transaction. */
   child(parentId: string, exchange: { id: string; owner: Bot; asker: Bot; task: string }): void
-  /** Opens a `code` work item for a worker exchange (with or without a parent item), inside the exchange's transaction. */
   workerChild?(parentId: string | null, exchange: { id: string; owner: Bot; task: string }): void
 }
 
@@ -47,16 +47,12 @@ export class DelegationService {
       opening++
       if (resolved[i].worker) openingWorkers++
     }
-    if (opening && this.store.open(callerId) + opening > THREAD_LIMITS.openPerBot)
-      throw new LilBotError(
-        'thread_limit',
-        `At most ${THREAD_LIMITS.openPerBot} delegations can be under way at once; ${this.store.open(callerId)} are. Wait for answers or stop one.`
-      )
-    if (openingWorkers && this.store.openWorkers(callerId) + openingWorkers > THREAD_LIMITS.workersPerBot)
-      throw new LilBotError(
-        'thread_limit',
-        `At most ${THREAD_LIMITS.workersPerBot} workers can be under way at once; ${this.store.openWorkers(callerId)} are. Wait for answers or stop one.`
-      )
+    const open = this.store.open(callerId)
+    if (opening && open + opening > THREAD_LIMITS.openPerBot)
+      throw new LilBotError('thread_limit', `At most ${THREAD_LIMITS.openPerBot} delegations can be under way at once; ${open} are. Wait for answers or stop one.`)
+    const openW = this.store.openWorkers(callerId)
+    if (openingWorkers && openW + openingWorkers > THREAD_LIMITS.workersPerBot)
+      throw new LilBotError('thread_limit', `At most ${THREAD_LIMITS.workersPerBot} workers can be under way at once; ${openW} are. Wait for answers or stop one.`)
   }
 
   async delegate(callerId: string, raw: DelegateInput) {
@@ -64,8 +60,8 @@ export class DelegationService {
     const caller = await this.host.requireBot(callerId)
     const ids = input.tasks.map((_, i) => `${input.requestId}:${i}`)
     const fresh = input.tasks.filter((_, i) => !this.store.delivery(`${callerId}:${ids[i]}`))
-    const chatId = fresh.length ? await this.callingChat(callerId, input.requestId) : null
-    if (chatId)
+    const chatId = fresh.length || this.host.hasNarrowed?.(callerId) ? await this.callingChat(callerId, input.requestId) : null
+    if (chatId && fresh.length)
       this.store.assertNotWorker(
         callerId,
         chatId,
@@ -90,7 +86,12 @@ export class DelegationService {
     const continuations = input.tasks.flatMap(t => (t.exchangeId ? [t.exchangeId] : []))
     if (new Set(continuations).size !== continuations.length) throw new LilBotError('thread_target', 'One task per exchange in a call.')
     for (const t of input.tasks) refuseUnsafe(t.task)
-    await validateTaskTargets(callerId, input.tasks, resolved, i => !this.store.delivery(`${callerId}:${ids[i]}`), this.host)
+    const capabilities = chatId ? (this.host.sessionCapabilities?.(callerId, chatId) ?? null) : null
+    for (const id of ids) {
+      const prior = this.store.delivery(`${callerId}:${id}`)
+      if (prior) assertNarrowedAllowed(capabilities, { existing: this.store.get(prior.threadId) })
+    }
+    await validateTaskTargets(callerId, input.tasks, resolved, i => !this.store.delivery(`${callerId}:${ids[i]}`), this.host, { capabilities, threadOf: id => this.store.get(id) })
     this.checkCaps(callerId, input.tasks, ids, resolved)
     const root = await this.host.folder(callerId)
     for (const t of fresh) await checkFiles(root, t.files ?? [])
@@ -131,7 +132,8 @@ export class DelegationService {
                 reasoningEffort: task.reasoningEffort,
                 computer: remote?.computerId,
                 computerName: remote?.computerName,
-                cwd: remote?.cwd
+                cwd: remote?.cwd,
+                ...(capabilities ? { capabilities } : {})
               },
               (messageId, thread) => {
                 added = true
@@ -180,10 +182,13 @@ export class DelegationService {
   }
 
   /** The receiver's files for its answer: checked now, copied to the other bot when the answer goes out. */
-  async attach(botId: string, raw: { exchangeId: string; files: string[] }) {
+  async attach(botId: string, raw: { exchangeId: string; files: string[] }, callArgs?: unknown) {
     const input = AttachInput.parse(raw)
     await this.host.requireBot(botId)
-    if (this.store.get(input.exchangeId).group) throw new LilBotError('thread_forbidden', 'That is a group: attach with lilbot_group.')
+    const thread = this.store.get(input.exchangeId)
+    if (thread.group) throw new LilBotError('thread_forbidden', 'That is a group: attach with lilbot_group.')
+    const place = () => this.host.callingDelegation?.(botId, callArgs ?? { action: 'attach', ...raw }) ?? Promise.resolve(null)
+    assertNarrowedAllowed(await narrowedCaller(botId, this.host, place), { existing: thread })
     const running = this.threads.runner.runningFor(input.exchangeId)
     if (!running || running.target !== botId) throw new LilBotError('not_running', 'Attach files while you work on that exchange; they go back with your answer.')
     const at = { threadId: input.exchangeId, messageId: `${running.id}:reply`, sender: botId }

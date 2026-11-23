@@ -4,11 +4,11 @@
  *  (`CallingChats.gate`: exact request id or arguments first, falling back after a grace window only when strictly one
  *  unmatched start exists for a call without request id); one that cannot be placed is refused (it fails closed).
  *  Calls of a bot that checks nothing are never held. */
-import { type CallingChats, NOT_SEEN } from '../threads/calling-chats'
+import { AMBIGUOUS, AMBIGUOUS_MATCH, type CallingChats, NOT_SEEN } from '../threads/calling-chats'
 import type { WebhookCallers } from '../webhooks/webhook-callers'
 import type { CheckSessions } from '../work/check-sessions'
 import type { McpTool } from './mcp-tool'
-import { needsWebhookCheck, refusalFor, runRefusalForChat } from './run-access'
+import { refusalFor, runRefusalForChat } from './run-access'
 
 const READS_MEMORY = new Set(['lilbot_memory_list'])
 const IN_CHECK = 'This session is a check: LilBot lets it read and give its verdict (lilbot_work with verdict), nothing else.'
@@ -26,20 +26,21 @@ function checkChatRefusal(sessions: Pick<CheckSessions, 'checking' | 'isCheck'>,
   return null
 }
 
+type GateCallers = Pick<WebhookCallers, 'hasRuns' | 'forChat'> & Partial<Pick<WebhookCallers, 'unplacedCapabilities'>>
+const unplacedOf = (callers: GateCallers, botId: string) => (callers.unplacedCapabilities ? callers.unplacedCapabilities(botId) : callers.hasRuns(botId) ? [] : null)
+
 /** Single-placement gate for outside MCP tools: places the call once in `CallingChats` and applies both webhook and check rules. */
-export function serviceSessionRefusal(
-  callers: Pick<WebhookCallers, 'hasRuns' | 'forChat'>,
-  sessions: Pick<CheckSessions, 'checking' | 'isCheck'>,
-  calls: Pick<CallingChats, 'gate'>
-) {
+export function serviceSessionRefusal(callers: GateCallers, sessions: Pick<CheckSessions, 'checking' | 'isCheck'>, calls: Pick<CallingChats, 'gate'>) {
   return async (botId: string, name: string, raw: unknown): Promise<string | null> => {
-    const hasHook = callers.hasRuns(botId)
+    const unplaced = unplacedOf(callers, botId)
+    const hasHook = unplaced !== null
     const checking = sessions.checking(botId)
     if (!hasHook && !checking) return null
     const chatId = await calls.gate(botId, name, raw, chat => (hasHook && callers.forChat(botId, chat) !== null) || (checking && sessions.isCheck(botId, chat)))
+    if (chatId === AMBIGUOUS_MATCH) return AMBIGUOUS
     if (hasHook) {
       if (chatId === null) console.warn(`[webhook-session] ${name}: no tool start seen; treated as a webhook run's call`)
-      const hook = refusalFor(callers.forChat(botId, chatId ?? undefined), name, [])
+      const hook = refusalFor(chatId === null ? unplaced : callers.forChat(botId, chatId), name, [])
       if (hook) return hook
     }
     return checkChatRefusal(sessions, botId, name, chatId)
@@ -50,8 +51,8 @@ export function serviceSessionRefusal(
 export function systemSessionRefusal(
   tools: McpTool[],
   sessions: Pick<CheckSessions, 'checking' | 'isCheck'>,
-  callers: Pick<WebhookCallers, 'hasRuns' | 'forChat'>,
-  calls: Pick<CallingChats, 'gate'>,
+  callers: GateCallers,
+  calls: Pick<CallingChats, 'gate'> & Partial<Pick<CallingChats, 'dropClaim'>>,
   beyondOwn: (botId: string, tool: string, args: unknown) => boolean,
   t3Enabled = false
 ) {
@@ -61,15 +62,22 @@ export function systemSessionRefusal(
     const args = (raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>
     const reads = tool ? (typeof tool.readOnly === 'function' ? tool.readOnly(args) : tool.readOnly) : false
     const needCheck = !!tool && sessions.checking(botId) && !((reads && !READS_MEMORY.has(name)) || (name === 'lilbot_work' && args.verdict !== undefined))
-    const needHook = callers.hasRuns(botId) && needsWebhookCheck(botId, name, raw, beyondOwn)
+    const unplaced = unplacedOf(callers, botId)
+    const needHook = unplaced !== null && runRefusalForChat(unplaced, botId, name, raw, beyondOwn, t3Enabled) !== null
     if (!needCheck && !needHook) return null
     const chatId = await calls.gate(botId, name, raw, chat => (needCheck && sessions.isCheck(botId, chat)) || (needHook && callers.forChat(botId, chat) !== null))
+    if (chatId === AMBIGUOUS_MATCH) return AMBIGUOUS
     if (needCheck) {
       const check = checkChatRefusal(sessions, botId, name, chatId)
-      if (check) return check
+      if (check) {
+        if (chatId) calls.dropClaim?.(botId, name, chatId)
+        return check
+      }
     }
     if (!needHook) return null
     if (chatId === null) console.warn(`[webhook-session] ${name}: no tool start seen; treated as a webhook run's call`)
-    return runRefusalForChat(callers.forChat(botId, chatId ?? undefined), botId, name, raw, beyondOwn, t3Enabled)
+    const refused = runRefusalForChat(chatId === null ? unplaced : callers.forChat(botId, chatId), botId, name, raw, beyondOwn, t3Enabled)
+    if (refused && chatId) calls.dropClaim?.(botId, name, chatId)
+    return refused
   }
 }

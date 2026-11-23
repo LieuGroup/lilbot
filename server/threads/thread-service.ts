@@ -1,6 +1,5 @@
-/** Exchanges between bots: asking (`ask`, for sessions that loaded plug-in 0.9.x through the engine API), reading (bots and
- *  Oscar), and stopping (the delegating bot or Oscar). Running the deliveries is `thread-runner.ts`; the delegation tools on
- *  LilBot's MCP server are `delegation-service.ts`. Given a group host, it also runs temporary groups (`group-service.ts`). */
+/** Exchanges between bots: asking (`ask`), reading, and stopping. Deliveries run in `thread-runner.ts`;
+ *  MCP delegation is `delegation-service.ts`, temporary groups `group-service.ts`. */
 import { LilBotError } from '../../shared/lilbot-error'
 import { type BotThread, ThreadAsk } from '../../shared/thread-schema'
 import { readAttachment } from '../attachments/attachment-files'
@@ -12,6 +11,7 @@ import { GroupRounds } from './group-rounds'
 import { GroupService } from './group-service'
 import { GroupStore } from './group-store'
 import { groupView } from './group-view'
+import { assertNarrowedAllowed } from './thread-accept'
 import { ThreadFiles } from './thread-files'
 import { GROUP_LIMITS, type GroupLimits } from './thread-limits'
 import { noticePrompt } from './thread-prompts'
@@ -95,8 +95,7 @@ export class ThreadService {
     if (!thread.participants.some(p => p.id === botId)) throw new LilBotError('thread_forbidden', 'This bot is not a participant.')
     return this.view(thread)
   }
-  /** A file passed in an exchange, as delivered: read from the recipient's copy without following links and checked against
-   *  the hash taken when it was copied. In a group: a file passed in it, or one its leader kept (`readGroupFile`). */
+  /** A file passed in an exchange or group, verified against its recorded hash without following links. */
   async file(botId: string, threadId: string, messageId: string, index: number) {
     const thread = await this.open(botId, threadId)
     const row = this.files.forMessage(messageId)[index]
@@ -116,16 +115,18 @@ export class ThreadService {
   async ask(callerId: string, raw: ThreadAsk) {
     const input = ThreadAsk.parse(raw)
     const caller = await this.host.requireBot(callerId)
+    const capabilities = this.host.sessionCapabilities?.(callerId, input.chatId) ?? undefined
     const prior = this.store.delivery(`${callerId}:${input.requestId}`)
-    if (prior) return { threadId: prior.threadId, queued: true }
+    if (prior) {
+      assertNarrowedAllowed(capabilities, { existing: this.store.get(prior.threadId) })
+      return { threadId: prior.threadId, queued: true }
+    }
     refuseUnsafe(input.text)
-    const delivery = this.store.accept(caller, await this.target(input.to), input)
+    const delivery = this.store.accept(caller, await this.target(input.to), capabilities ? { ...input, capabilities } : input)
     this.changed()
     return { threadId: delivery.threadId, queued: true }
   }
-  /** The database part of stopping an exchange under way, so a caller can do it inside its own transaction: work queued for the
-   *  receiver is dropped, and anything its running turn still says stays in the record without being delivered. When Oscar stops
-   *  it, the delegating bot is told. Null when the exchange has settled already; `end` then interrupts the receiver's turn. */
+  /** DB part of stopping an active exchange: drops queued work, keeps running output withheld, notifies delegator on Oscar stop. */
   stopping(threadId: string, by: StoppedBy, reason?: string) {
     const thread = this.store.get(threadId)
     if (thread.group) throw new LilBotError('thread_forbidden', 'That is a group: its leader closes it with lilbot_group.')
