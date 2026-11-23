@@ -164,15 +164,17 @@ test('a routine session is created with the bot’s reasoning effort, and withou
   expect('reasoning' in created[1]).toBe(false)
 })
 
-test('a run asked for an access scope or toolsets maps them to Hermes toolsets; without, the session has every toolset', async () => {
+test('a run asked for an access scope maps it to Hermes toolsets; without, the session has every toolset', async () => {
   const { created, connect } = recordingCreate()
   await runRoutine('native-id', 'task', { workspace: '/test', runId: 'check', onChat: () => {}, access: 'check' }, connect)
-  await runRoutine('native-id', 'task', { workspace: '/test', runId: 'narrow', onChat: () => {}, toolsets: ['web'] }, connect)
+  await runRoutine('native-id', 'task', { workspace: '/test', runId: 'narrow', onChat: () => {}, access: { kind: 'webhook', capabilities: [] } }, connect)
+  await runRoutine('native-id', 'task', { workspace: '/test', runId: 'web', onChat: () => {}, access: { kind: 'webhook', capabilities: ['web'] } }, connect)
   await runRoutine('native-id', 'task', { workspace: '/test', runId: 'wide', onChat: () => {} }, connect)
   expect(created[0].toolsets).toEqual(['web', 'vision', 'terminal', 'file', 'skills', 'lilbot_system'])
   expect(created[0].toolsets).not.toContain('memory')
-  expect(created[1].toolsets).toEqual(['web'])
-  expect('toolsets' in created[2]).toBe(false)
+  expect(created[1].toolsets).toEqual(['lilbot_system'])
+  expect(created[2].toolsets).toEqual(['lilbot_system', 'web'])
+  expect('toolsets' in created[3]).toBe(false)
 })
 
 test('finished routine items carry per-turn usage and stopped mark on interrupted runs', async () => {

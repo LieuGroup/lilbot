@@ -145,7 +145,7 @@ export class WebhookService {
     const access = webhookRunAccess(webhook.capabilities, this.t3Enabled)
     const result = await this.host.runRoutine(run.botId, webhookPrompt(webhook, access.prompt, items, withheld.length), {
       runId: `webhook-${run.id}`,
-      toolsets: access.toolsets,
+      access: access.access,
       origin: { line: webhookLine },
       onChat: id => {
         this.store.attach(run.id, id, this.now())
