@@ -133,3 +133,26 @@ test('after a restart the open check runs again with the same run id, so the eng
   restarted.tick()
   expect(f.state.runs.map(run => run.runId)).toEqual([`check-${item.id}:check:1`, `check-${item.id}:check:1`])
 })
+
+test('a verdict retry with the same requestId is refused from a non-check or different check session, and succeeds from the same check session', async () => {
+  const f = fixture()
+  const item = await finish(f)
+  const verified = await check(f, item.id, 'verified')
+  expect(verified.status).toBe('done')
+  const retry = { requestId: `v-${item.id}:check:1`, itemId: item.id, verdict: 'verified' as const, result: 'I read version 7' }
+
+  // Same check session retries cleanly.
+  f.state.chats.set('b', `check-${item.id}:check:1-session`)
+  expect((await f.work.act('b', retry)).id).toBe(item.id)
+
+  // A non-check session (e.g., main chat or narrowed webhook session) is refused at the early !callerCheck guard.
+  f.state.chats.set('b', 'b-main')
+  await expect(f.work.act('b', retry)).rejects.toThrow(/Give the verdict from the check session/)
+
+  // A different check session belonging to another item is also refused.
+  const other = await finish(f, { requestId: 'other-item', title: 'Other item' })
+  f.checkRuns.tick()
+  await Bun.sleep(1)
+  f.state.chats.set('b', `check-${other.id}:check:1-session`)
+  expect(await refusal(f.work.act('b', retry))).toBe('work_forbidden')
+})

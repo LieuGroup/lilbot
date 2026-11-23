@@ -57,11 +57,29 @@ export function webhookCallers(store: Pick<WebhookStore, 'runForChat' | 'hasRuns
     return null
   }
 
+  /** Whether `chatId` is positively identified as a limited run (a webhook run, a narrowed hand-off, or a continuation
+   *  whose lineage was read and leads to one). Fails OPEN when lineage cannot be read (`undefined` or error): this
+   *  guards only the owner's own `chat.send` path, the opposite of `forChat` and `hidden-chats.ts` (which both fail
+   *  closed) — do not align them. */
+  const isKnownLimited = (botId: string, chatId: string): boolean => {
+    try {
+      if (store.hasRuns(botId) && runOf(botId, chatId)) return true
+    } catch {}
+    try {
+      if (narrowed?.hasNarrowed(botId)) {
+        const caps = narrowed.narrowedForChat(botId, chatId)
+        if (caps !== null && caps !== undefined) return true
+      }
+    } catch {}
+    return false
+  }
+
   return {
     run: runOf,
     hasRuns,
     unplacedCapabilities,
     forChat,
+    isKnownLimited,
     /** For an MCP call of `tool` with these arguments: what the narrowed run that made it may do, or null when another
      *  session made it. Waits for the call's own start up to `calls.waitMs`; a call never seen counts as narrowed. */
     async forCall(botId: string, tool: string, raw: unknown): Promise<WebhookCapability[] | null> {

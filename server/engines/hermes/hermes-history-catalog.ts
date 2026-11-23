@@ -44,6 +44,7 @@ export function compressionRoot(nativeId: string, chatId: string): string | null
   try {
     requireProfileEnvironment(nativeId)
     db = new Database(statePath(nativeId), { readonly: true })
+    db.run('PRAGMA busy_timeout = 250')
     const parent = db.query("SELECT p.id FROM sessions c JOIN sessions p ON p.id = c.parent_session_id WHERE c.id = ? AND p.end_reason = 'compression'")
     const seen = new Set([chatId])
     for (let id = chatId; ; ) {
