@@ -7,6 +7,7 @@ import { LilBotError } from '../../shared/lilbot-error'
 import { type Webhook, type WebhookAddress, type WebhookCapability, WebhookCreate, type WebhookRun } from '../../shared/webhook-schema'
 import { webhookLine } from '../devices/origin-line'
 import type { RoutineHost } from '../routines/routine-service'
+import { itemsForFinish, openRunTranscript, RunTranscriptBackfill } from '../routines/run-transcripts'
 import { webhookRunAccess } from './webhook-access'
 import { addressMatches, addressPath, claimedId } from './webhook-address'
 import { deliveryKeys } from './webhook-delivery'
@@ -19,6 +20,7 @@ export type Delivery = 'accepted' | 'duplicate' | 'full'
 
 export class WebhookService {
   readonly kind = 'webhook'
+  private backfill: RunTranscriptBackfill
   constructor(
     readonly store: WebhookStore,
     private host: RoutineHost,
@@ -29,7 +31,12 @@ export class WebhookService {
     private changed: () => void = () => {},
     private now = Date.now,
     private t3Enabled = false
-  ) {}
+  ) {
+    this.backfill = new RunTranscriptBackfill(host, store.transcripts, now)
+  }
+  backfillTick() {
+    this.backfill.tick()
+  }
 
   private requireOrigin() {
     if (!this.origin) throw new LilBotError('webhooks_unavailable', 'Webhooks need the public door, which is not set up on this LilBot. Tell Oscar.')
@@ -89,8 +96,7 @@ export class WebhookService {
     await this.host.requireBot(botId)
     const run = this.store.run(botId, id)
     this.store.get(botId, run.webhookId)
-    if (!run.chatId) throw new LilBotError('run_pending', 'This run has no conversation.')
-    const chat = await this.host.openChat(botId, run.chatId, onEvent, true)
+    const chat = await openRunTranscript(this.host, this.store.transcripts, this.backfill, run, onEvent, new LilBotError('run_pending', 'This run has no conversation.'))
     return {
       ...chat,
       send: async () => {
@@ -139,14 +145,14 @@ export class WebhookService {
     const access = webhookRunAccess(webhook.capabilities, this.t3Enabled)
     const result = await this.host.runRoutine(run.botId, webhookPrompt(webhook, access.prompt, items, withheld.length), {
       runId: `webhook-${run.id}`,
-      toolsets: access.toolsets,
+      access: access.access,
       origin: { line: webhookLine },
       onChat: id => {
         this.store.attach(run.id, id, this.now())
         this.changed()
       }
     })
-    this.store.finish(run.id, result.status, result.text, this.now())
+    this.store.finish(run.id, result.status, result.text, this.now(), itemsForFinish(result))
     this.changed()
     return result
   }

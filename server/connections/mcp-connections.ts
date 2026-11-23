@@ -28,7 +28,7 @@ export interface ConnectionsHost {
   signInFailed?(botId: string, chatId: string, name: string, reason: string, runId: string): void
   cardChanged?(card: ConnectionSignInCard): void
   changed(): void
-  toolName?: (server: string, tool: string) => string
+  toolName?: (server: string, tool: string, botId?: string) => string
 }
 
 export class McpConnections {
@@ -69,7 +69,7 @@ export class McpConnections {
       throw new LilBotError('connection_exists', `A connection named ${input.name} exists already. lilbot_status with area connections lists them.`)
     if (this.store.list().length >= MAX_SERVICES) throw new LilBotError('connection_limit', `LilBot holds at most ${MAX_SERVICES} connections. Ask Oscar which to remove.`)
     const chatId = await this.host.callingChat(botId, input.requestId)
-    const found = await probe(address, undefined, this.mapTool(input.name))
+    const found = await probe(address, undefined, this.mapTool(input.name, botId))
     if (found.kind === 'unreachable') throw new LilBotError('connection_unreachable', 'LilBot could not reach an MCP service at that address.')
     if (found.kind === 'refused') throw new LilBotError('connection_refused', 'The service refused LilBot without offering a sign-in.')
     if (found.kind === 'sign_in' && this.host.isHiddenChat?.(botId, chatId)) throw hiddenChatSignIn()
@@ -103,7 +103,7 @@ export class McpConnections {
     plainCardText(reason, 300)
     const chatId = await this.host.callingChat(botId, requestId)
     if (this.host.isHiddenChat?.(botId, chatId)) throw hiddenChatSignIn()
-    await this.ensureCredential(connection)
+    await this.ensureCredential(connection, botId)
     if (!this.store.get(connection.id)) throw connectionNotFound()
     return this.startCard(connection, botId, chatId, { label, reason })
   }
@@ -120,7 +120,7 @@ export class McpConnections {
     const card = this.cards.requireRestartable(cardId)
     if (!this.host.botExists(card.botId)) throw new LilBotError('bot_not_found', 'That bot no longer exists.')
     const connection = this.requireSignInConnection(card.connectionId)
-    await this.ensureCredential(connection)
+    await this.ensureCredential(connection, card.botId)
     const fresh = this.store.get(connection.id)
     const credential = fresh ? this.credentials.get(fresh.id) : undefined
     if (!fresh || !credential) throw connectionNotFound()
@@ -180,9 +180,9 @@ export class McpConnections {
     const server = await discover(address, challenge)
     return { server, client: await register(server, this.redirectUri) }
   }
-  private async ensureCredential(connection: StoredConnection) {
+  private async ensureCredential(connection: StoredConnection, botId: string) {
     if (this.credentials.get(connection.id)) return
-    const found = await probe(new URL(connection.address), undefined, this.mapTool(connection.name))
+    const found = await probe(new URL(connection.address), undefined, this.mapTool(connection.name, botId))
     if (found.kind !== 'sign_in') throw new LilBotError('connection_open', `${connection.name} needs no sign-in.`)
     const prepared = await this.prepareSignIn(new URL(connection.address), found.challenge)
     if (!this.store.get(connection.id)) throw connectionNotFound()
@@ -193,6 +193,6 @@ export class McpConnections {
     if (!credential || !this.redirectUri) throw signInUnavailable()
     return cardToolReply(connection, this.cards.begin(connection, botId, chatId, credential, this.redirectUri, opts), this.callbackEnabled)
   }
-  private mapTool = (name: string) => (this.host.toolName ? (tool: string) => this.host.toolName!(`${ENGINE_PREFIX}${name}`, tool) : undefined)
+  private mapTool = (name: string, botId: string) => (this.host.toolName ? (tool: string) => this.host.toolName!(`${ENGINE_PREFIX}${name}`, tool, botId) : undefined)
   private view = (connection: StoredConnection, note: string) => ({ id: connection.id, name: connection.name, state: connection.state, tools: connection.tools, note })
 }

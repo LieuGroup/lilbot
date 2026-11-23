@@ -2,14 +2,13 @@ import { devScratch } from '../scripts/dev-env'
 import { startServer, deleteProfile } from './check-process'
 import { checkLifecycle } from './computers-lifecycle'
 import { checkPinning } from './computers-pinning'
-import { checkSafetyStops } from './computers-safety'
+import { checkSafetyStops, mcpTool } from './computers-safety'
 /** Isolated server + compiled helper. Never installs a service or changes real bots. */
 
 import { createPublicKey, generateKeyPairSync } from 'node:crypto'
 import { existsSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { connectionHeaders } from '../helper/identity'
-import { botCapability } from '../server/bots/bot-capability'
 import { BotStore } from '../server/bots/bot-store'
 import { openDatabase } from '../server/database/database'
 import { browser, eventually } from './computers-client'
@@ -34,8 +33,6 @@ const launchHelper = () => {
   helper = Bun.spawn([binary, 'run'], { env, stdout: 'ignore', stderr: 'inherit' })
 }
 try {
-  const hardStop = Bun.spawn(['python3', '-B', 'live-checks/computers-hard-stop.py'], { stdout: 'inherit', stderr: 'inherit' })
-  if (await hardStop.exited) throw new Error('Hard-stop check failed')
   const build = Bun.spawn(['bun', 'build', '--compile', 'helper/main.ts', '--outfile', binary], { env: process.env, stdout: 'ignore', stderr: 'inherit' })
   if (await build.exited) throw new Error('Helper build failed')
   const { mkdirSync } = await import('node:fs')
@@ -80,64 +77,58 @@ try {
     model: { provider: 'cliproxyapi', model: 'anthropic/claude-sonnet-5-5' }
   })
   const token = readFileSync(join(scratch, 'engine-token'), 'utf8').trim()
-  const engine = async (action: string, body: unknown) => {
-    const response = await fetch(`http://127.0.0.1:${port}/engine/computers/${action}`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${token}`, 'x-lilbot-bot-capability': botCapability(token, bot.id), 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(35_000)
-    })
-    const result = (await response.json()) as any
-    if (!response.ok) throw new Error(result.error)
-    return result
-  }
-  console.log('Checking real computer tools in a fresh bot session')
+  const mcp = (name: string, args: Record<string, unknown>) => mcpTool(port, token, bot.id, name, args)
+  const dbRead = openDatabase(join(scratch, 'lilbot.db'))
+  const nativeId = new BotStore(dbRead).get(bot.id).engineBotId
+  dbRead.close()
+  console.log('Checking real System MCP computer tools in a fresh bot session')
   await client.turn(
     bot.id,
-    `Use list_computers, then use computer_exec on computer ${identity.id} with requestId live-exec to run "printf EXEC_OK". Then computer_write_file on that computer with requestId live-write writes exactly FILE_OK to ${scratch}/bot-file, then computer_read_file with requestId live-read reads it. Do not use other tools.`
+    `Use lilbot_computers_list, then use lilbot_computer_exec on computer ${identity.id} with requestId live-exec to run "printf EXEC_OK". Then lilbot_computer_write_file on that computer with requestId live-write writes exactly FILE_OK to ${scratch}/bot-file, then lilbot_computer_read_file with requestId live-read reads it. Do not use other tools.`
   )
-  for (const name of ['list_computers', 'computer_exec', 'computer_write_file', 'computer_read_file']) {
-    if (!client.toolNames.has(name)) throw new Error(`Bot did not use ${name}`)
+  const usedTools = [...client.toolNames]
+  for (const name of ['lilbot_computers_list', 'lilbot_computer_exec', 'lilbot_computer_write_file', 'lilbot_computer_read_file']) {
+    if (!usedTools.some(t => t.endsWith(name))) throw new Error(`Bot did not use ${name} (saw: ${usedTools.join(', ')})`)
   }
-  const written = await engine('read', { computer: identity.id, requestId: 'live-write' })
-  const read = await engine('read', { computer: identity.id, requestId: 'live-read' })
-  const exec = await engine('read', { computer: identity.id, requestId: 'live-exec' })
+  const written = await mcp('lilbot_computer_request_read', { computer: identity.id, requestId: 'live-write' })
+  const read = await mcp('lilbot_computer_request_read', { computer: identity.id, requestId: 'live-read' })
+  const exec = await mcp('lilbot_computer_request_read', { computer: identity.id, requestId: 'live-exec' })
   if (written.status !== 'completed' || Buffer.from(read.result.output, 'base64').toString() !== 'FILE_OK' || exec.result.output !== 'EXEC_OK')
     throw new Error('Bot computer tools did not complete')
-  console.log('PASS: real bot listed computers, executed, wrote and read through plugin')
-  await checkSafetyStops({ port, token, botId: bot.id, computerId: identity.id })
+  console.log('PASS: real bot listed computers, executed, wrote and read through System MCP')
+  await checkSafetyStops({ port, token, botId: bot.id, nativeId, computerId: identity.id })
   await stopHelper()
   await eventually(async () => !(await call('computers.list')).find((c: any) => c.id === identity.id).online)
-  const input = { computer: identity.id, requestId: 'offline-once', background: true, operation: { kind: 'exec', command: `printf ONCE >> '${scratch}/once'` } }
-  const queued = await engine('submit', input)
-  const retry = await engine('submit', input)
+  const input = { computer: identity.id, requestId: 'offline-once', background: true, command: `printf ONCE >> '${scratch}/once'` }
+  const queued = await mcp('lilbot_computer_exec', input)
+  const retry = await mcp('lilbot_computer_exec', input)
   if (queued.id !== retry.id) throw new Error('Duplicate queue identity')
   let offlineFailed = false
   try {
-    await engine('submit', { ...input, requestId: 'offline-sync', background: false })
+    await mcp('lilbot_computer_exec', { ...input, requestId: 'offline-sync', background: false })
   } catch {
     offlineFailed = true
   }
   if (!offlineFailed) throw new Error('Offline synchronous request was accepted')
   launchHelper()
-  await eventually(async () => (await engine('read', input)).status === 'completed')
+  await eventually(async () => (await mcp('lilbot_computer_request_read', { computer: identity.id, requestId: input.requestId })).status === 'completed')
   await stopHelper()
   launchHelper()
   await eventually(async () => (await call('computers.list')).find((c: any) => c.id === identity.id).online)
-  await engine('submit', input)
+  await mcp('lilbot_computer_exec', input)
   if (readFileSync(join(scratch, 'once'), 'utf8') !== 'ONCE') throw new Error('Command executed twice')
   console.log('PASS: offline queue reconnects and executes once across helper restart; sync fails clearly')
   const long = {
     computer: identity.id,
     requestId: 'cancel-live',
     background: true,
-    operation: { kind: 'exec', command: `printf '%s' $$ > '${scratch}/cancel-pid'; exec sleep 120` }
+    command: `printf '%s' $$ > '${scratch}/cancel-pid'; exec sleep 120`
   }
-  await engine('submit', long)
+  await mcp('lilbot_computer_exec', long)
   await eventually(async () => existsSync(join(scratch, 'cancel-pid')))
   const pid = Number(readFileSync(join(scratch, 'cancel-pid'), 'utf8'))
-  await engine('cancel', long)
-  await eventually(async () => (await engine('read', long)).status === 'cancel_acked')
+  await mcp('lilbot_computer_cancel', { computer: identity.id, requestId: long.requestId })
+  await eventually(async () => (await mcp('lilbot_computer_request_read', { computer: identity.id, requestId: long.requestId })).status === 'cancel_acked')
   try {
     process.kill(pid, 0)
     throw new Error('Cancelled command survived')
@@ -145,7 +136,13 @@ try {
     if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error
   }
   console.log('PASS: cancellation acknowledged and command process terminated')
-  const copy = await engine('copy', { computer: identity.id, requestId: 'copy-file', direction: 'toWorkspace', path: join(scratch, 'bot-file'), workspacePath: 'copied' })
+  const copy = await mcp('lilbot_computer_copy', {
+    computer: identity.id,
+    requestId: 'copy-file',
+    direction: 'toWorkspace',
+    path: join(scratch, 'bot-file'),
+    workspacePath: 'copied'
+  })
   if (copy.status !== 'completed' || readFileSync(join(bot.workspace, 'copied'), 'utf8') !== 'FILE_OK') throw new Error('Workspace copy failed')
   await Bun.sleep(2000)
   const rss = Number(/^VmRSS:\s+(\d+)/m.exec(readFileSync(`/proc/${helper!.pid}/status`, 'utf8'))?.[1])

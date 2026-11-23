@@ -6,20 +6,12 @@ import { asEngineRegistry, type EngineRegistry } from '../engines/engine-registr
 import type { BotRecord, BotStore } from './bot-store'
 import { importBots } from './runtime-import'
 import { Readiness } from './runtime-readiness'
-import { prepareTools, refreshConnections } from './runtime-tools'
+import { PrepareTracker, prepareTools, type RuntimeOptions, refreshConnections } from './runtime-tools'
 import { withNote } from './system-note'
-
-interface RuntimeOptions {
-  changed?: () => void
-  retryDelays?: readonly number[]
-  headStartMs?: number
-  systemNote?: (bot: BotRecord) => string
-  onConnectionsChanged?: (botId: string) => void
-}
 
 export class BotRuntimes {
   private importing?: Promise<void>
-  private prepared = new Set<string>()
+  private prepared: PrepareTracker
   private states = new Map<string, RuntimeState | null>()
   private readiness: Readiness
   readonly engines: EngineRegistry
@@ -32,6 +24,7 @@ export class BotRuntimes {
     private options: RuntimeOptions = {}
   ) {
     this.engines = asEngineRegistry(engine)
+    this.prepared = new PrepareTracker(options.prepareRetryMs, options.now)
     this.readiness = new Readiness(
       bot => this.prepareAndState(bot),
       id => (this.store.exists(id) ? this.store.get(id) : undefined),
@@ -81,18 +74,18 @@ export class BotRuntimes {
   }
   release(botId: string) {
     this.states.delete(botId)
-    this.prepared.delete(botId)
+    this.prepared.clear(botId)
     return this.readiness.release(botId)
   }
   restoreState(botId: string, state: RuntimeState | null) {
     if (!state) return
     this.states.set(botId, state)
-    this.prepared.add(botId)
+    this.prepared.markDone(botId)
   }
   private async prepareAndState(bot: BotRecord) {
     try {
       await this.prepare(bot)
-      await this.state(bot)
+      await this.state(bot, false)
     } catch (error) {
       this.states.set(bot.id, null)
       throw error
@@ -107,11 +100,11 @@ export class BotRuntimes {
   engineFor = (bot: BotRecord): BotEngine => this.engines.require(bot.engineId)
   engineIfAvailable = (bot: BotRecord): BotEngine | undefined => this.engines.get(bot.engineId)
 
-  private async prepare(bot: BotRecord) {
-    if (this.prepared.has(bot.id)) return
-    this.validateMode(bot)
-    await this.engineFor(bot).prepareRuntime?.(bot.engineBotId, bot)
-    this.prepared.add(bot.id)
+  private prepare(bot: BotRecord) {
+    return this.prepared.run(bot.id, async () => {
+      this.validateMode(bot)
+      return (await this.engineFor(bot).prepareRuntime?.(bot.engineBotId, bot)) ?? undefined
+    })
   }
 
   private validateMode(bot: Pick<BotRecord, 'engineId' | 'permissionMode'>) {
@@ -121,9 +114,10 @@ export class BotRuntimes {
     }
   }
 
-  async state(bot: BotRecord): Promise<RuntimeState> {
+  async state(bot: BotRecord, retryPending = true): Promise<RuntimeState> {
     this.validateMode(bot)
     try {
+      if (retryPending && this.prepared.hasPending(bot.id)) await this.prepare(bot)
       const engine = this.engineFor(bot)
       const { skills, connection, connections } = this
       await prepareTools(engine, bot, { skills, connection, connections, onConnectionsChanged: this.options.onConnectionsChanged })
@@ -151,7 +145,7 @@ export class BotRuntimes {
     const bot = this.store.list().find(bot => (engineId ? bot.engineId === engineId : this.engines.has(bot.engineId)) && bot.engineBotId === nativeId)
     if (!bot) return
     this.readiness.invalidate(bot.id)
-    this.prepared.delete(bot.id)
+    this.prepared.clear(bot.id)
     if (!available) this.states.set(bot.id, null)
     else await this.readiness.ensure(bot)
   }
@@ -193,7 +187,11 @@ export class BotRuntimes {
     this.validateMode(bot)
     if (patch.model) await this.engineFor(bot).validateModel(patch.model)
     this.store.save(bot)
-    if (bot.permissionMode !== previous.permissionMode) await this.engineFor(bot).prepareRuntime?.(bot.engineBotId, bot)
-    await this.state(bot)
+    const modeChanged = bot.permissionMode !== previous.permissionMode
+    if (modeChanged) {
+      this.prepared.clear(bot.id)
+      await this.prepare(bot)
+    }
+    await this.state(bot, !modeChanged)
   }
 }

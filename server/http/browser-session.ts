@@ -123,7 +123,7 @@ export class BrowserSession {
       this.bots.deleteSection(sectionId)
       return { ok: true }
     },
-    'models.list': () => this.bots.listModels(),
+    'models.list': params => this.bots.listModels(params),
     'memory.list': ({ botId }) => this.bots.listMemory(botId),
     'memory.write': input => this.bots.writeMemory(input),
     'memory.forget': async ({ factId }) => {

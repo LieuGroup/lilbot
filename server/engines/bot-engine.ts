@@ -3,6 +3,7 @@ import type { ActivityEvent } from '../../shared/activity-schema'
 import type { BotIdentity, BotModel, BotSetup, ModelProvider, PermissionMode, ReasoningEffort } from '../../shared/bot-schema'
 import type { ChatEvent, ChatSnapshot } from '../../shared/chat-schema'
 import type { MessageOrigin } from '../../shared/device-schema'
+import type { WebhookCapability } from '../../shared/webhook-schema'
 import type { ConnectionsApplied, McpConnection } from './mcp-connection'
 
 export type EngineBotDetail = BotIdentity & BotSetup
@@ -33,7 +34,7 @@ export interface ReviewOptions {
   onChat: (chatId: string) => void
 }
 
-export type RunAccessScope = 'check'
+export type RunAccessScope = 'check' | { kind: 'webhook'; capabilities: readonly WebhookCapability[] }
 export interface RoutineOptions {
   runId: string
   chatId?: string
@@ -41,9 +42,8 @@ export interface RoutineOptions {
   baseline?: (length: number) => number
   onChat: (chatId: string) => void
   origin?: TurnOrigin
-  /** LilBot access scope mapped inside each engine; `toolsets` stays only until webhooks migrate. */
+  /** LilBot access scope mapped inside each engine; absent means full access. */
   access?: RunAccessScope
-  toolsets?: string[]
   /** The model a new session runs on (a same-bot check or worker); without it, the bot's own. */
   model?: BotModel
   /** The reasoning effort a new session starts with; absent inherits on the bot's own model and omits on another model. */
@@ -131,8 +131,8 @@ export interface BotEngine {
   applyIdentity(engineBotId: string, identity: RuntimeIdentity): Promise<RuntimeState>
   /** Stop this runtime and delete its conversations. Safe to repeat when already missing. */
   deleteRuntime(engineBotId: string): Promise<void>
-  /** Prepare persistent policy at startup and when the saved mode changes. */
-  prepareRuntime?(engineBotId: string, identity: RuntimeIdentity): Promise<void>
+  /** Prepare persistent policy at startup and mode changes; `{ retry: true }` retries non-fatal cleanup later. */
+  prepareRuntime?(engineBotId: string, identity: RuntimeIdentity): Promise<{ retry?: boolean } | undefined> | Promise<void>
   /** Give this runtime exactly LilBot's MCP connections (servers named `lilbot_*` not listed are removed; others are left
    *  alone), for its sessions from their next resume. Returns true when the profile's connections changed. Safe to repeat. */
   prepareConnections?(engineBotId: string, connections: McpConnection[]): Promise<boolean> | Promise<void>
@@ -146,7 +146,6 @@ export interface BotEngine {
   bundledSkills?(engineBotId: string): string[]
   /** Engine skills nobody can hide, with the reason to show. */
   readonly alwaysOnSkills?: readonly { name: string; reason: string }[]
-  configureComputers?(engineBotId: string, settings: { url: string; tokenFile: string; botId: string }): Promise<void>
   configureSkills?(engineBotId: string, settings: SkillSettings): Promise<void>
   /** Refuse an unavailable model before an identity edit is saved. Must not apply the old identity. */
   validateModel(model: BotModel): Promise<void>

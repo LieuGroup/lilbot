@@ -52,7 +52,7 @@ describe('engine conformance: safety stop, System MCP completeness, secrets & pr
     expect(services.skills.read('mcp-written-skill')?.body).toContain('Always check logs.')
   })
 
-  test.failing('[Lane B P1] memory recall and forget work over LilBot System MCP without an engine plugin', async () => {
+  test('memory recall and forget work over LilBot System MCP without an engine plugin', async () => {
     const { engine, services, bot } = await boot()
     const fact = await services.bots.writeMemory({ botId: bot.id, kind: 'profile', scope: 'bot', text: 'Prefers dark roast coffee in Adelaide.' })
     let recalled = ''
@@ -122,7 +122,6 @@ describe('engine conformance: safety stop, System MCP completeness, secrets & pr
     const handed = JSON.stringify({
       memoryConnection: runtime.memoryConnection,
       skills: runtime.skills,
-      computers: runtime.computers,
       connections: runtime.connections
     })
     expect(handed).not.toContain(masterTokenPath)

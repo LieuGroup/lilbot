@@ -88,11 +88,11 @@ export async function openChat(
       // for an empty one by accident. "Not found" is asked again on a newly attached connection
       // first, so a refusal that belongs to one connection (a spare among them) loses nothing.
       session = await resume().catch(async error => {
-        if (options.requireExisting || !notFound(error)) throw error
+        if (!notFound(error)) throw error
         socket.rebind(ignore, ignore).close()
         socket = await attach()
         return resume().catch(error => {
-          if (!notFound(error)) throw error
+          if (options.requireExisting || !notFound(error)) throw error
           refused = error.code
           return null
         })

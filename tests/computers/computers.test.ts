@@ -160,24 +160,23 @@ test('public listener has an exact path and method allowlist and revokes an open
   await closed
 })
 
-test('engine calls bind to authenticated bot, ignoring supplied bot ids', async () => {
+test('retired /engine/computers/* routes refuse unauthenticated calls with 403 and answer 410 without queueing work', async () => {
   const { service, db } = fixture()
   const api = createEngineApi(new MemoryService(new MemoryStore(db)), 'secret', 9999, {
     bots: { listBots: async () => [{ id: 'bot' }] } as any,
-    botExists: id => id === 'bot',
-    computers: service
+    botExists: id => id === 'bot'
   })
-  const request = (capability: string, body: unknown) =>
+  const request = (auth: string, body: unknown) =>
     new Request('http://127.0.0.1:9999/engine/computers/submit', {
       method: 'POST',
-      headers: { host: '127.0.0.1:9999', authorization: 'Bearer secret', 'x-lilbot-bot-capability': capability, 'Content-Type': 'application/json' },
+      headers: { host: '127.0.0.1:9999', authorization: auth, 'x-lilbot-bot-capability': botCapability('secret', 'bot'), 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     })
   const body = { botId: 'victim', computer: 'leader', requestId: 'bound', background: true, operation: { kind: 'exec', command: 'true' } }
-  expect((await api(request('wrong', body), '/engine/computers/submit')).status).toBe(403)
-  expect((await api(request(botCapability('secret', 'bot'), body), '/engine/computers/submit')).status).toBe(200)
-  expect(service.store.get('bot', 'leader', 'bound')).not.toBeNull()
-  expect(service.store.get('victim', 'leader', 'bound')).toBeNull()
+  expect((await api(request('Bearer wrong', body), '/engine/computers/submit')).status).toBe(403)
+  const retired = await api(request('Bearer secret', body), '/engine/computers/submit')
+  expect([retired.status, ((await retired.json()) as { error: string }).error]).toEqual([410, expect.stringContaining('lilbot_computer_exec')])
+  expect([service.store.get('bot', 'leader', 'bound'), service.store.get('victim', 'leader', 'bound')]).toEqual([null, null])
   service.close()
   await Bun.sleep(100)
 })

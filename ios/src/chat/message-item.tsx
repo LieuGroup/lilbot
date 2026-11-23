@@ -66,6 +66,12 @@ export const ChatItem = memo(function ChatItem({ item, botName, queued = false }
       return <ToolTrace item={item} />
     case 'compaction':
       return null
+    case 'omitted':
+      return (
+        <AppText variant="meta" color={theme.mutedForeground} style={{ textAlign: 'center', paddingVertical: 6 }}>
+          {item.text}
+        </AppText>
+      )
     case 'error':
       return <ErrorBubble text={item.reason ? failureLine(item.reason, botName) : item.text} />
   }

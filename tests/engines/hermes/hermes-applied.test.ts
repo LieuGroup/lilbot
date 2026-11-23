@@ -63,6 +63,6 @@ test('steps of one profile take turns, and the record holds hashes only', async 
 })
 
 test('adapter hashes follow the shipped files', () => {
-  expect(adapterHash('computers-adapter')).toMatch(/^[0-9a-f]{32}$/)
-  expect(adapterHash('computers-adapter')).not.toBe(adapterHash('skills-adapter'))
+  expect(adapterHash('memory-adapter')).toMatch(/^[0-9a-f]{32}$/)
+  expect(adapterHash('memory-adapter')).not.toBe(adapterHash('skills-adapter'))
 })

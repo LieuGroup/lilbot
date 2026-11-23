@@ -9,7 +9,7 @@ import { createEngineApi } from '../../server/http/engine-api'
 import { MemoryService } from '../../server/memory/memory-service'
 import { MemoryStore } from '../../server/memory/memory-store'
 import type { SkillsService } from '../../server/skills/skills-service'
-import { checkSessions, NO_CHANGES, NO_COMPUTERS, NO_MEMORY, NO_SKILLS } from '../../server/work/check-sessions'
+import { checkSessions, NO_CHANGES, NO_MEMORY, NO_SKILLS } from '../../server/work/check-sessions'
 import { WorkCheckStore } from '../../server/work/work-check-store'
 
 /** A check of bot `b` under way in session `check-live` (also known as `check-stored`), and what the engine reads. */
@@ -89,10 +89,9 @@ test('the engine API gives a check session an empty memory block and refuses its
   expect(await post('/engine/skills/write', skill)).toEqual({ status: 200, body: { written: true } })
 })
 
-test('the engine API refuses computers and mutating legacy routes from a check session while allowing reads and other sessions', async () => {
+test('the engine API refuses mutating legacy routes from a check session while allowing reads and retiring /engine/computers/*', async () => {
   const { database, checks, check, sessions } = checking()
   const memory = new MemoryService(new MemoryStore(database), () => Date.UTC(2026, 10, 21))
-  let computerCalls = 0
   let botCreates = 0
   let routineCreates = 0
   let threadAsks = 0
@@ -106,16 +105,6 @@ test('the engine API refuses computers and mutating legacy routes from a check s
       }
     } as unknown as BotService,
     botExists: id => id === 'b',
-    computers: {
-      list: () => {
-        computerCalls++
-        return [{ id: 'leader', name: 'Leader' }]
-      },
-      submit: async () => {
-        computerCalls++
-        return { id: 'req-1' }
-      }
-    } as never,
     routines: {
       list: () => [],
       create: async () => {
@@ -154,19 +143,10 @@ test('the engine API refuses computers and mutating legacy routes from a check s
     return { status: reply.status, body: (await reply.json()) as any }
   }
 
-  // Computers: refused from check session (direct, compressed continuation, or missing header while checking).
-  expect(await post('/engine/computers/list', {}, 'check-live')).toEqual({ status: 422, body: { error: NO_COMPUTERS } })
-  expect(await post('/engine/computers/submit', { computer: 'leader', requestId: 'r1', operation: { kind: 'exec', command: 'echo hi' } }, 'check-continued')).toEqual({
-    status: 422,
-    body: { error: NO_COMPUTERS }
-  })
-  expect(await post('/engine/computers/submit', { computer: 'leader', requestId: 'r2', operation: { kind: 'exec', command: 'echo hi' } })).toEqual({
-    status: 422,
-    body: { error: NO_COMPUTERS }
-  })
-  // Another non-check session of the same bot still reaches computers while the check runs.
-  expect((await post('/engine/computers/list', {}, 'b-main')).status).toBe(200)
-  expect(computerCalls).toBe(1)
+  // Retired /engine/computers/* routes answer 410 unconditionally (computer tools live on System MCP).
+  expect((await post('/engine/computers/list', {}, 'check-live')).status).toBe(410)
+  expect((await post('/engine/computers/submit', { computer: 'leader', requestId: 'r1', operation: { kind: 'exec', command: 'echo hi' } }, 'check-continued')).status).toBe(410)
+  expect((await post('/engine/computers/list', {}, 'b-main')).status).toBe(410)
 
   // Sibling mutating engine routes: refused in check session; read-only siblings stay allowed.
   expect(await post('/engine/bots/create', { requestId: 'c1', name: 'X', function: 'x', instructions: 'x' }, 'check-live')).toEqual({ status: 422, body: { error: NO_CHANGES } })
@@ -185,7 +165,7 @@ test('the engine API refuses computers and mutating legacy routes from a check s
 
   // Even after the check settles, calls naming that check session remain refused.
   checks.settle(check.id, 'verified', 'seen', null, 2)
-  expect((await post('/engine/computers/list', {}, 'check-live')).status).toBe(422)
+  expect((await post('/engine/bots/create', { requestId: 'c2', name: 'X', function: 'x', instructions: 'x' }, 'check-live')).status).toBe(422)
   expect((await post('/engine/skills/write', { name: 'notes', action: 'create', content: '---\nname: notes\ndescription: N\n---\nBody' }, 'check-live')).status).toBe(422)
-  expect((await post('/engine/computers/list', {})).status).toBe(200)
+  expect((await post('/engine/routines/list', {})).status).toBe(200)
 })

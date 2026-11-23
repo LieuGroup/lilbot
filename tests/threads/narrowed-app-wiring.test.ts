@@ -3,8 +3,9 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createAppServices } from '../../server/app-services'
-import { botCapability } from '../../server/bots/bot-capability'
+import { connectionKey } from '../../server/connections/connection-keys'
 import { engineToken } from '../../server/http/engine-api'
+import { SYSTEM_KEY_PURPOSE } from '../../server/system/system-connection'
 import { fakeService } from '../helpers/fake-engine'
 
 const cleanups: (() => void)[] = []
@@ -26,6 +27,11 @@ test('createAppServices wires narrowed threadStore, webhook callers, and workerA
   }) as typeof setInterval
   try {
     const fake = fakeService()
+    let onTool: ((call: { engineBotId: string; chatId: string; tool: string; args: unknown; callId?: string }) => void) | undefined
+    fake.engine.onToolCall = cb => {
+      onTool = cb
+      return () => {}
+    }
     const services = createAppServices(fake.engine, {
       DATA_DIR: join(dir, 'data'),
       WORKSPACES_DIR: join(dir, 'ws'),
@@ -60,7 +66,7 @@ test('createAppServices wires narrowed threadStore, webhook callers, and workerA
     expect(services.threads.store.get(threadId).capabilities).toEqual(['delegation'])
     services.threads.store.attach(services.threads.store.delivery(`${b1.id}:a1`)!, b2.id, 'b2-narrow', true)
 
-    // narrowed threadStore wired into createWebhooks -> engineApi locks memory & computers for b2-narrow.
+    // narrowed threadStore wired into createWebhooks -> engineApi locks memory & System MCP blocks computers for b2-narrow.
     const memRes = await services.engineApi(
       new Request('http://127.0.0.1:3999/engine/memory/recall', {
         method: 'POST',
@@ -70,21 +76,15 @@ test('createAppServices wires narrowed threadStore, webhook callers, and workerA
       '/engine/memory/recall'
     )
     expect(memRes.status).toBe(422)
-    const compRes = await services.engineApi(
-      new Request('http://127.0.0.1:3999/engine/computers/list', {
+    onTool?.({ engineBotId: b2.engineBotId, chatId: 'b2-narrow', tool: 'mcp__lilbot_system__lilbot_computers_list', args: {}, callId: 'c1' })
+    const compMcp = await services.system.handler(
+      new Request('http://127.0.0.1:3999/engine/lilbot/mcp', {
         method: 'POST',
-        headers: {
-          host: '127.0.0.1:3999',
-          authorization: `Bearer ${token}`,
-          'x-lilbot-bot-capability': botCapability(token, b2.id),
-          'x-lilbot-session': 'b2-narrow',
-          'content-type': 'application/json'
-        },
-        body: JSON.stringify({})
-      }),
-      '/engine/computers/list'
+        headers: { host: '127.0.0.1:3999', authorization: `Bearer ${connectionKey(token, SYSTEM_KEY_PURPOSE, b2.id)}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'lilbot_computers_list', arguments: {} } })
+      })
     )
-    expect(compRes.status).toBe(422)
+    expect(JSON.parse(((await compMcp.json()) as any).result.content[0].text).refused).toContain('cannot use lilbot_computers_list')
 
     // workerAllowMemory wired into createSystemServer -> workerMcp blocks memory for narrowed worker thread.
     const narrowMcp = JSON.parse(

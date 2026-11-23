@@ -164,13 +164,37 @@ test('a routine session is created with the bot’s reasoning effort, and withou
   expect('reasoning' in created[1]).toBe(false)
 })
 
-test('a run asked for an access scope or toolsets maps them to Hermes toolsets; without, the session has every toolset', async () => {
+test('a run asked for an access scope maps it to Hermes toolsets; without, the session has every toolset', async () => {
   const { created, connect } = recordingCreate()
   await runRoutine('native-id', 'task', { workspace: '/test', runId: 'check', onChat: () => {}, access: 'check' }, connect)
-  await runRoutine('native-id', 'task', { workspace: '/test', runId: 'narrow', onChat: () => {}, toolsets: ['web'] }, connect)
+  await runRoutine('native-id', 'task', { workspace: '/test', runId: 'narrow', onChat: () => {}, access: { kind: 'webhook', capabilities: [] } }, connect)
+  await runRoutine('native-id', 'task', { workspace: '/test', runId: 'web', onChat: () => {}, access: { kind: 'webhook', capabilities: ['web'] } }, connect)
   await runRoutine('native-id', 'task', { workspace: '/test', runId: 'wide', onChat: () => {} }, connect)
   expect(created[0].toolsets).toEqual(['web', 'vision', 'terminal', 'file', 'skills', 'lilbot_system'])
   expect(created[0].toolsets).not.toContain('memory')
-  expect(created[1].toolsets).toEqual(['web'])
-  expect('toolsets' in created[2]).toBe(false)
+  expect(created[1].toolsets).toEqual(['lilbot_system'])
+  expect(created[2].toolsets).toEqual(['lilbot_system', 'web'])
+  expect('toolsets' in created[3]).toBe(false)
+})
+
+test('finished routine items carry per-turn usage and stopped mark on interrupted runs', async () => {
+  const connect = async (_profile: string, onEvent: (e: any) => void) =>
+    ({
+      request: async (method: string) => {
+        if (method === 'config.get') return { value: 'off' }
+        if (method === 'session.create') return { session_id: 'live', stored_session_id: 'stored', info: {} }
+        if (method === 'prompt.submit') {
+          onEvent({ sessionId: 'live', type: 'message.start', payload: {} })
+          onEvent({ sessionId: 'live', type: 'session.usage', payload: { input_tokens: 12, output_tokens: 7, cache_read_tokens: 40, context_tokens: 52 } })
+          onEvent({ sessionId: 'live', type: 'message.complete', payload: { usage: { context_used: 52 } } })
+          return { admission_id: 'receipt' }
+        }
+        if (method === 'prompt.receipt') return { status: 'terminal', outcome: 'interrupted' }
+        return { display_messages: [{ role: 'assistant', text: 'Partial answer.' }] }
+      },
+      close: () => {}
+    }) as unknown as HermesSocket
+  const result = await runRoutine('native-id', 'task', { workspace: '/test', runId: 'u1', onChat: () => {} }, connect)
+  expect(result.status).toBe('stopped')
+  expect(result.items).toEqual([{ kind: 'assistant', text: 'Partial answer.', stopped: true, usage: { inputTokens: 12, cacheReadTokens: 40, outputTokens: 7, contextTokens: 52 } }])
 })

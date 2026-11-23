@@ -228,7 +228,7 @@ Every tool acts as the calling bot and calls the function the screen uses. Reads
 | `lilbot_roster_set` | `bots.setPrefs` (pinned, which also sets or clears `pinnedAt`; hidden; section) |
 | `lilbot_section_create` | `sections.create` |
 | `lilbot_unread_set` | `activity.setUnread` (`bots/bot-unread.ts`, shared with the screen) |
-| `lilbot_memory_list`, `_save`, `_pause`, `_restore` | `memory.list`, `MemoryService.write` (caller's own `author: 'bot'`, `via: 'chat'`, with safety checks and overflow notice), `memory.pause`, `memory.restore` |
+| `lilbot_memory_list`, `_recall`, `_save`, `_forget`, `_pause`, `_restore` | `memory.list`, `MemoryService.recall` (caller's visible facts only), `MemoryService.write` (caller's own `author: 'bot'`, `via: 'chat'`, with safety checks and overflow notice), `MemoryService.forgetAsBot` (caller's visible facts only, reversible via restore), `memory.pause`, `memory.restore` |
 | `lilbot_memory_expiry` | `MemoryService.setExpiry` (no screen yet; same `memory.changed` push) |
 | `lilbot_skill_read` | `SkillsService.offered` and `SkillsService.read`: lists skills offered to the caller (respecting per-bot off switches and engine exclusions) or reads one offered skill file (`SKILL.md` by default) |
 | `lilbot_delete_defaults_get`, `_set` | `bots.deleteDefaults.get` and `.set` |
@@ -251,7 +251,7 @@ Every tool acts as the calling bot and calls the function the screen uses. Reads
 Not offered, by decision: deleting a bot, removing a computer, forgetting another bot's private facts, changing a bot's
 permission mode, registering computers. The deletes a bot has are of its own webhooks (Oscar's decision on #12) and its own routines (it always could: `delete_routine`),
 and removing an MCP service it added (any bot once the adder is gone; the service keeps its data and adding it again asks for a new sign-in).
-Skills (see below), computers, `search_conversations` and memory writes stay on the engine plug-ins until #113 moves them;
+Skills (see below) and `search_conversations` stay on the engine plug-ins until moved to System MCP; the memory plug-in stays temporarily for lifecycle hooks until retired separately;
 `ask_bot` and `list_bots` ended with adapter 0.10.0 (their work done by `lilbot_delegate` and `lilbot_bots_list`), and
 `create_bot` and the five routine tools with adapter 0.11.0 (`lilbot_bot_create`, `lilbot_routine`, `lilbot_routines_list`), and `give_file`
 with adapter 0.12.0 (`lilbot_give_file`).

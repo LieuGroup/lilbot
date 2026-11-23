@@ -52,7 +52,7 @@ function fixture(hookCaps: WebhookCapability[] = ['delegation']) {
     handleMcp: async () => ({ status: 200, body: '{}' }),
     computersChanged: () => {}
   })
-  const runs: Array<{ botId: string; prompt: string; toolsets?: string[]; capabilities?: WebhookCapability[]; chatId?: string; computer?: string }> = []
+  const runs: Array<{ botId: string; prompt: string; access?: unknown; capabilities?: WebhookCapability[]; chatId?: string; computer?: string }> = []
   let activeChat = 'webhook-chat'
   const journals: string[] = []
   const host = {
@@ -68,7 +68,7 @@ function fixture(hookCaps: WebhookCapability[] = ['delegation']) {
     runRoutine: async (botId: string, prompt: string, opts: any) => {
       const id = opts.chatId ?? `hidden:${botId}:${runs.length + 1}`
       opts.onChat(id)
-      runs.push({ botId, prompt, toolsets: opts.toolsets, capabilities: opts.capabilities, chatId: id, computer: opts.computer })
+      runs.push({ botId, prompt, access: opts.access, capabilities: opts.capabilities, chatId: id, computer: opts.computer })
       return { status: 'completed', text: 'done' }
     }
   }
@@ -126,16 +126,16 @@ test('delegated exchanges and local workers carry narrowed capabilities transiti
   await Bun.sleep(40)
   const b2Run = f.runs.find(r => r.botId === 'b2')!
   const wRun = f.runs.find(r => r.botId === 'b1' && r.chatId !== 'webhook-chat')!
-  expect(b2Run.toolsets).toEqual(['lilbot_system'])
-  expect(wRun.toolsets).toEqual(['lilbot_system'])
+  expect(b2Run.access).toEqual({ kind: 'webhook', capabilities: ['delegation'] })
+  expect(wRun.access).toEqual({ kind: 'webhook', capabilities: ['delegation'] })
   expect(b2Run.prompt).toContain('You cannot')
 
   // Once settled, Bot Two has no live narrowed runs (no permanent MCP gating), yet its settled narrowed chat & compression child stay locked.
   expect(f.callers.hasRuns('b2')).toBe(false)
   expect(f.callers.forChat('b2', b2Run.chatId)).toEqual(['delegation'])
   expect(f.callers.forChat('b2', 'b2-main')).toBeNull()
-  expect(refusalFor(f.callers.forChat('b2', b2Run.chatId), 'computer_exec', ['computers'])).toContain('cannot use computer_exec')
-  expect(refusalFor(f.callers.forChat('b2', 'b2-main'), 'computer_exec', ['computers'])).toBeNull()
+  expect(refusalFor(f.callers.forChat('b2', b2Run.chatId), 'lilbot_computer_exec', ['computers'])).toContain('cannot use lilbot_computer_exec')
+  expect(refusalFor(f.callers.forChat('b2', 'b2-main'), 'lilbot_computer_exec', ['computers'])).toBeNull()
   f.roots.set('b2-compressed', b2Run.chatId!)
   expect(f.callers.forChat('b2', 'b2-compressed')).toEqual(['delegation'])
   f.roots.set('b2-unreadable', null)
@@ -164,7 +164,7 @@ test('narrowed groups carry capabilities, skip member journals without memory, r
   await Bun.sleep(40)
   const memberRuns = f.runs.filter(r => r.prompt.includes('Narrow'))
   expect(memberRuns.length).toBeGreaterThanOrEqual(2)
-  for (const r of memberRuns) expect(r.toolsets).toEqual(['lilbot_system'])
+  for (const r of memberRuns) expect(r.access).toEqual({ kind: 'webhook', capabilities: ['delegation'] })
 
   writeFileSync(join(f.dir, 'ws/b1/note.txt'), 'hi')
   await expect(f.threads.groups!.act('b1', { action: 'close', groupId: narrowGroup.groupId, text: 'done', keep: ['note.txt'] })).rejects.toThrow(/"shell"/)

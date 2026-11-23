@@ -3,7 +3,7 @@ import type { ChatItem } from '../../shared/chat-schema'
 import type { BotThread } from '../../shared/thread-schema'
 import type { WebhookCapability } from '../../shared/webhook-schema'
 import type { WorkerDriverId } from '../../shared/worker-frame-schema'
-import type { RoutineOptions } from '../engines/bot-engine'
+import type { RoutineOptions, RunAccessScope } from '../engines/bot-engine'
 import { fenced } from '../memory/memory-safety'
 import type { FileRow } from './thread-files'
 import { THREAD_LIMITS } from './thread-limits'
@@ -94,7 +94,7 @@ export function replyText(items: ChatItem[], clamp?: { exchangeId: string; hard:
   return `${cut}${note}`
 }
 
-export type NarrowedAccess = (capabilities: WebhookCapability[]) => { toolsets: string[]; prompt: string }
+export type NarrowedAccess = (capabilities: WebhookCapability[]) => { access: RunAccessScope; prompt: string }
 export type ThreadRunOptions = RoutineOptions & {
   computer?: string
   cwd?: string
@@ -108,14 +108,14 @@ export interface NarrowedHost {
   narrowedAccess?: NarrowedAccess
 }
 
-/** Extra `runRoutine` options for a work turn: remote target, narrowed toolsets/capabilities, plus model/effort on first start (and remote continuations). */
+/** Extra `runRoutine` options for a work turn: remote target, narrowed access scope/capabilities, plus model/effort on first start (and remote continuations). */
 export function workRunOptions(thread: BotThread, toWork: boolean, workSession?: string, narrowedAccess?: NarrowedAccess) {
   if (!toWork) return {}
   const access = thread.capabilities && narrowedAccess ? narrowedAccess(thread.capabilities) : undefined
   return {
     ...(thread.computer ? { computer: thread.computer, cwd: thread.cwd, threadId: thread.id, ...(thread.workerEngine ? { engine: thread.workerEngine } : {}) } : {}),
     ...(thread.capabilities ? { capabilities: thread.capabilities } : {}),
-    ...(!thread.computer && access ? { toolsets: access.toolsets } : {}),
+    ...(!thread.computer && access ? { access: access.access } : {}),
     ...(!workSession || thread.computer ? { ...(thread.model ? { model: thread.model } : {}), ...(thread.reasoningEffort ? { reasoningEffort: thread.reasoningEffort } : {}) } : {})
   }
 }

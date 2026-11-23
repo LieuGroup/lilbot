@@ -8,7 +8,7 @@ import { watchHermesActivity } from './hermes-activity'
 import { adapterHash, applied, hashOf } from './hermes-applied'
 import { botDetailFromProfile, botFromProfile, DEFAULT_PROFILE, providersFromModelOptions, requireListedModel } from './hermes-bot-mapping'
 import { openChat } from './hermes-chat'
-import { configureComputers } from './hermes-computers'
+import { COMPUTERS_RETIRED_KEY, retireComputersPlugin } from './hermes-computers'
 import { connectionPreparer, hermesMcpToolName } from './hermes-connections'
 import { prepareAppliedConnections } from './hermes-connections-apply'
 import { deleteRuntime } from './hermes-delete'
@@ -111,6 +111,13 @@ export class HermesEngine implements BotEngine {
     } finally {
       socket.close()
     }
+    try {
+      await applied(id, 'computers', COMPUTERS_RETIRED_KEY, () => retireComputersPlugin(id))
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Unknown retirement error'
+      console.error(`[computers] could not retire legacy plug-in for profile ${id}; will retry on next use (${detail.slice(0, 200)})`)
+      return { retry: true }
+    }
   }
 
   refreshMemory(bots: RuntimeBinding[], connection?: MemoryConnection): Promise<string[]> {
@@ -139,14 +146,6 @@ export class HermesEngine implements BotEngine {
   async applyConnections(id: string, chatIds: string[]) {
     await this.requireBot(id)
     return this.connections.apply(id, chatIds)
-  }
-  private computerSettings = new Map<string, string>()
-  async configureComputers(id: string, settings: { url: string; tokenFile: string; botId: string }) {
-    await this.requireBot(id)
-    const key = JSON.stringify(settings)
-    if (this.computerSettings.get(id) === key) return
-    await applied(id, 'computers', hashOf(adapterHash('computers-adapter'), settings), () => configureComputers(id, settings))
-    this.computerSettings.set(id, key)
   }
 
   private skillSettings = new Map<string, string>()

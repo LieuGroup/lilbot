@@ -1,6 +1,7 @@
 # Computers: helper protocol and limits
 
-Detail for `server/computers/`, `shared/computer-schema.ts`, `helper/` and the `lilbot-computers-v1` plug-in. The rules
+Detail for `server/computers/`, `shared/computer-schema.ts`, `helper/` and the System MCP computer tools
+(`server/system/tool-computers.ts`). The rules
 that apply everywhere (the helper door's two paths, secrets, full access, untrusted output) are in `AGENTS.md` under
 "Computers and devices" and "Listeners and trust boundaries". Public door hostname and tunnel:
 [cloudflare.md](cloudflare.md).
@@ -30,7 +31,7 @@ that apply everywhere (the helper door's two paths, secrets, full access, untrus
   operations do not enforce protected-path refusals, and full-access bots share the OS user's authority. Machine output
   is untrusted data.
 - Deliver the helper binary and its `.sha256` from a trusted channel; the sidecar detects corruption, not tampering.
-- A failure to configure the computers plug-in is logged without making the bot unavailable.
+- A failure to retire the legacy Hermes computers plug-in on an existing profile is logged without making the bot unavailable.
 
 ## Rate limits (no edge rule)
 
@@ -106,8 +107,10 @@ that apply everywhere (the helper door's two paths, secrets, full access, untrus
   shell watchdog kills a group after abrupt helper death. Deliberate detachment is not a sandbox boundary.
 - Files and copies are capped at 4 MiB; workspace transfers use descriptor-relative, no-follow opens and require
   single-link regular files. Reads return base64; writes accept UTF-8 or base64.
-- Plug-in tools: `list_computers`, `computer_exec`, `computer_read_file`, `computer_write_file`,
-  `computer_list_folder`, `computer_request`, `computer_cancel`, `computer_copy`.
+- System MCP tools (`server/system/tool-computers.ts`): `lilbot_computers_list`, `lilbot_computer_exec`,
+  `lilbot_computer_read_file`, `lilbot_computer_write_file`, `lilbot_computer_list_folder`,
+  `lilbot_computer_request_read`, `lilbot_computer_cancel`, `lilbot_computer_copy`. Legacy `/engine/computers/*` routes
+  are retired (HTTP 410).
 
 ## Building and installing the helper
 
@@ -291,7 +294,7 @@ The rules are in `AGENTS.md` ("My computer"). Code: `server/devices/`, `shared/d
   message, else the origin device's, else the main one; ask Oscar in the reply (not with a tool: LilBot draws no card
   for one), listing computers by name, when it is offline, none can be told or the words fit several; never guess for a
   command that changes something; say which computer was used. `main` is on `lilbot_about`, `lilbot_status` and the
-  computers plug-in's `list_computers`. The note's existing line of computer names is unchanged; the rules add no online
+  `lilbot_computers_list`. The note's existing line of computer names is unchanged; the rules add no online
   state and no main mark, so a computer coming online or becoming main never rewrites any bot's instructions.
 - **Browser client (`web/src/devices/`, [screens.md](screens.md)).** The browser keeps its device id in `localStorage`
   (`devices/this-device.ts`, made on first use; name max 100 chars, no control or hidden chars) and registers it with
@@ -374,7 +377,7 @@ macOS and Linux helpers are covered; Windows is not covered (process-group termi
   browser flow: settings, offered builds, the attempt link, reused/expired/unknown codes, download listeners, refused
   origins and hosts, single use, socket owners and the code staying out of output.
 
-- `bun run check:computers`: real plug-in calls, Hermes hard-stop refusal before submission, queue/reconnect,
+- `bun run check:computers`: real System MCP calls, LilBot command safety stop refusal, retired `/engine/computers/*` 410 check, queue/reconnect,
   cancellation, a second door with a different key, signed revocation versus server restart, fast exec, copies,
   reused codes, wrong/revoked keys and private routes/headers.
 - `tests/computers/adversarial.test.ts` measures a same-process private `/api/health` listener during signed floods
