@@ -3,7 +3,7 @@ import { afterEach, expect, test } from 'bun:test'
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { hermesDriver } from '../../helper/worker-driver-hermes'
+import { hermesDriver } from '../../helper/drivers/hermes/worker-driver-hermes'
 import { WorkerHost } from '../../helper/worker-host'
 import { getWorkerRun } from '../../helper/worker-journal'
 import { startMockHermesGateway } from './worker-hermes-mock'
@@ -142,19 +142,20 @@ test('hermesDriver handles resume, mid-turn WS drop recovery, stop, unsigned fas
   // 6. P8 decoupling: shared helper modules and Hermes driver files never import Claude-Code driver modules.
   for (const file of [
     'helper/worker-host.ts',
+    'helper/worker-driver.ts',
     'helper/worker-bin.ts',
     'helper/worker-text.ts',
     'helper/worker-probes.ts',
     'helper/worker-journal.ts',
     'helper/worker-mcp-proxy.ts',
-    'helper/worker-driver-hermes.ts',
-    'helper/worker-hermes-env.ts',
-    'helper/worker-hermes-model.ts',
-    'helper/worker-hermes-protocol.ts',
-    'helper/worker-hermes-prune.ts',
-    'helper/worker-hermes-session.ts',
-    'helper/worker-hermes-socket.ts'
+    'helper/drivers/hermes/worker-driver-hermes.ts',
+    'helper/drivers/hermes/worker-hermes-env.ts',
+    'helper/drivers/hermes/worker-hermes-model.ts',
+    'helper/drivers/hermes/worker-hermes-protocol.ts',
+    'helper/drivers/hermes/worker-hermes-prune.ts',
+    'helper/drivers/hermes/worker-hermes-session.ts',
+    'helper/drivers/hermes/worker-hermes-socket.ts'
   ]) {
-    expect(readFileSync(file, 'utf8')).not.toMatch(/worker-claude|worker-driver-claude/)
+    expect(readFileSync(file, 'utf8')).not.toMatch(/worker-claude|worker-driver-claude|drivers\/claude-code/)
   }
 })

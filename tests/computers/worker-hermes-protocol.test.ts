@@ -2,9 +2,9 @@ import { afterEach, expect, test } from 'bun:test'
 import { existsSync, lstatSync, mkdtempSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { hermesToolsets, needsCheckpointCompat, resolveAttachTarget, scrubHermesEnv } from '../../helper/worker-hermes-env'
-import { cleanHermesError, resolveHermesModel, stripEditorMcpPrefix } from '../../helper/worker-hermes-model'
-import { applyHermesEvent, createHermesStreamState, mapHermesTranscript, seedHermesUsage } from '../../helper/worker-hermes-protocol'
+import { hermesToolsets, needsCheckpointCompat, resolveAttachTarget, scrubHermesEnv } from '../../helper/drivers/hermes/worker-hermes-env'
+import { cleanHermesError, resolveHermesModel, stripEditorMcpPrefix } from '../../helper/drivers/hermes/worker-hermes-model'
+import { applyHermesEvent, createHermesStreamState, mapHermesTranscript, seedHermesUsage } from '../../helper/drivers/hermes/worker-hermes-protocol'
 
 const dirs: string[] = []
 afterEach(() => {

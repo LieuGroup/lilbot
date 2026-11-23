@@ -3,16 +3,16 @@
  *  auto-approves prompts for full-access workers, prunes 7-day-old hidden worker sessions, and never edits `config.yaml`. */
 import type { Database } from 'bun:sqlite'
 import { existsSync, statSync } from 'node:fs'
-import { SAFE_WORKER_SESSION_ID, WORKER_SYSTEM_PROMPT_MAX_BYTES } from '../shared/worker-frame-schema'
-import { extractSafeVersion, runProbeCommand } from './worker-bin'
-import type { WorkerDriver, WorkerHandle, WorkerOutcome } from './worker-driver'
+import { SAFE_WORKER_SESSION_ID, WORKER_SYSTEM_PROMPT_MAX_BYTES } from '../../../shared/worker-frame-schema'
+import { extractSafeVersion, runProbeCommand } from '../../worker-bin'
+import type { WorkerDriver, WorkerHandle, WorkerOutcome } from '../../worker-driver'
+import { expandWorkerCwd } from '../../worker-text'
 import { attachToHermesGateway, detectHermesSignedIn, type HermesGrant, resolveAttachTarget, resolveHermesBinary, resolveHermesHome } from './worker-hermes-env'
 import { cleanHermesError } from './worker-hermes-model'
 import { applyHermesEvent, createHermesStreamState, mapHermesTranscript } from './worker-hermes-protocol'
 import { pruneOldHermesSessions } from './worker-hermes-prune'
 import { approvePrompt, approveSnapshotPrompts, openHermesSession, steerHermesSession } from './worker-hermes-session'
 import { type HermesGatewayEvent, type HermesServerRequest, HermesWorkerSocket } from './worker-hermes-socket'
-import { expandWorkerCwd } from './worker-text'
 
 export interface HermesDriverOptions {
   bin?: string

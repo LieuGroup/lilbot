@@ -3,9 +3,9 @@
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import type { WebhookCapability } from '../shared/webhook-schema'
-import { resolveTrustedBinary } from './worker-bin'
-import { cleanAgentLine } from './worker-text'
+import type { WebhookCapability } from '../../../shared/webhook-schema'
+import { resolveTrustedBinary } from '../../worker-bin'
+import { cleanAgentLine } from '../../worker-text'
 
 export interface HermesGrant {
   url: string

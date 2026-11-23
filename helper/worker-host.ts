@@ -2,7 +2,8 @@
  *  loopback MCP proxy, stop/steer, reconnect idempotency via SQLite journal, and teardown on revocation. */
 import type { Database } from 'bun:sqlite'
 import { type WorkerDoneFrame, WorkerHelperFrame, type WorkerLeaderFrame, type WorkerStartFrame } from '../shared/worker-frame-schema'
-import { createEventCoalescer, defaultWorkerDrivers, type WorkerDriver, type WorkerHandle } from './worker-driver'
+import { defaultWorkerDrivers } from './drivers/registry'
+import { createEventCoalescer, type WorkerDriver, type WorkerHandle } from './worker-driver'
 import {
   acknowledgeWorker,
   boundWorkerDone,

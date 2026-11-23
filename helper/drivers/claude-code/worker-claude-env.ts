@@ -2,7 +2,7 @@
 import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { resolveTrustedBinary } from './worker-bin'
+import { resolveTrustedBinary } from '../../worker-bin'
 
 const workerRunsDir = (dir?: string) => join(dir ?? process.env.LILBOT_HELPER_CONFIG_DIR ?? join(homedir(), '.config', 'lilbot-helper'), 'worker-runs')
 

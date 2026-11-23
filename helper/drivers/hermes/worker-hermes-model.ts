@@ -1,5 +1,5 @@
 /** Hermes model/auth resolution, editor MCP config, tool prefix stripping, and error cleaning. */
-import { cleanAgentText } from './worker-text'
+import { cleanAgentText } from '../../worker-text'
 
 const EDITOR_MCP_PREFIX = /^mcp__editor_[a-z0-9_]+_[0-9a-f]{8}__/i
 const SYSTEM_MCP_PREFIX = /^mcp__lilbot_system__/i

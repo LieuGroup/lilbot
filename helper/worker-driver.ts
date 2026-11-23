@@ -1,11 +1,9 @@
 /** Engine-neutral coding-agent driver contract for the helper.
  *  Adding a second coding agent (such as an ACP driver) is a second file implementing `WorkerDriver`. */
-import type { Database } from 'bun:sqlite'
 import type { ChatItem, TurnUsage } from '../shared/chat-schema'
 import type { WebhookCapability } from '../shared/webhook-schema'
 import { MAX_WORKER_AGENTS, WorkerAgentInfo, type WorkerDoneStatus, type WorkerDriverId, type WorkerEventFrame, type WorkerToolEvent } from '../shared/worker-frame-schema'
-import { claudeCodeDriver } from './worker-driver-claude'
-import { hermesDriver } from './worker-driver-hermes'
+import { defaultWorkerDrivers } from './drivers/registry'
 import { defaultWorkerProbes, type WorkerAgentProbe } from './worker-probes'
 
 interface WorkerMcpEndpoint {
@@ -56,10 +54,6 @@ export interface WorkerDriver {
   start(request: WorkerStartRequest, onEvent: (event: WorkerProgressEvent) => void): WorkerHandle
   /** Optional startup cleanup for per-run files left behind by an abrupt crash. */
   cleanupStale?(configDir?: string): void
-}
-
-export function defaultWorkerDrivers(options?: { configDir?: string; db?: Database }): WorkerDriver[] {
-  return [claudeCodeDriver({ configDir: options?.configDir }), hermesDriver({ configDir: options?.configDir, db: options?.db })]
 }
 
 export async function detectWorkerAgents(drivers?: WorkerDriver[], probes?: WorkerAgentProbe[]): Promise<WorkerAgentInfo[]> {

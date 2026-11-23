@@ -1,8 +1,8 @@
 /** Claude Code CLI flags and stream-json NDJSON parser: all CLI flag and stream parsing in one small file. */
-import type { ChatItem, TurnUsage } from '../shared/chat-schema'
-import { SAFE_WORKER_SESSION_ID, WORKER_SYSTEM_PROMPT_MAX_BYTES, type WorkerToolEvent } from '../shared/worker-frame-schema'
-import type { WorkerProgressEvent, WorkerStartRequest } from './worker-driver'
-import { cleanAgentLine, cleanAgentText } from './worker-text'
+import type { ChatItem, TurnUsage } from '../../../shared/chat-schema'
+import { SAFE_WORKER_SESSION_ID, WORKER_SYSTEM_PROMPT_MAX_BYTES, type WorkerToolEvent } from '../../../shared/worker-frame-schema'
+import type { WorkerProgressEvent, WorkerStartRequest } from '../../worker-driver'
+import { cleanAgentLine, cleanAgentText } from '../../worker-text'
 
 const MAX_ITEMS = 500
 const MAX_TEXT = 500_000

@@ -1,10 +1,10 @@
 /** Pure Hermes canonical-gateway event streaming, usage deltas, and transcript mapping for the helper driver. */
-import type { ChatItem, TurnUsage } from '../shared/chat-schema'
-import type { WorkerToolEvent } from '../shared/worker-frame-schema'
-import type { WorkerProgressEvent } from './worker-driver'
+import type { ChatItem, TurnUsage } from '../../../shared/chat-schema'
+import type { WorkerToolEvent } from '../../../shared/worker-frame-schema'
+import type { WorkerProgressEvent } from '../../worker-driver'
+import { cleanAgentLine, cleanAgentText } from '../../worker-text'
 import { cleanHermesError, stripEditorMcpPrefix } from './worker-hermes-model'
 import type { HermesGatewayEvent } from './worker-hermes-socket'
-import { cleanAgentLine, cleanAgentText } from './worker-text'
 
 const MAX_ITEMS = 500
 const MAX_TEXT = 500_000

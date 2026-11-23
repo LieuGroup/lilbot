@@ -1,5 +1,5 @@
 /** Session open/resume, approval helpers, and generation-safe steering for the helper Hermes worker driver. */
-import type { WorkerStartRequest } from './worker-driver'
+import type { WorkerStartRequest } from '../../worker-driver'
 import { hermesToolsets } from './worker-hermes-env'
 import { buildEditorMcpServers, type HermesModelOptions, resolveHermesModel } from './worker-hermes-model'
 import { type HermesStreamState, seedHermesUsage } from './worker-hermes-protocol'

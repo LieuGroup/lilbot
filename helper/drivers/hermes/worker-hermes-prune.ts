@@ -1,8 +1,8 @@
 /** Bounded 7-day retention pruning for hidden Hermes worker sessions tracked in the helper's `worker_runs` SQLite journal.
  *  Runs opportunistically on an already-open Hermes gateway socket so it never wakes an idle gateway just to prune. */
 import type { Database } from 'bun:sqlite'
+import { markSessionPruned, sessionsToPrune } from '../../worker-journal'
 import { HermesRpcError, type HermesWorkerSocket } from './worker-hermes-socket'
-import { markSessionPruned, sessionsToPrune } from './worker-journal'
 
 const HERMES_SESSION_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
 const MAX_PRUNE_PER_RUN = 10
