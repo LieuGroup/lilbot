@@ -41,16 +41,22 @@ export class LilBotSocket {
   connect() {
     if (this.disposed) return
     if (this.socket && (this.socket.readyState === CONNECTING || this.socket.readyState === OPEN)) return
+    this.clearReconnect()
     const url = typeof this.options.url === 'string' ? this.options.url : this.options.url()
     const socket = (this.options.createSocket ?? (address => new WebSocket(address) as unknown as ClientSocket))(url)
     this.socket = socket
     socket.onopen = () => {
+      if (this.socket !== socket) return
       this.attempt = 0
       this.setConnected(true)
     }
-    socket.onmessage = message => this.handleFrame(String(message.data))
+    socket.onmessage = message => {
+      if (this.socket !== socket) return
+      this.handleFrame(String(message.data))
+    }
     socket.onclose = () => {
-      if (this.socket === socket) this.socket = null
+      if (this.socket !== socket) return
+      this.socket = null
       if (this.disposed) return
       for (const waiting of this.pending.values()) {
         clearTimeout(waiting.timer)
@@ -59,6 +65,7 @@ export class LilBotSocket {
       this.pending.clear()
       this.setConnected(false)
       const delays = this.options.reconnectDelaysMs ?? RECONNECT_DELAYS_MS
+      this.clearReconnect()
       this.reconnectTimer = setTimeout(() => this.connect(), delays[Math.min(this.attempt++, delays.length - 1)])
     }
   }
@@ -66,8 +73,7 @@ export class LilBotSocket {
   /** Close for good: no reconnect, pending requests fail, listeners hear the disconnect. */
   stop() {
     this.disposed = true
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
-    this.reconnectTimer = null
+    this.clearReconnect()
     for (const waiting of this.pending.values()) {
       clearTimeout(waiting.timer)
       waiting.reject(new LilBotError('disconnected', 'The connection to LilBot was closed.'))
@@ -76,6 +82,11 @@ export class LilBotSocket {
     this.setConnected(false)
     this.socket?.close()
     this.socket = null
+  }
+
+  private clearReconnect() {
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
+    this.reconnectTimer = null
   }
 
   call<M extends Method>(method: M, params: Params<M>): Promise<Results[M]> {
