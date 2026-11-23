@@ -131,8 +131,8 @@ export interface BotEngine {
   applyIdentity(engineBotId: string, identity: RuntimeIdentity): Promise<RuntimeState>
   /** Stop this runtime and delete its conversations. Safe to repeat when already missing. */
   deleteRuntime(engineBotId: string): Promise<void>
-  /** Prepare persistent policy at startup and when the saved mode changes. */
-  prepareRuntime?(engineBotId: string, identity: RuntimeIdentity): Promise<void>
+  /** Prepare persistent policy at startup and mode changes; `{ retry: true }` retries non-fatal cleanup later. */
+  prepareRuntime?(engineBotId: string, identity: RuntimeIdentity): Promise<{ retry?: boolean } | undefined> | Promise<void>
   /** Give this runtime exactly LilBot's MCP connections (servers named `lilbot_*` not listed are removed; others are left
    *  alone), for its sessions from their next resume. Returns true when the profile's connections changed. Safe to repeat. */
   prepareConnections?(engineBotId: string, connections: McpConnection[]): Promise<boolean> | Promise<void>

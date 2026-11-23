@@ -148,9 +148,9 @@ are in `AGENTS.md` under "Webhooks"; tunnel ingress is in [cloudflare.md](cloudf
   `skill_manage` does, so LilBot cannot tell which turn it reviews; turning the review off for bots with webhooks
   (`skills.creation_nudge_interval: 0`) would change Oscar's chats, which is his call. The text reaches it fenced and
   only after Oscar acted.
-- Production tool set (read from `~/.hermes` files, 2026-11-21): the one configured profile (`default`) enables only
-  the `lilbot-skills-v1` and `lilbot-computers-v1` plug-ins, the same two LilBot adds to every bot, so a narrow run
-  gets the same plug-in tools as on dev (`check:webhooks` prints them); its `revenuecat` and `paper` MCP servers are
+- Production tool set (read from `~/.hermes` files, 2026-11-21; updated when `lilbot-computers-v1` retired): the one
+  configured profile (`default`) enables only the `lilbot-skills-v1` plug-in that LilBot adds to every bot, so a narrow
+  run gets the same plug-in tools as on dev (`check:webhooks` prints them); its `revenuecat` and `paper` MCP servers are
   left out by the session's toolsets.
 - Bot tools (LilBot's MCP server, the caller's own webhooks only): `lilbot_webhook` (`action`: `create` with request-id
   idempotency, at most five webhooks a bot, whoever asked, since `createdBy` is the bot's word; `pause`, `resume`,

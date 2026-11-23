@@ -8,6 +8,61 @@ import { files } from '../skills/skill-files'
 import type { SkillsService } from '../skills/skills-service'
 import type { BotRecord } from './bot-store'
 
+export interface RuntimeOptions {
+  changed?: () => void
+  retryDelays?: readonly number[]
+  headStartMs?: number
+  prepareRetryMs?: number
+  now?: () => number
+  systemNote?: (bot: BotRecord) => string
+  onConnectionsChanged?: (botId: string) => void
+}
+
+const INITIAL_PREPARE_RETRY_MS = 30_000
+const MAX_PREPARE_RETRY_MS = 600_000
+
+/** Tracks one-time runtime preparation per bot, plus bounded exponential backoff when a non-fatal cleanup requests a retry. */
+export class PrepareTracker {
+  private done = new Set<string>()
+  private retry = new Map<string, { at: number; delay: number }>()
+  private inFlight = new Map<string, Promise<void>>()
+  constructor(
+    private initialDelayMs = INITIAL_PREPARE_RETRY_MS,
+    private now: () => number = Date.now
+  ) {}
+
+  hasPending(botId: string) {
+    return this.retry.has(botId)
+  }
+  markDone(botId: string) {
+    this.retry.delete(botId)
+    this.done.add(botId)
+  }
+  clear(botId: string) {
+    this.done.delete(botId)
+    this.retry.delete(botId)
+  }
+  run(botId: string, prepare: () => Promise<{ retry?: boolean } | undefined>): Promise<void> {
+    if (this.done.has(botId)) return Promise.resolve()
+    const active = this.inFlight.get(botId)
+    if (active) return active
+    const next = this.retry.get(botId)
+    if (next && this.now() < next.at) return Promise.resolve()
+    const promise = prepare()
+      .then(result => {
+        if (result?.retry) {
+          const delay = next ? Math.min(next.delay * 2, MAX_PREPARE_RETRY_MS) : this.initialDelayMs
+          this.retry.set(botId, { at: this.now() + delay, delay })
+        } else {
+          this.markDone(botId)
+        }
+      })
+      .finally(() => this.inFlight.delete(botId))
+    this.inFlight.set(botId, promise)
+    return promise
+  }
+}
+
 interface ToolSources {
   skills?: SkillsService
   connection?: MemoryConnection

@@ -115,7 +115,8 @@ export class HermesEngine implements BotEngine {
       await applied(id, 'computers', COMPUTERS_RETIRED_KEY, () => retireComputersPlugin(id))
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'Unknown retirement error'
-      console.error(`[computers] could not retire legacy plug-in for profile ${id}; will retry on next prepare (${detail.slice(0, 200)})`)
+      console.error(`[computers] could not retire legacy plug-in for profile ${id}; will retry on next use (${detail.slice(0, 200)})`)
+      return { retry: true }
     }
   }
 
