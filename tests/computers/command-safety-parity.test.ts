@@ -1,3 +1,13 @@
+/**
+ * Static parity suite against the baseline hardline command corpus (no engine dependency).
+ *
+ * Deliberate improvements over the engine's original rules (tested in command-safety-parser/rules):
+ * - `kill -1 <pid>` is allowed as SIGHUP; only real kill-all forms (`kill -9 -1`, `kill -- -1`, bare `kill -1`) are refused.
+ * - Heredoc bodies (`<<`, `<<-`) are treated as data unless fed to a shell or containing unquoted `$(...)`.
+ * - The 4,096-char separator-free limit is removed (128 KiB total size, 25,000 separators, and depth 8 remain).
+ * - `rm -rf '/ *'` (literal filename ` *` under `/`) is allowed.
+ * - Non-system local script paths (`./bin/reboot`, `./scripts/shutdown`) are not matched by basename.
+ */
 import { expect, test } from 'bun:test'
 import { checkCommandSafety } from '../../server/computers/command-safety'
 import parity from './command-safety-parity.json'

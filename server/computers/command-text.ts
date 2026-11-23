@@ -1,5 +1,6 @@
-/** Text normalization, parser bounds, and shell sub-span scanners for command safety checks. */
+/** Text normalization, parser bounds, ANSI-C decoding, and raw token span helpers. */
 
+export const MAX_DEPTH = 8
 const MAX_COMMAND_CHARS = 128_000
 const MAX_SEPARATORS = 25_000
 const ESC = String.fromCharCode(0x1b)
@@ -52,61 +53,23 @@ export function decodeAnsiC(body: string): string {
   })
 }
 
-function scanSubshell(src: string, start: number): { end: number; closed: boolean } {
-  const stack: { depth: number; quote: "'" | '"' | null }[] = [{ depth: 1, quote: null }]
+export function scanBacktickSpan(src: string, start: number, inDoubleQuote: boolean): { inner: string; end: number; closed: boolean } {
   let i = start
-  while (i < src.length && stack.length > 0) {
-    const top = stack[stack.length - 1]
+  let inner = ''
+  while (i < src.length) {
     const ch = src[i]
-    if (top.quote === "'") {
-      if (ch === "'") top.quote = null
-      i++
-      continue
-    }
     if (ch === '\\' && i + 1 < src.length) {
+      const next = src[i + 1]
+      const stripSlash = next === '\\' || next === '`' || next === '$' || (inDoubleQuote && next === '"')
+      inner += stripSlash ? next : `\\${next}`
       i += 2
       continue
     }
-    if (top.quote === '"') {
-      if (ch === '"') top.quote = null
-      else if (ch === '$' && src[i + 1] === '(') {
-        stack.push({ depth: 1, quote: null })
-        i += 2
-        continue
-      }
-      i++
-      continue
-    }
-    if (ch === "'" || ch === '"') top.quote = ch
-    else if (ch === '(') top.depth++
-    else if (ch === ')') {
-      top.depth--
-      if (top.depth === 0) stack.pop()
-    }
+    if (ch === '`') return { inner, end: i + 1, closed: true }
+    inner += ch
     i++
   }
-  return { end: i, closed: stack.length === 0 }
-}
-
-function scanBacktick(src: string, start: number): { end: number; closed: boolean } {
-  let i = start
-  while (i < src.length) {
-    if (src[i] === '\\' && i + 1 < src.length) i += 2
-    else if (src[i] === '`') return { end: i + 1, closed: true }
-    else i++
-  }
-  return { end: i, closed: false }
-}
-
-export function scanSubst(src: string, start: number, substitutions: string[], masked: string[]): { text: string; end: number; unterminated: boolean } {
-  const isBacktick = src[start] === '`'
-  const openLen = isBacktick ? 1 : 2
-  const res = isBacktick ? scanBacktick(src, start + 1) : scanSubshell(src, start + 2)
-  const innerEnd = res.closed ? res.end - 1 : res.end
-  substitutions.push(src.slice(start + openLen, innerEnd))
-  const raw = src.slice(start, res.end)
-  masked.push(raw)
-  return { text: raw, end: res.end, unterminated: !res.closed }
+  return { inner, end: i, closed: false }
 }
 
 export function scanBraceVar(src: string, start: number): number {

@@ -29,13 +29,16 @@ export function isRawBlockDevice(target: string): boolean {
 }
 
 export function resolveDirectory(raw: string, homeParts: string[] | null, cwd: string[] | null): string[] | null {
-  if (raw === '-') return null
+  if (!raw || raw === '-') return null
   const homeMatch = HOME_EXPR.exec(raw)
   if (homeMatch) {
+    const rest = homeMatch[1] ?? ''
+    if (rest.includes('$') || rest.includes('`')) return null
     const base = homeParts ? `/${homeParts.join('/')}` : '/__home__'
-    const parts = canonicalAbsolute(`${base}/${homeMatch[1] ?? ''}`)
+    const parts = canonicalAbsolute(`${base}/${rest}`)
     return parts ? parts.map(p => p.toLowerCase()) : null
   }
+  if (raw.includes('$') || raw.includes('`')) return null
   if (raw.startsWith('/')) {
     const parts = canonicalAbsolute(raw)
     return parts ? parts.map(p => p.toLowerCase()) : null

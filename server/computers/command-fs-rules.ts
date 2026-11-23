@@ -2,26 +2,9 @@
 import { checkProtectedParts, checkProtectedTarget, collectOperands, resolveDirectory } from './command-paths'
 import { unwrapCommand } from './command-unwrap'
 
-const FIND_FILTERS = new Set([
-  '-name',
-  '-iname',
-  '-path',
-  '-ipath',
-  '-wholename',
-  '-iwholename',
-  '-regex',
-  '-iregex',
-  '-empty',
-  '-size',
-  '-mtime',
-  '-mmin',
-  '-atime',
-  '-ctime',
-  '-newer',
-  '-user',
-  '-group',
-  '-perm'
-])
+const FIND_GLOB_FILTERS = new Set(['-name', '-iname', '-path', '-ipath', '-wholename', '-iwholename'])
+const FIND_REGEX_FILTERS = new Set(['-regex', '-iregex'])
+const FIND_OTHER_FILTERS = new Set(['-empty', '-size', '-mtime', '-mmin', '-atime', '-ctime', '-newer', '-user', '-group', '-perm'])
 const RSYNC_DELETE_FLAGS = new Set(['--delete', '--delete-before', '--delete-during', '--delete-delay', '--delete-after', '--delete-excluded', '--del'])
 const RSYNC_ARG_OPTS = new Set([
   '-e',
@@ -51,6 +34,12 @@ const RSYNC_ARG_OPTS = new Set([
 ])
 const GIT_GLOBAL_ARG_OPTS = new Set(['-c', '--git-dir', '--work-tree', '--namespace', '--config-env'])
 
+function isNarrowingPattern(flag: string, pat: string | undefined): boolean {
+  if (!pat) return false
+  if (FIND_REGEX_FILTERS.has(flag)) return !/^\^?(?:\.\*|\.\+)\$?$/.test(pat)
+  return !/^\/?\*+$/.test(pat)
+}
+
 export function checkFind(
   args: string[],
   homeParts: string[] | null,
@@ -71,8 +60,13 @@ export function checkFind(
   let hasFilter = false
   for (; i < args.length; i++) {
     const tok = args[i]
-    if (FIND_FILTERS.has(tok)) hasFilter = true
-    if (tok === '-delete' && protectedKind && (protectedKind === 'root filesystem' || !hasFilter)) return `find -delete on ${protectedKind}`
+    if (FIND_GLOB_FILTERS.has(tok) || FIND_REGEX_FILTERS.has(tok)) {
+      if (isNarrowingPattern(tok, args[i + 1])) hasFilter = true
+      i++
+      continue
+    }
+    if (FIND_OTHER_FILTERS.has(tok)) hasFilter = true
+    if (tok === '-delete' && protectedKind && !hasFilter) return `find -delete on ${protectedKind}`
     if (tok === '-exec' || tok === '-execdir' || tok === '-ok' || tok === '-okdir') {
       const execWords: string[] = []
       while (++i < args.length && args[i] !== ';' && args[i] !== '+') execWords.push(args[i])
@@ -84,9 +78,8 @@ export function checkFind(
         const subReason = inspectSub(sub)
         if (subReason) return subReason
       }
-      if (execCmd.command === 'rm' && protectedKind && execCmd.args.some(a => a.includes('{}'))) {
-        const recursive = execCmd.args.some(a => a === '--recursive' || (a.startsWith('-') && !a.startsWith('--') && /[rR]/.test(a.slice(1))))
-        if (recursive || protectedKind === 'root filesystem' || !hasFilter) return `find -exec rm on ${protectedKind}`
+      if (execCmd.command === 'rm' && protectedKind && !hasFilter && execCmd.args.some(a => a.includes('{}'))) {
+        return `find -exec rm on ${protectedKind}`
       }
     }
   }

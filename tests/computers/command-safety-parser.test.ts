@@ -46,8 +46,11 @@ test('parses POSIX shell -c option ordering across every shell carrier', () => {
   expect(checkCommandSafety('bash -o pipefail script.sh', HOME)).toBeNull()
 })
 
-test('handles line continuations, ANSI-C escapes, comments, quotes, and read-tool exec flags', () => {
+test('handles normalization, continuations, ANSI-C, comments, quotes, and read-tool exec flags', () => {
   const blocked = [
+    '\x1b[31mrm\x1b[0m -rf /',
+    '\u200brm -rf /',
+    'ｒｍ -rf /',
     'printf \\\\\nreboot',
     'true \\\\\nrm -rf /',
     'rm -rf \\\n/',
@@ -85,22 +88,36 @@ test('handles line continuations, ANSI-C escapes, comments, quotes, and read-too
   for (const cmd of allowed) expect(checkCommandSafety(cmd, HOME), cmd).toBeNull()
 })
 
-test('handles heredocs as data unless fed to a shell or containing unquoted substitutions', () => {
+test('unifies tokenizer across heredocs, substitutions, case blocks, arithmetic, and arrays', () => {
   const allowed = [
     "cat <<'EOF' > README.md\nrm -rf /\nshutdown -h now\n:(){ :|:& };:\nEOF",
     "git commit -F - <<'EOF'\nfix: shutdown handling\n\nreboot notes\nEOF",
     "cat <<'EOF' > safety.md\ncat f > /dev/sda\nEOF",
     'cat <<-EOF\n\treboot\n\tmkfs /dev/sda\n\tEOF',
-    "cat <<'EOF'\n$(rm -rf /)\nit's fine\nEOF"
+    "cat <<'EOF'\n$(rm -rf /)\nit's fine\nEOF",
+    'git commit -m "$(cat <<\x27EOF\x27\nFix bug: don\x27t crash\nEOF\n)"',
+    'gh pr create --body "$(cat <<\x27EOF\x27\nIt\x27s ready (see #42).\nEOF\n)"',
+    'echo "$(echo ok # it\x27s a comment\n)"',
+    'echo "$(case a in (a|b) echo "it\x27s ok";; esac)"',
+    'echo $(( (1 + 2) * 3 ))',
+    'for ((i=0; i<10; i++)); do echo $i; done',
+    'arr=(foo "don\x27t" bar)'
   ]
   for (const cmd of allowed) expect(checkCommandSafety(cmd, HOME), cmd).toBeNull()
   const blocked = [
     'bash <<EOF\nrm -rf /\nEOF',
     "bash <<'EOF'\nrm -rf /\nEOF",
     'sudo sh <<-EOF\n\treboot\n\tEOF',
+    'cat <<-EOF\n\tignored\n\tEOF\nreboot',
     'cat <<EOF\n$(rm -rf /)\nEOF',
     "cat <<'EOF' | bash\nrm -rf /\nEOF",
-    "cat <<'EOF' > README.md\nsafe\nEOF\nreboot"
+    "cat <<'EOF' > README.md\nsafe\nEOF\nreboot",
+    'echo "$(cat <<\x27EOF\x27\n)\nEOF\nrm -rf /)"',
+    'echo "$(cat <<\x27EOF\x27\n)\nEOF\nreboot)"',
+    'echo "$(case a in a) rm -rf /;; esac)"',
+    'echo "$(case a in (a|b) reboot;; esac)"',
+    'echo $(( $(rm -rf /) + 1 ))',
+    'arr=($(rm -rf /))'
   ]
   for (const cmd of blocked) expect(checkCommandSafety(cmd, HOME), cmd).not.toBeNull()
 })
@@ -129,7 +146,8 @@ test('unwraps every supported command wrapper and ignores non-system local scrip
     '/bin/rm -rf /',
     '/sbin/mkfs.ext4 /dev/sda1',
     '/usr/sbin/reboot',
-    '/opt/homebrew/bin/rg --pre reboot foo'
+    '/opt/homebrew/bin/rg --pre reboot foo',
+    '/nix/store/abc123-coreutils/bin/rm -rf /'
   ]
   for (const cmd of wrappers) expect(checkCommandSafety(cmd, HOME), cmd).not.toBeNull()
   const allowed = [

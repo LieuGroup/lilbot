@@ -1,5 +1,5 @@
-/** Quoted-span, ANSI-C string, redirect-operator, and heredoc scanners for the POSIX shell parser. */
-import { decodeAnsiC, isLineContinuation, scanSubst } from './command-text'
+/** Quoted-span, ANSI-C, arithmetic, redirect-operator, and heredoc scanners sharing the unified recursive parser. */
+import { decodeAnsiC, isLineContinuation, scanBacktickSpan } from './command-text'
 
 export type PendingRedirect = 'none' | 'output' | 'input' | 'herestring' | 'heredoc' | 'heredoc_strip'
 
@@ -15,7 +15,45 @@ export interface QueuedHeredoc {
   heredocs: Heredoc[]
 }
 
-export function scanQuoted(src: string, start: number, q: "'" | '"', substitutions: string[], masked: string[]) {
+export type ParseSubFn = (src: string, start: number, kind: 'subst' | 'backtick', inDoubleQuote: boolean) => { end: number; closed: boolean; text: string }
+
+export function scanArithmetic(src: string, start: number, parseSub: ParseSubFn, masked: string[]): { text: string; end: number; unterminated: boolean } {
+  const open = src[start] === '$' ? 3 : 2
+  let i = start + open
+  let depth = 2
+  let quote: "'" | '"' | null = null
+  while (i < src.length && depth > 0) {
+    const ch = src[i]
+    if (quote === "'") {
+      if (ch === "'") quote = null
+      i++
+      continue
+    }
+    if (ch === '\\' && i + 1 < src.length) {
+      i += 2
+      continue
+    }
+    if (ch === '`' || (ch === '$' && src[i + 1] === '(' && src[i + 2] !== '(')) {
+      const sub = parseSub(src, i, ch === '`' ? 'backtick' : 'subst', quote === '"')
+      i = sub.end
+      continue
+    }
+    if (quote === '"') {
+      if (ch === '"') quote = null
+      i++
+      continue
+    }
+    if (ch === "'" || ch === '"') quote = ch
+    else if (ch === '(') depth++
+    else if (ch === ')') depth--
+    i++
+  }
+  const raw = src.slice(start, i)
+  masked.push(' '.repeat(raw.length))
+  return { text: raw, end: i, unterminated: depth > 0 }
+}
+
+export function scanQuoted(src: string, start: number, q: "'" | '"', parseSub: ParseSubFn, masked: string[]) {
   masked.push(q)
   let i = start + 1
   let text = ''
@@ -34,10 +72,18 @@ export function scanQuoted(src: string, start: number, q: "'" | '"', substitutio
         i += 2
         continue
       }
+      if (src[i] === '$' && src[i + 1] === '(' && src[i + 2] === '(') {
+        const arith = scanArithmetic(src, i, parseSub, masked)
+        if (arith.unterminated) unterminated = true
+        text += arith.text
+        i = arith.end
+        continue
+      }
       if (src[i] === '`' || (src[i] === '$' && src[i + 1] === '(')) {
-        const sub = scanSubst(src, i, substitutions, masked)
-        if (sub.unterminated) unterminated = true
+        const sub = parseSub(src, i, src[i] === '`' ? 'backtick' : 'subst', true)
+        if (!sub.closed) unterminated = true
         text += sub.text
+        masked.push(sub.text)
         i = sub.end
         continue
       }
@@ -94,7 +140,7 @@ export function scanRedirectOp(src: string, i: number, masked: string[]): { end:
   return { end: i + (two ? 2 : 1), kind: src[i + 1] === '>' ? 'output' : 'input' }
 }
 
-function scanUnquotedHeredocSubsts(body: string, substitutions: string[]): boolean {
+function scanUnquotedHeredocSubsts(body: string, parseSub: ParseSubFn): boolean {
   let i = 0
   let unterminated = false
   while (i < body.length) {
@@ -102,9 +148,15 @@ function scanUnquotedHeredocSubsts(body: string, substitutions: string[]): boole
       i += 2
       continue
     }
+    if (body[i] === '$' && body[i + 1] === '(' && body[i + 2] === '(') {
+      const arith = scanArithmetic(body, i, parseSub, [])
+      if (arith.unterminated) unterminated = true
+      i = arith.end
+      continue
+    }
     if (body[i] === '`' || (body[i] === '$' && body[i + 1] === '(')) {
-      const sub = scanSubst(body, i, substitutions, [])
-      if (sub.unterminated) unterminated = true
+      const sub = parseSub(body, i, body[i] === '`' ? 'backtick' : 'subst', false)
+      if (!sub.closed) unterminated = true
       i = sub.end
       continue
     }
@@ -113,7 +165,7 @@ function scanUnquotedHeredocSubsts(body: string, substitutions: string[]): boole
   return unterminated
 }
 
-export function consumeHeredocs(src: string, start: number, queue: QueuedHeredoc[], substitutions: string[], masked: string[]) {
+export function consumeHeredocs(src: string, start: number, queue: QueuedHeredoc[], parseSub: ParseSubFn, masked: string[]) {
   let i = start
   let unterminated = false
   for (const hd of queue) {
@@ -132,7 +184,11 @@ export function consumeHeredocs(src: string, start: number, queue: QueuedHeredoc
     }
     const body = lines.join('\n')
     hd.heredocs.push({ body, quoted: hd.quoted })
-    if (!hd.quoted && scanUnquotedHeredocSubsts(body, substitutions)) unterminated = true
+    if (!hd.quoted && scanUnquotedHeredocSubsts(body, parseSub)) unterminated = true
   }
   return { end: i, unterminated }
+}
+
+export function scanBacktickBody(src: string, start: number, inDoubleQuote: boolean) {
+  return scanBacktickSpan(src, start + 1, inDoubleQuote)
 }

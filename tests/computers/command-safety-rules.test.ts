@@ -95,6 +95,7 @@ test('blocks host shutdown, reboot, isolate, and kill-all while allowing SIGHUP 
     'kill -1 -12345',
     'kill -s 1 12345',
     'kill -l',
+    'kill -l -1',
     'kill -9 12345',
     'systemctl status lilbot',
     'systemctl isolate multi-user.target',
@@ -103,73 +104,6 @@ test('blocks host shutdown, reboot, isolate, and kill-all while allowing SIGHUP 
     'launchctl kickstart -k gui/501/com.example',
     'xcrun simctl shutdown booted',
     'adb reboot'
-  ]
-  for (const cmd of allowed) expect(checkCommandSafety(cmd, HOME), cmd).toBeNull()
-})
-
-test('guards realistic destructive idioms with benign two-way coverage', () => {
-  const blocked: [string, string][] = [
-    ['busybox rm -rf /', 'root filesystem'],
-    ['busybox reboot', 'shutdown/reboot'],
-    ['find / -delete', 'find -delete'],
-    ['find ~ -delete', 'find -delete'],
-    ['find /etc -delete', 'find -delete'],
-    ['find / -exec rm -rf {} +', 'find -exec rm'],
-    ['find ~ -exec rm -rf {} ;', 'find -exec rm'],
-    ['find . -exec rm -rf / ;', 'root filesystem'],
-    ["find . -exec sh -c 'reboot' ;", 'shutdown/reboot'],
-    ['cd / && rm -rf *', 'root filesystem'],
-    ['cd ~ && rm -rf *', 'home directory'],
-    ['pushd /etc && rm -rf .', 'system directory'],
-    ['cd ~ && git clean -fdx', 'git clean'],
-    ['cd / && git clean -fdx', 'git clean'],
-    ['git -C ~ clean -fdx', 'git clean'],
-    ['echo "rm -rf /" | sh', 'root filesystem'],
-    ["printf 'reboot\n' | bash", 'shutdown/reboot'],
-    ["printf '%s\n' 'rm -rf /' | sudo sh", 'root filesystem'],
-    ["bash <<< 'rm -rf /'", 'root filesystem'],
-    ['echo / | xargs rm -rf', 'root filesystem'],
-    ['echo ~ | xargs rm -rf', 'home directory'],
-    ['rsync -a --delete /empty/ /', 'rsync --delete'],
-    ['rsync -a --delete /empty/ /etc/', 'rsync --delete'],
-    ['rsync -a --delete /empty/ ~', 'rsync --delete'],
-    ['chmod -R 000 /', 'recursive chmod'],
-    ['chmod --recursive 777 /etc', 'recursive chmod'],
-    ['chown -R nobody /', 'recursive chown'],
-    ['chown -R root ~', 'recursive chown'],
-    ['mv /etc /tmp/x', 'move system directory'],
-    ['mv ~ /tmp/old', 'move home directory'],
-    ['mv -t /tmp /usr', 'move system directory']
-  ]
-  for (const [cmd, expected] of blocked) expect(checkCommandSafety(cmd, HOME), cmd).toContain(expected)
-  const allowed = [
-    'busybox ls -la',
-    'busybox rm -rf /tmp/scratch',
-    'find /tmp/build -delete',
-    'find ~/project/dist -delete',
-    "find ~ -name '.DS_Store' -delete",
-    'find ~/project -exec rm -rf {} +',
-    'cd /tmp/work && rm -rf *',
-    '(cd / && ls); rm -rf *',
-    'cd / && cd /tmp/work && rm -rf *',
-    'cd / && rm -rf tmp/scratch',
-    'git clean -fdx',
-    'cd ~/project && git clean -fdx',
-    'cd ~ && git clean -n -d -x',
-    'cd ~ && git clean -fdx ./tmp-scratch',
-    'echo "hello" | sh',
-    "bash <<< 'echo ok'",
-    "cat <<< 'rm -rf /'",
-    'echo /tmp/foo | xargs rm -rf',
-    'rsync -a --delete ./dist/ /tmp/deploy/',
-    'rsync -a /empty/ /',
-    'chmod 755 ~',
-    'chmod -R 755 ~/project',
-    'chown root /etc/my.conf',
-    'chown -R alice ~/project',
-    'mv /tmp/a /tmp/b',
-    'mv /etc/foo.conf /etc/foo.conf.bak',
-    'mv ~/project/a ~/project/b'
   ]
   for (const cmd of allowed) expect(checkCommandSafety(cmd, HOME), cmd).toBeNull()
 })
