@@ -36,15 +36,18 @@ test('hermesDriver runs start -> scoped approvals -> MCP tool -> steer -> comple
   seedAgedRun(db, 'fresh-run', 'local-fresh', true, 0)
   // Leader-supplied user session id (never created by this helper) must NEVER be pruned even after 8 days.
   seedAgedRun(db, 'spoof-user', 'user-cli-session', false, 8)
-  // Even if marked created_by_helper, a session that is visible (not hidden) or non-acp on the gateway must NEVER be pruned.
+  // Even if marked created_by_helper, a live visible acp session (scope: 'live'; Hermes omits acp from scope: 'stored'),
+  // a stored visible session (scope: 'stored'), or a non-acp session must NEVER be pruned.
   seedAgedRun(db, 'visible-row', 'visible-acp-1', true, 8)
+  seedAgedRun(db, 'stored-vis-row', 'visible-stored-1', true, 8)
   seedAgedRun(db, 'cli-row', 'real-cli-1', true, 8)
 
   let steerAttempts = 0
   let activeWs: any
   const gw = startMockHermesGateway(
     {
-      visibleSessions: [{ session_id: 'visible-acp-1', source: 'acp' }],
+      liveVisibleSessions: [{ session_id: 'visible-acp-1', source: 'acp' }],
+      storedVisibleSessions: [{ session_id: 'visible-stored-1', source: 'cli' }],
       sessionInfoFor(sid) {
         if (sid === 'real-cli-1') return { source: 'cli', launch_request: { source: 'cli' } }
         return { source: 'acp', launch_request: { source: 'acp', yolo: true, ignore_rules: true } }
@@ -158,6 +161,12 @@ test('hermesDriver runs start -> scoped approvals -> MCP tool -> steer -> comple
   expect(createReq.editor.mcp_servers[0].url).toBe('http://127.0.0.1:9999/mcp')
   expect(gw.requests.filter(r => r.method === 'approval.respond').map(r => r.params.prompt_id)).toEqual(['apr-1'])
   expect(gw.serverResponses).toEqual([{ id: 'srq-1', result: { choice: 'once' } }])
+  expect(
+    gw.requests
+      .filter(r => r.method === 'session.list')
+      .map(r => r.params.scope)
+      .sort()
+  ).toEqual(['live', 'stored'])
   const deleted = gw.requests.filter(r => r.method === 'session.mutate' && r.params.operation === 'delete').map(r => r.params.session_id)
   expect(deleted).toEqual(['local-old-7d'])
   expect((db.query('SELECT pruned_at FROM worker_runs WHERE run_id=?').get('old-run') as { pruned_at: number | null }).pruned_at).not.toBeNull()
