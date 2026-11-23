@@ -6,7 +6,7 @@ import { useTheme } from '../../ui/theme'
 export default function SettingsTabScreen() {
   const theme = useTheme()
   return (
-    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: theme.background }}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: theme.background }}>
       <SettingsScreen />
     </SafeAreaView>
   )

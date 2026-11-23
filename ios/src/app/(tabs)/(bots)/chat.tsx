@@ -93,7 +93,16 @@ export default function CompactChatRoute() {
           headerTintColor: theme.foreground
         }}
       />
-      <View style={{ flex: 1, backgroundColor: theme.background }}>{bot ? <ChatScreen bot={bot} hideHeader /> : null}</View>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: theme.background,
+          paddingLeft: layout.horizontalPadding.left,
+          paddingRight: layout.horizontalPadding.right
+        }}
+      >
+        {bot ? <ChatScreen bot={bot} hideHeader /> : null}
+      </View>
     </>
   )
 }

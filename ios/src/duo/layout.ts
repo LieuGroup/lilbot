@@ -7,6 +7,8 @@ export type RootTab = 'bots' | 'work' | 'settings'
 export interface WindowMetrics {
   width: number
   height: number
+  /** Live UIKit leading inset (e.g. rotated iPhone Dynamic Island). */
+  safeAreaLeft?: number
   /** Live UIKit trailing inset; overrides the fallback rail width once measured on simulator/device. */
   safeAreaRight?: number
   safeAreaTop?: number
@@ -29,6 +31,7 @@ export const UNCONFIRMED_DUO_METRICS = {
   outerCornerRadius: 59,
   creaseWidth: 40,
   transitionDebounceMs: 150,
+  transientTransitionDebounceMs: 350,
   transientFoldedWidthTolerance: 12,
   transientFoldedHeightMin: 520,
   transientFoldedHeightMax: 600,
@@ -41,7 +44,7 @@ export const UNCONFIRMED_DUO_METRICS = {
   maxUnfoldedPortraitHeight: 1050,
   foldedMinWidth: 430,
   foldedMaxWidth: 510,
-  foldedMinHeight: 600,
+  foldedMinHeight: 500,
   foldedMaxAspect: 1.65,
   padMinLongEdge: 1000,
   padMinShortEdge: 740,
@@ -75,10 +78,20 @@ export function classifySurface({ width, height, safeAreaRight = 0 }: WindowMetr
   return 'phone'
 }
 
+/** Debounce delay before committing a surface transition: transient hinge-motion bands wait longer
+ *  to absorb animation frames, but any settled size always converges rather than freezing forever. */
+export function surfaceTransitionDelayMs(current: SurfaceKind, next: SurfaceKind, width: number, height: number): number | null {
+  if (current === next) return null
+  const m = UNCONFIRMED_DUO_METRICS
+  return isTransientDuoSize(width, height) ? m.transientTransitionDebounceMs : m.transitionDebounceMs
+}
+
 export interface ShellLayout {
   surface: SurfaceKind
   hasSideStrip: boolean
   railWidth: number
+  /** Horizontal safe-area padding applied by the root shell / compact chat route (0 in portrait phone). */
+  horizontalPadding: { left: number; right: number }
   usableWidth: number
   splitMode: boolean
   rosterWidth: number
@@ -107,9 +120,13 @@ export function computeShellLayout(
   options: { inspectorOpen?: boolean; sidebarOpen?: boolean } = {}
 ): ShellLayout {
   const m = UNCONFIRMED_DUO_METRICS
+  const safeAreaLeft = Math.max(0, metrics.safeAreaLeft ?? 0)
+  const safeAreaRight = Math.max(0, metrics.safeAreaRight ?? 0)
   const hasSideStrip = surface === 'duo-folded' || surface === 'duo-unfolded-landscape'
-  const railWidth = hasSideStrip ? (metrics.safeAreaRight && metrics.safeAreaRight >= m.minRailInset ? metrics.safeAreaRight : m.railWidth) : 0
-  const usableWidth = Math.max(0, metrics.width - railWidth)
+  const railWidth = hasSideStrip ? (safeAreaRight >= m.minRailInset ? safeAreaRight : m.railWidth) : 0
+  const horizontalPadding = { left: safeAreaLeft, right: safeAreaRight }
+  const trailingReserved = hasSideStrip ? Math.max(railWidth, safeAreaRight) : safeAreaRight
+  const usableWidth = Math.max(0, metrics.width - safeAreaLeft - trailingReserved)
   const splitMode = surface === 'duo-unfolded-landscape' || surface === 'pad'
   const inspectorOpen = !!options.inspectorOpen
   const sidebarOpen = options.sidebarOpen ?? !inspectorOpen
@@ -132,6 +149,7 @@ export function computeShellLayout(
     surface,
     hasSideStrip,
     railWidth,
+    horizontalPadding,
     usableWidth,
     splitMode,
     rosterWidth,

@@ -122,7 +122,16 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
     : { flex: 1 }
 
   return (
-    <View style={{ flex: 1, flexDirection: 'row', backgroundColor: theme.background, paddingTop: insets.top }}>
+    <View
+      style={{
+        flex: 1,
+        flexDirection: 'row',
+        backgroundColor: theme.background,
+        paddingTop: insets.top,
+        paddingLeft: layout.horizontalPadding.left,
+        paddingRight: layout.horizontalPadding.right
+      }}
+    >
       <View key="roster-pane" style={rosterStyle}>
         <Roster bots={bots} sections={sections} selectedId={layout.splitMode ? (selected?.id ?? null) : null} onSelect={handleSelectBot} />
       </View>
