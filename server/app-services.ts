@@ -157,7 +157,7 @@ export function createAppServices(
     connections: botId => [...t3For(botId), system.connection(botId), ...mcp.connections(botId)],
     onConnectionsChanged: botId => mcp.applyBot(botId),
     systemNote: systemNote(facts),
-    readOnlyChat: (botId, chatId) => gates.sessionCapabilities(botId, chatId) !== null
+    readOnlyChat: (botId, chatId) => webhookRuns.callers.isKnownLimited(botId, chatId)
   })
   const calls = new CallingChats()
   const observeRun = (event: ActivityEvent) => store.exists(event.botId) && activity.observe(event)

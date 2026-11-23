@@ -82,12 +82,15 @@ test('limited conversations refuse chat.send while main conversations remain wri
   f.services.threads.store.attach(ex, f.b2.id, 'b2-narrow', true)
   f.services.threads.store.setStatus(ex.id, 'done')
   f.fake.stored.add('b2-narrow')
+  f.fake.stored.add('b2-narrow-child')
+  f.roots.set('b2-narrow-child', 'b2-narrow')
 
-  // Opening settled webhook run, its compressed child, or settled narrowed exchange refuses send().
+  // Opening settled webhook run, narrowed hand-off, or their readable compressed children refuses send().
   for (const [botId, chatId] of [
     [f.b1.id, 'wh-1'],
     [f.b1.id, 'wh-1-child'],
-    [f.b2.id, 'b2-narrow']
+    [f.b2.id, 'b2-narrow'],
+    [f.b2.id, 'b2-narrow-child']
   ] as const) {
     const chat = await f.services.bots.openChat(botId, chatId, () => {}, true)
     await expect(chat.send('continue')).rejects.toMatchObject({ code: 'chat_read_only' })
@@ -96,6 +99,26 @@ test('limited conversations refuse chat.send while main conversations remain wri
   const runChat = await f.services.webhooks.openRun(f.b1.id, 'r1', () => {})
   await expect(runChat.send('continue')).rejects.toMatchObject({ code: 'chat_read_only' })
   runChat.close()
+
+  // Direct limited ids stay refused even if lineage lookup fails; unknown/unreadable continuations fail OPEN for chat.send
+  // while history hiding (`hiddenChat`) stays fail-closed.
+  f.roots.set('wh-1', null)
+  f.roots.set('b2-narrow', null)
+  f.roots.set('wh-1-unreadable-child', null)
+  f.fake.stored.add('wh-1-unreadable-child')
+  for (const [botId, chatId] of [
+    [f.b1.id, 'wh-1'],
+    [f.b2.id, 'b2-narrow']
+  ] as const) {
+    const chat = await f.services.bots.openChat(botId, chatId, () => {}, true)
+    await expect(chat.send('continue')).rejects.toMatchObject({ code: 'chat_read_only' })
+    chat.close()
+  }
+  expect(f.services.hiddenChat(f.b1.id, 'wh-1-unreadable-child')).toBe(true)
+  const unreadableChild = await f.services.bots.openChat(f.b1.id, 'wh-1-unreadable-child', () => {}, true)
+  await unreadableChild.send('unblocked when lineage unreadable')
+  expect(f.fake.log).toContain('send:wh-1-unreadable-child:unblocked when lineage unreadable')
+  unreadableChild.close()
 
   // Oscar's main conversation on b1 (even with webhook runs AND unreadable lineage) sends normally without error.
   const mainChat = await f.services.bots.openChat(f.b1.id, undefined, () => {})
