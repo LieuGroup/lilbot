@@ -2,7 +2,7 @@
  *  Runs opportunistically on an already-open Hermes gateway socket so it never wakes an idle gateway just to prune. */
 import type { Database } from 'bun:sqlite'
 import { HermesRpcError, type HermesWorkerSocket } from './worker-hermes-socket'
-import { hermesSessionsToPrune, markHermesSessionPruned } from './worker-journal'
+import { markSessionPruned, sessionsToPrune } from './worker-journal'
 
 const HERMES_SESSION_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
 const MAX_PRUNE_PER_RUN = 10
@@ -14,7 +14,7 @@ export async function pruneOldHermesSessions(
 ): Promise<number> {
   if (!db || !socket.isOpen) return 0
   const cutoff = (options.now ?? Date.now()) - (options.maxAgeMs ?? HERMES_SESSION_RETENTION_MS)
-  const candidates = hermesSessionsToPrune(db, cutoff, options.limit ?? MAX_PRUNE_PER_RUN).filter(id => id !== options.excludeSessionId)
+  const candidates = sessionsToPrune(db, 'hermes', cutoff, options.limit ?? MAX_PRUNE_PER_RUN).filter(id => id !== options.excludeSessionId)
   let pruned = 0
   for (const sessionId of candidates) {
     if (!socket.isOpen) break
@@ -39,11 +39,11 @@ export async function pruneOldHermesSessions(
         },
         10_000
       )
-      markHermesSessionPruned(db, sessionId)
+      markSessionPruned(db, 'hermes', sessionId)
       pruned++
     } catch (error) {
       if (error instanceof HermesRpcError && (error.reason === 'not_found' || error.reason === 'session_not_found')) {
-        markHermesSessionPruned(db, sessionId)
+        markSessionPruned(db, 'hermes', sessionId)
         pruned++
       }
     }

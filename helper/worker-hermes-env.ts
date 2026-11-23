@@ -20,6 +20,24 @@ export interface HermesAttachTarget {
 
 const DEFAULT_TOOLSETS = ['terminal', 'file', 'web', 'code_execution', 'todo'] as const
 const COMPAT_SYMLINKS = ['.env', 'auth.json', 'models_dev_cache.json', 'installs'] as const
+const HERMES_ENV_VARS = ['OPENROUTER_API_KEY', 'ANTHROPIC_API_KEY', 'ANTHROPIC_TOKEN', 'OPENAI_API_KEY', 'OPENAI_BASE_URL']
+
+/** Checks non-secret Hermes provider configuration without opening `auth.json` or `.env` (credential files). */
+export function detectHermesSignedIn(hermesHome: string, env: Record<string, string | undefined> = process.env): boolean | undefined {
+  try {
+    const configPath = join(hermesHome, 'config.yaml')
+    if (existsSync(configPath)) {
+      const cfg = Bun.YAML.parse(readFileSync(configPath, 'utf8')) as { model?: unknown } | null
+      if (cfg && typeof cfg.model === 'object' && cfg.model !== null) {
+        const model = cfg.model as { provider?: unknown; base_url?: unknown }
+        if ((typeof model.provider === 'string' && model.provider.trim()) || (typeof model.base_url === 'string' && model.base_url.trim())) return true
+      }
+    }
+  } catch {}
+  if (HERMES_ENV_VARS.some(name => Boolean(env[name]?.trim()))) return true
+  // Never open `auth.json` or `.env`: if either credential file exists, leave sign-in unknown.
+  return existsSync(join(hermesHome, 'auth.json')) || existsSync(join(hermesHome, '.env')) ? undefined : false
+}
 
 const isTruthyConfig = (value: unknown): boolean => {
   if (typeof value === 'boolean') return value

@@ -156,23 +156,23 @@ export function acknowledgeWorker(db: Database, runId: string) {
   db.query('UPDATE worker_runs SET done_frame=?, finished_at=NULL, updated_at=COALESCE(updated_at, ?) WHERE run_id=?').run(JSON.stringify(tombstone), Date.now(), runId)
 }
 
-/** Distinct Hermes worker session ids whose runs are all settled, acknowledged, unpruned, and older than `cutoffMs`. */
-export function hermesSessionsToPrune(db: Database, cutoffMs: number, limit = 10): string[] {
+/** Distinct worker session ids for `driver` whose runs are all settled, acknowledged, unpruned, and older than `cutoffMs`. */
+export function sessionsToPrune(db: Database, driver: string, cutoffMs: number, limit = 10): string[] {
   const rows = db
     .query(
       `SELECT session_id FROM worker_runs
-       WHERE driver = 'hermes' AND session_id IS NOT NULL AND pruned_at IS NULL
+       WHERE driver = ? AND session_id IS NOT NULL AND pruned_at IS NULL
        GROUP BY session_id
        HAVING MAX(COALESCE(updated_at, 0)) < ? AND SUM(CASE WHEN done_frame IS NULL OR finished_at IS NOT NULL THEN 1 ELSE 0 END) = 0
        ORDER BY MAX(COALESCE(updated_at, 0)) ASC
        LIMIT ?`
     )
-    .all(cutoffMs, limit) as { session_id: string }[]
+    .all(driver, cutoffMs, limit) as { session_id: string }[]
   return rows.map(r => r.session_id)
 }
 
-export function markHermesSessionPruned(db: Database, sessionId: string) {
-  db.query("UPDATE worker_runs SET pruned_at=? WHERE driver='hermes' AND session_id=?").run(Date.now(), sessionId)
+export function markSessionPruned(db: Database, driver: string, sessionId: string) {
+  db.query('UPDATE worker_runs SET pruned_at=? WHERE driver=? AND session_id=?').run(Date.now(), driver, sessionId)
 }
 
 export function unacknowledgedWorkers(db: Database): { runId: string; frame: WorkerDoneFrame }[] {
