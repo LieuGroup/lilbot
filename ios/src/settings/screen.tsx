@@ -64,7 +64,7 @@ export function SettingsScreen({ onDone }: { onDone: () => void }) {
         <AppText variant="meta" color={theme.mutedForeground}>
           Access token (optional)
         </AppText>
-        <TextInput value={accessToken} onChangeText={setAccessToken} placeholder="Leave blank on a private network address" placeholderTextColor={theme.mutedForeground} autoCapitalize="none" autoCorrect={false} secureTextEntry textContentType="none" style={field} />
+        <TextInput testID="access-token-input" value={accessToken} onChangeText={setAccessToken} placeholder="Optional on a private network" placeholderTextColor={theme.mutedForeground} autoCapitalize="none" autoCorrect={false} secureTextEntry textContentType="none" style={field} />
         <AppText variant="meta" color={theme.mutedForeground}>
           Sign-in through the public address is not supported from the iPhone app yet.
         </AppText>
