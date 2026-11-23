@@ -2,7 +2,7 @@
 import type { ChatItem } from './chat-schema'
 
 /** Why LilBot started a session the user did not ask for. */
-export type SessionReason = 'not_resumed' | 'engine_switched'
+export type SessionReason = 'not_resumed' | 'engine_switched' | 'engine_switched_gap'
 
 export interface HistoryItem {
   id: string
