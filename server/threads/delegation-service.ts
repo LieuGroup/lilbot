@@ -90,7 +90,9 @@ export class DelegationService {
     const continuations = input.tasks.flatMap(t => (t.exchangeId ? [t.exchangeId] : []))
     if (new Set(continuations).size !== continuations.length) throw new LilBotError('thread_target', 'One task per exchange in a call.')
     for (const t of input.tasks) refuseUnsafe(t.task)
-    await validateTaskTargets(callerId, input.tasks, resolved, i => !this.store.delivery(`${callerId}:${ids[i]}`), this.host)
+    const capabilities = chatId ? (this.host.sessionCapabilities?.(callerId, chatId) ?? null) : null
+    const narrow = { capabilities, threadOf: (id: string) => this.store.get(id) }
+    await validateTaskTargets(callerId, input.tasks, resolved, i => !this.store.delivery(`${callerId}:${ids[i]}`), this.host, narrow)
     this.checkCaps(callerId, input.tasks, ids, resolved)
     const root = await this.host.folder(callerId)
     for (const t of fresh) await checkFiles(root, t.files ?? [])
@@ -131,7 +133,8 @@ export class DelegationService {
                 reasoningEffort: task.reasoningEffort,
                 computer: remote?.computerId,
                 computerName: remote?.computerName,
-                cwd: remote?.cwd
+                cwd: remote?.cwd,
+                ...(capabilities ? { capabilities } : {})
               },
               (messageId, thread) => {
                 added = true

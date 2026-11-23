@@ -112,3 +112,62 @@ export async function pauseResumeDelete(
   assert.deepEqual(await call('webhooks.list', { botId }), [])
   await Bun.sleep(8000)
 }
+
+/** Arguments for `lilbot_webhook` create for the delegation-only narrowing check. */
+export const createDelegationHook = () => ({
+  action: 'create',
+  requestId: 'check-del-only',
+  source: 'GitHub',
+  createdBy: 'oscar',
+  signing: { scheme: 'github' },
+  description: [
+    '1. Call lilbot_delegate once with requestId "del-comp" and tasks [{"worker":true,"computer":"leader","task":"echo hi"}]. Note whether LilBot refused it.',
+    '2. Call lilbot_delegate once with requestId "del-local" and tasks [{"worker":true,"task":"Try computer_exec on computer leader with command echo delegated-probe and reply briefly with whether it was refused."}].',
+    'Reply briefly with "computer_delegate: refused" or "computer_delegate: allowed".'
+  ].join(' ')
+})
+
+/** A webhook run granted only `delegation` cannot name a computer on `lilbot_delegate`, and a local worker it spawns
+ *  carries its narrow grant (no shell/web/memory toolsets, `/engine/computers/*` refused by session). */
+export async function delegationOnlyCheck(
+  c: Context,
+  hook: { id: string; address: string; signingSecret: string },
+  door: string,
+  githubDelivery: (address: URL, secret: string) => (action: string) => Promise<readonly [number, string]>,
+  sessionTools: (nativeId: string, chatId: string) => Promise<{ tools: string[] }>,
+  engineTools: Record<string, string[]>
+) {
+  await c.call('webhooks.setCapabilities', { botId: c.botId, id: hook.id, capabilities: ['delegation'] })
+  const address = new URL(hook.address)
+  assert.equal(address.origin, door)
+  assert.equal((await githubDelivery(address, hook.signingSecret)('delegation-only'))[0], 202)
+  const run = await waitFor(
+    async () => (await c.call('webhooks.list', { botId: c.botId })).find((w: any) => w.id === hook.id)?.runs?.[0],
+    r => r && ['completed', 'failed', 'stopped'].includes(r.status),
+    300_000
+  )
+  assert.equal(run.status, 'completed')
+  assert.match(run.result, /computer_delegate: refused/i)
+  const workerRow = await waitFor(
+    () =>
+      c.db
+        .query(
+          'SELECT d.threadId, t.data, tc.chat_id FROM thread_deliveries d JOIN threads t ON t.id=d.threadId LEFT JOIN thread_chats tc ON tc.thread_id=d.threadId WHERE d.id=? LIMIT 1'
+        )
+        .get(`${c.botId}:del-local:0`) as { threadId: string; data: string; chat_id: string | null } | null,
+    row => Boolean(row?.chat_id && JSON.parse(row.data).status === 'finished'),
+    180_000
+  )
+  assert.equal(c.db.query('SELECT 1 FROM thread_deliveries WHERE id=?').get(`${c.botId}:del-comp:0`), null, 'computer delegation was admitted without computers capability')
+  assert.deepEqual(JSON.parse(workerRow!.data).capabilities, ['delegation'])
+  const workerTools = await sessionTools(c.nativeId, workerRow!.chat_id!)
+  for (const names of Object.values(engineTools))
+    assert.deepEqual(
+      names.filter(n => workerTools.tools.includes(n)),
+      [],
+      `narrowed worker had ${names.join(', ')}`
+    )
+  assert.equal(await engineCall(c, '/engine/computers/list', {}, workerRow!.chat_id!), 422, 'narrowed worker reached /engine/computers/list')
+  assert.equal((c.db.query('SELECT COUNT(*) AS n FROM computer_requests WHERE bot_id = ?').get(c.botId) as { n: number }).n, 0, 'narrowed delegation ran a computer request')
+  await c.call('webhooks.delete', { botId: c.botId, id: hook.id })
+}

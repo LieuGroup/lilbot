@@ -119,7 +119,8 @@ export class ThreadService {
     const prior = this.store.delivery(`${callerId}:${input.requestId}`)
     if (prior) return { threadId: prior.threadId, queued: true }
     refuseUnsafe(input.text)
-    const delivery = this.store.accept(caller, await this.target(input.to), input)
+    const capabilities = this.host.sessionCapabilities?.(callerId, input.chatId) ?? undefined
+    const delivery = this.store.accept(caller, await this.target(input.to), capabilities ? { ...input, capabilities } : input)
     this.changed()
     return { threadId: delivery.threadId, queued: true }
   }

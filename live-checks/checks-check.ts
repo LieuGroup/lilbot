@@ -2,7 +2,7 @@ import { devScratch } from '../scripts/dev-env'
 import { devPort } from '../scripts/dev-paths'
 import { checkClient } from './check-client'
 import { deleteProfile, startServer } from './check-process'
-import { engineView, sentToModel } from './engine-observer'
+import { assertCheckEngineRefusals, engineView, sentToModel } from './engine-observer'
 import { waitFor } from './wait-for'
 /** `bun run check:checks`: check levels on an isolated dev server with temporary bots, review model Haiku. A `lilbot_work`
  *  call no session made is refused. With one bot, a true level 2 claim is verified by a fresh hidden session of the same
@@ -99,7 +99,8 @@ try {
   const titled = (title: string) => async () => (await items()).find((i: any) => i.title.includes(title))
 
   // 1. A call no session reported starting is refused: LilBot never guesses where it came from (#174).
-  const key = connectionKey(readFileSync(join(root, 'engine-token'), 'utf8').trim(), SYSTEM_KEY_PURPOSE, owner.id)
+  const engineToken = readFileSync(join(root, 'engine-token'), 'utf8').trim()
+  const key = connectionKey(engineToken, SYSTEM_KEY_PURPOSE, owner.id)
   const direct = await fetch(`http://127.0.0.1:${port}${SYSTEM_PATH}`, {
     method: 'POST',
     headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
@@ -130,7 +131,9 @@ try {
   assert.equal(view.model, REVIEW.model, 'Hermes ran the check session on the review model')
   const leaked = db.query('SELECT count(*) AS n FROM history_items WHERE session IN (SELECT chat_id FROM work_check_chats)').get() as { n: number }
   assert.equal(leaked.n, 0, 'check sessions stay out of the conversation history')
-  console.log(`ok: verified by a fresh session on ${view.model}, verdict on the owner's request id, no memory block: ${verified.check.text}`)
+  await assertCheckEngineRefusals(port, engineToken, owner.id, checkChats(skyCheck)[0], main.chatId)
+  assert.equal((db.query('SELECT count(*) AS n FROM computer_requests').get() as { n: number }).n, 0, 'check session created a computer request')
+  console.log(`ok: verified by a fresh session on ${view.model}, verdict on the owner's request id, no memory/computers: ${verified.check.text}`)
 
   // 3. A false claim: BLUE while the owner finishes, RED when the check reads it. Not verified, back to the owner once, then Oscar.
   const color = (text: string) => writeFileSync(join(folder, 'color.txt'), text)

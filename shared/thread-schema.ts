@@ -2,6 +2,7 @@
 import { z } from 'zod'
 import { BotModel, ReasoningEffort } from './bot-schema'
 import type { ChatItem } from './chat-schema'
+import type { WebhookCapability } from './webhook-schema'
 
 const text = z.string().trim().min(1).max(20_000)
 const exchangeId = z.string().min(1).max(100)
@@ -171,6 +172,8 @@ export interface BotThread {
   computerName?: string
   /** Working folder on that computer. */
   cwd?: string
+  /** Capability grant carried from a narrowed calling run; absent means unrestricted. */
+  capabilities?: WebhookCapability[]
   /** Present when the thread is a temporary group rather than an exchange between two bots. */
   group?: ThreadGroup
 }

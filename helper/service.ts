@@ -11,7 +11,7 @@ type UninstallStep = { args: string[]; required?: boolean } | { remove: string }
 /** Everything is best effort and the step that stops the running helper comes last, so a failure cannot leave a
  *  half-removed service restarting a helper that has no identity (the helper may be the process being stopped). */
 export function uninstallPlan(mac: boolean, uid: number, path: string): UninstallStep[] {
-  if (mac) return [{ args: ['launchctl', 'bootout', `gui/${uid}/${label}`] }, { remove: path }]
+  if (mac) return [{ remove: path }, { args: ['launchctl', 'bootout', `gui/${uid}/${label}`] }]
   return [
     { args: ['systemctl', '--user', 'disable', 'lilbot-helper.service'] },
     { remove: path },
@@ -20,7 +20,33 @@ export function uninstallPlan(mac: boolean, uid: number, path: string): Uninstal
   ]
 }
 
+export interface UninstallEnv {
+  mac?: boolean
+  home?: string
+  uid?: number
+  command?: (args: string[]) => Promise<void>
+}
+
+export async function uninstallService(env: UninstallEnv = {}) {
+  const mac = env.mac ?? process.platform === 'darwin'
+  if (!mac && env.mac === undefined && process.platform !== 'linux') throw new Error('Only macOS and Linux are supported.')
+  const home = env.home ?? homedir()
+  const uid = env.uid ?? process.getuid!()
+  const directory = mac ? join(home, 'Library', 'LaunchAgents') : join(home, '.config', 'systemd', 'user')
+  const path = join(directory, mac ? `${label}.plist` : 'lilbot-helper.service')
+  const run =
+    env.command ??
+    (async (args: string[]) => {
+      await Bun.spawn(args, { stdout: 'ignore', stderr: 'ignore' }).exited
+    })
+  for (const step of uninstallPlan(mac, uid, path)) {
+    if ('remove' in step) await rm(step.remove, { force: true })
+    else await run(step.args)
+  }
+}
+
 export async function service(action: 'install' | 'uninstall') {
+  if (action === 'uninstall') return uninstallService()
   const binary = join(configDir, 'lilbot-helper')
   const mac = process.platform === 'darwin'
   if (!mac && process.platform !== 'linux') throw new Error('Only macOS and Linux are supported.')
@@ -29,13 +55,6 @@ export async function service(action: 'install' | 'uninstall') {
   const command = async (args: string[], required = true) => {
     const child = Bun.spawn(args, { stdout: 'ignore', stderr: 'ignore' })
     if ((await child.exited) !== 0 && required) throw new Error('Service manager refused the operation.')
-  }
-  if (action === 'uninstall') {
-    for (const step of uninstallPlan(mac, process.getuid!(), path)) {
-      if ('remove' in step) await rm(step.remove, { force: true })
-      else await command(step.args, false)
-    }
-    return
   }
   await mkdir(directory, { recursive: true })
   if (mac) await command(['launchctl', 'bootout', `gui/${process.getuid!()}`, path], false)

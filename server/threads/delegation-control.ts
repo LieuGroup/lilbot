@@ -4,6 +4,7 @@ import { LilBotError } from '../../shared/lilbot-error'
 import { type BotThread, RedirectInput } from '../../shared/thread-schema'
 import { memoryRefusal, refuseUnsafe } from '../memory/memory-safety'
 import type { DelegationHost } from './delegation-service'
+import { assertNarrowedAllowed } from './thread-accept'
 import { steerText } from './thread-prompts'
 import type { ThreadService } from './thread-service'
 import { FINAL } from './thread-store'
@@ -13,7 +14,8 @@ type Pick = { exchangeIds?: string[]; batchId?: string }
 export class DelegationControl {
   constructor(
     private threads: ThreadService,
-    private host: DelegationHost
+    private host: DelegationHost,
+    private callingChat?: (botId: string, requestId: string) => Promise<string>
   ) {}
   private get store() {
     return this.threads.store
@@ -74,6 +76,10 @@ export class DelegationControl {
     if (prior) return { exchangeId: thread.id, applied: prior.status === 'steered' ? 'now' : 'queued' }
     if (thread.status !== 'waiting' && thread.status !== 'working')
       throw new LilBotError('not_running', 'That exchange is not under way. Continue it with lilbot_delegate and its exchangeId.')
+    if (this.host.hasNarrowed?.(botId) && this.callingChat) {
+      const chatId = await this.callingChat(botId, input.requestId)
+      assertNarrowedAllowed(this.host.sessionCapabilities?.(botId, chatId) ?? null, { existing: thread })
+    }
     refuseUnsafe(input.message)
     const receiver = thread.participants[1]
     const origin = this.store.origin(thread.id, receiver.id)

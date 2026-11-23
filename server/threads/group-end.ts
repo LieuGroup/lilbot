@@ -78,7 +78,8 @@ export class GroupEnding {
     for (const d of this.groups.unfinished(groupId)) if (!running.some(r => r.id === d.id)) this.store.setStatus(d.id, 'done')
     const prompt = endPrompt(thread, news, filesLine(thread, this.files.byMessage(groupId), news), groupArchive(this.host.root, groupId), this.limits)
     this.store.enqueue(endId(groupId), groupId, leader.id, leader.id, this.groups.row(groupId)!.source_chat, prompt, 'notice')
-    for (const member of thread.participants.slice(1)) this.journal(groupId, member.id, journalTexts(thread, member.id))
+    if (!thread.capabilities || thread.capabilities.includes('memory'))
+      for (const member of thread.participants.slice(1)) this.journal(groupId, member.id, journalTexts(thread, member.id))
     return true
   }
 

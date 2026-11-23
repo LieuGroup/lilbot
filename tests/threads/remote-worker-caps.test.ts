@@ -52,7 +52,7 @@ function fixture() {
     { ...baseHost, runRoutine: async () => ({ status: 'completed', text: 'ok' }), resolveRemoteWorker: rw.resolveRemoteWorker },
     async () => 'main-chat'
   )
-  return { ...core, store, threads, delegation, running }
+  return { ...core, rw, store, threads, delegation, running }
 }
 
 test('validation fails fast with zero side effects for bad inputs, computers, paths, models, files, and continuations', async () => {
@@ -144,5 +144,29 @@ test('cap interactions: workersPerComputer=2 queues excess without blocking admi
   await Bun.sleep(25)
   expect([...f.running.keys()].some(k => k.includes(':reply'))).toBe(true)
   expect([...f.running.values()].filter(r => r.computer === compA)).toHaveLength(2)
+  f.db.close()
+})
+
+test('remote worker resolution and dispatch require full-access permissionMode', async () => {
+  const f = fixture()
+  const compId = f.addComputer('Studio', true, true).id
+  const bot = f.bots.get('b1')
+  f.bots.save({ ...bot, permissionMode: 'approval-required' })
+
+  await expect(f.delegation.delegate('b1', { requestId: 'rw-perm', tasks: [{ worker: true, computer: 'Studio', cwd: '/work/app', task: 'hi' }] })).rejects.toThrow(
+    /full-access mode/
+  )
+  expect(f.store.list('b1')).toHaveLength(0)
+
+  const outcome = await f.rw.runForBot('b1', 'run', {
+    runId: 'rw-perm-run',
+    threadId: 'rw-perm-thread',
+    computer: compId,
+    cwd: '/work/app',
+    onChat: () => {}
+  })
+  expect(outcome.status).toBe('failed')
+  expect(outcome.failureReason).toBe('invalid_start')
+  expect(outcome.text).toMatch(/full-access mode/)
   f.db.close()
 })

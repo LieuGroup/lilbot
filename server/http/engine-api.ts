@@ -19,7 +19,9 @@ import type { MemoryReviewer } from '../memory/memory-reviewer'
 import type { MemoryService } from '../memory/memory-service'
 import type { RoutineService } from '../routines/routine-service'
 import { withoutWebhookNotes } from '../webhooks/webhook-messages'
+import type { CheckUse } from '../work/check-sessions'
 import { computerApi } from './computer-api'
+import { checkUse, SESSION_HEADER } from './engine-run-gate'
 import { historyApi } from './history-api'
 import { forBot, memoryRoutes as routes } from './memory-protocol'
 import { routineApi } from './routine-api'
@@ -54,8 +56,8 @@ export interface EngineApiOptions {
   checkpointStore?: CheckpointStore
   /** Routine, thread and webhook sessions and their compression children are never reviewed, before or after compressing. */
   chatKind?: import('../bots/hidden-chats').ChatKind
-  /** Why a call that may come from a check session (no memory, no changes) may not use memory or change skills, or null. */
-  inCheck?: (botId: string, chatId: string | undefined, use: 'memory' | 'skills') => string | null
+  /** Why a call that may come from a check session (no memory, no computers, no changes) is refused, or null. */
+  inCheck?: (botId: string, chatId: string | undefined, use: CheckUse) => string | null
   /** Webhook runs (`app-webhooks.ts`): why a session may not use memory or give files, and why a plug-in call is refused. */
   memoryLocked?: (botId: string, chatId: string | undefined) => string | null
   pluginRefusal?: (botId: string, pathname: string, request: Request) => Promise<string | null>
@@ -85,7 +87,8 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
         if (!caller || !options.botExists(caller.id)) return json(403, { error: 'Unknown bot credential.' })
         const input = LibraryGiveInput.safeParse(await request.json())
         if (!input.success) return json(400, { error: 'Invalid file delivery.' })
-        const locked = options.memoryLocked?.(caller.id, input.data.chatId)
+        const session = request.headers.get(SESSION_HEADER) || input.data.chatId
+        const locked = options.inCheck?.(caller.id, session, 'changes') || options.memoryLocked?.(caller.id, input.data.chatId)
         if (locked) return json(422, { error: locked })
         if (!options.library) return json(503, { error: 'Library unavailable.' })
         const routineRunId = input.data.chatId ? options.routines?.store.runForChat(caller.id, input.data.chatId) : undefined
@@ -102,34 +105,34 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
         if (!caller || !options.bots || !options.botExists(caller.id)) return json(403, { error: 'Unknown bot credential.' })
         const refused = await options.pluginRefusal?.(caller.id, pathname, request)
         if (refused) return json(422, { error: refused })
-        if (pathname.startsWith('/engine/history/')) {
-          const body = await request.json()
-          const inCheck = pathname === '/engine/history/search' && options.inCheck?.(caller.id, typeof body?.chatId === 'string' ? body.chatId : undefined, 'memory')
-          return inCheck ? json(422, { error: inCheck }) : json(200, await history(caller.id, pathname.slice('/engine/history/'.length), body))
-        }
-        if (pathname.startsWith('/engine/threads/')) return json(200, await threadApi(options, caller.id, pathname.slice('/engine/threads/'.length), await request.json()))
+        const body = await request.json()
+        const use = checkUse(pathname)
+        const bodyChat = body && typeof body === 'object' && typeof (body as { chatId?: unknown }).chatId === 'string' ? (body as { chatId: string }).chatId : undefined
+        const inCheck = use && options.inCheck?.(caller.id, request.headers.get(SESSION_HEADER) || bodyChat, use)
+        if (inCheck) return json(422, { error: inCheck })
+        if (pathname.startsWith('/engine/history/')) return json(200, await history(caller.id, pathname.slice('/engine/history/'.length), body))
+        if (pathname.startsWith('/engine/threads/')) return json(200, await threadApi(options, caller.id, pathname.slice('/engine/threads/'.length), body))
         if (pathname.startsWith('/engine/computers/')) {
           if (!options.computers) return json(404, { error: 'Computers unavailable.' })
-          return json(200, await computerApi(options.computers, caller.id, pathname.slice('/engine/computers/'.length), await request.json()))
+          return json(200, await computerApi(options.computers, caller.id, pathname.slice('/engine/computers/'.length), body))
         }
         if (pathname.startsWith('/engine/skills/')) {
           if (!options.skills) return json(404, { error: 'Skills unavailable.' })
-          const body = (await request.json()) as Record<string, unknown>
+          const skillBody = body as Record<string, unknown>
           if (pathname.endsWith('/list')) return json(200, options.skills.offered(caller.id))
           if (pathname.endsWith('/read')) {
-            const name = String(body.name)
+            const name = String(skillBody.name)
             if (!options.skills.offered(caller.id).some(s => s.name === name)) return json(403, { error: 'Skill disabled or missing.' })
-            return json(200, { content: options.skills.read(name)[String(body.file_path ?? 'SKILL.md')] })
+            return json(200, { content: options.skills.read(name)[String(skillBody.file_path ?? 'SKILL.md')] })
           }
-          const refused = pathname.endsWith('/write') && options.inCheck?.(caller.id, undefined, 'skills')
-          if (pathname.endsWith('/write')) return refused ? json(422, { error: refused }) : json(200, options.skills.write(SkillWrite.parse(body), caller.id))
+          if (pathname.endsWith('/write')) return json(200, options.skills.write(SkillWrite.parse(skillBody), caller.id))
           return json(404, { error: 'Unknown skill operation.' })
         }
         if (pathname.startsWith('/engine/routines/')) {
           if (!options.routines) return json(404, { error: 'Routines are unavailable.' })
-          return json(200, await routineApi(options.routines, caller.id, pathname.slice('/engine/routines/'.length), await request.json()))
+          return json(200, await routineApi(options.routines, caller.id, pathname.slice('/engine/routines/'.length), body))
         }
-        const input = BotCreationInput.safeParse(await request.json())
+        const input = BotCreationInput.safeParse(body)
         if (!input.success) return json(400, { error: 'Invalid bot creation request.' })
         return json(200, await options.bots.createFromBot(caller.id, input.data))
       } catch (error) {

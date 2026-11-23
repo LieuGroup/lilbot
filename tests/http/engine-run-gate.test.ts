@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { botCapability } from '../../server/bots/bot-capability'
 import { openDatabase } from '../../server/database/database'
 import { createEngineApi } from '../../server/http/engine-api'
-import { pluginCall } from '../../server/http/engine-run-gate'
+import { checkUse, pluginCall } from '../../server/http/engine-run-gate'
 import { MemoryService } from '../../server/memory/memory-service'
 import { MemoryStore } from '../../server/memory/memory-store'
 
@@ -23,6 +23,26 @@ test('plug-in calls are named as the tool the engine reported, with the groups t
   expect(pluginCall('/engine/bots/create', {})?.groups).toEqual(['bots'])
   expect(pluginCall('/engine/routines/create', {})?.groups).toEqual(['routines'])
   expect(pluginCall('/engine/threads/ask', {})?.groups).toEqual(['delegation'])
+})
+
+test('checkUse maps every mutating and computer engine route to its check-session refusal and leaves read-only routes open', () => {
+  expect(checkUse('/engine/computers/list')).toBe('computers')
+  expect(checkUse('/engine/computers/submit')).toBe('computers')
+  expect(checkUse('/engine/computers/copy')).toBe('computers')
+  expect(checkUse('/engine/history/search')).toBe('memory')
+  expect(checkUse('/engine/history/save')).toBeNull()
+  expect(checkUse('/engine/skills/write')).toBe('skills')
+  expect(checkUse('/engine/skills/list')).toBeNull()
+  expect(checkUse('/engine/skills/read')).toBeNull()
+  expect(checkUse('/engine/bots/create')).toBe('changes')
+  expect(checkUse('/engine/routines/create')).toBe('changes')
+  expect(checkUse('/engine/routines/delete')).toBe('changes')
+  expect(checkUse('/engine/routines/list')).toBeNull()
+  expect(checkUse('/engine/threads/ask')).toBe('changes')
+  expect(checkUse('/engine/threads/bots')).toBeNull()
+  expect(checkUse('/engine/threads/list')).toBeNull()
+  expect(checkUse('/engine/threads/open')).toBeNull()
+  expect(checkUse('/engine/library/give')).toBe('changes')
 })
 
 test('a turn handed to the after-chat review loses the webhook notes LilBot added to it', async () => {

@@ -2,6 +2,7 @@
 import type { BotModel, ReasoningEffort } from '../../shared/bot-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import type { BotThread } from '../../shared/thread-schema'
+import type { WebhookCapability } from '../../shared/webhook-schema'
 import { THREAD_LIMITS } from './thread-limits'
 import type { Delivery, ThreadStore } from './thread-store'
 
@@ -22,9 +23,19 @@ export interface Accept {
   computer?: string
   computerName?: string
   cwd?: string
+  capabilities?: WebhookCapability[]
 }
 type Bot = { id: string; name: string }
 export const WORK = "kind IN ('request','redirect','oscar')"
+
+/** Refuses a narrowed run from naming a computer without `computers` or entering a broader exchange/group. */
+export function assertNarrowedAllowed(capabilities: WebhookCapability[] | null | undefined, opts: { computer?: string; existing?: Pick<BotThread, 'computer' | 'capabilities'> }) {
+  if (!capabilities) return
+  if ((opts.computer || opts.existing?.computer) && !capabilities.includes('computers'))
+    throw new LilBotError('capability_denied', 'A narrowed run cannot delegate to a computer without the "computers" capability.')
+  if (opts.existing && (opts.existing.capabilities === undefined || opts.existing.capabilities.some(c => !capabilities.includes(c))))
+    throw new LilBotError('capability_denied', 'A narrowed run cannot continue an exchange or group with broader access than its own.')
+}
 
 /** Throws when `chatId` belongs to a worker session (or its compression continuation), or when its lineage cannot be read. */
 export function assertNotWorker(store: ThreadStore, botId: string, chatId: string, startingWorker = false) {
@@ -66,8 +77,10 @@ export function acceptDelivery(store: ThreadStore, caller: Bot, target: Bot, inp
           ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
           ...(input.computer ? { computer: input.computer } : {}),
           ...(input.computerName ? { computerName: input.computerName } : {}),
-          ...(input.cwd ? { cwd: input.cwd } : {})
+          ...(input.cwd ? { cwd: input.cwd } : {}),
+          ...(input.capabilities !== undefined ? { capabilities: [...input.capabilities] } : {})
         }
+    assertNarrowedAllowed(input.capabilities, { computer: input.computer, existing: input.threadId ? thread : undefined })
     if (thread.group) throw new LilBotError('thread_forbidden', 'That is a group: use lilbot_group.')
     if (input.threadId && Boolean(thread.worker) !== Boolean(input.worker))
       throw new LilBotError('thread_forbidden', thread.worker ? 'That exchange is a worker.' : 'That exchange is not a worker.')

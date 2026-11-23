@@ -14,7 +14,7 @@ import { RoutineScheduler } from './routines/routine-scheduler'
 import { serviceSessionRefusal } from './system/check-access'
 import { refusalFor } from './system/run-access'
 import type { CallingChats } from './threads/calling-chats'
-import { webhookCallers } from './webhooks/webhook-callers'
+import { type NarrowedSessions, webhookCallers } from './webhooks/webhook-callers'
 import { WebhookMessages } from './webhooks/webhook-messages'
 import { WebhookService } from './webhooks/webhook-service'
 import type { WebhookStore } from './webhooks/webhook-store'
@@ -56,14 +56,15 @@ interface WebhookDeps {
   token: string
   origin: string | undefined
   t3Enabled?: boolean
+  narrowed?: NarrowedSessions
   observeRun: (event: ActivityEvent) => void
   publish: (frame: EventFrame) => void
   repeat: (label: string, ms: number, task: () => void) => void
 }
 
-export function createWebhooks({ webhookStore, messages, bots, rootOf, calls, token, origin, t3Enabled, observeRun, publish, repeat }: WebhookDeps) {
+export function createWebhooks({ webhookStore, messages, bots, rootOf, calls, token, origin, t3Enabled, narrowed, observeRun, publish, repeat }: WebhookDeps) {
   const webhooks = new WebhookService(webhookStore, bots, token, origin, () => publish({ event: 'webhooks.changed' }), Date.now, Boolean(t3Enabled))
-  const callers = webhookCallers(webhookStore, rootOf, calls)
+  const callers = webhookCallers(webhookStore, rootOf, calls, narrowed)
   const scheduler = new RoutineScheduler(webhooks, observeRun)
   repeat('webhooks', 1000, () => scheduler.tick())
   repeat('webhook messages', 1000, () => messages.tick())

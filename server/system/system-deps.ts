@@ -59,5 +59,7 @@ export interface SystemDeps extends SystemFacts {
   /** Which calls come from webhook runs, the one message a run may send its bot, and which session made a call. */
   webhookRuns: { callers: WebhookCallers; messages: WebhookMessages; callingChat: (botId: string, requestId: string) => Promise<string | null> }
   changes: SystemChanges
+  /** Whether a remote worker thread is permitted to read/save memory (narrowed threads without `memory` are refused). */
+  workerAllowMemory?: (threadId: string) => boolean
   dataDir: string
 }
