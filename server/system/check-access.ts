@@ -10,7 +10,7 @@ import type { CheckSessions } from '../work/check-sessions'
 import type { McpTool } from './mcp-tool'
 import { refusalFor, runRefusalForChat } from './run-access'
 
-const READS_MEMORY = new Set(['lilbot_memory_list'])
+const CHECK_REFUSED_READS = new Set(['lilbot_memory_list', 'lilbot_computers_list', 'lilbot_computer_request_read'])
 const IN_CHECK = 'This session is a check: LilBot lets it read and give its verdict (lilbot_work with verdict), nothing else.'
 
 function checkChatRefusal(sessions: Pick<CheckSessions, 'checking' | 'isCheck'>, botId: string, name: string, chatId: string | null): string | null {
@@ -61,7 +61,7 @@ export function systemSessionRefusal(
     const tool = byName.get(name)
     const args = (raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>
     const reads = tool ? (typeof tool.readOnly === 'function' ? tool.readOnly(args) : tool.readOnly) : false
-    const needCheck = !!tool && sessions.checking(botId) && !((reads && !READS_MEMORY.has(name)) || (name === 'lilbot_work' && args.verdict !== undefined))
+    const needCheck = !!tool && sessions.checking(botId) && !((reads && !CHECK_REFUSED_READS.has(name)) || (name === 'lilbot_work' && args.verdict !== undefined))
     const unplaced = unplacedOf(callers, botId)
     const needHook = unplaced !== null && runRefusalForChat(unplaced, botId, name, raw, beyondOwn, t3Enabled) !== null
     if (!needCheck && !needHook) return null

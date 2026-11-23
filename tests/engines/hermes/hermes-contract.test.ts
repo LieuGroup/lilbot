@@ -168,6 +168,7 @@ describe.skipIf(!installed)('Hermes wire contract', () => {
     expect(schemas.StoredTranscriptRow.properties?.row_kind?.enum ?? []).toContain('compaction')
     expect(schemas.TurnStatus?.enum ?? []).toEqual(expect.arrayContaining(['complete', 'error', 'interrupted']))
     expect(schemas.CanonicalCreateParams.properties.source.enum).toContain('acp')
+    expect(schemas.CanonicalListParams.properties.scope.enum).toEqual(expect.arrayContaining(['live', 'stored']))
     expect(schemas.CanonicalCorrectionAck.properties.status.enum).toEqual(expect.arrayContaining(['queued', 'redirected']))
   })
 

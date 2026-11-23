@@ -95,7 +95,7 @@ describe('engine conformance: safety stop, System MCP completeness, secrets & pr
     expect(searchText).toContain('alpaca')
   })
 
-  test.failing('[Lane B P1] computer tools are reachable over LilBot System MCP without an engine plugin', async () => {
+  test('computer tools are reachable over LilBot System MCP without an engine plugin', async () => {
     const { engine, services, bot } = await boot()
     let listedOk = false
     let listedText = ''

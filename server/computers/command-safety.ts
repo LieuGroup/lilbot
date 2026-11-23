@@ -6,13 +6,12 @@
  * of scope for static inspection: dynamic variable indirection (`c=rm; $c -rf /`,
  * `p=/; rm -rf $p`), brace expansion (`{r,r}m`, `/{bin,etc}`), interpreter one-liners
  * (`python3 -c`, `node -e`, `perl -e`, `ruby -e`), encoded payloads (`base64 -d | sh`), shell
- * aliases/functions, symlink or glob/extglob tricks (`cd / && rm -rf !(keep)`), writing a
- * script file then executing it, `eval` of a substitution (`eval "$(cat ...)"`), pipes through
- * more than one hop into a shell, `git --work-tree=/`, renamed or unusual binaries (e.g.
- * `grm`), here-documents sent to `ssh` or an interpreter, and adversarial `find` filter
- * negations/alternations (`-name '?*'`, `-regex '.*.*'`, `-not -name ...`, `-o -true`,
- * `-o -delete`). Windows shells and non-POSIX paths are out of scope until a Windows helper
- * exists; uninterpretable Windows-style home paths are ignored rather than matched or refused.
+ * aliases/functions, symlink tricks, writing a script file then executing it, `eval` of a
+ * substitution (`eval "$(cat ...)"`), pipes through more than one hop into a shell,
+ * `git --work-tree=/`, renamed or unusual binaries (e.g. `grm`), and here-documents sent to
+ * `ssh` or an interpreter. Windows shells and non-POSIX paths are out of scope until a Windows
+ * helper exists; uninterpretable Windows-style home paths are ignored rather than matched or
+ * refused.
  */
 import { LilBotError } from '../../shared/lilbot-error'
 import { canonicalAbsolute, checkProtectedTarget, collectOperands, isRawBlockDevice, resolveDirectory } from './command-paths'

@@ -9,7 +9,8 @@ export interface MockHermesBehavior {
   resumeDisplayMessages?: any[]
   resumeRunning?: boolean
   sessionInfoFor?: (sessionId: string) => Record<string, unknown>
-  visibleSessions?: Array<{ session_id: string; id?: string; resolved_id?: string; source?: string }>
+  liveVisibleSessions?: Array<{ session_id: string; id?: string; resolved_id?: string; source?: string }>
+  storedVisibleSessions?: Array<{ session_id: string; id?: string; resolved_id?: string; source?: string }>
   receipt?: Record<string, any>
 }
 
@@ -51,7 +52,10 @@ export function startMockHermesGateway(behavior: MockHermesBehavior = {}, regist
           )
         }
         if (method === 'session.list') {
-          return reply({ sessions: behavior.visibleSessions ?? [], scope: params?.scope ?? 'stored' })
+          const scope = params?.scope ?? 'live'
+          // Mirrors real Hermes `gateway/session_listing.py`: `scope: 'stored'` never returns `source: 'acp'` sessions.
+          const sessions = scope === 'stored' ? (behavior.storedVisibleSessions ?? []).filter(row => row.source !== 'acp') : (behavior.liveVisibleSessions ?? [])
+          return reply({ sessions, scope })
         }
         if (method === 'session.create') {
           rev = 0

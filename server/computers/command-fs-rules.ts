@@ -6,38 +6,17 @@ const FIND_GLOB_FILTERS = new Set(['-name', '-iname', '-path', '-ipath', '-whole
 const FIND_REGEX_FILTERS = new Set(['-regex', '-iregex'])
 const FIND_OTHER_FILTERS = new Set(['-empty', '-size', '-mtime', '-mmin', '-atime', '-ctime', '-newer', '-user', '-group', '-perm'])
 const RSYNC_DELETE_FLAGS = new Set(['--delete', '--delete-before', '--delete-during', '--delete-delay', '--delete-after', '--delete-excluded', '--del'])
-const RSYNC_ARG_OPTS = new Set([
-  '-e',
-  '--rsh',
-  '--exclude',
-  '--exclude-from',
-  '--include',
-  '--include-from',
-  '--filter',
-  '--files-from',
-  '--log-file',
-  '--temp-dir',
-  '--compare-dest',
-  '--copy-dest',
-  '--link-dest',
-  '--bwlimit',
-  '--chmod',
-  '--chown',
-  '--out-format',
-  '--suffix',
-  '--backup-dir',
-  '--max-size',
-  '--min-size',
-  '--port',
-  '--address',
-  '--password-file'
-])
+const RSYNC_ARG_OPTS = new Set(
+  '-e --rsh --exclude --exclude-from --include --include-from --filter --files-from --log-file --temp-dir --compare-dest --copy-dest --link-dest --bwlimit --chmod --chown --out-format --suffix --backup-dir --max-size --min-size --port --address --password-file'.split(
+    ' '
+  )
+)
 const GIT_GLOBAL_ARG_OPTS = new Set(['-c', '--git-dir', '--work-tree', '--namespace', '--config-env'])
 
 function isNarrowingPattern(flag: string, pat: string | undefined): boolean {
   if (!pat) return false
-  if (FIND_REGEX_FILTERS.has(flag)) return !/^\^?(?:\.\*|\.\+)\$?$/.test(pat)
-  return !/^\/?\*+$/.test(pat)
+  if (FIND_REGEX_FILTERS.has(flag)) return !/^\^?\/?(?:\.[*+?])+\$?$/.test(pat)
+  return !/^\/?[*?]+$/.test(pat)
 }
 
 export function checkFind(
@@ -57,17 +36,53 @@ export function checkFind(
     protectedKind = checkProtectedTarget(root, homeParts, cwd, false)
     if (protectedKind) break
   }
-  let hasFilter = false
+  const stack = [{ branchNarrowed: false, allBranchesNarrowed: true, negated: false }]
+  let nextNegated = false
+  const isNarrowed = () => stack.some(frame => frame.branchNarrowed)
   for (; i < args.length; i++) {
     const tok = args[i]
+    if (tok === '!' || tok === '-not') {
+      nextNegated = !nextNegated
+      continue
+    }
+    if (tok === '(') {
+      stack.push({ branchNarrowed: false, allBranchesNarrowed: true, negated: nextNegated })
+      nextNegated = false
+      continue
+    }
+    if (tok === ')') {
+      nextNegated = false
+      if (stack.length > 1) {
+        const top = stack.pop()!
+        if (!top.negated && top.allBranchesNarrowed && top.branchNarrowed) stack[stack.length - 1].branchNarrowed = true
+      }
+      continue
+    }
+    if (tok === '-o' || tok === '-or' || tok === ',') {
+      nextNegated = false
+      const top = stack[stack.length - 1]
+      top.allBranchesNarrowed = tok !== ',' && top.allBranchesNarrowed && top.branchNarrowed
+      top.branchNarrowed = false
+      continue
+    }
+    if (tok === '-a' || tok === '-and') {
+      nextNegated = false
+      continue
+    }
     if (FIND_GLOB_FILTERS.has(tok) || FIND_REGEX_FILTERS.has(tok)) {
-      if (isNarrowingPattern(tok, args[i + 1])) hasFilter = true
+      if (!nextNegated && isNarrowingPattern(tok, args[i + 1])) stack[stack.length - 1].branchNarrowed = true
+      nextNegated = false
       i++
       continue
     }
-    if (FIND_OTHER_FILTERS.has(tok)) hasFilter = true
-    if (tok === '-delete' && protectedKind && !hasFilter) return `find -delete on ${protectedKind}`
+    if (FIND_OTHER_FILTERS.has(tok)) {
+      if (!nextNegated) stack[stack.length - 1].branchNarrowed = true
+      nextNegated = false
+      continue
+    }
+    if (tok === '-delete' && protectedKind && !isNarrowed()) return `find -delete on ${protectedKind}`
     if (tok === '-exec' || tok === '-execdir' || tok === '-ok' || tok === '-okdir') {
+      nextNegated = false
       const execWords: string[] = []
       while (++i < args.length && args[i] !== ';' && args[i] !== '+') execWords.push(args[i])
       const execCmd = unwrapCommand(execWords)
@@ -78,10 +93,12 @@ export function checkFind(
         const subReason = inspectSub(sub)
         if (subReason) return subReason
       }
-      if (execCmd.command === 'rm' && protectedKind && !hasFilter && execCmd.args.some(a => a.includes('{}'))) {
+      if (execCmd.command === 'rm' && protectedKind && !isNarrowed() && execCmd.args.some(a => a.includes('{}'))) {
         return `find -exec rm on ${protectedKind}`
       }
+      continue
     }
+    if (tok.startsWith('-')) nextNegated = false
   }
   return null
 }

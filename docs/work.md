@@ -101,8 +101,8 @@ like `lilbot-work`).
   `work/check-sessions.ts`, by both saved ids and the compression lineage). The engine API answers its memory context
   with an empty block (no deployment notice either) and refuses its recall, writes, forgets and conversation search, by
   the session id the adapter sends; with no session id, while a check of that bot runs. Skill changes name no session,
-  so the skills plug-in's writes are refused while a check of that bot runs. It starts with only `CHECK_TOOLSETS` (web,
-  vision, terminal, file, skills, `lilbot_system`: no memory, scheduling, delegation or coding). LilBot's MCP server
+  so the skills plug-in's writes are refused while a check of that bot runs. It starts with the neutral `access: 'check'`
+  scope, which each engine maps to its own check-only tool controls (no memory, scheduling, delegation or coding). LilBot's MCP server
   refuses it every changing `lilbot_*` call and `lilbot_memory_list`; only reads and the verdict pass
   (`system/check-access.ts`: while a bot checks, its calls are matched to their starts by request id or arguments; one
   not seen in time is refused). Files and the terminal can still write: read-only stays an instruction there. Refusals

@@ -1,6 +1,8 @@
 /** Bounded 7-day retention pruning for hidden Hermes worker sessions tracked in the helper's `worker_runs` SQLite journal.
- *  Only considers sessions marked `created_by_helper` locally, and confirms with the gateway that each session is still
- *  hidden and was created as a worker `acp` session before issuing `delete`. Never wakes an idle gateway just to prune. */
+ *  Only considers sessions marked `created_by_helper` locally, skips any session listed in `session.list` under either
+ *  `scope: 'live'` (which includes open visible `acp` sessions) or `scope: 'stored'` (non-`acp` stored sessions; Hermes
+ *  omits `acp` from `stored`), and confirms via `session.resume` that the session is idle and matches the worker `acp`
+ *  launch shape before issuing `delete`. Never wakes an idle gateway just to prune. */
 import type { Database } from 'bun:sqlite'
 import { markSessionPruned, sessionsToPrune } from '../../worker-journal'
 import { HermesRpcError, type HermesWorkerSocket } from './worker-hermes-socket'
@@ -8,7 +10,7 @@ import { HermesRpcError, type HermesWorkerSocket } from './worker-hermes-socket'
 const HERMES_SESSION_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
 const MAX_PRUNE_PER_RUN = 10
 
-function isHiddenWorkerAcpSnapshot(snap: unknown): snap is { revision?: unknown; execution_generation?: unknown; running?: unknown } {
+function isIdleWorkerAcpSnapshot(snap: unknown): snap is { revision?: unknown; execution_generation?: unknown; running?: unknown } {
   if (!snap || typeof snap !== 'object') return false
   const s = snap as { running?: unknown; info?: unknown }
   if (s.running === true || !s.info || typeof s.info !== 'object') return false
@@ -18,19 +20,27 @@ function isHiddenWorkerAcpSnapshot(snap: unknown): snap is { revision?: unknown;
   return lr.source === 'acp' && lr.yolo === true && lr.ignore_rules === true
 }
 
+function collectSessionIds(res: unknown, out: Set<string>) {
+  const sessions = (res as { sessions?: unknown } | null | undefined)?.sessions
+  if (!Array.isArray(sessions)) return
+  for (const row of sessions) {
+    if (!row || typeof row !== 'object') continue
+    const r = row as { session_id?: unknown; id?: unknown; resolved_id?: unknown }
+    if (typeof r.session_id === 'string') out.add(r.session_id)
+    if (typeof r.id === 'string') out.add(r.id)
+    if (typeof r.resolved_id === 'string') out.add(r.resolved_id)
+  }
+}
+
 async function listVisibleSessionIds(socket: HermesWorkerSocket): Promise<Set<string> | null> {
   try {
-    const res = (await socket.request('session.list', { scope: 'stored', include_hidden: false, limit: 200 }, 10_000)) as { sessions?: unknown }
+    const [live, stored] = await Promise.all([
+      socket.request('session.list', { scope: 'live', include_hidden: false, limit: 200 }, 10_000),
+      socket.request('session.list', { scope: 'stored', include_hidden: false, limit: 200 }, 10_000)
+    ])
     const ids = new Set<string>()
-    if (Array.isArray(res?.sessions)) {
-      for (const row of res.sessions) {
-        if (!row || typeof row !== 'object') continue
-        const r = row as { session_id?: unknown; id?: unknown; resolved_id?: unknown }
-        if (typeof r.session_id === 'string') ids.add(r.session_id)
-        if (typeof r.id === 'string') ids.add(r.id)
-        if (typeof r.resolved_id === 'string') ids.add(r.resolved_id)
-      }
-    }
+    collectSessionIds(live, ids)
+    collectSessionIds(stored, ids)
     return ids
   } catch {
     return null
@@ -54,7 +64,7 @@ export async function pruneOldHermesSessions(
     if (visibleIds.has(sessionId)) continue
     try {
       const snap = await socket.request('session.resume', { session_id: sessionId, source: 'acp', omit_messages: true }, 10_000)
-      if (!isHiddenWorkerAcpSnapshot(snap)) continue
+      if (!isIdleWorkerAcpSnapshot(snap)) continue
       const revision = typeof snap.revision === 'number' ? snap.revision : 0
       const generation = typeof snap.execution_generation === 'number' ? snap.execution_generation : 0
       await socket.request(

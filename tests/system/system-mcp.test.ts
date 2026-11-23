@@ -37,7 +37,15 @@ const EXPECTED_TOOLS = [
   'lilbot_webhooks_list',
   'lilbot_webhook_message',
   'lilbot_workspace_read',
-  'lilbot_connection'
+  'lilbot_connection',
+  'lilbot_computers_list',
+  'lilbot_computer_exec',
+  'lilbot_computer_read_file',
+  'lilbot_computer_write_file',
+  'lilbot_computer_list_folder',
+  'lilbot_computer_request_read',
+  'lilbot_computer_cancel',
+  'lilbot_computer_copy'
 ]
 
 test('only engine processes on this machine with a current bot’s own system key get in', async () => {

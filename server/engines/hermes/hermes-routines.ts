@@ -1,4 +1,5 @@
 import type { ChatOptions, RoutineOptions } from '../bot-engine'
+import { hermesToolsetsForRun } from './hermes-access'
 import { DEFAULT_PROFILE } from './hermes-bot-mapping'
 import { itemsFromRows } from './hermes-chat-mapping'
 import { ensureFullAccess } from './hermes-permissions'
@@ -27,7 +28,10 @@ export async function runRoutine(botId: string, prompt: string, options: Routine
           client: { name: 'lilbot', version: '0.2.0' },
           cwd: options.workspace,
           cwd_explicit: true,
-          ...(options.toolsets ? { toolsets: options.toolsets } : {}),
+          ...(() => {
+            const toolsets = hermesToolsetsForRun(options.access, options.toolsets)
+            return toolsets ? { toolsets } : {}
+          })(),
           ...(options.model ? { model: options.model.model, provider: options.model.provider } : {}),
           ...(options.reasoningEffort ? { reasoning: options.reasoningEffort } : {})
         })
