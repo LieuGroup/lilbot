@@ -33,7 +33,8 @@
   "scripts": {
     "start": "expo start",
     "ios": "expo run:ios",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "testflight": "bun scripts/testflight.ts"
   },
   "private": true
 }
