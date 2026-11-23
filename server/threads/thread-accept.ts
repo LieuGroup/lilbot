@@ -3,6 +3,7 @@ import type { BotModel, ReasoningEffort } from '../../shared/bot-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import type { BotThread } from '../../shared/thread-schema'
 import type { WebhookCapability } from '../../shared/webhook-schema'
+import type { WorkerDriverId } from '../../shared/worker-frame-schema'
 import { AMBIGUOUS, AMBIGUOUS_MATCH, type Match, NOT_SEEN } from './calling-chats'
 import { THREAD_LIMITS } from './thread-limits'
 import type { Delivery, ThreadStore } from './thread-store'
@@ -24,6 +25,8 @@ export interface Accept {
   computer?: string
   computerName?: string
   cwd?: string
+  workerEngine?: WorkerDriverId
+  workerEngineFallbackFrom?: string
   capabilities?: WebhookCapability[]
 }
 type Bot = { id: string; name: string }
@@ -36,11 +39,14 @@ export function withinNarrowed(capabilities: WebhookCapability[] | null | undefi
   return existing.capabilities !== undefined && !existing.capabilities.some(c => !capabilities.includes(c))
 }
 
-/** Refuses a narrowed run from naming a computer without `computers` or entering a broader exchange/group. */
-export function assertNarrowedAllowed(capabilities: WebhookCapability[] | null | undefined, opts: { computer?: string; existing?: Pick<BotThread, 'computer' | 'capabilities'> }) {
+/** Refuses a narrowed run from naming a computer or worker engine without `computers`, or entering a broader exchange/group. */
+export function assertNarrowedAllowed(
+  capabilities: WebhookCapability[] | null | undefined,
+  opts: { computer?: string; engine?: string; existing?: Pick<BotThread, 'computer' | 'capabilities'> }
+) {
   if (!capabilities) return
-  if ((opts.computer || opts.existing?.computer) && !capabilities.includes('computers'))
-    throw new LilBotError('capability_denied', 'A narrowed run cannot delegate to a computer without the "computers" capability.')
+  if ((opts.computer || opts.engine || opts.existing?.computer) && !capabilities.includes('computers'))
+    throw new LilBotError('capability_denied', 'A narrowed run cannot delegate to a computer or choose a worker engine without the "computers" capability.')
   if (opts.existing && !withinNarrowed(capabilities, opts.existing))
     throw new LilBotError('capability_denied', 'A narrowed run cannot continue an exchange or group with broader access than its own.')
 }
@@ -123,9 +129,11 @@ export function acceptDelivery(store: ThreadStore, caller: Bot, target: Bot, inp
           ...(input.computer ? { computer: input.computer } : {}),
           ...(input.computerName ? { computerName: input.computerName } : {}),
           ...(input.cwd ? { cwd: input.cwd } : {}),
+          ...(input.workerEngine ? { workerEngine: input.workerEngine } : {}),
+          ...(input.workerEngineFallbackFrom ? { workerEngineFallbackFrom: input.workerEngineFallbackFrom } : {}),
           ...(input.capabilities !== undefined ? { capabilities: [...input.capabilities] } : {})
         }
-    assertNarrowedAllowed(input.capabilities, { computer: input.computer, existing: input.threadId ? thread : undefined })
+    assertNarrowedAllowed(input.capabilities, { computer: input.computer, engine: input.workerEngine, existing: input.threadId ? thread : undefined })
     if (thread.group) throw new LilBotError('thread_forbidden', 'That is a group: use lilbot_group.')
     if (input.threadId && Boolean(thread.worker) !== Boolean(input.worker))
       throw new LilBotError('thread_forbidden', thread.worker ? 'That exchange is a worker.' : 'That exchange is not a worker.')

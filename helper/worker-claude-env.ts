@@ -1,9 +1,8 @@
 /** Safe binary discovery, strict 0700/0600 per-run config files, and startup cleanup for the Claude Code driver. */
-import { accessSync, chmodSync, constants, existsSync, lstatSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-
-const TRUSTED_PATHS = [join(homedir(), '.local', 'bin', 'claude'), '/opt/homebrew/bin/claude', '/usr/local/bin/claude']
+import { resolveTrustedBinary } from './worker-bin'
 
 export const expandWorkerCwd = (raw: string) => (raw === '~' ? homedir() : raw.startsWith('~/') ? join(homedir(), raw.slice(2)) : raw)
 const workerRunsDir = (dir?: string) => join(dir ?? process.env.LILBOT_HELPER_CONFIG_DIR ?? join(homedir(), '.config', 'lilbot-helper'), 'worker-runs')
@@ -20,37 +19,9 @@ export function cleanupStaleWorkerConfigs(configDir?: string) {
   } catch {}
 }
 
-function isExecutableFile(path: string): boolean {
-  try {
-    const st = statSync(path)
-    if (!st.isFile() || (st.mode & 0o002) !== 0) return false
-    accessSync(path, constants.X_OK)
-    return true
-  } catch {
-    return false
-  }
-}
-
-function resolveFromPath(pathEnv = process.env.PATH): string | null {
-  for (const entry of (pathEnv ?? '').split(':')) {
-    if (!entry.startsWith('/')) continue
-    try {
-      const dirStat = statSync(entry)
-      if (!dirStat.isDirectory() || (dirStat.mode & 0o002) !== 0) continue
-    } catch {
-      continue
-    }
-    const candidate = join(entry, 'claude')
-    if (isExecutableFile(candidate)) return candidate
-  }
-  return null
-}
-
 /** Prefers explicit test/env overrides, then trusted fixed install locations, then non-world-writable absolute PATH dirs. */
 export function resolveClaudeBinary(explicit?: string, pathEnv?: string): string | null {
-  const configured = explicit ?? process.env.LILBOT_WORKER_CLAUDE_BIN
-  if (configured !== undefined) return configured.trim() ? (Bun.which(configured) ?? (existsSync(configured) ? configured : null)) : null
-  return TRUSTED_PATHS.find(isExecutableFile) ?? resolveFromPath(pathEnv)
+  return resolveTrustedBinary('claude', explicit, 'LILBOT_WORKER_CLAUDE_BIN', pathEnv)
 }
 
 export function writeRunMcpConfig(configDir: string | undefined, runId: string, mcp?: { url: string; token: string }): string {

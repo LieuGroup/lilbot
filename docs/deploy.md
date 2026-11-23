@@ -33,6 +33,10 @@ disconnects.
   loop, developer bot or notification system for it. A healthy deploy does not erase failure history; a person may
   remove `notice.json` after acknowledging it.
 - Migrations and new plug-in versions ship with a normal deploy; existing data imports after it.
+- **Helper rollout and rollback order:** deploy the server first; build, publish, or upgrade helpers after. Existing
+  older helpers stay compatible with a newer server, but a newer helper cannot register or stay connected against an
+  older server that does not recognise its reported fields. Rolling the server back past a change to what helpers
+  report needs helpers built from the same older code.
 
 ## Overrides
 

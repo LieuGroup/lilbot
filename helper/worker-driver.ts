@@ -1,8 +1,9 @@
 /** Engine-neutral coding-agent driver contract for the helper.
  *  Adding a second coding agent (such as an ACP driver) is a second file implementing `WorkerDriver`. */
 import type { ChatItem, TurnUsage } from '../shared/chat-schema'
-import { WorkerAgentInfo, type WorkerDoneStatus, type WorkerDriverId, type WorkerEventFrame, type WorkerToolEvent } from '../shared/worker-frame-schema'
+import { MAX_WORKER_AGENTS, WorkerAgentInfo, type WorkerDoneStatus, type WorkerDriverId, type WorkerEventFrame, type WorkerToolEvent } from '../shared/worker-frame-schema'
 import { claudeCodeDriver } from './worker-driver-claude'
+import { defaultWorkerProbes, type WorkerAgentProbe } from './worker-probes'
 
 interface WorkerMcpEndpoint {
   url: string
@@ -14,6 +15,7 @@ export interface WorkerStartRequest {
   sessionId?: string
   cwd: string
   model: string
+  provider?: string
   reasoningEffort?: string
   systemPrompt?: string
   prompt: string
@@ -52,19 +54,31 @@ export function defaultWorkerDrivers(): WorkerDriver[] {
   return [claudeCodeDriver()]
 }
 
-export async function detectWorkerAgents(drivers: WorkerDriver[] = defaultWorkerDrivers()): Promise<WorkerAgentInfo[]> {
+export async function detectWorkerAgents(drivers?: WorkerDriver[], probes?: WorkerAgentProbe[]): Promise<WorkerAgentInfo[]> {
+  const activeDrivers = drivers ?? defaultWorkerDrivers()
+  const activeProbes = probes ?? (drivers ? [] : defaultWorkerProbes())
+  const tasks: Array<{ probe: WorkerAgentProbe; supported: boolean }> = [
+    ...activeDrivers.map(probe => ({ probe, supported: true })),
+    ...activeProbes.map(probe => ({ probe, supported: false }))
+  ]
+  const results = await Promise.all(tasks.map(t => t.probe.detect().catch(() => null)))
   const found: WorkerAgentInfo[] = []
-  for (const driver of drivers) {
-    const info = await driver.detect().catch(() => null)
-    const parsed = info ? WorkerAgentInfo.safeParse(info) : null
-    if (parsed?.success && found.length < 4) found.push(parsed.data)
+  const seen = new Set<WorkerDriverId>()
+  for (let i = 0; i < tasks.length && found.length < MAX_WORKER_AGENTS; i++) {
+    const info = results[i]
+    if (!info || seen.has(tasks[i].probe.id)) continue
+    const parsed = WorkerAgentInfo.safeParse({ ...info, supported: tasks[i].supported })
+    if (parsed.success && !seen.has(parsed.data.driver)) {
+      seen.add(parsed.data.driver)
+      found.push(parsed.data)
+    }
   }
   return found
 }
 
 /** Caches detected agents across reconnects and refreshes asynchronously on an interval without blocking the socket loop. */
-export async function createAgentProbe(drivers: WorkerDriver[] | undefined, onChange: (agents: WorkerAgentInfo[]) => void, intervalMs = 5 * 60_000) {
-  let agents = await detectWorkerAgents(drivers)
+export async function createAgentProbe(drivers: WorkerDriver[] | undefined, onChange: (agents: WorkerAgentInfo[]) => void, intervalMs = 5 * 60_000, probes?: WorkerAgentProbe[]) {
+  let agents = await detectWorkerAgents(drivers, probes)
   let nextAt = Date.now() + intervalMs
   let busy = false
   return {
@@ -73,7 +87,7 @@ export async function createAgentProbe(drivers: WorkerDriver[] | undefined, onCh
       if (busy || Date.now() < nextAt) return
       busy = true
       nextAt = Date.now() + intervalMs
-      void detectWorkerAgents(drivers)
+      void detectWorkerAgents(drivers, probes)
         .then(next => {
           if (JSON.stringify(next) === JSON.stringify(agents)) return
           agents = next
@@ -84,6 +98,17 @@ export async function createAgentProbe(drivers: WorkerDriver[] | undefined, onCh
         })
     }
   }
+}
+
+export type AgentProbeOptions = { drivers?: WorkerDriver[]; probes?: WorkerAgentProbe[] }
+
+export function startAgentProbe(options: AgentProbeOptions, onChange: (agents: WorkerAgentInfo[]) => void) {
+  let probe: Awaited<ReturnType<typeof createAgentProbe>> | undefined
+  void createAgentProbe(options.drivers, onChange, undefined, options.probes).then(p => {
+    probe = p
+    onChange(p.current())
+  })
+  return { emit: () => probe && onChange(probe.current()), refresh: () => probe?.refresh() }
 }
 
 /** Coalesces bursts of `WorkerProgressEvent` updates into at most one `WorkerEventFrame` per `coalesceMs`. */

@@ -2,6 +2,7 @@
 import type { ChatItem } from '../../shared/chat-schema'
 import type { BotThread } from '../../shared/thread-schema'
 import type { WebhookCapability } from '../../shared/webhook-schema'
+import type { WorkerDriverId } from '../../shared/worker-frame-schema'
 import type { RoutineOptions } from '../engines/bot-engine'
 import { fenced } from '../memory/memory-safety'
 import type { FileRow } from './thread-files'
@@ -24,7 +25,10 @@ function filesLine(from: string, files: FileRow[], worker?: boolean) {
 function workerPrompt(d: Delivery, thread: BotThread, sender: string, files: FileRow[], redirects: Delivery[]) {
   const head = d.kind === 'redirect' ? 'Redirect for your worker task' : 'Worker task'
   const later = redirects.map(r => `\nRedirect from your parent session, sent after the task above; it changes the task:\n${fence(r.text)}`).join('')
-  const where = thread.computer ? ` You are running on computer ${JSON.stringify(thread.computerName ?? thread.computer)} in folder ${JSON.stringify(thread.cwd ?? '')}.` : ''
+  const engineTag = thread.workerEngine ? ` using engine ${JSON.stringify(thread.workerEngine)}` : ''
+  const where = thread.computer
+    ? ` You are running on computer ${JSON.stringify(thread.computerName ?? thread.computer)} in folder ${JSON.stringify(thread.cwd ?? '')}${engineTag}.`
+    : ''
   const attach = thread.computer ? '' : ` To attach workspace files to your answer, call lilbot_delegation with action attach and exchangeId ${thread.id} before you finish.`
   const item = `\nLilBot opened a code work item for this worker: ${thread.id}. Before you start, write its done definition with lilbot_work (itemId ${thread.id}) and move it to working. If you hit a real product or design ambiguity, ask Oscar once with status needs_oscar on item ${thread.id}. When done, attach real verification evidence and mark item ${thread.id} done.`
   return `${head} for ${JSON.stringify(sender)} (worker exchange ${thread.id}). You are a fresh hidden worker session of yourself.${where} ${WORKER_UNTRUSTED}\n${fence(d.text)}${later}${filesLine(sender, files, true)}${item}\nDo the requested work and answer in your final response. LilBot sends it back to your parent session automatically.${attach} Do not spawn another worker, delegate work, or start a group from this worker session.`
@@ -43,8 +47,12 @@ function workPrompt(d: Delivery, thread: BotThread, sender: string, files: FileR
 
 function answerPrompt(thread: BotThread, sender: string, text: string, files: FileRow[], allIn: string | null) {
   const done = allIn ? `\nLilBot: this was the last of the tasks you were waiting for. All are in: ${allIn}.` : ''
-  if (thread.worker)
-    return `Worker answer from your worker in exchange ${thread.id}. ${WORKER_UNTRUSTED}\n${fence(text)}${filesLine(sender, files, true)}${done}\nUse this answer to continue the work in this conversation and report to whoever originally asked you. Do not send an acknowledgement back just to acknowledge.`
+  if (thread.worker) {
+    const fallback = thread.workerEngineFallbackFrom ? `, fell back from ${JSON.stringify(thread.workerEngineFallbackFrom)}` : ''
+    const via =
+      thread.computer && thread.workerEngine ? ` (on ${JSON.stringify(thread.computerName ?? thread.computer)} using engine ${JSON.stringify(thread.workerEngine)}${fallback})` : ''
+    return `Worker answer from your worker in exchange ${thread.id}${via}. ${WORKER_UNTRUSTED}\n${fence(text)}${filesLine(sender, files, true)}${done}\nUse this answer to continue the work in this conversation and report to whoever originally asked you. Do not send an acknowledgement back just to acknowledge.`
+  }
   return `Message answer from bot ${JSON.stringify(sender)} in exchange ${thread.id}. ${UNTRUSTED}\n${fence(text)}${filesLine(sender, files)}${done}\nUse this answer to continue the work in this conversation and report to whoever originally asked you. Do not send an acknowledgement back just to acknowledge.`
 }
 
@@ -87,7 +95,13 @@ export function replyText(items: ChatItem[], clamp?: { exchangeId: string; hard:
 }
 
 export type NarrowedAccess = (capabilities: WebhookCapability[]) => { toolsets: string[]; prompt: string }
-export type ThreadRunOptions = RoutineOptions & { computer?: string; cwd?: string; threadId?: string; capabilities?: WebhookCapability[] }
+export type ThreadRunOptions = RoutineOptions & {
+  computer?: string
+  cwd?: string
+  threadId?: string
+  engine?: WorkerDriverId
+  capabilities?: WebhookCapability[]
+}
 export interface NarrowedHost {
   sessionCapabilities?(botId: string, chatId: string): WebhookCapability[] | null
   hasNarrowed?(botId: string): boolean
@@ -99,7 +113,7 @@ export function workRunOptions(thread: BotThread, toWork: boolean, workSession?:
   if (!toWork) return {}
   const access = thread.capabilities && narrowedAccess ? narrowedAccess(thread.capabilities) : undefined
   return {
-    ...(thread.computer ? { computer: thread.computer, cwd: thread.cwd, threadId: thread.id } : {}),
+    ...(thread.computer ? { computer: thread.computer, cwd: thread.cwd, threadId: thread.id, ...(thread.workerEngine ? { engine: thread.workerEngine } : {}) } : {}),
     ...(thread.capabilities ? { capabilities: thread.capabilities } : {}),
     ...(!thread.computer && access ? { toolsets: access.toolsets } : {}),
     ...(!workSession || thread.computer ? { ...(thread.model ? { model: thread.model } : {}), ...(thread.reasoningEffort ? { reasoningEffort: thread.reasoningEffort } : {}) } : {})

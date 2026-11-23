@@ -126,13 +126,13 @@ export function writeDelegationFakeClaude(dir: string, filename = 'claude'): str
   return path
 }
 
-export function makeCoreFixture(root: string, botDefs: Array<{ id: string; name: string; model: BotModel; instructions?: string }>) {
+export function makeCoreFixture(root: string, botDefs: Array<{ id: string; name: string; model: BotModel; instructions?: string; engineId?: string }>) {
   const db = openDatabase(join(root, 'lilbot.db'))
   const bots = new BotStore(db)
   for (const [i, def] of botDefs.entries())
     bots.save({
       id: def.id,
-      engineId: 'fake',
+      engineId: def.engineId ?? 'fake',
       engineBotId: def.id,
       name: def.name,
       function: '',

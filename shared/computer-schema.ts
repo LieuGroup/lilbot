@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import {
   WorkerAckFrame,
-  WorkerAgentInfo,
+  WorkerAgentList,
   WorkerCapabilitiesFrame,
   WorkerDoneFrame,
   WorkerEventFrame,
@@ -22,7 +22,7 @@ export const ComputerHello = z.object({
     .max(512)
     .regex(/^[^\p{Cc}\p{Cf}]*$/u),
   capabilities: z.array(z.enum(['exec', 'read', 'write', 'list', 'copy', 'worker'])).max(6),
-  workerAgents: z.array(WorkerAgentInfo).max(4).optional()
+  workerAgents: WorkerAgentList.optional()
 })
 export type ComputerHello = z.infer<typeof ComputerHello>
 export interface Computer extends ComputerHello {

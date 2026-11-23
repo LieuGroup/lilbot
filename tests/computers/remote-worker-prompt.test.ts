@@ -7,7 +7,7 @@ import { BotStore } from '../../server/bots/bot-store'
 import { ComputerService } from '../../server/computers/computer-service'
 import { ComputerStore } from '../../server/computers/computer-store'
 import { assembleRemoteWorkerPrompt } from '../../server/computers/remote-worker-prompt'
-import { validateRemoteCwd, validateRemoteModel } from '../../server/computers/remote-worker-sanitize'
+import { validateModelForDriver, validateRemoteCwd } from '../../server/computers/remote-worker-sanitize'
 import { loadServerKey } from '../../server/computers/server-key'
 import { openDatabase } from '../../server/database/database'
 import { MemoryService } from '../../server/memory/memory-service'
@@ -113,7 +113,7 @@ test('assembleRemoteWorkerPrompt fits within 96 KiB, escapes section tags, and u
   }
 })
 
-test('validateRemoteCwd and validateRemoteModel enforce strict paths, no traversal, and strict model charset', () => {
+test('validateRemoteCwd and validateModelForDriver enforce strict paths, no traversal, and strict model charset', () => {
   expect(validateRemoteCwd('/abs/path').ok).toBe(true)
   expect(validateRemoteCwd('~/code/repo').ok).toBe(true)
   expect(validateRemoteCwd('~').ok).toBe(true)
@@ -122,16 +122,14 @@ test('validateRemoteCwd and validateRemoteModel enforce strict paths, no travers
     expect(validateRemoteCwd(bad).ok).toBe(false)
   }
 
-  const claude = [{ driver: 'claude-code' as const, version: '2.1.0' }]
-  expect(validateRemoteModel({ provider: 'cliproxyapi', model: 'anthropic/claude-sonnet-5-5' }, claude)).toEqual({
+  expect(validateModelForDriver({ provider: 'cliproxyapi', model: 'anthropic/claude-sonnet-5-5' }, 'claude-code')).toEqual({
     ok: true,
     driver: 'claude-code',
     wireModel: 'claude-sonnet-5-5'
   })
-  expect(validateRemoteModel({ provider: 'anthropic', model: 'opus' }, claude)).toEqual({ ok: true, driver: 'claude-code', wireModel: 'opus' })
+  expect(validateModelForDriver({ provider: 'anthropic', model: 'opus' }, 'claude-code')).toEqual({ ok: true, driver: 'claude-code', wireModel: 'opus' })
   for (const bad of ['deepseek/deepseek-v4.1', 'gemini-4-neon', '--bad-flag', 'claude-sonnet-5-5;rm$()?', 'claude-sonnet-5-5/sub', 'claude-sonnet"x', 'claude-sonnet`id`']) {
-    expect(validateRemoteModel({ provider: 'anthropic', model: bad }, claude).ok).toBe(false)
+    expect(validateModelForDriver({ provider: 'anthropic', model: bad }, 'claude-code').ok).toBe(false)
   }
-  expect(validateRemoteModel(null, claude).ok).toBe(false)
-  expect(validateRemoteModel({ provider: 'anthropic', model: 'claude-sonnet-5-5' }, []).ok).toBe(false)
+  expect(validateModelForDriver(null, 'claude-code').ok).toBe(false)
 })

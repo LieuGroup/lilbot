@@ -2,6 +2,7 @@ import { generateKeyPairSync, randomBytes, sign } from 'node:crypto'
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir, hostname, platform } from 'node:os'
 import { join } from 'node:path'
+import type { WorkerAgentInfo } from '../shared/worker-frame-schema'
 import { codeId, codeKey, registrationMac } from './frame-auth'
 import { detectWorkerAgents } from './worker-driver'
 
@@ -28,16 +29,20 @@ function validateUrl(raw: string) {
     throw new Error('Use an HTTPS origin (HTTP only for local testing).')
   return url.origin
 }
-export async function register(url: string, code: string) {
+export function buildRegistrationHello(workerAgents: WorkerAgentInfo[]) {
+  const hasRunnableWorker = workerAgents.some(a => a.supported === true)
+  const capabilities = ['exec', 'read', 'write', 'list', 'copy', ...(hasRunnableWorker ? ['worker'] : [])]
+  return { name: hostname(), os: platform(), home: homedir(), capabilities, ...(workerAgents.length ? { workerAgents } : {}) }
+}
+
+export async function register(url: string, code: string, options: { detect?: typeof detectWorkerAgents; configDir?: string } = {}) {
   url = validateUrl(url)
   const serverFingerprint = code.split('.')[1]
   if (!/^[a-f0-9]{64}$/.test(serverFingerprint ?? '')) throw new Error('Install code must include the server fingerprint.')
   const pair = generateKeyPairSync('ed25519')
   const privateKey = pair.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()
   const publicKey = pair.publicKey.export({ type: 'spki', format: 'pem' }).toString()
-  const workerAgents = await detectWorkerAgents()
-  const capabilities = ['exec', 'read', 'write', 'list', 'copy', ...(workerAgents.length ? ['worker'] : [])]
-  const hello = { name: hostname(), os: platform(), home: homedir(), capabilities, ...(workerAgents.length ? { workerAgents } : {}) }
+  const hello = buildRegistrationHello(await (options.detect ?? detectWorkerAgents)())
   const body = { codeId: codeId(code), mac: '', publicKey, hello }
   body.mac = registrationMac(codeKey(code), publicKey, body.hello)
   const signature = sign(null, Buffer.from(JSON.stringify(body)), privateKey).toString('base64')
@@ -50,9 +55,10 @@ export async function register(url: string, code: string) {
   })
   if (!response.ok) throw new Error('Registration refused. Get a new install code from LilBot.')
   const { id } = (await response.json()) as { id: string }
-  mkdirSync(configDir, { recursive: true, mode: 0o700 })
-  chmodSync(configDir, 0o700)
-  writeFileSync(join(configDir, 'identity.json'), JSON.stringify({ url, id, privateKey, serverFingerprint }), {
+  const targetDir = options.configDir ?? configDir
+  mkdirSync(targetDir, { recursive: true, mode: 0o700 })
+  chmodSync(targetDir, 0o700)
+  writeFileSync(join(targetDir, 'identity.json'), JSON.stringify({ url, id, privateKey, serverFingerprint }), {
     mode: 0o600,
     flag: 'wx'
   })

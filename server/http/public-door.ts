@@ -6,7 +6,15 @@ import { HelperFrame } from '../../shared/computer-schema'
 import type { WorkerLeaderFrame } from '../../shared/worker-frame-schema'
 import { Registration } from '../computers/computer-auth'
 import type { ComputerService } from '../computers/computer-service'
-import { createWorkerSocketState, handleOversizedWorkerDone, handleWorkerFrame, isWorkerFrame, type WorkerDoorBridge, type WorkerSocketState } from '../computers/worker-door'
+import {
+  createWorkerSocketState,
+  handleOversizedWorkerDone,
+  handleWorkerFrame,
+  isWorkerFrame,
+  reconcileStoredWorkerCapabilities,
+  type WorkerDoorBridge,
+  type WorkerSocketState
+} from '../computers/worker-door'
 import { HOOK_PATH } from '../webhooks/webhook-address'
 import { WEBHOOK_LIMITS } from '../webhooks/webhook-limits'
 import { addressGroup, byteBudget, connectionBudget, plainServerError, readLimited } from './listener-safety'
@@ -120,6 +128,8 @@ export function startPublicDoor(
           () => socket.getBufferedAmount() < 64_000,
           (promoted?: boolean) => {
             if (socket.readyState !== 1) return
+            const reconciled = reconcileStoredWorkerCapabilities(computers.store.db, socket.data.id)
+            if (reconciled) workers?.onCapabilities?.(socket.data.id, reconciled)
             if (workers?.onConnect) socket.data.workerDisconnect = workers.onConnect(socket.data.id, socket.data.workerSend!)
             if (promoted) send(JSON.stringify({ type: 'heartbeat' }))
           }

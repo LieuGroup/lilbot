@@ -2,7 +2,7 @@
  *  Every field arriving from a remote computer is treated as untrusted text and validated against the shared Zod schema. */
 import type { BotModel } from '../../shared/bot-schema'
 import type { ChatItem, TurnUsage } from '../../shared/chat-schema'
-import { type WorkerAgentInfo, WorkerDoneFrame, type WorkerDoneStatus, type WorkerDriverId, WorkerEventFrame, type WorkerToolEvent } from '../../shared/worker-frame-schema'
+import { WorkerDoneFrame, type WorkerDoneStatus, type WorkerDriverId, WorkerEventFrame, type WorkerToolEvent } from '../../shared/worker-frame-schema'
 import { stripInvisibleLine, stripInvisibleText } from '../memory/memory-safety'
 
 const MAX_DONE_ITEMS = 500
@@ -10,8 +10,10 @@ const MAX_DONE_TEXT = 500_000
 const MAX_ITEM_TEXT = 100_000
 const MAX_TOOL_RESULT = 2000
 const CLAUDE_MODEL = /^(claude[-_.]|opus$|sonnet$|haiku$)/i
+const CODEX_MODEL = /^(gpt[-_.]|o[134]($|[-_.])|codex)/i
 const STRICT_WIRE_MODEL = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/
 const STRICT_RAW_MODEL = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/
+const STRICT_PROVIDER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
 
 function safeSlice(text: string, max: number): string {
   if (text.length <= max) return text
@@ -147,25 +149,39 @@ export function validateRemoteCwd(cwd: string): { ok: true; cwd: string } | { ok
   return { ok: true, cwd }
 }
 
-/** Validates a requested model against a computer's advertised coding agents. Fails fast when incompatible. */
-export function validateRemoteModel(
+/** Validates a model for the chosen remote coding engine driver. Fails fast when incompatible. */
+export function validateModelForDriver(
   model: BotModel | null | undefined,
-  agents: WorkerAgentInfo[]
-): { ok: true; driver: WorkerDriverId; wireModel: string } | { ok: false; message: string } {
-  if (!agents.length) return { ok: false, message: 'That computer does not advertise a coding agent.' }
+  driver: WorkerDriverId,
+  fallbackNote?: string
+): { ok: true; driver: WorkerDriverId; wireModel: string; provider?: string } | { ok: false; message: string } {
+  const prefix = fallbackNote ? `${fallbackNote} ` : ''
   const raw = model?.model?.trim() ?? ''
-  if (!raw) return { ok: false, message: 'Specify a model for this remote worker (no default model is set for remote computers).' }
+  if (!raw) return { ok: false, message: `${prefix}Specify a model for this remote worker (no default model is set for remote computers).` }
   if (!STRICT_RAW_MODEL.test(raw)) return { ok: false, message: `Model "${cleanRemoteLine(raw, 80)}" is not a valid remote model name.` }
-  const claude = agents.find(agent => agent.driver === 'claude-code')
-  if (claude) {
+  if (driver === 'claude-code') {
     let wireModel = raw
     if (raw.includes('/')) {
-      if (!raw.toLowerCase().startsWith('anthropic/')) return { ok: false, message: `Model "${raw}" cannot run on that computer's claude-code agent (Claude models only).` }
+      if (!raw.toLowerCase().startsWith('anthropic/')) return { ok: false, message: `${prefix}Model "${raw}" cannot run on claude-code (Claude models only).` }
       wireModel = raw.slice('anthropic/'.length)
     }
     if (!STRICT_WIRE_MODEL.test(wireModel) || !CLAUDE_MODEL.test(wireModel))
-      return { ok: false, message: `Model "${raw}" cannot run on that computer's claude-code agent (Claude models only).` }
-    return { ok: true, driver: 'claude-code', wireModel }
+      return { ok: false, message: `${prefix}Model "${raw}" cannot run on claude-code (Claude models only).` }
+    return { ok: true, driver, wireModel }
   }
-  return { ok: false, message: `Unsupported coding agent on that computer.` }
+  if (driver === 'hermes') {
+    const provider = model?.provider?.trim() || undefined
+    if (provider && !STRICT_PROVIDER.test(provider)) return { ok: false, message: `Provider "${cleanRemoteLine(provider, 64)}" is not a valid provider name.` }
+    return { ok: true, driver, wireModel: raw, ...(provider ? { provider } : {}) }
+  }
+  if (driver === 'codex') {
+    let wireModel = raw
+    if (raw.includes('/')) {
+      if (!raw.toLowerCase().startsWith('openai/')) return { ok: false, message: `${prefix}Model "${raw}" cannot run on codex (OpenAI/Codex models only).` }
+      wireModel = raw.slice('openai/'.length)
+    }
+    if (!STRICT_WIRE_MODEL.test(wireModel) || !CODEX_MODEL.test(wireModel)) return { ok: false, message: `${prefix}Model "${raw}" cannot run on codex (OpenAI/Codex models only).` }
+    return { ok: true, driver, wireModel }
+  }
+  return { ok: false, message: `Unsupported coding engine "${driver}".` }
 }

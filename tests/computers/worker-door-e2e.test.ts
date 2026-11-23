@@ -101,7 +101,7 @@ function harness(agentPresent = true) {
 test('helper advertises worker capability only when an agent exists; absent agent stays usable for commands', async () => {
   const withAgent = harness(true)
   await until(() => withAgent.computer()?.capabilities.includes('worker') === true)
-  expect(withAgent.computer()?.workerAgents).toEqual([{ driver: 'claude-code', version: '2.1.327' }])
+  expect(withAgent.computer()?.workerAgents).toEqual([{ driver: 'claude-code', version: '2.1.327', supported: true }])
 
   const withoutAgent = harness(false)
   await until(() => withoutAgent.computer()?.online === true)

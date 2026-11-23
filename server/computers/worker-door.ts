@@ -3,6 +3,7 @@
 import type { Database } from 'bun:sqlite'
 import { ComputerHello } from '../../shared/computer-schema'
 import { WORKER_DONE_MAX_BYTES, type WorkerAgentInfo, type WorkerHelperFrame, type WorkerLeaderFrame } from '../../shared/worker-frame-schema'
+import { normalizeWorkerAgents, reconcileWorkerCapabilities, sanitizeWorkerVersion } from './remote-worker-select'
 
 const CAPABILITY_SPACING_MS = 5000
 const EVENT_SPACING_MS = 250
@@ -50,21 +51,42 @@ function pruneStaleRuns(state: WorkerSocketState, computerId: string, bridge: Wo
   for (const key of state.mcp.keys()) if (!bridge.hasRun(computerId, key)) state.mcp.delete(key)
 }
 
-function updateWorkerCapabilities(db: Database, computerId: string, agents: WorkerAgentInfo[]): boolean {
-  const row = db.query('SELECT hello FROM computers WHERE id=? AND revoked=0').get(computerId) as { hello: string } | null
-  if (!row) return false
-  const parsed = ComputerHello.safeParse(JSON.parse(row.hello))
-  if (!parsed.success) return false
-  const baseCaps = parsed.data.capabilities.filter(cap => cap !== 'worker')
-  const next = {
-    ...parsed.data,
-    capabilities: agents.length ? ([...baseCaps, 'worker'] as ComputerHello['capabilities']) : baseCaps,
-    ...(agents.length ? { workerAgents: agents } : { workerAgents: undefined })
+function parseStoredHello(rawJson: string): ComputerHello | null {
+  try {
+    const raw = JSON.parse(rawJson) as Record<string, unknown>
+    if (Array.isArray(raw?.workerAgents)) {
+      const seen = new Set<unknown>()
+      raw.workerAgents = raw.workerAgents.filter(entry => {
+        if (!entry || typeof entry !== 'object' || seen.has((entry as { driver?: unknown }).driver)) return false
+        seen.add((entry as { driver?: unknown }).driver)
+        const rec = entry as { version?: unknown }
+        if (typeof rec.version === 'string') rec.version = sanitizeWorkerVersion(rec.version)
+        return true
+      })
+    }
+    const parsed = ComputerHello.safeParse(raw)
+    return parsed.success ? parsed.data : null
+  } catch {
+    return null
   }
+}
+
+function updateWorkerCapabilities(db: Database, computerId: string, agents?: WorkerAgentInfo[]): { changed: boolean; agents: WorkerAgentInfo[] } {
+  const row = db.query('SELECT hello FROM computers WHERE id=? AND revoked=0').get(computerId) as { hello: string } | null
+  if (!row) return { changed: false, agents: normalizeWorkerAgents(agents) }
+  const parsed = parseStoredHello(row.hello)
+  if (!parsed) return { changed: false, agents: normalizeWorkerAgents(agents) }
+  const next = reconcileWorkerCapabilities(parsed, agents)
   const nextJson = JSON.stringify(next)
-  if (nextJson === row.hello) return false
-  db.query('UPDATE computers SET hello=? WHERE id=? AND revoked=0').run(nextJson, computerId)
-  return true
+  const changed = nextJson !== row.hello
+  if (changed) db.query('UPDATE computers SET hello=? WHERE id=? AND revoked=0').run(nextJson, computerId)
+  return { changed, agents: next.workerAgents ?? [] }
+}
+
+/** Reconciles stored `capabilities` and `workerAgents` on helper connect so persisted state always matches server policy. */
+export function reconcileStoredWorkerCapabilities(db: Database, computerId: string): WorkerAgentInfo[] | null {
+  const res = updateWorkerCapabilities(db, computerId)
+  return res.changed ? res.agents : null
 }
 
 export function isWorkerFrame(frame: { type: string }): frame is WorkerHelperFrame {
@@ -118,8 +140,8 @@ export function handleWorkerFrame(
   if (frame.type === 'worker.capabilities') {
     if (arrivedAt - state.capabilityAt < CAPABILITY_SPACING_MS) return true
     state.capabilityAt = arrivedAt
-    updateWorkerCapabilities(db, computerId, frame.agents)
-    bridge?.onCapabilities?.(computerId, frame.agents)
+    const updated = updateWorkerCapabilities(db, computerId, frame.agents)
+    bridge?.onCapabilities?.(computerId, updated.agents)
     return true
   }
   // Security boundary: a helper may only act for an active run the leader started on this computer.

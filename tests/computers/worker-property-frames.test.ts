@@ -135,7 +135,7 @@ test('property (a): every agent-derived field and helper frame validates against
   const badVer = join(dir, 'bad-ver')
   writeFileSync(badVer, `#!/usr/bin/env bun\nconsole.log('2.1\\u200b327\\u0085\\nsecond-line-ignored')\n`, { mode: 0o700 })
   const agents = await detectWorkerAgents([claudeCodeDriver({ bin: badVer, configDir: dir })])
-  expect(agents).toEqual([{ driver: 'claude-code', version: '2.1327' }])
+  expect(agents).toEqual([{ driver: 'claude-code', version: '2.1327', supported: true }])
   assertLeaderValid({ type: 'worker.capabilities', agents })
 
   const frames: unknown[] = []

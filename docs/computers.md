@@ -203,6 +203,10 @@ the detail for the screen (#68), the hand-over, the builds and signing.
 
 ### Building and signing
 
+- **Rollout and rollback order:** deploy the server first; build, publish, or upgrade helpers after. Existing older
+  helpers keep working against a newer server, but a newer helper cannot register or stay connected against an older
+  server that does not recognise its reported fields. Rolling the server back past a change to what helpers report
+  needs helpers built from the same older code.
 - The server writes `<data>/helper-settings.json` at start-up when `LILBOT_HELPER_URL` is set. Rebuild after changing
   `LILBOT_HELPER_URL`, `LILBOT_ALLOWED_HOSTS`, the Access host or the server key: old builds stop being offered.
 - Command-line helper archives (Linux `x64`/`arm64` and macOS `arm64`/`x64`, `HELPER_VERSION = '2'`), built on the
