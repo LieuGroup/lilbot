@@ -52,7 +52,7 @@ function botsChanged() {
 }
 
 const T3_ENABLED = isT3Enabled(process.env)
-const engines = createDefaultEngines(process.env)
+const engines = await createDefaultEngines(process.env)
 const MEMORY_ADAPTER_VERSION = engines.defaultEngine.memoryAdapterVersion ?? 'none'
 const services = createAppServices(engines, {
   DATA_DIR,

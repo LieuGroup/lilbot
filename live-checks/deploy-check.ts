@@ -69,8 +69,8 @@ try {
   assert.equal(await Bun.file(join(f.link, '.git')).exists(), false, 'Releases must be clean exports, not working trees')
   // Typechecks and tests pass; actual startup fails after a schema/data change.
   const failing = main.replace(
-    'const engines = createDefaultEngines(',
-    "if (process.env.LILBOT_DATA_DIR) {\nnew (await import('bun:sqlite')).Database(join(DATA_DIR, 'lilbot.db')).exec(\"INSERT INTO deployment_marker VALUES ('failed version'); PRAGMA user_version=999\")\nthrow new Error('deploy-check deliberate startup failure; password=do-not-record-me')\n}\nconst engines = createDefaultEngines("
+    'const engines = await createDefaultEngines(',
+    "if (process.env.LILBOT_DATA_DIR) {\nnew (await import('bun:sqlite')).Database(join(DATA_DIR, 'lilbot.db')).exec(\"INSERT INTO deployment_marker VALUES ('failed version'); PRAGMA user_version=999\")\nthrow new Error('deploy-check deliberate startup failure; password=do-not-record-me')\n}\nconst engines = await createDefaultEngines("
   )
   assert.notEqual(failing, main, 'the start-up line the broken commit edits has moved')
   await f.edit('server/main.ts', failing)
