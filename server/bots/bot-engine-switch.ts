@@ -18,7 +18,7 @@ export interface SwitchEngineOptions {
   deleteOldRuntime?: boolean
 }
 
-export interface SwitchEngineDeps {
+interface SwitchEngineDeps {
   engines: EngineRegistry
   runtimes: BotRuntimes
   prefs: BotPrefsStore
@@ -47,7 +47,7 @@ export class BotEngineSwitcher {
   }
 }
 
-export async function switchBotEngine(deps: SwitchEngineDeps, botId: string, targetEngineId: string, options: SwitchEngineOptions = {}) {
+async function switchBotEngine(deps: SwitchEngineDeps, botId: string, targetEngineId: string, options: SwitchEngineOptions = {}) {
   const previous = await deps.runtimes.require(botId)
   const target = deps.engines.require(targetEngineId)
   if (!target.supportedPermissionModes.includes(previous.permissionMode)) {
