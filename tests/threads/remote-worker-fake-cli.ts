@@ -20,6 +20,10 @@ if (args.includes('--version')) {
   console.log('2.1.327 (Fake Claude Code)')
   process.exit(0)
 }
+if (args[0] === 'auth') {
+  console.log('{"loggedIn":true}')
+  process.exit(0)
+}
 const flag = (name: string) => {
   const i = args.indexOf(name)
   return i >= 0 ? args[i + 1] : undefined

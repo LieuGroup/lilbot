@@ -4,29 +4,9 @@ import type { ChatEvent } from '../../../shared/chat-schema'
 import { LilBotError } from '../../../shared/lilbot-error'
 import type { BotEngine, ChatOptions, MemoryConnection, ReviewOptions, RoutineOptions, RuntimeIdentity, SessionChange, SkillSettings, ToolCallSeen } from '../bot-engine'
 import type { McpConnection } from '../mcp-connection'
-import { conversationSource, newSession, openScriptedChat, runScriptedTurn, type ScriptedSession, type ScriptedTurnHandler } from './scripted-chat'
+import { conversationSource, newSession, openScriptedChat, type ResumeOutcome, type ScriptedSession, type ScriptedTurnHandler } from './scripted-chat'
 import { callMcpServer } from './scripted-mcp'
-
-const DEFAULT_MODELS: ModelProvider[] = [
-  {
-    provider: 'scripted',
-    name: 'Scripted',
-    models: ['echo', 'think'],
-    capabilities: [
-      { id: 'echo', reasoning: false, canDisableReasoning: true },
-      { id: 'think', reasoning: true, canDisableReasoning: true }
-    ]
-  }
-]
-
-interface ScriptedRuntime {
-  nativeId: string
-  identity: RuntimeIdentity
-  connections: McpConnection[]
-  skills?: SkillSettings
-  memoryConnection?: MemoryConnection
-  memoryConnected: boolean
-}
+import { DEFAULT_SCRIPTED_MODELS, ScriptedRoutineLedger, type ScriptedRuntime } from './scripted-routines'
 
 export interface ScriptedEngineOptions {
   id?: string
@@ -40,7 +20,9 @@ export class ScriptedEngine implements BotEngine {
   readonly supportedPermissionModes = ['full-access'] as const
   private runtimes = new Map<string, ScriptedRuntime>()
   private sessions = new Map<string, ScriptedSession>()
-  private routineResults = new Map<string, { status: 'completed' | 'failed' | 'stopped'; text: string; items: ScriptedSession['items'] }>()
+  private ledger = new ScriptedRoutineLedger()
+  private resumeOutcomes = new Map<string, ResumeOutcome[]>()
+  private client = new AbortController()
   private toolListeners = new Set<(call: ToolCallSeen) => void>()
   private botListeners = new Set<() => void>()
   private nextChat = 0
@@ -52,7 +34,7 @@ export class ScriptedEngine implements BotEngine {
   constructor(options: ScriptedEngineOptions = {}) {
     this.id = options.id ?? 'scripted'
     this.onTurn = options.onTurn
-    this.models = options.models ?? DEFAULT_MODELS
+    this.models = options.models ?? DEFAULT_SCRIPTED_MODELS
     this.mcpToolName = options.mcpToolName ?? ((_server, tool) => tool)
   }
 
@@ -67,6 +49,20 @@ export class ScriptedEngine implements BotEngine {
   }
   dropSessions() {
     this.sessions.clear()
+  }
+  scriptResume(chatId: string, outcomes: ResumeOutcome[]) {
+    this.resumeOutcomes.set(chatId, [...outcomes])
+  }
+  loseReceipt(runId: string) {
+    this.ledger.loseReceipt(runId)
+  }
+  /** Simulates the LilBot server process crashing: drops client listeners and awaits while engine turns keep running. */
+  disconnectClient() {
+    this.client.abort()
+    this.client = new AbortController()
+    this.toolListeners.clear()
+    this.botListeners.clear()
+    for (const session of this.sessions.values()) session.emit = undefined
   }
   importBots = async () => []
   async createRuntime(identity: RuntimeIdentity): Promise<string> {
@@ -122,7 +118,9 @@ export class ScriptedEngine implements BotEngine {
       engineBotId,
       chatId,
       options,
-      onEvent
+      onEvent,
+      this.client.signal,
+      this.resumeOutcomes
     )
   }
   async connectMemory(engineBotId: string, connection: MemoryConnection) {
@@ -139,21 +137,14 @@ export class ScriptedEngine implements BotEngine {
   async runRoutine(engineBotId: string, prompt: string, options: RoutineOptions & ChatOptions) {
     this.requireRuntime(engineBotId)
     this.routineCalls.push({ nativeId: engineBotId, prompt, options })
-    const cached = this.routineResults.get(options.runId)
-    if (cached) return cached
-    const session = (options.chatId && this.sessions.get(options.chatId)) || this.createSession(engineBotId, options.workspace, true)
-    session.routineOptions = options
-    options.onChat(session.chatId)
-    const base = options.baseline?.(session.items.length) ?? 0
-    const outcome = await runScriptedTurn(
-      session,
-      { text: prompt, hidden: options.hiddenInput, origin: options.origin, inputId: options.runId },
-      (t, a, s) => this.callMcp(engineBotId, session.chatId, t, a, s),
+    return this.ledger.run(
+      options,
+      prompt,
+      this.client.signal,
+      () => (options.chatId && this.sessions.get(options.chatId)) || this.createSession(engineBotId, options.workspace, true),
+      chatId => (t, a, s) => this.callMcp(engineBotId, chatId, t, a, s),
       this.onTurn
     )
-    const result = { ...outcome, items: session.items.slice(base) }
-    this.routineResults.set(options.runId, result)
-    return result
   }
   onBotsChanged = (listener: () => void) => {
     this.botListeners.add(listener)
