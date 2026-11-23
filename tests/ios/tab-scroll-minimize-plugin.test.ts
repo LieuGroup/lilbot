@@ -1,10 +1,23 @@
+/** Tests for the iOS 26 nested-stack tab-bar scroll-hiding Expo config plugin (#4145 workaround).
+ *
+ *  Test coverage split (GitHub CI installs root dependencies only, not `ios/node_modules`):
+ *  - Runs on CI and locally:
+ *    1. Plugin on/off behavior (`withTabScrollMinimize` writes `LilBotTabScrollMinimize.m` with `overwrite: true` when on,
+ *       returns config untouched and leaves the file absent when off, and exports itself as the default Expo plugin).
+ *    2. Single-switch wiring in `ios/app.config.ts` (`ENABLE_NESTED_TAB_SCROLL_MINIMIZE = true`) and `ios/AGENTS.md` note.
+ *    3. Objective-C source invariants: strict public-header allowlist, zero private selectors/swizzling/KVC,
+ *       fail-safe `class_addMethod` + `objc_msgSendSuper` + bounded BFS + bottom-edge / minimize-behavior / inverted-list guards,
+ *       and upstream issue `#4145` deletion note.
+ *  - Runs locally only (explicitly reported as `(skip)` on CI via `test.skipIf(!hasIosNodeModules)`):
+ *    4. End-to-end Expo `xcodeproj` mod pipeline via `ios/app.config.ts` (`buildAppConfig` + `BaseMods` + `evalModsAsync`)
+ *       verifying disk write, `project.pbxproj` linking, repeated-run idempotence, and full omission when off. */
 import { afterEach, describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import {
+import withTabScrollMinimizeDefault, {
   TAB_SCROLL_MINIMIZE_FILE,
   TAB_SCROLL_MINIMIZE_SOURCE,
   type TabScrollMinimizeConfig,
@@ -68,36 +81,46 @@ function createSyntheticIosProject(projectName = 'LilBotDev') {
 }
 
 describe('withTabScrollMinimize config plugin', () => {
-  test('writes LilBotTabScrollMinimize.m when enabled and omits it completely when disabled', () => {
+  test('[CI + local] injects LilBotTabScrollMinimize.m when on and omits it completely when off', () => {
+    expect(withTabScrollMinimizeDefault).toBe(withTabScrollMinimize)
     const { sourceDir } = createSyntheticIosProject()
-    const written: string[] = []
-    const stubAddSourceFile: WithBuildSourceFile = (config, { filePath, contents }) => {
-      const target = join(sourceDir, filePath)
-      writeFileSync(target, contents, 'utf8')
-      written.push(filePath)
+    const calls: Array<{ filePath: string; overwrite?: boolean }> = []
+    const stubAddSourceFile: WithBuildSourceFile = (config, { filePath, contents, overwrite }) => {
+      writeFileSync(join(sourceDir, filePath), contents, 'utf8')
+      calls.push({ filePath, overwrite })
       return { ...config, injectedFile: filePath }
     }
 
     const base: TabScrollMinimizeConfig = { name: 'LilBot Dev', slug: 'lilbot' }
     const disabled = withTabScrollMinimize(base, { enabled: false, withBuildSourceFile: stubAddSourceFile })
     expect(disabled).toBe(base)
-    expect(written).toEqual([])
+    expect(calls).toEqual([])
     expect(existsSync(join(sourceDir, TAB_SCROLL_MINIMIZE_FILE))).toBe(false)
 
-    const enabled = withTabScrollMinimize(base, { enabled: true, withBuildSourceFile: stubAddSourceFile })
-    expect(enabled.injectedFile).toBe(TAB_SCROLL_MINIMIZE_FILE)
-    expect(written).toEqual([TAB_SCROLL_MINIMIZE_FILE])
+    const enabledDefault = withTabScrollMinimize(base, { withBuildSourceFile: stubAddSourceFile })
+    expect(enabledDefault.injectedFile).toBe(TAB_SCROLL_MINIMIZE_FILE)
+    expect(calls).toEqual([{ filePath: TAB_SCROLL_MINIMIZE_FILE, overwrite: true }])
     expect(readFileSync(join(sourceDir, TAB_SCROLL_MINIMIZE_FILE), 'utf8')).toBe(TAB_SCROLL_MINIMIZE_SOURCE)
   })
 
-  test('app.config.ts exposes the single switch ENABLE_NESTED_TAB_SCROLL_MINIMIZE = true', () => {
+  test('[CI + local] app.config.ts gates plugin behind ENABLE_NESTED_TAB_SCROLL_MINIMIZE and ios/AGENTS.md notes #4145', () => {
     const appConfigSource = readFileSync(join(iosRoot, 'app.config.ts'), 'utf8')
     expect(appConfigSource).toContain('export const ENABLE_NESTED_TAB_SCROLL_MINIMIZE = true')
-    expect(appConfigSource).toContain("enableScrollMinimize ? ['./plugins/with-tab-scroll-minimize'] : []")
+    expect(appConfigSource).toContain('const enableScrollMinimize = options.enableTabScrollMinimize ?? ENABLE_NESTED_TAB_SCROLL_MINIMIZE')
+    expect(appConfigSource).toContain("...(enableScrollMinimize ? ['./plugins/with-tab-scroll-minimize'] : [])")
+
+    const agentsDoc = readFileSync(join(iosRoot, 'AGENTS.md'), 'utf8')
+    expect(agentsDoc).toContain('with-tab-scroll-minimize.ts')
+    expect(agentsDoc).toContain('software-mansion/react-native-screens#4145')
   })
 
-  test('Objective-C source enforces fail-safe, public-API-only, and issue-tracking invariants', () => {
+  test('[CI + local] Objective-C source enforces public-API-only, fail-safe, and #4145 tracking invariants', () => {
+    const imports = [...TAB_SCROLL_MINIMIZE_SOURCE.matchAll(/^\s*#(?:import|include)\s+(.+)$/gm)].map(m => m[1].trim())
+    expect(imports).toEqual(['<QuartzCore/QuartzCore.h>', '<UIKit/UIKit.h>', '<objc/message.h>', '<objc/runtime.h>'])
+
     expect(TAB_SCROLL_MINIMIZE_SOURCE).toContain('software-mansion/react-native-screens#4145')
+    expect(TAB_SCROLL_MINIMIZE_SOURCE).toContain('NSClassFromString(className)')
+    expect(TAB_SCROLL_MINIMIZE_SOURCE).toContain('isSubclassOfClass:UIViewController.class')
     expect(TAB_SCROLL_MINIMIZE_SOURCE).toContain('class_addMethod(')
     expect(TAB_SCROLL_MINIMIZE_SOURCE).toContain('objc_msgSendSuper')
     expect(TAB_SCROLL_MINIMIZE_SOURCE).toContain('NSDirectionalRectEdgeBottom')
@@ -105,13 +128,17 @@ describe('withTabScrollMinimize config plugin', () => {
     expect(TAB_SCROLL_MINIMIZE_SOURCE).toContain('UITextView.class')
     expect(TAB_SCROLL_MINIMIZE_SOURCE).toContain('layer.transform.m22 < 0.0')
     expect(TAB_SCROLL_MINIMIZE_SOURCE).toContain('kLilBotMaxVisitedViews')
+
     expect(TAB_SCROLL_MINIMIZE_SOURCE).not.toContain('method_exchangeImplementations')
     expect(TAB_SCROLL_MINIMIZE_SOURCE).not.toContain('class_replaceMethod')
-    expect(TAB_SCROLL_MINIMIZE_SOURCE).not.toMatch(/#import\s+["<]RNS/)
+    expect(TAB_SCROLL_MINIMIZE_SOURCE).not.toContain('method_setImplementation')
+    expect(TAB_SCROLL_MINIMIZE_SOURCE).not.toContain('NSSelectorFromString')
+    expect(TAB_SCROLL_MINIMIZE_SOURCE).not.toContain('performSelector')
+    expect(TAB_SCROLL_MINIMIZE_SOURCE).not.toContain('valueForKey:')
     expect(TAB_SCROLL_MINIMIZE_SOURCE).not.toMatch(/@selector\(_/)
   })
 
-  test.if(hasIosNodeModules)('runs Expo xcodeproj mod end-to-end when enabled, idempotently, and omits when off', async () => {
+  test.skipIf(!hasIosNodeModules)('[local only — requires ios/node_modules] runs Expo xcodeproj mod end-to-end (on, idempotent, off)', async () => {
     const iosRequire = createRequire(join(iosRoot, 'package.json'))
     const { BaseMods, evalModsAsync } = iosRequire('expo/config-plugins') as {
       BaseMods: {
