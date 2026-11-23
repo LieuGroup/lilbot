@@ -1,8 +1,9 @@
 /** Scroll-gated left-swipe row primitive (R4-G2): FAIL_OFFSET_Y ±10 pt gates pre-activation vertical scrolling,
- *  post-activation drag tracks smoothly without freezing on Y drift, and VoiceOver exposes every action on an accessible focus element. */
+ *  post-activation drag tracks smoothly without freezing on Y drift, and the accessible wrapper handles both
+ *  VoiceOver double-tap activation (`onAccessibilityTap` + button role/state) and custom rotor actions. */
 import * as Haptics from 'expo-haptics'
 import { type ReactNode, useCallback, useRef, useState } from 'react'
-import { type AccessibilityActionEvent, Pressable, View } from 'react-native'
+import { type AccessibilityActionEvent, type AccessibilityState, Pressable, View } from 'react-native'
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler'
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated'
 import { AppText } from '../text'
@@ -20,7 +21,11 @@ export interface SwipeRowAction {
 export interface SwipeRowProps {
   children: ReactNode
   actions: SwipeRowAction[]
+  /** Invoked on sighted tap and VoiceOver double-tap (`accessibilityActivate`). */
+  onPress?: () => void
   accessibilityLabel: string
+  accessibilityHint?: string
+  accessibilityState?: AccessibilityState
   accessibilityActions?: AccessibleActionSpec[]
   onAccessibilityAction?: (name: string) => void
   scrollingVertically?: boolean
@@ -32,7 +37,10 @@ const ACTION_WIDTH = 64
 export function SwipeRow({
   children,
   actions,
+  onPress,
   accessibilityLabel,
+  accessibilityHint,
+  accessibilityState,
   accessibilityActions,
   onAccessibilityAction,
   scrollingVertically = false,
@@ -127,12 +135,22 @@ export function SwipeRow({
       <GestureDetector gesture={pan}>
         <Animated.View
           accessible
+          accessibilityRole={onPress ? 'button' : undefined}
           accessibilityLabel={accessibilityLabel}
+          accessibilityHint={accessibilityHint}
+          accessibilityState={accessibilityState}
           accessibilityActions={accessibilityActions ?? actions.map(action => ({ name: action.id, label: action.label }))}
+          onAccessibilityTap={onPress}
           onAccessibilityAction={handleA11yAction}
           style={[{ backgroundColor: theme.card }, rowStyle]}
         >
-          {children}
+          {onPress ? (
+            <Pressable onPress={onPress} accessible={false}>
+              {children}
+            </Pressable>
+          ) : (
+            children
+          )}
         </Animated.View>
       </GestureDetector>
     </View>

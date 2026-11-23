@@ -1,11 +1,11 @@
 /** The bot roster: the primary bot and pinned bots on top, then sections, unassigned and hidden,
  *  in the same order as the web app's roster (shared/client/bots/roster-groups). */
-import { Pressable, ScrollView, type ScrollViewProps, View } from 'react-native'
+import { Pressable, ScrollView, View } from 'react-native'
 import type { Bot, Section } from '../../../shared/bot-schema'
 import { rosterGroups } from '../../../shared/client/bots/roster-groups'
-import { useTheme } from '../ui/theme'
-import { AppText } from '../ui/text'
 import { BotAvatar } from '../ui/avatar'
+import { AppText } from '../ui/text'
+import { useTheme } from '../ui/theme'
 import { radius } from '../ui/tokens'
 
 interface RosterProps {
@@ -13,63 +13,49 @@ interface RosterProps {
   sections: Section[]
   selectedId: string | null
   onSelect: (bot: Bot) => void
-  onOpenSettings?: () => void
-  onScroll?: ScrollViewProps['onScroll']
-  bottomInset?: number
 }
 
-export function Roster({ bots, sections, selectedId, onSelect, onOpenSettings, onScroll, bottomInset = 0 }: RosterProps) {
+export function Roster({ bots, sections, selectedId, onSelect }: RosterProps) {
   const theme = useTheme()
   const groups = rosterGroups(bots, sections)
 
   return (
-    <View style={{ flex: 1 }}>
-      {onOpenSettings && (
-        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 12, paddingTop: 8 }}>
-          <Pressable onPress={onOpenSettings} accessibilityLabel="Settings" style={{ padding: 6 }}>
-            <AppText variant="name" color={theme.mutedForeground}>
-              Settings
-            </AppText>
-          </Pressable>
-        </View>
-      )}
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, paddingBottom: 12 + bottomInset, gap: 4 }} onScroll={onScroll} scrollEventThrottle={16}>
-        <View style={{ gap: 2 }}>
-          {groups.top.map(bot => (
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, gap: 4 }}>
+      <View style={{ gap: 2 }}>
+        {groups.top.map(bot => (
+          <RosterRow key={bot.id} bot={bot} selected={bot.id === selectedId} onPress={() => onSelect(bot)} />
+        ))}
+      </View>
+      {groups.sections.map(({ section, bots: group }) => (
+        <View key={section.id} style={{ gap: 2, marginTop: 12 }}>
+          <SectionLabel name={section.name} />
+          {group.map(bot => (
             <RosterRow key={bot.id} bot={bot} selected={bot.id === selectedId} onPress={() => onSelect(bot)} />
           ))}
         </View>
-        {groups.sections.map(({ section, bots: group }) => (
-          <View key={section.id} style={{ gap: 2, marginTop: 12 }}>
-            <SectionLabel name={section.name} />
-            {group.map(bot => (
-              <RosterRow key={bot.id} bot={bot} selected={bot.id === selectedId} onPress={() => onSelect(bot)} />
-            ))}
-          </View>
-        ))}
-        {groups.unassigned.length > 0 && (
-          <View style={{ gap: 2, marginTop: 12 }}>
-            {groups.sections.length > 0 && <SectionLabel name="Unassigned" />}
-            {groups.unassigned.map(bot => (
-              <RosterRow key={bot.id} bot={bot} selected={bot.id === selectedId} onPress={() => onSelect(bot)} />
-            ))}
-          </View>
-        )}
-        {groups.hidden.length > 0 && (
-          <View style={{ gap: 2, marginTop: 12 }}>
-            <SectionLabel name="Hidden" />
-            {groups.hidden.map(bot => (
-              <RosterRow key={bot.id} bot={bot} selected={bot.id === selectedId} onPress={() => onSelect(bot)} />
-            ))}
-          </View>
-        )}
-        {bots.length === 0 && (
-          <AppText variant="chat" color={theme.mutedForeground} style={{ textAlign: 'center', marginTop: 40 }}>
-            No bots yet.
-          </AppText>
-        )}
-      </ScrollView>
-    </View>
+      ))}
+      {groups.unassigned.length > 0 && (
+        <View style={{ gap: 2, marginTop: 12 }}>
+          {groups.sections.length > 0 && <SectionLabel name="Unassigned" />}
+          {groups.unassigned.map(bot => (
+            <RosterRow key={bot.id} bot={bot} selected={bot.id === selectedId} onPress={() => onSelect(bot)} />
+          ))}
+        </View>
+      )}
+      {groups.hidden.length > 0 && (
+        <View style={{ gap: 2, marginTop: 12 }}>
+          <SectionLabel name="Hidden" />
+          {groups.hidden.map(bot => (
+            <RosterRow key={bot.id} bot={bot} selected={bot.id === selectedId} onPress={() => onSelect(bot)} />
+          ))}
+        </View>
+      )}
+      {bots.length === 0 && (
+        <AppText variant="chat" color={theme.mutedForeground} style={{ textAlign: 'center', marginTop: 40 }}>
+          No bots yet.
+        </AppText>
+      )}
+    </ScrollView>
   )
 }
 
@@ -85,11 +71,13 @@ function SectionLabel({ name }: { name: string }) {
 function RosterRow({ bot, selected, onPress }: { bot: Bot; selected: boolean; onPress: () => void }) {
   const theme = useTheme()
   const working = bot.activity?.status === 'working'
+  const a11yLabel = [bot.name, bot.isPrimary ? 'primary' : '', working ? 'working' : '', bot.activity?.text ?? ''].filter(Boolean).join(', ')
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={bot.name}
+      accessibilityLabel={a11yLabel}
+      accessibilityState={{ selected }}
       style={{
         flexDirection: 'row',
         alignItems: 'center',
