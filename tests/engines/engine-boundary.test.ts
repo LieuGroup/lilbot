@@ -20,12 +20,8 @@ import { allEngineAndDriverIds, concreteDriverIds, concreteEngineIds, engineName
 /** Pre-existing engine/driver-name leaks outside engine/driver folders, registration/declaration points, and exact allow-lists.
  *  Adding a new leak fails CI; fixing a listed file requires removing it here so the ratchet only moves to zero. */
 const KNOWN_ENGINE_NAME_LEAKS: Record<string, string> = {
-  'helper/worker-probes.ts': 'LILA-36',
-  'server/computers/remote-worker-sanitize.ts': 'LILA-36',
-  'server/computers/remote-worker-select.ts': 'LILA-36',
   'server/deploy/rollback-profiles.ts': 'Lane A (P5)',
-  'server/environment.ts': 'Lane A (P5)',
-  'shared/worker-frame-schema.ts': 'LILA-36'
+  'server/environment.ts': 'Lane A (P5)'
 }
 
 function concreteImportLeaks(engines: readonly string[]): string[] {
@@ -73,7 +69,7 @@ describe('north-star engine & helper driver boundary guard', () => {
     expect(filesNamingIds(allEngineAndDriverIds())).toEqual(Object.keys(KNOWN_ENGINE_NAME_LEAKS).sort())
   })
 
-  test.failing('[Lane A P5 + LILA-36] zero server, shared, or helper files outside engine/driver folders and registration points name any engine or driver', () => {
+  test.failing('[Lane A P5] zero server, shared, or helper files outside engine/driver folders and registration points name any engine or driver', () => {
     const hits = filesNamingIds(allEngineAndDriverIds()).filter(file => file.startsWith('server/') || file.startsWith('shared/') || file.startsWith('helper/'))
     expect(hits).toEqual([])
   })

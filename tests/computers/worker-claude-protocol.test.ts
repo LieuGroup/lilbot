@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { buildClaudeArgs, createClaudeStreamState, parseClaudeLine } from '../../helper/worker-claude-protocol'
+import { buildClaudeArgs, createClaudeStreamState, parseClaudeLine } from '../../helper/drivers/claude-code/worker-claude-protocol'
 
 test('buildClaudeArgs emits exact Claude Code flags and omits optional ones when absent', () => {
   const minimal = buildClaudeArgs({ runId: 'r1', cwd: '/tmp/work', model: 'claude-sonnet-5-5', prompt: 'hi' }, '/tmp/r1.mcp.json')

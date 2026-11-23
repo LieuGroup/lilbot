@@ -1,30 +1,12 @@
 /** Claude Code CLI flags and stream-json NDJSON parser: all CLI flag and stream parsing in one small file. */
-import type { ChatItem, TurnUsage } from '../shared/chat-schema'
-import { SAFE_WORKER_SESSION_ID, WORKER_SYSTEM_PROMPT_MAX_BYTES, type WorkerToolEvent } from '../shared/worker-frame-schema'
-import type { WorkerProgressEvent, WorkerStartRequest } from './worker-driver'
+import type { ChatItem, TurnUsage } from '../../../shared/chat-schema'
+import { SAFE_WORKER_SESSION_ID, WORKER_SYSTEM_PROMPT_MAX_BYTES, type WorkerToolEvent } from '../../../shared/worker-frame-schema'
+import type { WorkerProgressEvent, WorkerStartRequest } from '../../worker-driver'
+import { cleanAgentLine, cleanAgentText } from '../../worker-text'
 
 const MAX_ITEMS = 500
 const MAX_TEXT = 500_000
 const isRecord = (v: unknown): v is Record<string, unknown> => Boolean(v) && typeof v === 'object' && !Array.isArray(v)
-
-export const cleanAgentText = (text: string, max: number, secret?: string) => {
-  let out = secret ? text.replaceAll(secret, '[redacted]') : text
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: strip C0/C1 controls (except tab/newline) and Unicode format chars from untrusted agent output
-  out = out.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\p{Cf}]/gu, '')
-  if (secret) while (out.includes(secret)) out = out.replaceAll(secret, '[redacted]')
-  if (out.length <= max) return out
-  return max > 14 ? `${out.slice(0, max - 14)} [truncated]` : out.slice(0, max)
-}
-
-/** Single-line variant of `cleanAgentText` that strips every control and format character before redacting. */
-export const cleanAgentLine = (text: string, max: number, secret?: string) => {
-  let out = secret ? text.replaceAll(secret, '[redacted]') : text
-  out = out.replace(/[\p{Cc}\p{Cf}]/gu, '')
-  if (secret) while (out.includes(secret)) out = out.replaceAll(secret, '[redacted]')
-  out = out.trim()
-  if (out.length <= max) return out
-  return max > 14 ? `${out.slice(0, max - 14)} [truncated]` : out.slice(0, max)
-}
 
 export const claudeUserLine = (text: string) => `${JSON.stringify({ type: 'user', message: { role: 'user', content: text } })}\n`
 

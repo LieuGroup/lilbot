@@ -2,10 +2,11 @@
  *  Uses whatever sign-in the machine already has (no LilBot-managed provider key file) and keeps Claude Code's
  *  own session files in place so `--resume <session_id>` works for follow-ups and post-interrupt recovery. */
 import { existsSync, rmSync, statSync } from 'node:fs'
-import { extractSafeVersion, runProbeCommand } from './worker-bin'
-import { expandWorkerCwd, readBoundedLines, readTailText, resolveClaudeBinary, writeRunMcpConfig } from './worker-claude-env'
-import { buildClaudeArgs, claudeUserLine, cleanAgentText, createClaudeStreamState, parseClaudeLine } from './worker-claude-protocol'
-import type { WorkerDriver, WorkerHandle, WorkerOutcome } from './worker-driver'
+import { extractSafeVersion, runProbeCommand } from '../../worker-bin'
+import type { WorkerDriver, WorkerHandle, WorkerOutcome } from '../../worker-driver'
+import { cleanAgentText, expandWorkerCwd } from '../../worker-text'
+import { cleanupStaleWorkerConfigs, readBoundedLines, readTailText, resolveClaudeBinary, writeRunMcpConfig } from './worker-claude-env'
+import { buildClaudeArgs, claudeUserLine, createClaudeStreamState, parseClaudeLine } from './worker-claude-protocol'
 
 const MAX_STDOUT_LINE_CHARS = 2 * 1024 * 1024
 const children = new Set<number>()
@@ -37,6 +38,10 @@ export function claudeCodeDriver(options: { bin?: string; configDir?: string; ki
   const targetPlatform = options.platform ?? process.platform
   return {
     id: 'claude-code',
+    legacyDefault: true,
+    cleanupStale(configDir?: string) {
+      cleanupStaleWorkerConfigs(configDir ?? options.configDir)
+    },
     async detect() {
       const bin = resolveClaudeBinary(options.bin)
       if (!bin) return null

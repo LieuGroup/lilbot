@@ -135,22 +135,30 @@ export function createRemoteWorkers(deps: RemoteWorkerAppDeps) {
     if (!pick.ok) return runner.failRestored(options.runId, { status: 'failed', text: pick.message, items: [], failureReason: 'invalid_start' })
     const modelCheck = validateModelForDriver(options.model ?? bot.model, pick.driver)
     if (!modelCheck.ok) return runner.failRestored(options.runId, { status: 'failed', text: modelCheck.message, items: [], failureReason: 'invalid_start' })
-    const built = buildSystemPrompt(bot, comp.name, options.cwd, options.capabilities)
-    if (!built.ok) return runner.failRestored(options.runId, { status: 'failed', text: built.error, items: [], failureReason: 'prompt_too_large' })
+    const chatId = options.chatId ?? `remote:${options.threadId}`
+    const resumeSession = existing?.sessionId ?? runner.store.latestSession(chatId)
+    let systemPrompt: string | undefined
+    if (!resumeSession) {
+      const built = buildSystemPrompt(bot, comp.name, options.cwd, options.capabilities)
+      if (!built.ok) return runner.failRestored(options.runId, { status: 'failed', text: built.error, items: [], failureReason: 'prompt_too_large' })
+      systemPrompt = built.systemPrompt
+    }
     const effort = options.reasoningEffort ?? (!options.model ? (bot.reasoningEffort ?? undefined) : undefined)
     return runner.run({
       runId: options.runId,
       computerId: options.computer,
       botId,
       threadId: options.threadId,
-      chatId: options.chatId ?? `remote:${options.threadId}`,
+      chatId,
+      ...(resumeSession ? { sessionId: resumeSession } : {}),
       cwd: options.cwd,
       model: modelCheck.wireModel,
       ...(modelCheck.provider ? { provider: modelCheck.provider } : {}),
       driver: modelCheck.driver,
       ...(effort ? { reasoningEffort: effort } : {}),
-      systemPrompt: built.systemPrompt,
+      ...(systemPrompt !== undefined ? { systemPrompt } : {}),
       prompt,
+      ...(options.capabilities ? { capabilities: options.capabilities } : {}),
       onChat: options.onChat
     })
   }

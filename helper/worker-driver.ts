@@ -1,9 +1,11 @@
 /** Engine-neutral coding-agent driver contract for the helper.
  *  Adding a second coding agent (such as an ACP driver) is a second file implementing `WorkerDriver`. */
+import type { Database } from 'bun:sqlite'
 import type { ChatItem, TurnUsage } from '../shared/chat-schema'
+import type { WebhookCapability } from '../shared/webhook-schema'
 import { MAX_WORKER_AGENTS, WorkerAgentInfo, type WorkerDoneStatus, type WorkerDriverId, type WorkerEventFrame, type WorkerToolEvent } from '../shared/worker-frame-schema'
-import { claudeCodeDriver } from './worker-driver-claude'
-import { defaultWorkerProbes, type WorkerAgentProbe } from './worker-probes'
+import { defaultWorkerDrivers, defaultWorkerProbes } from './drivers/registry'
+import type { WorkerAgentProbe } from './worker-probes'
 
 interface WorkerMcpEndpoint {
   url: string
@@ -20,10 +22,12 @@ export interface WorkerStartRequest {
   systemPrompt?: string
   prompt: string
   mcp?: WorkerMcpEndpoint
+  capabilities?: WebhookCapability[]
 }
 
 export interface WorkerProgressEvent {
   sessionId?: string
+  sessionCreated?: boolean
   activity?: string
   tools?: WorkerToolEvent[]
   textPreview?: string
@@ -46,12 +50,14 @@ export interface WorkerHandle {
 
 export interface WorkerDriver {
   readonly id: WorkerDriverId
+  /** True only for the legacy driver used when an older leader omits `frame.driver`. */
+  readonly legacyDefault?: boolean
   detect(): Promise<WorkerAgentInfo | null>
   start(request: WorkerStartRequest, onEvent: (event: WorkerProgressEvent) => void): WorkerHandle
-}
-
-export function defaultWorkerDrivers(): WorkerDriver[] {
-  return [claudeCodeDriver()]
+  /** Optional startup cleanup for per-run files left behind by an abrupt crash. */
+  cleanupStale?(configDir?: string): void
+  /** Optional retention pruning hook for driver-owned sessions tracked in the helper journal. */
+  pruneOldSessions?(db: Database, excludeSessionId?: string): Promise<number>
 }
 
 export async function detectWorkerAgents(drivers?: WorkerDriver[], probes?: WorkerAgentProbe[]): Promise<WorkerAgentInfo[]> {
@@ -67,7 +73,7 @@ export async function detectWorkerAgents(drivers?: WorkerDriver[], probes?: Work
   for (let i = 0; i < tasks.length && found.length < MAX_WORKER_AGENTS; i++) {
     const info = results[i]
     if (!info || seen.has(tasks[i].probe.id)) continue
-    const parsed = WorkerAgentInfo.safeParse({ ...info, supported: tasks[i].supported })
+    const parsed = WorkerAgentInfo.safeParse({ ...info, supported: tasks[i].supported && (info.supported ?? true) })
     if (parsed.success && !seen.has(parsed.data.driver)) {
       seen.add(parsed.data.driver)
       found.push(parsed.data)
@@ -112,7 +118,7 @@ export function startAgentProbe(options: AgentProbeOptions, onChange: (agents: W
 }
 
 /** Coalesces bursts of `WorkerProgressEvent` updates into at most one `WorkerEventFrame` per `coalesceMs`. */
-export function createEventCoalescer(runId: string, coalesceMs: number, emit: (frame: WorkerEventFrame) => void, onSession: (sessionId: string) => void) {
+export function createEventCoalescer(runId: string, coalesceMs: number, emit: (frame: WorkerEventFrame) => void, onSession: (sessionId: string, created?: boolean) => void) {
   let pending: { sessionId?: string; activity?: string; textPreview?: string; tools: Map<string, WorkerToolEvent> } | undefined
   let lastEmittedAt = 0
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -138,7 +144,7 @@ export function createEventCoalescer(runId: string, coalesceMs: number, emit: (f
   return {
     push(event: WorkerProgressEvent) {
       if (stopped) return
-      if (event.sessionId) onSession(event.sessionId)
+      if (event.sessionId) onSession(event.sessionId, event.sessionCreated)
       if (!pending) pending = { tools: new Map() }
       if (event.sessionId) pending.sessionId = event.sessionId
       if (event.activity) pending.activity = event.activity
