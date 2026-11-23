@@ -53,15 +53,8 @@ test('engine routes verify x-lilbot-session vs chatId, lock history search, requ
     } as never,
     memoryLocked: (_bot, chat) => (chat === 'webhook-chat' ? 'A webhook run cannot use memory.' : null),
     sessionCapabilities: (_bot, chat) => (chat === 'webhook-chat' ? ['delegation'] : null),
-    pluginRefusal: async (_bot, pathname, req) => {
-      const call = pluginCall(
-        pathname,
-        await req
-          .clone()
-          .json()
-          .catch(() => null)
-      )
-      const session = req.headers.get('x-lilbot-session') || undefined
+    pluginRefusal: (_bot, pathname, body, session) => {
+      const call = pluginCall(pathname, body)
       if (call && session === 'webhook-chat' && !call.groups.includes('delegation')) return `Refused ${call.tool}`
       return null
     }
@@ -102,4 +95,13 @@ test('engine routes verify x-lilbot-session vs chatId, lock history search, requ
   expect((await post('/engine/threads/open', { threadId: 't-broad' }, 'webhook-chat')).status).toBe(422)
   expect((await post('/engine/threads/open', { threadId: 't-narrow' }, 'webhook-chat')).status).toBe(200)
   expect((await post('/engine/threads/open', { threadId: 't-open' }, 'main')).status).toBe(200)
+
+  // Verified body chatId without header: limited session refused on library/give, ordinary main session allowed.
+  expect((await post('/engine/library/give', { path: 'a.txt', title: 'A', chatId: 'webhook-chat' })).status).toBe(422)
+  expect((await post('/engine/library/give', { path: 'a.txt', title: 'A', chatId: 'main' })).status).toBe(200)
+
+  // Retired /engine/computers/* answers 410 unconditionally (webhook, mismatched, or main session) and executes nothing.
+  expect((await post('/engine/computers/submit', { chatId: 'webhook-chat' })).status).toBe(410)
+  expect((await post('/engine/computers/submit', { chatId: 'main' }, 'webhook-chat')).status).toBe(410)
+  expect((await post('/engine/computers/list', {}, 'main')).status).toBe(410)
 })

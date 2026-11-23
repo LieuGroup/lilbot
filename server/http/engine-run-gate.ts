@@ -25,6 +25,10 @@ export function verifiedSession(request: Request, bodyChat: string | undefined):
   return header ?? bodyChat
 }
 
+export function bodyChatId(body: unknown): string | undefined {
+  return body && typeof body === 'object' && typeof (body as { chatId?: unknown }).chatId === 'string' ? (body as { chatId: string }).chatId || undefined : undefined
+}
+
 /** The tool and the groups that allow it (none: no webhook run may), or null for calls every run may make. The tests
  *  are the handlers' own (`engine-api.ts`), so every path a handler serves is covered. */
 export function pluginCall(pathname: string, _body?: unknown): { tool: string; groups: WebhookCapability[] } | null {
