@@ -136,8 +136,9 @@ try {
   ]
   for (const [name, args, refusal] of during) assert.ok(String((await answer(name, args)).refused).includes(refusal), `LilBot did not refuse ${name} during the run`)
   const [run] = await waitFor(runs, list => done(list[0]?.status ?? ''))
-  // Once the bot has had a webhook run, a call no session reported stays refused after the run too: it cannot be placed.
-  assert.ok(String((await answer('lilbot_section_create', { name: 'After the run' })).refused).includes('A webhook run cannot use'), 'an unplaced call passed after the run')
+  // Once no webhook run or limited hand-off is live, an unmatched call (e.g., an engine sub-agent) passes immediately with no delay.
+  const idleAt = Date.now()
+  assert.ok(!(await answer('lilbot_section_create', { name: 'After the run' })).refused && Date.now() - idleAt < 1000, 'an unmatched call was refused or stalled after the run')
   const narrow = await checkRun(run, 'labeled')
   for (const names of Object.values(ENGINE_TOOLS)) assert.deepEqual(has(narrow, names), [], `a narrow run had ${names.join(', ')}`)
   assert.deepEqual(fromServer(narrow, 'lilbot_t3'), [], 'a narrow run had T3 tools')

@@ -62,8 +62,7 @@ function fixture(hookCaps: WebhookCapability[] = ['delegation']) {
     resolveRemoteWorker: rw.resolveRemoteWorker,
     folder: async (id: string) => join(dir, 'ws', id),
     sessionCapabilities: callers.forChat,
-    hasNarrowed: callers.hasRuns,
-    callingDelegation: async () => activeChat,
+    callerCapabilities: async (botId: string) => callers.forChat(botId, activeChat),
     narrowedAccess: (caps: WebhookCapability[]) => webhookRunAccess(caps, false),
     runRoutine: async (botId: string, prompt: string, opts: any) => {
       const id = opts.chatId ?? `hidden:${botId}:${runs.length + 1}`
@@ -77,13 +76,12 @@ function fixture(hookCaps: WebhookCapability[] = ['delegation']) {
     journal: (botId: string, text: string) => void journals.push(`${botId}:${text}`),
     give: async () => {},
     callingChat: async () => activeChat,
-    callingAction: async () => activeChat,
     rootOf,
     rosterChanged: () => {}
   }
   const threads = new ThreadService(threadStore, host, undefined, undefined, undefined, groupHost)
   const delegation = new DelegationService(threads, host, async () => activeChat)
-  const control = new DelegationControl(threads, host, async () => activeChat)
+  const control = new DelegationControl(threads, host)
   return { ...core, dir, hook, webhookStore, threadStore, callers, rw, threads, delegation, control, runs, journals, roots, setChat: (c: string) => (activeChat = c) }
 }
 

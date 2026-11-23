@@ -61,8 +61,9 @@ export class GroupRounds {
 
   /** A point LilBot could not hand over (the member is gone) counts as that member's failed reply; the leader being
    *  unreachable ends the group; an outcome that cannot reach a deleted leader is dropped. */
-  async failed(d: Delivery) {
-    if (d.kind === 'point') return this.record(d, d.threadId, [{ kind: 'error', text: 'LilBot could not hand this point over: the bot is missing.' }])
+  async failed(d: Delivery, error?: LilBotError) {
+    const why = error?.code === 'session_not_found' ? 'the conversation no longer exists' : 'the bot is missing'
+    if (d.kind === 'point') return this.record(d, d.threadId, [{ kind: 'error', text: `LilBot could not hand this point over: ${why}.` }])
     const ended = this.store.db.transaction(() => {
       this.store.setStatus(d.id, 'done')
       return d.kind === 'round' && this.ending.end(d.threadId, 'failed')

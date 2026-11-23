@@ -7,8 +7,9 @@ import type { RoutineStore } from './routine-store'
 
 export interface RoutineHost {
   requireBot(id: string): Promise<unknown>
-  runRoutine(botId: string, prompt: string, options: RoutineOptions): Promise<{ status: 'completed' | 'failed' | 'stopped'; text: string }>
+  runRoutine(botId: string, prompt: string, options: RoutineOptions): Promise<{ status: 'completed' | 'failed' | 'stopped'; text: string; unknownReceipt?: true }>
   openChat(botId: string, chatId: string, onEvent: (event: ChatEvent) => void, requireExisting?: boolean): Promise<OpenChat>
+  stopRun?(botId: string, chatId: string): Promise<boolean>
 }
 interface RoutineSettings {
   minIntervalSeconds: number

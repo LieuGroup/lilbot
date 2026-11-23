@@ -53,7 +53,7 @@ test('after the run ends its session stays narrow, and so do the sessions the en
 })
 
 // A call whose start is not found yet is looked for again after a sleep, up to the window; a call placed at once never sleeps.
-test('the bot’s other sessions keep their tools at once; a call never reported is refused only for a bot with webhook runs', async () => {
+test('the bot’s other sessions keep their tools at once; a call never reported is refused only while a webhook run is live', async () => {
   const f = await withRun()
   const slept = spyOn(Bun, 'sleep')
   try {
@@ -61,6 +61,9 @@ test('the bot’s other sessions keep their tools at once; a call never reported
     expect(slept).not.toHaveBeenCalled()
     expect((await f.call('b1', 'lilbot_section_create', { name: 'Unreported' }, false)).error).toContain('A webhook run cannot use')
     slept.mockClear()
+    f.settle()
+    expect((await f.call('b1', 'lilbot_section_create', { name: 'AfterSettle' }, false)).data.name).toBe('AfterSettle')
+    expect(slept).not.toHaveBeenCalled()
     const other = systemFixture()
     expect((await other.call('b1', 'lilbot_section_create', { name: 'No runs' }, false)).data.name).toBe('No runs')
     expect(slept).not.toHaveBeenCalled()
@@ -82,11 +85,12 @@ test('plug-in calls are judged by the session they name, for as long as it exist
   const f = await withRun()
   const exec = (session: string | undefined) => refusalFor(f.webhookRuns.callers.forChat('b1', session), 'computer_exec', ['computers'])
   expect(exec(RUN_CHAT)).toContain('A webhook run cannot use computer_exec')
+  // An older adapter names no session: refused while a webhook run is live, never once no run is live.
+  expect(exec(undefined)).toContain('A webhook run cannot use')
   f.settle()
   expect(exec(RUN_CHAT)).toContain('A webhook run cannot use computer_exec')
   expect(exec('b1-main')).toBeNull()
-  // An older adapter names no session: refused while the bot has had webhook runs, never for a bot that has not.
-  expect(exec(undefined)).toContain('A webhook run cannot use')
+  expect(exec(undefined)).toBeNull()
   expect(refusalFor(systemFixture().webhookRuns.callers.forChat('b1', undefined), 'computer_exec', ['computers'])).toBeNull()
   await f.webhooks.setCapabilities('b1', f.hook.id, ['computers'])
   expect(exec(RUN_CHAT)).toBeNull()

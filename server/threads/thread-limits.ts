@@ -9,12 +9,12 @@ const isExchangeWork = (kind: string) => kind === 'request' || kind === 'redirec
 /** Work deliveries share `concurrent` (workers share `concurrentWorkers` and `workersPerComputer` per remote computer);
  *  answers and notices are never starved. */
 export function canStartDelivery(
-  d: { kind: string; threadId: string },
-  running: Iterable<{ kind: string; threadId: string }>,
+  d: { kind: string; threadId: string; status?: string },
+  running: Iterable<{ kind: string; threadId: string; status?: string }>,
   threadOf: (threadId: string) => { worker?: boolean; computer?: string },
   activeRemoteThreads?: (computerId: string) => Iterable<string>
 ) {
-  if (isReply(d.kind)) return true
+  if (isReply(d.kind) || d.status === 'stopping') return true
   const info = threadOf(d.threadId)
   const targetWorker = isExchangeWork(d.kind) && !!info.worker
   const targetComputer = targetWorker ? info.computer : undefined
@@ -22,7 +22,7 @@ export function canStartDelivery(
   let workers = 0
   const remoteOnComputer = new Set<string>()
   for (const r of running) {
-    if (isReply(r.kind)) continue
+    if (isReply(r.kind) || r.status === 'stopping') continue
     work++
     if (isExchangeWork(r.kind)) {
       const rInfo = threadOf(r.threadId)

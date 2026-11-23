@@ -29,7 +29,7 @@ export function delegationTools({ delegation: { hand, control } }: SystemDeps): 
       'lilbot_delegate',
       'Hand work to other bots (to) or your own fresh hidden worker session (worker: true, optional model, reasoningEffort, computer, cwd and engine), full access in parallel. Attach workspace files by path; answers arrive as new turns — never poll. Reuse requestId only on retry.',
       DelegateInput,
-      (caller, input) => hand.delegate(caller, input)
+      (caller, input, raw) => hand.delegate(caller, input, raw ?? input)
     ),
     { ...controlTool, readOnly: (args: DelegationActionInput) => args.action === 'status' }
   ]

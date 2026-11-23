@@ -2,12 +2,13 @@
  *  comes back. Transport failures retry the same engine admission, never a fresh turn. */
 import type { ChatItem } from '../../shared/chat-schema'
 import { LilBotError } from '../../shared/lilbot-error'
-import { RetryQueue } from '../background'
+import { confirmStopped, RetryQueue } from '../background'
 import { botLine } from '../devices/origin-line'
 import { memoryRefusal } from '../memory/memory-safety'
 import { sendFiles } from './exchange-files'
 import type { GroupRounds } from './group-rounds'
-import { failExchange, turnFailure } from './thread-failure'
+import { reconcileSteered } from './thread-accept'
+import { handleDeliveryError, turnFailure } from './thread-failure'
 import type { ThreadFiles } from './thread-files'
 import { canStartDelivery, isReply, THREAD_LIMITS } from './thread-limits'
 import { deliveryPrompt, type NarrowedHost, replyText, type ThreadRunOptions, workRunOptions } from './thread-prompts'
@@ -23,13 +24,13 @@ export interface RunnerHost extends NarrowedHost {
   stopRun?(botId: string, chatId: string): Promise<boolean>
   activeRemoteThreads?(computerId: string): Iterable<string>
 }
-const TERMINAL = ['bot_not_found', 'unsafe_message', 'thread_limit']
 /** Kinds whose text is LilBot's own prompt, any bot text in it already checked and fenced. */
 const PREPARED = ['notice', 'oscar', 'point', 'round']
 
 export class ThreadRunner {
   private retries = new RetryQueue<Delivery>('thread delivery')
   readonly running = this.retries.running
+  readonly steering = new Set<string>()
   private lines = new Map<string, string>()
   constructor(
     private store: ThreadStore,
@@ -39,18 +40,13 @@ export class ThreadRunner {
     private changed: () => void,
     private activity: (botId: string, d: Delivery, working: boolean) => void,
     private touched: (roster?: boolean) => void,
-    private groups?: GroupRounds
+    private groups?: GroupRounds,
+    private stopOpts: { timeoutMs?: number; pollMs?: number } = {}
   ) {}
 
-  runningIn(threadId: string) {
-    return [...this.running.values()].filter(d => this.store.workThread(d) === threadId)
-  }
-  runningFor(threadId: string) {
-    return this.runningIn(threadId)[0]
-  }
-  lineOf(d: Delivery | undefined) {
-    return (d && this.lines.get(d.id)) ?? null
-  }
+  runningIn = (threadId: string) => [...this.running.values()].filter(d => this.store.workThread(d) === threadId)
+  runningFor = (threadId: string) => this.runningIn(threadId)[0]
+  lineOf = (d: Delivery | undefined) => (d && this.lines.get(d.id)) ?? null
   sawTool(chatId: string, line: string) {
     const d = [...this.running.values()].find(d => d.chatId === chatId)
     if (!d || this.lines.get(d.id) === line) return
@@ -64,7 +60,13 @@ export class ThreadRunner {
     for (const botId of new Set(d.kind === 'point' ? [d.target] : [d.sender, d.target])) this.activity(botId, d, working)
   }
 
+  private stopConfirm(d: Delivery) {
+    const chatId = d.chatId ?? (isReply(d.kind) ? d.sourceChat : null)
+    return chatId && this.host.stopRun ? confirmStopped(() => this.host.stopRun!(d.target, chatId), this.stopOpts) : Promise.resolve()
+  }
+
   tick() {
+    reconcileSteered(this.store, this.running.values(), this.steering)
     const pending = this.store.pending()
     const lanes = pending.map(d => {
       const group = this.groups?.groupOf(d)
@@ -81,13 +83,7 @@ export class ThreadRunner {
         },
         {
           value: d,
-          onError: async error => {
-            if (error instanceof LilBotError && error.code === 'thread_cancelled') this.store.setStatus(d.id, 'done')
-            else if (error instanceof LilBotError && TERMINAL.includes(error.code))
-              await (this.groups?.owns(d.threadId) ? this.groups.failed(d) : failExchange(this.store, this.waits, this.host, d, error))
-            else return false
-            return true
-          },
+          onError: error => handleDeliveryError(this.store, this.waits, this.host, this.groups, d, error),
           onFinally: () => {
             this.lines.delete(d.id)
             this.mark(d, false)
@@ -99,15 +95,21 @@ export class ThreadRunner {
   }
 
   private async run(d: Delivery) {
-    await this.host.requireBot(d.sender)
-    await this.host.requireBot(d.target)
     const work = this.store.workThread(d)
     const group = this.groups?.groupOf(d)
     const stopped = () => !!work && (group ? this.groups!.ended(group) : this.store.get(work).status === 'cancelled')
     const stillOn = () => {
       if (stopped()) throw new LilBotError('thread_cancelled', 'The exchange was stopped.')
     }
-    if (stopped() && d.chatId) await this.host.stopRun?.(d.target, d.chatId)
+    if (d.status === 'stopping') {
+      await this.stopConfirm(d)
+      stillOn()
+      await Promise.all([this.host.requireBot(d.sender), this.host.requireBot(d.target)])
+      const redirects = d.kind === 'request' ? this.store.redirectsAfter(d) : []
+      return void (await this.finish(d, redirects, { status: 'failed', text: 'Routine ended: unknown. Execution was not retried.', unknownReceipt: true }))
+    }
+    await Promise.all([this.host.requireBot(d.sender), this.host.requireBot(d.target)])
+    if (stopped() && d.chatId) await this.stopConfirm(d)
     stillOn()
     const thread = this.store.get(d.threadId)
     const sender = thread.participants.find(p => p.id === d.sender)?.name ?? 'a bot'
@@ -139,6 +141,10 @@ export class ThreadRunner {
       origin: { line: botLine },
       hiddenInput: true
     })
+    if (result.unknownReceipt) {
+      this.store.setStatus(d.id, 'stopping')
+      await this.stopConfirm(d)
+    }
     await this.finish(d, redirects, result)
   }
 

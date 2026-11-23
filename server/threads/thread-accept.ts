@@ -4,7 +4,6 @@ import { LilBotError } from '../../shared/lilbot-error'
 import type { BotThread } from '../../shared/thread-schema'
 import type { WebhookCapability } from '../../shared/webhook-schema'
 import type { WorkerDriverId } from '../../shared/worker-frame-schema'
-import { AMBIGUOUS, AMBIGUOUS_MATCH, type Match, NOT_SEEN } from './calling-chats'
 import { THREAD_LIMITS } from './thread-limits'
 import type { Delivery, ThreadStore } from './thread-store'
 
@@ -51,22 +50,37 @@ export function assertNarrowedAllowed(
     throw new LilBotError('capability_denied', 'A narrowed run cannot continue an exchange or group with broader access than its own.')
 }
 
-/** Resolves a caller's narrowed capabilities when this bot has any narrowed session active; fails closed if unplaced or ambiguous. */
-export async function narrowedCaller(
-  botId: string,
-  host: { hasNarrowed?(botId: string): boolean; sessionCapabilities?(botId: string, chatId: string | undefined): WebhookCapability[] | null },
-  place: () => Promise<Match>
-): Promise<WebhookCapability[] | null> {
-  if (!host.hasNarrowed?.(botId)) return null
-  const chatId = await place()
-  if (chatId === AMBIGUOUS_MATCH) throw new LilBotError('session_ambiguous', AMBIGUOUS)
-  if (!chatId) throw new LilBotError('session_unknown', NOT_SEEN)
-  return host.sessionCapabilities?.(botId, chatId) ?? null
+/** Reconciles `'steered'` deliveries whose owning turn is no longer active (e.g., after a crash or error):
+ *  cancelled/failed threads settle them `'done'`, others return them to `'pending'` so `ThreadRunner` delivers them. */
+export function reconcileSteered(store: ThreadStore, running: Iterable<Delivery>, steering: ReadonlySet<string>) {
+  const rows = store.db.query("SELECT * FROM thread_deliveries WHERE status='steered' ORDER BY rowid").all() as Delivery[]
+  if (!rows.length) return
+  const active = new Set<string>()
+  for (const r of running) {
+    const work = store.workThread(r)
+    if (work) active.add(`${work}\n${r.target}`)
+  }
+  const peers = store.pending()
+  for (const r of rows) {
+    if (steering.has(r.id) || active.has(`${r.threadId}\n${r.target}`)) continue
+    if (peers.some(p => p.target === r.target && store.workThread(p) === r.threadId)) continue
+    let status: string | null = null
+    try {
+      status = store.get(r.threadId).status
+    } catch {
+      status = 'failed'
+    }
+    store.setStatus(r.id, status === 'cancelled' || status === 'failed' ? 'done' : 'pending')
+  }
 }
 
 /** Intersection of capabilities across currently-live local narrowed deliveries for `botId`, or null when none are live.
  *  Remote workers (`computer` set) are excluded because they only reach `worker-mcp.ts` (scoped by `ctx.threadId`). */
-export function activeNarrowedCaps(store: ThreadStore, botId: string): WebhookCapability[] | null {
+export function activeNarrowedCaps(
+  store: ThreadStore,
+  botId: string,
+  sessionCaps?: (botId: string, chatId: string) => WebhookCapability[] | null | undefined
+): WebhookCapability[] | null {
   const rows = store.db.query("SELECT threadId, kind, sourceChat FROM thread_deliveries WHERE target=? AND status!='done'").all(botId) as Pick<
     Delivery,
     'threadId' | 'kind' | 'sourceChat'
@@ -77,7 +91,7 @@ export function activeNarrowedCaps(store: ThreadStore, botId: string): WebhookCa
   }
   for (const row of rows) {
     if (row.kind === 'answer' || row.kind === 'notice') {
-      const parent = store.narrowedForChat(botId, row.sourceChat)
+      const parent = sessionCaps ? sessionCaps(botId, row.sourceChat) : store.narrowedForChat(botId, row.sourceChat)
       if (parent === undefined) return []
       if (parent !== null) intersect(parent)
       continue

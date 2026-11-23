@@ -8,9 +8,11 @@ import type { BotPrefsStore } from './bots/bot-prefs-store'
 import type { BotService } from './bots/bot-service'
 import type { BotStore } from './bots/bot-store'
 import type { SessionRoot } from './bots/hidden-chats'
+import type { BotEngine } from './engines/bot-engine'
 import type { HistoryStore } from './history/history-store'
 import { pluginCall, SESSION_HEADER } from './http/engine-run-gate'
 import { RoutineScheduler } from './routines/routine-scheduler'
+import type { RoutineHost } from './routines/routine-service'
 import { serviceSessionRefusal } from './system/check-access'
 import { refusalFor } from './system/run-access'
 import type { CallingChats } from './threads/calling-chats'
@@ -51,6 +53,8 @@ interface WebhookDeps {
   webhookStore: WebhookStore
   messages: WebhookMessages
   bots: BotService
+  store: BotStore
+  engine: Pick<BotEngine, 'stopRun'>
   rootOf: SessionRoot
   calls: CallingChats
   token: string
@@ -62,8 +66,14 @@ interface WebhookDeps {
   repeat: (label: string, ms: number, task: () => void) => void
 }
 
-export function createWebhooks({ webhookStore, messages, bots, rootOf, calls, token, origin, t3Enabled, narrowed, observeRun, publish, repeat }: WebhookDeps) {
-  const webhooks = new WebhookService(webhookStore, bots, token, origin, () => publish({ event: 'webhooks.changed' }), Date.now, Boolean(t3Enabled))
+export function createWebhooks({ webhookStore, messages, bots, store, engine, rootOf, calls, token, origin, t3Enabled, narrowed, observeRun, publish, repeat }: WebhookDeps) {
+  const host: RoutineHost = {
+    requireBot: id => bots.requireBot(id),
+    runRoutine: (botId, prompt, options) => bots.runRoutine(botId, prompt, options),
+    openChat: (botId, chatId, onEvent, requireExisting) => bots.openChat(botId, chatId, onEvent, requireExisting),
+    stopRun: async (botId, chatId) => (await engine.stopRun?.(store.get(botId).engineBotId, chatId)) ?? false
+  }
+  const webhooks = new WebhookService(webhookStore, host, token, origin, () => publish({ event: 'webhooks.changed' }), Date.now, Boolean(t3Enabled))
   const callers = webhookCallers(webhookStore, rootOf, calls, narrowed)
   const scheduler = new RoutineScheduler(webhooks, observeRun)
   repeat('webhooks', 1000, () => scheduler.tick())
@@ -84,7 +94,7 @@ export function createWebhooks({ webhookStore, messages, bots, rootOf, calls, to
       return call ? refusalFor(callers.forChat(botId, request.headers.get(SESSION_HEADER) || undefined), call.tool, call.groups) : null
     },
     t3Refusal: async (botId: string, tool: string, args: unknown) => refusalFor(await callers.forCall(botId, tool, args), tool, ['coding']),
-    serviceRefusal: (checks: Pick<CheckSessions, 'checking' | 'isCheck'>) => serviceSessionRefusal(callers, checks, calls)
+    serviceRefusal: (checks: Pick<CheckSessions, 'checking' | 'isCheck'>) => serviceSessionRefusal(callers, checks)
   }
   return { webhooks, gates, webhookRuns: { callers, messages, callingChat: (botId: string, requestId: string) => calls.find(botId, 'lilbot_webhook_message', requestId) } }
 }

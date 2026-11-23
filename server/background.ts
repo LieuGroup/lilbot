@@ -1,4 +1,6 @@
 /** Guard timer callbacks, including returned promises. Never log arbitrary error payloads. */
+import { LilBotError } from '../shared/lilbot-error'
+
 export function backgroundTask(label: string, task: () => unknown): () => void {
   return () => {
     try {
@@ -44,5 +46,36 @@ export class RetryQueue<T = true> {
         return hooks?.onFinally?.()
       })
       .catch(() => backgroundFailure(`${this.label} cleanup`))
+  }
+}
+
+const STOP_CONFIRM_TIMEOUT_MS = 15_000
+const STOP_CONFIRM_POLL_MS = 500
+const GONE_CODES = new Set(['session_not_found', 'bot_not_found'])
+
+/** Confirms a session has no running turn after an unknown outcome or post-restart cancel: invokes `stopRun`
+ *  (which interrupts if running and returns `false` once idle) until it reports nothing running or confirms the
+ *  session/bot is gone. Throws `run_still_active` if still running after `timeoutMs` so the caller keeps the row
+ *  open (and gating armed) and retries on the next tick without ever re-submitting the turn. */
+export async function confirmStopped(
+  stopRun: (() => Promise<boolean>) | undefined,
+  opts: { timeoutMs?: number; pollMs?: number; now?: () => number; sleep?: (ms: number) => Promise<void> } = {}
+): Promise<void> {
+  if (!stopRun) return
+  const now = opts.now ?? Date.now
+  const sleep = opts.sleep ?? (ms => Bun.sleep(ms))
+  const timeoutMs = opts.timeoutMs ?? STOP_CONFIRM_TIMEOUT_MS
+  const pollMs = opts.pollMs ?? STOP_CONFIRM_POLL_MS
+  const deadline = now() + timeoutMs
+  for (;;) {
+    try {
+      if (!(await stopRun())) return
+    } catch (error) {
+      if (error instanceof LilBotError && GONE_CODES.has(error.code)) return
+      throw error
+    }
+    const left = deadline - now()
+    if (left <= 0) throw new LilBotError('run_still_active', 'Could not confirm the running turn stopped in time.')
+    await sleep(Math.min(pollMs, left))
   }
 }

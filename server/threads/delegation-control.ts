@@ -4,7 +4,7 @@ import { LilBotError } from '../../shared/lilbot-error'
 import { type BotThread, RedirectInput } from '../../shared/thread-schema'
 import { memoryRefusal, refuseUnsafe } from '../memory/memory-safety'
 import type { DelegationHost } from './delegation-service'
-import { assertNarrowedAllowed, narrowedCaller, withinNarrowed } from './thread-accept'
+import { assertNarrowedAllowed, withinNarrowed } from './thread-accept'
 import { steerText } from './thread-prompts'
 import type { ThreadService } from './thread-service'
 import { FINAL } from './thread-store'
@@ -14,8 +14,7 @@ type Pick = { exchangeIds?: string[]; batchId?: string }
 export class DelegationControl {
   constructor(
     private threads: ThreadService,
-    private host: DelegationHost,
-    private callingChat?: (botId: string, requestId: string) => Promise<string>
+    private host: DelegationHost
   ) {}
   private get store() {
     return this.threads.store
@@ -35,10 +34,8 @@ export class DelegationControl {
     return threads
   }
 
-  private callerCapabilities(botId: string, raw: unknown, requestId?: string) {
-    return narrowedCaller(botId, this.host, () =>
-      this.host.callingDelegation ? this.host.callingDelegation(botId, raw) : requestId && this.callingChat ? this.callingChat(botId, requestId) : Promise.resolve(null)
-    )
+  private callerCapabilities(botId: string, raw: unknown) {
+    return this.host.callerCapabilities?.(botId, 'lilbot_delegation', raw) ?? Promise.resolve(null)
   }
 
   async status(botId: string, pick: Pick, callArgs?: unknown) {
@@ -84,7 +81,7 @@ export class DelegationControl {
     const input = RedirectInput.parse(raw)
     const caller = await this.host.requireBot(botId)
     const [thread] = this.mine(botId, { exchangeIds: [input.exchangeId] })
-    assertNarrowedAllowed(await this.callerCapabilities(botId, callArgs ?? { action: 'redirect', ...raw }, input.requestId), { existing: thread })
+    assertNarrowedAllowed(await this.callerCapabilities(botId, callArgs ?? { action: 'redirect', ...raw }), { existing: thread })
     const prior = this.store.delivery(`${botId}:${input.requestId}`)
     if (prior) return { exchangeId: thread.id, applied: prior.status === 'steered' ? 'now' : 'queued' }
     if (thread.status !== 'waiting' && thread.status !== 'working')
@@ -103,10 +100,17 @@ export class DelegationControl {
     })
     this.threads.changed()
     if (!running?.chatId || !this.host.steerRun) return { exchangeId: thread.id, applied: thread.status === 'waiting' ? 'with the task' : 'next turn' }
-    this.store.setStatus(d.id, 'steered')
-    const steered = await this.host.steerRun(receiver.id, running.chatId, steerText(caller.name, thread.id, d.id, input.message, thread.worker)).catch(() => 'not_running' as const)
-    if (steered !== 'steered') this.store.setStatus(d.id, 'pending')
-    return { exchangeId: thread.id, applied: steered === 'steered' ? 'now' : 'next turn' }
+    this.threads.runner.steering.add(d.id)
+    try {
+      this.store.setStatus(d.id, 'steered')
+      const steered = await this.host
+        .steerRun(receiver.id, running.chatId, steerText(caller.name, thread.id, d.id, input.message, thread.worker))
+        .catch(() => 'not_running' as const)
+      if (steered !== 'steered') this.store.setStatus(d.id, 'pending')
+      return { exchangeId: thread.id, applied: steered === 'steered' ? 'now' : 'next turn' }
+    } finally {
+      this.threads.runner.steering.delete(d.id)
+    }
   }
 
   /** Never holds the call open: each answer still arrives on its own, and the bot is told once all are in. */

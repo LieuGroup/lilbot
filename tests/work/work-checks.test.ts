@@ -133,3 +133,24 @@ test('after a restart the open check runs again with the same run id, so the eng
   restarted.tick()
   expect(f.state.runs.map(run => run.runId)).toEqual([`check-${item.id}:check:1`, `check-${item.id}:check:1`])
 })
+
+test('a verdict replay checks the calling check session before returning the item view', async () => {
+  const f = fixture()
+  const item = await finish(f)
+  const verified = await check(f, item.id, 'verified', [proof])
+  expect(verified.status).toBe('done')
+  const replay = { requestId: `v-${item.id}:check:1`, itemId: item.id, verdict: 'verified' as const, result: 'I read version 7', evidence: [proof] }
+  // A non-check conversation (such as a main chat or narrowed session) cannot replay a past verdict to read the item.
+  f.state.chats.set('b', 'b-main')
+  expect(await refusal(f.work.act('b', replay))).toBe('work_forbidden')
+  // A different check session of the same bot cannot replay the earlier check's verdict either.
+  const other = await finish(f)
+  f.checkRuns.tick()
+  await Bun.sleep(1)
+  const otherCheck = f.work.checks.open(other.id)!
+  f.state.chats.set('b', `check-${otherCheck.id}-session`)
+  expect(await refusal(f.work.act('b', replay))).toBe('work_forbidden')
+  // The original check session itself can still retry its own verdict idempotently.
+  f.state.chats.set('b', `check-${item.id}:check:1-session`)
+  expect((await f.work.act('b', replay)).id).toBe(item.id)
+})
