@@ -161,7 +161,8 @@ export function createAppServices(
   })
   const calls = new CallingChats()
   const observeRun = (event: ActivityEvent) => store.exists(event.botId) && activity.observe(event)
-  const { webhooks, webhookRuns, gates } = createWebhooks({ webhookStore, messages, bots, rootOf, calls, token, origin: HOOK_ORIGIN, t3Enabled, observeRun, publish, repeat })
+  const hookDeps = { webhookStore, messages, bots, rootOf, calls, token, origin: HOOK_ORIGIN, t3Enabled, narrowed: threadStore }
+  const { webhooks, webhookRuns, gates } = createWebhooks({ ...hookDeps, observeRun, publish, repeat })
   const runs = { threadStore, routineStore, webhookStore, rootOf, goalStore: new GoalStore(database), reviewModel: mem.reviewModel }
   const remoteWork = remoteWorkAnswers(threadStore, () => ({
     computerOnline: id => computers.list().some(c => c.id === id && c.online && !c.keyConflict),
@@ -177,14 +178,14 @@ export function createAppServices(
   const mcp = createConnections({ ...connBase, ...connBots, t3Refusal: gates.t3Refusal, serviceRefusal: gates.serviceRefusal(checkSessions), publish, repeat })
   const rwDeps = { database, computers, store, memory, skills, computersChanged: () => publish({ event: 'computers.changed' }) }
   const remoteWorkers = createRemoteWorkers({ ...rwDeps, handleMcp: (ctx, body) => system.workerMcp(ctx, body) })
-  const threadCore = { engine, store, prefs, bots, workspaces, history, activity, threadStore, calls, work: links }
+  const threadCore = { engine, store, prefs, bots, workspaces, history, activity, threadStore, calls, work: links, callers: webhookRuns.callers, t3Enabled }
   const { threads, delegation } = createThreads({ ...threadCore, memory, library, root: WORKSPACES_DIR, rootOf, remoteWorkers, publish, botsChanged, memoryChanged })
   const routines = new RoutineService(routineStore, bots, () => publish({ event: 'routines.changed' }), routineSettings(process.env))
   const { goals, boards } = createGoals({ goalStore: runs.goalStore, work, answers, threads, routines, activity, store, publish, repeat })
   const giveFile = giveFrom(library, calls, threadStore, routineStore, webhookStore, rootOf)
   const core = { ...facts, bots, activity, memory, memoryChanged, skills, delegation, work, goals, routines, giveFile, library }
   const extra = { webhooks, webhookRuns, connections: mcp.services, calls, checkSessions, changes: new SystemChanges(database), engineToken: token, port: PORT }
-  const system = createSystemServer({ ...core, ...extra })
+  const system = createSystemServer({ ...core, ...extra, workerAllowMemory: id => threadStore.allowsWorkerMemory(id) })
   repeat('threads', 1000, () => threads.tick())
   repeat('work answers', 1000, () => answers.tick())
   repeat('work checks', 1000, () => checks.tick())

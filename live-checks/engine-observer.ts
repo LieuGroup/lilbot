@@ -1,8 +1,11 @@
 /** Hermes' own view of a conversation, read over connections of the check's own: which model answered each turn, what
  *  the session reports, what compaction announced. Lets a check prove behaviour LilBot's chat events do not carry. */
 import { Database } from 'bun:sqlite'
+import assert from 'node:assert/strict'
 import { join } from 'node:path'
+import { botCapability } from '../server/bots/bot-capability'
 import { HermesSocket } from '../server/engines/hermes/hermes-socket'
+import { SESSION_HEADER } from '../server/http/engine-run-gate'
 import { type RestartServer, waitFor } from './restart-server'
 
 export interface Answer {
@@ -81,4 +84,25 @@ export async function observeChat(server: RestartServer, native: string, chatId:
       return answers.at(-1)!
     }
   }
+}
+
+/** Confirms `/engine/computers/*` and mutating legacy engine routes refuse a check session while another session passes. */
+export async function assertCheckEngineRefusals(port: number, token: string, botId: string, checkChat: string, allowedChat: string) {
+  const post = (path: string, body: object, session: string) =>
+    fetch(`http://127.0.0.1:${port}${path}`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'x-lilbot-bot-capability': botCapability(token, botId), [SESSION_HEADER]: session },
+      body: JSON.stringify(body)
+    }).then(r => r.status)
+  const exec = { computer: 'leader', requestId: 'check-probe', operation: { kind: 'exec', command: 'echo check-probe' } }
+  const badBot = { requestId: 'check-bot', name: 'Bad', function: 'x', instructions: 'x' }
+  assert.deepEqual(
+    await Promise.all([
+      post('/engine/computers/list', {}, checkChat),
+      post('/engine/computers/submit', exec, checkChat),
+      post('/engine/bots/create', badBot, checkChat),
+      post('/engine/computers/list', {}, allowedChat)
+    ]),
+    [422, 422, 422, 200]
+  )
 }

@@ -41,7 +41,7 @@ export class WorkChecks {
   hold(item: StoredItem, level: number, report: Report, at: number): ItemChange {
     const requestId = report.requestId ?? null
     // A webhook run's claim is never repeated by a bot: Oscar checks it (`webhook-items.ts`).
-    if (level >= 3 || fromWebhook(item.origin)) {
+    if (level >= 3 || fromWebhook(item.origin, this.work.host.isNarrowedOrigin)) {
       this.checks.add(item.id, OSCAR, requestId, null, at)
       return { status: 'needs_oscar', question: OSCAR_QUESTION, finishedAt: null }
     }

@@ -55,11 +55,6 @@ export const readsBeyondOwn = (owner: (itemId: string) => string | undefined) =>
   return mine === false || Boolean(goals) || goalId !== undefined || (itemId !== undefined && owner(String(itemId)) !== botId)
 }
 
-/** Whether a call to LilBot's own server needs a webhook session check (`RUN_TOOLS` pass unless reading beyond own items). */
-export function needsWebhookCheck(botId: string, tool: string, args: unknown, beyondOwn: (botId: string, tool: string, args: unknown) => boolean): boolean {
-  return !RUN_TOOLS.includes(tool) || beyondOwn(botId, tool, args)
-}
-
 /** Refusal for LilBot's own tool given the session's webhook capabilities (`allowed`, null when not a webhook run). */
 export function runRefusalForChat(
   allowed: WebhookCapability[] | null,

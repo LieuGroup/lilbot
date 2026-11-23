@@ -1,7 +1,8 @@
 import type { Database } from 'bun:sqlite'
 import { LilBotError } from '../../shared/lilbot-error'
 import type { BotThread, ThreadMessage } from '../../shared/thread-schema'
-import { type Accept, acceptDelivery, assertNotWorker, WORK } from './thread-accept'
+import type { WebhookCapability } from '../../shared/webhook-schema'
+import { type Accept, acceptDelivery, activeNarrowedCaps, assertNotWorker, WORK } from './thread-accept'
 import { THREAD_LIMITS } from './thread-limits'
 
 /** request, redirect and oscar (his answer to its question on its work item) are work for the receiver; answer is a reply back; notice is LilBot's own word.
@@ -89,6 +90,37 @@ export class ThreadStore {
   }
   isInternal(chatId: string) {
     return !!this.db.query('SELECT 1 FROM thread_chats WHERE chat_id=?').get(chatId)
+  }
+  /** Whether a worker thread's narrowed capabilities permit memory access (unrestricted or includes `memory`; unknown fails closed). */
+  allowsWorkerMemory(threadId: string): boolean {
+    try {
+      const caps = this.get(threadId).capabilities
+      return !caps || caps.includes('memory')
+    } catch {
+      return false
+    }
+  }
+  /** Whether a thread/worker/group carries narrowed capabilities (unknown fails closed). */
+  isNarrowed(threadId: string): boolean {
+    const row = this.db.query("SELECT json_type(data, '$.capabilities') AS t FROM threads WHERE id=?").get(threadId) as { t: string | null } | null
+    return !row || row.t === 'array'
+  }
+  /** Whether this bot has any thread/worker/group session carrying narrowed capabilities. */
+  hasNarrowed(botId: string): boolean {
+    return !!this.db.query("SELECT 1 FROM thread_chats c JOIN threads t ON t.id=c.thread_id WHERE c.bot_id=? AND json_type(t.data, '$.capabilities')='array' LIMIT 1").get(botId)
+  }
+  activeNarrowedCaps(botId: string): WebhookCapability[] | null {
+    return activeNarrowedCaps(this, botId)
+  }
+  /** Narrowed capabilities of a thread session (following compression), null if unrestricted, undefined if lineage unreadable. */
+  narrowedForChat(botId: string, chatId: string): WebhookCapability[] | null | undefined {
+    const direct = this.directContext(botId, chatId)
+    if (direct) return this.get(direct.thread_id).capabilities ?? null
+    if (!this.rootOf) return null
+    const root = this.rootOf(botId, chatId)
+    if (root === null) return undefined
+    const hit = root !== chatId ? this.directContext(botId, root) : null
+    return hit ? (this.get(hit.thread_id).capabilities ?? null) : null
   }
   delivery(id: string): Delivery | null {
     return this.db.query('SELECT * FROM thread_deliveries WHERE id=?').get(id) as Delivery | null

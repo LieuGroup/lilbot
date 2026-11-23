@@ -1,6 +1,9 @@
 import { expect, test } from 'bun:test'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { retire } from '../../helper/retire'
-import { uninstallPlan } from '../../helper/service'
+import { uninstallPlan, uninstallService } from '../../helper/service'
 import { assertBakedDoor, type HelperSettings } from '../../helper/settings'
 import { type LinkPorts, link } from '../../helper/setup'
 import type { SetupWindow } from '../../helper/setup-window'
@@ -41,12 +44,71 @@ test('retiring removes the identity before the service, so an interrupted remova
   expect(order).toEqual(['identity', 'service'])
 })
 
-test('uninstall boots out by label before removing the plist; systemd disables, removes the unit, then stops last; none is required', () => {
+test('uninstall removes the plist before booting out by label on macOS; systemd disables, removes the unit, then stops last; none is required', () => {
   const mac = uninstallPlan(true, 501, '/agents/info.lilbot.helper.plist')
-  expect(mac).toEqual([{ args: ['launchctl', 'bootout', 'gui/501/info.lilbot.helper'] }, { remove: '/agents/info.lilbot.helper.plist' }])
+  expect(mac).toEqual([{ remove: '/agents/info.lilbot.helper.plist' }, { args: ['launchctl', 'bootout', 'gui/501/info.lilbot.helper'] }])
+  expect(mac.every(step => 'remove' in step || !step.required)).toBe(true)
   const linux = uninstallPlan(false, 1000, '/units/lilbot-helper.service')
   expect(linux.map(step => ('remove' in step ? 'remove' : step.args[2]))).toEqual(['disable', 'remove', 'daemon-reload', 'stop'])
   expect(linux.every(step => 'remove' in step || !step.required)).toBe(true)
+})
+
+test('macOS retirement deletes identity and LaunchAgent plist before launchctl bootout can kill the helper', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'helper-mac-retire-'))
+  try {
+    const identity = join(root, 'identity.json')
+    const plist = join(root, 'Library/LaunchAgents/info.lilbot.helper.plist')
+    mkdirSync(join(root, 'Library/LaunchAgents'), { recursive: true })
+    writeFileSync(identity, '{}')
+    writeFileSync(plist, '<plist/>')
+    const seen: { args: string[]; identityGone: boolean; plistGone: boolean }[] = []
+    await expect(
+      retire({
+        removeIdentity: () => rmSync(identity, { force: true }),
+        uninstall: () =>
+          uninstallService({
+            mac: true,
+            home: root,
+            uid: 501,
+            command: async args => {
+              seen.push({ args, identityGone: !existsSync(identity), plistGone: !existsSync(plist) })
+              throw new Error('terminated by launchctl bootout')
+            }
+          })
+      })
+    ).rejects.toThrow('terminated by launchctl bootout')
+    expect(seen).toEqual([{ args: ['launchctl', 'bootout', 'gui/501/info.lilbot.helper'], identityGone: true, plistGone: true }])
+    expect(existsSync(identity)).toBe(false)
+    expect(existsSync(plist)).toBe(false)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('macOS plain terminal uninstall removes the plist, boots out by label, and retains local identity', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'helper-mac-uninstall-'))
+  try {
+    const identity = join(root, 'identity.json')
+    const plist = join(root, 'Library/LaunchAgents/info.lilbot.helper.plist')
+    mkdirSync(join(root, 'Library/LaunchAgents'), { recursive: true })
+    writeFileSync(identity, '{}')
+    writeFileSync(plist, '<plist/>')
+    const calls: string[][] = []
+    await uninstallService({
+      mac: true,
+      home: root,
+      uid: 501,
+      command: async args => {
+        expect(existsSync(plist)).toBe(false)
+        calls.push(args)
+      }
+    })
+    expect(calls).toEqual([['launchctl', 'bootout', 'gui/501/info.lilbot.helper']])
+    expect(existsSync(plist)).toBe(false)
+    expect(existsSync(identity)).toBe(true)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })
 
 test('a baked helper installs only at its own door', () => {

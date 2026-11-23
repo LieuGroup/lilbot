@@ -4,21 +4,19 @@ import type { ChatItem } from '../../shared/chat-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import { RetryQueue } from '../background'
 import { botLine } from '../devices/origin-line'
-import type { RoutineOptions } from '../engines/bot-engine'
 import { memoryRefusal } from '../memory/memory-safety'
 import { sendFiles } from './exchange-files'
 import type { GroupRounds } from './group-rounds'
 import { failExchange, turnFailure } from './thread-failure'
 import type { ThreadFiles } from './thread-files'
 import { canStartDelivery, isReply, THREAD_LIMITS } from './thread-limits'
-import { answerPrompt, replyText, workPrompt, workRunOptions } from './thread-prompts'
+import { deliveryPrompt, type NarrowedHost, replyText, type ThreadRunOptions, workRunOptions } from './thread-prompts'
 import { isSoleRunningWorker } from './thread-roster'
 import { type Delivery, isWork, type ThreadStore } from './thread-store'
 import type { ThreadWaits } from './thread-waits'
 
 type RunResult = { status: string; text: string; items?: ChatItem[]; unknownReceipt?: true; failureReason?: string }
-type ThreadRunOptions = RoutineOptions & { computer?: string; cwd?: string; threadId?: string; engine?: import('../../shared/worker-frame-schema').WorkerDriverId }
-export interface RunnerHost {
+export interface RunnerHost extends NarrowedHost {
   requireBot(id: string): Promise<{ id: string; name: string }>
   runRoutine(botId: string, prompt: string, options: ThreadRunOptions): Promise<RunResult>
   folder?(botId: string): Promise<string>
@@ -119,12 +117,8 @@ export class ThreadRunner {
     }
     const redirects = d.kind === 'request' ? this.store.redirectsAfter(d) : []
     const files = this.files.forMessage(d.id)
-    const prompt = PREPARED.includes(d.kind)
-      ? d.text
-      : d.kind === 'answer'
-        ? answerPrompt(thread, sender, d.text, files, this.waits.foldedInto(d.id))
-        : workPrompt(d, thread, sender, files, redirects)
     const toWork = !isReply(d.kind)
+    const prompt = deliveryPrompt(d, thread, sender, files, redirects, this.waits.foldedInto(d.id), PREPARED.includes(d.kind), toWork, this.host.narrowedAccess)
     const workSession = toWork ? this.store.session(d.threadId, d.target) : undefined
     const internal = toWork || !!this.store.context(d.target, d.sourceChat)
     if (work && !group) this.store.update(work, t => t.status !== 'working' && Object.assign(t, { status: 'working', startedAt: Date.now(), endedAt: null, failure: undefined }))
@@ -132,7 +126,7 @@ export class ThreadRunner {
     const result = await this.host.runRoutine(d.target, prompt, {
       runId: `thread-${d.id}`,
       chatId: toWork ? workSession : d.sourceChat,
-      ...workRunOptions(thread, toWork, workSession),
+      ...workRunOptions(thread, toWork, workSession, this.host.narrowedAccess),
       onChat: id => {
         stillOn()
         this.store.attach(d, d.target, id, internal)

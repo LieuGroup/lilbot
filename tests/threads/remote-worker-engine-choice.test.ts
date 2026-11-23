@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createRemoteWorkers } from '../../server/app-remote-workers'
 import { DelegationService } from '../../server/threads/delegation-service'
-import { answerPrompt, workPrompt, workRunOptions } from '../../server/threads/thread-prompts'
+import { deliveryPrompt, workRunOptions } from '../../server/threads/thread-prompts'
 import { ThreadService } from '../../server/threads/thread-service'
 import { ThreadStore } from '../../server/threads/thread-store'
 import type { WorkerAgentInfo, WorkerDriverId } from '../../shared/worker-frame-schema'
@@ -87,8 +87,8 @@ test('hermes bot falls back to claude-code on a claude-only computer, tells the 
   expect(thread.workerEngineFallbackFrom).toBe('hermes')
   expect(workRunOptions(thread, true)).toMatchObject({ engine: 'claude-code' })
   const d = f.threadStore.pending()[0]
-  expect(workPrompt(d, thread, 'Dev Bot', [], [])).toContain('using engine "claude-code"')
-  expect(answerPrompt(thread, 'Dev Bot', 'done', [], null)).toContain('using engine "claude-code", fell back from "hermes"')
+  expect(deliveryPrompt(d, thread, 'Dev Bot', [], [], null, false, true)).toContain('using engine "claude-code"')
+  expect(deliveryPrompt({ ...d, kind: 'answer', text: 'done' }, thread, 'Dev Bot', [], [], null, false, false)).toContain('using engine "claude-code", fell back from "hermes"')
 
   // Continuation keeps claude-code even if hermes later becomes supported on that computer.
   f.updateAgents([

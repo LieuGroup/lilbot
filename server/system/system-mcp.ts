@@ -49,8 +49,9 @@ export function createSystemMcp(options: SystemMcpOptions) {
     const refused = await options.refusal(caller.id, tool.name, message.params?.arguments)
     if (refused) return refusedResult(message.id, refused)
     try {
-      const args = tool.input.parse(message.params?.arguments ?? {}) as Record<string, unknown>
-      const result = await tool.run(caller.id, args)
+      const rawArgs = message.params?.arguments ?? {}
+      const args = tool.input.parse(rawArgs) as Record<string, unknown>
+      const result = await tool.run(caller.id, args, rawArgs)
       if (!(typeof tool.readOnly === 'function' ? tool.readOnly(args) : tool.readOnly)) {
         const target = [(result as { id?: unknown } | undefined)?.id, args.botId, args.factId].find(value => typeof value === 'string') ?? ''
         const fields = Object.keys(args).filter(key => !['botId', 'factId', 'requestId'].includes(key))

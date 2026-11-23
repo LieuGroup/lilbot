@@ -1,6 +1,9 @@
 /** What a bot is told when a delegation or worker reaches it. Bot text is untrusted data: always JSON-quoted in a named fence. */
 import type { ChatItem } from '../../shared/chat-schema'
 import type { BotThread } from '../../shared/thread-schema'
+import type { WebhookCapability } from '../../shared/webhook-schema'
+import type { WorkerDriverId } from '../../shared/worker-frame-schema'
+import type { RoutineOptions } from '../engines/bot-engine'
 import { fenced } from '../memory/memory-safety'
 import type { FileRow } from './thread-files'
 import { THREAD_LIMITS } from './thread-limits'
@@ -32,7 +35,7 @@ function workerPrompt(d: Delivery, thread: BotThread, sender: string, files: Fil
 }
 
 /** A request or redirect for the receiver, with redirects queued behind it before it started. */
-export function workPrompt(d: Delivery, thread: BotThread, sender: string, files: FileRow[], redirects: Delivery[]) {
+function workPrompt(d: Delivery, thread: BotThread, sender: string, files: FileRow[], redirects: Delivery[]) {
   if (thread.worker) return workerPrompt(d, thread, sender, files, redirects)
   const head = d.kind === 'redirect' ? 'Redirect' : 'Message request'
   const later = redirects.map(r => `\nRedirect from ${JSON.stringify(sender)}, sent after the request above; it changes the task:\n${fence(r.text)}`).join('')
@@ -42,7 +45,7 @@ export function workPrompt(d: Delivery, thread: BotThread, sender: string, files
   return `${head} from bot ${JSON.stringify(sender)} in exchange ${thread.id}. ${UNTRUSTED}\n${fence(d.text)}${later}${filesLine(sender, files)}${item}\nDo the requested work and answer in your final response. LilBot sends it back automatically. To send files back with your answer, call lilbot_delegation with action attach and exchangeId ${thread.id} before you finish. You may hand work on with lilbot_delegate; do not poll or wait for an answer.`
 }
 
-export function answerPrompt(thread: BotThread, sender: string, text: string, files: FileRow[], allIn: string | null) {
+function answerPrompt(thread: BotThread, sender: string, text: string, files: FileRow[], allIn: string | null) {
   const done = allIn ? `\nLilBot: this was the last of the tasks you were waiting for. All are in: ${allIn}.` : ''
   if (thread.worker) {
     const fallback = thread.workerEngineFallbackFrom ? `, fell back from ${JSON.stringify(thread.workerEngineFallbackFrom)}` : ''
@@ -91,11 +94,44 @@ export function replyText(items: ChatItem[], clamp?: { exchangeId: string; hard:
   return `${cut}${note}`
 }
 
-/** Extra `runRoutine` options for a work turn: remote target, plus model/effort on first start (and remote continuations). */
-export function workRunOptions(thread: BotThread, toWork: boolean, workSession?: string) {
+export type NarrowedAccess = (capabilities: WebhookCapability[]) => { toolsets: string[]; prompt: string }
+export type ThreadRunOptions = RoutineOptions & {
+  computer?: string
+  cwd?: string
+  threadId?: string
+  engine?: WorkerDriverId
+  capabilities?: WebhookCapability[]
+}
+export interface NarrowedHost {
+  sessionCapabilities?(botId: string, chatId: string): WebhookCapability[] | null
+  hasNarrowed?(botId: string): boolean
+  narrowedAccess?: NarrowedAccess
+}
+
+/** Extra `runRoutine` options for a work turn: remote target, narrowed toolsets/capabilities, plus model/effort on first start (and remote continuations). */
+export function workRunOptions(thread: BotThread, toWork: boolean, workSession?: string, narrowedAccess?: NarrowedAccess) {
   if (!toWork) return {}
+  const access = thread.capabilities && narrowedAccess ? narrowedAccess(thread.capabilities) : undefined
   return {
     ...(thread.computer ? { computer: thread.computer, cwd: thread.cwd, threadId: thread.id, ...(thread.workerEngine ? { engine: thread.workerEngine } : {}) } : {}),
+    ...(thread.capabilities ? { capabilities: thread.capabilities } : {}),
+    ...(!thread.computer && access ? { toolsets: access.toolsets } : {}),
     ...(!workSession || thread.computer ? { ...(thread.model ? { model: thread.model } : {}), ...(thread.reasoningEffort ? { reasoningEffort: thread.reasoningEffort } : {}) } : {})
   }
+}
+
+/** Builds the prompt for a delivery and appends the narrowed-run tool note when the exchange or group carries narrowed capabilities. */
+export function deliveryPrompt(
+  d: Delivery,
+  thread: BotThread,
+  sender: string,
+  files: FileRow[],
+  redirects: Delivery[],
+  allIn: string | null,
+  prepared: boolean,
+  toWork: boolean,
+  narrowedAccess?: NarrowedAccess
+) {
+  const base = prepared ? d.text : d.kind === 'answer' ? answerPrompt(thread, sender, d.text, files, allIn) : workPrompt(d, thread, sender, files, redirects)
+  return toWork && thread.capabilities && narrowedAccess ? `${base}\n${narrowedAccess(thread.capabilities).prompt}` : base
 }

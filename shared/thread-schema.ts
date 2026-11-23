@@ -2,6 +2,7 @@
 import { z } from 'zod'
 import { BotModel, ReasoningEffort } from './bot-schema'
 import type { ChatItem } from './chat-schema'
+import type { WebhookCapability } from './webhook-schema'
 import { WorkerDriverId } from './worker-frame-schema'
 
 const text = z.string().trim().min(1).max(20_000)
@@ -178,6 +179,8 @@ export interface BotThread {
   workerEngine?: WorkerDriverId
   /** Engine the bot runs on when this remote worker had to fall back to another engine. */
   workerEngineFallbackFrom?: string
+  /** Capability grant carried from a narrowed calling run; absent means unrestricted. */
+  capabilities?: WebhookCapability[]
   /** Present when the thread is a temporary group rather than an exchange between two bots. */
   group?: ThreadGroup
 }

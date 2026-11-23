@@ -17,7 +17,7 @@ import { connectionKey } from '../server/connections/connection-keys'
 import { SYSTEM_KEY_PURPOSE, SYSTEM_PATH } from '../server/system/system-connection'
 import { checkClient } from './check-client'
 import { deleteProfile, startServer } from './check-process'
-import { afterRun, pauseResumeDelete } from './webhook-session-checks'
+import { afterRun, createDelegationHook, delegationOnlyCheck, pauseResumeDelete } from './webhook-session-checks'
 import { createHook, ENGINE_TOOLS, fromServer, githubDelivery, has, PAGE, serverUp, sessionTools, waitFor } from './webhook-run-tools'
 
 const root = devScratch('lilbot-webhooks')
@@ -39,8 +39,7 @@ const server = startServer({
   LILBOT_REVIEW_TURNS: '1000',
   LILBOT_REVIEW_QUIET_SECONDS: '100000'
 })
-const CODEWORD = `kestrel-${randomBytes(3).toString('hex')}`
-const CODEWORD_FILE = 'webhook-guide.txt'
+const [CODEWORD, CODEWORD_FILE] = [`kestrel-${randomBytes(3).toString('hex')}`, 'webhook-guide.txt']
 const done = (status: string) => ['completed', 'failed', 'stopped'].includes(status)
 const frames: { at: number; frame: any }[] = []
 let socket: WebSocket | undefined
@@ -48,9 +47,8 @@ let db: Database | undefined
 let nativeId: string | undefined
 try {
   await serverUp(port)
-  const client = await checkClient(port, frame => frames.push({ at: Date.now(), frame }))
-  socket = client.socket
-  const call = client.call
+  const { socket: ws, call } = await checkClient(port, frame => frames.push({ at: Date.now(), frame }))
+  socket = ws
   const bot = await call('bots.create', {
     name: `Webhook check ${Date.now()}`,
     function: 'Tests webhooks',
@@ -77,11 +75,12 @@ try {
     return result
   }
   const hook = await tool('lilbot_webhook', createHook(CODEWORD_FILE))
+  const delHook = await tool('lilbot_webhook', createDelegationHook())
   const address = new URL(hook.address)
   assert.ok(address.origin === door, 'the address is not on the dev helper door')
   const secret: string = hook.signingSecret
   const deliver = githubDelivery(address, secret)
-  const runs = async () => (await call('webhooks.list', { botId: bot.id }))[0]?.runs ?? []
+  const runs = async () => (await call('webhooks.list', { botId: bot.id })).find((w: { id: string }) => w.id === hook.id)?.runs ?? []
   const count = (sql: string, ...args: string[]) => (db!.query(sql).get(...args) as { n: number }).n
   const messageState = (runId: string) => (db!.query('SELECT message_state AS s FROM webhook_runs WHERE id = ?').get(runId) as { s: string | null }).s
 
@@ -182,10 +181,10 @@ try {
   const history = JSON.stringify(await call('chat.history', { botId: bot.id }))
   assert.ok(!history.includes('Webhook run (not a message from Oscar)'), 'a webhook session reached the main conversation')
   console.log('ok: a burst of three events was handled in one run; no webhook session entered the main conversation')
-
+  await delegationOnlyCheck({ call, db, token, port, botId: bot.id, nativeId, frames }, delHook, door, githubDelivery, sessionTools, ENGINE_TOOLS)
   await pauseResumeDelete(call, deliver, door, bot.id, hook)
-  assert.equal(count('SELECT COUNT(*) AS n FROM webhook_runs'), 3)
-  console.log('ok: pause refused at once, resume accepted again, delete ended the address (same 404 as an unknown one) before its event ran')
+  assert.equal(count('SELECT COUNT(*) AS n FROM webhook_runs'), 4)
+  console.log('ok: delegation-only narrowing (computer refused, worker carried limits) and pause/resume/delete passed')
 } finally {
   socket?.close()
   server.kill()

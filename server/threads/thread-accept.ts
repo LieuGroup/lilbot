@@ -2,7 +2,9 @@
 import type { BotModel, ReasoningEffort } from '../../shared/bot-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import type { BotThread } from '../../shared/thread-schema'
+import type { WebhookCapability } from '../../shared/webhook-schema'
 import type { WorkerDriverId } from '../../shared/worker-frame-schema'
+import { AMBIGUOUS, AMBIGUOUS_MATCH, type Match, NOT_SEEN } from './calling-chats'
 import { THREAD_LIMITS } from './thread-limits'
 import type { Delivery, ThreadStore } from './thread-store'
 
@@ -25,9 +27,66 @@ export interface Accept {
   cwd?: string
   workerEngine?: WorkerDriverId
   workerEngineFallbackFrom?: string
+  capabilities?: WebhookCapability[]
 }
 type Bot = { id: string; name: string }
 export const WORK = "kind IN ('request','redirect','oscar')"
+
+/** Whether a narrowed run's capabilities cover an existing exchange or group (true when unrestricted). */
+export function withinNarrowed(capabilities: WebhookCapability[] | null | undefined, existing: Pick<BotThread, 'computer' | 'capabilities'>): boolean {
+  if (!capabilities) return true
+  if (existing.computer && !capabilities.includes('computers')) return false
+  return existing.capabilities !== undefined && !existing.capabilities.some(c => !capabilities.includes(c))
+}
+
+/** Refuses a narrowed run from naming a computer or worker engine without `computers`, or entering a broader exchange/group. */
+export function assertNarrowedAllowed(
+  capabilities: WebhookCapability[] | null | undefined,
+  opts: { computer?: string; engine?: string; existing?: Pick<BotThread, 'computer' | 'capabilities'> }
+) {
+  if (!capabilities) return
+  if ((opts.computer || opts.engine || opts.existing?.computer) && !capabilities.includes('computers'))
+    throw new LilBotError('capability_denied', 'A narrowed run cannot delegate to a computer or choose a worker engine without the "computers" capability.')
+  if (opts.existing && !withinNarrowed(capabilities, opts.existing))
+    throw new LilBotError('capability_denied', 'A narrowed run cannot continue an exchange or group with broader access than its own.')
+}
+
+/** Resolves a caller's narrowed capabilities when this bot has any narrowed session active; fails closed if unplaced or ambiguous. */
+export async function narrowedCaller(
+  botId: string,
+  host: { hasNarrowed?(botId: string): boolean; sessionCapabilities?(botId: string, chatId: string | undefined): WebhookCapability[] | null },
+  place: () => Promise<Match>
+): Promise<WebhookCapability[] | null> {
+  if (!host.hasNarrowed?.(botId)) return null
+  const chatId = await place()
+  if (chatId === AMBIGUOUS_MATCH) throw new LilBotError('session_ambiguous', AMBIGUOUS)
+  if (!chatId) throw new LilBotError('session_unknown', NOT_SEEN)
+  return host.sessionCapabilities?.(botId, chatId) ?? null
+}
+
+/** Intersection of capabilities across currently-live local narrowed deliveries for `botId`, or null when none are live.
+ *  Remote workers (`computer` set) are excluded because they only reach `worker-mcp.ts` (scoped by `ctx.threadId`). */
+export function activeNarrowedCaps(store: ThreadStore, botId: string): WebhookCapability[] | null {
+  const rows = store.db.query("SELECT threadId, kind, sourceChat FROM thread_deliveries WHERE target=? AND status!='done'").all(botId) as Pick<
+    Delivery,
+    'threadId' | 'kind' | 'sourceChat'
+  >[]
+  let caps: WebhookCapability[] | null = null
+  const intersect = (next: WebhookCapability[]) => {
+    caps = caps === null ? [...next] : caps.filter(c => next.includes(c))
+  }
+  for (const row of rows) {
+    if (row.kind === 'answer' || row.kind === 'notice') {
+      const parent = store.narrowedForChat(botId, row.sourceChat)
+      if (parent === undefined) return []
+      if (parent !== null) intersect(parent)
+      continue
+    }
+    const thread = store.get(row.threadId)
+    if (thread.capabilities !== undefined && !thread.computer) intersect(thread.capabilities)
+  }
+  return caps
+}
 
 /** Throws when `chatId` belongs to a worker session (or its compression continuation), or when its lineage cannot be read. */
 export function assertNotWorker(store: ThreadStore, botId: string, chatId: string, startingWorker = false) {
@@ -71,8 +130,10 @@ export function acceptDelivery(store: ThreadStore, caller: Bot, target: Bot, inp
           ...(input.computerName ? { computerName: input.computerName } : {}),
           ...(input.cwd ? { cwd: input.cwd } : {}),
           ...(input.workerEngine ? { workerEngine: input.workerEngine } : {}),
-          ...(input.workerEngineFallbackFrom ? { workerEngineFallbackFrom: input.workerEngineFallbackFrom } : {})
+          ...(input.workerEngineFallbackFrom ? { workerEngineFallbackFrom: input.workerEngineFallbackFrom } : {}),
+          ...(input.capabilities !== undefined ? { capabilities: [...input.capabilities] } : {})
         }
+    assertNarrowedAllowed(input.capabilities, { computer: input.computer, engine: input.workerEngine, existing: input.threadId ? thread : undefined })
     if (thread.group) throw new LilBotError('thread_forbidden', 'That is a group: use lilbot_group.')
     if (input.threadId && Boolean(thread.worker) !== Boolean(input.worker))
       throw new LilBotError('thread_forbidden', thread.worker ? 'That exchange is a worker.' : 'That exchange is not a worker.')

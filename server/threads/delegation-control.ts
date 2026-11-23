@@ -4,6 +4,7 @@ import { LilBotError } from '../../shared/lilbot-error'
 import { type BotThread, RedirectInput } from '../../shared/thread-schema'
 import { memoryRefusal, refuseUnsafe } from '../memory/memory-safety'
 import type { DelegationHost } from './delegation-service'
+import { assertNarrowedAllowed, narrowedCaller, withinNarrowed } from './thread-accept'
 import { steerText } from './thread-prompts'
 import type { ThreadService } from './thread-service'
 import { FINAL } from './thread-store'
@@ -13,7 +14,8 @@ type Pick = { exchangeIds?: string[]; batchId?: string }
 export class DelegationControl {
   constructor(
     private threads: ThreadService,
-    private host: DelegationHost
+    private host: DelegationHost,
+    private callingChat?: (botId: string, requestId: string) => Promise<string>
   ) {}
   private get store() {
     return this.threads.store
@@ -33,9 +35,21 @@ export class DelegationControl {
     return threads
   }
 
-  async status(botId: string, pick: Pick) {
+  private callerCapabilities(botId: string, raw: unknown, requestId?: string) {
+    return narrowedCaller(botId, this.host, () =>
+      this.host.callingDelegation ? this.host.callingDelegation(botId, raw) : requestId && this.callingChat ? this.callingChat(botId, requestId) : Promise.resolve(null)
+    )
+  }
+
+  async status(botId: string, pick: Pick, callArgs?: unknown) {
     await this.host.requireBot(botId)
-    return { exchanges: this.mine(botId, pick).map(t => this.summary(t)) }
+    const caps = await this.callerCapabilities(botId, callArgs ?? { action: 'status', ...pick })
+    const threads = this.mine(botId, pick)
+    if (caps) {
+      if (pick.exchangeIds || pick.batchId) for (const t of threads) assertNarrowedAllowed(caps, { existing: t })
+      else return { exchanges: threads.filter(t => withinNarrowed(caps, t)).map(t => this.summary(t)) }
+    }
+    return { exchanges: threads.map(t => this.summary(t)) }
   }
 
   private summary(stored: BotThread) {
@@ -58,18 +72,19 @@ export class DelegationControl {
     }
   }
 
-  cancel(botId: string, exchangeId: string) {
-    return this.host
-      .requireBot(botId)
-      .then(bot => this.threads.cancel(exchangeId, { kind: 'bot', id: bot.id, name: bot.name }))
-      .then(t => this.summary(t))
+  async cancel(botId: string, exchangeId: string, callArgs?: unknown) {
+    const bot = await this.host.requireBot(botId)
+    const [thread] = this.mine(botId, { exchangeIds: [exchangeId] })
+    assertNarrowedAllowed(await this.callerCapabilities(botId, callArgs ?? { action: 'cancel', exchangeId }), { existing: thread })
+    return this.summary(await this.threads.cancel(exchangeId, { kind: 'bot', id: bot.id, name: bot.name }))
   }
 
   /** A change of course: into the running turn at its next step when the engine can steer, else the receiver's next turn. */
-  async redirect(botId: string, raw: { requestId: string; exchangeId: string; message: string }) {
+  async redirect(botId: string, raw: { requestId: string; exchangeId: string; message: string }, callArgs?: unknown) {
     const input = RedirectInput.parse(raw)
     const caller = await this.host.requireBot(botId)
     const [thread] = this.mine(botId, { exchangeIds: [input.exchangeId] })
+    assertNarrowedAllowed(await this.callerCapabilities(botId, callArgs ?? { action: 'redirect', ...raw }, input.requestId), { existing: thread })
     const prior = this.store.delivery(`${botId}:${input.requestId}`)
     if (prior) return { exchangeId: thread.id, applied: prior.status === 'steered' ? 'now' : 'queued' }
     if (thread.status !== 'waiting' && thread.status !== 'working')
@@ -95,10 +110,12 @@ export class DelegationControl {
   }
 
   /** Never holds the call open: each answer still arrives on its own, and the bot is told once all are in. */
-  async wait(botId: string, pick: Pick) {
+  async wait(botId: string, pick: Pick, callArgs?: unknown) {
     await this.host.requireBot(botId)
+    const caps = await this.callerCapabilities(botId, callArgs ?? { action: 'wait', ...pick })
     const threads = this.mine(botId, pick)
     if (!threads.length) throw new LilBotError('thread_missing', 'Name the exchanges or the batch to wait for.')
+    for (const t of threads) assertNarrowedAllowed(caps, { existing: t })
     const exchanges = threads.map(t => this.summary(t))
     if (threads.every(t => (FINAL as readonly string[]).includes(t.status))) return { allIn: true, exchanges }
     const origin = this.store.origin(threads[0].id, threads[0].participants[1].id)

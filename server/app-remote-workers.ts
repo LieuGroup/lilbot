@@ -3,6 +3,7 @@
 import type { Database } from 'bun:sqlite'
 import type { BotModel, ReasoningEffort } from '../shared/bot-schema'
 import { LilBotError } from '../shared/lilbot-error'
+import type { WebhookCapability } from '../shared/webhook-schema'
 import type { WorkerDriverId } from '../shared/worker-frame-schema'
 import type { BotRecord, BotStore } from './bots/bot-store'
 import { withoutNote } from './bots/system-note'
@@ -38,7 +39,7 @@ export function createRemoteWorkers(deps: RemoteWorkerAppDeps) {
   })
   deps.computers.onRevoke = id => runner.onRevoke(id)
 
-  const buildSystemPrompt = (bot: BotRecord, computerName: string, cwd: string) => {
+  const buildSystemPrompt = (bot: BotRecord, computerName: string, cwd: string, capabilities?: WebhookCapability[]) => {
     const offered = deps.skills.offered(bot.id).filter(s => !REMOTE_WORKER_EXCLUDED_SKILLS.has(s.name))
     let codingSkillBody: string | undefined
     if (offered.some(s => s.name === 'lilbot-coding')) {
@@ -52,7 +53,7 @@ export function createRemoteWorkers(deps: RemoteWorkerAppDeps) {
       botId: bot.id,
       computerName,
       cwd,
-      memoryBlock: deps.memory.contextBlock(bot.id).text,
+      memoryBlock: !capabilities || capabilities.includes('memory') ? deps.memory.contextBlock(bot.id).text : '',
       skills: offered.map(s => ({ name: s.name, description: s.description })),
       codingSkillBody
     })
@@ -75,16 +76,11 @@ export function createRemoteWorkers(deps: RemoteWorkerAppDeps) {
         throw new LilBotError('engine_unavailable', `Leader workers run on your own engine ("${bot.engineId}"), not "${opts.engine}".`)
       return null
     }
+    if (bot.permissionMode !== 'full-access') throw new LilBotError('permission_denied', 'Remote workers require full-access mode.')
     if (found.keyConflict) throw new LilBotError('computer_offline', `Computer "${found.name}" has a key conflict and cannot run workers until re-registered.`)
     if (!found.online) throw new LilBotError('computer_offline', `Computer "${found.name}" is offline. Wait until it is back online or tell Oscar.`)
     const agents = found.workerAgents ?? []
-    const pick = selectRemoteWorkerEngine({
-      computerName: found.name,
-      botEngineId: bot.engineId,
-      agents,
-      requestedEngine: opts.engine,
-      requestedModel: opts.model ?? bot.model
-    })
+    const pick = selectRemoteWorkerEngine({ computerName: found.name, botEngineId: bot.engineId, agents, requestedEngine: opts.engine, requestedModel: opts.model ?? bot.model })
     if (!pick.ok) throw new LilBotError(pick.code, pick.message)
     if (!opts.continuation) {
       const cwdCheck = validateRemoteCwd(opts.cwd ?? '')
@@ -93,13 +89,7 @@ export function createRemoteWorkers(deps: RemoteWorkerAppDeps) {
     const fallbackNote = pick.fallback ? `Your engine (${pick.fallbackFrom}) is not available on "${found.name}", so LilBot fell back to ${pick.driver}.` : undefined
     const modelCheck = validateModelForDriver(opts.model ?? bot.model, pick.driver, fallbackNote)
     if (!modelCheck.ok) throw new LilBotError('invalid_model', modelCheck.message)
-    return {
-      computerId: found.id,
-      computerName: found.name,
-      cwd: opts.cwd,
-      engine: pick.driver,
-      ...(pick.fallback ? { fallbackFrom: pick.fallbackFrom } : {})
-    }
+    return { computerId: found.id, computerName: found.name, cwd: opts.cwd, engine: pick.driver, ...(pick.fallback ? { fallbackFrom: pick.fallbackFrom } : {}) }
   }
 
   const runForBot = async (
@@ -114,6 +104,7 @@ export function createRemoteWorkers(deps: RemoteWorkerAppDeps) {
       engine?: WorkerDriverId
       model?: BotModel
       reasoningEffort?: ReasoningEffort
+      capabilities?: WebhookCapability[]
       onChat: (chatId: string) => void
     }
   ): Promise<RemoteWorkerResult> => {
@@ -123,6 +114,15 @@ export function createRemoteWorkers(deps: RemoteWorkerAppDeps) {
       return existing.outcome
     }
     const bot = deps.store.get(botId)
+    if (bot.permissionMode !== 'full-access')
+      return runner.failRestored(options.runId, { status: 'failed', text: 'Remote workers require full-access mode.', items: [], failureReason: 'invalid_start' })
+    if (options.capabilities && !options.capabilities.includes('computers'))
+      return runner.failRestored(options.runId, {
+        status: 'failed',
+        text: 'A narrowed run cannot run a remote worker without the computers capability.',
+        items: [],
+        failureReason: 'invalid_start'
+      })
     const comp = deps.computers.list().find(c => c.id === options.computer)
     if (!comp) return runner.failRestored(options.runId, { status: 'failed', text: 'The computer was removed.', items: [], failureReason: 'computer_removed' })
     const pick = selectRemoteWorkerEngine({
@@ -135,7 +135,7 @@ export function createRemoteWorkers(deps: RemoteWorkerAppDeps) {
     if (!pick.ok) return runner.failRestored(options.runId, { status: 'failed', text: pick.message, items: [], failureReason: 'invalid_start' })
     const modelCheck = validateModelForDriver(options.model ?? bot.model, pick.driver)
     if (!modelCheck.ok) return runner.failRestored(options.runId, { status: 'failed', text: modelCheck.message, items: [], failureReason: 'invalid_start' })
-    const built = buildSystemPrompt(bot, comp.name, options.cwd)
+    const built = buildSystemPrompt(bot, comp.name, options.cwd, options.capabilities)
     if (!built.ok) return runner.failRestored(options.runId, { status: 'failed', text: built.error, items: [], failureReason: 'prompt_too_large' })
     const effort = options.reasoningEffort ?? (!options.model ? (bot.reasoningEffort ?? undefined) : undefined)
     return runner.run({
