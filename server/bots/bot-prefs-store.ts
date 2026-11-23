@@ -133,6 +133,10 @@ export class BotPrefsStore {
     this.db.query('INSERT INTO primary_bot (id, bot_id) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET bot_id = excluded.bot_id').run(botId)
   }
 
+  clearPrimaryBot() {
+    this.db.query('DELETE FROM primary_bot WHERE id = 1').run()
+  }
+
   /** Drop everything kept about a bot that no longer exists. */
   forgetBot(botId: string) {
     this.db.query('DELETE FROM primary_bot WHERE bot_id = ?').run(botId)

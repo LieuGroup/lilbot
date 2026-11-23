@@ -25,7 +25,6 @@ export class RunTranscriptBackfill {
   private botRetryAt = new Map<string, number>()
   private inFlight = new Map<string, Promise<SavedRunTranscript>>()
   private busy = false
-  private done = false
 
   constructor(
     private host: TranscriptHost,
@@ -44,6 +43,7 @@ export class RunTranscriptBackfill {
   }
 
   private async tryOnce(run: BackfillRun): Promise<{ kind: 'saved'; items: ChatItem[] } | { kind: 'gone' }> {
+    if (this.host.hasEngine?.(run.botId) === false) throw new LilBotError('runtime_unavailable', 'This bot’s engine is not available.')
     try {
       const chat = await this.host.openChat(run.botId, run.chatId, () => {}, true)
       try {
@@ -75,20 +75,25 @@ export class RunTranscriptBackfill {
     for (const [id, at] of this.botRetryAt) if (at <= now) this.botRetryAt.delete(id)
     const skipBots = [...this.botRetryAt.keys()]
     const maxScan = Math.max(100, this.runRetryAt.size + BACKFILL_PAGE)
-    for (let offset = 0; offset < maxScan; offset += BACKFILL_PAGE) {
+    for (let offset = 0; offset < maxScan; ) {
       const page = this.store.pendingBackfill(BACKFILL_PAGE, offset, skipBots)
+      let skippedMissing = false
+      for (const run of page) {
+        if (this.host.hasEngine?.(run.botId) === false && !skipBots.includes(run.botId)) {
+          skipBots.push(run.botId)
+          skippedMissing = true
+        }
+      }
+      if (skippedMissing) continue
       const hit = page.find(run => !this.runRetryAt.has(run.id) && !this.inFlight.has(run.id))
       if (hit || page.length < BACKFILL_PAGE) return hit
+      offset += BACKFILL_PAGE
     }
     return undefined
   }
 
   tick() {
-    if (this.busy || this.done) return
-    if (!this.store.hasPendingBackfill()) {
-      this.done = true
-      return
-    }
+    if (this.busy || !this.store.hasPendingBackfill()) return
     const next = this.pickReady(this.now())
     if (!next) return
     this.busy = true

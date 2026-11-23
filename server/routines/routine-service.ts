@@ -8,6 +8,7 @@ import { itemsForFinish, openRunTranscript, RunTranscriptBackfill } from './run-
 
 export interface RoutineHost {
   requireBot(id: string): Promise<unknown>
+  hasEngine?(botId: string): boolean
   runRoutine(botId: string, prompt: string, options: RoutineOptions): Promise<{ status: 'completed' | 'failed' | 'stopped'; text: string; items?: ChatItem[] }>
   openChat(botId: string, chatId: string, onEvent: (event: ChatEvent) => void, requireExisting?: boolean): Promise<OpenChat>
 }
@@ -68,7 +69,14 @@ export class RoutineService {
     this.store.get(botId, run.routineId)
     return openRunTranscript(this.host, this.store.transcripts, this.backfill, run, onEvent, new LilBotError('run_pending', 'This run has not started yet.'))
   }
+  canRun = (run: RoutineRun) => this.host.hasEngine?.(run.botId) ?? true
   async run(run: RoutineRun) {
+    if (this.host.hasEngine?.(run.botId) === false) {
+      const result = { status: 'failed' as const, text: 'This bot’s engine is not available.' }
+      this.store.finish(run.id, result.status, result.text, this.now())
+      this.changed()
+      return result
+    }
     const routine = this.store.get(run.botId, run.routineId)
     const result = await this.host.runRoutine(
       run.botId,

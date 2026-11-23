@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createAppServices } from '../../server/app-services'
 import type { BotEngine } from '../../server/engines/bot-engine'
+import type { EngineRegistry } from '../../server/engines/engine-registry'
 import { ScriptedEngine, type ScriptedEngineOptions } from '../../server/engines/scripted/scripted-engine'
 import { SYSTEM_PATH } from '../../server/system/system-connection'
 
@@ -62,8 +63,8 @@ function uninstallTimerHookIfIdle() {
 }
 
 export interface ConformanceAppOptions extends ScriptedEngineOptions {
-  /** Override the engine (or multi-engine registry once P6 lands). */
-  engine?: BotEngine
+  /** Override the engine or multi-engine registry. */
+  engine?: BotEngine | EngineRegistry
   /** Override the release commit string passed to createAppServices. */
   commit?: string
   /** Reuse an existing temp directory (for reboot tests); caller owns deletion when supplied. */

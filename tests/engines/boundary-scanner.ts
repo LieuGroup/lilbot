@@ -1,6 +1,6 @@
 /** TypeScript AST-based import and engine-name scanner for boundary and structure tests.
  *  Accepted lexical limits: runtime variable assembly (`const a = 'her'; a + 'mes'`, `import(varPath)`),
- *  odd mixed case (`'HeRmEs'`), and non-JS/TS config files (`.json`, `.yaml`, `.py`) are not scanned here. */
+ *  odd mixed case (`'HeRmEs'`), and non-JS/TS config or Markdown guide/skill files (`.json`, `.yaml`, `.py`, `.md`; left to review) are not scanned here. */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, normalize } from 'node:path'
 import ts from 'typescript'

@@ -40,3 +40,44 @@ for (const fresh of [false, true]) {
     }
   })
 }
+
+test('openedAsMain short-circuits readOnlyChat even after another client moves the main pointer', async () => {
+  const f = fakeService()
+  let readOnlyChecks = 0
+  const service = new BotService(f.engine, f.store, f.prefs, new Workspaces(f.root), f.memory, {
+    readOnlyChat: () => {
+      readOnlyChecks++
+      return true
+    }
+  })
+  try {
+    // Open main implicitly (undefined) and explicitly (chatId === main), then advance main via newChat.
+    const implicitMain = await service.openChat('b1', undefined, () => {})
+    const firstId = implicitMain.snapshot.chatId
+    const explicitMain = await service.openChat('b1', firstId, () => {})
+    const moved = await service.newChat('b1', () => {})
+    expect(moved.snapshot.chatId).not.toBe(firstId)
+
+    // Both handles opened as main bypass readOnlyChat completely and send cleanly.
+    await implicitMain.send('from implicit main')
+    await explicitMain.send('from explicit main')
+    await moved.send('from moved main')
+    expect(readOnlyChecks).toBe(0)
+    expect(f.log).toContain(`send:${firstId}:from implicit main`)
+    expect(f.log).toContain(`send:${firstId}:from explicit main`)
+    expect(f.log).toContain(`send:${moved.snapshot.chatId}:from moved main`)
+
+    // A non-main chat handle still consults readOnlyChat and is refused when it returns true.
+    f.stored.add('other-run')
+    const other = await service.openChat('b1', 'other-run', () => {}, true)
+    await expect(other.send('blocked')).rejects.toMatchObject({ code: 'chat_read_only' })
+    expect(readOnlyChecks).toBe(1)
+
+    implicitMain.close()
+    explicitMain.close()
+    moved.close()
+    other.close()
+  } finally {
+    f.database.close()
+  }
+})

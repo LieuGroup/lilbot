@@ -2,6 +2,7 @@
  *  (a routine or webhook run, a bot thread) still holds for the continuation, so lookups follow the compression
  *  lineage back to where it began. A root never changes, so it is remembered. */
 import type { BotEngine } from '../engines/bot-engine'
+import { asEngineRegistry, type EngineRegistry } from '../engines/engine-registry'
 import type { BotStore } from './bot-store'
 
 const REMEMBERED = 5000
@@ -11,15 +12,19 @@ const WARN_EVERY_MS = 60_000
  *  one), null when the engine cannot read the lineage just now; that is asked again next time, never remembered. */
 export type SessionRoot = (botId: string, chatId: string) => string | null
 
-export function sessionRoots(engine: BotEngine, store: BotStore): SessionRoot {
+export function sessionRoots(engine: BotEngine | EngineRegistry, store: BotStore): SessionRoot {
+  const engines = asEngineRegistry(engine)
   const roots = new Map<string, string>()
   let warnedAt = 0
   return (botId, chatId) => {
     const key = `${botId}\n${chatId}`
     const known = roots.get(key)
     if (known !== undefined) return known
-    if (!engine.compressionRoot || !store.exists(botId)) return chatId
-    const found = engine.compressionRoot(store.get(botId).engineBotId, chatId)
+    if (!store.exists(botId)) return chatId
+    const bot = store.get(botId)
+    const owner = engines.get(bot.engineId)
+    if (!owner?.compressionRoot) return chatId
+    const found = owner.compressionRoot(bot.engineBotId, chatId)
     if (found === null) {
       if (Date.now() - warnedAt > WARN_EVERY_MS) {
         warnedAt = Date.now()

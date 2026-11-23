@@ -126,7 +126,14 @@ export class WebhookService {
     return 'accepted'
   }
 
+  canRun = (run: WebhookRun) => this.host.hasEngine?.(run.botId) ?? true
   async run(run: WebhookRun) {
+    if (this.host.hasEngine?.(run.botId) === false) {
+      const result = { status: 'failed' as const, text: 'This bot’s engine is not available.' }
+      this.store.finish(run.id, result.status, result.text, this.now())
+      this.changed()
+      return result
+    }
     const webhook = this.store.get(run.botId, run.webhookId)
     const { items, withheld } = this.store.events.forRun(run.id)
     if (!items.length) {

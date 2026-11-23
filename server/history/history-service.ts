@@ -1,34 +1,48 @@
 import type { ChatEvent, ChatSnapshot } from '../../shared/chat-schema'
 import type { SessionReason } from '../../shared/history-schema'
 import type { BotEngine, ConversationSource } from '../engines/bot-engine'
+import { asEngineRegistry, type EngineRegistry } from '../engines/engine-registry'
 import type { HistoryStore } from './history-store'
 
-type Binding = { id: string; engineBotId: string }
+type Binding = { id: string; engineId?: string; engineBotId: string }
 /** A bounded background page per tick. Checkpoints commit atomically with their rows. */
 export class HistoryService {
-  private sources = new Map<string, { source: ConversationSource; listed: number; turn: number }>()
+  private engines: EngineRegistry
+  private sources = new Map<string, { engineId: string; source: ConversationSource; listed: number; turn: number }>()
   private connecting = new Map<string, Promise<ConversationSource>>()
   private busy = false
   private dirty = new Map<string, Set<string>>()
   constructor(
     readonly store: HistoryStore,
-    private engine: BotEngine,
+    engine: BotEngine | EngineRegistry,
     private bindings: () => Promise<Binding[]>,
     private allowed: (bot: string, session: string) => boolean,
     private project: (bot: string, session: string, rows: import('./history-store').HistoryRow[]) => import('./history-store').HistoryRow[] = (_b, _s, rows) => rows,
     private changed: (bot: string) => void = () => {}
-  ) {}
+  ) {
+    this.engines = asEngineRegistry(engine)
+  }
+  dropSource(botId: string) {
+    this.sources.get(botId)?.source.close()
+    this.sources.delete(botId)
+  }
   async source(bot: Binding) {
+    const engineId = bot.engineId ?? this.engines.defaultId
     let value = this.sources.get(bot.id)
+    if (value && value.engineId !== engineId) {
+      this.dropSource(bot.id)
+      value = undefined
+    }
     if (!value) {
-      if (!this.engine.conversations) return undefined
+      const engine = this.engines.get(engineId)
+      if (!engine?.conversations) return undefined
       let attempt = this.connecting.get(bot.id)
       if (!attempt) {
-        attempt = this.engine.conversations(bot.engineBotId)
+        attempt = engine.conversations(bot.engineBotId)
         this.connecting.set(bot.id, attempt)
       }
       try {
-        value = { source: await attempt, listed: 0, turn: 0 }
+        value = { engineId, source: await attempt, listed: 0, turn: 0 }
       } finally {
         this.connecting.delete(bot.id)
       }

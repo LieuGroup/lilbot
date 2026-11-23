@@ -52,6 +52,10 @@ export class BotStore {
     return row ? { bot: fromRow(row), ...JSON.parse(row.deletion) } : null
   }
 
+  incompleteDeletions(): string[] {
+    return (this.db.query("SELECT id FROM bots WHERE deletion IS NOT NULL AND json_extract(deletion, '$.complete') = 0").all() as { id: string }[]).map(r => r.id)
+  }
+
   markDeleted(bot: BotRecord, choices: import('../../shared/bot-delete-schema').BotDeleteDefaults, complete = false) {
     this.db.transaction(() => {
       this.db.query('UPDATE bots SET deletion = ? WHERE id = ?').run(JSON.stringify({ choices, complete }), bot.id)
@@ -104,6 +108,12 @@ export class BotStore {
 
   bind(id: string, engineBotId: string) {
     this.db.query('UPDATE bots SET engine_bot_id = ? WHERE id = ?').run(engineBotId, id)
+  }
+
+  bindEngine(id: string, engineId: string, engineBotId: string, model: BotIdentity['model'], isDefault = false) {
+    this.db
+      .query('UPDATE bots SET engine_id = ?, engine_bot_id = ?, model = ?, is_default = ? WHERE id = ?')
+      .run(engineId, engineBotId, model ? JSON.stringify(model) : null, Number(isDefault), id)
   }
 
   imported(engineId: string): boolean {

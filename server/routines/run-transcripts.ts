@@ -23,6 +23,7 @@ export interface BackfillRun {
 }
 
 export interface TranscriptHost {
+  hasEngine?(botId: string): boolean
   openChat(botId: string, chatId: string, onEvent: (event: ChatEvent) => void, requireExisting?: boolean): Promise<OpenChat>
 }
 

@@ -9,6 +9,7 @@ import type { BotStore } from './bots/bot-store'
 import type { SessionRoot } from './bots/hidden-chats'
 import type { Workspaces } from './bots/workspaces'
 import type { BotEngine } from './engines/bot-engine'
+import { asEngineRegistry, type EngineRegistry } from './engines/engine-registry'
 import type { HistoryService } from './history/history-service'
 import { threadEvents } from './http/thread-events'
 import type { LibraryService } from './library/library-service'
@@ -25,7 +26,7 @@ import type { WebhookCallers } from './webhooks/webhook-callers'
 import type { WorkLinks } from './work/work-links'
 
 interface ThreadDeps {
-  engine: BotEngine
+  engine: BotEngine | EngineRegistry
   store: BotStore
   prefs: BotPrefsStore
   bots: BotService
@@ -49,8 +50,9 @@ interface ThreadDeps {
 }
 
 export function createThreads(deps: ThreadDeps) {
-  const { engine, store, prefs, bots, workspaces, history, activity, threadStore, calls, work, remoteWorkers, publish } = deps
-  const native = (botId: string) => store.get(botId).engineBotId
+  const engines = asEngineRegistry(deps.engine)
+  const { store, prefs, bots, workspaces, history, activity, threadStore, calls, work, remoteWorkers, publish } = deps
+  const botOf = (botId: string) => store.get(botId)
   const host: DelegationHost = {
     requireBot: id => bots.requireBot(id),
     listBots: () => bots.listBots(),
@@ -74,13 +76,17 @@ export function createThreads(deps: ThreadDeps) {
     narrowedAccess: caps => webhookRunAccess(caps, Boolean(deps.t3Enabled)),
     callingDelegation: (botId, raw) => calls.claim(botId, 'lilbot_delegation', raw, chat => deps.callers?.forChat(botId, chat) !== null),
     folder: botId => workspaces.ensure(botId),
-    stopRun: async (botId, chatId) =>
-      chatId.startsWith('remote:') && remoteWorkers ? remoteWorkers.runner.stopByChat(botId, chatId) : ((await engine.stopRun?.(native(botId), chatId)) ?? false),
-    steerRun: async (botId, chatId, text) =>
-      chatId.startsWith('remote:') && remoteWorkers
-        ? remoteWorkers.runner.steerByChat(botId, chatId, text)
-        : ((await engine.steerRun?.(native(botId), chatId, text)) ?? 'not_running'),
-    validateModel: model => engine.validateModel(model),
+    stopRun: async (botId, chatId) => {
+      if (chatId.startsWith('remote:') && remoteWorkers) return remoteWorkers.runner.stopByChat(botId, chatId)
+      const bot = botOf(botId)
+      return (await engines.get(bot.engineId)?.stopRun?.(bot.engineBotId, chatId)) ?? false
+    },
+    steerRun: async (botId, chatId, text) => {
+      if (chatId.startsWith('remote:') && remoteWorkers) return remoteWorkers.runner.steerByChat(botId, chatId, text)
+      const bot = botOf(botId)
+      return (await engines.get(bot.engineId)?.steerRun?.(bot.engineBotId, chatId, text)) ?? 'not_running'
+    },
+    validateModel: (model, botId) => (botId && store.exists(botId) ? engines.require(botOf(botId).engineId) : engines.defaultEngine).validateModel(model),
     ...(remoteWorkers
       ? {
           resolveRemoteWorker: remoteWorkers.resolveRemoteWorker,
@@ -123,12 +129,14 @@ export function createThreads(deps: ThreadDeps) {
     groupHost,
     groupLimits(process.env)
   )
-  engine.onToolCall?.(call => {
-    const bot = store.list().find(b => b.engineId === engine.id && b.engineBotId === call.engineBotId)
-    if (!bot) return
-    calls.saw(bot.id, call.chatId, call.tool, call.args, call.callId)
-    threads.runner.sawTool(call.chatId, toolActivity(call.tool))
-  })
+  for (const engine of engines.list()) {
+    engine.onToolCall?.(call => {
+      const bot = store.list().find(b => b.engineId === engine.id && b.engineBotId === call.engineBotId)
+      if (!bot) return
+      calls.saw(bot.id, call.chatId, call.tool, call.args, call.callId)
+      threads.runner.sawTool(call.chatId, toolActivity(call.tool))
+    })
+  }
   remoteWorkers?.runner.onToolCall(call => threads.runner.sawTool(call.chatId, call.activity))
   const hand = new DelegationService(threads, host, (botId, requestId) => calls.find(botId, 'lilbot_delegate', requestId), work)
   const control = new DelegationControl(threads, host, (botId, requestId) => calls.find(botId, 'lilbot_delegation', requestId))
