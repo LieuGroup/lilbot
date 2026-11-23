@@ -23,7 +23,7 @@ export interface RunnerHost extends NarrowedHost {
   stopRun?(botId: string, chatId: string): Promise<boolean>
   activeRemoteThreads?(computerId: string): Iterable<string>
 }
-const TERMINAL = ['bot_not_found', 'unsafe_message', 'thread_limit']
+const TERMINAL = ['bot_not_found', 'unsafe_message', 'thread_limit', 'session_not_found']
 /** Kinds whose text is LilBot's own prompt, any bot text in it already checked and fenced. */
 const PREPARED = ['notice', 'oscar', 'point', 'round']
 
@@ -83,8 +83,11 @@ export class ThreadRunner {
           value: d,
           onError: async error => {
             if (error instanceof LilBotError && error.code === 'thread_cancelled') this.store.setStatus(d.id, 'done')
-            else if (error instanceof LilBotError && TERMINAL.includes(error.code))
-              await (this.groups?.owns(d.threadId) ? this.groups.failed(d) : failExchange(this.store, this.waits, this.host, d, error))
+            else if (error instanceof LilBotError && error.code === 'session_not_found' && isReply(d.kind)) {
+              console.warn('[thread] reply target session no longer exists; settled delivery')
+              this.store.setStatus(d.id, 'done')
+            } else if (error instanceof LilBotError && TERMINAL.includes(error.code))
+              await (this.groups?.owns(d.threadId) ? this.groups.failed(d, error) : failExchange(this.store, this.waits, this.host, d, error))
             else return false
             return true
           },

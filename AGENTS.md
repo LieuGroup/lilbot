@@ -28,10 +28,10 @@ The app is built around the bot, so the same names appear on every side: `bots`,
 server), `memory`, and one folder per feature.
 
 ```
-shared/            What the server and the clients agree on. Definitions only, apart from client/ (client logic both apps share).
+shared/            What the server and the clients agree on: protocol definitions at the root, plus client-only logic in client/ (web and iOS only; never imported by server/ or helper/).
   protocol.ts        every request a client can make      <feature>-schema.ts   each feature's data
   avatar.ts          avatar shapes and colours           avatar-colors.ts   their colour values
-  client/            Client logic both apps use: the socket, the chat transcript rules, this device's id
+  client/            Client logic both apps use: the socket, bot roster/model helpers, and chat transcript rules
 
 server/            The LilBot server (runs on the leader).
   main.ts            Start-up: reads settings, picks the engine, starts listening.
@@ -105,6 +105,7 @@ Rules that keep it this way:
 - A new feature gets its own folder name, used on every side (`server/<feature>/`, `web/src/<feature>/`,
   `shared/<feature>-schema.ts`, `tests/<feature>/`).
 - A new client (desktop, iOS) is a new top-level folder beside `web/` that uses `shared/`.
+- `shared/` holds protocol definitions at its root and client-only logic in `shared/client/`: `shared/` imports nothing from `server/`, `web/`, `ios/`, or `helper/`, and neither `server/` nor `helper/` imports from `shared/client/`.
 - Files stay under about 200 lines and are named for what they do.
 - `tests/structure.test.ts` fails when an import breaks these rules.
 
@@ -349,7 +350,7 @@ Full board rules, session attribution, drop/answer routing and `#142` check-leve
 - **Check levels (#142, `lilbot-check` skill):** 0 none (`reply`, `note`), 1 owner evidence (`file`, `computer`, `code`),
   2 second bot reproduces claim (`deploy`, `outside`, `spending`, `figure`; falls back to a fresh isolated same-bot
   session on `LILBOT_REVIEW_MODEL`), 3 Oscar (`work.pass`/`work.sendBack`). Check sessions (`#174`) get no memory,
-  `CHECK_TOOLSETS` only, and MCP blocks all writes except the assigned verdict.
+  the `access: 'check'` scope only, and MCP blocks all writes except the assigned verdict.
 
 ## Goals
 

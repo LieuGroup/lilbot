@@ -92,11 +92,17 @@ export class WebhookService {
     await this.host.requireBot(botId)
     return { address: this.address(this.store.addressOf(botId, id)) }
   }
-  async openRun(botId: string, id: string, onEvent: (event: ChatEvent) => void) {
+  async openRun(botId: string, id: string, onEvent: (event: ChatEvent) => void): Promise<import('../engines/bot-engine').OpenChat> {
     await this.host.requireBot(botId)
     const run = this.store.run(botId, id)
     this.store.get(botId, run.webhookId)
-    return openRunTranscript(this.host, this.store.transcripts, this.backfill, run, onEvent, new LilBotError('run_pending', 'This run has no conversation.'))
+    const chat = await openRunTranscript(this.host, this.store.transcripts, this.backfill, run, onEvent, new LilBotError('run_pending', 'This run has no conversation.'))
+    return {
+      ...chat,
+      send: async () => {
+        throw new LilBotError('chat_read_only', 'A webhook run conversation cannot be continued.')
+      }
+    }
   }
 
   /** The live webhook this address names, or null for any address that is not one. */

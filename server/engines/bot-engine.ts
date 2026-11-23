@@ -33,15 +33,16 @@ export interface ReviewOptions {
   onChat: (chatId: string) => void
 }
 
+export type RunAccessScope = 'check'
 export interface RoutineOptions {
   runId: string
-  /** Continue the initiating context when an asynchronous answer arrives. */
   chatId?: string
   hiddenInput?: boolean
   baseline?: (length: number) => number
   onChat: (chatId: string) => void
   origin?: TurnOrigin
-  /** Start the run's session with only these toolsets (webhook runs, `server/webhooks/webhook-access.ts`). */
+  /** LilBot access scope mapped inside each engine; `toolsets` stays only until webhooks migrate. */
+  access?: RunAccessScope
   toolsets?: string[]
   /** The model a new session runs on (a same-bot check or worker); without it, the bot's own. */
   model?: BotModel
@@ -158,7 +159,8 @@ export interface BotEngine {
   refreshMemory(bots: RuntimeBinding[], connection?: MemoryConnection): Promise<string[]>
   /** Run `prompt` as a hidden memory-only session for the after-chat review. */
   reviewMemory(engineBotId: string, prompt: string, options: ReviewOptions): Promise<void>
-  /** Run or recover one scheduled task, using runId as a durable execution identity. */
+  /** Run or recover one scheduled task, using runId as a durable execution identity. Throws `session_not_found` only
+   *  after confirming a named `chatId` no longer exists (never on a single transient failure). */
   runRoutine(
     engineBotId: string,
     prompt: string,

@@ -1,4 +1,5 @@
 import type { ChatEvent } from '../../shared/chat-schema'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { ContextReport, OpenChat } from '../engines/bot-engine'
 import type { HistoryService } from '../history/history-service'
 import type { BotPrefsStore } from './bot-prefs-store'
@@ -36,7 +37,8 @@ export class BotConversations {
     private workspaces: Workspaces,
     private sessions: SessionSettings,
     private history?: HistoryService,
-    private notes?: TurnNotes
+    private notes?: TurnNotes,
+    private readOnlyChat?: (botId: string, chatId: string) => boolean
   ) {}
 
   // null starts a new main session; undefined resumes or creates the main session.
@@ -46,6 +48,7 @@ export class BotConversations {
     const workspace = await this.workspaces.ensure(botId)
     const main = this.prefs.mainChat(botId)
     const fresh = chatId === null
+    const openedAsMain = fresh || !chatId || (main !== null && chatId === main)
     const useHistory = fresh || (!!this.history && !requireExisting && (!chatId || chatId === main))
     let id = ''
     const pending: ChatEvent[] = []
@@ -74,6 +77,9 @@ export class BotConversations {
     if (useHistory) for (const e of pending) this.history?.record(botId, id, e)
     const send = chat.send
     chat.send = async (text, options) => {
+      // Owner's own chat.send path: readOnlyChat fails OPEN on unreadable lineage (the opposite of hidden-chats.ts and tool gates, which fail closed).
+      if (!openedAsMain && id !== this.prefs.mainChat(botId) && this.readOnlyChat?.(botId, id))
+        throw new LilBotError('chat_read_only', 'A limited run conversation cannot be continued.')
       if (useHistory && !options?.hidden)
         this.history?.record(botId, id, {
           type: 'user.message',
@@ -90,7 +96,7 @@ export class BotConversations {
     }
     chat.snapshot.botId = botId
     if (chat.resumeRefused) console.warn(`[chat] conversation could not be resumed; started a new session (${chat.resumeRefused})`)
-    if (fresh || (!chatId && chat.snapshot.chatId !== main)) this.prefs.setMainChat(botId, chat.snapshot.chatId)
+    if (fresh || ((!chatId || chatId === main) && chat.snapshot.chatId !== main)) this.prefs.setMainChat(botId, chat.snapshot.chatId)
     isMain = chat.snapshot.chatId === this.prefs.mainChat(botId)
     if (isMain && reported !== undefined) this.sessions.noteEffective(botId, reported)
     if (isMain) {

@@ -4,13 +4,12 @@ import type { BotModel } from '../../shared/bot-schema'
 import type { ChatItem, TurnUsage } from '../../shared/chat-schema'
 import { WorkerDoneFrame, type WorkerDoneStatus, type WorkerDriverId, WorkerEventFrame, type WorkerToolEvent } from '../../shared/worker-frame-schema'
 import { stripInvisibleLine, stripInvisibleText } from '../memory/memory-safety'
+import { SERVER_WORKER_DRIVER_MAP, type ServerWorkerDriverSpec } from './remote-worker-drivers'
 
 const MAX_DONE_ITEMS = 500
 const MAX_DONE_TEXT = 500_000
 const MAX_ITEM_TEXT = 100_000
 const MAX_TOOL_RESULT = 2000
-const CLAUDE_MODEL = /^(claude[-_.]|opus$|sonnet$|haiku$)/i
-const CODEX_MODEL = /^(gpt[-_.]|o[134]($|[-_.])|codex)/i
 const STRICT_WIRE_MODEL = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/
 const STRICT_RAW_MODEL = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/
 const STRICT_PROVIDER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
@@ -149,39 +148,30 @@ export function validateRemoteCwd(cwd: string): { ok: true; cwd: string } | { ok
   return { ok: true, cwd }
 }
 
-/** Validates a model for the chosen remote coding engine driver. Fails fast when incompatible. */
+/** Validates a model against the driver's declarative model rule in `SERVER_WORKER_DRIVER_MAP`. Fails fast when incompatible. */
 export function validateModelForDriver(
   model: BotModel | null | undefined,
   driver: WorkerDriverId,
-  fallbackNote?: string
+  fallbackNote?: string,
+  specs: ReadonlyMap<WorkerDriverId, ServerWorkerDriverSpec> = SERVER_WORKER_DRIVER_MAP
 ): { ok: true; driver: WorkerDriverId; wireModel: string; provider?: string } | { ok: false; message: string } {
   const prefix = fallbackNote ? `${fallbackNote} ` : ''
   const raw = model?.model?.trim() ?? ''
   if (!raw) return { ok: false, message: `${prefix}Specify a model for this remote worker (no default model is set for remote computers).` }
   if (!STRICT_RAW_MODEL.test(raw)) return { ok: false, message: `Model "${cleanRemoteLine(raw, 80)}" is not a valid remote model name.` }
-  if (driver === 'claude-code') {
-    let wireModel = raw
-    if (raw.includes('/')) {
-      if (!raw.toLowerCase().startsWith('anthropic/')) return { ok: false, message: `${prefix}Model "${raw}" cannot run on claude-code (Claude models only).` }
-      wireModel = raw.slice('anthropic/'.length)
-    }
-    if (!STRICT_WIRE_MODEL.test(wireModel) || !CLAUDE_MODEL.test(wireModel))
-      return { ok: false, message: `${prefix}Model "${raw}" cannot run on claude-code (Claude models only).` }
-    return { ok: true, driver, wireModel }
-  }
-  if (driver === 'hermes') {
+  const spec = specs.get(driver)
+  if (!spec) return { ok: false, message: `${prefix}Unsupported coding engine "${cleanRemoteLine(driver, 32)}".` }
+  const rule = spec.modelRule
+  if (rule.kind === 'any-with-optional-provider') {
     const provider = model?.provider?.trim() || undefined
     if (provider && !STRICT_PROVIDER.test(provider)) return { ok: false, message: `Provider "${cleanRemoteLine(provider, 64)}" is not a valid provider name.` }
     return { ok: true, driver, wireModel: raw, ...(provider ? { provider } : {}) }
   }
-  if (driver === 'codex') {
-    let wireModel = raw
-    if (raw.includes('/')) {
-      if (!raw.toLowerCase().startsWith('openai/')) return { ok: false, message: `${prefix}Model "${raw}" cannot run on codex (OpenAI/Codex models only).` }
-      wireModel = raw.slice('openai/'.length)
-    }
-    if (!STRICT_WIRE_MODEL.test(wireModel) || !CODEX_MODEL.test(wireModel)) return { ok: false, message: `${prefix}Model "${raw}" cannot run on codex (OpenAI/Codex models only).` }
-    return { ok: true, driver, wireModel }
+  let wireModel = raw
+  if (raw.includes('/')) {
+    if (!raw.toLowerCase().startsWith(rule.prefix)) return { ok: false, message: `${prefix}Model "${raw}" cannot run on ${driver} (${rule.label}).` }
+    wireModel = raw.slice(rule.prefix.length)
   }
-  return { ok: false, message: `Unsupported coding engine "${driver}".` }
+  if (!STRICT_WIRE_MODEL.test(wireModel) || !rule.family.test(wireModel)) return { ok: false, message: `${prefix}Model "${raw}" cannot run on ${driver} (${rule.label}).` }
+  return { ok: true, driver, wireModel }
 }

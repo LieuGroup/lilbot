@@ -21,6 +21,26 @@ bunx expo start     # dev server
 
 `app.config.ts` reads `APP_VARIANT` (`development` default, `preview`, `production`) for the app name, bundle id and scheme, so dev and TestFlight builds install side by side.
 
+## TestFlight
+
+Run on macOS from `ios/`:
+
+```bash
+# Unsigned release archive check (no Apple account needed)
+bun run testflight -- --unsigned
+
+# Signed archive + App Store IPA export (uses installed profile matching bundle id)
+IOS_PROVISIONING_PROFILE_NAME="<profile name>" bun run testflight
+
+# Export and upload to TestFlight (never submits for App Store review)
+IOS_PROVISIONING_PROFILE_NAME="<profile name>" bun run testflight -- --upload
+```
+
+- `APP_VARIANT` defaults to `production` (`com.lilbot.app`) for TestFlight; pass `--variant preview` for `com.lilbot.app.preview`.
+- `APP_BUILD_NUMBER` defaults to a monotonic UTC timestamp (`YYYYMMDDHHMM`) when omitted.
+- `app.config.ts` sets `ITSAppUsesNonExemptEncryption: false` so TestFlight does not prompt for export compliance on each build, and disables `NSAllowsArbitraryLoads` outside `development` (HTTPS / `wss://` with a trusted certificate is required).
+- Signing values (`APPLE_TEAM_ID`, `IOS_PROVISIONING_PROFILE_NAME`, `IOS_CODE_SIGN_IDENTITY`) stay in environment variables; generated `ExportOptions.plist`, `.xcarchive` and `.ipa` files land under `ios/build/` (gitignored).
+
 ## Rules
 
 - `ios/` and `android/` native directories are generated (Continuous Native Generation). Never create or edit them by hand — configure native behavior in `app.config.ts` and config plugins.

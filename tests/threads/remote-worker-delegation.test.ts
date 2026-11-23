@@ -4,8 +4,8 @@ import { afterEach, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { claudeCodeDriver } from '../../helper/drivers/claude-code/worker-driver-claude'
 import { run } from '../../helper/runner'
-import { claudeCodeDriver } from '../../helper/worker-driver-claude'
 import { createRemoteWorkers } from '../../server/app-remote-workers'
 import { startPublicDoor } from '../../server/http/public-door'
 import { SystemChanges } from '../../server/system/system-changes'
@@ -74,7 +74,8 @@ async function makeHarness() {
       return { status: 'completed', text: 'ack' }
     }
   }
-  const threads = new ThreadService(threadStore, host)
+  let closed = false
+  const threads = new ThreadService(threadStore, host, () => queueMicrotask(() => !closed && threads.tick()))
   rw.runner.onToolCall(ev => threads.runner.sawTool(ev.chatId, ev.activity))
   const delegation = new DelegationService(threads, host, async () => 'main-chat', new WorkLinks(work, { clearFor: noop } as any))
   const control = new DelegationControl(threads, host)
@@ -108,14 +109,16 @@ async function makeHarness() {
     engineToken: 'tok',
     port: 1
   })
-  const door = startPublicDoor(core.computers, 0, { workers: rw.runner.bridge })
+  expect(rw.runner.bridge.eventSpacingMs).toBeUndefined()
+  const door = startPublicDoor(core.computers, 0, { workers: { ...rw.runner.bridge, eventSpacingMs: 0 } })
   const driver = claudeCodeDriver({ bin: writeDelegationFakeClaude(root), configDir: root, killGraceMs: 300 })
   const controller = new AbortController()
   const keyPem = pair.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()
   const identity = { id: compId, url: `http://127.0.0.1:${door.port}`, privateKey: keyPem, serverFingerprint: core.serverKey.fingerprint }
-  const helper = run(identity, controller.signal, { configDir: root, drivers: [driver], coalesceMs: 300, retire: async () => {} })
-  const tickTimer = setInterval(() => threads.tick(), 30)
+  const helper = run(identity, controller.signal, { configDir: root, drivers: [driver], coalesceMs: 5, retire: async () => {} })
+  const tickTimer = setInterval(() => threads.tick(), 15)
   cleanups.push(async () => {
+    closed = true
     clearInterval(tickTimer)
     controller.abort()
     await helper
@@ -135,7 +138,14 @@ async function makeHarness() {
   return { workDir, memory: core.memory, work, threadStore, threads, delegation, control, answers }
 }
 
-test('remote worker lifecycle: scoped MCP, live activity, answer delivery, continuation --resume, steer without duplicate turn, and cancel', async () => {
+const lastReply = (store: ThreadStore, id: string) =>
+  store
+    .get(id)
+    .messages.at(-1)!
+    .items.find(i => i.kind === 'assistant')!.text
+
+// Explicit 15 s limits: each test boots a real helper door, WebSocket, and fake Claude Bun subprocesses.
+test('remote worker lifecycle: scoped MCP, answer delivery, and continuation --resume', async () => {
   const f = await makeHarness()
   const started = await f.delegation.delegate('b1', {
     requestId: 'req-mcp',
@@ -143,16 +153,9 @@ test('remote worker lifecycle: scoped MCP, live activity, answer delivery, conti
   })
   const exId = started.exchanges[0].exchangeId
   expect(started.exchanges[0].computer).toBe('Studio')
-  await until(() => f.threadStore.get(exId).status === 'finished')
-  await until(() => f.answers.length === 1)
+  await until(() => f.threadStore.get(exId).status === 'finished' && f.answers.length === 1)
 
-  const lastReply = (id: string) =>
-    f.threadStore
-      .get(id)
-      .messages.at(-1)!
-      .items.find(i => i.kind === 'assistant')!.text
-  const parsed = JSON.parse(lastReply(exId))
-  expect(parsed).toMatchObject({
+  expect(JSON.parse(lastReply(f.threadStore, exId))).toMatchObject({
     ok: true,
     model: 'claude-sonnet-4-6',
     effort: 'high',
@@ -170,19 +173,25 @@ test('remote worker lifecycle: scoped MCP, live activity, answer delivery, conti
 
   await f.delegation.delegate('b1', { requestId: 'req-cont', tasks: [{ exchangeId: exId, task: 'Follow up' }] })
   await until(() => f.answers.length === 2)
-  expect(JSON.parse(lastReply(exId)).resume).toMatch(/^claude-sess-/)
+  expect(JSON.parse(lastReply(f.threadStore, exId)).resume).toMatch(/^claude-sess-/)
+}, 15_000)
 
+test('remote worker lifecycle: live activity, mid-run steer without duplicate turn, and cancel', async () => {
+  const f = await makeHarness()
   const steered = await f.delegation.delegate('b1', { requestId: 'req-steer', tasks: [{ worker: true, computer: 'Studio', cwd: f.workDir, task: 'MODE:STEER inspect' }] })
   const sId = steered.exchanges[0].exchangeId
   await until(() => f.threads.view(f.threadStore.get(sId)).activity === 'Working with files')
   expect((await f.control.redirect('b1', { requestId: 'redir-1', exchangeId: sId, message: 'focus on tests' })).applied).toBe('now')
-  await until(() => f.threadStore.get(sId).status === 'finished' && f.answers.length === 3)
-  expect(lastReply(sId)).toContain('STEER_OK:focus on tests')
-  await Bun.sleep(150)
-  expect(f.answers.length).toBe(3)
+  await until(() => f.threadStore.get(sId).status === 'finished' && f.answers.length === 1)
+  expect(lastReply(f.threadStore, sId)).toContain('STEER_OK:focus on tests')
+  f.threads.tick()
+  expect(f.threadStore.delivery('b1:redir-1')?.status).toBe('done')
+  expect(f.threadStore.pending()).toEqual([])
+  expect(f.threads.runner.running.size).toBe(0)
+  expect(f.answers.length).toBe(1)
 
   const sleeping = await f.delegation.delegate('b1', { requestId: 'req-sleep', tasks: [{ worker: true, computer: 'Studio', cwd: f.workDir, task: 'MODE:SLEEP wait' }] })
   const slId = sleeping.exchanges[0].exchangeId
   await until(() => f.threads.view(f.threadStore.get(slId)).activity === 'Running commands')
   expect((await f.control.cancel('b1', slId)).status).toBe('cancelled')
-})
+}, 15_000)

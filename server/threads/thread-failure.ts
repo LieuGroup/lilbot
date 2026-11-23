@@ -28,6 +28,7 @@ async function reasonFor(host: { requireBot(id: string): Promise<unknown> }, thr
     )
     return receiverGone ? 'the receiving bot is no longer available' : 'the bot that handed it over is no longer available'
   }
+  if (error.code === 'session_not_found') return 'the conversation no longer exists'
   if (error.code === 'thread_limit') return 'the message limit was reached'
   const noun = isWork(d.kind) ? 'request' : 'answer'
   return d.text.length > THREAD_LIMITS.text ? `the ${noun} was too long to deliver` : `LilBot's safety check withheld the ${noun}`

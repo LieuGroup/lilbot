@@ -25,7 +25,7 @@ mkdirSync(binDir, { recursive: true, mode: 0o700 })
 mkdirSync(workDir, { recursive: true, mode: 0o700 })
 const fakeClaude = writeDelegationFakeClaude(binDir, 'claude')
 
-const helperEnv = { ...process.env, LILBOT_HELPER_CONFIG_DIR: helperConfig, LILBOT_WORKER_CLAUDE_BIN: fakeClaude }
+const helperEnv = { ...process.env, LILBOT_HELPER_CONFIG_DIR: helperConfig, LILBOT_WORKER_CLAUDE_BIN: fakeClaude, LILBOT_WORKER_HERMES_BIN: '' }
 let server: ReturnType<typeof Bun.spawn> | undefined
 let helper: ReturnType<typeof Bun.spawn> | undefined
 let client: Awaited<ReturnType<typeof browser>> | undefined

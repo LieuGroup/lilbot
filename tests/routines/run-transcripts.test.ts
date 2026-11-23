@@ -85,7 +85,7 @@ test('finished webhook runs strip incoming event payloads and tool results, open
     expect(opened.snapshot.chatId).toBe('engine-hook-chat')
     expect(opened.snapshot.running).toBe(false)
     expect(opened.snapshot.items).toEqual(expectedStored)
-    await expect(opened.send('follow up')).rejects.toThrow('read-only')
+    await expect(opened.send('follow up')).rejects.toMatchObject({ code: 'chat_read_only' })
     opened.close()
   } finally {
     f.clean()

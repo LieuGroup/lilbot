@@ -168,7 +168,7 @@ describe('engine conformance: routines, webhooks, delegation, workers & checks',
     expect(services.boards.work.open(itemId).status).toBe('done')
   })
 
-  test.failing('[Lane A P5] work check session passes LilBot check scope instead of raw Hermes CHECK_TOOLSETS', async () => {
+  test('work check session passes LilBot check scope instead of raw engine toolsets', async () => {
     const { engine, services, alpha, beta } = await boot()
     const [alphaNative, betaNative] = [services.store.get(alpha.id).engineBotId, services.store.get(beta.id).engineBotId]
     let itemId = ''
@@ -187,7 +187,7 @@ describe('engine conformance: routines, webhooks, delegation, workers & checks',
     chat.close()
     for (let i = 0; i < 60 && !engine.routineCalls.some(c => c.nativeId === betaNative); i++) await Bun.sleep(50)
     const checkCall = engine.routineCalls.find(c => c.nativeId === betaNative)
-    expect((checkCall?.options as { access?: unknown })?.access).toBe('check')
+    expect(checkCall?.options.access).toBe('check')
     expect(checkCall?.options.toolsets).toBeUndefined()
   })
 })

@@ -7,6 +7,7 @@ import type { SystemDeps } from './system-deps'
 import { createSystemMcp } from './system-mcp'
 import { aboutTools } from './tool-about'
 import { botTools } from './tool-bots'
+import { computerTools } from './tool-computers'
 import { connectionTools } from './tool-connections'
 import { delegationTools } from './tool-delegation'
 import { goalTools } from './tool-goals'
@@ -42,7 +43,8 @@ export function createSystemServer(deps: SystemDeps & { engineToken: string; por
     ...workspaceTools(deps),
     ...routineTools(deps),
     ...webhookTools(deps),
-    ...connectionTools(deps)
+    ...connectionTools(deps),
+    ...computerTools(deps)
   ]
   const version = toolsVersion(tools)
   const names = tools.map(tool => tool.name)

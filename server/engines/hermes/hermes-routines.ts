@@ -1,10 +1,12 @@
 import type { ChatItem, TurnUsage } from '../../../shared/chat-schema'
+import { LilBotError } from '../../../shared/lilbot-error'
 import type { ChatOptions, RoutineOptions } from '../bot-engine'
+import { hermesToolsetsForRun } from './hermes-access'
 import { DEFAULT_PROFILE } from './hermes-bot-mapping'
 import { itemsFromRows } from './hermes-chat-mapping'
 import { saveFailed } from './hermes-memory-saves'
 import { ensureFullAccess } from './hermes-permissions'
-import { HermesSocket } from './hermes-socket'
+import { type HermesEvent, HermesSocket } from './hermes-socket'
 import { reportToolCall } from './hermes-tool-calls'
 import { TurnUsageTracker } from './hermes-usage'
 
@@ -24,6 +26,34 @@ function annotateFinish(items: ChatItem[], stopped: boolean, usage?: TurnUsage):
   return items.map((item, i) => (i === index ? updated : item))
 }
 
+const notFound = (error: unknown) => error instanceof LilBotError && error.code === 'hermes_not_found'
+
+/** Confirm a "not found" resume on a second fresh connection before calling the session gone, matching `hermes-chat.ts`. */
+async function resumeSession(
+  profile: string,
+  chatId: string,
+  socket: HermesSocket,
+  connect: typeof HermesSocket.connect,
+  onEvent: (event: HermesEvent) => void
+): Promise<{ socket: HermesSocket; session: any }> {
+  const resume = (s: HermesSocket) => s.request('session.resume', { session_id: chatId, source: 'tool', display_projection: true })
+  try {
+    return { socket, session: await resume(socket) }
+  } catch (error) {
+    if (!notFound(error)) throw error
+    socket.close()
+    const fresh = await connect(profile, onEvent, () => {})
+    try {
+      await ensureFullAccess(fresh)
+      return { socket: fresh, session: await resume(fresh) }
+    } catch (retryError) {
+      fresh.close()
+      if (notFound(retryError)) throw new LilBotError('session_not_found', 'That conversation no longer exists.')
+      throw retryError
+    }
+  }
+}
+
 /** Hidden from main/history listings, but explicitly openable by its stored session id.
  * Repeating create and submit after a lost connection recovers their durable receipts. */
 export async function runRoutine(botId: string, prompt: string, options: RoutineOptions & ChatOptions, connect = HermesSocket.connect) {
@@ -31,37 +61,40 @@ export async function runRoutine(botId: string, prompt: string, options: Routine
   let sessionId = ''
   const usage = new TurnUsageTracker()
   let lastUsage: TurnUsage | undefined
+  const onEvent = (event: HermesEvent) => {
+    reportToolCall(profile, event.sessionId, event.type, event.payload)
+    if (event.sessionId && sessionId && event.sessionId !== sessionId) return
+    if (event.type === 'session.usage') usage.onSessionUsage(event.payload)
+    else if (event.type === 'message.start') usage.onTurnStart()
+    else if (event.type === 'message.complete') {
+      const tracked = usage.onComplete(event.payload)
+      if (tracked?.usage) lastUsage = tracked.usage
+    }
+  }
   // Hidden sessions have no event replay; this socket is where their tool calls and turn usage are seen.
-  const socket = await connect(
-    profile,
-    event => {
-      reportToolCall(profile, event.sessionId, event.type, event.payload)
-      if (event.sessionId && sessionId && event.sessionId !== sessionId) return
-      if (event.type === 'session.usage') usage.onSessionUsage(event.payload)
-      else if (event.type === 'message.start') usage.onTurnStart()
-      else if (event.type === 'message.complete') {
-        const tracked = usage.onComplete(event.payload)
-        if (tracked?.usage) lastUsage = tracked.usage
-      }
-    },
-    () => {}
-  )
+  let socket = await connect(profile, onEvent, () => {})
   try {
     await ensureFullAccess(socket)
-    const session = options.chatId
-      ? await socket.request('session.resume', { session_id: options.chatId, source: 'tool', display_projection: true })
-      : await socket.request('session.create', {
-          source: 'tool',
-          hidden: true,
-          yolo: true,
-          request_id: `routine-${options.runId}`,
-          client: { name: 'lilbot', version: '0.2.0' },
-          cwd: options.workspace,
-          cwd_explicit: true,
-          ...(options.toolsets ? { toolsets: options.toolsets } : {}),
-          ...(options.model ? { model: options.model.model, provider: options.model.provider } : {}),
-          ...(options.reasoningEffort ? { reasoning: options.reasoningEffort } : {})
-        })
+    let session: any
+    if (options.chatId) {
+      const resumed = await resumeSession(profile, options.chatId, socket, connect, onEvent)
+      socket = resumed.socket
+      session = resumed.session
+    } else {
+      const toolsets = hermesToolsetsForRun(options.access, options.toolsets)
+      session = await socket.request('session.create', {
+        source: 'tool',
+        hidden: true,
+        yolo: true,
+        request_id: `routine-${options.runId}`,
+        client: { name: 'lilbot', version: '0.2.0' },
+        cwd: options.workspace,
+        cwd_explicit: true,
+        ...(toolsets ? { toolsets } : {}),
+        ...(options.model ? { model: options.model.model, provider: options.model.provider } : {}),
+        ...(options.reasoningEffort ? { reasoning: options.reasoningEffort } : {})
+      })
+    }
     sessionId = typeof session.session_id === 'string' ? session.session_id : ''
     usage.seedInfo(session.info, !options.chatId)
     // Both identities are persisted before the prompt can run (also excludes memory reviews).

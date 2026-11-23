@@ -32,6 +32,7 @@ export interface BotServiceOptions {
   connections?: (botId: string) => import('../engines/mcp-connection').McpConnection[]
   onConnectionsChanged?: (botId: string) => void
   systemNote?: (bot: BotRecord) => string
+  readOnlyChat?: (botId: string, chatId: string) => boolean
 }
 
 export class BotService {
@@ -64,7 +65,7 @@ export class BotService {
     if (options.skills) this.skills = new BotSkills(options.skills, this.runtimes, engine, this.changed)
     this.sessions = new SessionSettings(engine, prefs, this.changed)
     this.background = new BackgroundRuns(this.runtimes, workspaces, this.sessions)
-    this.conversations = new BotConversations(this.runtimes, prefs, workspaces, this.sessions, options.history, options.turnNotes)
+    this.conversations = new BotConversations(this.runtimes, prefs, workspaces, this.sessions, options.history, options.turnNotes, options.readOnlyChat)
     this.creation = new BotCreation(this, store)
     this.memoryChanged = options.memoryChanged ?? (() => {})
     this.deletion = new BotDeletion(

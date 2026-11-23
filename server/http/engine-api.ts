@@ -22,7 +22,7 @@ import type { RoutineService } from '../routines/routine-service'
 import { withoutWebhookNotes } from '../webhooks/webhook-messages'
 import type { CheckUse } from '../work/check-sessions'
 import { computerApi } from './computer-api'
-import { checkUse, verifiedSession } from './engine-run-gate'
+import { bodyChatId, checkUse, verifiedSession } from './engine-run-gate'
 import { historyApi } from './history-api'
 import { forBot, memoryRoutes as routes } from './memory-protocol'
 import { routineApi } from './routine-api'
@@ -62,7 +62,7 @@ export interface EngineApiOptions {
   /** Webhook runs (`app-webhooks.ts`): why a session may not use memory, its capabilities, and plug-in call refusals. */
   memoryLocked?: (botId: string, chatId: string | undefined) => string | null
   sessionCapabilities?: (botId: string, chatId: string | undefined) => WebhookCapability[] | null
-  pluginRefusal?: (botId: string, pathname: string, request: Request) => Promise<string | null>
+  pluginRefusal?: (botId: string, pathname: string, body: unknown, session: string | undefined) => string | null | Promise<string | null>
 }
 
 export function createEngineApi(memory: MemoryService, token: string, port: number, options: EngineApiOptions) {
@@ -87,11 +87,10 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
         const capability = request.headers.get('x-lilbot-bot-capability') ?? ''
         const caller = (await options.bots?.listBots())?.find(bot => matchesCapability(token, bot.id, capability))
         if (!caller || !options.bots || !options.botExists(caller.id)) return json(403, { error: 'Unknown bot credential.' })
-        const refused = await options.pluginRefusal?.(caller.id, pathname, request)
-        if (refused) return json(422, { error: refused })
         const body = await request.json()
-        const bodyChat = body && typeof body === 'object' && typeof (body as { chatId?: unknown }).chatId === 'string' ? (body as { chatId: string }).chatId : undefined
-        const session = verifiedSession(request, bodyChat)
+        const session = verifiedSession(request, bodyChatId(body))
+        const refused = await options.pluginRefusal?.(caller.id, pathname, body, session)
+        if (refused) return json(422, { error: refused })
         const use = checkUse(pathname)
         const inCheck = use && options.inCheck?.(caller.id, session, use)
         if (inCheck) return json(422, { error: inCheck })

@@ -12,7 +12,6 @@ import { CallingChats } from '../../server/threads/calling-chats'
 import { ThreadStore } from '../../server/threads/thread-store'
 import { WebhookStore } from '../../server/webhooks/webhook-store'
 import { WorkBoard } from '../../server/work/work-board'
-import { CHECK_TOOLSETS } from '../../server/work/work-check-rules'
 import type { BotModel } from '../../shared/bot-schema'
 import type { EventFrame } from '../../shared/protocol'
 import type { WorkInput } from '../../shared/work-schema'
@@ -87,9 +86,9 @@ test('an item opened in a conversation leaves a line there linking to it; Oscarâ
 test('a level 2 check runs as a new hidden session of another bot, which shows as working; its session is known as a check', async () => {
   const f = wired()
   await f.service.createBot({ name: 'Checker', function: 'Checks', instructions: '' })
-  const runs: { botId: string; chatId?: string; hidden?: boolean; runId: string; toolsets?: string[] }[] = []
+  const runs: { botId: string; chatId?: string; hidden?: boolean; runId: string; access?: string; toolsets?: string[] }[] = []
   f.engine.runRoutine = async (botId, _prompt, options) => {
-    runs.push({ botId, chatId: options.chatId, hidden: options.hiddenInput, runId: options.runId, toolsets: options.toolsets })
+    runs.push({ botId, chatId: options.chatId, hidden: options.hiddenInput, runId: options.runId, access: options.access, toolsets: options.toolsets })
     options.onChat('check-session')
     return new Promise(() => {})
   }
@@ -99,8 +98,7 @@ test('a level 2 check runs as a new hidden session of another bot, which shows a
   expect(checking).toMatchObject({ status: 'checking', check: { by: { kind: 'bot', name: 'Checker' } } })
   f.checks.tick()
   await until(() => runs.length > 0)
-  expect(runs).toEqual([{ botId: expect.not.stringMatching(/^b1$/), chatId: undefined, hidden: true, runId: `check-${item.id}:check:1`, toolsets: CHECK_TOOLSETS }])
-  expect(CHECK_TOOLSETS).not.toContain('memory')
+  expect(runs).toEqual([{ botId: expect.not.stringMatching(/^b1$/), chatId: undefined, hidden: true, runId: `check-${item.id}:check:1`, access: 'check', toolsets: undefined }])
   expect(f.work.checks.isCheckChat('check-session')).toBe(true)
   expect(f.activity.state(checking.check!.by.id!).status).toBe('working')
 })

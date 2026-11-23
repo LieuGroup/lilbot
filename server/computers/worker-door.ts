@@ -18,6 +18,8 @@ export interface WorkerDoorBridge {
   onFrame(computerId: string, frame: WorkerHelperFrame, send: (frame: WorkerLeaderFrame) => boolean): void
   onCapabilities?(computerId: string, agents: WorkerAgentInfo[]): void
   onConnect?(computerId: string, send: (frame: WorkerLeaderFrame) => boolean): () => void
+  /** Optional override for worker.event rate-limit spacing (defaults to 250 ms in production). */
+  eventSpacingMs?: number
 }
 
 interface TokenBucket {
@@ -152,7 +154,7 @@ export function handleWorkerFrame(
     return true
   }
   if (frame.type === 'worker.event') {
-    if (arrivedAt - (state.events.get(frame.runId) ?? 0) < EVENT_SPACING_MS) return true
+    if (arrivedAt - (state.events.get(frame.runId) ?? 0) < (bridge.eventSpacingMs ?? EVENT_SPACING_MS)) return true
     if (!state.events.has(frame.runId)) {
       pruneStaleRuns(state, computerId, bridge)
       if (state.events.size >= MAX_TRACKED_RUNS) return false
