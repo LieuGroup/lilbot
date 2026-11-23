@@ -3,6 +3,9 @@ import type { ChatEvent, ChatItem, TurnUsage } from '../../../shared/chat-schema
 import { LilBotError } from '../../../shared/lilbot-error'
 import type { ChatOptions, ConversationSource, EngineAttachment, OpenChat, RoutineOptions, TurnOrigin } from '../bot-engine'
 import type { McpCallResult } from './scripted-mcp'
+import { awaitWithDisconnect } from './scripted-routines'
+
+export type ResumeOutcome = 'ok' | 'not_found' | Error
 
 export interface ScriptedInput {
   text: string
@@ -66,20 +69,19 @@ export async function runScriptedTurn(
   session: ScriptedSession,
   input: ScriptedInput,
   callMcp: ScriptedTurnContext['callMcp'],
-  handler: ScriptedTurnHandler | undefined,
-  onEvent?: (event: ChatEvent) => void
+  handler: ScriptedTurnHandler | undefined
 ): Promise<{ status: 'completed' | 'stopped' | 'failed'; text: string }> {
   session.inputs.push(input)
   if (!input.hidden) appendRow(session, { kind: 'user', text: input.text, messageId: input.inputId })
   const controller = new AbortController()
   session.controller = controller
   session.running = true
-  onEvent?.({ type: 'turn.started' })
+  session.emit?.({ type: 'turn.started' })
   let streamed = ''
   const emitDelta = (chunk: string) => {
     if (controller.signal.aborted) return
     streamed += chunk
-    onEvent?.({ type: 'text.delta', text: chunk })
+    session.emit?.({ type: 'text.delta', text: chunk })
   }
   try {
     const run: ScriptedTurnHandler =
@@ -99,19 +101,18 @@ export async function runScriptedTurn(
       emitDelta,
       callMcp
     })
+    const finalText = typeof out === 'string' ? out : out.text
     const status = controller.signal.aborted ? 'stopped' : typeof out === 'string' ? 'completed' : (out.status ?? 'completed')
-    const text = typeof out === 'string' ? out : out.text
     const usage = typeof out === 'string' ? DEFAULT_USAGE : (out.usage ?? DEFAULT_USAGE)
-    const finalText = text || streamed
     const rowId = appendRow(session, { kind: 'assistant', text: finalText, ...(status === 'stopped' ? { stopped: true } : {}), usage })
-    onEvent?.({ type: 'turn.finished', status, text: finalText, contextTokens: usage.contextTokens, usage, rowId })
+    session.emit?.({ type: 'turn.finished', status, text: finalText, contextTokens: usage.contextTokens, usage, rowId })
     return { status, text: finalText }
   } catch (error) {
     const stopped = controller.signal.aborted
     const text = stopped ? streamed : error instanceof Error ? error.message : 'Scripted turn failed'
     const status = stopped ? 'stopped' : 'failed'
     const rowId = appendRow(session, { kind: 'assistant', text, ...(stopped ? { stopped: true } : {}) })
-    onEvent?.({ type: 'turn.finished', status, text, rowId })
+    session.emit?.({ type: 'turn.finished', status, text, rowId })
     return { status, text }
   } finally {
     session.running = false
@@ -127,13 +128,31 @@ export function openScriptedChat(
   engineBotId: string,
   chatId: string | null,
   options: ChatOptions,
-  onEvent: (event: ChatEvent) => void
+  onEvent: (event: ChatEvent) => void,
+  signal: AbortSignal,
+  resumeOutcomes?: Map<string, ResumeOutcome[]>
 ): OpenChat {
-  let session = chatId ? sessions.get(chatId) : undefined
+  const tryResume = (): ScriptedSession | 'not_found' => {
+    const scripted = chatId ? resumeOutcomes?.get(chatId)?.shift() : undefined
+    if (scripted instanceof Error) throw scripted
+    if (scripted === 'not_found') return 'not_found'
+    return (chatId && sessions.get(chatId)) || 'not_found'
+  }
+  let session: ScriptedSession | undefined
   let resumeRefused: string | undefined
-  if (chatId && !session) {
-    if (options.requireExisting) throw new LilBotError('chat_not_found', 'That conversation no longer exists.')
-    resumeRefused = 'session_not_found'
+  if (chatId) {
+    const first = tryResume()
+    if (first === 'not_found') {
+      const second = tryResume()
+      if (second === 'not_found') {
+        if (options.requireExisting) throw new LilBotError('chat_not_found', 'That conversation no longer exists.')
+        resumeRefused = 'session_not_found'
+      } else {
+        session = second
+      }
+    } else {
+      session = first
+    }
   }
   if (!session) session = create(engineBotId, options.workspace, false)
   session.emit = onEvent
@@ -145,7 +164,8 @@ export function openScriptedChat(
     send: async (text, sendOptions) => {
       if (sendOptions?.inputId && active.seenInputIds.has(sendOptions.inputId)) return
       if (sendOptions?.inputId) active.seenInputIds.add(sendOptions.inputId)
-      await runScriptedTurn(active, { text, ...sendOptions }, (t, a, s) => callMcp(engineBotId, active.chatId, t, a, s), getHandler(), active.emit)
+      const turn = runScriptedTurn(active, { text, ...sendOptions }, (t, a, s) => callMcp(engineBotId, active.chatId, t, a, s), getHandler())
+      await awaitWithDisconnect(turn, signal)
     },
     stop: async () => active.controller?.abort(),
     close: () => {
