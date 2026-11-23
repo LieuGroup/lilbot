@@ -161,7 +161,7 @@ export function createAppServices(
   })
   const calls = new CallingChats()
   const observeRun = (event: ActivityEvent) => store.exists(event.botId) && activity.observe(event)
-  const hookDeps = { webhookStore, messages, bots, rootOf, calls, token, origin: HOOK_ORIGIN, t3Enabled, narrowed: threadStore }
+  const hookDeps = { webhookStore, messages, bots, store, engine, rootOf, calls, token, origin: HOOK_ORIGIN, t3Enabled, narrowed: threadStore }
   const { webhooks, webhookRuns, gates } = createWebhooks({ ...hookDeps, observeRun, publish, repeat })
   const runs = { threadStore, routineStore, webhookStore, rootOf, goalStore: new GoalStore(database), reviewModel: mem.reviewModel }
   const remoteWork = remoteWorkAnswers(threadStore, () => ({

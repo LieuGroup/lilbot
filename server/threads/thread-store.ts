@@ -18,8 +18,8 @@ export interface Delivery {
   text: string
   kind: DeliveryKind
   base: number | null
-  /** pending until it has run; steered when it reached a running turn directly. */
-  status: 'pending' | 'steered' | 'done'
+  /** pending until it has run; steered when it reached a running turn directly; stopping while confirming an interrupted/unknown turn stopped. */
+  status: 'pending' | 'steered' | 'stopping' | 'done'
   chatId: string | null
 }
 type Bot = { id: string; name: string }
@@ -151,7 +151,7 @@ export class ThreadStore {
     return this.db.query("SELECT * FROM thread_deliveries WHERE threadId=? AND target=? AND kind='request' ORDER BY rowid DESC LIMIT 1").get(threadId, target) as Delivery | null
   }
   pending(): Delivery[] {
-    return this.db.query("SELECT * FROM thread_deliveries WHERE status='pending' ORDER BY rowid").all() as Delivery[]
+    return this.db.query("SELECT * FROM thread_deliveries WHERE status IN ('pending','stopping') ORDER BY rowid").all() as Delivery[]
   }
   /** Redirects queued behind a request that has not started: they join its first turn. */
   redirectsAfter(d: Delivery): Delivery[] {

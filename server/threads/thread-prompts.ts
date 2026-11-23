@@ -104,7 +104,7 @@ export type ThreadRunOptions = RoutineOptions & {
 }
 export interface NarrowedHost {
   sessionCapabilities?(botId: string, chatId: string): WebhookCapability[] | null
-  hasNarrowed?(botId: string): boolean
+  callerCapabilities?(botId: string, tool: string, raw: unknown): Promise<WebhookCapability[] | null>
   narrowedAccess?: NarrowedAccess
 }
 

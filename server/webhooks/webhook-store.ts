@@ -31,11 +31,12 @@ export interface LiveWebhook {
   signing: Signing | null
 }
 
-/** A run row as `WebhookRun`, named in SQL. */
+/** A run row as `WebhookRun`, named in SQL (internal `'stopping'` surfaces to browsers as `'running'`). */
 const RUN = (r: string) =>
-  `${r}.id, ${r}.webhook_id AS webhookId, ${r}.bot_id AS botId, ${r}.created_at AS createdAt, ${r}.events, ${r}.started_at AS startedAt, ${r}.finished_at AS finishedAt, ${r}.chat_id AS chatId, ${r}.status, ${r}.result, ${r}.message`
-const UNDER_WAY = "r.status IN ('pending', 'running')"
-const UNSETTLED = `SELECT ${RUN('r')} FROM webhook_runs r JOIN webhooks w ON w.id = r.webhook_id JOIN bots b ON b.id = r.bot_id WHERE w.deleted = 0 AND b.deletion IS NULL AND ${UNDER_WAY}`
+  `${r}.id, ${r}.webhook_id AS webhookId, ${r}.bot_id AS botId, ${r}.created_at AS createdAt, ${r}.events, ${r}.started_at AS startedAt, ${r}.finished_at AS finishedAt, ${r}.chat_id AS chatId, CASE WHEN ${r}.status = 'stopping' THEN 'running' ELSE ${r}.status END AS status, ${r}.result, ${r}.message`
+const UNDER_WAY = "r.status IN ('pending', 'running', 'stopping')"
+/** Every unsettled run for a live bot, including runs of deleted webhooks so restart recovery always settles them. */
+const UNSETTLED = `SELECT ${RUN('r')} FROM webhook_runs r JOIN webhooks w ON w.id = r.webhook_id JOIN bots b ON b.id = r.bot_id WHERE b.deletion IS NULL AND ${UNDER_WAY}`
 
 export class WebhookStore {
   readonly events: WebhookEvents
@@ -57,21 +58,22 @@ export class WebhookStore {
       runs: this.db.query(`SELECT ${RUN('webhook_runs')} FROM webhook_runs WHERE webhook_id = ? ORDER BY created_at DESC LIMIT 50`).all(row.id) as WebhookRun[]
     }
   }
-  private row(botId: string, id: string): Row {
-    const row = this.db.query('SELECT * FROM webhooks WHERE bot_id = ? AND id = ? AND deleted = 0').get(botId, id) as Row | null
+  private row(botId: string, id: string, includeDeleted = false): Row {
+    const sql = `SELECT * FROM webhooks WHERE bot_id = ? AND id = ?${includeDeleted ? '' : ' AND deleted = 0'}`
+    const row = this.db.query(sql).get(botId, id) as Row | null
     if (!row) throw new LilBotError('webhook_not_found', 'That webhook does not exist for this bot.')
     return row
   }
-  list(botId: string): Webhook[] {
-    return (this.db.query('SELECT * FROM webhooks WHERE bot_id = ? AND deleted = 0 ORDER BY created_at, rowid').all(botId) as Row[]).map(row => this.from(row))
-  }
-  get(botId: string, id: string): Webhook {
-    return this.from(this.row(botId, id))
+  list = (botId: string): Webhook[] =>
+    (this.db.query('SELECT * FROM webhooks WHERE bot_id = ? AND deleted = 0 ORDER BY created_at, rowid').all(botId) as Row[]).map(row => this.from(row))
+  get = (botId: string, id: string): Webhook => this.from(this.row(botId, id))
+  /** Looks up a run's webhook even after deletion, so recovery can confirm-stop and settle still-running runs. */
+  webhookForRun = (botId: string, id: string): { webhook: Webhook; deleted: boolean } => {
+    const row = this.row(botId, id, true)
+    return { webhook: this.from(row), deleted: !!row.deleted }
   }
   /** What the address of a live webhook is computed from. */
-  addressOf(botId: string, id: string) {
-    return { id, nonce: this.row(botId, id).address_nonce }
-  }
+  addressOf = (botId: string, id: string) => ({ id, nonce: this.row(botId, id).address_nonce })
   signingSecret(botId: string, id: string) {
     const signing = this.row(botId, id).signing
     return signing ? (JSON.parse(signing) as Signing).secret : undefined
@@ -122,12 +124,8 @@ export class WebhookStore {
     const row = this.db.query('SELECT w.* FROM webhooks w JOIN bots b ON b.id = w.bot_id WHERE w.id = ? AND w.deleted = 0 AND b.deletion IS NULL').get(id) as Row | null
     return row && { id: row.id, botId: row.bot_id, nonce: row.address_nonce, paused: !!row.paused, signing: row.signing ? JSON.parse(row.signing) : null }
   }
-  touch(id: string, now: number) {
-    this.db.query('UPDATE webhooks SET last_event_at = ? WHERE id = ?').run(now, id)
-  }
-  forgetBot(botId: string) {
-    this.db.query('DELETE FROM webhooks WHERE bot_id = ?').run(botId)
-  }
+  touch = (id: string, now: number) => void this.db.query('UPDATE webhooks SET last_event_at = ? WHERE id = ?').run(now, id)
+  forgetBot = (botId: string) => void this.db.query('DELETE FROM webhooks WHERE bot_id = ?').run(botId)
   /** Turns each finished burst into one run, within the run limits. Atomic, so a restart cannot claim twice. */
   claimDue(now: number): WebhookRun[] {
     return this.db
@@ -137,7 +135,7 @@ export class WebhookStore {
         const claimed: WebhookRun[] = []
         const hooks = this.db
           .query(`SELECT w.id, w.bot_id FROM webhooks w JOIN bots b ON b.id = w.bot_id WHERE b.deletion IS NULL AND w.deleted = 0 AND w.paused = 0
-            AND NOT EXISTS (SELECT 1 FROM webhook_runs r WHERE r.webhook_id = w.id AND r.status IN ('pending', 'running')) ORDER BY w.last_event_at`)
+            AND NOT EXISTS (SELECT 1 FROM webhook_runs r WHERE r.webhook_id = w.id AND ${UNDER_WAY}) ORDER BY w.last_event_at`)
           .all() as { id: string; bot_id: string }[]
         for (const hook of hooks) {
           if (room <= 0) break
@@ -145,10 +143,7 @@ export class WebhookStore {
           if (!waiting.count || (now - waiting.last! < WEBHOOK_LIMITS.quietMs && now - waiting.first! < WEBHOOK_LIMITS.maxWaitMs)) continue
           const recent = this.db
             .query('SELECT COUNT(*) AS count, MAX(created_at) AS last FROM webhook_runs WHERE webhook_id = ? AND created_at > ?')
-            .get(hook.id, now - 3_600_000) as {
-            count: number
-            last: number | null
-          }
+            .get(hook.id, now - 3_600_000) as { count: number; last: number | null }
           if (recent.count >= WEBHOOK_LIMITS.runsPerHour || (recent.last !== null && now - recent.last < WEBHOOK_LIMITS.gapMs)) continue
           const id = crypto.randomUUID()
           this.db.query('INSERT INTO webhook_runs (id, webhook_id, bot_id, created_at) VALUES (?, ?, ?, ?)').run(id, hook.id, hook.bot_id, now)
@@ -160,9 +155,7 @@ export class WebhookStore {
       })
       .immediate()
   }
-  pending(): WebhookRun[] {
-    return this.db.query(UNSETTLED).all() as WebhookRun[]
-  }
+  pending = (): WebhookRun[] => this.db.query(UNSETTLED).all() as WebhookRun[]
   run(botId: string, id: string): WebhookRun {
     const run = this.db.query(`SELECT ${RUN('webhook_runs')} FROM webhook_runs WHERE id = ? AND bot_id = ?`).get(id, botId) as WebhookRun | null
     if (!run) throw new LilBotError('run_not_found', 'That run does not exist for this bot.')
@@ -170,10 +163,15 @@ export class WebhookStore {
   }
   attach(id: string, chatId: string, now: number) {
     this.db.transaction(() => {
-      this.db.query("UPDATE webhook_runs SET chat_id = COALESCE(chat_id, ?), status = 'running', started_at = COALESCE(started_at, ?) WHERE id = ?").run(chatId, now, id)
+      this.db
+        .query("UPDATE webhook_runs SET chat_id = ?, status = CASE WHEN status = 'stopping' THEN status ELSE 'running' END, started_at = COALESCE(started_at, ?) WHERE id = ?")
+        .run(chatId, now, id)
       this.db.query('INSERT OR IGNORE INTO webhook_chats VALUES (?, ?)').run(chatId, id)
     })()
   }
+  markStopping = (id: string, result: string) =>
+    void this.db.query("UPDATE webhook_runs SET status = 'stopping', result = ? WHERE id = ? AND status IN ('pending', 'running', 'stopping')").run(result.slice(0, 200_000), id)
+  isStopping = (id: string) => !!this.db.query("SELECT 1 FROM webhook_runs WHERE id = ? AND status = 'stopping'").get(id)
   runForChat(botId: string, chatId: string) {
     const sql =
       'SELECT r.id AS runId, w.id AS webhookId, w.description AS task, w.capabilities FROM webhook_chats c JOIN webhook_runs r ON r.id = c.run_id JOIN webhooks w ON w.id = r.webhook_id WHERE c.chat_id = ? AND r.bot_id = ?'
@@ -181,15 +179,11 @@ export class WebhookStore {
     return row && { ...row, capabilities: JSON.parse(row.capabilities) as WebhookCapability[] }
   }
   activeRunCaps(botId: string): WebhookCapability[][] {
-    const sql = `SELECT w.capabilities FROM webhook_runs r JOIN webhooks w ON w.id = r.webhook_id WHERE r.bot_id = ? AND ${UNDER_WAY}`
+    const sql = `SELECT w.capabilities FROM webhook_runs r JOIN webhooks w ON w.id = r.webhook_id JOIN bots b ON b.id = r.bot_id WHERE r.bot_id = ? AND b.deletion IS NULL AND ${UNDER_WAY}`
     return (this.db.query(sql).all(botId) as { capabilities: string }[]).map(row => JSON.parse(row.capabilities))
   }
-  hasRuns(botId: string) {
-    return !!this.db.query('SELECT 1 FROM webhook_runs WHERE bot_id = ? LIMIT 1').get(botId)
-  }
-  isWebhookChat(chatId: string) {
-    return !!this.db.query('SELECT 1 FROM webhook_chats WHERE chat_id = ?').get(chatId)
-  }
+  hasRuns = (botId: string) => !!this.db.query('SELECT 1 FROM webhook_runs WHERE bot_id = ? LIMIT 1').get(botId)
+  isWebhookChat = (chatId: string) => !!this.db.query('SELECT 1 FROM webhook_chats WHERE chat_id = ?').get(chatId)
   finish(id: string, status: WebhookRun['status'], result: string, now: number) {
     this.db.transaction(() => {
       this.db.query('UPDATE webhook_runs SET status = ?, result = ?, finished_at = ? WHERE id = ?').run(status, result.slice(0, 200_000), now, id)

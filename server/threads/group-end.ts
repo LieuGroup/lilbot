@@ -5,7 +5,6 @@
 import { LilBotError } from '../../shared/lilbot-error'
 import type { GroupEnd } from '../../shared/thread-schema'
 import { backgroundFailure } from '../background'
-import type { Match } from './calling-chats'
 import { type KeptFile, recordKept } from './group-files'
 import { archiveGroupFolder, groupArchive } from './group-folder'
 import { endPrompt, endReason, filesLine, journalTexts, newsFor } from './group-prompts'
@@ -34,8 +33,6 @@ export interface GroupHost {
   give(botId: string, path: string, title: string, chatId: string): Promise<void>
   /** The bot's session that made this call (matched by its request id); refuses when that cannot be known. */
   callingChat(botId: string, requestId: string): Promise<string>
-  /** Places a `lilbot_group` call without requiring a requestId (for close/attach/status when narrowed runs are active). */
-  callingAction?(botId: string, raw: unknown): Promise<Match>
   /** The session a chat's compression lineage began as; null when it cannot be read just now. */
   rootOf(botId: string, chatId: string): string | null
   work?: GroupWork
@@ -78,7 +75,7 @@ export class GroupEnding {
     g.seen[leader.id] = thread.messages.length
     this.store.save(thread)
     this.groups.ended(groupId, at)
-    for (const d of this.groups.unfinished(groupId)) if (!running.some(r => r.id === d.id)) this.store.setStatus(d.id, 'done')
+    for (const d of this.groups.unfinished(groupId)) if (!running.some(r => r.id === d.id)) this.store.setStatus(d.id, d.chatId ? 'stopping' : 'done')
     const prompt = endPrompt(thread, news, filesLine(thread, this.files.byMessage(groupId), news), groupArchive(this.host.root, groupId), this.limits)
     this.store.enqueue(endId(groupId), groupId, leader.id, leader.id, this.groups.row(groupId)!.source_chat, prompt, 'notice')
     if (!thread.capabilities || thread.capabilities.includes('memory'))

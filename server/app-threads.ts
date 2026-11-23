@@ -41,7 +41,7 @@ interface ThreadDeps {
   root: string
   rootOf: SessionRoot
   remoteWorkers?: RemoteWorkers
-  callers?: Pick<WebhookCallers, 'forChat' | 'hasRuns'>
+  callers?: Pick<WebhookCallers, 'forChat' | 'forAction'>
   t3Enabled?: boolean
   publish: (frame: EventFrame) => void
   botsChanged: () => void
@@ -70,9 +70,8 @@ export function createThreads(deps: ThreadDeps) {
           })
         : bots.runRoutine(botId, prompt, options),
     sessionCapabilities: deps.callers?.forChat,
-    hasNarrowed: deps.callers?.hasRuns,
+    callerCapabilities: deps.callers?.forAction,
     narrowedAccess: caps => webhookRunAccess(caps, Boolean(deps.t3Enabled)),
-    callingDelegation: (botId, raw) => calls.claim(botId, 'lilbot_delegation', raw, chat => deps.callers?.forChat(botId, chat) !== null),
     folder: botId => workspaces.ensure(botId),
     stopRun: async (botId, chatId) =>
       chatId.startsWith('remote:') && remoteWorkers ? remoteWorkers.runner.stopByChat(botId, chatId) : ((await engine.stopRun?.(native(botId), chatId)) ?? false),
@@ -99,7 +98,6 @@ export function createThreads(deps: ThreadDeps) {
       await deps.library.give(botId, { path, title, chatId })
     },
     callingChat: (botId, requestId) => calls.find(botId, 'lilbot_group', requestId),
-    callingAction: (botId, raw) => calls.claim(botId, 'lilbot_group', raw, chat => deps.callers?.forChat(botId, chat) !== null),
     rootOf: deps.rootOf,
     work,
     rosterChanged: deps.botsChanged
@@ -131,6 +129,6 @@ export function createThreads(deps: ThreadDeps) {
   })
   remoteWorkers?.runner.onToolCall(call => threads.runner.sawTool(call.chatId, call.activity))
   const hand = new DelegationService(threads, host, (botId, requestId) => calls.find(botId, 'lilbot_delegate', requestId), work)
-  const control = new DelegationControl(threads, host, (botId, requestId) => calls.find(botId, 'lilbot_delegation', requestId))
+  const control = new DelegationControl(threads, host)
   return { threads, delegation: { hand, control, groups: threads.groups! } }
 }

@@ -48,8 +48,11 @@ conversations, reaches LilBot through MCP, and keeps a thin adapter for the few 
 
 - [ ] `runRoutine` runs a prompt in a new hidden full-access session in the bot's folder (routines, thread deliveries
   and webhook runs) with a durable `runId`: the same id recovers the same admission, and an unknown outcome is reported
-  as failed (with `unknownReceipt: true`, so the exchange can say LilBot could not confirm how it ended), never repeated. Its sessions are excluded from activity unread, history and both memory reviews. Given
-  `toolsets`, the session starts with only those (`server/webhooks/webhook-access.ts`).
+  as failed (with `unknownReceipt: true`, so the exchange can say LilBot could not confirm how it ended), never repeated.
+  When resuming a named `chatId`, it throws `session_not_found` only after confirming the session no longer exists
+  (never on a single transient failure); `stopRun` uses the same rule when a session is confirmed gone. Its sessions are
+  excluded from activity unread, history and both memory reviews. Given `toolsets`, the session starts with only those
+  (`server/webhooks/webhook-access.ts`).
 - [ ] An engine that continues a long session under a new id after compressing it implements `compressionRoot`
   (the session the lineage began as; read-only), so a continued hidden run stays hidden (`server/bots/hidden-chats.ts`).
 - [ ] `reviewMemory` runs a hidden session of the same bot with only its memory tools and resolves when it ends.

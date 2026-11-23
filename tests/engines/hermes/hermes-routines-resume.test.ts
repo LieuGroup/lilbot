@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
 import { runRoutine } from '../../../server/engines/hermes/hermes-routines'
+import { stopRun } from '../../../server/engines/hermes/hermes-run-control'
 import type { HermesSocket } from '../../../server/engines/hermes/hermes-socket'
 import { LilBotError } from '../../../shared/lilbot-error'
 
@@ -57,4 +58,35 @@ test('transient or restarting errors never become session_not_found', async () =
     expect(err).toBeInstanceOf(LilBotError)
     expect((err as LilBotError).code).toBe(expected)
   }
+})
+
+test('runRoutine interrupts still-running unknownReceipt turns and stopRun confirms session_not_found on two fresh sockets', async () => {
+  const calls: string[] = []
+  const connectUnknown = async () =>
+    ({
+      request: async (method: string) => {
+        calls.push(method)
+        if (method === 'config.get') return { value: 'off' }
+        if (method === 'session.create') return { session_id: 'live-1', stored_session_id: 's1' }
+        if (method === 'prompt.submit') return { admission_id: 'adm-1' }
+        if (method === 'prompt.receipt') return { status: 'unknown' }
+        if (method === 'session.resume') return { session_id: 'live-1', stored_session_id: 's1', running: true, execution_generation: 7, display_messages: [] }
+        return {}
+      },
+      close: () => {}
+    }) as unknown as HermesSocket
+  expect((await runRoutine('n1', 'hi', { workspace: '/tmp', runId: 'r-u', onChat: () => {} }, connectUnknown)).unknownReceipt).toBe(true)
+  expect(calls).toContain('session.interrupt')
+
+  const connectNf = (outcomes: Array<Error | { running: boolean }>) => async () =>
+    ({
+      request: async () => {
+        const next = outcomes.shift()
+        if (next instanceof Error) throw next
+        return { session_id: 's', ...next }
+      },
+      close: () => {}
+    }) as unknown as HermesSocket
+  await expect(stopRun('n1', 'gone', connectNf([notFound(), notFound()]))).rejects.toMatchObject({ code: 'session_not_found' })
+  expect(await stopRun('n1', 'flaky', connectNf([notFound(), { running: false }]))).toBe(false)
 })

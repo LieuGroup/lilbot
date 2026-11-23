@@ -83,6 +83,7 @@ export function delegationFixture(
   const bots = ['a', 'b', 'c', 'd'].map(id => ({ id, name: id.toUpperCase() }))
   const runs: Run[] = []
   const stops: string[] = []
+  const stoppedChats = new Set<string>()
   const steers: { chatId: string; text: string }[] = []
   const host = {
     requireBot: async (id: string) => {
@@ -110,6 +111,8 @@ export function delegationFixture(
         runs.push(run)
       }),
     stopRun: async (_botId: string, chatId: string) => {
+      if (stoppedChats.has(chatId)) return false
+      stoppedChats.add(chatId)
       stops.push(chatId)
       return true
     },

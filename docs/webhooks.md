@@ -123,11 +123,15 @@ are in `AGENTS.md` under "Webhooks"; tunnel ingress is in [cloudflare.md](cloudf
   - A refusal is an ordinary tool result (`{"refused": ...}`), not a tool error: Hermes pauses a whole MCP server for
     about a minute after three tool errors in a row, keyed by the profile's connection, which could reach the bot's
     other conversations.
-  - Other sessions: a webhook run never makes Oscar's calls wait a fixed time. Unmatched MCP calls and headerless
-    legacy engine calls are gated only while a webhook run or a local narrowed delivery of that bot is live, and only
-    for tools outside the live intersection; once no limited run is live, ordinary calls (including engine sub-agents
-    with no tool start) pass immediately with zero delay, while named-session calls and reported starts from a settled
-    webhook session stay permanently refused and settled webhook sessions are read-only to `chat.send`. While a run is
+  - Other sessions: a webhook run never makes Oscar's calls wait a fixed time. Every MCP gate and service-level caller
+    check goes through one shared decision (`webhookCallers.placeCall`): unmatched MCP calls and headerless legacy
+    engine calls are gated only while a webhook run or a local narrowed delivery of that bot is live, and only for
+    tools outside the live intersection; once no limited run is live, ordinary calls (including engine sub-agents with
+    no tool start) pass immediately with zero delay, while named-session calls and reported starts from a settled
+    limited session stay permanently refused and settled webhook sessions are read-only to `chat.send`. Runs or
+    deliveries ending with an unknown receipt (`unknownReceipt: true`), or cancelled/deleted while running, remain in
+    `stopping` (keeping gating armed and recovering across restarts without re-submitting `prompt.submit`) until the
+    engine confirms the turn is no longer running via bounded `stopRun` polling (`confirmStopped`). While a run is
     live, a main-conversation call outside the live capabilities waits only until its own start is reported (1 to 5 ms
     with the chat open in a browser, 0.75 to 1 s without) and is refused only when none is seen in 5 seconds or when
     concurrent identical-argument calls collide with a limited session. An MCP server entry of its own for webhook

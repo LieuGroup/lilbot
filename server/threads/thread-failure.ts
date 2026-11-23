@@ -1,10 +1,13 @@
 /** Why an exchange failed (#170): fixed words chosen from what LilBot knows (which step failed, whose bot is gone), never an
  *  exception's text, a run's output or anything a bot wrote, so they hold no secret and read the same from both sides. */
-import type { LilBotError } from '../../shared/lilbot-error'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { BotThread } from '../../shared/thread-schema'
-import { THREAD_LIMITS } from './thread-limits'
+import type { GroupRounds } from './group-rounds'
+import { isReply, THREAD_LIMITS } from './thread-limits'
 import { type Delivery, isWork, type ThreadStore } from './thread-store'
 import type { ThreadWaits } from './thread-waits'
+
+const TERMINAL = ['bot_not_found', 'unsafe_message', 'thread_limit', 'session_not_found']
 
 const REMOTE_FAILURE: Record<string, string> = {
   offline: 'the computer went offline',
@@ -28,6 +31,7 @@ async function reasonFor(host: { requireBot(id: string): Promise<unknown> }, thr
     )
     return receiverGone ? 'the receiving bot is no longer available' : 'the bot that handed it over is no longer available'
   }
+  if (error.code === 'session_not_found') return 'the conversation no longer exists'
   if (error.code === 'thread_limit') return 'the message limit was reached'
   const noun = isWork(d.kind) ? 'request' : 'answer'
   return d.text.length > THREAD_LIMITS.text ? `the ${noun} was too long to deliver` : `LilBot's safety check withheld the ${noun}`
@@ -35,7 +39,7 @@ async function reasonFor(host: { requireBot(id: string): Promise<unknown> }, thr
 
 /** A delivery LilBot can never make (a bot gone, a message refused): its exchange fails with the reason and what waits on it
  *  is released. A stopped exchange stays stopped: a late notice that cannot be delivered does not turn the stop into a failure. */
-export async function failExchange(store: ThreadStore, waits: ThreadWaits, host: { requireBot(id: string): Promise<unknown> }, d: Delivery, error: LilBotError) {
+async function failExchange(store: ThreadStore, waits: ThreadWaits, host: { requireBot(id: string): Promise<unknown> }, d: Delivery, error: LilBotError) {
   const failure = await reasonFor(host, store.get(d.threadId), d, error)
   store.db.transaction(() => {
     const thread = store.get(d.threadId)
@@ -50,4 +54,28 @@ export async function failExchange(store: ThreadStore, waits: ThreadWaits, host:
     store.setStatus(d.id, 'done')
     waits.settle(thread.id, null)
   })()
+}
+
+/** Handles delivery errors in `ThreadRunner`: returns true when terminal/settled, false to retry with backoff. */
+export async function handleDeliveryError(
+  store: ThreadStore,
+  waits: ThreadWaits,
+  host: { requireBot(id: string): Promise<unknown> },
+  groups: GroupRounds | undefined,
+  d: Delivery,
+  error: unknown
+): Promise<boolean> {
+  if (!(error instanceof LilBotError)) return false
+  if (error.code === 'thread_cancelled') {
+    store.setStatus(d.id, 'done')
+    return true
+  }
+  if (error.code === 'session_not_found' && isReply(d.kind)) {
+    console.warn('[thread] reply target session no longer exists; settled delivery')
+    store.setStatus(d.id, 'done')
+    return true
+  }
+  if (!TERMINAL.includes(error.code)) return false
+  await (groups?.owns(d.threadId) ? groups.failed(d, error) : failExchange(store, waits, host, d, error))
+  return true
 }

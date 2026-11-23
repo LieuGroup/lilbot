@@ -6,9 +6,10 @@
  *  first, falling back after a grace window only when strictly one unmatched start exists for a call without request id).
  *  It fails closed: a call that cannot be placed, or whose session's lineage cannot be read, counts as a webhook run's.
  *  Calls of a bot that never had a webhook run are never held. */
+import { LilBotError } from '../../shared/lilbot-error'
 import type { WebhookCapability } from '../../shared/webhook-schema'
 import type { SessionRoot } from '../bots/hidden-chats'
-import { AMBIGUOUS_MATCH, type CallingChats } from '../threads/calling-chats'
+import { AMBIGUOUS, AMBIGUOUS_MATCH, type CallingChats, NOT_SEEN } from '../threads/calling-chats'
 import type { WebhookStore } from './webhook-store'
 
 /** What a session that cannot be placed may do: nothing beyond the narrow set. */
@@ -21,10 +22,28 @@ export interface NarrowedSessions {
   narrowedForChat(botId: string, chatId: string): WebhookCapability[] | null | undefined
 }
 
+export interface PlaceCallOptions {
+  /** Which `CallingChats` slot to consume (`gated` for MCP gates, `claimed` for service actions). Default `'gated'`. */
+  slot?: 'gated' | 'claimed'
+  /** Wait for a start even when no limited run is live (e.g., while a check session runs). */
+  forceGate?: boolean
+  /** Skip live-run gating when the live intersection already allows this call; still 0ms-peeks settled limited sessions. */
+  liveAllowed?: boolean
+  /** Extra ambiguity predicate OR'd with limited-session detection (e.g., active check sessions). */
+  prefer?: (chatId: string) => boolean
+  /** Override limited-session ambiguity predicate (e.g., only sessions that would be refused this specific call). */
+  limitedPrefer?: (chatId: string) => boolean
+}
+
+export type CallPlacement =
+  | { kind: 'ambiguous' }
+  | { kind: 'placed'; chatId: string; capabilities: WebhookCapability[] | null }
+  | { kind: 'unplaced'; capabilities: WebhookCapability[] | null }
+
 export function webhookCallers(
   store: Pick<WebhookStore, 'runForChat' | 'hasRuns'> & Partial<Pick<WebhookStore, 'activeRunCaps'>>,
   rootOf: SessionRoot,
-  calls: Pick<CallingChats, 'gate'> & Partial<Pick<CallingChats, 'peek'>>,
+  calls: Pick<CallingChats, 'gate'> & Partial<Pick<CallingChats, 'peek' | 'claim'>>,
   narrowed?: NarrowedSessions
 ) {
   /** The session's webhook run (null: none), also after the engine compressed it; undefined while its lineage is unreadable. */
@@ -74,29 +93,49 @@ export function webhookCallers(
     return caps === undefined ? UNPLACED : caps
   }
 
+  /** Single shared caller-limitation decision used by every MCP gate and service action.
+   *  While a limited run or local narrowed delivery is live (or `forceGate` is set), gates in `CallingChats`;
+   *  when idle, performs a 0ms `peek` so any reported start from a session that was ever limited is still caught. */
+  const placeCall = async (botId: string, tool: string, raw: unknown, opts: PlaceCallOptions = {}): Promise<CallPlacement> => {
+    const slot = opts.slot ?? 'gated'
+    const unplaced = unplacedCapabilities(botId)
+    const liveLimited = unplaced !== null
+    const shouldGate = Boolean(opts.forceGate) || (liveLimited && !opts.liveAllowed)
+    const isLimited = opts.limitedPrefer ?? ((chatId: string) => forChat(botId, chatId) !== null)
+    const prefer = (chatId: string) => Boolean(opts.prefer?.(chatId)) || isLimited(chatId)
+    if (!shouldGate) {
+      if (!hasHistory(botId) || !calls.peek) return { kind: 'unplaced', capabilities: null }
+      const seen = calls.peek(botId, tool, raw, prefer, slot)
+      if (seen === AMBIGUOUS_MATCH) return { kind: 'ambiguous' }
+      return seen ? { kind: 'placed', chatId: seen, capabilities: forChat(botId, seen) } : { kind: 'unplaced', capabilities: null }
+    }
+    const matched = slot === 'claimed' && calls.claim ? await calls.claim(botId, tool, raw, prefer) : await calls.gate(botId, tool, raw, prefer)
+    if (matched === AMBIGUOUS_MATCH) return { kind: 'ambiguous' }
+    if (matched === null) return { kind: 'unplaced', capabilities: liveLimited ? unplaced : null }
+    return { kind: 'placed', chatId: matched, capabilities: forChat(botId, matched) }
+  }
+
   return {
     run: runOf,
     hasRuns,
     hasHistory,
     unplacedCapabilities,
     forChat,
-    /** For an MCP call of `tool` with these arguments: what the narrowed run that made it may do, or null when another
-     *  session made it. Gates only while a webhook run or local narrowed delivery is live; when idle, performs a 0ms peek
-     *  so a reported start from a settled limited session is still refused without delaying unmatched calls. */
+    placeCall,
+    /** For an MCP gate call (`gated` slot): capabilities of the limited run that made it, or null when unrestricted. */
     async forCall(botId: string, tool: string, raw: unknown): Promise<WebhookCapability[] | null> {
-      const unplaced = unplacedCapabilities(botId)
-      if (unplaced === null) {
-        if (!hasHistory(botId) || !calls.peek) return null
-        const seen = calls.peek(botId, tool, raw, chatId => forChat(botId, chatId) !== null)
-        return seen === AMBIGUOUS_MATCH ? UNPLACED : seen ? forChat(botId, seen) : null
-      }
-      const own = await calls.gate(botId, tool, raw, chatId => forChat(botId, chatId) !== null)
-      if (own === AMBIGUOUS_MATCH) return UNPLACED
-      if (own === null) {
-        console.warn(`[webhook-session] ${tool}: no tool start seen; treated as a webhook run's call`)
-        return unplaced
-      }
-      return forChat(botId, own)
+      const res = await placeCall(botId, tool, raw, { slot: 'gated' })
+      if (res.kind === 'ambiguous') return UNPLACED
+      if (res.kind === 'unplaced' && res.capabilities !== null) console.warn(`[webhook-session] ${tool}: no tool start seen; treated as a webhook run's call`)
+      return res.capabilities
+    },
+    /** For a service-level action (`claimed` slot, e.g., delegation/group control & replay): capabilities of the calling
+     *  limited session (live or settled), or null when unrestricted. Throws on ambiguity or unplaced live calls. */
+    async forAction(botId: string, tool: string, raw: unknown): Promise<WebhookCapability[] | null> {
+      const res = await placeCall(botId, tool, raw, { slot: 'claimed' })
+      if (res.kind === 'ambiguous') throw new LilBotError('session_ambiguous', AMBIGUOUS)
+      if (res.kind === 'unplaced' && res.capabilities !== null) throw new LilBotError('session_unknown', NOT_SEEN)
+      return res.capabilities
     }
   }
 }

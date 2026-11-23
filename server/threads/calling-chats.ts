@@ -149,10 +149,10 @@ export class CallingChats {
     return this.place(botId, tool, raw, prefer, 'gated')
   }
 
-  /** Synchronous 0ms match in the `gated` slot without waiting: catches reported starts of settled limited sessions without delaying unmatched calls. */
-  peek(botId: string, tool: string, raw: unknown, prefer?: (chatId: string) => boolean): Match {
+  /** Synchronous 0ms match in `slot` without waiting: catches reported starts of settled limited sessions without delaying unmatched calls. */
+  peek(botId: string, tool: string, raw: unknown, prefer?: (chatId: string) => boolean, slot: 'gated' | 'claimed' = 'gated'): Match {
     const args = record(raw)
-    return this.take(botId, tool, Date.now() - EARLY_MS, argsKey(args), typeof args.requestId === 'string' ? args.requestId : null, prefer, 'gated')
+    return this.take(botId, tool, Date.now() - EARLY_MS, argsKey(args), typeof args.requestId === 'string' ? args.requestId : null, prefer, slot)
   }
 
   /** Places an MCP call once for service-level checks (`claimed` slot, independent of `gate`). Null when unplaced (fail closed). */

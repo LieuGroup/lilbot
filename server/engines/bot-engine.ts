@@ -158,7 +158,8 @@ export interface BotEngine {
   refreshMemory(bots: RuntimeBinding[], connection?: MemoryConnection): Promise<string[]>
   /** Run `prompt` as a hidden memory-only session for the after-chat review. */
   reviewMemory(engineBotId: string, prompt: string, options: ReviewOptions): Promise<void>
-  /** Run or recover one scheduled task, using runId as a durable execution identity. */
+  /** Run or recover one scheduled task, using runId as a durable execution identity. Throws `session_not_found` only
+   *  after confirming a named `chatId` no longer exists (never on a single transient failure). */
   runRoutine(
     engineBotId: string,
     prompt: string,
@@ -172,7 +173,7 @@ export interface BotEngine {
   /** Every tool call the engine sees start. MCP requests carry no session, so this is how LilBot's own MCP server
    *  tells which conversation called it, and what a hidden run is doing. Returns the function that stops it. */
   onToolCall?(listener: (call: ToolCallSeen) => void): () => void
-  /** Stop the running turn of a chat. False when nothing was running. */
+  /** Stop the running turn of a chat. False when nothing was running; throws `session_not_found` if confirmed gone. */
   stopRun?(engineBotId: string, chatId: string): Promise<boolean>
   /** Give a running turn more text at its next step without stopping it. */
   steerRun?(engineBotId: string, chatId: string, text: string): Promise<'steered' | 'not_running'>

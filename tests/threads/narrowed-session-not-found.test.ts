@@ -82,7 +82,7 @@ test('permanent session_not_found settles reply and notice deliveries without sh
   expect(callers.unplacedCapabilities('b')).toBeNull()
   expect(callers.forChat('b', 'b-narrow')).toEqual(['delegation'])
 
-  // Work deliveries (non-reply) do NOT settle on session_not_found.
+  // Non-reply work deliveries whose existing session is confirmed gone fail cleanly and disarm gating instead of retrying forever.
   const work = store.accept(
     { id: 'a', name: 'A' },
     { id: 'b', name: 'B' },
@@ -90,6 +90,8 @@ test('permanent session_not_found settles reply and notice deliveries without sh
   )
   freshRunner.tick()
   await Bun.sleep(10)
-  expect(store.delivery(work.id)?.status).toBe('pending')
-  expect(callers.unplacedCapabilities('b')).toEqual(['delegation'])
+  expect(store.delivery(work.id)?.status).toBe('done')
+  expect(store.get(outer.threadId)).toMatchObject({ status: 'failed', failure: 'the conversation no longer exists' })
+  expect(callers.unplacedCapabilities('b')).toBeNull()
+  expect(callers.forChat('b', 'b-narrow')).toEqual(['delegation'])
 })

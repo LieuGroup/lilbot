@@ -82,6 +82,9 @@ export async function runRoutine(botId: string, prompt: string, options: Routine
         const items = itemsFromRows(snapshot.display_messages)
         const last = items.filter(item => item.kind === 'assistant').at(-1)
         const switched = typeof snapshot.stored_session_id === 'string' && typeof session.stored_session_id === 'string' && snapshot.stored_session_id !== session.stored_session_id
+        if (switched) options.onChat(snapshot.stored_session_id)
+        if (receipt.status === 'unknown' && snapshot.running === true && typeof snapshot.execution_generation === 'number')
+          await socket.request('session.interrupt', { session_id: snapshot.session_id, execution_generation: snapshot.execution_generation }).catch(() => {})
         const sliced = !switched && base < items.length ? items.slice(base) : items
         const turnItems = receipt.outcome === 'completed' && sliced.every(item => item.kind === 'user') ? items : sliced
         return {

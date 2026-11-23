@@ -136,8 +136,8 @@ export class ThreadService {
     const running = this.runner.runningFor(threadId)
     const stopped = this.store.db.transaction(() => {
       const next = this.store.update(threadId, t => Object.assign(t, { status: 'cancelled', endedAt: Date.now(), stoppedBy: { ...by, at: Date.now() } }))
-      // The running turn settles itself when it ends, so what it says is still recorded (as withheld).
-      for (const id of this.store.pendingWork(threadId)) if (id !== running?.id) this.store.setStatus(id, 'done')
+      // The running turn settles itself when it ends; a non-running delivery with an engine session confirms stopped first.
+      for (const id of this.store.pendingWork(threadId)) if (id !== running?.id) this.store.setStatus(id, this.store.delivery(id)?.chatId ? 'stopping' : 'done')
       if (by.kind === 'oscar')
         this.tellDelegator(
           next,

@@ -5,6 +5,7 @@
 import type { ChatEvent } from '../../shared/chat-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import { type Webhook, type WebhookAddress, type WebhookCapability, WebhookCreate, type WebhookRun } from '../../shared/webhook-schema'
+import { confirmStopped } from '../background'
 import { webhookLine } from '../devices/origin-line'
 import type { RoutineHost } from '../routines/routine-service'
 import { webhookRunAccess } from './webhook-access'
@@ -28,7 +29,8 @@ export class WebhookService {
     private origin: string | undefined,
     private changed: () => void = () => {},
     private now = Date.now,
-    private t3Enabled = false
+    private t3Enabled = false,
+    private stopOpts: { timeoutMs?: number; pollMs?: number } = {}
   ) {}
 
   private requireOrigin() {
@@ -121,24 +123,39 @@ export class WebhookService {
   }
 
   async run(run: WebhookRun) {
-    const webhook = this.store.get(run.botId, run.webhookId)
+    const { webhook, deleted } = this.store.webhookForRun(run.botId, run.webhookId)
+    const settleStopped = async (chatId: string | null, status: 'failed' | 'stopped', text: string) => {
+      if (chatId) {
+        this.store.markStopping(run.id, text)
+        await confirmStopped(this.host.stopRun ? () => this.host.stopRun!(run.botId, chatId) : undefined, this.stopOpts)
+      }
+      this.store.finish(run.id, status, text, this.now())
+      this.changed()
+      return { status, text }
+    }
+    if (deleted) {
+      const text = run.chatId ? 'The webhook was deleted while this run was under way.' : 'The webhook was deleted before this run started.'
+      return settleStopped(run.chatId, 'stopped', text)
+    }
+    if (this.store.isStopping(run.id)) return settleStopped(run.chatId, 'failed', run.result || 'Routine ended: unknown. Execution was not retried.')
     const { items, withheld } = this.store.events.forRun(run.id)
     if (!items.length) {
-      const result = { status: 'failed' as const, text: `${withheld.length} event(s) withheld by LilBot's safety check: ${withheld[0] ?? 'no payload'}.` }
-      this.store.finish(run.id, result.status, result.text, this.now())
-      this.changed()
-      return result
+      const text = `${withheld.length} event(s) withheld by LilBot's safety check: ${withheld[0] ?? 'no payload'}.`
+      return settleStopped(run.chatId, 'failed', text)
     }
+    let chatId = run.chatId
     const access = webhookRunAccess(webhook.capabilities, this.t3Enabled)
     const result = await this.host.runRoutine(run.botId, webhookPrompt(webhook, access.prompt, items, withheld.length), {
       runId: `webhook-${run.id}`,
       toolsets: access.toolsets,
       origin: { line: webhookLine },
       onChat: id => {
+        chatId = id
         this.store.attach(run.id, id, this.now())
         this.changed()
       }
     })
+    if (result.unknownReceipt) return settleStopped(chatId, 'failed', result.text)
     this.store.finish(run.id, result.status, result.text, this.now())
     this.changed()
     return result

@@ -12,7 +12,7 @@ import { groupFolder, makeGroupFolder } from './group-folder'
 import { openRound } from './group-open'
 import { type GroupStore, memberItemId } from './group-store'
 import { botStatus } from './group-view'
-import { assertNarrowedAllowed, narrowedCaller } from './thread-accept'
+import { assertNarrowedAllowed } from './thread-accept'
 import { type GroupLimits, THREAD_LIMITS } from './thread-limits'
 import type { ThreadHost, ThreadService } from './thread-service'
 
@@ -45,9 +45,7 @@ export class GroupService {
     if (input.action === 'start') return this.start(caller, input, matchArgs)
     const thread = this.store.get(need(input.groupId, 'the groupId'))
     if (!thread.group || !thread.participants.some(p => p.id === caller.id)) throw new LilBotError('thread_forbidden', 'You are not in that group.')
-    const caps = await narrowedCaller(caller.id, this.host, () =>
-      this.host.callingAction ? this.host.callingAction(caller.id, matchArgs) : input.requestId ? this.host.callingChat(caller.id, input.requestId) : Promise.resolve(null)
-    )
+    const caps = (await this.host.callerCapabilities?.(caller.id, 'lilbot_group', matchArgs)) ?? null
     assertNarrowedAllowed(caps, { existing: thread })
     if (input.action === 'status') return botStatus(this.threads.view(thread))
     if (input.action === 'attach') return this.attach(caller, thread, need(input.files, 'files'))
@@ -61,8 +59,7 @@ export class GroupService {
     const prior = this.groups.byRequest(caller.id, requestId)
     if (prior) {
       const existing = this.store.get(prior)
-      const place = () => (this.host.callingAction ? this.host.callingAction(caller.id, matchArgs) : this.host.callingChat(caller.id, requestId))
-      assertNarrowedAllowed(await narrowedCaller(caller.id, this.host, place), { existing })
+      assertNarrowedAllowed((await this.host.callerCapabilities?.(caller.id, 'lilbot_group', matchArgs)) ?? null, { existing })
       return botStatus(this.threads.view(existing))
     }
     const [purpose, text] = [need(input.purpose, 'the purpose'), need(input.text, 'the first point (text)')]
