@@ -92,10 +92,8 @@ export function createAppServices(
   )
   repeat('computers', 1000, () => computers.tick())
   const devices = createDevices(database, computers, publish)
-  const routineStore = new RoutineStore(database)
-  const libraryStore = new LibraryStore(database)
-  const webhookStore = new WebhookStore(database)
-  const checkStore = new WorkCheckStore(database)
+  const [routineStore, libraryStore] = [new RoutineStore(database), new LibraryStore(database)]
+  const [webhookStore, checkStore] = [new WebhookStore(database), new WorkCheckStore(database)]
   const ownChat = (chat: string) => routineStore.isRoutineChat(chat) || threadStore.isInternal(chat) || webhookStore.isWebhookChat(chat) || checkStore.isCheckChat(chat)
   const chatKind = chatKinds(rootOf, ownChat)
   const hiddenChat = hiddenChats(chatKind)
@@ -157,7 +155,8 @@ export function createAppServices(
     connections: botId => [...t3For(botId), system.connection(botId), ...mcp.connections(botId)],
     onConnectionsChanged: botId => mcp.applyBot(botId),
     systemNote: systemNote(facts),
-    busyReason: botBusyReason({ database, activity, routineStore, webhookStore })
+    busyReason: botBusyReason({ database, activity, routineStore, webhookStore }),
+    readOnlyChat: (botId, chatId) => webhookRuns.callers.isKnownLimited(botId, chatId)
   })
   const calls = new CallingChats()
   const observeRun = (event: ActivityEvent) => store.exists(event.botId) && activity.observe(event)

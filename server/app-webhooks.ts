@@ -9,7 +9,7 @@ import type { BotService } from './bots/bot-service'
 import type { BotStore } from './bots/bot-store'
 import type { SessionRoot } from './bots/hidden-chats'
 import type { HistoryStore } from './history/history-store'
-import { pluginCall, SESSION_HEADER } from './http/engine-run-gate'
+import { pluginCall } from './http/engine-run-gate'
 import { RoutineScheduler } from './routines/routine-scheduler'
 import { serviceSessionRefusal } from './system/check-access'
 import { refusalFor } from './system/run-access'
@@ -75,13 +75,9 @@ export function createWebhooks({ webhookStore, messages, bots, rootOf, calls, to
       return allowed === null || allowed.includes('memory') ? null : 'A webhook run cannot use memory or give files. Put what matters in your result.'
     },
     sessionCapabilities: (botId: string, chatId: string | undefined) => callers.forChat(botId, chatId),
-    pluginRefusal: async (botId: string, pathname: string, request: Request) => {
-      const body = await request
-        .clone()
-        .json()
-        .catch(() => null)
+    pluginRefusal: (botId: string, pathname: string, body: unknown, session: string | undefined) => {
       const call = pluginCall(pathname, body)
-      return call ? refusalFor(callers.forChat(botId, request.headers.get(SESSION_HEADER) || undefined), call.tool, call.groups) : null
+      return call ? refusalFor(callers.forChat(botId, session), call.tool, call.groups) : null
     },
     t3Refusal: async (botId: string, tool: string, args: unknown) => refusalFor(await callers.forCall(botId, tool, args), tool, ['coding']),
     serviceRefusal: (checks: Pick<CheckSessions, 'checking' | 'isCheck'>) => serviceSessionRefusal(callers, checks, calls)

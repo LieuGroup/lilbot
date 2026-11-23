@@ -36,6 +36,7 @@ export interface BotServiceOptions {
   systemNote?: (bot: BotRecord) => string
   busyReason?: (botId: string) => string | null
   deletionRetry?: import('./bot-deletion').BotDeletionOptions
+  readOnlyChat?: (botId: string, chatId: string) => boolean
 }
 
 export class BotService {
@@ -71,7 +72,7 @@ export class BotService {
     if (options.skills) this.skills = new BotSkills(options.skills, this.runtimes, this.engines, this.changed)
     this.sessions = new SessionSettings(this.engines, prefs, this.changed)
     this.background = new BackgroundRuns(this.runtimes, workspaces, this.sessions)
-    this.conversations = new BotConversations(this.runtimes, prefs, workspaces, this.sessions, options.history, options.turnNotes)
+    this.conversations = new BotConversations(this.runtimes, prefs, workspaces, this.sessions, options.history, options.turnNotes, options.readOnlyChat)
     this.creation = new BotCreation(this, store)
     this.memoryChanged = options.memoryChanged ?? (() => {})
     this.deletion = new BotDeletion(
@@ -126,10 +127,7 @@ export class BotService {
     )
   }
 
-  refreshConnections() {
-    return this.runtimes.refreshConnections()
-  }
-
+  refreshConnections = () => this.runtimes.refreshConnections()
   prepareRuntimes() {
     return this.runtimes.initialize(bots => this.primaryId(bots)).finally(this.changed)
   }
