@@ -84,7 +84,7 @@ Every `check:*` and `bun live-checks/*.ts` follows the development rules in `AGE
 - `bun run check:webhooks`: a dev server with its own helper door on loopback and a temporary bot whose webhook is made
   through its MCP tool: a signed event wakes it; a repeat, an unsigned and a wrongly signed event do nothing. The
   narrow run reads a file in its folder, finishes a work item, asks Oscar a question and leaves its bot a message; its
-  tries at `lilbot_bot_create`, `computer_exec`, `lilbot_about` and `lilbot_work_list` with `mine: false` are refused
+  tries at `lilbot_bot_create`, `lilbot_computer_exec`, `lilbot_about` and `lilbot_work_list` with `mine: false` are refused
   (no bot, no change logged, no computer request); unreported direct calls are refused during and after the run; its
   session's real tools (`session.info`, `tools.show`) lack the web, shell, file writes, memory and T3. After it ends
   (`webhook-session-checks.ts`): a skill write and the computers naming its session are refused, Oscar's answer reaches

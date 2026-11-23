@@ -119,16 +119,45 @@ test('startup prepares only active bindings for this engine using native ids', a
   expect(prepared).toEqual(['owned-native'])
 })
 
-test('computer plugin failure does not hide an otherwise usable bot and retries on next use', async () => {
+test('non-fatal prepare retry keeps bot usable, backs off repeated uses, and retries until it succeeds', async () => {
   const { store, engine } = fakeService()
   let attempts = 0
-  engine.configureComputers = async () => {
+  let clock = 1_000
+  engine.prepareRuntime = async () => {
     attempts++
-    throw new Error('plugin unavailable')
+    if (attempts < 3) return { retry: true }
   }
-  const runtimes = new BotRuntimes(store, engine, undefined, { url: 'http://localhost', tokenFile: '/unused', botId: 'b1' })
+  const runtimes = new BotRuntimes(store, engine, undefined, undefined, undefined, { prepareRetryMs: 30_000, now: () => clock })
+  const bot = store.get('b1')
+
   await runtimes.initialize()
-  expect(runtimes.snapshot(store.get('b1')) !== null).toBe(true)
-  await runtimes.state(store.get('b1'))
+  expect(attempts).toBe(1)
+  expect(runtimes.snapshot(bot)).not.toBeNull()
+
+  // Repeated uses before backoff elapses do not hammer prepareRuntime.
+  clock += 10_000
+  await runtimes.use(bot)
+  await runtimes.state(bot)
+  await runtimes.reapplySkills()
+  expect(attempts).toBe(1)
+
+  // After initial 30s backoff, next use retries; a second failure doubles backoff to 60s.
+  clock += 20_000
+  await runtimes.use(bot)
   expect(attempts).toBe(2)
+  expect(runtimes.snapshot(bot)).not.toBeNull()
+
+  clock += 30_000
+  await runtimes.state(bot)
+  expect(attempts).toBe(2)
+
+  // After 60s backoff, retry succeeds and clears pending state permanently.
+  clock += 30_000
+  await runtimes.reapplySkills()
+  expect(attempts).toBe(3)
+
+  clock += 1_000_000
+  await runtimes.use(bot)
+  await runtimes.state(bot)
+  expect(attempts).toBe(3)
 })

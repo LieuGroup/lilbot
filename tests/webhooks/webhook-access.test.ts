@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { RUN_TOOLS, runRefusalForChat, TOOL_GROUPS } from '../../server/system/run-access'
 import { webhookRunAccess } from '../../server/webhooks/webhook-access'
 import { runFixture } from './webhook-fixture'
 
@@ -12,13 +13,36 @@ test('a narrow run gets only LilBot’s own server; each granted group adds its 
   expect(webhookRunAccess(['web']).toolsets).toEqual(['lilbot_system', 'web'])
   expect(webhookRunAccess(['web']).prompt).toContain("Oscar also lets this webhook's runs read the web.")
   expect(webhookRunAccess(['shell']).toolsets).toEqual(['lilbot_system', 'terminal', 'code_execution', 'file'])
-  expect(webhookRunAccess(['coding', 'computers']).toolsets).toEqual(['lilbot_system', 'lilbot_computers'])
-  expect(webhookRunAccess(['coding', 'computers'], true).toolsets).toEqual(['lilbot_system', 'lilbot_computers', 'lilbot_t3'])
+  expect(webhookRunAccess(['computers']).toolsets).toEqual(['lilbot_system'])
+  expect(webhookRunAccess(['computers']).prompt).toContain("Oscar also lets this webhook's runs use computers.")
+  expect(webhookRunAccess(['coding', 'computers']).toolsets).toEqual(['lilbot_system'])
+  expect(webhookRunAccess(['coding', 'computers'], true).toolsets).toEqual(['lilbot_system', 'lilbot_t3'])
   expect(webhookRunAccess([], true).prompt).toContain('code through T3 Code')
   expect(webhookRunAccess(['bots', 'delegation', 'routines', 'webhooks']).toolsets).toEqual(['lilbot_system'])
   expect(webhookRunAccess(['bots']).toolsets).not.toContain('memory')
   expect(webhookRunAccess(['memory']).toolsets).toEqual(['lilbot_system', 'memory'])
   expect(webhookRunAccess(['memory', 'bots']).prompt).toContain("Oscar also lets this webhook's runs read and change memory and manage bots.")
+})
+
+test('a webhook limited to computers gets exactly the computer tools on System MCP and refuses every other capability group', () => {
+  const beyondOwn = () => false
+  for (const tool of [...RUN_TOOLS, ...(TOOL_GROUPS.computers ?? [])]) {
+    expect(runRefusalForChat(['computers'], 'b1', tool, {}, beyondOwn), tool).toBeNull()
+  }
+  const forbidden = [
+    'lilbot_about',
+    'lilbot_bot_create',
+    'lilbot_delegate',
+    'lilbot_memory_list',
+    'lilbot_routine',
+    'lilbot_give_file',
+    'lilbot_webhook',
+    'lilbot_goal',
+    'lilbot_connection'
+  ]
+  for (const tool of forbidden) {
+    expect(runRefusalForChat(['computers'], 'b1', tool, {}, beyondOwn), tool).toContain(`A webhook run cannot use ${tool}`)
+  }
 })
 
 test('Oscar’s groups are saved on the webhook and its next run starts with them', async () => {

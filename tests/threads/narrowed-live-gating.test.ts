@@ -164,8 +164,9 @@ test('zero-webhook bot gates MCP only while a local narrowed turn is live, allow
   const c2 = await f.mcp(f.b2.id, 'lilbot_delegation', { action: 'status' })
   expect(c1.isError && c2.isError && c1.text.includes('Try again') && c2.text.includes('Try again')).toBe(true)
   expect((await f.mcp(f.b2.id, 'lilbot_section_create', { name: 'BlockedWhileLive' })).refused).toBeDefined()
+  expect((await f.mcp(f.b2.id, 'lilbot_computers_list', {})).refused).toContain('"computers"')
   f.roots.set('b2-unknown', null)
-  expect((await f.enginePost(f.b2.id, '/engine/computers/list', {}, 'b2-unknown')).status).toBe(422)
+  expect((await f.enginePost(f.b2.id, '/engine/skills/write', { name: 'x', action: 'create', content: 'y' }, 'b2-unknown')).status).toBe(422)
   expect(f.services.threads.store.activeNarrowedCaps(f.b2.id)).toEqual(['delegation', 'memory'])
 
   // Settle: zero-webhook bot b2 is ungated on MCP and healthy chats; settled narrowed chats and unreadable lineage stay fail-closed.

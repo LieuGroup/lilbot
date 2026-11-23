@@ -1,11 +1,9 @@
 import { afterEach, expect, test } from 'bun:test'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { botCapability } from '../../server/bots/bot-capability'
 import { ComputerService } from '../../server/computers/computer-service'
 import { ComputerStore } from '../../server/computers/computer-store'
 import { loadServerKey } from '../../server/computers/server-key'
-import { createEngineApi } from '../../server/http/engine-api'
 import { addBot, systemFixture } from './system-fixture'
 import { RUN_CHAT, withRun } from './webhook-run-fixture'
 
@@ -142,33 +140,18 @@ test('check sessions are refused all 8 MCP computer tools including reads while 
   expect((await f.call('b1', 'lilbot_computer_exec', { computer: 'leader', requestId: 'main-ok', command: 'printf OK' })).data.result.output).toBe('OK')
 })
 
-test('lilbot_computer_exec enforces LilBot safety stop with the same message as /engine/computers/submit and runs ordinary commands without delay', async () => {
+test('lilbot_computer_exec enforces LilBot safety stop with the same message as ComputerService.submit and runs ordinary commands without delay', async () => {
   const f = computerFixture()
-  const token = 'engine-token-for-tests'
-  const engineApi = createEngineApi(f.memory, token, 3370, {
-    bots: f.service,
-    computers: f.computers,
-    botExists: id => f.store.exists(id)
-  })
   const destructive = 'if false; then mkfs; fi'
   const mcpRes = await f.call('b1', 'lilbot_computer_exec', { computer: 'remote', requestId: 'mcp-stop', background: true, command: destructive })
-  const httpRes = await engineApi(
-    new Request('http://127.0.0.1:3370/engine/computers/submit', {
-      method: 'POST',
-      headers: {
-        host: '127.0.0.1:3370',
-        authorization: `Bearer ${token}`,
-        'x-lilbot-bot-capability': botCapability(token, 'b1'),
-        'content-type': 'application/json'
-      },
-      body: JSON.stringify({ computer: 'remote', requestId: 'http-stop', background: true, operation: { kind: 'exec', command: destructive } })
-    }),
-    '/engine/computers/submit'
-  )
-  expect(httpRes.status).toBe(422)
-  const httpBody = (await httpRes.json()) as { error?: string }
+  let directError = ''
+  try {
+    await f.computers.submit('b1', { computer: 'remote', requestId: 'direct-stop', background: true, operation: { kind: 'exec', command: destructive } })
+  } catch (error) {
+    directError = error instanceof Error ? error.message : String(error)
+  }
   expect(mcpRes.error).toContain('LilBot safety stop')
-  expect(mcpRes.error).toBe(httpBody.error)
+  expect(mcpRes.error).toBe(directError)
   expect((await f.call('b1', 'lilbot_computer_request_read', { computer: 'remote', requestId: 'mcp-stop' })).error).toContain('Unknown request')
 
   const started = performance.now()

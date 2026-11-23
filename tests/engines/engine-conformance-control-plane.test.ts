@@ -122,7 +122,6 @@ describe('engine conformance: safety stop, System MCP completeness, secrets & pr
     const handed = JSON.stringify({
       memoryConnection: runtime.memoryConnection,
       skills: runtime.skills,
-      computers: runtime.computers,
       connections: runtime.connections
     })
     expect(handed).not.toContain(masterTokenPath)
