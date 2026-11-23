@@ -34,15 +34,18 @@ test('shared holds definitions only: it imports nothing from the server or the w
   expect([...crossings('shared', 'server'), ...crossings('shared', 'web')]).toEqual([])
 })
 
-test('the web app never reaches into the server', () => {
-  expect(crossings('web/src', 'server')).toEqual([])
+test('the web and iOS apps never reach into the server', () => {
+  expect([...crossings('web/src', 'server'), ...crossings('ios/src', 'server')]).toEqual([])
 })
 
-test('only main.ts knows which engine is used: nothing else in the server imports the Hermes engine', () => {
-  const outsiders = sourceFiles('server').filter(file => !file.startsWith('server/engines/hermes/') && file !== 'server/main.ts')
+test('only the registration point knows which engines exist: nothing else in the server imports a concrete engine', () => {
+  const engines = readdirSync(join(ROOT, 'server/engines')).filter(name => statSync(join(ROOT, 'server/engines', name)).isDirectory())
+  const outsiders = sourceFiles('server').filter(
+    file => !engines.some(id => file.startsWith(`server/engines/${id}/`)) && file !== 'server/main.ts' && file !== 'server/engines/registry.ts'
+  )
   const leaks = outsiders.flatMap(file =>
     importsOf(file)
-      .filter(target => target.startsWith('server/engines/hermes'))
+      .filter(target => engines.some(id => target === `server/engines/${id}` || target.startsWith(`server/engines/${id}/`)))
       .map(target => `${file} -> ${target}`)
   )
   expect(leaks).toEqual([])
