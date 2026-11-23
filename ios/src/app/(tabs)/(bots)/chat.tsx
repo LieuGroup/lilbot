@@ -4,8 +4,8 @@
  *    UIKit handle Assistive Access natively.
  *  - Folded Duo (`duo-folded`): keeps `headerBackVisible: true` so UIKit places native Back in the 84 pt rail.
  *  - Native `headerTitle` renders the bot avatar, name, and live "Working" label (matching main).
- *  - Unfolding pops back to the split screen without clearing selection or dropping the live chat session. */
-import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
+ *  - Unfolding pops through this stack's own navigator only while focused, resetting its pop guard if layout flips back. */
+import { Stack, useFocusEffect, useIsFocused, useLocalSearchParams, useNavigation } from 'expo-router'
 import { useCallback, useEffect, useRef } from 'react'
 import { View } from 'react-native'
 import type { Bot } from '../../../../../shared/bot-schema'
@@ -22,7 +22,8 @@ import { useTheme } from '../../../ui/theme'
 
 export default function CompactChatRoute() {
   const theme = useTheme()
-  const router = useRouter()
+  const navigation = useNavigation()
+  const isFocused = useIsFocused()
   const params = useLocalSearchParams<{ botId?: string }>()
   const { surface, metrics } = useLiveSurface()
   const screenReaderEnabled = useScreenReaderEnabled()
@@ -30,7 +31,8 @@ export default function CompactChatRoute() {
   const selectedId = useBotSelection(state => state.selectedId)
   const enterChat = useBotSelection(state => state.enterChat)
   const leaveChat = useBotSelection(state => state.leaveChat)
-  const setChatFocused = useBotSelection(state => state.setChatFocused)
+  const focusChat = useBotSelection(state => state.focusChat)
+  const blurChat = useBotSelection(state => state.blurChat)
   const clearIfSelected = useBotSelection(state => state.clearIfSelected)
 
   const botId = (typeof params.botId === 'string' && params.botId) || selectedId || ''
@@ -48,27 +50,31 @@ export default function CompactChatRoute() {
     enterChat()
     return () => {
       leaveChat()
-      setChatFocused(false)
       if (botIdRef.current && shouldClearSelectionOnChatPop(splitModeRef.current)) {
         clearIfSelected(botIdRef.current)
       }
     }
-  }, [clearIfSelected, enterChat, leaveChat, setChatFocused])
+  }, [clearIfSelected, enterChat, leaveChat])
 
   useFocusEffect(
     useCallback(() => {
-      setChatFocused(true)
-      return () => setChatFocused(false)
-    }, [setChatFocused])
+      focusChat()
+      return () => blurChat()
+    }, [blurChat, focusChat])
   )
 
   useEffect(() => {
     const hasBot = bots.length === 0 || bot !== null
-    if (!poppedRef.current && chatStackAction({ splitMode: layout.splitMode, hasBot }) === 'pop-chat') {
-      poppedRef.current = true
-      router.back()
+    const action = chatStackAction({ focused: isFocused, splitMode: layout.splitMode, hasBot })
+    if (action !== 'pop-chat') {
+      poppedRef.current = false
+      return
     }
-  }, [bot, bots.length, layout.splitMode, router])
+    if (!poppedRef.current && navigation.canGoBack()) {
+      poppedRef.current = true
+      navigation.goBack()
+    }
+  }, [bot, bots.length, isFocused, layout.splitMode, navigation])
 
   const backVisible = shouldShowNativeBack(surface, screenReaderEnabled)
 

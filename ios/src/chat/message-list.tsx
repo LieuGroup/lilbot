@@ -53,6 +53,8 @@ export function MessageList({ botId, botName, chat, emptyHint }: MessageListProp
       keyExtractor={row => row.key}
       onContentSizeChange={handleContentSizeChange}
       onScroll={handleScroll}
+      onMomentumScrollEnd={handleScroll}
+      onScrollEndDrag={handleScroll}
       scrollEventThrottle={100}
       contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 20, gap: 18, flexGrow: 1, justifyContent: rows.length === 0 ? 'center' : 'flex-end' }}
       ListEmptyComponent={

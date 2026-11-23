@@ -11,7 +11,7 @@ import { useTheme } from '../../ui/theme'
 export default function TabsLayout() {
   const theme = useTheme()
   const { surface, metrics } = useLiveSurface()
-  const chatFocused = useBotSelection(state => state.chatFocused)
+  const chatFocused = useBotSelection(state => state.chatFocusCount > 0)
   const layout = computeShellLayout(surface, metrics)
 
   return (

@@ -2,9 +2,8 @@
  *  - Compact surfaces (Standard iPhone, Folded Duo, Duo Unfolded Portrait): renders the Roster and pushes
  *    `/chat` as a second native Stack screen so UIKit runs its own left-edge swipe back and Assistive Access Back.
  *  - Split surfaces (Duo Unfolded Landscape, iPad): renders Roster and Chat side by side with inline sidebar toggle.
- *  - Drafts, scroll offsets, and ref-counted live chat subscriptions live in the chat store/manager so fold and
- *    unfold transitions between split and pushed compact Chat stay seamless. */
-import { useRouter } from 'expo-router'
+ *  - Syncs stack transitions only while focused so folding/unfolding or initial load on Settings never hijacks tabs. */
+import { useFocusEffect, useIsFocused, useRouter } from 'expo-router'
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { Pressable, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -17,7 +16,7 @@ import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { computeShellLayout, nextSidebarState } from './layout'
 import { useBotSelection } from './selection'
-import { indexStackAction } from './stack-sync'
+import { indexStackAction, shouldPushOnBotSelect } from './stack-sync'
 import { useLiveSurface } from './use-surface'
 
 export interface DuoShellProps {
@@ -27,12 +26,15 @@ export interface DuoShellProps {
 export function DuoShell({ renderInspector }: DuoShellProps) {
   const theme = useTheme()
   const router = useRouter()
+  const isFocused = useIsFocused()
   const insets = useSafeAreaInsets()
   const { surface, metrics } = useLiveSurface()
   const bots = useBotStore(state => state.bots)
   const sections = useBotStore(state => state.sections)
   const selectedId = useBotSelection(state => state.selectedId)
+  const pendingInitialPush = useBotSelection(state => state.pendingInitialPush)
   const select = useBotSelection(state => state.select)
+  const clearPendingInitialPush = useBotSelection(state => state.clearPendingInitialPush)
   const autoSelectOnce = useBotSelection(state => state.autoSelectOnce)
 
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -40,29 +42,50 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
 
   const selected = bots.find(bot => bot.id === selectedId) ?? null
   const layout = computeShellLayout(surface, metrics, { inspectorOpen: inspectorOpen && !!renderInspector, sidebarOpen })
-  const wasSplitMode = useRef(layout.splitMode)
+  const lastFocusedSplitMode = useRef(layout.splitMode)
+  const pushPendingRef = useRef(false)
+
+  useFocusEffect(
+    useCallback(() => {
+      pushPendingRef.current = false
+    }, [])
+  )
 
   useEffect(() => {
-    const prevSplitMode = wasSplitMode.current
-    wasSplitMode.current = layout.splitMode
-    const { selectedId: pickedId, justAutoSelected } = autoSelectOnce(bots)
-    const activeId = pickedId ?? selectedId
+    const activeId = autoSelectOnce(bots) ?? selectedId
+    if (!isFocused) return
+    const prevSplitMode = lastFocusedSplitMode.current
+    lastFocusedSplitMode.current = layout.splitMode
+    if (layout.splitMode) {
+      pushPendingRef.current = false
+      if (pendingInitialPush) clearPendingInitialPush()
+      return
+    }
+    const state = useBotSelection.getState()
     const action = indexStackAction({
+      focused: isFocused,
       splitMode: layout.splitMode,
       wasSplitMode: prevSplitMode,
       selectedId: activeId,
-      chatMounted: useBotSelection.getState().chatInstances > 0,
-      justAutoSelected
+      chatMounted: state.chatInstances > 0,
+      pushPending: pushPendingRef.current,
+      pendingInitialPush: state.pendingInitialPush
     })
     if (action === 'push-chat' && activeId) {
+      pushPendingRef.current = true
+      clearPendingInitialPush()
       router.push({ pathname: '/chat', params: { botId: activeId } })
     }
-  }, [autoSelectOnce, bots, layout.splitMode, router, selectedId])
+  }, [autoSelectOnce, bots, clearPendingInitialPush, isFocused, layout.splitMode, pendingInitialPush, router, selectedId])
 
   const handleSelectBot = useCallback(
     (bot: Bot) => {
       select(bot.id)
-      if (!layout.splitMode) router.push({ pathname: '/chat', params: { botId: bot.id } })
+      const chatMounted = useBotSelection.getState().chatInstances > 0
+      if (shouldPushOnBotSelect({ splitMode: layout.splitMode, chatMounted, pushPending: pushPendingRef.current })) {
+        pushPendingRef.current = true
+        router.push({ pathname: '/chat', params: { botId: bot.id } })
+      }
     },
     [layout.splitMode, router, select]
   )

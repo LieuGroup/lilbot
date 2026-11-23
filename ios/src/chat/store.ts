@@ -36,7 +36,7 @@ export const useChatStore = create<ChatStore>(set => ({
     set(state => {
       const clamped = Math.max(0, offset)
       const current = state.slots[botId] ?? emptySlot
-      if (Math.abs(current.scrollOffset - clamped) < 1) return state
+      if (clamped === 0 ? current.scrollOffset === 0 : Math.abs(current.scrollOffset - clamped) < 1) return state
       return { slots: { ...state.slots, [botId]: { ...current, scrollOffset: clamped } } }
     })
 }))

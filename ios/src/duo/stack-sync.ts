@@ -1,25 +1,35 @@
 /** Pure transition rules coordinating the 2-screen compact native Stack (`index` <-> `chat`) with unfolded split mode.
- *  Zero React Native imports so every fold, unfold, launch, back-button, and tab-bar visibility path is unit-tested on Linux. */
+ *  Zero React Native imports so every fold, unfold, tab-focus, double-tap, back-button, and tab-bar path is unit-tested on Linux. */
 import type { SurfaceKind } from './layout'
 
 export type StackAction = 'none' | 'push-chat' | 'pop-chat'
 
-/** Decides whether the index screen should push `/chat` when running in compact mode. */
+/** Decides whether the index screen should push `/chat` when running in compact mode.
+ *  Never pushes while the Bots tab is unfocused (e.g. while the user is on Settings) or while a push is in flight. */
 export function indexStackAction(input: {
+  focused: boolean
   splitMode: boolean
   wasSplitMode: boolean
   selectedId: string | null
   chatMounted: boolean
-  justAutoSelected: boolean
+  pushPending: boolean
+  pendingInitialPush: boolean
 }): StackAction {
-  if (input.splitMode || input.chatMounted || !input.selectedId) return 'none'
-  // Push when folding from unfolded with an open bot, or on initial primary auto-select on compact launch.
-  if (input.wasSplitMode || input.justAutoSelected) return 'push-chat'
+  if (!input.focused || input.splitMode || input.chatMounted || input.pushPending || !input.selectedId) return 'none'
+  // Push when returning/folding from unfolded with an open bot, or completing the initial compact primary auto-select.
+  if (input.wasSplitMode || input.pendingInitialPush) return 'push-chat'
   return 'none'
 }
 
-/** Decides whether the pushed compact `/chat` screen should pop back to the split view on unfold (or if the bot vanished). */
-export function chatStackAction(input: { splitMode: boolean; hasBot: boolean }): StackAction {
+/** Guards compact Roster row taps so a rapid double-tap pushes strictly one `/chat` screen. */
+export function shouldPushOnBotSelect(input: { splitMode: boolean; chatMounted: boolean; pushPending: boolean }): boolean {
+  return !input.splitMode && !input.chatMounted && !input.pushPending
+}
+
+/** Decides whether the pushed compact `/chat` screen should pop back to the split view on unfold (or if the bot vanished).
+ *  Only acts while `/chat` is focused so unfolding on Settings never hijacks the active tab or locks a pop flag. */
+export function chatStackAction(input: { focused: boolean; splitMode: boolean; hasBot: boolean }): StackAction {
+  if (!input.focused) return 'none'
   if (input.splitMode || !input.hasBot) return 'pop-chat'
   return 'none'
 }
