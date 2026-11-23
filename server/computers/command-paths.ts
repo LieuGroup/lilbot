@@ -22,7 +22,7 @@ export function canonicalAbsolute(path: string): string[] | null {
   return out
 }
 
-const isWildcardOnly = (seg: string) => /^\*+$/.test(seg)
+const isWildcardOnly = (seg: string) => /^(?:\*+|[*+?@]\(\*+\))$/.test(seg) || (seg.startsWith('!(') && seg.endsWith(')'))
 
 export function isRawBlockDevice(target: string): boolean {
   const parts = canonicalAbsolute(target)

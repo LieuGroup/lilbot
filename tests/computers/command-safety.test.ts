@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { botCapability } from '../../server/bots/bot-capability'
+import { hasDestructiveRuleToken } from '../../server/computers/command-rules'
 import { checkCommandSafety } from '../../server/computers/command-safety'
 import { ComputerService } from '../../server/computers/computer-service'
 import { ComputerStore } from '../../server/computers/computer-store'
@@ -26,6 +27,8 @@ test('allows >4 KiB single-line commands while failing closed on size, separator
   expect(checkCommandSafety('"$(;'.repeat(15_000), HOME)).toContain('nesting limit')
   expect(checkCommandSafety('('.repeat(5_000), HOME)).toContain('nesting limit')
   expect(checkCommandSafety('${'.repeat(5_000), HOME)).toContain('nesting limit')
+  expect(checkCommandSafety(`((${'('.repeat(20)}1${')'.repeat(20)}))`, HOME)).toContain('nesting limit')
+  expect(checkCommandSafety(`echo $((${'('.repeat(20)}1${')'.repeat(20)}))`, HOME)).toContain('nesting limit')
 })
 
 test('ignores uninterpretable Windows-style home paths without refusing benign commands', () => {
@@ -40,6 +43,16 @@ test('blocks computer home paths and allows subpaths', () => {
   }
   for (const cmd of ['rm -rf /Users/alice/project/dist', 'rm -rf ~/Library/Developer/Xcode/DerivedData/*', 'rm -rf /etc/my-test-config']) {
     expect(checkCommandSafety(cmd, HOME), cmd).toBeNull()
+  }
+})
+
+test('derives unparseable-command fallback tokens from the command rule table', () => {
+  for (const sample of ['rm -rf /', 'diskutil list', 'mkfs.ext4 /tmp/img', 'newfs_apfs /tmp/img', 'git -C ~ clean -fdx', 'cp foo /dev/sda']) {
+    expect(hasDestructiveRuleToken(sample), sample).toBe(true)
+  }
+  for (const benign of ["grep 'unterminated", "cp 'unterminated /tmp/a /tmp/b", 'git commit -m "unterminated']) {
+    expect(hasDestructiveRuleToken(benign), benign).toBe(false)
+    expect(checkCommandSafety(benign, HOME), benign).toBeNull()
   }
 })
 
