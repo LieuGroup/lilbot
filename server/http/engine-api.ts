@@ -21,7 +21,6 @@ import type { MemoryService } from '../memory/memory-service'
 import type { RoutineService } from '../routines/routine-service'
 import { withoutWebhookNotes } from '../webhooks/webhook-messages'
 import type { CheckUse } from '../work/check-sessions'
-import { computerApi } from './computer-api'
 import { checkUse, verifiedSession } from './engine-run-gate'
 import { historyApi } from './history-api'
 import { forBot, memoryRoutes as routes } from './memory-protocol'
@@ -42,7 +41,6 @@ export interface EngineApiOptions {
   history?: import('../history/history-service').HistoryService
   deploymentNotice?: () => string | undefined
   threads?: import('../threads/thread-service').ThreadService
-  computers?: import('../computers/computer-service').ComputerService
   skills?: import('../skills/skills-service').SkillsService
   bots?: BotService
   routines?: RoutineService
@@ -82,7 +80,13 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
   return async (request: Request, pathname: string): Promise<Response> => {
     if (request.method !== 'POST') return json(405, { error: 'Use POST.' })
     if (!authorised(request)) return json(403, { error: 'Not allowed.' })
-    if (pathname === '/engine/bots/create' || pathname === '/engine/library/give' || /^\/engine\/(routines|skills|threads|history|computers)\//.test(pathname)) {
+    if (pathname.startsWith('/engine/computers/')) {
+      return json(410, {
+        error:
+          'Legacy computer plug-in tools are retired. Use the LilBot System MCP tools (lilbot_computers_list, lilbot_computer_exec, lilbot_computer_read_file, lilbot_computer_write_file, lilbot_computer_list_folder, lilbot_computer_request_read, lilbot_computer_cancel, lilbot_computer_copy) instead.'
+      })
+    }
+    if (pathname === '/engine/bots/create' || pathname === '/engine/library/give' || /^\/engine\/(routines|skills|threads|history)\//.test(pathname)) {
       try {
         const capability = request.headers.get('x-lilbot-bot-capability') ?? ''
         const caller = (await options.bots?.listBots())?.find(bot => matchesCapability(token, bot.id, capability))
@@ -113,10 +117,6 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
         }
         if (pathname.startsWith('/engine/history/')) return json(200, await history(caller.id, pathname.slice('/engine/history/'.length), body))
         if (pathname.startsWith('/engine/threads/')) return json(200, await threadApi(options, caller.id, pathname.slice('/engine/threads/'.length), body, session))
-        if (pathname.startsWith('/engine/computers/')) {
-          if (!options.computers) return json(404, { error: 'Computers unavailable.' })
-          return json(200, await computerApi(options.computers, caller.id, pathname.slice('/engine/computers/'.length), body))
-        }
         if (pathname.startsWith('/engine/skills/')) {
           if (!options.skills) return json(404, { error: 'Skills unavailable.' })
           const skillBody = body as Record<string, unknown>

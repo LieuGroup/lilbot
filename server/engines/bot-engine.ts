@@ -144,7 +144,6 @@ export interface BotEngine {
   bundledSkills?(engineBotId: string): string[]
   /** Engine skills nobody can hide, with the reason to show. */
   readonly alwaysOnSkills?: readonly { name: string; reason: string }[]
-  configureComputers?(engineBotId: string, settings: { url: string; tokenFile: string; botId: string }): Promise<void>
   configureSkills?(engineBotId: string, settings: SkillSettings): Promise<void>
   /** Refuse an unavailable model before an identity edit is saved. Must not apply the old identity. */
   validateModel(model: BotModel): Promise<void>

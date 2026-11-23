@@ -102,22 +102,22 @@ are in `AGENTS.md` under "Webhooks"; tunnel ingress is in [cloudflare.md](cloudf
   works on its transcript later (Hermes' background review forks share the session's id). Two layers, both chosen from
   one list:
   - `webhook-access.ts` starts the run's session with only `lilbot_system` plus each group's engine toolsets (web:
-    `web`; shell: `terminal`, `code_execution`, `file`; computers: `lilbot_computers`; coding: `lilbot_t3` when
-    `LILBOT_T3_ENABLED=1`; memory:
-    `memory`). Hermes freezes a session's toolsets. Naming one MCP server leaves the others out. Hermes' `file` toolset
+    `web`; shell: `terminal`, `code_execution`, `file`; coding: `lilbot_t3` when `LILBOT_T3_ENABLED=1`; memory:
+    `memory`; computers, bots, delegation, routines and webhooks live on `lilbot_system`). Hermes freezes a session's
+    toolsets. Naming one MCP server leaves the others out. Hermes' `file` toolset
     is read and write together and has no per-session write root, so a narrow run reads with `lilbot_workspace_read`
     instead. Without `memory` the engine's memory tools and `search_conversations` are gone too. `lilbot_give_file` is
     in `shell` (a run can only give a file it could write); `lilbot_goal` is refused to every run.
   - LilBot refuses at the call what a run's session may not do (`webhooks/webhook-callers.ts`), because Hermes adds the
-    computers and skills plug-ins back to any session and LilBot's own server lists every tool (`tools/list` has no
-    session). A call that names its session is looked up: the memory adapter's, and the computers and skills adapters',
+    skills plug-in back to any session and LilBot's own server lists every tool (`tools/list` has no
+    session). A call that names its session is looked up: the memory adapter's, and the skills adapter's,
     which send Hermes' `session_id` (`x-lilbot-session`). An MCP call is matched to exactly one tool start, its own
     (`CallingChats.take`: the oldest one with its arguments or request id that no other call took, waiting up to 5
     seconds), so a run's identical call cannot get Oscar's refused, nor pass on his start. A call that cannot be placed
     (no start seen, no session named, an unreadable lineage) counts as a webhook run's: it fails closed. A bot that
     never had a webhook run is never held. Every `lilbot_*` tool is in `RUN_TOOLS` or a group (`system/run-access.ts`,
-    tested). The T3 bridge refuses its tools without `coding`; the engine API refuses plug-in computer tools without
-    `computers`, `skill_manage` always (the skills handler's own `/write` test) and the routes only older adapters call
+    tested). The T3 bridge refuses its tools without `coding`; the engine API retires `/engine/computers/*` (410) and
+    refuses `skill_manage` always (the skills handler's own `/write` test) and the routes only older adapters call
     (`bots/create`, `routines/*`, `threads/*`) without their groups; memory reads and writes and `give_file` need
     `memory` (the memory block comes back empty).
   - A refusal is an ordinary tool result (`{"refused": ...}`), not a tool error: Hermes pauses a whole MCP server for

@@ -1,9 +1,8 @@
-/** What LilBot gives every bot's runtime besides its identity: computer tools, the shared skills and
+/** What LilBot gives every bot's runtime besides its identity: the shared skills and
  *  LilBot's own MCP connections. The engine skips what it has already applied. */
 import { backgroundFailure } from '../background'
 import type { BotEngine, MemoryConnection } from '../engines/bot-engine'
 import type { McpConnection } from '../engines/mcp-connection'
-import { memoryRefusal } from '../memory/memory-safety'
 import { files } from '../skills/skill-files'
 import type { SkillsService } from '../skills/skills-service'
 import type { BotRecord } from './bot-store'
@@ -16,15 +15,6 @@ interface ToolSources {
 }
 
 export async function prepareTools(engine: BotEngine, bot: BotRecord, { skills, connection, connections, onConnectionsChanged }: ToolSources) {
-  if (connection) {
-    try {
-      await engine.configureComputers?.(bot.engineBotId, { ...connection, botId: bot.id })
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : 'Unknown configuration error'
-      const safeDetail = memoryRefusal(detail) ? 'Configuration error contained sensitive data; details withheld' : detail.slice(0, 500)
-      console.error(`[computers] could not configure bot ${bot.id}; continuing without computer tools (${safeDetail})`)
-    }
-  }
   if (skills && connection) {
     // An engine whose switch is off is not imported from; the bot is marked only after an import, so switching on imports it.
     const includeEngineSkills = skills.engineIncluded(engine.id)

@@ -118,17 +118,3 @@ test('startup prepares only active bindings for this engine using native ids', a
   await new BotRuntimes(store, engine).initialize()
   expect(prepared).toEqual(['owned-native'])
 })
-
-test('computer plugin failure does not hide an otherwise usable bot and retries on next use', async () => {
-  const { store, engine } = fakeService()
-  let attempts = 0
-  engine.configureComputers = async () => {
-    attempts++
-    throw new Error('plugin unavailable')
-  }
-  const runtimes = new BotRuntimes(store, engine, undefined, { url: 'http://localhost', tokenFile: '/unused', botId: 'b1' })
-  await runtimes.initialize()
-  expect(runtimes.snapshot(store.get('b1')) !== null).toBe(true)
-  await runtimes.state(store.get('b1'))
-  expect(attempts).toBe(2)
-})

@@ -24,7 +24,6 @@ interface ScriptedRuntime {
   identity: RuntimeIdentity
   connections: McpConnection[]
   skills?: SkillSettings
-  computers?: { url: string; tokenFile: string; botId: string }
   memoryConnection?: MemoryConnection
   memoryConnected: boolean
 }
@@ -96,9 +95,6 @@ export class ScriptedEngine implements BotEngine {
       const s = this.sessions.get(chatId)
       return { chatId, state: !s ? ('not_open' as const) : s.running ? ('busy' as const) : ('applied' as const) }
     })
-  }
-  async configureComputers(engineBotId: string, settings: { url: string; tokenFile: string; botId: string }) {
-    this.requireRuntime(engineBotId).computers = { ...settings }
   }
   async configureSkills(engineBotId: string, settings: SkillSettings) {
     this.requireRuntime(engineBotId).skills = { ...settings, disabled: [...settings.disabled], names: [...settings.names] }

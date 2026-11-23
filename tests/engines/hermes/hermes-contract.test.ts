@@ -170,6 +170,7 @@ describe.skipIf(!installed)('Hermes wire contract', () => {
     expect(schemas.CanonicalCreateParams.properties.source.enum).toContain('acp')
     expect(schemas.CanonicalListParams.properties.scope.enum).toEqual(expect.arrayContaining(['live', 'stored']))
     expect(schemas.CanonicalCorrectionAck.properties.status.enum).toEqual(expect.arrayContaining(['queued', 'redirected']))
+    expect(schemas.PluginsAction.enum).toEqual(expect.arrayContaining(['toggle', 'remove']))
   })
 
   // Note: Hermes's gateway/session_pending_controls.py publishes live turn approvals as `approval.request`

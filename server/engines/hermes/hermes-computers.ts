@@ -1,13 +1,18 @@
-/** Independent tool plugin. Does not change the memory adapter or its settings. */
-import { cp, writeFile } from 'node:fs/promises'
+/** Retires the legacy Hermes computers plug-in (`lilbot-computers-v1`) and its settings file during normal start-up.
+ *  Computer tools now live on LilBot's own System MCP server (`server/system/tool-computers.ts`). */
+import { existsSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { configurePlugin } from './hermes-plugins'
+import { removePlugin } from './hermes-plugins'
 import { skillHome } from './hermes-skills'
 
-export async function configureComputers(id: string, settings: { url: string; tokenFile: string; botId: string }) {
+export const COMPUTERS_PLUGIN = 'lilbot-computers-v1'
+export const COMPUTERS_RETIRED_KEY = 'retired-v1'
+
+export async function retireComputersPlugin(id: string, uninstall = removePlugin): Promise<void> {
   const home = skillHome(id)
-  const plugin = 'lilbot-computers-v1'
-  await cp(join(import.meta.dir, 'computers-adapter'), join(home, 'plugins', plugin), { recursive: true, filter: source => !source.includes('__pycache__') })
-  await writeFile(join(home, 'lilbot-computers.json'), JSON.stringify(settings), { mode: 0o600 })
-  await configurePlugin(id, plugin, { [`plugins.entries.${plugin}.enabled`]: 'true' }, true)
+  if (existsSync(join(home, 'plugins', COMPUTERS_PLUGIN))) {
+    await uninstall(id, COMPUTERS_PLUGIN)
+  }
+  await rm(join(home, 'lilbot-computers.json'), { force: true })
 }

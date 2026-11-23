@@ -1,5 +1,0 @@
-name: lilbot-computers-v1
-version: 1.1.0
-description: LilBot computer files and commands.
-kind: standalone
-provides_tools: [list_computers, computer_exec, computer_read_file, computer_write_file, computer_list_folder, computer_request, computer_cancel, computer_copy]

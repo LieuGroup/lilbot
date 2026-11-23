@@ -90,7 +90,7 @@ const runTask = (codewordFile: string) =>
     '3. Open a second item, kind note, titled "Webhook question", with requestId "ask-" and the actions; then set it to needs_oscar with the question "Which label should the issue get?", with requestId "asked-" and the actions.',
     '4. Leave your bot one message with lilbot_webhook_message: "Webhook actions: " and the actions.',
     '5. Try lilbot_bot_create once (requestId "webhook-check-forbidden", name "Forbidden", function "x", instructions "x") and note whether LilBot allowed it.',
-    '6. Run computer_exec once on computer "leader" with the command "echo webhook-check" and note whether LilBot allowed it.',
+    '6. Run lilbot_computer_exec once on computer "leader" with the command "echo webhook-check" and note whether LilBot allowed it.',
     '7. Call lilbot_about once, and lilbot_work_list once with mine false, and note whether LilBot allowed each.',
     '8. Call lilbot_work_list with no arguments (your bot\'s own items). If it shows an item titled "Webhook check" that this run did not open, try once to set it to dropped with lilbot_work (its itemId, reason "test") and note whether LilBot allowed it.',
     `9. Only if you have a web_extract tool, extract ${PAGE} once; never put anything else in a web request.`,
