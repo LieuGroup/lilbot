@@ -15,11 +15,35 @@ export interface HelperDownload {
   os: 'macos' | 'linux'
   /** `universal` runs on every Mac. */
   arch: 'universal' | 'arm64' | 'x64'
+  /** Server-verified SHA-256 of the download file. */
+  sha256: string
   signed: boolean
   /** Whether the build answers `lilbot-helper://` links. */
   link: boolean
   size: number
   version: string
+}
+export const CommandLineSystem = z.object({
+  os: z.enum(['linux', 'macos']),
+  arch: z.enum(['x64', 'arm64'])
+})
+export type CommandLineSystem = z.infer<typeof CommandLineSystem>
+export interface ComputerDownloadsInfo {
+  helperUrl?: string
+  /** Private tailnet origin where command-line machines on the same network can fetch the archive. */
+  privateOrigin?: string
+  /** Desktop/browser installers for "Add this computer". */
+  appDownloads: HelperDownload[]
+  /** Command-line archives for "Add by command line". */
+  cliDownloads: HelperDownload[]
+}
+export interface CommandLineStart {
+  attemptId: string
+  code: string
+  expiresAt: number
+  helperUrl?: string
+  privateOrigin?: string
+  download?: HelperDownload
 }
 export type AddThisStart =
   | {

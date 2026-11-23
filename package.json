@@ -37,7 +37,7 @@
     "check:goals": "bun live-checks/goals-check.ts",
     "build:helper": "bun scripts/build-helper.ts",
     "build:helper-downloads": "bun scripts/build-helper-downloads.ts",
-    "check:add-computer": "bun live-checks/add-computer-check.ts",
+    "check:add-computer": "bun live-checks/add-computer-check.ts && bun live-checks/add-command-line-check.ts",
     "check:computers": "bun live-checks/computers-check.ts",
     "check:skills": "bun live-checks/skills-check.ts",
     "check:access": "bun live-checks/access-check.ts",

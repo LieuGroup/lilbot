@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/ui/button'
 import { Notice } from '@/ui/notice'
 import { Switch } from '@/ui/switch'
+import type { Computer } from '../../../shared/computer-schema'
 import { lilbot, messageOf } from '../app/lilbot-socket'
 import { Badge, CancelButton, Footer, Heading, QuietLink, TEXT_BUTTON } from './add-dialog-parts'
+import { CodingWorkerStatus } from './coding-worker-status'
 import { useComputers } from './use-computers'
 
 function useMainChoice(computerId: string | undefined) {
@@ -31,13 +33,18 @@ function useMainChoice(computerId: string | undefined) {
   return { on: choice?.on ?? false, ready: choice !== null, error, toggle }
 }
 
-/** Step 3: the computer is online, and this browser is tied to it. */
-export function ConnectedStep({ name, computerId, machine, onDone }: { name: string; computerId?: string; machine: string; onDone: () => void }) {
-  const main = useMainChoice(computerId)
+/** Step 3: the computer is online; shows coding-worker readiness and the Main switch. */
+export function ConnectedStep({ name, computer, machine, tied = true, onDone }: { name: string; computer?: Computer; machine: string; tied?: boolean; onDone: () => void }) {
+  const main = useMainChoice(computer?.id)
   return (
     <>
       <Badge tone="success" />
-      <Heading title={`${name} is connected`}>Every bot can use it now. This browser is tied to it, so "my computer" written from here means this {machine}.</Heading>
+      <Heading title={`${name} is connected`}>
+        {tied
+          ? `Every bot can use it now. This browser is tied to it, so "my computer" written from here means this ${machine}.`
+          : 'Every bot can use files and the terminal on it. The helper starts on its own when the machine restarts.'}
+      </Heading>
+      <CodingWorkerStatus computer={computer} />
       <div className="flex items-center justify-between gap-3 rounded-lg bg-background py-2.5 pr-3 pl-3.5">
         <div className="flex flex-col">
           <span id="make-main" className="text-[13px]/[18px] font-medium">

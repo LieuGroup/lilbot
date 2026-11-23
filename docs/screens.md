@@ -96,33 +96,38 @@ choices as the delete dialog, saved at once with `bots.deleteDefaults.set`. Gene
   before using another computer." (offline wins). It reads `devices.current` again on `devices.changed`,
   `computers.changed` and every reconnect.
 - The label "Computers", then one card (`bg-background`, 12 radius, hairline dividers), one row per machine, the leader first: 8px dot (`success`
-  online, `foreground/20` offline, `destructive` key conflict), name 13/500, a 12px line (`computer-rows.ts`: "Linux ·
-  where LilBot runs · online", "macOS · offline · last seen 2 hours ago", the red key-conflict sentence; the row this
-  device runs on adds "· this device runs on it"). The main computer has a "★ Main" tag after its name. Two fixed slots
-  keep the actions in columns: "Make main" (84px, not on the main computer, `computers.setMain`) and Remove (60px, not
-  on the leader), which asks "Remove <name>?" first. The list reads `computers.list` again on every
-  `computers.changed`; the page's 30-second tick keeps "last seen" counting.
-- Under the card: "Every bot can use every computer here. The main computer is the one bots use when you write from a
-  phone, or from a device that is not one of these." At the bottom, the link "Add a machine without a screen…".
+  online, `foreground/20` offline, `destructive` key conflict), name 13/500, a 12px line (`computer-rows.ts`,
+  `coding-engines.ts`: "Linux · where LilBot runs · online", "macOS · online · Coding workers (Claude Code)" with
+  "Coding workers (…)" in ink 500 when online, "Linux · online · No coding engine", "macOS · offline · last seen 2 hours
+  ago · Coding workers (Claude Code)", or the red key-conflict sentence; the row this device runs on adds "· this device
+  runs on it"). Detected coding engines are listed dynamically from `computer.workerAgents` rather than naming one
+  engine as the only one. The main computer has a "★ Main" tag after its name. Two fixed slots keep the actions in
+  columns: "Make main" (84px, not on the main computer, `computers.setMain`) and Remove (60px, not on the leader), which
+  asks "Remove <name>?" first. The list reads `computers.list` again on every `computers.changed`; the page's 30-second
+  tick keeps "last seen" counting.
+- Under the card: "Every bot can use every computer here. Computers marked “Coding workers” can run coding tasks on
+  their own. The main computer is used when you write from a phone, or from a device that is not one of these." At the
+  bottom, the link "Add a machine without a screen…".
 - Add this computer (`add-computer-dialog.tsx`, 400px, lazy; the steps are `add-step-*.tsx`, the flow is
-  `use-add-attempt.ts`, the screen for each state is `add-phase.ts`). Step 1: Name (prefilled "Mac" or "Linux
-  computer", the browser cannot know the host name) and Download, with "For Apple silicon Macs" style build line;
-  nothing is minted before Download. Step 2: "Open the installer" names the downloaded file, a spinner row with the time
-  left, "Download again". The page tries the loopback hand-over (`helper-handover.ts`) and polls status. Step 3: green
-  check, "<name> is connected", "This browser is tied to it, so "my computer" written from here means this Mac" (the
-  start call carries the device id, so the server ties them), and the switch "Make it my main computer · Used when you
-  write from your phone" (`use-main-choice.ts`): on when no computer was main, which makes the new one main at once so
-  closing keeps it; off when one was; turning it off gives the mark back to the previous main, or none. Done. After about 30 s without a helper it shows "Still waiting for the helper" with the
-  short code and Copy, the time left, Download again, and "Open LilBot Helper" when the build answers
-  `lilbot-helper://` links (the link, which holds the code, is never rendered). After 10 minutes: "This attempt ran
-  out" with Start again. On a system that is not macOS or Linux (the page decides at open, nothing minted) or when the
-  server says `supported: false`: "This device can't be added" (or "Not ready yet" for `unavailable`, not in the
-  prototype) and "Add by command line instead", which opens the dialog below. The code appears only in the
-  not-detected state and the command-line dialog; it is dropped once the helper registers or the attempt ends.
-- Add by command line (`command-line-dialog.tsx`, 432px): a name field and "Create command"; the code is minted only
-  then (`computers.installCode`), shown inside `printf '%s' '<code>' | ./lilbot-helper install <helper door>`
-  (`install-command.ts`) with Copy and "Valid for m:ss more". When it runs out the page drops the code and says so. The
-  code is never logged, stored or kept after the dialog closes.
+  `use-add-attempt.ts`). Step 1: Name (prefilled "Mac" or "Linux computer") and Download, with "For Apple silicon Macs"
+  style build line; nothing is minted before Download. When the offered double-click Mac `.app` zip is an older v1 build
+  (from `computers.downloads`), Step 1 warns plainly that it cannot host coding workers yet and links to "Add by command
+  line instead". Step 2: "Open the installer" names the downloaded file, a spinner row with the time left, "Download
+  again". Step 3 (`ConnectedStep`, shared with command-line): green check, "<name> is connected", coding-worker status
+  card (`coding-worker-status.tsx`: "Ready for coding workers" listing every detected coding engine and version, or
+  "Can't host coding workers yet" when none is found), and the "Make it my main computer" switch. Fallbacks (30 s),
+  expiry (10 min), and unsupported states work as before.
+- Add by command line (`command-line-dialog.tsx`, `use-command-line.ts`, `command-line-setup.tsx`,
+  `command-line-run.tsx`, `command-line-script.ts`, Paper "23 Add a computer", 480px): Step 1 asks for Name, System
+  (`Linux (x86-64)`, `Linux (ARM64)`, `macOS (Apple silicon)`, `macOS (Intel)`), and Network (`On your private network
+  (Tailscale)` vs `Outside your private network`), plus a quiet note explaining that hosting coding workers requires a
+  coding engine installed and signed in on that machine (giving Claude Code as an example). Nothing is minted until
+  "Create command" (`computers.commandLine.start`). Step 2 shows the verified zero-secret shell command (`Copy command`),
+  then the one-time code in its own row (`Copy code`, pasted into the helper's hidden TTY prompt), live waiting spinner
+  and 10-minute countdown (via session-scoped `computers.addThis.status`), and a "What this installs & how to remove it"
+  box. Outside-network mode adds a same-session Download button and `scp` step before the same verified local command.
+  The code is cleared from state as soon as the helper registers, connects, expires, or the dialog closes. Connected
+  reuses `ConnectedStep` (`tied={false}`); expiry shows "This command ran out" with "Create a new command".
 
 ## Details panel (`bots/bot-details-panel.tsx`)
 

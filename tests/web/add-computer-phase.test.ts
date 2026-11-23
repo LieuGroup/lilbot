@@ -1,6 +1,5 @@
 import { expect, test } from 'bun:test'
 import { buildLabel, detectSystem, installerSteps } from '../../web/src/computers/add-this-system'
-import { installCommand } from '../../web/src/computers/command-line-dialog'
 import { FALLBACK_AFTER_MS, needsCode, phaseOf } from '../../web/src/computers/use-add-attempt'
 
 const T0 = 1_000_000_000_000
@@ -50,10 +49,16 @@ test('says which build the download is', () => {
   expect(buildLabel({ os: 'macos', arch: 'arm64' })).toBe('For Apple silicon Macs')
   expect(buildLabel({ os: 'macos', arch: 'unknown' })).toBe('For Macs')
   expect(buildLabel({ os: 'linux', arch: 'x64' })).toBe('For Linux on x86-64')
-  const download = { url: '/d', fileName: 'lilbot-helper-linux-x64.tar.gz', os: 'linux', arch: 'x64', signed: false, link: false, size: 1, version: '1' } as const
+  const download = {
+    url: '/d',
+    fileName: 'lilbot-helper-linux-x64.tar.gz',
+    os: 'linux',
+    arch: 'x64',
+    sha256: 'a'.repeat(64),
+    signed: false,
+    link: false,
+    size: 1,
+    version: '2'
+  } as const
   expect(installerSteps(download)).toMatchObject({ verb: 'Unpack', rest: expect.stringContaining('terminal') })
-})
-
-test('the command-line command uses the helper door the server reports', () => {
-  expect(installCommand('abc', 'https://door.example')).toBe("printf '%s' 'abc' | ./lilbot-helper install https://door.example")
 })
