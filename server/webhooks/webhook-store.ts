@@ -105,12 +105,12 @@ export class WebhookStore {
     this.db.query('UPDATE webhooks SET paused = ? WHERE id = ?').run(Number(paused), id)
     if (paused) this.events.drop(id)
   }
-  /** The address and signing secret end at once; runs not started yet never start. */
   delete(botId: string, id: string) {
     this.row(botId, id)
     this.db.transaction(() => {
       this.db.query('UPDATE webhooks SET deleted = 1, paused = 1, signing = NULL WHERE id = ?').run(id)
       this.db.query("UPDATE webhook_runs SET status = 'stopped', result = 'The webhook was deleted before this run started.' WHERE webhook_id = ? AND status = 'pending'").run(id)
+      this.transcripts.deleteForParent(id)
       this.events.forget(id)
     })()
   }
@@ -193,7 +193,7 @@ export class WebhookStore {
   finish(id: string, status: WebhookRun['status'], result: string, now: number, items?: ChatItem[]) {
     this.db.transaction(() => {
       this.db.query('UPDATE webhook_runs SET status = ?, result = ?, finished_at = ? WHERE id = ?').run(status, result.slice(0, 200_000), now, id)
-      if (items !== undefined) this.transcripts.save(id, items, now)
+      if (items !== undefined) this.transcripts.saveIfLive(id, items, now)
       this.events.clear(id)
     })()
   }

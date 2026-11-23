@@ -1,10 +1,13 @@
-/** Persisted transcripts for finished routine and webhook runs, plus safe one-time backfill from the engine for
- *  pre-migration runs. Finished runs open directly from SQLite; only live runs read from the engine. */
+/** Persisted transcripts for finished routine and webhook runs. Finished runs open directly from SQLite;
+ *  only live runs read from the engine. Backfill for pre-migration runs lives in `run-transcript-backfill.ts`. */
 import type { Database } from 'bun:sqlite'
 import type { ChatEvent, ChatItem } from '../../shared/chat-schema'
 import { LilBotError } from '../../shared/lilbot-error'
-import { RetryQueue } from '../background'
 import type { OpenChat } from '../engines/bot-engine'
+import type { RunTranscriptBackfill } from './run-transcript-backfill'
+import { prepareTranscriptItems } from './transcript-bounds'
+
+export { isTranscriptGone, RunTranscriptBackfill } from './run-transcript-backfill'
 
 export type SavedRunTranscript = { status: 'saved'; items: ChatItem[] } | { status: 'missing' }
 
@@ -50,20 +53,60 @@ export class RunTranscriptStore {
     return { status: 'missing' }
   }
 
-  save(runId: string, items: ChatItem[], now: number) {
+  private isLive(runId: string): boolean {
+    return Boolean(
+      this.db
+        .query(
+          `SELECT 1 FROM ${this.config.runs} x JOIN ${this.config.parents} p ON p.id = x.${this.config.parentId} JOIN bots b ON b.id = x.bot_id
+           WHERE x.id = ? AND p.deleted = 0 AND b.deletion IS NULL`
+        )
+        .get(runId)
+    )
+  }
+
+  save(runId: string, items: ChatItem[], now: number): ChatItem[] {
+    const prepared = prepareTranscriptItems(items)
     this.db
       .query(
         `INSERT INTO ${this.config.transcripts} (run_id, status, items, saved_at) VALUES (?, 'saved', ?, ?)
          ON CONFLICT(run_id) DO UPDATE SET status = 'saved', items = excluded.items, saved_at = excluded.saved_at`
       )
-      .run(runId, JSON.stringify(items), now)
+      .run(runId, JSON.stringify(prepared), now)
+    return prepared
+  }
+
+  /** Persists only while the run's parent routine/webhook and bot are still live (not deleted). */
+  saveIfLive(runId: string, items: ChatItem[], now: number): ChatItem[] | null {
+    return this.isLive(runId) ? this.save(runId, items, now) : null
   }
 
   markMissing(runId: string, now: number) {
     this.db.query(`INSERT OR IGNORE INTO ${this.config.transcripts} (run_id, status, items, saved_at) VALUES (?, 'missing', NULL, ?)`).run(runId, now)
   }
 
-  pendingBackfill(limit: number): BackfillRun[] {
+  markMissingIfLive(runId: string, now: number) {
+    if (this.isLive(runId)) this.markMissing(runId, now)
+  }
+
+  /** Removes every saved transcript belonging to a soft-deleted routine or webhook. */
+  deleteForParent(parentId: string) {
+    this.db.query(`DELETE FROM ${this.config.transcripts} WHERE run_id IN (SELECT id FROM ${this.config.runs} WHERE ${this.config.parentId} = ?)`).run(parentId)
+  }
+
+  hasPendingBackfill(): boolean {
+    return Boolean(
+      this.db
+        .query(
+          `SELECT 1 FROM ${this.config.runs} x JOIN ${this.config.parents} p ON p.id = x.${this.config.parentId} JOIN bots b ON b.id = x.bot_id
+           LEFT JOIN ${this.config.transcripts} t ON t.run_id = x.id
+           WHERE p.deleted = 0 AND b.deletion IS NULL AND x.status IN ('completed', 'failed', 'stopped') AND x.chat_id IS NOT NULL AND t.run_id IS NULL LIMIT 1`
+        )
+        .get()
+    )
+  }
+
+  pendingBackfill(limit: number, offset = 0, excludeBots: string[] = []): BackfillRun[] {
+    const skip = excludeBots.length ? `AND x.bot_id NOT IN (${excludeBots.map(() => '?').join(', ')})` : ''
     return this.db
       .query(
         `SELECT x.id, x.bot_id AS botId, x.chat_id AS chatId
@@ -71,14 +114,10 @@ export class RunTranscriptStore {
          JOIN ${this.config.parents} p ON p.id = x.${this.config.parentId}
          JOIN bots b ON b.id = x.bot_id
          LEFT JOIN ${this.config.transcripts} t ON t.run_id = x.id
-         WHERE p.deleted = 0 AND b.deletion IS NULL
-           AND x.status IN ('completed', 'failed', 'stopped')
-           AND x.chat_id IS NOT NULL
-           AND t.run_id IS NULL
-         ORDER BY x.finished_at DESC, x.${this.config.timeColumn} DESC
-         LIMIT ?`
+         WHERE p.deleted = 0 AND b.deletion IS NULL AND x.status IN ('completed', 'failed', 'stopped') AND x.chat_id IS NOT NULL AND t.run_id IS NULL ${skip}
+         ORDER BY x.finished_at DESC, x.${this.config.timeColumn} DESC LIMIT ? OFFSET ?`
       )
-      .all(limit) as BackfillRun[]
+      .all(...excludeBots, limit, offset) as BackfillRun[]
   }
 }
 
@@ -95,79 +134,6 @@ function savedRunChat(botId: string, chatId: string, items: ChatItem[], transcri
     },
     stop: async () => {},
     close: () => {}
-  }
-}
-
-const GONE_CODES = new Set(['chat_not_found', 'session_not_found'])
-
-/** Permanent "engine no longer has this session" refusals. Transient outages stay unbackfilled so a retry succeeds. */
-export function isTranscriptGone(error: unknown): boolean {
-  if (!(error instanceof LilBotError)) return false
-  if (GONE_CODES.has(error.code)) return true
-  return error.code !== 'bot_not_found' && (error.code.endsWith('_not_found') || error.code.endsWith('_profile_mismatch'))
-}
-
-export class RunTranscriptBackfill {
-  private retries: RetryQueue
-  private inFlight = new Map<string, Promise<SavedRunTranscript>>()
-  private busy = false
-  private done = false
-
-  constructor(
-    private host: TranscriptHost,
-    private store: RunTranscriptStore,
-    private now: () => number = Date.now
-  ) {
-    this.retries = new RetryQueue('run transcript backfill', () => this.now())
-  }
-
-  one(run: BackfillRun): Promise<SavedRunTranscript> {
-    const existing = this.store.get(run.id)
-    if (existing) return Promise.resolve(existing)
-    const active = this.inFlight.get(run.id)
-    if (active) return active
-    const task = this.fetch(run).finally(() => this.inFlight.delete(run.id))
-    this.inFlight.set(run.id, task)
-    return task
-  }
-
-  private async fetch(run: BackfillRun): Promise<SavedRunTranscript> {
-    try {
-      const chat = await this.host.openChat(run.botId, run.chatId, () => {}, true)
-      try {
-        if (chat.resumeRefused) {
-          this.store.markMissing(run.id, this.now())
-          return { status: 'missing' }
-        }
-        this.store.save(run.id, chat.snapshot.items, this.now())
-        return { status: 'saved', items: chat.snapshot.items }
-      } finally {
-        chat.close()
-      }
-    } catch (error) {
-      if (isTranscriptGone(error)) {
-        this.store.markMissing(run.id, this.now())
-        return { status: 'missing' }
-      }
-      throw error
-    }
-  }
-
-  tick() {
-    if (this.busy || this.done) return
-    const waiting = this.store.pendingBackfill(20)
-    if (!waiting.length) {
-      this.done = true
-      return
-    }
-    const next = waiting.find(run => this.retries.ready(run.id))
-    if (!next) return
-    this.busy = true
-    this.retries.run(next.id, () => this.one(next), {
-      onFinally: () => {
-        this.busy = false
-      }
-    })
   }
 }
 

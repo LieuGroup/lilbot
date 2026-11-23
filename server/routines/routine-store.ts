@@ -91,7 +91,10 @@ export class RoutineStore {
   delete(botId: string, id: string) {
     this.get(botId, id)
     // Keep the request-id tombstone: a delayed create retry must not resurrect this routine.
-    this.db.query('UPDATE routines SET deleted = 1, paused = 1 WHERE id = ?').run(id)
+    this.db.transaction(() => {
+      this.db.query('UPDATE routines SET deleted = 1, paused = 1 WHERE id = ?').run(id)
+      this.transcripts.deleteForParent(id)
+    })()
   }
   forgetBot(botId: string) {
     this.db.query('DELETE FROM routines WHERE bot_id = ?').run(botId)
@@ -146,7 +149,7 @@ export class RoutineStore {
   finish(id: string, status: RoutineRun['status'], result: string, now: number, items?: ChatItem[]) {
     this.db.transaction(() => {
       this.db.query('UPDATE routine_runs SET status = ?, result = ?, finished_at = ? WHERE id = ?').run(status, result.slice(0, 200_000), now, id)
-      if (items !== undefined) this.transcripts.save(id, items, now)
+      if (items !== undefined) this.transcripts.saveIfLive(id, items, now)
     })()
   }
 }

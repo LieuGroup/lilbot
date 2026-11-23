@@ -15,6 +15,7 @@ type OpenRun = 'routines.openRun' | 'webhooks.openRun'
 function useRunChat(open: OpenRun, botId: string, runId: string) {
   const connected = useBotStore(state => state.connected)
   const [chat, setChat] = useState<ChatView>(emptyChat)
+  const [loaded, setLoaded] = useState(false)
   const [notKept, setNotKept] = useState(false)
   const [error, setError] = useState('')
   useEffect(() => {
@@ -22,12 +23,14 @@ function useRunChat(open: OpenRun, botId: string, runId: string) {
     let cancelled = false
     let chatId = ''
     let stopListening = () => {}
+    setLoaded(false)
     setNotKept(false)
     lilbot.call(open, { botId, runId }).then(
       snapshot => {
         chatId = snapshot.chatId
         if (cancelled) return void lilbot.call('chat.close', { chatId }).catch(() => {})
         setError('')
+        setLoaded(true)
         setNotKept(Boolean(snapshot.transcriptNotKept))
         setChat(previous => chatFromSnapshot(snapshot, previous))
         stopListening = lilbot.onChat(chatId, event => setChat(previous => applyChatEvent(previous, event)))
@@ -40,7 +43,7 @@ function useRunChat(open: OpenRun, botId: string, runId: string) {
       if (chatId && lilbot.connected) void lilbot.call('chat.close', { chatId }).catch(() => {})
     }
   }, [open, botId, runId, connected])
-  return { chat, notKept, error }
+  return { chat, loaded, notKept, error }
 }
 
 interface RunTranscriptProps {
@@ -64,7 +67,7 @@ interface RunTranscriptProps {
  *  asked, then the bot's tool lines and text. Read-only. The prompt LilBot wrapped the task in (and a webhook's events) is
  *  its only user message, so user messages are left out and the task's own words stand in for it. */
 export function RunTranscript({ botId, runId, open, icon: Icon, title, when, asked, summary, gone, close }: RunTranscriptProps) {
-  const { chat, notKept, error } = useRunChat(open, botId, runId)
+  const { chat, loaded, notKept, error } = useRunChat(open, botId, runId)
   const items = chat.items.filter((item): item is MessageItem => item.kind !== 'session' && item.kind !== 'user')
   return (
     <>
@@ -113,6 +116,7 @@ export function RunTranscript({ botId, runId, open, icon: Icon, title, when, ask
               {summary && <ChatItem item={{ kind: 'assistant', text: summary }} botId={botId} />}
             </div>
           )}
+          {loaded && !chat.running && !notKept && items.length === 0 && summary && !error && !gone && <ChatItem item={{ kind: 'assistant', text: summary }} botId={botId} />}
           {(error || gone) && <p className="text-[13px]/[18px] text-muted-foreground">{error || gone}</p>}
         </div>
       </div>

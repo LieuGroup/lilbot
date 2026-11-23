@@ -97,6 +97,14 @@ export const ChatItem = memo(function ChatItem({
       return <CompactionLine item={item} />
     case 'connection.sign_in':
       return null
+    case 'omitted':
+      return (
+        <div className="flex w-full items-center gap-3 py-2">
+          <hr className="h-px min-w-3 flex-1 border-0 bg-hairline" />
+          <span className="text-center text-xs text-muted-foreground">{item.text}</span>
+          <hr className="h-px min-w-3 flex-1 border-0 bg-hairline" />
+        </div>
+      )
     case 'error':
       return item.reason ? <ErrorBubble text={failureLine(item.reason, useBotStore.getState().bots.find(bot => bot.id === botId)?.name)} /> : <ErrorBubble text={item.text} />
   }

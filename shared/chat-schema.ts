@@ -71,7 +71,9 @@ export const ChatItem = z.discriminatedUnion('kind', [
    *  (#148); the screen words it, so `text` is empty. */
   z.object({ kind: z.literal('error'), text: z.string(), reason: TurnFailure.optional() }),
   /** An in-chat sign-in card for an MCP service a bot added (#216). Never holds the sign-in URL, state or pasted address. */
-  z.object({ kind: z.literal('connection.sign_in'), card: ConnectionSignInCard })
+  z.object({ kind: z.literal('connection.sign_in'), card: ConnectionSignInCard }),
+  /** Where the middle of an oversized saved transcript was omitted to stay within the size limit. */
+  z.object({ kind: z.literal('omitted'), text: z.string() })
 ])
 export type ChatItem = z.infer<typeof ChatItem>
 
