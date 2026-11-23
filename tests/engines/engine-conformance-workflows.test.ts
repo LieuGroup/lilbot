@@ -97,14 +97,14 @@ describe('engine conformance: routines, webhooks, delegation, workers & checks',
     expect(opened.snapshot.items.some(item => item.kind === 'assistant' && item.text.includes('durable webhook output'))).toBe(true)
   })
 
-  test.failing('[Lane A P5] webhook run passes LilBot access scope instead of raw Hermes toolset names', async () => {
+  test('webhook run passes LilBot access scope instead of raw engine toolset names', async () => {
     const { engine, services, alpha } = await boot()
     const hook = await services.webhooks.create(alpha.id, { requestId: 'wh-scope', description: 'Scoped hook', source: 'CI', createdBy: 'oscar' })
     await services.webhooks.setCapabilities(alpha.id, hook.id, ['shell', 'computers'])
     await runWebhookOnce(services, hook.address, { ok: true })
     const call = engine.routineCalls.at(-1)
-    expect((call?.options as { access?: unknown } | undefined)?.access).toBeDefined()
-    expect(call?.options.toolsets).toBeUndefined()
+    expect(call?.options.access).toEqual({ kind: 'webhook', capabilities: ['shell', 'computers'] })
+    expect('toolsets' in (call?.options ?? {})).toBe(false)
   })
 
   test('bot-to-bot delegation and same-bot local worker run end-to-end via System MCP', async () => {
@@ -188,6 +188,6 @@ describe('engine conformance: routines, webhooks, delegation, workers & checks',
     for (let i = 0; i < 60 && !engine.routineCalls.some(c => c.nativeId === betaNative); i++) await Bun.sleep(50)
     const checkCall = engine.routineCalls.find(c => c.nativeId === betaNative)
     expect(checkCall?.options.access).toBe('check')
-    expect(checkCall?.options.toolsets).toBeUndefined()
+    expect('toolsets' in (checkCall?.options ?? {})).toBe(false)
   })
 })

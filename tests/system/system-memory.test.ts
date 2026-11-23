@@ -62,7 +62,7 @@ test('a fact is only reachable through the panel of the bot it is named for', as
   expect((await f.call('b1', 'lilbot_memory_list', { botId: 'missing' })).error).toContain('does not exist')
 })
 
-test('a short id that matches nothing or several facts is refused, and no tool forgets a fact', async () => {
+test('a short id that matches nothing or several facts is refused', async () => {
   const f = systemFixture()
   const one = fact(f, 'b1', 'First.')
   expect((await f.call('b1', 'lilbot_memory_pause', { factId: 'zzzz', paused: true })).error).toContain('No fact')
@@ -99,4 +99,63 @@ test('lilbot_memory_save writes caller facts with safety checks, expiry, push, c
   for (let i = 0; i < 30; i++) f.memory.write({ botId: 'b1', kind: 'profile', text: `Fact ${i} ${'a'.repeat(180)}`, author: 'bot' })
   const overflow = (await f.call('b1', 'lilbot_memory_save', { text: 'One more lasting fact.' })).data
   expect(overflow.notice).toContain('over its budget')
+})
+
+test('lilbot_memory_recall searches caller visible facts only, filters by kind/limit, and never exposes another bot private facts', async () => {
+  const f = systemFixture()
+  const other = await addBot(f, 'Other')
+  const ownPrivate = f.memory.write({ botId: 'b1', kind: 'journal', scope: 'bot', text: 'Reviewed Kangaroo espresso beans.', author: 'bot' })
+  const shared = f.memory.write({ botId: other.id, kind: 'profile', scope: 'shared', text: 'Oscar prefers Kangaroo dark roast.', author: 'bot' })
+  const paused = fact(f, 'b1', 'Kangaroo paused fact.', 'bot')
+  f.memory.setPaused(paused.id, true)
+  const secret = f.memory.write({ botId: other.id, kind: 'profile', scope: 'bot', text: 'Kangaroo secret private note of other bot.', author: 'bot' })
+
+  // Even with forged botId/callerId arguments, caller is strictly the authenticated bot.
+  const res = (await f.call('b1', 'lilbot_memory_recall', { query: 'Kangaroo', botId: other.id, callerId: other.id })).data
+  expect(res.facts.map((r: any) => r.id).sort()).toEqual([ownPrivate.id.slice(0, 8), shared.id.slice(0, 8)].sort())
+  expect(res.facts.find((r: any) => r.id === shared.id.slice(0, 8))).toMatchObject({ from: other.id, scope: 'shared' })
+  expect(res.facts.some((r: any) => r.id === secret.id.slice(0, 8))).toBe(false)
+  expect(res.facts.some((r: any) => r.id === paused.id.slice(0, 8))).toBe(false)
+  expect(f.changes.recent(5)).toEqual([])
+
+  const journals = (await f.call('b1', 'lilbot_memory_recall', { query: 'Kangaroo', kind: 'journal' })).data.facts
+  expect(journals.map((r: any) => r.id)).toEqual([ownPrivate.id.slice(0, 8)])
+  expect((await f.call('b1', 'lilbot_memory_recall', { limit: 1 })).data.facts).toHaveLength(1)
+  expect((await f.call('b1', 'lilbot_memory_recall', { query: '!!!', limit: 999 })).data.facts.some((r: any) => r.id === secret.id.slice(0, 8))).toBe(false)
+})
+
+test('lilbot_memory_forget is caller-scoped, reversible by Oscar, logs field names only, and blocks other bots private facts', async () => {
+  const f = systemFixture()
+  const other = await addBot(f, 'Other')
+  const own = f.memory.write({ botId: 'b1', kind: 'profile', scope: 'bot', text: 'My own private preference.', author: 'bot' })
+  const shared = f.memory.write({ botId: other.id, kind: 'profile', scope: 'shared', text: 'Shared release schedule.', author: 'bot' })
+  const secret = f.memory.write({ botId: other.id, kind: 'profile', scope: 'bot', text: 'Other bot private secret.', author: 'bot' })
+
+  // Cannot forget another bot's private fact, even by full UUID or with forged botId, nor with LIKE wildcards.
+  const beforePushes = f.state.memoryPushes
+  expect((await f.call('b1', 'lilbot_memory_forget', { id: secret.id, botId: other.id })).error).toContain('No remembered fact')
+  expect((await f.call('b1', 'lilbot_memory_forget', { id: '%%%%' })).error).toContain('No remembered fact')
+  expect((await f.call('b1', 'lilbot_memory_forget', { id: '____' })).error).toContain('No remembered fact')
+  expect(f.memory.panel(other.id).facts.some(item => item.id === secret.id)).toBe(true)
+  expect(f.state.memoryPushes).toBe(beforePushes)
+  expect(f.changes.recent(5)).toEqual([])
+
+  // Forgetting own private fact by short id soft-marks it, pushes memory.changed, logs audit target without text, and stays restorable by Oscar.
+  const forgotOwn = (await f.call('b1', 'lilbot_memory_forget', { id: own.id.slice(0, 8) })).data
+  expect(forgotOwn).toMatchObject({ id: own.id.slice(0, 8), scope: 'bot', text: 'My own private preference.' })
+  expect(f.state.memoryPushes).toBe(beforePushes + 1)
+  expect(f.changes.recent(5)[0]).toMatchObject({ botId: 'b1', tool: 'lilbot_memory_forget', target: own.id.slice(0, 8), fields: 'id' })
+  expect(JSON.stringify(f.changes.recent(5))).not.toContain('private preference')
+  expect((await f.call('b1', 'lilbot_memory_recall', { query: 'preference' })).data.facts).toEqual([])
+  expect(f.memory.panel('b1').forgotten.some(item => item.id === own.id)).toBe(true)
+
+  // Owner restores via the screen's restoreMemory path.
+  f.service.restoreMemory(own.id)
+  expect((await f.call('b1', 'lilbot_memory_recall', { query: 'preference' })).data.facts).toHaveLength(1)
+
+  // Can also forget a shared fact by full UUID; already-forgotten fact is refused.
+  const forgotShared = (await f.call('b1', 'lilbot_memory_forget', { id: shared.id })).data
+  expect(forgotShared).toMatchObject({ id: shared.id.slice(0, 8), scope: 'shared', from: other.id })
+  expect((await f.call('b1', 'lilbot_memory_forget', { id: shared.id })).error).toContain('No remembered fact')
+  expect(f.memory.panel(other.id).forgotten.some(item => item.id === shared.id)).toBe(true)
 })

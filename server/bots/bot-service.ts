@@ -226,7 +226,12 @@ export class BotService {
   listMemory = (botId: string) => this.botMemory.list(botId)
   connectMemory = (botId: string, options?: { keepOwnNotes: boolean }) => this.botMemory.connect(botId, options)
   connectAllMemory = () => this.botMemory.connectAll()
-  listModels = (engineId?: string): Promise<ModelProvider[]> => (engineId ? this.engines.require(engineId) : this.engines.defaultEngine).listModels()
+  async listModels(target?: string | { botId?: string; engineId?: string }): Promise<ModelProvider[]> {
+    if (typeof target === 'string') return this.engines.require(target).listModels()
+    const engineId = target?.botId ? (await this.requireBot(target.botId)).engineId : target?.engineId
+    if (target?.botId && target.engineId && engineId !== target.engineId) throw new LilBotError('invalid_params', 'That bot belongs to a different engine.')
+    return (engineId ? this.engines.require(engineId) : this.engines.defaultEngine).listModels()
+  }
   listSections = (): Section[] => this.prefs.sections()
   createSection(name: string): Section {
     const section = this.prefs.createSection(name)
@@ -243,9 +248,8 @@ export class BotService {
     this.changed()
   }
 
-  openChat(botId: string, chatId: string | undefined, onEvent: (event: ChatEvent) => void, requireExisting = false) {
-    return this.conversations.open(botId, chatId, onEvent, requireExisting)
-  }
+  openChat = (botId: string, chatId: string | undefined, onEvent: (event: ChatEvent) => void, requireExisting = false) =>
+    this.conversations.open(botId, chatId, onEvent, requireExisting)
 
   newChat(botId: string, onEvent: (event: ChatEvent) => void) {
     return this.conversations.open(botId, null, onEvent)
@@ -304,7 +308,5 @@ export class BotService {
     return { ok: true }
   }
 
-  requireBot(botId: string): Promise<BotRecord> {
-    return this.runtimes.require(botId)
-  }
+  requireBot = (botId: string): Promise<BotRecord> => this.runtimes.require(botId)
 }
