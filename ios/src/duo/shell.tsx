@@ -32,6 +32,9 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
   const { surface, metrics } = useLiveSurface()
   const bots = useBotStore(state => state.bots)
   const sections = useBotStore(state => state.sections)
+  const loaded = useBotStore(state => state.loaded)
+  const connected = useBotStore(state => state.connected)
+  const error = useBotStore(state => state.error)
   const selectedId = useBotSelection(state => state.selectedId)
   const pendingInitialPush = useBotSelection(state => state.pendingInitialPush)
   const select = useBotSelection(state => state.select)
@@ -137,8 +140,12 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
         <Roster
           bots={bots}
           sections={sections}
+          loaded={loaded}
+          connected={connected}
+          error={error}
           selectedId={layout.splitMode ? (selected?.id ?? null) : null}
           compactCardSurface={layout.splitMode || layout.hasSideStrip}
+          splitMode={layout.splitMode}
           onSelect={handleSelectBot}
         />
       </View>

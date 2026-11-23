@@ -1,8 +1,9 @@
-/** Active temporary groups ("Working together") shown above user sections whenever a group runs (R4-03a / R4-01a / R4-02a).
+/** Active temporary groups ("Working together") shown above user sections whenever a group runs.
  *  Driven directly by `runningGroups(bots)` from `shared/client/bots/running-groups.ts`. */
+import { memo } from 'react'
 import { Pressable, View } from 'react-native'
 import type { Bot } from '../../../shared/bot-schema'
-import { type RunningGroup, runningGroups } from '../../../shared/client/bots/running-groups'
+import type { RunningGroup } from '../../../shared/client/bots/running-groups'
 import { BotAvatar } from '../ui/avatar'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
@@ -10,14 +11,13 @@ import { radius } from '../ui/tokens'
 import { WorkingSpinner } from './status-marks'
 
 interface WorkingTogetherProps {
-  bots: Bot[]
+  groups: RunningGroup[]
   compactCardSurface: boolean
   onSelectBot: (bot: Bot) => void
 }
 
-export function WorkingTogether({ bots, compactCardSurface, onSelectBot }: WorkingTogetherProps) {
+export const WorkingTogether = memo(function WorkingTogether({ groups, compactCardSurface, onSelectBot }: WorkingTogetherProps) {
   const theme = useTheme()
-  const groups = runningGroups(bots)
   if (groups.length === 0) return null
 
   return (
@@ -35,7 +35,7 @@ export function WorkingTogether({ bots, compactCardSurface, onSelectBot }: Worki
       </View>
     </View>
   )
-}
+})
 
 function GroupRow({ group, showDivider, compactCardSurface, onSelectBot }: { group: RunningGroup; showDivider: boolean; compactCardSurface: boolean; onSelectBot: (bot: Bot) => void }) {
   const theme = useTheme()

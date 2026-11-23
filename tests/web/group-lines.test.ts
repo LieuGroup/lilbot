@@ -1,17 +1,7 @@
 import { expect, test } from 'bun:test'
+import { runningGroups } from '../../shared/client/bots/running-groups'
 import type { BotThread, ThreadGroup, ThreadMessage } from '../../shared/thread-schema'
-import {
-  groupActivityRow,
-  groupState,
-  groupSubtitle,
-  groupTitle,
-  outcomeCard,
-  pendingReplies,
-  roundLabel,
-  runningGroups,
-  shortNames,
-  stopSentence
-} from '../../web/src/threads/group-lines'
+import { groupActivityRow, groupState, groupSubtitle, groupTitle, outcomeCard, pendingReplies, roundLabel, shortNames, stopSentence } from '../../web/src/threads/group-lines'
 import { activityOrder, running } from '../../web/src/threads/thread-lines'
 import { testBot } from './test-bot'
 

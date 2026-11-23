@@ -4,8 +4,6 @@
 import type { BotThread, GroupEnd, ThreadGroup } from '../../../shared/thread-schema'
 import { type LineState, plural, runTime, shortDate } from './thread-lines'
 
-export { type RunningGroup, runningGroups } from '../../../shared/client/bots/running-groups'
-
 export type GroupThread = BotThread & { group: ThreadGroup }
 
 export const isGroup = (thread: BotThread): thread is GroupThread => thread.group !== undefined

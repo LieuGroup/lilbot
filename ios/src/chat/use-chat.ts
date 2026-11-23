@@ -19,6 +19,11 @@ const sessions = new ChatSessionManager({
 sessions.setConnected(useConnectionStore.getState().connected)
 useConnectionStore.subscribe(state => sessions.setConnected(state.connected))
 
+/** Starts a new chat session for a bot from split-view chrome (e.g. unfolded Duo / iPad New chat orb). */
+export function startNewChat(botId: string) {
+  sessions.newChat(botId)
+}
+
 export function useChat(botId: string) {
   const connected = useConnectionStore(state => state.connected)
   const slot = useChatStore(state => state.slots[botId] ?? emptySlot)

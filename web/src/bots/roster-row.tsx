@@ -4,10 +4,10 @@ import { EllipsisIcon, StarIcon } from 'lucide-react'
 import { BotBadge } from '@/ui/bot-badge'
 import { Button } from '@/ui/button'
 import type { Bot } from '../../../shared/bot-schema'
+import { rowState } from '../../../shared/client/bots/row-state'
 import { BotLink, menuOnContext } from './bot-link'
 import { openBotMenu } from './bot-menu-target'
 import type { DetailsTab } from './details-tabs'
-import { rowState } from './row-state'
 import { StatusIcon } from './status-icon'
 
 /** One bot in the roster: avatar, name, one line of live state or preview, and a 16px trailing

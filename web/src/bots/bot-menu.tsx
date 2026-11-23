@@ -2,8 +2,8 @@ import { CheckIcon, CircleDotIcon, EyeIcon, EyeOffIcon, PencilIcon, PinIcon, Pin
 import { useEffect } from 'react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/ui/dropdown-menu'
 import type { Bot } from '../../../shared/bot-schema'
+import { BOT_MENU_LABELS, canArrange, canDelete, isUnread, pinActionLabel, unreadActionLabel, visibilityActionLabel } from '../../../shared/client/bots/bot-menu-rules'
 import { makePrimary, saveNameAndAvatar, setPrefs, setUnread } from './bot-actions'
-import { canArrange, canDelete, isUnread } from './bot-menu-rules'
 import { PrimarySubmenu, SectionSubmenu } from './bot-menu-submenus'
 import { type BotDialog, type MenuAnchor, useBotMenu } from './bot-menu-target'
 import { useBotStore } from './bot-store'
@@ -21,30 +21,30 @@ function BotMenuItems({ bot, onDialog }: { bot: Bot; onDialog: (dialog: BotDialo
       {canArrange(bot) && (
         <DropdownMenuItem onClick={() => void setPrefs({ botId: bot.id, pinned: !bot.prefs.pinned })}>
           {bot.prefs.pinned ? <PinOffIcon /> : <PinIcon />}
-          {bot.prefs.pinned ? 'Unpin' : 'Pin'}
+          {pinActionLabel(bot.prefs.pinned)}
         </DropdownMenuItem>
       )}
       {canArrange(bot) && <SectionSubmenu bot={bot} onNewSection={() => onDialog('new-section')} />}
       <DropdownMenuItem onClick={() => void setUnread(bot.id, !unread)}>
         {unread ? <CheckIcon /> : <CircleDotIcon />}
-        {unread ? 'Mark as read' : 'Mark as unread'}
+        {unreadActionLabel(unread)}
       </DropdownMenuItem>
       <DropdownMenuItem onClick={() => onDialog('name-and-avatar')}>
         <PencilIcon />
-        Name and avatar
+        {BOT_MENU_LABELS.nameAndAvatar}
       </DropdownMenuItem>
       {bot.isPrimary ? (
         <PrimarySubmenu />
       ) : (
         <DropdownMenuItem onClick={() => void makePrimary(bot.id)}>
           <StarIcon />
-          Make primary
+          {BOT_MENU_LABELS.makePrimary}
         </DropdownMenuItem>
       )}
       {canArrange(bot) && (
         <DropdownMenuItem onClick={() => void setPrefs({ botId: bot.id, hidden: !bot.prefs.hidden })}>
           {bot.prefs.hidden ? <EyeIcon /> : <EyeOffIcon />}
-          {bot.prefs.hidden ? 'Show' : 'Hide'}
+          {visibilityActionLabel(bot.prefs.hidden)}
         </DropdownMenuItem>
       )}
       {canDelete(bot) && (
@@ -52,7 +52,7 @@ function BotMenuItems({ bot, onDialog }: { bot: Bot; onDialog: (dialog: BotDialo
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" onClick={() => onDialog('delete')}>
             <Trash2Icon />
-            Delete…
+            {BOT_MENU_LABELS.delete}
           </DropdownMenuItem>
         </>
       )}

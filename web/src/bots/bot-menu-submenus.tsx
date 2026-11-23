@@ -9,8 +9,8 @@ import {
   DropdownMenuSubTrigger
 } from '@/ui/dropdown-menu'
 import type { Bot } from '../../../shared/bot-schema'
+import { BOT_MENU_LABELS, primaryCandidates } from '../../../shared/client/bots/bot-menu-rules'
 import { makePrimary, setPrefs } from './bot-actions'
-import { primaryCandidates } from './bot-menu-rules'
 import { useBotStore } from './bot-store'
 
 const NONE = 'none'
@@ -23,7 +23,7 @@ export function SectionSubmenu({ bot, onNewSection }: { bot: Bot; onNewSection: 
     <DropdownMenuSub>
       <DropdownMenuSubTrigger>
         <FolderIcon />
-        Move to section
+        {BOT_MENU_LABELS.moveToSection}
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent>
         {sections.length > 0 && (
@@ -43,7 +43,7 @@ export function SectionSubmenu({ bot, onNewSection }: { bot: Bot; onNewSection: 
         )}
         <DropdownMenuItem onClick={onNewSection}>
           <PlusIcon />
-          New section…
+          {BOT_MENU_LABELS.newSection}
         </DropdownMenuItem>
       </DropdownMenuSubContent>
     </DropdownMenuSub>
@@ -58,7 +58,7 @@ export function PrimarySubmenu() {
     <DropdownMenuSub>
       <DropdownMenuSubTrigger disabled={candidates.length === 0}>
         <StarIcon />
-        Change primary bot
+        {BOT_MENU_LABELS.changePrimaryBot}
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent>
         {candidates.map(candidate => (

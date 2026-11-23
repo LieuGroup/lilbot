@@ -1,12 +1,101 @@
-/** Roster search bar (R4-G4 pull-down + VoiceOver fallback), row group wrapper, and collapsible Unassigned/Hidden groups. */
-import type { ReactNode } from 'react'
+/** Roster search bar, always-visible fallback utility bar (Search, Manage, and split-mode New bot),
+ *  and collapsible Unassigned/Hidden section header. */
+import { memo } from 'react'
 import { Pressable, TextInput, View } from 'react-native'
-import { ChevronDownIcon, ChevronRightIcon, CloseIcon, SearchIcon } from '../ui/icon'
+import { ChevronDownIcon, ChevronRightIcon, CloseIcon, MoreHorizontalIcon, PlusIcon, SearchIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { radius } from '../ui/tokens'
 
-export function RosterSearchBar({
+/** Compact top-right utility strip ensuring Search and Bot menu are always reachable without gestures,
+ *  and exposing New bot (+) in split surfaces where the detached native rail orb holds New chat. */
+export const RosterUtilityBar = memo(function RosterUtilityBar({
+  showNewBot,
+  searchOpen,
+  manageMode,
+  onNewBot,
+  onToggleSearch,
+  onToggleManage
+}: {
+  showNewBot: boolean
+  searchOpen: boolean
+  manageMode: boolean
+  onNewBot: () => void
+  onToggleSearch: () => void
+  onToggleManage: () => void
+}) {
+  const theme = useTheme()
+  return (
+    <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingTop: 2, paddingBottom: 2 }}>
+      {showNewBot && (
+        <Pressable
+          testID="roster-new-bot-button"
+          onPress={onNewBot}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="New bot"
+          style={({ pressed }) => ({
+            width: 32,
+            height: 32,
+            borderRadius: 16,
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: pressed ? 0.6 : 1
+          })}
+        >
+          <PlusIcon color={theme.mutedForeground} size={16} />
+        </Pressable>
+      )}
+      <Pressable
+        testID="roster-search-button"
+        onPress={onToggleSearch}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel="Search bots"
+        accessibilityState={{ expanded: searchOpen }}
+        style={({ pressed }) => ({
+          width: 32,
+          height: 32,
+          borderRadius: 16,
+          backgroundColor: searchOpen ? theme.muted : 'transparent',
+          alignItems: 'center',
+          justifyContent: 'center',
+          opacity: pressed ? 0.6 : 1
+        })}
+      >
+        <SearchIcon color={searchOpen ? theme.foreground : theme.mutedForeground} size={15} />
+      </Pressable>
+      <Pressable
+        testID="roster-manage-button"
+        onPress={onToggleManage}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel={manageMode ? 'Done managing bots' : 'Manage bots'}
+        accessibilityState={{ selected: manageMode }}
+        style={({ pressed }) => ({
+          minWidth: 32,
+          height: 32,
+          paddingHorizontal: manageMode ? 10 : 0,
+          borderRadius: 16,
+          backgroundColor: manageMode ? theme.muted : 'transparent',
+          alignItems: 'center',
+          justifyContent: 'center',
+          opacity: pressed ? 0.6 : 1
+        })}
+      >
+        {manageMode ? (
+          <AppText variant="meta" color={theme.foreground} style={{ fontFamily: 'Inter_600SemiBold' }}>
+            Done
+          </AppText>
+        ) : (
+          <MoreHorizontalIcon color={theme.mutedForeground} size={16} />
+        )}
+      </Pressable>
+    </View>
+  )
+})
+
+export const RosterSearchBar = memo(function RosterSearchBar({
   query,
   canClose,
   onChange,
@@ -59,52 +148,35 @@ export function RosterSearchBar({
       </View>
     </View>
   )
-}
+})
 
-export function RowGroup({ compactCardSurface, children }: { compactCardSurface: boolean; children: ReactNode }) {
-  const theme = useTheme()
-  if (compactCardSurface) {
-    return (
-      <View style={{ paddingHorizontal: 12 }}>
-        <View style={{ backgroundColor: theme.card, borderRadius: radius.lg, borderWidth: 1, borderColor: theme.hairline, overflow: 'hidden' }}>{children}</View>
-      </View>
-    )
-  }
-  return <View style={{ borderTopWidth: 1, borderBottomWidth: 1, borderColor: theme.hairline }}>{children}</View>
-}
-
-export function CollapsedGroup({
+export const CollapsedGroupHeader = memo(function CollapsedGroupHeader({
   testID,
   name,
   count,
   open,
-  onToggle,
-  children
+  onToggle
 }: {
   testID: string
   name: string
   count: number
   open: boolean
   onToggle: () => void
-  children: ReactNode
 }) {
   const theme = useTheme()
   return (
-    <View style={{ marginTop: 12 }}>
-      <Pressable
-        testID={testID}
-        onPress={onToggle}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: open }}
-        accessibilityLabel={`${name}, ${count}`}
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 16, paddingVertical: 6 }}
-      >
-        {open ? <ChevronDownIcon color={theme.mutedForeground} size={13} /> : <ChevronRightIcon color={theme.mutedForeground} size={13} />}
-        <AppText variant="meta" color={theme.mutedForeground} style={{ fontFamily: 'Inter_500Medium' }}>
-          {name} · {count}
-        </AppText>
-      </Pressable>
-      {open ? children : null}
-    </View>
+    <Pressable
+      testID={testID}
+      onPress={onToggle}
+      accessibilityRole="button"
+      accessibilityState={{ expanded: open }}
+      accessibilityLabel={`${name}, ${count}`}
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 6 }}
+    >
+      {open ? <ChevronDownIcon color={theme.mutedForeground} size={13} /> : <ChevronRightIcon color={theme.mutedForeground} size={13} />}
+      <AppText variant="meta" color={theme.mutedForeground} style={{ fontFamily: 'Inter_500Medium' }}>
+        {name} · {count}
+      </AppText>
+    </Pressable>
   )
-}
+})

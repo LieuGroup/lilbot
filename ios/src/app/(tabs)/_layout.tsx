@@ -1,12 +1,13 @@
 /** Native iOS tab bar (Expo Router NativeTabs): UIKit draws Liquid Glass on iPhone,
- *  places tabs in the Duo 84 pt side strip, renders the detached `+` New bot orb via `role="search"`
- *  with native selection prevented (`disabled`) so tapping opens New Bot without activating search or
- *  switching tabs on iPhone, iPad, or Duo, hides the bottom bar while focused in compact iPhone Chat,
- *  and pins minimizeBehavior to `never` on Duo Unfolded Portrait. Only live working tabs are registered. */
+ *  places tabs in the Duo 84 pt side strip, renders the detached native orb via `role="search"`
+ *  with native selection prevented (`disabled`) — `+` (New bot) on compact phones/folded Duo and
+ *  `square.and.pencil` (New chat) on unfolded Duo/iPad split — hides the bottom bar while focused
+ *  in compact iPhone Chat, and pins minimizeBehavior to `never` on Duo Unfolded Portrait. */
 import { NativeTabs } from 'expo-router/native-tabs'
 import { useBotMenuStore } from '../../bots/menu-store'
 import { NewBotSheet } from '../../bots/new-bot-sheet'
-import { NEW_BOT_TRIGGER_A11Y } from '../../bots/roster-state'
+import { detachedTabTriggerSpec } from '../../bots/roster-state'
+import { startNewChat } from '../../chat/use-chat'
 import { computeShellLayout } from '../../duo/layout'
 import { useBotSelection } from '../../duo/selection'
 import { shouldHideNativeTabBar } from '../../duo/stack-sync'
@@ -17,8 +18,18 @@ export default function TabsLayout() {
   const theme = useTheme()
   const { surface, metrics } = useLiveSurface()
   const chatFocused = useBotSelection(state => state.chatFocusCount > 0)
+  const selectedId = useBotSelection(state => state.selectedId)
   const openNewBot = useBotMenuStore(state => state.openNewBot)
   const layout = computeShellLayout(surface, metrics)
+  const trigger = detachedTabTriggerSpec(layout.splitMode)
+
+  const handleDetachedPress = () => {
+    if (trigger.action === 'new-chat') {
+      if (selectedId) startNewChat(selectedId)
+      return
+    }
+    openNewBot()
+  }
 
   return (
     <>
@@ -40,16 +51,14 @@ export default function TabsLayout() {
           name="new-bot"
           role="search"
           disabled
-          testID={NEW_BOT_TRIGGER_A11Y.testID}
-          accessibilityLabel={NEW_BOT_TRIGGER_A11Y.label}
+          testID={trigger.testID}
+          accessibilityLabel={trigger.label}
           listeners={{
-            tabPress: () => {
-              openNewBot()
-            }
+            tabPress: handleDetachedPress
           }}
         >
-          <NativeTabs.Trigger.Icon sf="plus" />
-          <NativeTabs.Trigger.Label>{NEW_BOT_TRIGGER_A11Y.label}</NativeTabs.Trigger.Label>
+          <NativeTabs.Trigger.Icon sf={trigger.sf} />
+          <NativeTabs.Trigger.Label>{trigger.label}</NativeTabs.Trigger.Label>
         </NativeTabs.Trigger>
       </NativeTabs>
       <NewBotSheet />

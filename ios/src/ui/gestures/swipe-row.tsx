@@ -1,11 +1,10 @@
-/** Scroll-gated left-swipe row primitive (R4-G2): FAIL_OFFSET_Y ±10 pt gates pre-activation vertical scrolling,
- *  post-activation drag tracks smoothly without freezing on Y drift, and the accessible wrapper handles both
- *  VoiceOver double-tap activation (`onAccessibilityTap` + button role/state) and custom rotor actions. */
+/** Scroll-gated left-swipe row primitive: FAIL_OFFSET_Y ±10 pt gates vertical scrolling, shared-value scroll
+ *  lock avoids parent re-renders, tapping an open row closes it, and only one row stays swiped open at a time. */
 import * as Haptics from 'expo-haptics'
-import { type ReactNode, useCallback, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { type AccessibilityActionEvent, type AccessibilityState, Pressable, View } from 'react-native'
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler'
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated'
+import Animated, { type SharedValue, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated'
 import { AppText } from '../text'
 import { useTheme } from '../theme'
 import { radius } from '../tokens'
@@ -14,16 +13,16 @@ import { type AccessibleActionSpec, evaluateActiveRowSwipe, ROW_SWIPE_GUARD } fr
 export interface SwipeRowAction {
   id: string
   label: string
+  accessibilityLabel?: string
   tone: 'ink' | 'primary' | 'muted'
   onPress: () => void
 }
 
 export interface SwipeRowProps {
+  rowId?: string
   children: ReactNode
   actions: SwipeRowAction[]
-  /** Invoked on sighted tap and VoiceOver double-tap (`accessibilityActivate`). */
   onPress?: () => void
-  /** Invoked on long-press (opens the Bot menu fallback on Roster rows). */
   onLongPress?: () => void
   rowBackground?: string
   testID?: string
@@ -32,47 +31,57 @@ export interface SwipeRowProps {
   accessibilityState?: AccessibilityState
   accessibilityActions?: AccessibleActionSpec[]
   onAccessibilityAction?: (name: string) => void
-  scrollingVertically?: boolean
+  scrollingVertically?: boolean | SharedValue<boolean>
   onFullSwipe?: () => void
 }
 
 const ACTION_WIDTH = 64
+let activeOpenRow: { id: string; close: () => void } | null = null
 
-export function SwipeRow({
-  children,
-  actions,
-  onPress,
-  onLongPress,
-  rowBackground,
-  testID,
-  accessibilityLabel,
-  accessibilityHint,
-  accessibilityState,
-  accessibilityActions,
-  onAccessibilityAction,
-  scrollingVertically = false,
-  onFullSwipe
-}: SwipeRowProps) {
+/** Closes whichever SwipeRow is currently swiped open without re-rendering other rows. */
+export function closeAllSwipeRows() {
+  if (!activeOpenRow) return
+  const current = activeOpenRow
+  activeOpenRow = null
+  current.close()
+}
+
+export function SwipeRow(props: SwipeRowProps) {
+  const { rowId, children, actions, onPress, onLongPress, rowBackground, testID, accessibilityLabel, accessibilityHint, accessibilityState, accessibilityActions, onAccessibilityAction, scrollingVertically = false, onFullSwipe } = props
   const theme = useTheme()
   const translateX = useSharedValue(0)
   const openWidth = actions.length * ACTION_WIDTH + 12
   const hapticFired = useRef(false)
+  const isOpenRef = useRef(false)
   const [actionsOpen, setActionsOpen] = useState(false)
+  const key = rowId ?? testID ?? accessibilityLabel
 
   const close = useCallback(() => {
+    if (activeOpenRow?.id === key) activeOpenRow = null
+    isOpenRef.current = false
     setActionsOpen(false)
     translateX.value = withSpring(0, { damping: 24, stiffness: 260 })
-  }, [translateX])
+  }, [key, translateX])
+
+  useEffect(() => {
+    return () => {
+      if (activeOpenRow?.id === key) activeOpenRow = null
+    }
+  }, [key])
+
+  const isScrolling = () => (typeof scrollingVertically === 'boolean' ? scrollingVertically : scrollingVertically.value)
 
   const pan = usePanGesture({
-    enabled: !scrollingVertically && actions.length > 0,
+    enabled: (typeof scrollingVertically === 'boolean' ? !scrollingVertically : true) && actions.length > 0,
     runOnJS: true,
     failOffsetY: [-ROW_SWIPE_GUARD.failOffsetY, ROW_SWIPE_GUARD.failOffsetY],
     activeOffsetX: [ROW_SWIPE_GUARD.activeOffsetX, 1000],
     onBegin: () => {
       hapticFired.current = false
+      if (activeOpenRow && activeOpenRow.id !== key) closeAllSwipeRows()
     },
     onUpdate: event => {
+      if (isScrolling()) return
       const clamped = Math.max(-openWidth - 28, Math.min(0, event.translationX))
       translateX.value = clamped
       if (evaluateActiveRowSwipe({ dx: event.translationX }) === 'full-action' && !hapticFired.current) {
@@ -81,6 +90,10 @@ export function SwipeRow({
       }
     },
     onDeactivate: event => {
+      if (isScrolling()) {
+        close()
+        return
+      }
       const decision = evaluateActiveRowSwipe({ dx: event.translationX })
       if (decision === 'full-action' && onFullSwipe) {
         onFullSwipe()
@@ -88,6 +101,9 @@ export function SwipeRow({
         return
       }
       if (decision === 'open' || decision === 'full-action') {
+        if (activeOpenRow && activeOpenRow.id !== key) activeOpenRow.close()
+        activeOpenRow = { id: key, close }
+        isOpenRef.current = true
         setActionsOpen(true)
         translateX.value = withSpring(-openWidth, { damping: 24, stiffness: 260 })
       } else {
@@ -100,6 +116,15 @@ export function SwipeRow({
   })
 
   const rowStyle = useAnimatedStyle(() => ({ transform: [{ translateX: translateX.value }] }))
+
+  const handleRowPress = useCallback(() => {
+    if (isOpenRef.current) {
+      close()
+      return
+    }
+    if (activeOpenRow) closeAllSwipeRows()
+    onPress?.()
+  }, [close, onPress])
 
   const handleA11yAction = (event: AccessibilityActionEvent) => {
     const name = event.nativeEvent.actionName
@@ -129,7 +154,7 @@ export function SwipeRow({
                 action.onPress()
               }}
               accessibilityRole="button"
-              accessibilityLabel={action.label}
+              accessibilityLabel={action.accessibilityLabel ?? action.label}
               style={{ minWidth: 56, height: 32, paddingHorizontal: 10, borderRadius: radius.pill, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}
             >
               <AppText variant="preview" color={fg} style={{ fontFamily: 'Inter_500Medium' }}>
@@ -147,13 +172,13 @@ export function SwipeRow({
           accessibilityLabel={accessibilityLabel}
           accessibilityHint={accessibilityHint}
           accessibilityState={accessibilityState}
-          accessibilityActions={accessibilityActions ?? actions.map(action => ({ name: action.id, label: action.label }))}
-          onAccessibilityTap={onPress}
+          accessibilityActions={accessibilityActions ?? actions.map(action => ({ name: action.id, label: action.accessibilityLabel ?? action.label }))}
+          onAccessibilityTap={onPress ? handleRowPress : undefined}
           onAccessibilityAction={handleA11yAction}
           style={[{ backgroundColor: rowBackground ?? theme.card }, rowStyle]}
         >
           {onPress || onLongPress ? (
-            <Pressable onPress={onPress} onLongPress={onLongPress} delayLongPress={320} accessible={false}>
+            <Pressable onPress={handleRowPress} onLongPress={onLongPress} delayLongPress={320} accessible={false}>
               {children}
             </Pressable>
           ) : (

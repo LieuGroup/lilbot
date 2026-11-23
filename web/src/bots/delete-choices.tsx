@@ -1,6 +1,6 @@
 import { ToggleGroup, ToggleGroupItem } from '@/ui/toggle-group'
 import type { BotDeleteDefaults } from '../../../shared/bot-delete-schema'
-import { filesHint, memoriesHint } from './delete-copy'
+import { filesHint, memoriesHint } from '../../../shared/client/bots/delete-copy'
 
 /** Shown while the saved defaults are still loading. */
 export const LOADING_CHOICES: BotDeleteDefaults = { files: 'archive', privateMemories: 'forget' }
