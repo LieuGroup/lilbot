@@ -169,9 +169,14 @@ export class HistoryStore {
     if (inEvents) return true
     return !!this.db.query(`SELECT 1 FROM history_items WHERE bot=? AND session=? AND json_extract(item,'$.kind')='user' AND instr(text,?)>0 LIMIT 1`).get(bot, session, needle)
   }
-  /** Marks all existing sessions for a bot complete (used when committing an engine switch so the new engine never polls old sessions). */
-  sealSessions(bot: string) {
-    this.db.query('UPDATE history_sessions SET complete=1 WHERE bot=?').run(bot)
+  /** Marks old sessions for a bot complete (excluding any sessions already belonging to the target engine). */
+  sealSessions(bot: string, exclude?: ReadonlySet<string>) {
+    if (!exclude?.size) {
+      this.db.query('UPDATE history_sessions SET complete=1 WHERE bot=?').run(bot)
+      return
+    }
+    const mark = this.db.query('UPDATE history_sessions SET complete=1 WHERE bot=? AND id=?')
+    for (const session of this.sessions(bot)) if (!exclude.has(session.id)) mark.run(bot, session.id)
   }
   forget(bot: string) {
     this.db.transaction(() => {

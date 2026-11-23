@@ -160,7 +160,8 @@ export class HistoryService {
         switchGen: this.switchGen,
         switchTimers: this.switchTimers,
         dropSource: this.dropSource,
-        clearCatchUp: this.clearCatchUp
+        clearCatchUp: this.clearCatchUp,
+        sourceInfo: id => this.sources.get(id)
       },
       previous,
       options

@@ -57,7 +57,8 @@ test('M12: throwing source.close() cannot throw out of dropSource/close or leak 
           dropSource: () => {
             throw new Error('drop boom')
           },
-          clearCatchUp: () => {}
+          clearCatchUp: () => {},
+          sourceInfo: () => undefined
         },
         { id: 'b1', engineId: 'e1', engineBotId: 'n1' }
       )
@@ -69,14 +70,14 @@ test('M12: throwing source.close() cannot throw out of dropSource/close or leak 
   }
 })
 
-test('M13: whole-switch lockTimeoutMs releases lock when engine open hangs, leaves sessions unsealed, and makes late commit a no-op', async () => {
+test('M13: whole-switch lockTimeoutMs releases only the import lock when engine open hangs and leaves sessions unsealed on failure/supersede', async () => {
   const db = openDatabase(':memory:')
   let readCalls = 0
   const source: ConversationSource = {
     list: async () => [{ id: 'old-s1', at: 100 }],
     read: async () => {
       readCalls++
-      return { rows: [], cursor: 'c1', reset: false, empty: false }
+      return { rows: [], cursor: `c${readCalls}`, reset: false, empty: false }
     },
     close: () => {}
   }
@@ -95,16 +96,17 @@ test('M13: whole-switch lockTimeoutMs releases lock when engine open hangs, leav
     await history.tick()
     expect(readCalls).toBe(readsWhileLocked)
 
+    // Timer expires: import lock releases automatically, nothing sealed.
     await Bun.sleep(70)
     expect(store.sessions('b1').find(s => s.id === 'old-s1')?.complete).toBe(0)
     await history.tick()
     expect(readCalls).toBeGreaterThan(readsWhileLocked)
 
+    // Starting a second switch supersedes the expired switch: late commit/release from sw are no-ops and do not release sw2's lock.
+    const sw2 = await history.prepareEngineSwitch({ id: 'b1', engineId: 'e1', engineBotId: 'n1' }, { timeoutMs: 20, maxPages: 1, lockTimeoutMs: 500 })
     sw.commit('late-chat')
     expect(store.sessions('b1').some(s => s.id === 'late-chat')).toBe(false)
     expect(store.sessions('b1').find(s => s.id === 'old-s1')?.complete).toBe(0)
-
-    const sw2 = await history.prepareEngineSwitch({ id: 'b1', engineId: 'e1', engineBotId: 'n1' }, { timeoutMs: 20, maxPages: 1, lockTimeoutMs: 500 })
     sw.release()
     const beforeBlocked = readCalls
     await history.tick()
