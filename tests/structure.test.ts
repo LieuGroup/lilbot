@@ -27,6 +27,10 @@ test('the web and iOS apps never reach into the server', () => {
   expect([...crossings('web/src', 'server'), ...crossings('ios/src', 'server')]).toEqual([])
 })
 
+test('product code never imports from tests/', () => {
+  expect(['server', 'shared', 'web', 'ios', 'helper'].flatMap(root => crossings(root, 'tests'))).toEqual([])
+})
+
 test('only the single engine registration point knows which engines exist (server/main.ts tracked until P6/P5)', () => {
   const engines = concreteEngineIds()
   const outsiders = sourceFiles('server').filter(file => file !== 'server/engines/registry.ts' && !engines.some(id => file.startsWith(`server/engines/${id}/`)))

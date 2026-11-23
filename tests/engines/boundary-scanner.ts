@@ -1,9 +1,26 @@
-/** TypeScript AST-based import and engine-name scanner for boundary and structure tests. */
+/** TypeScript AST-based import and engine-name scanner for boundary and structure tests.
+ *  Accepted lexical limits: runtime variable assembly (`const a = 'her'; a + 'mes'`, `import(varPath)`),
+ *  odd mixed case (`'HeRmEs'`), and non-JS/TS config files (`.json`, `.yaml`, `.py`) are not scanned here. */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, normalize } from 'node:path'
 import ts from 'typescript'
 
 export const ROOT = join(import.meta.dir, '../..')
+
+/** Standard JS built-in objects whose own property names (`Math.PI`, `Object.is`, `Number.EPSILON`, etc.)
+ *  are language primitives rather than engine names. */
+const JS_BUILTIN_OBJECTS = new Set(
+  'Math Number String Boolean Symbol BigInt Object Array Function Date RegExp Error Map Set WeakMap WeakSet Promise Proxy Reflect JSON Intl Atomics ArrayBuffer SharedArrayBuffer DataView URL URLSearchParams Uint8Array Int8Array Uint16Array Int16Array Uint32Array Int32Array Float32Array Float64Array BigInt64Array BigUint64Array'.split(
+    ' '
+  )
+)
+
+/** Exact display-label entry (`const <table> = { <key>: '<label>' }`) allowed to name an engine for UI display. */
+export interface DisplayLabelEntry {
+  table: string
+  key: string
+  label: string
+}
 
 export function concreteEngineIds(): string[] {
   const dir = join(ROOT, 'server/engines')
@@ -101,7 +118,6 @@ export function importsOf(file: string): string[] {
   return relativeImportsInSource(readFileSync(join(ROOT, file), 'utf8'), file)
 }
 
-/** Splits an identifier or string into lowercase whole words (camelCase, snake_case, kebab-case, punctuation). */
 function tokenizeWords(text: string): string[] {
   return text
     .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
@@ -115,37 +131,43 @@ function hasWordSequence(words: string[], target: string[]): boolean {
   if (!target.length || words.length < target.length) return false
   for (let i = 0; i <= words.length - target.length; i++) {
     let ok = true
-    for (let j = 0; j < target.length; j++) {
+    for (let j = 0; j < target.length; j++)
       if (words[i + j] !== target[j]) {
         ok = false
         break
       }
-    }
     if (ok) return true
   }
   return false
 }
 
-/** Returns which engine ids appear as whole tokens in code (identifiers, string literals, template chunks,
- *  built strings, JSX text, import paths). Comments are ignored because only AST code nodes are visited. */
-export function engineNamesInSource(source: string, filePath: string, engines: readonly string[]): string[] {
+function isAllowedDisplayEntry(node: ts.Node, allowed: readonly DisplayLabelEntry[]): boolean {
+  if (!allowed.length || !ts.isPropertyAssignment(node) || !ts.isStringLiteralLike(node.initializer)) return false
+  const label = node.initializer.text
+  const key = ts.isIdentifier(node.name) || ts.isStringLiteralLike(node.name) ? node.name.text : null
+  if (!key) return false
+  const obj = node.parent
+  const decl = obj && ts.isObjectLiteralExpression(obj) ? obj.parent : null
+  const table = decl && ts.isVariableDeclaration(decl) && ts.isIdentifier(decl.name) ? decl.name.text : null
+  return !!table && allowed.some(entry => entry.table === table && entry.key === key && entry.label === label)
+}
+
+/** Returns engine ids appearing as whole tokens in code (identifiers, strings, templates, built strings, JSX text).
+ *  Comments, exact `allowedLabels` display entries, and property reads on JS built-in objects (`Math.PI`, etc.) are ignored. */
+export function engineNamesInSource(source: string, filePath: string, engines: readonly string[], allowedLabels: readonly DisplayLabelEntry[] = []): string[] {
   const sf = parseSource(source, filePath)
   const targets = engines.map(id => ({ id, words: tokenizeWords(id) })).filter(t => t.words.length > 0)
   const found = new Set<string>()
   const check = (text: string) => {
-    if (!text) return
     const words = tokenizeWords(text)
     for (const target of targets) if (!found.has(target.id) && hasWordSequence(words, target.words)) found.add(target.id)
   }
   const visit = (node: ts.Node) => {
-    if (found.size === targets.length) return
-    if (ts.isIdentifier(node) || ts.isPrivateIdentifier(node)) {
-      check(node.text)
-    } else if (ts.isStringLiteralLike(node) || ts.isJsxText(node)) {
-      check(node.text)
-    } else if (ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) {
-      check(node.text)
-    } else if (ts.isBinaryExpression(node) || ts.isTemplateExpression(node) || ts.isCallExpression(node)) {
+    if (found.size === targets.length || isAllowedDisplayEntry(node, allowedLabels)) return
+    if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && JS_BUILTIN_OBJECTS.has(node.expression.text)) return
+    if (ts.isIdentifier(node) || ts.isPrivateIdentifier(node) || ts.isStringLiteralLike(node) || ts.isJsxText(node)) check(node.text)
+    else if (ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) check(node.text)
+    else if (ts.isBinaryExpression(node) || ts.isTemplateExpression(node) || ts.isCallExpression(node)) {
       const built = evalStaticString(node)
       if (built !== null) check(built)
     }
