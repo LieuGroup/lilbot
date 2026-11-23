@@ -1,4 +1,3 @@
-import { z } from 'zod'
 import type { ChatEvent, ChatSnapshot } from '../../shared/chat-schema'
 import type { SessionReason } from '../../shared/history-schema'
 import type { BotEngine, ConversationSource } from '../engines/bot-engine'
@@ -6,8 +5,6 @@ import { asEngineRegistry, type EngineRegistry } from '../engines/engine-registr
 import { catchUpDirtySessions, flushBotHistory, type HistoryFlushOptions, type HistoryFlushResult, syncHistoryDividers } from './history-flush'
 import type { HistoryRow, HistoryStore } from './history-store'
 import { closeSourceQuietly, type PreparedEngineSwitch, prepareSwitchHistory } from './history-switch'
-
-export const HistorySearchInput = z.object({ query: z.string().trim().min(1).max(500), limit: z.number().int().min(1).max(50).default(20) })
 
 type Binding = { id: string; engineId?: string; engineBotId: string }
 type CachedSource = { engineId: string; source: ConversationSource; listed: number; turn: number; known: Set<string> }
@@ -131,13 +128,11 @@ export class HistoryService {
   }
   private scheduleCatchUp(botId: string) {
     if (this.closed || this.switching.has(botId) || this.catchUpTimers.has(botId)) return
-    this.catchUpTimers.set(
-      botId,
-      setTimeout(() => {
-        this.catchUpTimers.delete(botId)
-        void this.catchUp(botId)
-      }, 25)
-    )
+    const run = () => {
+      this.catchUpTimers.delete(botId)
+      void this.catchUp(botId)
+    }
+    this.catchUpTimers.set(botId, setTimeout(run, 25))
   }
   private async catchUp(botId: string) {
     const dirty = this.dirty.get(botId)
@@ -191,12 +186,7 @@ export class HistoryService {
       this.scheduleCatchUp(bot)
     }
   }
-  search(bot: string, query: string, limit = 20) {
-    return {
-      matches: this.store.search(bot, query, limit, session => this.allowed(bot, session)),
-      import: this.store.progress(bot)
-    }
-  }
+  search = (bot: string, query: string, limit = 20) => ({ matches: this.store.search(bot, query, limit, s => this.allowed(bot, s)), import: this.store.progress(bot) })
   close() {
     this.closed = true
     for (const timer of [...this.catchUpTimers.values(), ...this.switchTimers]) clearTimeout(timer)

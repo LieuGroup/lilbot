@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { LilBotError } from '../../shared/lilbot-error'
-import { HistorySearchInput } from '../history/history-service'
+import { HistorySearchInput } from '../history/history-search'
 import { MemoryCheckpoint } from '../memory/memory-checkpoint'
 import { withoutWebhookNotes } from '../webhooks/webhook-messages'
 import type { EngineApiOptions } from './engine-api'
