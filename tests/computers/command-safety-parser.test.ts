@@ -46,7 +46,7 @@ test('parses POSIX shell -c option ordering across every shell carrier', () => {
   expect(checkCommandSafety('bash -o pipefail script.sh', HOME)).toBeNull()
 })
 
-test('handles normalization, continuations, ANSI-C, comments, quotes, and read-tool exec flags', () => {
+test('handles normalization, continuations, ANSI-C, comments, read-tool exec flags, and unparseable safety net', () => {
   const blocked = [
     '\x1b[31mrm\x1b[0m -rf /',
     '\u200brm -rf /',
@@ -69,12 +69,18 @@ test('handles normalization, continuations, ANSI-C, comments, quotes, and read-t
     "man -P'reboot' ls",
     "man --pager='rm -rf /' ls",
     "man -H 'reboot' ls",
-    "man --html='reboot' ls",
-    "grep 'unterminated",
-    'echo "unterminated',
-    "echo $'unterminated"
+    "man --html='reboot' ls"
   ]
   for (const cmd of blocked) expect(checkCommandSafety(cmd, HOME), cmd).not.toBeNull()
+  for (const cmd of [
+    "echo 'unterminated; rm -rf /",
+    'echo "unterminated; reboot',
+    "grep 'unterminated > /dev/sda",
+    "echo 'unterminated; git clean -fdx",
+    "echo 'unterminated; :(){ :|:& };:"
+  ]) {
+    expect(checkCommandSafety(cmd, HOME), cmd).toContain('simplify the quoting')
+  }
   const allowed = [
     '# rm -rf /; reboot',
     "# don't worry; mkfs /dev/sda",
@@ -83,12 +89,16 @@ test('handles normalization, continuations, ANSI-C, comments, quotes, and read-t
     "rg -e --pre 'rm -rf /'",
     'sort --compress-program=gzip f',
     'ag --pager less foo',
-    'man -P less ls'
+    'man -P less ls',
+    "grep 'unterminated",
+    'echo "unterminated',
+    "echo $'unterminated",
+    'git commit -m "oddly \x27unterminated message'
   ]
   for (const cmd of allowed) expect(checkCommandSafety(cmd, HOME), cmd).toBeNull()
 })
 
-test('unifies tokenizer across heredocs, substitutions, case blocks, arithmetic, and arrays', () => {
+test('unifies tokenizer across heredocs, substitutions, parameter expansions, case blocks, arithmetic, and arrays', () => {
   const allowed = [
     "cat <<'EOF' > README.md\nrm -rf /\nshutdown -h now\n:(){ :|:& };:\nEOF",
     "git commit -F - <<'EOF'\nfix: shutdown handling\n\nreboot notes\nEOF",
@@ -99,6 +109,11 @@ test('unifies tokenizer across heredocs, substitutions, case blocks, arithmetic,
     'gh pr create --body "$(cat <<\x27EOF\x27\nIt\x27s ready (see #42).\nEOF\n)"',
     'echo "$(echo ok # it\x27s a comment\n)"',
     'echo "$(case a in (a|b) echo "it\x27s ok";; esac)"',
+    `echo "\${x:-"it's ok"}"`,
+    `x=$(printf "%s" "\${y:-"don't"}")`,
+    `echo \${x:-"}"}`,
+    `echo "\${x:-"a}b"}"`,
+    `echo \${x:-'$(rm -rf /)'}`,
     'echo $(( (1 + 2) * 3 ))',
     'for ((i=0; i<10; i++)); do echo $i; done',
     'arr=(foo "don\x27t" bar)'
@@ -110,12 +125,22 @@ test('unifies tokenizer across heredocs, substitutions, case blocks, arithmetic,
     'sudo sh <<-EOF\n\treboot\n\tEOF',
     'cat <<-EOF\n\tignored\n\tEOF\nreboot',
     'cat <<EOF\n$(rm -rf /)\nEOF',
+    `cat <<EOF\n\${x:-$(rm -rf /)}\nEOF`,
     "cat <<'EOF' | bash\nrm -rf /\nEOF",
     "cat <<'EOF' > README.md\nsafe\nEOF\nreboot",
     'echo "$(cat <<\x27EOF\x27\n)\nEOF\nrm -rf /)"',
     'echo "$(cat <<\x27EOF\x27\n)\nEOF\nreboot)"',
     'echo "$(case a in a) rm -rf /;; esac)"',
     'echo "$(case a in (a|b) reboot;; esac)"',
+    `echo \${x:-$(rm -rf /)}`,
+    `: \${x:=$(reboot)}`,
+    `echo \${x:-\`reboot\`}`,
+    `echo \${x:-"$(rm -rf /)"}`,
+    `echo "\${x:-'$(rm -rf /)'}"`,
+    `echo $(( \${x:-$(reboot)} + 1 ))`,
+    '((rm -rf /); echo ok)',
+    'echo "$((rm -rf /); echo ok)"',
+    `echo \${x:-$((rm -rf /); echo ok)}`,
     'echo $(( $(rm -rf /) + 1 ))',
     'arr=($(rm -rf /))'
   ]

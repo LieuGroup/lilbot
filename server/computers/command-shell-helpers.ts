@@ -1,6 +1,7 @@
 /** AST types, case-statement helpers, and word-atom scanning for the recursive shell tokenizer. */
-import { type Heredoc, type ParseSubFn, type PendingRedirect, type QueuedHeredoc, scanAnsiC, scanArithmetic, scanQuoted } from './command-heredoc'
-import { isLineContinuation, scanBraceVar } from './command-text'
+import { scanAnsiC, scanBraceParam, tryScanArithmetic } from './command-expansions'
+import { type Heredoc, type ParseSubFn, type PendingRedirect, type QueuedHeredoc, scanQuoted } from './command-heredoc'
+import { isLineContinuation } from './command-text'
 
 export interface ShellSegment {
   words: string[]
@@ -21,8 +22,10 @@ export interface ParsedShell {
   nestingExceeded: boolean
 }
 
-export type CaseState = 'word' | 'pattern' | 'body'
-export type WordAtomResult = { handled: false } | { handled: true; end: number; text: string; hadQuote: boolean; unterminated: boolean; flushIfs?: boolean }
+type CaseState = 'word' | 'pattern' | 'body'
+export type WordAtomResult =
+  | { handled: false }
+  | { handled: true; end: number; text: string; hadQuote: boolean; unterminated: boolean; nestingExceeded?: boolean; flushIfs?: boolean }
 
 export interface ParserState {
   nodes: ShellNode[]
@@ -108,15 +111,17 @@ export function flushSegment(st: ParserState, nextPipe: boolean): void {
   st.pendingRedirect = 'none'
 }
 
-export function scanParenWord(src: string, start: number, parseSub: ParseSubFn, masked: string[]) {
+export function scanParenWord(src: string, start: number, parseSub: ParseSubFn, masked: string[], depth: number) {
   let i = start + 1
-  let depth = 1
+  let pdepth = 1
   let unterminated = false
-  while (i < src.length && depth > 0) {
+  let nestingExceeded = false
+  while (i < src.length && pdepth > 0) {
     const ch = src[i]
     if (ch === "'" || ch === '"') {
-      const q = scanQuoted(src, i, ch, parseSub, masked)
+      const q = scanQuoted(src, i, ch, parseSub, masked, depth + 1)
       if (q.unterminated) unterminated = true
+      if (q.nestingExceeded) nestingExceeded = true
       i = q.end
       continue
     }
@@ -130,26 +135,27 @@ export function scanParenWord(src: string, start: number, parseSub: ParseSubFn, 
       i = sub.end
       continue
     }
-    if (ch === '(') depth++
-    else if (ch === ')') depth--
+    if (ch === '(') pdepth++
+    else if (ch === ')') pdepth--
     i++
   }
-  return { text: src.slice(start, i), end: i, unterminated: unterminated || depth > 0 }
+  return { text: src.slice(start, i), end: i, unterminated: unterminated || pdepth > 0, nestingExceeded }
 }
 
-export function scanWordAtom(src: string, i: number, parseSub: ParseSubFn, masked: string[]): WordAtomResult {
+export function scanWordAtom(src: string, i: number, parseSub: ParseSubFn, masked: string[], depth: number): WordAtomResult {
   const ch = src[i]
   if (ch === "'" || ch === '"') {
-    const q = scanQuoted(src, i, ch, parseSub, masked)
-    return { handled: true, end: q.end, text: q.text, hadQuote: true, unterminated: q.unterminated }
+    const q = scanQuoted(src, i, ch, parseSub, masked, depth)
+    return { handled: true, end: q.end, text: q.text, hadQuote: true, unterminated: q.unterminated, nestingExceeded: q.nestingExceeded }
   }
   if (ch === '$' && src[i + 1] === "'") {
     const a = scanAnsiC(src, i, masked)
     return { handled: true, end: a.end, text: a.text, hadQuote: true, unterminated: a.unterminated }
   }
   if (ch === '$' && src[i + 1] === '(' && src[i + 2] === '(') {
-    const arith = scanArithmetic(src, i, parseSub, masked)
-    return { handled: true, end: arith.end, text: arith.text, hadQuote: false, unterminated: arith.unterminated }
+    const ar = tryScanArithmetic(src, i, parseSub, scanQuoted, masked, depth)
+    if (ar.kind === 'nesting_exceeded') return { handled: true, end: src.length, text: '', hadQuote: false, unterminated: false, nestingExceeded: true }
+    if (ar.kind === 'arith') return { handled: true, end: ar.end, text: ar.text, hadQuote: false, unterminated: ar.unterminated, nestingExceeded: ar.nestingExceeded }
   }
   if (ch === '`' || (ch === '$' && src[i + 1] === '(')) {
     const sub = parseSub(src, i, ch === '`' ? 'backtick' : 'subst', false)
@@ -163,10 +169,8 @@ export function scanWordAtom(src: string, i: number, parseSub: ParseSubFn, maske
       return { handled: true, end: i + ifs[0].length, text: '', hadQuote: false, unterminated: false, flushIfs: true }
     }
     if (src[i + 1] === '{') {
-      const end = scanBraceVar(src, i)
-      const chunk = src.slice(i, end)
-      masked.push(chunk)
-      return { handled: true, end, text: chunk, hadQuote: false, unterminated: false }
+      const bp = scanBraceParam(src, i, parseSub, scanQuoted, masked, depth + 1)
+      return { handled: true, end: bp.end, text: bp.text, hadQuote: false, unterminated: bp.unterminated, nestingExceeded: bp.nestingExceeded }
     }
   }
   if (ch === '\\') {

@@ -23,7 +23,9 @@ test('allows >4 KiB single-line commands while failing closed on size, separator
   let nested = 'echo ok'
   for (let i = 0; i < 10; i++) nested = `sh -c ${JSON.stringify(nested)}`
   expect(checkCommandSafety(nested, HOME)).toContain('nesting limit')
-  expect(checkCommandSafety('"$(;'.repeat(15_000), HOME)).not.toBeNull()
+  expect(checkCommandSafety('"$(;'.repeat(15_000), HOME)).toContain('nesting limit')
+  expect(checkCommandSafety('('.repeat(5_000), HOME)).toContain('nesting limit')
+  expect(checkCommandSafety('${'.repeat(5_000), HOME)).toContain('nesting limit')
 })
 
 test('ignores uninterpretable Windows-style home paths without refusing benign commands', () => {

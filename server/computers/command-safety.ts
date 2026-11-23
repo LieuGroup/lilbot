@@ -6,22 +6,24 @@
  * of scope for static inspection: dynamic variable indirection (`c=rm; $c -rf /`,
  * `p=/; rm -rf $p`), brace expansion (`{r,r}m`, `/{bin,etc}`), interpreter one-liners
  * (`python3 -c`, `node -e`, `perl -e`, `ruby -e`), encoded payloads (`base64 -d | sh`), shell
- * aliases/functions, symlink or glob tricks, writing a script file then executing it, `eval` of
- * a substitution (`eval "$(cat ...)"`), pipes through more than one hop into a shell,
- * `git --work-tree=/`, renamed or unusual binaries (e.g. `grm`), and here-documents sent to
- * `ssh` or an interpreter. Windows shells and non-POSIX paths are out of scope until a Windows
- * helper exists; uninterpretable Windows-style home paths are ignored rather than matched or
- * refused.
+ * aliases/functions, symlink or glob/extglob tricks (`cd / && rm -rf !(keep)`), writing a
+ * script file then executing it, `eval` of a substitution (`eval "$(cat ...)"`), pipes through
+ * more than one hop into a shell, `git --work-tree=/`, renamed or unusual binaries (e.g.
+ * `grm`), here-documents sent to `ssh` or an interpreter, and adversarial `find` filter
+ * negations/alternations (`-name '?*'`, `-regex '.*.*'`, `-not -name ...`, `-o -true`,
+ * `-o -delete`). Windows shells and non-POSIX paths are out of scope until a Windows helper
+ * exists; uninterpretable Windows-style home paths are ignored rather than matched or refused.
  */
 import { LilBotError } from '../../shared/lilbot-error'
 import { canonicalAbsolute, checkProtectedTarget, collectOperands, isRawBlockDevice, resolveDirectory } from './command-paths'
-import { checkCommand } from './command-rules'
+import { checkCommand, hasDestructiveRuleToken } from './command-rules'
 import { type ParsedShell, parseShellSegments, type ShellSegment } from './command-shell'
 import { decodeAnsiC, exceedsParserLimits, MAX_DEPTH, normalizeCommand } from './command-text'
 import { SHELL_CARRIERS, type UnwrappedCommand, unwrapCommand } from './command-unwrap'
 
 const FORK_BOMB = /(?:^|[\s;&|({])([a-z0-9_.:-]+)\s*\(\)\s*\{\s*\1\s*\|\s*\1\s*&\s*\}\s*;\s*\1(?=$|[\s;&|)}])/i
 const STDIN_PATHS = new Set(['/dev/stdin', '/proc/self/fd/0', '/dev/fd/0', '-'])
+const UNPARSEABLE_REASON = 'command could not be read safely; simplify the quoting'
 
 function pipedPayloads(seg: ShellSegment, unwrapped: UnwrappedCommand | null): string[] {
   const cmd = unwrapped?.command
@@ -67,9 +69,15 @@ function isSourceReadingStdin(cmd: string, args: string[]): boolean {
   return Boolean(first && STDIN_PATHS.has(first))
 }
 
-function inspectParsed(parsed: ParsedShell, homeParts: string[] | null, initialCwd: string[] | null, initialDirStack: (string[] | null)[], depth: number): string | null {
+function inspectParsed(
+  parsed: ParsedShell,
+  rawNormalized: string | null,
+  homeParts: string[] | null,
+  initialCwd: string[] | null,
+  initialDirStack: (string[] | null)[],
+  depth: number
+): string | null {
   if (depth > MAX_DEPTH || parsed.nestingExceeded) return 'command nesting limit exceeded'
-  if (parsed.unterminated) return 'unterminated quote in command'
   if (FORK_BOMB.test(parsed.masked)) return 'fork bomb'
 
   const inspectSub = (sub: string) => inspect(sub, homeParts, depth + 1)
@@ -79,7 +87,7 @@ function inspectParsed(parsed: ParsedShell, homeParts: string[] | null, initialC
 
   for (const node of parsed.nodes) {
     if (node.kind === 'subshell') {
-      const subReason = inspectParsed(node.body, homeParts, cwd, dirStack, depth + 1)
+      const subReason = inspectParsed(node.body, null, homeParts, cwd, dirStack, depth + 1)
       if (subReason) return subReason
       prev = null
       continue
@@ -151,8 +159,11 @@ function inspectParsed(parsed: ParsedShell, homeParts: string[] | null, initialC
     prev = { seg: segment, unwrapped }
   }
   for (const sub of parsed.substitutions) {
-    const subReason = inspectParsed(sub, homeParts, cwd, dirStack, depth + 1)
+    const subReason = inspectParsed(sub, null, homeParts, cwd, dirStack, depth + 1)
     if (subReason) return subReason
+  }
+  if (parsed.unterminated && rawNormalized && (FORK_BOMB.test(rawNormalized) || hasDestructiveRuleToken(rawNormalized))) {
+    return UNPARSEABLE_REASON
   }
   return null
 }
@@ -160,7 +171,8 @@ function inspectParsed(parsed: ParsedShell, homeParts: string[] | null, initialC
 function inspect(raw: string, homeParts: string[] | null, depth: number): string | null {
   if (depth > MAX_DEPTH) return 'command nesting limit exceeded'
   if (exceedsParserLimits(raw)) return 'command parser limit exceeded'
-  return inspectParsed(parseShellSegments(normalizeCommand(raw), depth), homeParts, null, [], depth)
+  const normalized = normalizeCommand(raw)
+  return inspectParsed(parseShellSegments(normalized, depth), normalized, homeParts, null, [], depth)
 }
 
 /** Returns a short refusal reason when a shell command hits LilBot's hard stop, or null if allowed. */

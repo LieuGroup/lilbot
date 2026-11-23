@@ -1,4 +1,4 @@
-/** Text normalization, parser bounds, ANSI-C decoding, and raw token span helpers. */
+/** Text normalization, parser bounds, ANSI-C decoding, and raw backtick span helper. */
 
 export const MAX_DEPTH = 8
 const MAX_COMMAND_CHARS = 128_000
@@ -70,18 +70,4 @@ export function scanBacktickSpan(src: string, start: number, inDoubleQuote: bool
     i++
   }
   return { inner, end: i, closed: false }
-}
-
-export function scanBraceVar(src: string, start: number): number {
-  let depth = 1
-  let j = start + 2
-  while (j < src.length && depth > 0) {
-    if (src[j] === '\\' && j + 1 < src.length) j += 2
-    else {
-      if (src[j] === '{') depth++
-      else if (src[j] === '}') depth--
-      j++
-    }
-  }
-  return j
 }

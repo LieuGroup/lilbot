@@ -295,5 +295,17 @@
   "echo ok # ; reboot",
   "sqlite3 /tmp/test.db \"SELECT count(*) FROM sqlite_master WHERE type='table';\"",
   "openssl rand -hex 32",
-  "ssh-keygen -lf /tmp/test_key.pub"
+  "ssh-keygen -lf /tmp/test_key.pub",
+  "echo \"${x:-\"it's ok\"}\"",
+  "x=$(printf \"%s\" \"${y:-\"don't\"}\")",
+  "echo ${x:-\"}\"}",
+  "echo \"${x:-\"a}b\"}\"",
+  "echo \"${TITLE:-\"user's build (v2)\"}\"",
+  "echo \"${GREETING:-\"hello, it's $(date +%Y)\"}\"",
+  "echo \"${COUNT:-$(( (1 + 2) * 3 ))}\"",
+  "(( x = (1 + 2) * 3 )) && echo \"$x\"",
+  "if (( count > 0 && (a + b) < 10 )); then echo ok; fi",
+  "echo ${x:-'$(echo literal)'}",
+  "((echo \"nested subshell\"); echo \"still ok\")",
+  "echo \"$((echo \"nested subst\"); echo \"ok\")\""
 ]

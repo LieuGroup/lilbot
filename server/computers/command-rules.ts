@@ -1,6 +1,6 @@
 /** Per-command destructive rules for LilBot's computer safety stop. */
 import { checkChmodChown, checkFind, checkGitClean, checkMv, checkRsync } from './command-fs-rules'
-import { checkProtectedTarget, collectOperands, isRawBlockDevice } from './command-paths'
+import { checkProtectedTarget, collectOperands, isRawBlockDevice, RAW_BLOCK_DEVICE_PATTERN } from './command-paths'
 
 const SHUTDOWN_COMMANDS = new Set(['shutdown', 'reboot', 'halt', 'poweroff'])
 const SYSTEMCTL_POWER = new Set(['poweroff', 'reboot', 'halt', 'kexec'])
@@ -26,6 +26,17 @@ const SYSTEMCTL_ARG_OPTS = new Set([
   '-s',
   '--signal'
 ])
+
+/** Derived directly from the rules so unparseable-command fallback never drifts from enforced rules. */
+const UNPARSEABLE_RULE_TOKENS = new RegExp(
+  `\\b(?:${[...SHUTDOWN_COMMANDS, 'rm', 'find', 'rsync', 'chmod', 'chown', 'mv', 'mkfs', 'newfs(?:_[a-z0-9]+)?', 'diskutil', 'kill', 'init', 'telinit', 'systemctl', 'launchctl'].join('|')})\\b|${RAW_BLOCK_DEVICE_PATTERN}`,
+  'i'
+)
+const UNPARSEABLE_GIT_CLEAN = /\bgit\b[\s\S]*\bclean\b/i
+
+export function hasDestructiveRuleToken(normalized: string): boolean {
+  return UNPARSEABLE_RULE_TOKENS.test(normalized) || UNPARSEABLE_GIT_CLEAN.test(normalized)
+}
 
 function checkKill(args: string[]): string | null {
   if (!args.length) return null

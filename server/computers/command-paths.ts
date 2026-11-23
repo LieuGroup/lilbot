@@ -1,6 +1,7 @@
 /** POSIX path canonicalization, protected-directory checks, raw block device checks, and option operand parsing. */
 
-const RAW_BLOCK_DEVICE = /^\/dev\/(?:sd|nvme|hd|mmcblk|vd|xvd|rdisk|disk)[a-z0-9]*$/i
+export const RAW_BLOCK_DEVICE_PATTERN = '/dev/(?:sd|nvme|hd|mmcblk|vd|xvd|rdisk|disk)[a-z0-9]*'
+const RAW_BLOCK_DEVICE = new RegExp(`^${RAW_BLOCK_DEVICE_PATTERN}$`, 'i')
 const PROTECTED_SYSTEM_DIRS = new Set(['home', 'root', 'etc', 'usr', 'var', 'bin', 'sbin', 'boot', 'lib', 'lib64', 'dev', 'proc', 'sys', 'users', 'system'])
 const PROTECTED_MULTI_DIRS: string[][] = [
   ['private', 'etc'],

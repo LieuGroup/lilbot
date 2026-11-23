@@ -1,5 +1,6 @@
 /** Unified recursive POSIX shell tokenizer for top-level commands, subshells, substitutions, heredocs, and case blocks. */
-import { consumeHeredocs, type ParseSubFn, scanArithmetic, scanBacktickBody, scanRedirectOp } from './command-heredoc'
+import { tryScanArithmetic } from './command-expansions'
+import { consumeHeredocs, type ParseSubFn, scanBacktickBody, scanQuoted, scanRedirectOp } from './command-heredoc'
 import { caseSepLength, createState, flushSegment, flushWord, isBraceDelimiter, isParenWordPrefix, type ParsedShell, scanParenWord, scanWordAtom } from './command-shell-helpers'
 import { MAX_DEPTH } from './command-text'
 
@@ -36,6 +37,7 @@ function parseShellRange(src: string, start: number, stopAtParen: boolean, depth
 
   let i = start
   while (i < src.length) {
+    if (st.nestingExceeded) return finish(src.length, false)
     const ch = src[i]
     if (ch === '#' && !st.inWord) {
       const nl = src.indexOf('\n', i)
@@ -57,9 +59,10 @@ function parseShellRange(src: string, start: number, stopAtParen: boolean, depth
       i = res.end
       continue
     }
-    const atom = scanWordAtom(src, i, parseSub, st.masked)
+    const atom = scanWordAtom(src, i, parseSub, st.masked, depth)
     if (atom.handled) {
       if (atom.unterminated) st.unterminated = true
+      if (atom.nestingExceeded) st.nestingExceeded = true
       if (atom.flushIfs) flushWord(st)
       else if (atom.text || atom.hadQuote) {
         st.inWord = true
@@ -102,17 +105,27 @@ function parseShellRange(src: string, start: number, stopAtParen: boolean, depth
     }
     if (ch === '(') {
       if (!st.inWord && src[i + 1] === '(') {
-        flushSegment(st, false)
-        const arith = scanArithmetic(src, i, parseSub, st.masked)
-        if (arith.unterminated) st.unterminated = true
-        i = arith.end
-      } else if (st.inWord && src[i + 1] === ')') {
+        const ar = tryScanArithmetic(src, i, parseSub, scanQuoted, st.masked, depth)
+        if (ar.kind === 'nesting_exceeded') {
+          st.nestingExceeded = true
+          return finish(src.length, false)
+        }
+        if (ar.kind === 'arith') {
+          flushSegment(st, false)
+          if (ar.unterminated) st.unterminated = true
+          if (ar.nestingExceeded) st.nestingExceeded = true
+          i = ar.end
+          continue
+        }
+      }
+      if (st.inWord && src[i + 1] === ')') {
         flushWord(st)
         st.masked.push('()')
         i += 2
       } else if (isParenWordPrefix(st.inWord, st.word)) {
-        const pw = scanParenWord(src, i, parseSub, st.masked)
+        const pw = scanParenWord(src, i, parseSub, st.masked, depth)
         if (pw.unterminated) st.unterminated = true
+        if (pw.nestingExceeded) st.nestingExceeded = true
         st.word += pw.text
         st.masked.push(pw.text)
         i = pw.end
@@ -157,8 +170,9 @@ function parseShellRange(src: string, start: number, stopAtParen: boolean, depth
       st.masked.push('\n')
       i++
       if (st.queuedHeredocs.length) {
-        const res = consumeHeredocs(src, i, st.queuedHeredocs.splice(0), parseSub, st.masked)
+        const res = consumeHeredocs(src, i, st.queuedHeredocs.splice(0), parseSub, st.masked, depth)
         if (res.unterminated) st.unterminated = true
+        if (res.nestingExceeded) st.nestingExceeded = true
         i = res.end
       }
       continue
