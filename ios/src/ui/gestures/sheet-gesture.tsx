@@ -1,0 +1,69 @@
+/** Tasks pill swipe-up & sheet swipe-down gesture primitives (R4-G3), each paired with a tap or button fallback. */
+import type { ReactNode } from 'react'
+import { Pressable, View } from 'react-native'
+import { GestureDetector, usePanGesture } from 'react-native-gesture-handler'
+import { useTheme } from '../theme'
+import { shouldDismissSheet, shouldExpandPill } from './rules'
+
+export interface PillExpandGestureProps {
+  accessibilityLabel: string
+  onExpand: () => void
+  children: ReactNode
+}
+
+/** Attaches to the 32 pt Tasks pill: swipe up or tap expands the floating dock. */
+export function PillExpandGesture({ accessibilityLabel, onExpand, children }: PillExpandGestureProps) {
+  const pan = usePanGesture({
+    runOnJS: true,
+    activeOffsetY: -10,
+    failOffsetX: [-20, 20],
+    onDeactivate: event => {
+      if (shouldExpandPill({ dy: event.translationY, vy: event.velocityY })) onExpand()
+    }
+  })
+
+  return (
+    <GestureDetector gesture={pan}>
+      <Pressable onPress={onExpand} accessibilityRole="button" accessibilityLabel={accessibilityLabel}>
+        {children}
+      </Pressable>
+    </GestureDetector>
+  )
+}
+
+export interface SheetDismissGestureProps {
+  /** Current inner scroll offset; swipe-down dismiss is suppressed while scrolled past y = 0. */
+  scrollOffsetY: number
+  onDismiss: () => void
+  children: ReactNode
+}
+
+/** Grab-handle wrapper for Expanded Dock and Opened Worker phone sheets: swipe down at y <= 0 dismisses. */
+export function SheetDismissGesture({ scrollOffsetY, onDismiss, children }: SheetDismissGestureProps) {
+  const theme = useTheme()
+  const pan = usePanGesture({
+    runOnJS: true,
+    activeOffsetY: 14,
+    failOffsetX: [-24, 24],
+    onDeactivate: event => {
+      if (shouldDismissSheet({ dy: event.translationY, vy: event.velocityY, scrollOffsetY })) onDismiss()
+    }
+  })
+
+  return (
+    <GestureDetector gesture={pan}>
+      <View
+        style={{ flex: 1 }}
+        onAccessibilityEscape={() => {
+          onDismiss()
+          return true
+        }}
+      >
+        <View style={{ alignItems: 'center', paddingTop: 8, paddingBottom: 4 }}>
+          <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: theme.border }} />
+        </View>
+        {children}
+      </View>
+    </GestureDetector>
+  )
+}

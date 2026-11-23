@@ -1,12 +1,13 @@
 /** The app's one screen: connects to the server, then shows the Duo shell. Without server
  *  settings it asks for them first. */
-import { useFonts } from 'expo-font'
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold } from '@expo-google-fonts/inter'
+import { useFonts } from 'expo-font'
 import { useEffect, useState } from 'react'
+import { View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { useBotStore, watchRoster } from '../bots/store'
 import { startConnection } from '../connection/start'
 import { useConnectionStore } from '../connection/store'
-import { useBotStore, watchRoster } from '../bots/store'
 import { DuoShell } from '../duo/shell'
 import { SettingsScreen } from '../settings/screen'
 import { useTheme } from '../ui/theme'
@@ -39,7 +40,7 @@ export default function Home() {
     if (connected) void loadBots()
   }, [connected, loadBots])
 
-  if (!fontsLoaded || !loaded) return <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }} />
+  if (!fontsLoaded || !loaded) return <View style={{ flex: 1, backgroundColor: theme.background }} />
   if (!settings?.serverUrl || showSettings) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
@@ -47,9 +48,5 @@ export default function Home() {
       </SafeAreaView>
     )
   }
-  return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.background }}>
-      <DuoShell onOpenSettings={() => setShowSettings(true)} />
-    </SafeAreaView>
-  )
+  return <DuoShell onOpenSettings={() => setShowSettings(true)} />
 }

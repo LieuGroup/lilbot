@@ -1,5 +1,18 @@
-/** LilBot's palette and type scale, the same tokens as the web app's styles.css.
- *  Dark mode follows the device setting. */
+/** LilBot's palette, mobile Liquid Glass tokens, and closed type scale, aligned 1:1 with the web app's styles.css.
+ *  Dark mode follows the device setting. Liquid Glass applies strictly to the floating chrome layer; content stays solid. */
+export interface GlassPalette {
+  /** Regular Liquid Glass frosted fill (warm-tinted in light mode so capsules separate over #ffffff). */
+  fill: string
+  /** 1px outer rim around floating glass pills and orbs. */
+  border: string
+  /** Subtle top-edge specular highlight inside glass capsules. */
+  specular: string
+  /** Selected tab highlight inside floating 3-tab and 4-tab glass pills. */
+  activePill: string
+  /** Backdrop scrim behind Clear-glass overlay controls on bright media. */
+  scrim: string
+}
+
 export interface Palette {
   background: string
   foreground: string
@@ -17,6 +30,7 @@ export interface Palette {
   input: string
   ring: string
   hairline: string
+  glass: GlassPalette
 }
 
 const light: Palette = {
@@ -35,7 +49,14 @@ const light: Palette = {
   border: '#e2e2dd',
   input: '#d6d6d0',
   ring: '#2f5fe0',
-  hairline: '#1b1c1f14'
+  hairline: '#1b1c1f14',
+  glass: {
+    fill: 'rgba(248,248,246,0.82)',
+    border: 'rgba(27,28,31,0.10)',
+    specular: 'rgba(255,255,255,0.70)',
+    activePill: 'rgba(27,28,31,0.08)',
+    scrim: 'rgba(15,17,21,0.35)'
+  }
 }
 
 const dark: Palette = {
@@ -54,20 +75,40 @@ const dark: Palette = {
   border: '#2a2e37',
   input: '#353a45',
   ring: '#5b84f1',
-  hairline: '#e8e9ec14'
+  hairline: '#e8e9ec14',
+  glass: {
+    fill: 'rgba(30,34,42,0.80)',
+    border: 'rgba(255,255,255,0.16)',
+    specular: 'rgba(255,255,255,0.14)',
+    activePill: 'rgba(255,255,255,0.12)',
+    scrim: 'rgba(15,17,21,0.45)'
+  }
 }
 
 export const palettes: Record<'light' | 'dark', Palette> = { light, dark }
 
-/** The closed type scale: 12 meta, 13 previews, 14 names, 15 chat, 16 titles. */
+/** Strict two-layer material contract: floating chrome uses glass; content rows, cards and bubbles stay solid. */
+export const SURFACE_LAYER = { chrome: 'glass', content: 'solid' } as const
+
+/** The closed type scale: 12 meta, 13 previews, 14 names, 15 chat, 16 titles, plus 28 goal metric display. */
 export const type = {
   meta: { fontSize: 12, lineHeight: 16 },
   preview: { fontSize: 13, lineHeight: 18 },
   name: { fontSize: 14, lineHeight: 20 },
   chat: { fontSize: 15, lineHeight: 22 },
-  title: { fontSize: 16, lineHeight: 22 }
+  title: { fontSize: 16, lineHeight: 22 },
+  metric: { fontSize: 28, lineHeight: 32 }
 } as const
 
 export type TextVariant = keyof typeof type
 
-export const radius = { sm: 8, md: 10, lg: 12, xl: 17 }
+export const radius = { sm: 8, md: 10, lg: 12, xl: 17, pill: 9999 } as const
+
+export const GLASS_METRICS = {
+  orbSize: 44,
+  tabBarHeight: 44,
+  railTabWidth: 48,
+  tasksPillHeight: 32,
+  composerRestHeight: 42,
+  minTouchTarget: 44
+} as const

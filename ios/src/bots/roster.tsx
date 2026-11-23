@@ -1,6 +1,6 @@
 /** The bot roster: the primary bot and pinned bots on top, then sections, unassigned and hidden,
  *  in the same order as the web app's roster (shared/client/bots/roster-groups). */
-import { Pressable, ScrollView, View } from 'react-native'
+import { Pressable, ScrollView, type ScrollViewProps, View } from 'react-native'
 import type { Bot, Section } from '../../../shared/bot-schema'
 import { rosterGroups } from '../../../shared/client/bots/roster-groups'
 import { useTheme } from '../ui/theme'
@@ -14,9 +14,11 @@ interface RosterProps {
   selectedId: string | null
   onSelect: (bot: Bot) => void
   onOpenSettings?: () => void
+  onScroll?: ScrollViewProps['onScroll']
+  bottomInset?: number
 }
 
-export function Roster({ bots, sections, selectedId, onSelect, onOpenSettings }: RosterProps) {
+export function Roster({ bots, sections, selectedId, onSelect, onOpenSettings, onScroll, bottomInset = 0 }: RosterProps) {
   const theme = useTheme()
   const groups = rosterGroups(bots, sections)
 
@@ -31,7 +33,7 @@ export function Roster({ bots, sections, selectedId, onSelect, onOpenSettings }:
           </Pressable>
         </View>
       )}
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, gap: 4 }}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, paddingBottom: 12 + bottomInset, gap: 4 }} onScroll={onScroll} scrollEventThrottle={16}>
         <View style={{ gap: 2 }}>
           {groups.top.map(bot => (
             <RosterRow key={bot.id} bot={bot} selected={bot.id === selectedId} onPress={() => onSelect(bot)} />
