@@ -3,12 +3,12 @@ import { canArrange, canDelete, isUnread, primaryCandidates } from '../../web/sr
 import { deleteSummary, filesHint, memoriesHint } from '../../web/src/bots/delete-copy'
 import { testBot as bot } from './test-bot'
 
-test('the primary bot cannot be arranged or deleted; the engine default can be arranged but not deleted', () => {
+test('the primary bot cannot be arranged or deleted; non-primary bots can be deleted regardless of engine isDefault', () => {
   const primary = bot('main', { isPrimary: true })
   const builtIn = bot('default', { isDefault: true })
   const plain = bot('plain')
   expect([canArrange(primary), canDelete(primary)]).toEqual([false, false])
-  expect([canArrange(builtIn), canDelete(builtIn)]).toEqual([true, false])
+  expect([canArrange(builtIn), canDelete(builtIn)]).toEqual([true, true])
   expect([canArrange(plain), canDelete(plain)]).toEqual([true, true])
 })
 

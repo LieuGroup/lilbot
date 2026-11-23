@@ -2,6 +2,7 @@
  *  LilBot's own MCP connections. The engine skips what it has already applied. */
 import { backgroundFailure } from '../background'
 import type { BotEngine, MemoryConnection } from '../engines/bot-engine'
+import type { EngineRegistry } from '../engines/engine-registry'
 import type { McpConnection } from '../engines/mcp-connection'
 import { files } from '../skills/skill-files'
 import type { SkillsService } from '../skills/skills-service'
@@ -36,9 +37,11 @@ export async function prepareTools(engine: BotEngine, bot: BotRecord, { skills, 
 }
 
 /** Gives each bot its connections again, for example after a connection or sign-in changed. */
-export async function refreshConnections(engine: BotEngine, bots: BotRecord[], connections: (botId: string) => McpConnection[], onChanged?: (botId: string) => void) {
+export async function refreshConnections(engines: EngineRegistry, bots: BotRecord[], connections: (botId: string) => McpConnection[], onChanged?: (botId: string) => void) {
   let failed = false
   for (const bot of bots) {
+    const engine = engines.get(bot.engineId)
+    if (!engine) continue
     try {
       if (await engine.prepareConnections?.(bot.engineBotId, connections(bot.id))) onChanged?.(bot.id)
     } catch {

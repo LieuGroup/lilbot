@@ -59,16 +59,22 @@ test('defaults persist in SQLite and omitted choices use them', async () => {
   }
 })
 
-test('primary and engine default are refused without mutating anything', async () => {
+test('deletion protection is based on LilBot primary bot, not engine isDefault', async () => {
   const f = fakeService()
   try {
     f.prefs.setPrimaryBot('b1')
     await expect(f.service.deleteBot({ botId: 'b1' })).rejects.toThrow('Choose another primary bot')
     f.prefs.forgetBot('b1')
     f.store.save({ ...f.store.get('b1'), isDefault: true })
-    await expect(f.service.deleteBot({ botId: 'b1' })).rejects.toThrow('default bot cannot')
+    // Still the effective primary when no explicit primary is chosen: refused.
+    await expect(f.service.deleteBot({ botId: 'b1' })).rejects.toThrow('Choose another primary bot')
     expect(f.log).toEqual([])
     expect(f.store.deleted('b1')).toBeNull()
+    // Once another bot is primary, even an isDefault bot can be deleted.
+    const other = await f.service.createBot({ name: 'Other', function: '', instructions: '' })
+    await f.service.setPrimary(other.id)
+    await f.service.deleteBot({ botId: 'b1' })
+    expect(f.store.deleted('b1')?.complete).toBe(true)
   } finally {
     await rm(f.root, { recursive: true, force: true })
   }
@@ -157,6 +163,36 @@ test('browser protocol validates defaults and deletion choices', async () => {
     expect((await f.service.listMemory('b1')).botName).toBe('Bot One')
   } finally {
     session.close()
+    await rm(f.root, { recursive: true, force: true })
+  }
+})
+
+test('deleting a non-primary bot bound to a protected base profile finishes teardown when engine refuses with protected_bot', async () => {
+  const f = fakeService()
+  try {
+    f.store.save({ ...f.store.get('b1'), isDefault: true })
+    f.store.bind('b1', 'default')
+    expect(f.store.get('b1').engineBotId).toBe('default')
+    const other = await f.service.createBot({ name: 'New Primary', function: '', instructions: '' })
+    await f.service.setPrimary(other.id)
+    await mkdir(join(f.root, 'b1'), { recursive: true })
+    await writeFile(join(f.root, 'b1', 'note'), 'cleanup me')
+    let deletedId = ''
+    let protectedRefusals = 0
+    f.engine.deleteRuntime = async id => {
+      deletedId = id
+      if (id === 'default') {
+        protectedRefusals++
+        throw new LilBotError('protected_bot', 'Cannot delete the default profile.')
+      }
+    }
+    await f.service.deleteBot({ botId: 'b1', files: 'delete', privateMemories: 'forget' })
+    expect(deletedId).toBe('default')
+    expect(protectedRefusals).toBe(1)
+    expect(f.store.deleted('b1')?.complete).toBe(true)
+    expect(existsSync(join(f.root, 'b1'))).toBe(false)
+    expect((await f.service.listBots()).map(b => b.id)).toEqual([other.id])
+  } finally {
     await rm(f.root, { recursive: true, force: true })
   }
 })

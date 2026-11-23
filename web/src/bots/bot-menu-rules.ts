@@ -5,8 +5,8 @@ import type { Bot } from '../../../shared/bot-schema'
  *  would change nothing the user can see. */
 export const canArrange = (bot: Bot) => !bot.isPrimary
 
-/** The primary bot and the engine's own default bot cannot be deleted (the server refuses). */
-export const canDelete = (bot: Bot) => !bot.isPrimary && !bot.isDefault
+/** The primary bot cannot be deleted until another bot is chosen as primary (the server refuses). */
+export const canDelete = (bot: Bot) => !bot.isPrimary
 
 /** The bots the primary mark can move to, in roster order. */
 export const primaryCandidates = (bots: Bot[]) => bots.filter(bot => !bot.isPrimary)

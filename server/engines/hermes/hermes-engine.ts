@@ -16,7 +16,7 @@ import { allowedProfile, requireProfileEnvironment } from './hermes-environment'
 import { conversations } from './hermes-history'
 import { compressionRoot } from './hermes-history-catalog'
 import { reviewMemory } from './hermes-memory-review'
-import { installMemory, legacyNotes, memoryInstalled, refreshMemoryAdapters } from './hermes-memory-setup'
+import { installMemory, legacyNotes, MEMORY_ADAPTER_VERSION, memoryInstalled, refreshMemoryAdapters } from './hermes-memory-setup'
 import { ensureFullAccess } from './hermes-permissions'
 import { runRoutine } from './hermes-routines'
 import { steerRun, stopRun } from './hermes-run-control'
@@ -32,6 +32,7 @@ export class HermesEngine implements BotEngine {
   conversations = conversations
   compressionRoot = compressionRoot
   readonly id = 'hermes'
+  readonly memoryAdapterVersion = MEMORY_ADAPTER_VERSION
   private spares = new SpareSockets()
   readonly supportedPermissionModes = ['full-access'] as const
   constructor(private botIds?: string[]) {}

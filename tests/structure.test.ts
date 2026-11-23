@@ -35,12 +35,12 @@ test('product code never imports from tests/', () => {
   expect(['server', 'shared', 'web', 'ios', 'helper'].flatMap(root => crossings(root, 'tests'))).toEqual([])
 })
 
-test('only the single engine registration point knows which engines exist (server/main.ts tracked until P6/P5)', () => {
+test('only the single engine registration point knows which engines exist: nothing else in the server imports a concrete engine', () => {
   const engines = concreteEngineIds()
   const leaks = sourceFiles('server')
     .flatMap(file => forbiddenSubfolderImports(file, importsOf(file), 'server/engines', engines, 'server/engines/registry.ts'))
     .sort()
-  expect(leaks).toEqual(['server/main.ts -> server/engines/hermes/hermes-engine', 'server/main.ts -> server/engines/hermes/hermes-memory-setup'])
+  expect(leaks).toEqual([])
 })
 
 test('only helper/drivers/registry.ts imports concrete helper drivers, and drivers never import each other', () => {

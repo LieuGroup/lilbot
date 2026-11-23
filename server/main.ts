@@ -12,8 +12,7 @@ import { CALLBACK_PATH } from './connections/mcp-callback'
 import { isT3Enabled, T3_BRIDGE_PATH } from './connections/t3-connection'
 import { deployNotice } from './deploy/deploy-notice'
 import { runningCommit } from './deploy/health'
-import { HermesEngine } from './engines/hermes/hermes-engine'
-import { MEMORY_ADAPTER_VERSION } from './engines/hermes/hermes-memory-setup'
+import { createDefaultEngines } from './engines/registry'
 import { assertServerEnvironment } from './environment'
 import { startAccessDoor } from './http/access-door'
 import { accessSettings } from './http/access-settings'
@@ -53,8 +52,9 @@ function botsChanged() {
 }
 
 const T3_ENABLED = isT3Enabled(process.env)
-const engine = new HermesEngine(process.env.LILBOT_BOT_IDS?.split(',').filter(Boolean))
-const services = createAppServices(engine, {
+const engines = createDefaultEngines(process.env)
+const MEMORY_ADAPTER_VERSION = engines.defaultEngine.memoryAdapterVersion ?? 'none'
+const services = createAppServices(engines, {
   DATA_DIR,
   WORKSPACES_DIR,
   PORT,
@@ -76,16 +76,16 @@ async function prepareMemory() {
   // Temporary test servers must opt in: never rewrite real profiles' memory endpoints.
   await bots.prepareRuntimes()
   if (process.env.LILBOT_SKIP_MEMORY_SETUP === '1') return
-  const updated = await engine.refreshMemory(
-    store.list().filter(bot => bot.engineId === engine.id),
-    { url: `http://127.0.0.1:${PORT}`, tokenFile: join(DATA_DIR, 'engine-token') }
-  )
+  const updated = await engines.refreshMemory(engineId => store.list().filter(bot => bot.engineId === engineId), {
+    url: `http://127.0.0.1:${PORT}`,
+    tokenFile: join(DATA_DIR, 'engine-token')
+  })
   if (updated.length) console.log(`Memory adapter updated to ${MEMORY_ADAPTER_VERSION} for: ${updated.join(', ')}`)
   const connected = await bots.connectAllMemory()
   if (connected.length) console.log(`Connected to LilBot memory: ${connected.join(', ')}`)
 }
 
-engine.onBotsChanged(botsChanged)
+engines.onBotsChanged(botsChanged)
 bots.watchActivity(event => {
   if (!hiddenChat(event.botId, event.chatId)) activity.observe(event)
 }, activity.cursor)
@@ -128,7 +128,7 @@ const websocket: WebSocketHandler<SocketData> = {
   }
 }
 
-const browserRoutes = appRoutes(library, DIST, ALLOWED_HOSTS, 'hermes', attachments, downloads, threads)
+const browserRoutes = appRoutes(library, DIST, ALLOWED_HOSTS, engines.defaultId, attachments, downloads, threads)
 const server = Bun.serve<SocketData>({
   development: false,
   error: plainServerError,
@@ -154,7 +154,7 @@ const server = Bun.serve<SocketData>({
         return system.handler(request)
       }
       if (url.pathname.startsWith('/engine/')) return engineApi(request, url.pathname)
-      if (url.pathname === '/api/health') return Response.json({ ok: true, engine: 'hermes', commit: COMMIT, pid: process.pid })
+      if (url.pathname === '/api/health') return Response.json({ ok: true, engine: engines.defaultId, engines: engines.ids(), commit: COMMIT, pid: process.pid })
       return await browserRoutes(request, server)
     } catch {
       return plainServerError()
@@ -166,7 +166,7 @@ const server = Bun.serve<SocketData>({
 const accessServer = ACCESS
   ? startAccessDoor(
       ACCESS,
-      appRoutes(library, DIST, new Set([ACCESS.host]), 'hermes', attachments, downloads, threads),
+      appRoutes(library, DIST, new Set([ACCESS.host]), engines.defaultId, attachments, downloads, threads),
       websocket,
       ACCESS.callbackEnabled ? { [CALLBACK_PATH]: mcp.callback } : {}
     )
@@ -191,8 +191,9 @@ try {
   mcp.onCodingSkillsReady(false)
 }
 prepareMemory().catch(error => console.error('[memory] could not prepare memory for the bots:', error instanceof Error ? error.message : error))
+bots.resumeIncompleteDeletions()
 
-console.log(`LilBot listening on http://${server.hostname}:${server.port} (engine: Hermes)`)
+console.log(`LilBot listening on http://${server.hostname}:${server.port} (engines: ${engines.ids().join(', ')})`)
 
 // Off until the dedicated tunnel is provisioned. Never target the private app port.
 if (PUBLIC_ENABLED) startPublicDoor(computers, PUBLIC_PORT, { hooks: webhookRoute(webhooks), workers: services.remoteWorkers.runner.bridge })
