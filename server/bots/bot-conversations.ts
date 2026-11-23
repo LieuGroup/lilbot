@@ -29,8 +29,11 @@ export function combineTurnNotes(...sources: (TurnNotes | undefined)[]): TurnNot
   }
 }
 
+type OpenTurn = { running: boolean; sending: number }
+
 /** Main-session selection and the history journal share one chat lifecycle. */
 export class BotConversations {
+  private active = new Map<string, Set<OpenTurn>>()
   constructor(
     private runtimes: BotRuntimes,
     private prefs: BotPrefsStore,
@@ -40,6 +43,11 @@ export class BotConversations {
     private notes?: TurnNotes,
     private readOnlyChat?: (botId: string, chatId: string) => boolean
   ) {}
+
+  hasActiveTurn(botId: string): boolean {
+    for (const turn of this.active.get(botId) ?? []) if (turn.running || turn.sending > 0) return true
+    return false
+  }
 
   // null starts a new main session; undefined resumes or creates the main session.
   async open(botId: string, chatId: string | null | undefined, onEvent: (event: ChatEvent) => void, requireExisting = false): Promise<OpenChat> {
@@ -51,8 +59,11 @@ export class BotConversations {
     const openedAsMain = fresh || !chatId || (main !== null && chatId === main)
     const useHistory = fresh || (!!this.history && !requireExisting && (!chatId || chatId === main))
     let id = ''
+    const turn: OpenTurn = { running: false, sending: 0 }
     const pending: ChatEvent[] = []
     const event = (event: ChatEvent) => {
+      if (event.type === 'turn.started') turn.running = true
+      else if (event.type === 'turn.finished' || event.type === 'error' || event.type === 'closed') turn.running = false
       if (id && useHistory) this.history?.record(botId, id, event)
       else if (!id) pending.push(event)
       if (id && isMain) this.sessions.noteContextFromEvent(botId, id, event)
@@ -74,25 +85,40 @@ export class BotConversations {
     const options = fresh ? { workspace, reasoningEffort, onEffort, onContext } : { workspace, requireExisting, omitMessages: useHistory, reasoningEffort, onEffort, onContext }
     const chat = await this.runtimes.engineFor(bot).openChat(bot.engineBotId, fresh ? null : (chatId ?? main), options, event)
     id = chat.snapshot.chatId
+    turn.running = turn.running || chat.snapshot.running
+    const tracked = this.active.get(botId) ?? new Set<OpenTurn>()
+    tracked.add(turn)
+    this.active.set(botId, tracked)
+    const close = chat.close
+    chat.close = () => {
+      tracked.delete(turn)
+      if (tracked.size === 0 && this.active.get(botId) === tracked) this.active.delete(botId)
+      close()
+    }
     if (useHistory) for (const e of pending) this.history?.record(botId, id, e)
     const send = chat.send
     chat.send = async (text, options) => {
       // Owner's own chat.send path: readOnlyChat fails OPEN on unreadable lineage (the opposite of hidden-chats.ts and tool gates, which fail closed).
       if (!openedAsMain && id !== this.prefs.mainChat(botId) && this.readOnlyChat?.(botId, id))
         throw new LilBotError('chat_read_only', 'A limited run conversation cannot be continued.')
-      if (useHistory && !options?.hidden)
-        this.history?.record(botId, id, {
-          type: 'user.message',
-          messageId: options?.inputId ?? crypto.randomUUID(),
-          text,
-          attachments: [],
-          images: { support: 'unknown', imageCount: 0 },
-          ...(options?.origin?.device ? { origin: options.origin.device } : {})
-        })
-      const note = !options?.hidden && id === this.prefs.mainChat(botId) ? this.notes?.pending(botId, id) : null
-      if (!note) return send(text, options)
-      await send(text, { ...options, origin: { ...options?.origin, line: [options?.origin?.line, note.text].filter(Boolean).join('\n\n') } })
-      note.taken()
+      turn.sending++
+      try {
+        if (useHistory && !options?.hidden)
+          this.history?.record(botId, id, {
+            type: 'user.message',
+            messageId: options?.inputId ?? crypto.randomUUID(),
+            text,
+            attachments: [],
+            images: { support: 'unknown', imageCount: 0 },
+            ...(options?.origin?.device ? { origin: options.origin.device } : {})
+          })
+        const note = !options?.hidden && id === this.prefs.mainChat(botId) ? this.notes?.pending(botId, id) : null
+        if (!note) return await send(text, options)
+        await send(text, { ...options, origin: { ...options?.origin, line: [options?.origin?.line, note.text].filter(Boolean).join('\n\n') } })
+        note.taken()
+      } finally {
+        turn.sending--
+      }
     }
     chat.snapshot.botId = botId
     if (chat.resumeRefused) console.warn(`[chat] conversation could not be resumed; started a new session (${chat.resumeRefused})`)

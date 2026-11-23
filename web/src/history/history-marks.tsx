@@ -23,6 +23,7 @@ export const SessionDivider = memo(function SessionDivider({ at, reason, botName
           <span className="font-medium">New session</span>
           <span className="text-foreground/50">{sessionTime(at)}</span>
           {reason === 'not_resumed' && <span className="text-foreground/50">The previous session could not be resumed</span>}
+          {reason === 'engine_switched' && <span className="text-foreground/50">Switched engine</span>}
         </div>
         <hr className="h-px flex-1 border-0 bg-foreground/12" />
       </div>

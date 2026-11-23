@@ -10,25 +10,18 @@
  *  Accepted lexical limits (so this guard is not mistaken for formal proof):
  *  - Names or import paths assembled from runtime variables (`const a = 'her'; a + 'mes'`, `import(varPath)`) are not resolved.
  *  - Odd mixed-case obfuscation (`'HeRmEs'`) or digit-suffixed tokens (`'hermes2'`) are not matched.
- *  - Non-JS/TS config and markdown guide/skill files (`.json`, `.yaml`, `.py`, `.md`) are outside this scanner's scope. */
+ *  - Non-JS/TS config and markdown guide/skill files (`.json`, `.yaml`, `.py`, `.md`) are outside this scanner's scope and left to review. */
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { HELPER_REGISTRATION_POINT, isNameExempt, NAME_ALLOWLIST, SCANNED_ROOTS, SERVER_REGISTRATION_POINT } from './boundary-rules'
 import { allEngineAndDriverIds, concreteDriverIds, concreteEngineIds, engineNamesInSource, forbiddenSubfolderImports, importsOf, ROOT, sourceFiles } from './boundary-scanner'
 
-/** Pre-existing concrete-engine imports outside engine folders and `server/engines/registry.ts`, mapped to the lane clearing them. */
-const KNOWN_ENGINE_IMPORT_LEAKS: Record<string, string> = {
-  'server/main.ts -> server/engines/hermes/hermes-engine': 'Lane A (P6)',
-  'server/main.ts -> server/engines/hermes/hermes-memory-setup': 'Lane A (P5)'
-}
-
 /** Pre-existing engine/driver-name leaks outside engine/driver folders, registration/declaration points, and exact allow-lists.
  *  Adding a new leak fails CI; fixing a listed file requires removing it here so the ratchet only moves to zero. */
 const KNOWN_ENGINE_NAME_LEAKS: Record<string, string> = {
   'server/deploy/rollback-profiles.ts': 'Lane A (P5)',
-  'server/environment.ts': 'Lane A (P5)',
-  'server/main.ts': 'Lane A (P6 + P5)'
+  'server/environment.ts': 'Lane A (P5)'
 }
 
 function concreteImportLeaks(engines: readonly string[]): string[] {
@@ -62,14 +55,10 @@ describe('north-star engine & helper driver boundary guard', () => {
     expect(testImports).toEqual([])
   })
 
-  test('no new file outside engine folders and server/engines/registry.ts imports a concrete engine (ratchet)', () => {
+  test('zero files outside engine folders and server/engines/registry.ts import a concrete engine', () => {
     const engines = concreteEngineIds()
     expect(engines).toContain('scripted')
-    expect(concreteImportLeaks(engines)).toEqual(Object.keys(KNOWN_ENGINE_IMPORT_LEAKS).sort())
-  })
-
-  test.failing('[Lane A P6 + P5] zero files outside engine folders and server/engines/registry.ts import a concrete engine', () => {
-    expect(concreteImportLeaks(concreteEngineIds())).toEqual([])
+    expect(concreteImportLeaks(engines)).toEqual([])
   })
 
   test('zero files outside a helper driver folder and helper/drivers/registry.ts import from any helper driver folder', () => {
@@ -80,7 +69,7 @@ describe('north-star engine & helper driver boundary guard', () => {
     expect(filesNamingIds(allEngineAndDriverIds())).toEqual(Object.keys(KNOWN_ENGINE_NAME_LEAKS).sort())
   })
 
-  test.failing('[Lane A P5/P6 + LILA-36] zero server, shared, or helper files outside engine/driver folders and registration points name any engine or driver', () => {
+  test.failing('[Lane A P5] zero server, shared, or helper files outside engine/driver folders and registration points name any engine or driver', () => {
     const hits = filesNamingIds(allEngineAndDriverIds()).filter(file => file.startsWith('server/') || file.startsWith('shared/') || file.startsWith('helper/'))
     expect(hits).toEqual([])
   })

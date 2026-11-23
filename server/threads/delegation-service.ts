@@ -14,7 +14,7 @@ import type { ThreadHost, ThreadService } from './thread-service'
 export interface DelegationHost extends ThreadHost {
   folder(botId: string): Promise<string>
   steerRun?(botId: string, chatId: string, text: string): Promise<'steered' | 'not_running'>
-  validateModel?(model: BotModel): Promise<void>
+  validateModel?(model: BotModel, botId?: string): Promise<void>
   resolveRemoteWorker?: ResolveRemoteWorker
   callingDelegation?(botId: string, raw: unknown): Promise<Match>
 }

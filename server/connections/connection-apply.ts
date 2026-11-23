@@ -8,12 +8,12 @@ import { backgroundFailure } from '../background'
 import type { ConnectionsApplied } from '../engines/mcp-connection'
 
 export interface ApplyHost {
-  /** Current bots and their engine ids. */
-  bots(): { id: string; engineBotId: string }[]
+  /** Current bots and their engine bindings. */
+  bots(): { id: string; engineId?: string; engineBotId: string }[]
   mainChat(botId: string): string | null
   /** Give every available bot its connections again. */
   refresh(): Promise<void>
-  apply(engineBotId: string, chatIds: string[]): Promise<{ chatId: string; state: ConnectionsApplied }[]>
+  apply(engineBotId: string, chatIds: string[], engineId?: string): Promise<{ chatId: string; state: ConnectionsApplied }[]>
   /** A hidden turn in that conversation, with a stable run id. */
   tell(botId: string, chatId: string, prompt: string, runId: string): Promise<unknown>
 }
@@ -130,15 +130,16 @@ export class ConnectionApplier {
   }
 
   private async applyPending() {
-    const bots = new Map(this.host.bots().map(bot => [bot.id, bot.engineBotId]))
-    for (const [botId, engineBotId] of bots) {
+    const bots = new Map(this.host.bots().map(bot => [bot.id, bot]))
+    for (const [botId, bot] of bots) {
       const mine = [...this.pending.entries()].filter(([, entry]) => entry.botId === botId && (entry.retryAt ?? 0) <= this.now())
       if (!mine.length) continue
       let results: { chatId: string; state: ConnectionsApplied }[]
       try {
         results = await this.host.apply(
-          engineBotId,
-          mine.map(([, entry]) => entry.chatId)
+          bot.engineBotId,
+          mine.map(([, entry]) => entry.chatId),
+          bot.engineId
         )
       } catch {
         backgroundFailure('connections apply')

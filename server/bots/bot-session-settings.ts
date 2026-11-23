@@ -4,6 +4,7 @@ import type { BotContext, BotModel, BotUpdateInput, ModelProvider, ReasoningEffo
 import type { ChatEvent } from '../../shared/chat-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import type { BotEngine, ContextReport, SessionChange } from '../engines/bot-engine'
+import { asEngineRegistry, type EngineRegistry } from '../engines/engine-registry'
 import type { BotPrefsStore } from './bot-prefs-store'
 import type { BotRecord } from './bot-store'
 
@@ -17,13 +18,16 @@ export class SessionSettings {
   /** Bots whose last edit did not reach their open conversation: the next edit tries again even if nothing differs. */
   private unapplied = new Set<string>()
   private edits = new Map<string, Promise<unknown>>()
-  private models?: { at: number; providers: Promise<ModelProvider[]> }
+  private models = new Map<string, { at: number; providers: Promise<ModelProvider[]> }>()
+  private engines: EngineRegistry
 
   constructor(
-    private engine: BotEngine,
+    engine: BotEngine | EngineRegistry,
     private prefs: BotPrefsStore,
     private changed: () => void
-  ) {}
+  ) {
+    this.engines = asEngineRegistry(engine)
+  }
 
   /** The level the engine reports for the main conversation, or undefined until it has. */
   effectiveFor(botId: string): string | null | undefined {
@@ -69,7 +73,7 @@ export class SessionSettings {
 
   /** The effort a session made for this bot now starts with. The saved choice stays for a model that does not think. */
   async forNewSession(bot: BotRecord): Promise<ReasoningEffort | undefined> {
-    return bot.reasoningEffort && (await this.thinks(bot.model)) ? bot.reasoningEffort : undefined
+    return bot.reasoningEffort && (await this.thinks(bot.model, bot.engineId)) ? bot.reasoningEffort : undefined
   }
 
   /** After an edit is saved: switch the open main conversation from its next message. Edits to one bot run in order. */
@@ -83,10 +87,11 @@ export class SessionSettings {
       if (!chatId || !(modelChanged || effortChanged || retry)) return
       const change: SessionChange = {}
       if ((modelChanged || retry) && bot.model) change.model = bot.model
-      if (await this.thinks(bot.model)) change.reasoningEffort = bot.reasoningEffort
+      if (await this.thinks(bot.model, bot.engineId)) change.reasoningEffort = bot.reasoningEffort
       if (!change.model && change.reasoningEffort === undefined) return
+      const engine = this.engines.require(bot.engineId)
       try {
-        const result = await this.engine.updateSession(bot.engineBotId, chatId, change)
+        const result = await engine.updateSession(bot.engineBotId, chatId, change)
         this.unapplied.delete(bot.id)
         if (result) {
           this.noteEffective(bot.id, result.effort)
@@ -100,7 +105,7 @@ export class SessionSettings {
         }
         console.warn(`[bots] model switch held back by the engine (${bot.id}: ${error.code})`)
         if (change.model && change.reasoningEffort !== undefined)
-          await this.engine.updateSession(bot.engineBotId, chatId, { reasoningEffort: change.reasoningEffort }).then(result => result && this.noteEffective(bot.id, result.effort))
+          await engine.updateSession(bot.engineBotId, chatId, { reasoningEffort: change.reasoningEffort }).then(result => result && this.noteEffective(bot.id, result.effort))
         throw new LilBotError('confirm_required', KEPT_MODEL)
       }
     }
@@ -110,10 +115,10 @@ export class SessionSettings {
   }
 
   /** Whether the model thinks. A model the engine does not list, or the engine's own default, is taken to think: the engine adapts. */
-  async thinks(model: BotModel | null): Promise<boolean> {
+  async thinks(model: BotModel | null, engineId = this.engines.defaultId): Promise<boolean> {
     if (!model) return true
     try {
-      for (const provider of await this.providers()) {
+      for (const provider of await this.providers(engineId)) {
         const known = provider.provider === model.provider && provider.capabilities.find(capability => capability.id === model.model)
         if (known) return known.reasoning
       }
@@ -123,14 +128,16 @@ export class SessionSettings {
     return true
   }
 
-  private providers(): Promise<ModelProvider[]> {
-    if (!this.models || Date.now() - this.models.at > MODELS_FRESH_MS) {
-      const providers = this.engine.listModels()
-      this.models = { at: Date.now(), providers }
+  private providers(engineId: string): Promise<ModelProvider[]> {
+    const cached = this.models.get(engineId)
+    if (!cached || Date.now() - cached.at > MODELS_FRESH_MS) {
+      const providers = this.engines.require(engineId).listModels()
+      this.models.set(engineId, { at: Date.now(), providers })
       providers.catch(() => {
-        this.models = undefined
+        this.models.delete(engineId)
       })
+      return providers
     }
-    return this.models.providers
+    return cached.providers
   }
 }
