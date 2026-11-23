@@ -100,7 +100,9 @@ try {
 
   assert.equal((await call('bots.get', { botId: a.id })).instructions, instructions, 'the note is not saved into the user’s instructions')
   const prompt = await systemPrompt(nativeOf(a.id))
-  assert.ok(prompt.includes('<lilbot-system-note>') && prompt.includes(release.slice(0, 12)) && prompt.includes('lilbot_about'), 'the engine’s real system prompt carries the note')
+  assert.ok(prompt.includes('<lilbot-system-note>') && prompt.includes('lilbot_about'), 'the engine’s real system prompt carries the note')
+  assert.ok(!prompt.includes(release.slice(0, 12)), 'the static note omits the volatile release id for prompt-cache stability')
+  assert.ok(!prompt.includes('System B'), 'the static note omits other bots for prompt-cache stability')
   assert.ok(!prompt.includes('Nothing here deletes bots'), 'the MCP server’s own instructions are not shown by Hermes')
   console.log('ok: the note is in the engine’s system prompt and not in the stored instructions')
 
