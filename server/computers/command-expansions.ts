@@ -168,7 +168,7 @@ export function scanBraceParam(
       }
     }
     if (ch === '`' || (ch === '$' && src[i + 1] === '(')) {
-      const sub = parseSub(src, i, ch === '`' ? 'backtick' : 'subst', false)
+      const sub = parseSub(src, i, ch === '`' ? 'backtick' : 'subst', ch === '`' ? inDoubleQuote : false)
       if (!sub.closed) unterminated = true
       i = sub.end
       continue

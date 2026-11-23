@@ -114,6 +114,8 @@ test('unifies tokenizer across heredocs, substitutions, parameter expansions, ca
     `echo \${x:-"}"}`,
     `echo "\${x:-"a}b"}"`,
     `echo \${x:-'$(rm -rf /)'}`,
+    `echo "\${x:-\`echo \\"hi\\"\`}"`,
+    `echo "\${x:-\`printf \\"%s\\" \\"ok\\"\`}"`,
     'echo $(( (1 + 2) * 3 ))',
     'for ((i=0; i<10; i++)); do echo $i; done',
     'arr=(foo "don\x27t" bar)'
@@ -135,6 +137,8 @@ test('unifies tokenizer across heredocs, substitutions, parameter expansions, ca
     `echo \${x:-$(rm -rf /)}`,
     `: \${x:=$(reboot)}`,
     `echo \${x:-\`reboot\`}`,
+    `echo "\${x:-\`echo \\"hi\\"; reboot\`}"`,
+    `echo "\${x:-\`sh -c \\"rm -rf /\\"\`}"`,
     `echo \${x:-"$(rm -rf /)"}`,
     `echo "\${x:-'$(rm -rf /)'}"`,
     `echo $(( \${x:-$(reboot)} + 1 ))`,
