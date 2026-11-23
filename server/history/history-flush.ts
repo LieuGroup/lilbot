@@ -8,6 +8,9 @@ import type { HistoryRow, HistoryStore } from './history-store'
 export interface HistoryFlushOptions {
   timeoutMs?: number
   maxPages?: number
+  lockTimeoutMs?: number
+  maxJournalRows?: number
+  maxJournalBytes?: number
 }
 export interface HistoryFlushResult {
   incomplete: boolean
@@ -25,12 +28,14 @@ class FlushTimeoutError extends Error {
 
 /** Races an async engine call against a shared deadline, closing late-resolving resources on timeout. */
 export function raceDeadline<T>(work: Promise<T>, remainingMs: () => number, onLate?: (value: T) => void): Promise<T> {
+  const safeLate = (value: T) => {
+    try {
+      onLate?.(value)
+    } catch {}
+  }
   const ms = remainingMs()
   if (ms <= 0) {
-    void work.then(
-      value => onLate?.(value),
-      () => {}
-    )
+    void work.then(safeLate, () => {})
     return Promise.reject(new FlushTimeoutError())
   }
   return new Promise<T>((resolve, reject) => {
@@ -43,7 +48,7 @@ export function raceDeadline<T>(work: Promise<T>, remainingMs: () => number, onL
     work.then(
       value => {
         clearTimeout(timer)
-        if (settled) onLate?.(value)
+        if (settled) safeLate(value)
         else {
           settled = true
           resolve(value)

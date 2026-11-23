@@ -4,11 +4,10 @@ import type { BotEngine, ConversationSource } from '../engines/bot-engine'
 import { asEngineRegistry, type EngineRegistry } from '../engines/engine-registry'
 import { catchUpDirtySessions, flushBotHistory, type HistoryFlushOptions, type HistoryFlushResult, syncHistoryDividers } from './history-flush'
 import type { HistoryRow, HistoryStore } from './history-store'
-import { type PreparedEngineSwitch, prepareSwitchHistory } from './history-switch'
+import { closeSourceQuietly, type PreparedEngineSwitch, prepareSwitchHistory } from './history-switch'
 
 type Binding = { id: string; engineId?: string; engineBotId: string }
 type CachedSource = { engineId: string; source: ConversationSource; listed: number; turn: number; known: Set<string> }
-
 const maxDirtyGen = (dirty?: Map<string, number>) => (dirty ? Math.max(0, ...dirty.values()) : 0)
 
 /** A bounded background page per tick, non-blocking post-turn catch-up, and bounded pre-switch flush. */
@@ -23,6 +22,7 @@ export class HistoryService {
   private dirty = new Map<string, Map<string, number>>()
   private dirtySeq = 0
   private catchUpTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  private switchTimers = new Set<ReturnType<typeof setTimeout>>()
   private closed = false
 
   constructor(
@@ -41,10 +41,11 @@ export class HistoryService {
     clearTimeout(this.catchUpTimers.get(botId))
     this.catchUpTimers.delete(botId)
   }
-  dropSource(botId: string) {
+  dropSource = (botId: string) => {
     this.clearCatchUp(botId)
-    this.sources.get(botId)?.source.close()
+    const cached = this.sources.get(botId)
     this.sources.delete(botId)
+    closeSourceQuietly(cached?.source)
   }
   async source(bot: Binding) {
     const engineId = bot.engineId ?? this.engines.defaultId
@@ -142,8 +143,7 @@ export class HistoryService {
       try {
         const bot = this.sources.has(botId) ? undefined : (await this.bindings()).find(b => b.id === botId)
         const value = this.sources.get(botId) ?? (bot && !this.stale(botId, gen) ? await this.source(bot) : undefined)
-        if (!value || this.stale(botId, gen)) return
-        await catchUpDirtySessions(this.deps(), botId, value, dirty, () => this.stale(botId, gen))
+        if (value && !this.stale(botId, gen)) await catchUpDirtySessions(this.deps(), botId, value, dirty, () => this.stale(botId, gen))
       } catch {
         this.dropSource(botId)
         throw new Error('catchup_failed')
@@ -153,7 +153,15 @@ export class HistoryService {
   flush = (bot: Binding, options?: HistoryFlushOptions): Promise<HistoryFlushResult> => flushBotHistory(this.deps(), bot, options)
   prepareEngineSwitch = (previous: Binding, options?: HistoryFlushOptions): Promise<PreparedEngineSwitch> =>
     prepareSwitchHistory(
-      { ...this.deps(), inFlight: this.inFlight, switching: this.switching, switchGen: this.switchGen, dropSource: id => this.dropSource(id), clearCatchUp: this.clearCatchUp },
+      {
+        ...this.deps(),
+        inFlight: this.inFlight,
+        switching: this.switching,
+        switchGen: this.switchGen,
+        switchTimers: this.switchTimers,
+        dropSource: this.dropSource,
+        clearCatchUp: this.clearCatchUp
+      },
       previous,
       options
     )
@@ -181,9 +189,11 @@ export class HistoryService {
   }
   close() {
     this.closed = true
-    for (const timer of this.catchUpTimers.values()) clearTimeout(timer)
+    for (const timer of [...this.catchUpTimers.values(), ...this.switchTimers]) clearTimeout(timer)
     this.catchUpTimers.clear()
-    for (const value of this.sources.values()) value.source.close()
+    this.switchTimers.clear()
+    const sources = [...this.sources.values()]
     this.sources.clear()
+    for (const value of sources) closeSourceQuietly(value.source)
   }
 }

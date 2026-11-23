@@ -1,17 +1,11 @@
-/** Idempotent event-journal reconciliation for closing unimported main-conversation tails without duplicates. */
+/** Idempotent event-journal reconstruction and canonical-row pruning for unimported history tails. */
 import type { Database } from 'bun:sqlite'
 import type { ChatEvent, ChatItem } from '../../shared/chat-schema'
-import type { HistoryRow, HistoryStore } from './history-store'
+import type { HistoryRow } from './history-store'
 
-type EventRow = { rowid: number; at: number; event: string; key: string }
-type ExistingRow = { id: string; at: number; position: number; item: string }
-export interface PlannedSessionTail {
-  session: string
-  firstAt: number
-  rows: HistoryRow[]
-}
+export type EventRow = { rowid: number; at: number; event: string; key: string }
 
-function itemKey(item: ChatItem): string | null {
+export function itemKey(item: ChatItem): string | null {
   if (item.kind === 'user') return `user:${item.text.trim()}`
   if (item.kind === 'assistant') return `assistant:${item.text.trim()}`
   if (item.kind === 'tool') return `tool:${item.toolId}`
@@ -20,14 +14,14 @@ function itemKey(item: ChatItem): string | null {
   return null
 }
 
-function embeddedRowId(id: string, session: string): string | null {
+export function embeddedRowId(id: string, session: string): string | null {
   const prefixA = `journal:${session}:a:`
   if (id.startsWith(prefixA)) return id.slice(prefixA.length)
   const prefixF = `journal:${session}:f:`
   return id.startsWith(prefixF) ? id.slice(prefixF.length) : null
 }
 
-function reconstructFromEvents(session: string, events: EventRow[]): HistoryRow[] {
+export function reconstructFromEvents(session: string, events: EventRow[]): HistoryRow[] {
   const candidates: HistoryRow[] = []
   const seenUsers = new Set<string>()
   const tools = new Map<string, { index: number; item: Extract<ChatItem, { kind: 'tool' }> }>()
@@ -133,61 +127,4 @@ export function pruneSupersededJournalRows(db: Database, bot: string, session: s
       }
     } catch {}
   }
-}
-
-/** Computes unimported tail rows from `history_events` without mutating SQLite, evaluated fail-closed against `allowed`. */
-export function planBotJournalTail(
-  store: HistoryStore,
-  bot: string,
-  allowed: (bot: string, session: string) => boolean,
-  project: (bot: string, session: string, rows: HistoryRow[]) => HistoryRow[]
-): PlannedSessionTail[] {
-  const sessions = store.db.query('SELECT session, MIN(at) AS firstAt FROM history_events WHERE bot=? GROUP BY session ORDER BY MIN(rowid)').all(bot) as {
-    session: string
-    firstAt: number
-  }[]
-  const plan: PlannedSessionTail[] = []
-  for (const { session, firstAt } of sessions) {
-    if (!allowed(bot, session) || store.excluded(bot, session)) continue
-    const events = store.db.query('SELECT rowid, at, event, key FROM history_events WHERE bot=? AND session=? ORDER BY rowid').all(bot, session) as EventRow[]
-    const candidates = reconstructFromEvents(session, events)
-    if (!candidates.length) continue
-    const existing = store.db
-      .query("SELECT id, at, position, item FROM history_items WHERE bot=? AND session=? AND id NOT LIKE 'session:%' ORDER BY at, position, id")
-      .all(bot, session) as ExistingRow[]
-
-    const [existingIds, existingTools, existingMsgs, counts] = [new Set<string>(), new Set<string>(), new Set<string>(), new Map<string, number>()]
-    let [maxAt, maxPosAtMaxAt] = [0, -1]
-    for (const row of existing) {
-      existingIds.add(row.id)
-      if (row.at > maxAt) [maxAt, maxPosAtMaxAt] = [row.at, row.position]
-      else if (row.at === maxAt && row.position > maxPosAtMaxAt) maxPosAtMaxAt = row.position
-      try {
-        const parsed = JSON.parse(row.item) as ChatItem
-        if (parsed.kind === 'tool') existingTools.add(parsed.toolId)
-        if (parsed.kind === 'user' && parsed.messageId) existingMsgs.add(parsed.messageId)
-        const key = itemKey(parsed)
-        if (key) counts.set(key, (counts.get(key) ?? 0) + 1)
-      } catch {}
-    }
-
-    const kept: HistoryRow[] = []
-    for (const cand of candidates) {
-      const key = itemKey(cand.item)
-      const rowRef = embeddedRowId(cand.id, session)
-      const exact =
-        existingIds.has(cand.id) ||
-        (rowRef !== null && existingIds.has(rowRef)) ||
-        (cand.item.kind === 'tool' && existingTools.has(cand.item.toolId)) ||
-        (cand.item.kind === 'user' && !!cand.item.messageId && existingMsgs.has(cand.item.messageId))
-      if (exact || (key && (counts.get(key) ?? 0) > 0)) {
-        if (key && (counts.get(key) ?? 0) > 0) counts.set(key, counts.get(key)! - 1)
-        continue
-      }
-      const at = Math.max(cand.at, maxAt)
-      kept.push({ ...cand, at, order: at === maxAt ? ++maxPosAtMaxAt : kept.length })
-    }
-    if (kept.length) plan.push({ session, firstAt, rows: project(bot, session, kept) })
-  }
-  return plan
 }

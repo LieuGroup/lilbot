@@ -4,7 +4,7 @@ import { openDatabase } from '../../server/database/database'
 import type { BotEngine, ConversationSource } from '../../server/engines/bot-engine'
 import { HistoryService } from '../../server/history/history-service'
 import { HistoryStore } from '../../server/history/history-store'
-import { planBotJournalTail } from '../../server/history/history-tail'
+import { planBotJournalTail } from '../../server/history/history-tail-plan'
 
 test('PROBE_A_REALISTIC + M6: journal rows never reuse bare event.rowId and canonical rows replace them in exact engine order', () => {
   const db = openDatabase(':memory:')
@@ -19,16 +19,17 @@ test('PROBE_A_REALISTIC + M6: journal rows never reuse bare event.rowId and cano
     addEvt(now + 2, { type: 'user.message', messageId: 'u2', text: 'turn 2', attachments: [], images: { support: 'unknown', imageCount: 0 } }, 'k3')
     addEvt(now + 3, { type: 'turn.finished', status: 'completed', text: 'reply 2', rowId: 'eng:r2', compacted: { beforeTokens: 120_000, afterTokens: 24_000 } }, 'k4')
 
-    const planned = planBotJournalTail(
+    const plan = planBotJournalTail(
       store,
       'b1',
       () => true,
       (_b, _s, r) => r
     )
-    expect(planned).toHaveLength(1)
-    expect(planned[0].rows.every(r => r.id.startsWith('journal:'))).toBe(true)
+    expect(plan.truncated).toBe(false)
+    expect(plan.entries).toHaveLength(1)
+    expect(plan.entries[0].rows.every(r => r.id.startsWith('journal:'))).toBe(true)
     store.session('b1', 's1', now)
-    store.write('b1', 's1', planned[0].rows)
+    store.write('b1', 's1', plan.entries[0].rows)
     expect(store.page('b1').items.map(r => r.item.kind)).toEqual(['user', 'assistant', 'user', 'compaction', 'assistant'])
 
     // Canonical engine rows arrive with earlier engine timestamps (now - 2000 .. now - 800).
