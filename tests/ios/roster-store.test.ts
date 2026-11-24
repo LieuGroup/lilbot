@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { type BotActionsSocket, createBotActions } from '../../ios/src/bots/actions-core'
 import { useBotMenuStore } from '../../ios/src/bots/menu-store'
-import { buildRosterListItems, splitNewBotHeaderKey } from '../../ios/src/bots/roster-list'
+import { buildRosterListItems, firstRosterHeaderKey } from '../../ios/src/bots/roster-list'
 import { type BotRosterSocket, createBotStore } from '../../ios/src/bots/store-core'
 import { runningGroups } from '../../shared/client/bots/running-groups'
 import { testBot as bot } from '../web/test-bot'
@@ -103,9 +103,9 @@ describe('Round 4 iOS Roster store guards, action error reporting, and 200-bot v
     expect(items.filter(i => i.kind === 'section-header')).toHaveLength(5)
     expect(items.filter(i => i.kind === 'bot')).toHaveLength(176)
     expect(items.filter(i => i.kind === 'group-toggle').map(i => i.name)).toEqual(['Unassigned', 'Hidden'])
-    expect(splitNewBotHeaderKey(items)).toBe('sec:s0')
+    expect(firstRosterHeaderKey(items)).toBe('sec:s0')
     expect(
-      splitNewBotHeaderKey(
+      firstRosterHeaderKey(
         buildRosterListItems({ bots: [bot('only')], sections: [], loaded: true, connected: true, error: '', query: '', selectedId: null, unassignedOpen: false, hiddenOpen: false })
       )
     ).toBeNull()
@@ -132,7 +132,9 @@ describe('Round 4 iOS Roster store guards, action error reporting, and 200-bot v
     expect(layoutSource).toContain('if (!botsTabActive) closeBotOverlays()')
 
     const chromeSource = readFileSync(resolve(process.cwd(), 'ios/src/bots/roster-chrome.tsx'), 'utf8')
-    expect(chromeSource).toContain('hitSlop={{ top: 13, bottom: 13, left: 10, right: 10 }}')
+    expect(chromeSource).toContain('const HEADER_ACTION_SLOP = { top: 14, bottom: 14, left: 8, right: 8 } as const')
+    expect(chromeSource).toContain('accessibilityLabel="Search bots"')
+    expect(chromeSource).toContain('accessibilityLabel="New bot"')
     expect(chromeSource).toContain('hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}')
 
     const chatScreenSource = readFileSync(resolve(process.cwd(), 'ios/src/chat/screen.tsx'), 'utf8')

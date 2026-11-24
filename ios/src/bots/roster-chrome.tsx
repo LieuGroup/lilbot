@@ -1,11 +1,13 @@
 /** Pull-down / screen-reader Roster search bar, collapsible Unassigned/Hidden header,
- *  and zero-row-cost inline New bot (+) button for split surfaces. */
-import { memo, type ReactNode, useCallback } from 'react'
+ *  and zero-row-height inline header actions (Search bots on every layout, plus New bot on split). */
+import { type ComponentRef, memo, type ReactNode, type RefObject, useCallback } from 'react'
 import { Pressable, TextInput, View } from 'react-native'
 import { ChevronDownIcon, ChevronRightIcon, CloseIcon, PlusIcon, SearchIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { radius } from '../ui/tokens'
+
+const HEADER_ACTION_SLOP = { top: 14, bottom: 14, left: 8, right: 8 } as const
 
 export const SplitNewBotFooter = memo(function SplitNewBotFooter({ onPress }: { onPress: () => void }) {
   const theme = useTheme()
@@ -28,37 +30,75 @@ export const SplitNewBotFooter = memo(function SplitNewBotFooter({ onPress }: { 
   )
 })
 
-export const SplitNewBotButton = memo(function SplitNewBotButton({ onPress }: { onPress: () => void }) {
+/** Quiet muted actions aligned to the right end of the first roster header line at 0 pt extra row height
+ *  (each 28x16 with 14/8 hitSlop -> non-overlapping 44x44 pt hit targets). */
+export const RosterHeaderActions = memo(function RosterHeaderActions({
+  showNewBot,
+  searchOpen,
+  onToggleSearch,
+  onNewBot
+}: {
+  showNewBot: boolean
+  searchOpen: boolean
+  onToggleSearch: () => void
+  onNewBot: () => void
+}) {
   const theme = useTheme()
   return (
-    <Pressable
-      testID="roster-new-bot-button"
-      onPress={onPress}
-      hitSlop={{ top: 13, bottom: 13, left: 10, right: 10 }}
-      accessibilityRole="button"
-      accessibilityLabel="New bot"
-      style={({ pressed }) => ({
-        width: 24,
-        height: 18,
-        borderRadius: 9,
-        alignItems: 'center',
-        justifyContent: 'center',
-        opacity: pressed ? 0.6 : 1
-      })}
-    >
-      <PlusIcon color={theme.mutedForeground} size={14} />
-    </Pressable>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+      <Pressable
+        testID="roster-search-button"
+        onPress={onToggleSearch}
+        hitSlop={HEADER_ACTION_SLOP}
+        accessibilityRole="button"
+        accessibilityLabel="Search bots"
+        accessibilityState={{ expanded: searchOpen }}
+        style={({ pressed }) => ({
+          width: 28,
+          height: 16,
+          borderRadius: 8,
+          alignItems: 'center',
+          justifyContent: 'center',
+          opacity: pressed ? 0.6 : 1
+        })}
+      >
+        <SearchIcon color={theme.mutedForeground} size={14} />
+      </Pressable>
+      {showNewBot && (
+        <Pressable
+          testID="roster-new-bot-button"
+          onPress={onNewBot}
+          hitSlop={HEADER_ACTION_SLOP}
+          accessibilityRole="button"
+          accessibilityLabel="New bot"
+          style={({ pressed }) => ({
+            width: 28,
+            height: 16,
+            borderRadius: 8,
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: pressed ? 0.6 : 1
+          })}
+        >
+          <PlusIcon color={theme.mutedForeground} size={14} />
+        </Pressable>
+      )}
+    </View>
   )
 })
 
 export const RosterSearchBar = memo(function RosterSearchBar({
+  inputRef,
   query,
   canClose,
+  autoFocus,
   onChange,
   onClose
 }: {
+  inputRef: RefObject<ComponentRef<typeof TextInput> | null>
   query: string
   canClose: boolean
+  autoFocus: boolean
   onChange: (value: string) => void
   onClose: () => void
 }) {
@@ -80,9 +120,11 @@ export const RosterSearchBar = memo(function RosterSearchBar({
       >
         <SearchIcon color={theme.mutedForeground} size={16} />
         <TextInput
+          ref={inputRef}
           testID="roster-search-input"
           value={query}
           onChangeText={onChange}
+          autoFocus={autoFocus}
           placeholder="Search bots"
           placeholderTextColor={theme.mutedForeground}
           autoCorrect={false}
@@ -102,6 +144,18 @@ export const RosterSearchBar = memo(function RosterSearchBar({
           </Pressable>
         )}
       </View>
+    </View>
+  )
+})
+
+export const RosterSectionHeader = memo(function RosterSectionHeader({ name, trailing }: { name: string; trailing?: ReactNode }) {
+  const theme = useTheme()
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 10, paddingBottom: 4 }}>
+      <AppText variant="meta" color={theme.mutedForeground} style={{ fontFamily: 'Inter_500Medium' }}>
+        {name}
+      </AppText>
+      {trailing}
     </View>
   )
 })

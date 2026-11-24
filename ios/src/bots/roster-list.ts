@@ -103,8 +103,8 @@ export function buildRosterListItems(input: {
   return out
 }
 
-/** First existing header item key that can host split-mode inline New bot (+) at zero extra row cost. */
-export function splitNewBotHeaderKey(items: readonly RosterListItem[]): string | null {
+/** First existing header item key that hosts inline header actions (Search on all layouts, plus New bot on split) at zero extra row height. */
+export function firstRosterHeaderKey(items: readonly RosterListItem[]): string | null {
   const first = items.find(item => item.kind === 'section-header' || item.kind === 'group-toggle')
   return first ? first.key : null
 }

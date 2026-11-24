@@ -1,8 +1,8 @@
 /** Virtualized Round 4 Roster (FlatList): 3-up pinned tiles flush at the top, active groups ("Working together"),
  *  non-sticky user sections, collapsed Unassigned/Hidden groups, scroll-gated row swipes without parent scroll re-renders,
- *  pull-down / screen-reader Search bots, and zero-row-cost split-mode inline New bot (+). */
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { FlatList, type ListRenderItemInfo, type NativeScrollEvent, type NativeSyntheticEvent, View } from 'react-native'
+ *  pull-down / screen-reader Search bots, and zero-row-height inline Search (+ New bot on split) on the first header line. */
+import { type ComponentRef, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { FlatList, type ListRenderItemInfo, type NativeScrollEvent, type NativeSyntheticEvent, type TextInput, View } from 'react-native'
 import { useSharedValue } from 'react-native-reanimated'
 import type { Bot, Section } from '../../../shared/bot-schema'
 import { useScreenReaderEnabled } from '../duo/use-surface'
@@ -12,8 +12,8 @@ import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { radius } from '../ui/tokens'
 import { useBotMenuStore } from './menu-store'
-import { CollapsedGroupHeader, RosterSearchBar, SplitNewBotButton, SplitNewBotFooter } from './roster-chrome'
-import { buildRosterListItems, type RosterListItem, splitNewBotHeaderKey } from './roster-list'
+import { CollapsedGroupHeader, RosterHeaderActions, RosterSearchBar, RosterSectionHeader, SplitNewBotFooter } from './roster-chrome'
+import { buildRosterListItems, firstRosterHeaderKey, type RosterListItem } from './roster-list'
 import { RosterRow } from './roster-row'
 import { RosterTiles } from './roster-tiles'
 import { WorkingTogether } from './working-together'
@@ -38,6 +38,7 @@ export function Roster({ bots, sections, loaded, connected, error, selectedId, c
   const setActionError = useBotMenuStore(state => state.setError)
 
   const scrollingVertically = useSharedValue(false)
+  const searchInputRef = useRef<ComponentRef<typeof TextInput>>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [unassignedOpen, setUnassignedOpen] = useState(false)
@@ -76,6 +77,19 @@ export function Roster({ bots, sections, loaded, connected, error, selectedId, c
     setSearchOpen(false)
   }, [])
 
+  const toggleSearch = useCallback(() => {
+    if (screenReader) {
+      searchInputRef.current?.focus()
+      return
+    }
+    if (searchOpen || query.length > 0) {
+      setQuery('')
+      setSearchOpen(false)
+    } else {
+      setSearchOpen(true)
+    }
+  }, [query.length, screenReader, searchOpen])
+
   const showSearchBar = shouldRevealSearch({ pullDistance: 0, alwaysVisible: screenReader || searchOpen || query.length > 0 })
 
   const items = useMemo(
@@ -83,7 +97,7 @@ export function Roster({ bots, sections, loaded, connected, error, selectedId, c
     [bots, sections, loaded, connected, error, query, selectedId, unassignedOpen, hiddenOpen]
   )
 
-  const inlineNewBotKey = useMemo(() => (splitMode && query.trim().length === 0 ? splitNewBotHeaderKey(items) : null), [items, query, splitMode])
+  const firstHeaderKey = useMemo(() => (query.trim().length === 0 ? firstRosterHeaderKey(items) : null), [items, query])
 
   const renderItem = useCallback(
     ({ item }: ListRenderItemInfo<RosterListItem>) => {
@@ -93,15 +107,12 @@ export function Roster({ bots, sections, loaded, connected, error, selectedId, c
       if (item.kind === 'groups') {
         return <WorkingTogether groups={item.groups} compactCardSurface={compactCardSurface} onSelectBot={onSelect} />
       }
+      const headerActions =
+        item.key === firstHeaderKey ? (
+          <RosterHeaderActions showNewBot={splitMode} searchOpen={showSearchBar} onToggleSearch={toggleSearch} onNewBot={openNewBot} />
+        ) : undefined
       if (item.kind === 'section-header') {
-        return (
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 10, paddingBottom: 4 }}>
-            <AppText variant="meta" color={theme.mutedForeground} style={{ fontFamily: 'Inter_500Medium' }}>
-              {item.name}
-            </AppText>
-            {item.key === inlineNewBotKey ? <SplitNewBotButton onPress={openNewBot} /> : null}
-          </View>
-        )
+        return <RosterSectionHeader name={item.name} trailing={headerActions} />
       }
       if (item.kind === 'group-toggle') {
         return (
@@ -112,7 +123,7 @@ export function Roster({ bots, sections, loaded, connected, error, selectedId, c
             count={item.count}
             open={item.open}
             onToggle={toggleGroup}
-            trailing={item.key === inlineNewBotKey ? <SplitNewBotButton onPress={openNewBot} /> : undefined}
+            trailing={headerActions}
           />
         )
       }
@@ -140,14 +151,16 @@ export function Roster({ bots, sections, loaded, connected, error, selectedId, c
         />
       )
     },
-    [compactCardSurface, inlineNewBotKey, onSelect, openNewBot, scrollingVertically, selectedId, theme.destructive, theme.mutedForeground, toggleGroup]
+    [compactCardSurface, firstHeaderKey, onSelect, openNewBot, scrollingVertically, selectedId, showSearchBar, splitMode, theme.destructive, theme.mutedForeground, toggleGroup, toggleSearch]
   )
 
   const bannerError = actionError || (bots.length > 0 && error ? error : '')
   const header =
     showSearchBar || bannerError ? (
       <View>
-        {showSearchBar && <RosterSearchBar query={query} canClose={searchOpen && !screenReader} onChange={setQuery} onClose={closeSearch} />}
+        {showSearchBar && (
+          <RosterSearchBar inputRef={searchInputRef} query={query} canClose={searchOpen && !screenReader} autoFocus={searchOpen && !screenReader} onChange={setQuery} onClose={closeSearch} />
+        )}
         {bannerError ? (
           <View style={{ marginHorizontal: 12, marginTop: showSearchBar ? 0 : 8, marginBottom: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.md, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.destructive }}>
             <AppText variant="preview" color={theme.destructive}>
@@ -158,7 +171,7 @@ export function Roster({ bots, sections, loaded, connected, error, selectedId, c
       </View>
     ) : undefined
 
-  const footer = splitMode && loaded && query.trim().length === 0 && !inlineNewBotKey ? <SplitNewBotFooter onPress={openNewBot} /> : undefined
+  const footer = splitMode && loaded && query.trim().length === 0 && !firstHeaderKey ? <SplitNewBotFooter onPress={openNewBot} /> : undefined
 
   return (
     <FlatList
