@@ -73,6 +73,14 @@ export const BotContext = z.object({
 })
 export type BotContext = z.infer<typeof BotContext>
 
+/** Short single-line plain-text preview of the newest visible message in a bot's main conversation. */
+export const BotLastMessage = z.object({
+  from: z.enum(['user', 'bot']),
+  text: z.string(),
+  at: z.number().int().nonnegative()
+})
+export type BotLastMessage = z.infer<typeof BotLastMessage>
+
 /** What lists and headers need. */
 export const Bot = BotIdentity.extend({
   /** The user's primary bot, resolved by LilBot rather than the engine. */
@@ -95,7 +103,9 @@ export const Bot = BotIdentity.extend({
    *  (the engine adapts a level the model does not take). Null: none is sent. Absent until the engine has reported it. */
   effectiveReasoningEffort: z.string().nullable().optional(),
   /** Current context size of the bot's main conversation against its model's window. Absent until reported. */
-  context: BotContext.optional()
+  context: BotContext.optional(),
+  /** Newest visible message in the bot's main conversation. Absent when none exists. */
+  lastMessage: BotLastMessage.optional()
 })
 export type Bot = z.infer<typeof Bot>
 

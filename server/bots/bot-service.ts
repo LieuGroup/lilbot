@@ -136,11 +136,10 @@ export class BotService {
   async listBots(): Promise<Bot[]> {
     await this.runtimes.load()
     const identities = this.runtimes.store.list()
-    const prefs = this.prefs.prefsFor(identities.map(bot => bot.id))
-    const contexts = this.sessions.contextsFor()
-    const primaryId = this.primaryId(identities)
+    const ids = identities.map(bot => bot.id)
+    const [prefs, contexts, previews, primaryId] = [this.prefs.prefsFor(ids), this.sessions.contextsFor(), this.history?.store.previewsFor(ids), this.primaryId(identities)]
     return identities.map(identity => ({
-      ...this.identity(identity, contexts.get(identity.id)),
+      ...this.identity(identity, contexts.get(identity.id), previews?.get(identity.id)),
       runnable: this.runtimes.snapshot(identity) !== null,
       runtimePending: this.runtimes.pending(identity),
       isPrimary: identity.id === primaryId,
@@ -279,10 +278,10 @@ export class BotService {
     return { ...this.identity(bot), runnable: this.runtimes.snapshot(bot) !== null, runtimePending: this.runtimes.pending(bot), ...this.own(bot) }
   }
 
-  private identity(bot: BotRecord, context = this.sessions.contextFor(bot.id)) {
+  private identity(bot: BotRecord, context = this.sessions.contextFor(bot.id), lastMessage = this.history?.store.preview(bot.id)) {
     const { id, name, function: fn, model, reasoningEffort, isDefault, permissionMode } = bot
     const base = { id, name, function: fn, model, reasoningEffort, effectiveReasoningEffort: this.sessions.effectiveFor(id), isDefault, permissionMode }
-    return context ? { ...base, context } : base
+    return { ...base, ...(context ? { context } : {}), ...(lastMessage ? { lastMessage } : {}) }
   }
 
   private own(identity: BotRecord): Pick<Bot, 'isPrimary' | 'prefs' | 'workspace'> {

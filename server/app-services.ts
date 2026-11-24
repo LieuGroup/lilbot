@@ -102,7 +102,7 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
   const t3Grants = new T3Grants(join(DATA_DIR, 't3-grant.json'), () => publish({ event: 'connections.changed' }))
   const facts = { store, workspaces, computers, t3: () => t3Grants.status(), t3Enabled, commit: COMMIT, dataDir: DATA_DIR }
   const history = new HistoryService(
-    new HistoryStore(database),
+    new HistoryStore(database, () => botsChanged()),
     engines,
     async () => {
       await bots.listBots()

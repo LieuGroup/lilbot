@@ -103,15 +103,20 @@ export class BotConversations {
         throw new LilBotError('chat_read_only', 'A limited run conversation cannot be continued.')
       turn.sending++
       try {
-        if (useHistory && !options?.hidden)
+        if (useHistory && !options?.hidden) {
+          const files = (options?.attachments ?? []).map(({ id: fileId, name, mime, data }) => {
+            const url = `/api/attachments/${encodeURIComponent(botId)}/${fileId}`
+            return { id: fileId, name, size: data.length, mime, state: 'ready' as const, url, uploadUrl: url }
+          })
           this.history?.record(botId, id, {
             type: 'user.message',
             messageId: options?.inputId ?? crypto.randomUUID(),
             text,
-            attachments: [],
-            images: { support: 'unknown', imageCount: 0 },
+            attachments: files,
+            images: { support: 'unknown', imageCount: files.filter(f => f.mime.startsWith('image/')).length },
             ...(options?.origin?.device ? { origin: options.origin.device } : {})
           })
+        }
         const note = !options?.hidden && id === this.prefs.mainChat(botId) ? this.notes?.pending(botId, id) : null
         if (!note) return await send(text, options)
         await send(text, { ...options, origin: { ...options?.origin, line: [options?.origin?.line, note.text].filter(Boolean).join('\n\n') } })
