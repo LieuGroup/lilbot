@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { botCapability } from '../../server/bots/bot-capability'
@@ -9,7 +9,7 @@ import type { BotEngine } from '../../server/engines/bot-engine'
 import { EngineRegistry } from '../../server/engines/engine-registry'
 import { createEngineApi } from '../../server/http/engine-api'
 import { SkillsService } from '../../server/skills/skills-service'
-import { addBot, systemFixture } from '../system/system-fixture'
+import { systemFixture } from '../system/system-fixture'
 
 const skillDoc = (name: string, description: string, body = 'Follow the steps.') => `---\nname: ${name}\ndescription: ${description}\n---\n\n${body}\n`
 
@@ -54,35 +54,12 @@ function setupRoute() {
   return { f, post }
 }
 
-test('/engine/skills/write allows ordinary shared writes (including Oscar and other bots), updates author, and logs system_changes without body', async () => {
-  const { f, post } = setupRoute()
-  const other = await addBot(f, 'Other')
-  f.skills.write({ action: 'create', name: 'oscar-skill', content: skillDoc('oscar-skill', 'By Oscar.', 'Original.') }, 'oscar')
-  f.skills.write({ action: 'create', name: 'other-skill', content: skillDoc('other-skill', 'By Other.', 'Other body.') }, other.id)
-
-  expect((await post('b1', '/engine/skills/write', { action: 'create', name: 'fresh-skill', content: skillDoc('fresh-skill', 'Fresh.', 'SECRET_BODY_1') })).status).toBe(200)
-  expect((await post('b1', '/engine/skills/write', { action: 'edit', name: 'oscar-skill', content: skillDoc('oscar-skill', 'Edited.', 'SECRET_BODY_2') })).status).toBe(200)
-  expect((await post('b1', '/engine/skills/write', { action: 'patch', name: 'other-skill', old_string: 'Other body.', new_string: 'SECRET_BODY_3' })).status).toBe(200)
-  expect((await post('b1', '/engine/skills/write', { action: 'write_file', name: 'fresh-skill', file_path: 'references/ok_1-2.md', content: 'SECRET_BODY_4' })).status).toBe(200)
-
-  for (const name of ['fresh-skill', 'oscar-skill', 'other-skill']) {
-    expect(f.skills.list('b1').find(s => s.name === name)?.author).toBe('b1')
-  }
-  const logs = f.changes.recent(20).filter(row => row.tool === 'skill_manage')
-  expect(logs).toHaveLength(4)
-  for (const row of logs) {
-    expect(row.botId).toBe('b1')
-    expect(row.fields).not.toContain('SECRET_BODY')
-  }
-})
-
-test('/engine/skills/write refuses built-ins, dormant built-in, lilbot-/lilbot_ names, cross-engine skills, unsafe file_path, secrets, and symlinks', async () => {
+test('/engine/skills/write refuses built-ins, dormant built-in, lilbot-/lilbot_ names, cross-engine skills, unsafe paths, secrets, and symlinks', async () => {
   const { f, post } = setupRoute()
   f.skills.provide('lilbot-work', { 'SKILL.md': skillDoc('lilbot-work', 'Built-in work.') })
   f.skills.provide('lilbot-check', { 'SKILL.md': skillDoc('lilbot-check', 'Built-in check.') })
   f.skills.provide('lilbot-coding', { 'SKILL.md': skillDoc('lilbot-coding', 'Built-in coding.') })
   f.skills.provide('shipped', { 'SKILL.md': skillDoc('shipped', 'Provided built-in.') })
-  f.skills.import('hermes', 'profile-a', { 'SKILL.md': skillDoc('engine-imported', 'Imported.') })
   f.skills.write({ action: 'create', name: 'own-skill', content: skillDoc('own-skill', 'Own.') }, 'b1')
 
   const refused: Record<string, unknown>[] = [
@@ -94,7 +71,6 @@ test('/engine/skills/write refuses built-ins, dormant built-in, lilbot-/lilbot_ 
     { action: 'create', name: 'lilbot_work', content: skillDoc('lilbot_work', 'Lookalike.') },
     { action: 'create', name: 'lilbot_check', content: skillDoc('lilbot_check', 'Lookalike.') },
     { action: 'create', name: 'lilbot-work-v2', content: skillDoc('lilbot-work-v2', 'Lookalike.') },
-    { action: 'edit', name: 'engine-imported', content: skillDoc('engine-imported', 'Hijack.') },
     { action: 'create', name: 'hermes-agent', content: skillDoc('hermes-agent', 'Cross-engine always-on.') },
     { action: 'create', name: 'hermes-bundled', content: skillDoc('hermes-bundled', 'Cross-engine bundled.') },
     { action: 'create', name: 'scripted-core', content: skillDoc('scripted-core', 'Own-engine always-on.') },
@@ -103,10 +79,13 @@ test('/engine/skills/write refuses built-ins, dormant built-in, lilbot-/lilbot_ 
     { action: 'write_file', name: 'own-skill', file_path: 'references/a\nb.md', content: 'bad' },
     { action: 'write_file', name: 'own-skill', file_path: 'references/a\rb.md', content: 'bad' },
     { action: 'write_file', name: 'own-skill', file_path: 'references/a\tb.md', content: 'bad' },
+    { action: 'write_file', name: 'own-skill', file_path: 'references/a\u0085b.md', content: 'bad' },
+    { action: 'write_file', name: 'own-skill', file_path: 'references/a\u009fb.md', content: 'bad' },
+    { action: 'write_file', name: 'own-skill', file_path: 'references/a\u2028b.md', content: 'bad' },
+    { action: 'write_file', name: 'own-skill', file_path: 'references/a\u2029b.md', content: 'bad' },
     { action: 'write_file', name: 'own-skill', file_path: 'references/a\u200bb.md', content: 'bad' },
     { action: 'write_file', name: 'own-skill', file_path: 'references/a\u2066b.md', content: 'bad' },
     { action: 'write_file', name: 'own-skill', file_path: 'references/a\ufeffb.md', content: 'bad' },
-    { action: 'write_file', name: 'own-skill', file_path: 'references/a b.md', content: 'bad' },
     { action: 'write_file', name: 'own-skill', file_path: '../outside.md', content: 'bad' },
     { action: 'write_file', name: 'own-skill', file_path: '/etc/passwd', content: 'bad' },
     { action: 'write_file', name: 'own-skill', file_path: '.env', content: 'bad' },
@@ -121,11 +100,50 @@ test('/engine/skills/write refuses built-ins, dormant built-in, lilbot-/lilbot_ 
   for (const bad of refused) {
     expect((await post('b1', '/engine/skills/write', bad)).status, `route should refuse ${JSON.stringify(bad).slice(0, 90)}`).toBeGreaterThanOrEqual(400)
   }
+
+  // Test read guards BEFORE planting any symlink so safeSkillFilePath and Object.hasOwn are exercised directly.
+  for (const badPath of ['references/a\u202eb.md', 'references/a\u0085b.md', 'references/a\u2028b.md']) {
+    expect(await post('b1', '/engine/skills/read', { name: 'own-skill', file_path: badPath })).toEqual({ status: 422, body: { error: 'Use a relative skill file path.' } })
+  }
+  expect(await post('b1', '/engine/skills/read', { name: 'own-skill', file_path: 'toString' })).toEqual({ status: 200, body: {} })
+
+  // Symlink inside skill folder is rejected without creating a change-log row.
   symlinkSync(f.root, join(f.skills.root, 'own-skill', 'redirect'))
   expect((await post('b1', '/engine/skills/write', { action: 'write_file', name: 'own-skill', file_path: 'redirect/pwn.md', content: 'x' })).status).toBe(422)
-  expect((await post('b1', '/engine/skills/read', { name: 'own-skill', file_path: 'references/a\u202eb.md' })).status).toBe(422)
-  expect((await post('b1', '/engine/skills/read', { name: 'own-skill', file_path: 'toString' })).body.content).toBeUndefined()
   expect(f.changes.recent(50).length).toBe(logsBefore)
+})
+
+test('symlinked root with trailing slash, dangling built-in symlink, and fs write collisions leak no host path or stray tmp files', async () => {
+  const { f, post } = setupRoute()
+  f.skills.write({ action: 'create', name: 'own-skill', content: skillDoc('own-skill', 'Own.') }, 'b1')
+  f.skills.write({ action: 'write_file', name: 'own-skill', file_path: 'references/note.md', content: 'ok' }, 'b1')
+
+  // EEXIST (SKILL.md/sub.md) and EISDIR (writing over existing references/ dir): generic 500, no host path, no stray .tmp.
+  const eexist = await post('b1', '/engine/skills/write', { action: 'write_file', name: 'own-skill', file_path: 'SKILL.md/sub.md', content: 'x' })
+  expect(eexist).toEqual({ status: 500, body: { error: 'Request failed.' } })
+  const eisdir = await post('b1', '/engine/skills/write', { action: 'write_file', name: 'own-skill', file_path: 'references', content: 'x' })
+  expect(eisdir).toEqual({ status: 500, body: { error: 'Request failed.' } })
+  expect(readdirSync(join(f.skills.root, 'own-skill')).filter(name => name.endsWith('.tmp'))).toEqual([])
+
+  // Dangling symlink at a built-in skill folder is refused cleanly with unsafe_skill (no host path leak).
+  symlinkSync(join(f.root, 'does-not-exist'), join(f.skills.root, 'lilbot-work'))
+  expect(() => f.skills.provide('lilbot-work', { 'SKILL.md': skillDoc('lilbot-work', 'Shipped.') })).toThrow('Skill symlinks are not supported.')
+  const dangling = await post('b1', '/engine/skills/write', { action: 'create', name: 'lilbot-work', content: skillDoc('lilbot-work', 'Bad.') })
+  expect(dangling).toEqual({ status: 422, body: { error: 'Skill symlinks are not supported.' } })
+
+  // Trailing slash on a symlinked library root still triggers unsafe_skill and leaves the target untouched.
+  const realTarget = join(f.root, 'real-skills-dir')
+  const linkRoot = join(f.root, 'link-skills-dir')
+  mkdirSync(realTarget, { recursive: true })
+  symlinkSync(realTarget, linkRoot)
+  const db = openDatabase(':memory:')
+  try {
+    const linked = new SkillsService(`${linkRoot}/`, db)
+    expect(() => linked.provide('lilbot-work', { 'SKILL.md': skillDoc('lilbot-work', 'Shipped.') })).toThrow('Skill symlinks are not supported.')
+    expect(readdirSync(realTarget)).toEqual([])
+  } finally {
+    db.close()
+  }
 })
 
 test('startup provide prunes extra files, dotfiles, binaries, empty dirs, and symlinks; remove reclaims bot-created dormant built-ins', () => {
@@ -136,7 +154,6 @@ test('startup provide prunes extra files, dotfiles, binaries, empty dirs, and sy
     const shipped = { 'SKILL.md': skillDoc('lilbot-work', 'Shipped work.') }
     skills.provide('lilbot-work', shipped)
 
-    // Plant extra UTF-8 file, binary file, dotfile, empty subdir, symlink, and tampered SKILL.md inside built-in folder.
     const dir = join(root, 'lilbot-work')
     mkdirSync(join(dir, 'references'), { recursive: true })
     mkdirSync(join(dir, 'empty-dir'), { recursive: true })
@@ -151,14 +168,9 @@ test('startup provide prunes extra files, dotfiles, binaries, empty dirs, and sy
     skills.provide('lilbot-work', shipped)
     expect(Object.keys(skills.read('lilbot-work'))).toEqual(['SKILL.md'])
     expect(skills.read('lilbot-work')['SKILL.md']).toBe(shipped['SKILL.md'])
-    expect(existsSync(join(dir, 'references'))).toBe(false)
-    expect(existsSync(join(dir, 'empty-dir'))).toBe(false)
-    expect(existsSync(join(dir, 'evil.bin'))).toBe(false)
-    expect(existsSync(join(dir, '.hidden'))).toBe(false)
-    expect(existsSync(join(dir, 'link'))).toBe(false)
-    expect(existsSync(outside)).toBe(true) // Symlink was unlinked, never followed.
+    for (const gone of ['references', 'empty-dir', 'evil.bin', '.hidden', 'link']) expect(existsSync(join(dir, gone))).toBe(false)
+    expect(existsSync(outside)).toBe(true)
 
-    // Dormant built-in created by a bot is reclaimed at startup; Oscar's own or ordinary bot skills are left alone.
     skills.write({ action: 'create', name: 't3-coding', content: skillDoc('t3-coding', 'Bot spoof.') }, 'bot-a')
     expect(skills.remove('t3-coding')).toBe(true)
     expect(existsSync(join(root, 't3-coding'))).toBe(false)

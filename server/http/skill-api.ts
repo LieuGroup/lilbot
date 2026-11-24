@@ -1,6 +1,6 @@
 /** Legacy `/engine/skills/*` handler; writes go through `SkillsService.writeForBot` and log to `system_changes` without the skill body. */
 import { SkillWrite } from '../../shared/skills-schema'
-import { safeSkillReadPath } from '../skills/skill-files'
+import { safeSkillFilePath } from '../skills/skill-files'
 import type { SkillsService } from '../skills/skills-service'
 import type { SystemChanges } from '../system/system-changes'
 
@@ -10,7 +10,7 @@ export function skillApi(skills: SkillsService, caller: { id: string; name?: str
   if (action === 'read') {
     const name = String(input.name)
     const file = String(input.file_path ?? 'SKILL.md')
-    if (!safeSkillReadPath(file)) return { status: 422, body: { error: 'Use a relative skill file path.' } }
+    if (!safeSkillFilePath(file)) return { status: 422, body: { error: 'Use a relative skill file path.' } }
     if (!skills.offered(caller.id).some(s => s.name === name)) return { status: 403, body: { error: 'Skill disabled or missing.' } }
     const data = skills.read(name)
     return { status: 200, body: { content: Object.hasOwn(data, file) ? data[file] : undefined } }

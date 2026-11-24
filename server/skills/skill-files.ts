@@ -1,22 +1,38 @@
 import { createHash } from 'node:crypto'
-import { lstatSync, readdirSync, readFileSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { LilBotError } from '../../shared/lilbot-error'
 
-const SAFE_PATH_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
-// biome-ignore lint/suspicious/noControlCharactersInRegex: reject control, newline, and invisible/bidi characters in paths
-const UNSAFE_PATH_CHARS = /[\u0000-\u001f\u007f\u061c\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/u
+// biome-ignore lint/suspicious/noControlCharactersInRegex: reject control, newline, separator, and invisible/bidi characters in paths
+const UNSAFE_PATH_CHARS = /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/u
 
-/** Strict printable relative path allow-list for skill supporting-file writes. */
+/** Safe relative path for reading or writing a skill file (printable, no control/newline/separator/invisible/bidi chars, no traversal or dotfiles). */
 export function safeSkillFilePath(file: string): boolean {
-  if (!file || file.length > 300 || file.includes('\\')) return false
-  return file.split('/').every(segment => SAFE_PATH_SEGMENT.test(segment))
-}
-
-/** Safe relative path for reading an existing skill file (no traversal, hidden segments, control, newline, or invisible/bidi chars). */
-export function safeSkillReadPath(file: string): boolean {
   if (!file || file.length > 300 || file.includes('\\') || UNSAFE_PATH_CHARS.test(file)) return false
   return !file.split('/').some(segment => !segment || segment === '.' || segment === '..' || segment.startsWith('.'))
+}
+
+/** True when `target` is a symlink (including a dangling symlink); false when missing (`ENOENT`). */
+export function isSymlink(target: string): boolean {
+  try {
+    return lstatSync(target).isSymbolicLink()
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') return false
+    throw error
+  }
+}
+
+/** Atomically writes a skill file, unlinking its temporary file if writing or renaming fails. */
+export function writeSkillFile(path: string, text: string) {
+  mkdirSync(dirname(path), { recursive: true })
+  const temp = `${path}.${crypto.randomUUID()}.tmp`
+  try {
+    writeFileSync(temp, text)
+    renameSync(temp, path)
+  } catch (error) {
+    rmSync(temp, { force: true })
+    throw error
+  }
 }
 
 /** Whether `root` holds only the exact relative paths in `expected` (no extra files, dotfiles, binaries, symlinks, or empty dirs). */

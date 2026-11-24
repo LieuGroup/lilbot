@@ -131,7 +131,10 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
         if (!input.success) return json(400, { error: 'Invalid bot creation request.' })
         return json(200, await options.bots.createFromBot(caller.id, input.data))
       } catch (error) {
-        return json(error instanceof z.ZodError ? 400 : error instanceof LilBotError ? 422 : 500, { error: error instanceof Error ? error.message : 'Request failed.' })
+        if (error instanceof z.ZodError) return json(400, { error: error.message })
+        if (error instanceof LilBotError) return json(422, { error: error.message })
+        console.error('[engine-api] request failed:', error instanceof Error ? error.message : error)
+        return json(500, { error: 'Request failed.' })
       }
     }
     if (!Object.hasOwn(routes, pathname)) return json(404, { error: 'Unknown endpoint.' })
