@@ -45,7 +45,7 @@ function recordingCreate() {
           return { session_id: 'live', stored_session_id: 'stored', revision: 1, execution_generation: 0 }
         }
         if (method === 'session.info') return { enabled_toolsets: lastToolsets }
-        if (method === 'tools.show') return { sections: [], total: 0 }
+        if (method === 'tools.show') return { sections: [{ name: 'skills', tools: [{ name: 'skills_list' }] }], total: 1 }
         return method === 'prompt.submit' ? { admission_id: 'receipt' } : method === 'prompt.receipt' ? { status: 'terminal', outcome: 'completed' } : { display_messages: [] }
       },
       close: () => {}

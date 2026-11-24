@@ -70,6 +70,7 @@ async function verifyLimitedSession(socket: HermesSocket, sessionId: string, acc
   }
 
   const sections: ToolShowSection[] = Array.isArray(shown?.sections) ? shown.sections : []
+  if (!sections.length) throw new LilBotError('session_scope_violation', 'Limited session reported no tool sections.')
   for (const section of sections) {
     const secName = typeof section?.name === 'string' ? section.name : ''
     const isBuiltin = allowedBuiltins.has(secName)
@@ -144,7 +145,14 @@ export function denyLimitedApproval(socket: HermesSocket, sessionId: string, pay
 
 /** Resumes a hidden ACP limited session, re-supplying its deterministic `editor.mcp_servers` spec and auditing its
  *  tool surface so Hermes re-attaches the exact same policy across `acp_disconnect` or a gateway restart. */
-export async function resumeLimitedSession(socket: HermesSocket, chatId: string, sessionMcp: readonly McpConnection[], access?: RunAccessScope, displayProjection = true) {
+export async function resumeLimitedSession(
+  socket: HermesSocket,
+  chatId: string,
+  sessionMcp: readonly McpConnection[],
+  access?: RunAccessScope,
+  displayProjection = true,
+  assertSessionMcpReady?: () => void
+) {
   if (!sessionMcp.length) throw new LilBotError('session_mcp_unavailable', 'Limited sessions require a session-bound MCP connection.')
   const session = await socket.request('session.resume', {
     session_id: chatId,
@@ -152,6 +160,7 @@ export async function resumeLimitedSession(socket: HermesSocket, chatId: string,
     display_projection: displayProjection,
     editor: editorMcpSpec(sessionMcp)
   })
+  assertSessionMcpReady?.()
   if (access && typeof session.session_id === 'string' && session.session_id) {
     await verifyLimitedSession(socket, session.session_id, access, sessionMcp)
     if (Array.isArray(session.prompts)) {

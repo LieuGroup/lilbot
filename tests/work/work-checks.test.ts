@@ -156,3 +156,25 @@ test('a verdict retry with the same requestId is refused from a non-check or dif
   f.state.chats.set('b', `check-${other.id}:check:1-session`)
   expect(await refusal(f.work.act('b', retry))).toBe('work_forbidden')
 })
+
+test('session_scope_violation ends the check immediately and moves the item to Oscar without retrying', async () => {
+  const f = fixture()
+  const item = await finish(f)
+  let attempts = 0
+  const runner = new WorkCheckRunner(
+    f.work,
+    async () => {
+      attempts++
+      throw new LilBotError('session_scope_violation', 'Unexpected toolset')
+    },
+    () => {},
+    botId => botId
+  )
+  runner.tick()
+  await Bun.sleep(5)
+  expect(attempts).toBe(1)
+  expect(f.work.view(item.id)).toMatchObject({
+    status: 'needs_oscar',
+    checks: [{ state: 'could_not_check', text: 'The check session could not verify its tool scope.' }, { by: { kind: 'oscar' } }]
+  })
+})

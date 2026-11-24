@@ -159,6 +159,39 @@ describe('Scoped MCP tool parity and per-argument rules', () => {
     // Revoking immediately rejects replay with HTTP 403.
     grants.revoke(checkGrant.id)
     expect((await rpc(handler, checkGrant.id, checkTok, 'tools/call', { name: 'lilbot_about', arguments: {} })).status).toBe(403)
+
+    // Browser Origin header is refused on both /mcp and /t3/mcp; /t3/mcp requires 'coding' even when t3Enabled is true.
+    let t3Forwarded = 0
+    const t3Handler = createScopedMcp({
+      port: PORT,
+      grants,
+      bots: () => [{ id: 'b1', name: 'Bot One' }],
+      tools,
+      changes: new SystemChanges(db),
+      beyondOwn: () => false,
+      t3Enabled: true,
+      t3Forward: async () => {
+        t3Forwarded++
+        return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { tools: [] } }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+    })
+    const codingGrant = grants.ensure({ ownerKey: 'webhook:wr-code', botId: 'b1', scope: { kind: 'webhook', runId: 'wr-code', capabilities: ['coding'] } })
+    grants.bindChat(codingGrant.id, 'code-chat-1')
+    const codingTok = sessionGrantToken(TOKEN, 'b1', codingGrant.id)
+    const post = (path: string, tok: string, extra: Record<string, string> = {}) =>
+      t3Handler(
+        new Request(`http://127.0.0.1:${PORT}${path}`, {
+          method: 'POST',
+          headers: { host: `127.0.0.1:${PORT}`, authorization: `Bearer ${tok}`, 'content-type': 'application/json', ...extra },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })
+        }),
+        path
+      )
+    expect((await post(`/engine/lilbot/session/${hookGrant.id}/mcp`, hookTok, { origin: 'https://evil.example' })).status).toBe(403)
+    expect((await post(`/engine/lilbot/session/${codingGrant.id}/t3/mcp`, codingTok, { origin: 'https://evil.example' })).status).toBe(403)
+    expect((await post(`/engine/lilbot/session/${hookGrant.id}/t3/mcp`, hookTok)).status).toBe(403)
+    expect((await post(`/engine/lilbot/session/${narrowGrant.id}/t3/mcp`, narrowTok)).status).toBe(403)
+    expect([t3Forwarded, (await post(`/engine/lilbot/session/${codingGrant.id}/t3/mcp`, codingTok)).status, t3Forwarded]).toEqual([0, 200, 1])
     db.close()
   })
 })

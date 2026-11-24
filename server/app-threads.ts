@@ -80,6 +80,7 @@ export function createThreads(deps: ThreadDeps) {
       ? {
           prepareNarrowedSession: (botId: string, threadId: string, caps: import('../shared/webhook-schema').WebhookCapability[]) =>
             deps.sessionGrants!.prepareNarrowed(botId, threadId, caps),
+          prepareNarrowedReply: (botId: string, chatId: string) => deps.sessionGrants!.prepareNarrowedReply(botId, chatId),
           revokeThreadGrants: (threadId: string) => deps.sessionGrants!.revokeThread(threadId)
         }
       : {}),

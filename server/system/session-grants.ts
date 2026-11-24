@@ -113,6 +113,12 @@ export class SessionGrants {
     return row ? fromRow(row) : null
   }
 
+  activeForChat(botId: string, chatId: string): SessionGrant | null {
+    const grant = this.forChat(botId, chatId)
+    if (!grant || grant === 'unknown' || grant.revokedAt !== null || this.now() > grant.expiresAt) return null
+    return grant
+  }
+
   /** Constant-time bearer check plus live bot, expiry, and revocation checks. */
   authenticate(grantId: string, authHeader: string, botExists: (botId: string) => boolean): SessionGrant | null {
     const grant = this.get(grantId)

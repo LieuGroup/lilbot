@@ -115,14 +115,25 @@ describe('Hermes limited-session isolation, verification, and edit policy', () =
       sections: [{ name: 'mcp-editor_lilbot_a1b2c3d4', tools: [{ name: 'mcp__editor_lilbot_a1b2c3d4__lilbot_bot_edit' }] }]
     })
     await expect(createLimitedSession(s5.socket, { requestId: 'r5', cwd: '/tmp/ws', access: scope, sessionMcp: [CONN] })).rejects.toThrow(/Unexpected MCP tool/)
+
+    const sEmpty = fakeSocket({ sections: [] })
+    await expect(createLimitedSession(sEmpty.socket, { requestId: 'r6', cwd: '/tmp/ws', access: scope, sessionMcp: [CONN] })).rejects.toThrow(/no tool sections/)
   })
 
-  test('resumeLimitedSession re-supplies editor.mcp_servers and re-audits the resumed session', async () => {
+  test('resumeLimitedSession re-supplies editor.mcp_servers, verifies discovery readiness, and re-audits the resumed session', async () => {
     const scope = { kind: 'narrowed' as const, capabilities: [] as const }
+    let readyChecks = 0
     const ok = fakeSocket({ sections: [{ name: 'skills', tools: [{ name: 'skills_list' }, { name: 'skill_view' }] }] })
-    await resumeLimitedSession(ok.socket, 'stored-1', [CONN], scope)
+    await resumeLimitedSession(ok.socket, 'stored-1', [CONN], scope, true, () => void readyChecks++)
+    expect(readyChecks).toBe(1)
     expect(ok.calls.find(c => c.method === 'session.resume')?.params.editor.mcp_servers[0].url).toBe(CONN.url)
     expect(ok.calls.some(c => c.method === 'tools.show')).toBe(true)
+
+    await expect(
+      resumeLimitedSession(ok.socket, 'stored-1', [CONN], scope, true, () => {
+        throw new Error('discovery missing on resume')
+      })
+    ).rejects.toThrow(/discovery missing/)
 
     const bad = fakeSocket({ enabledToolsets: ['skills', 'mcp-editor_lilbot_a1b2c3d4', 'x_search'] })
     await expect(resumeLimitedSession(bad.socket, 'stored-1', [CONN], scope)).rejects.toThrow(/Unexpected toolset/)

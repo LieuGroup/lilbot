@@ -37,10 +37,13 @@ async function resumeSession(
   connect: typeof HermesSocket.connect,
   onEvent: (event: HermesEvent) => void,
   sessionMcp?: readonly McpConnection[],
-  access?: RoutineOptions['access']
+  access?: RoutineOptions['access'],
+  assertSessionMcpReady?: () => void
 ): Promise<{ socket: HermesSocket; session: any }> {
   const resume = (s: HermesSocket) =>
-    sessionMcp ? resumeLimitedSession(s, chatId, sessionMcp, access, true) : s.request('session.resume', { session_id: chatId, source: 'tool', display_projection: true })
+    sessionMcp
+      ? resumeLimitedSession(s, chatId, sessionMcp, access, true, assertSessionMcpReady)
+      : s.request('session.resume', { session_id: chatId, source: 'tool', display_projection: true })
   try {
     return { socket, session: await resume(socket) }
   } catch (error) {
@@ -90,7 +93,16 @@ export async function runRoutine(botId: string, prompt: string, options: Routine
     await ensureFullAccess(socket)
     let session: any
     if (options.chatId) {
-      const resumed = await resumeSession(profile, options.chatId, socket, connect, onEvent, options.access ? options.sessionMcp : undefined, options.access)
+      const resumed = await resumeSession(
+        profile,
+        options.chatId,
+        socket,
+        connect,
+        onEvent,
+        options.access ? options.sessionMcp : undefined,
+        options.access,
+        options.assertSessionMcpReady
+      )
       socket = resumed.socket
       activeSocket = socket
       session = resumed.session

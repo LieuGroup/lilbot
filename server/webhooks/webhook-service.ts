@@ -152,20 +152,23 @@ export class WebhookService {
     }
     const access = webhookRunAccess(webhook.capabilities, this.t3Enabled)
     const prepared = this.prepareSession?.(run, webhook.capabilities)
-    const result = await this.host.runRoutine(run.botId, webhookPrompt(webhook, access.prompt, items, withheld.length), {
-      runId: `webhook-${run.id}`,
-      access: access.access,
-      ...(prepared ? { sessionMcp: prepared.sessionMcp, assertSessionMcpReady: prepared.assertSessionMcpReady } : {}),
-      origin: { line: webhookLine },
-      onChat: id => {
-        prepared?.onChat(id)
-        this.store.attach(run.id, id, this.now())
-        this.changed()
-      }
-    })
-    this.store.finish(run.id, result.status, result.text, this.now(), itemsForFinish(result))
-    prepared?.settle?.()
-    this.changed()
-    return result
+    try {
+      const result = await this.host.runRoutine(run.botId, webhookPrompt(webhook, access.prompt, items, withheld.length), {
+        runId: `webhook-${run.id}`,
+        access: access.access,
+        ...(prepared ? { sessionMcp: prepared.sessionMcp, assertSessionMcpReady: prepared.assertSessionMcpReady } : {}),
+        origin: { line: webhookLine },
+        onChat: id => {
+          prepared?.onChat(id)
+          this.store.attach(run.id, id, this.now())
+          this.changed()
+        }
+      })
+      this.store.finish(run.id, result.status, result.text, this.now(), itemsForFinish(result))
+      this.changed()
+      return result
+    } finally {
+      prepared?.settle?.()
+    }
   }
 }

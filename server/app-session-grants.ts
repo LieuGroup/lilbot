@@ -60,6 +60,12 @@ export function createSessionGrants(
       prepare(grants.ensure({ ownerKey: `webhook:${run.id}`, botId: run.botId, scope: { kind: 'webhook', runId: run.id, capabilities } })),
     prepareNarrowed: (botId: string, threadId: string, capabilities: WebhookCapability[]) =>
       prepare(grants.ensure({ ownerKey: `thread:${threadId}:${botId}`, botId, scope: { kind: 'narrowed', threadId, capabilities } })),
+    prepareNarrowedReply: (botId: string, chatId: string) => {
+      const existing = grants.activeForChat(botId, chatId)
+      if (!existing || (existing.scope.kind !== 'narrowed' && existing.scope.kind !== 'webhook')) return null
+      const active = existing.scope.kind === 'narrowed' ? grants.ensure({ ownerKey: existing.ownerKey, botId: existing.botId, scope: existing.scope }) : existing
+      return { ...prepare(active), scopeKind: existing.scope.kind, capabilities: existing.scope.capabilities }
+    },
     revokeCheck: (checkId: string) => grants.revokeByOwner(`check:${checkId}`),
     revokeThread: (threadId: string) => grants.revokeByPrefix(`thread:${threadId}:`),
     revokeForBot: (botId: string) => grants.revokeForBot(botId),

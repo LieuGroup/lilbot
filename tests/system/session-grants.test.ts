@@ -70,10 +70,12 @@ describe('SessionGrants lifecycle, lineage, and cutover', () => {
     expect(grants.ownsChat('stored-1')).toBe(true)
     expect(grants.ownsChat('alias-1')).toBe(true)
     expect(grants.hasActiveGrantForChat('stored-1')).toBe(true)
+    expect(grants.activeForChat('b1', 'stored-1')?.id).toBe(g.id)
 
     // Revoke grant (e.g. settle or bot deletion): tombstones remain intact so settled chats & continuations stay identified.
     grants.revokeForBot('b1')
     expect(grants.hasActiveGrantForChat('stored-1')).toBe(false)
+    expect(grants.activeForChat('b1', 'stored-1')).toBeNull()
     expect(grants.ownsChat('stored-1')).toBe(true)
     const byAlias = grants.forChat('b1', 'alias-1')
     const byChild = grants.forChat('b1', 'child-1')
@@ -105,20 +107,30 @@ describe('SessionGrants lifecycle, lineage, and cutover', () => {
     db.close()
   })
 
-  test('hasLegacyUngrantedRun is false on clean DB and for granted runs, true only for pre-deploy ungranted records', () => {
+  test('hasLegacyUngrantedRun ignores settled historical rows and returns true only for active pre-deploy ungranted runs', () => {
     const db = makeDb()
     const grants = new SessionGrants(db, TOKEN, (_b, c) => c)
     expect(grants.hasLegacyUngrantedRun('b1')).toBe(false)
 
-    // Granted webhook run -> still false.
+    // Settled historical pre-deploy webhook, narrowed thread, and check rows must NOT keep CallingChats armed.
     db.query("INSERT INTO webhooks VALUES ('wh-1', 'b1', 'r1', 'd', 'gh', 'oscar', 1000, 'n', NULL, 0, 0, NULL, '[]')").run()
-    db.query("INSERT INTO webhook_runs(id, webhook_id, bot_id, created_at, status) VALUES ('wr-1', 'wh-1', 'b1', 1000, 'completed')").run()
+    db.query("INSERT INTO webhook_runs(id, webhook_id, bot_id, created_at, status) VALUES ('wr-done', 'wh-1', 'b1', 1000, 'completed')").run()
+    db.query("INSERT INTO webhook_runs(id, webhook_id, bot_id, created_at, status) VALUES ('wr-fail', 'wh-1', 'b1', 1001, 'failed')").run()
+    db.query("INSERT INTO threads VALUES ('t-done', ?)").run(JSON.stringify({ id: 't-done', status: 'finished', capabilities: ['delegation'] }))
+    db.query("INSERT INTO thread_chats VALUES ('tc-done', 'b1', 't-done')").run()
+    db.query(
+      "INSERT INTO work_checks(id, item_id, round, checker_kind, checker_id, checker_name, state, created_at) VALUES ('ck-done', 'i-0', 1, 'bot', 'b1', 'Bot One', 'verified', 1000)"
+    ).run()
+    expect(grants.hasLegacyUngrantedRun('b1')).toBe(false)
+
+    // Active ungranted webhook run -> true until granted.
+    db.query("INSERT INTO webhook_runs(id, webhook_id, bot_id, created_at, status) VALUES ('wr-1', 'wh-1', 'b1', 1002, 'running')").run()
     expect(grants.hasLegacyUngrantedRun('b1')).toBe(true)
     grants.ensure({ ownerKey: 'webhook:wr-1', botId: 'b1', scope: { kind: 'webhook', runId: 'wr-1', capabilities: [] } })
     expect(grants.hasLegacyUngrantedRun('b1')).toBe(false)
 
-    // Pre-deploy ungranted narrowed thread (even settled) -> true until granted.
-    db.query("INSERT INTO threads VALUES ('t-1', ?)").run(JSON.stringify({ id: 't-1', status: 'finished', capabilities: ['delegation'] }))
+    // Active ungranted narrowed thread -> true until granted.
+    db.query("INSERT INTO threads VALUES ('t-1', ?)").run(JSON.stringify({ id: 't-1', status: 'working', capabilities: ['delegation'] }))
     db.query("INSERT INTO thread_chats VALUES ('tc-1', 'b1', 't-1')").run()
     expect(grants.hasLegacyUngrantedRun('b1')).toBe(true)
     grants.ensure({ ownerKey: 'thread:t-1:b1', botId: 'b1', scope: { kind: 'narrowed', threadId: 't-1', capabilities: ['delegation'] } })

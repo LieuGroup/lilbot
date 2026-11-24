@@ -43,9 +43,16 @@ export class WorkCheckRunner {
         },
         {
           onError: error => {
-            if (!(error instanceof LilBotError && error.code === 'bot_not_found')) return false
-            this.work.checking.ended(check.id, `${check.by.name} is no longer available to check it.`)
-            return true
+            if (!(error instanceof LilBotError)) return false
+            if (error.code === 'bot_not_found') {
+              this.work.checking.ended(check.id, `${check.by.name} is no longer available to check it.`)
+              return true
+            }
+            if (error.code === 'session_scope_violation') {
+              this.work.checking.ended(check.id, 'The check session could not verify its tool scope.')
+              return true
+            }
+            return false
           },
           onFinally: () => this.activity(botId, check.id, false)
         }

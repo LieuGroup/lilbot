@@ -9,60 +9,126 @@ import { WorkService } from '../../server/work/work-service'
 import { WorkStore } from '../../server/work/work-store'
 
 const TOKEN = 'cutover-secret'
+const BOTS = [
+  { id: 'b1', name: 'Bot One' },
+  { id: 'b2', name: 'Bot Two' },
+  { id: 'b3', name: 'Bot Three' }
+]
+
+type SeenRun = { botId: string; chatId?: string; access?: unknown; hasMcp: boolean; hasReady: boolean }
+
+function makeRunner(db: ReturnType<typeof openDatabase>, grants: SessionGrants, store: ThreadStore) {
+  const runs: SeenRun[] = []
+  let nextSid = 0
+  const runner = new ThreadRunner(
+    store,
+    new ThreadFiles(db),
+    new ThreadWaits(store),
+    {
+      requireBot: async id => BOTS.find(b => b.id === id)!,
+      narrowedAccess: caps => ({ access: { kind: 'webhook', capabilities: caps }, prompt: 'limited' }),
+      prepareNarrowedSession: (botId, threadId, caps) => {
+        const g = grants.ensure({ ownerKey: `thread:${threadId}:${botId}`, botId, scope: { kind: 'narrowed', threadId, capabilities: caps } })
+        return {
+          sessionMcp: grants.connectionsFor(g, 'http://127.0.0.1:3370', ['lilbot_work'], false),
+          assertSessionMcpReady: () => {},
+          onChat: id => grants.bindChat(g.id, id),
+          primaryChatId: g.primaryChatId ?? undefined
+        }
+      },
+      prepareNarrowedReply: (botId, chatId) => {
+        const g = grants.activeForChat(botId, chatId)
+        if (!g || (g.scope.kind !== 'narrowed' && g.scope.kind !== 'webhook')) return null
+        return {
+          sessionMcp: grants.connectionsFor(g, 'http://127.0.0.1:3370', ['lilbot_work'], false),
+          assertSessionMcpReady: () => {},
+          onChat: id => grants.bindChat(g.id, id),
+          primaryChatId: g.primaryChatId ?? undefined,
+          scopeKind: g.scope.kind,
+          capabilities: g.scope.capabilities
+        }
+      },
+      runRoutine: async (botId, _prompt, opts) => {
+        runs.push({ botId, chatId: opts.chatId, access: opts.access, hasMcp: !!opts.sessionMcp?.length, hasReady: typeof opts.assertSessionMcpReady === 'function' })
+        const sid = opts.chatId ?? `acp-granted-${++nextSid}`
+        opts.onChat(sid)
+        return { status: 'completed', text: 'ok', items: [{ kind: 'assistant', text: 'ok' }] }
+      }
+    },
+    () => {},
+    () => {},
+    () => {}
+  )
+  const waitDone = async (id: string) => {
+    runner.tick()
+    for (let i = 0; i < 40 && store.delivery(id)?.status !== 'done'; i++) await Bun.sleep(10)
+  }
+  return { runner, runs, waitDone }
+}
 
 describe('Pre-deploy narrowed session cutover and direct checkId verdict binding', () => {
   test('ThreadRunner refuses to resume an ungranted pre-deploy narrowed workSession and resumes a granted one', async () => {
     const db = openDatabase(':memory:')
     const grants = new SessionGrants(db, TOKEN, (_b, c) => c)
     const store = new ThreadStore(db, (_b, c) => c)
-    const b1 = { id: 'b1', name: 'Bot One' }
-    const b2 = { id: 'b2', name: 'Bot Two' }
+    const [b1, b2] = BOTS
     const first = store.accept(b1, b2, { requestId: 'r1', text: 'first turn', chatId: 'wh-1', capabilities: ['delegation'] })
-    // Simulate a pre-deploy ungranted workSession recorded in thread_chats without a session_grants row.
     store.attach(first, b2.id, 'legacy-tool-session', true)
     store.setStatus(first.id, 'done')
 
+    const { runs, waitDone } = makeRunner(db, grants, store)
     const second = store.accept(b1, b2, { requestId: 'r2', text: 'second turn', chatId: 'wh-1', threadId: first.threadId, capabilities: ['delegation'] })
-    const seenChats: { botId: string; chatId: string | undefined }[] = []
-    let nextSid = 0
-    const runner = new ThreadRunner(
-      store,
-      new ThreadFiles(db),
-      new ThreadWaits(store),
-      {
-        requireBot: async id => (id === 'b1' ? b1 : b2),
-        narrowedAccess: caps => ({ access: { kind: 'webhook', capabilities: caps }, prompt: 'limited' }),
-        prepareNarrowedSession: (botId, threadId, caps) => {
-          const g = grants.ensure({ ownerKey: `thread:${threadId}:${botId}`, botId, scope: { kind: 'narrowed', threadId, capabilities: caps } })
-          return {
-            sessionMcp: grants.connectionsFor(g, 'http://127.0.0.1:3370', ['lilbot_work'], false),
-            assertSessionMcpReady: () => {},
-            onChat: id => grants.bindChat(g.id, id),
-            primaryChatId: g.primaryChatId ?? undefined
-          }
-        },
-        runRoutine: async (botId, _prompt, opts) => {
-          seenChats.push({ botId, chatId: opts.chatId })
-          const sid = opts.chatId ?? `acp-granted-${++nextSid}`
-          opts.onChat(sid)
-          return { status: 'completed', text: 'ok', items: [{ kind: 'assistant', text: 'ok' }] }
-        }
-      },
-      () => {},
-      () => {},
-      () => {}
-    )
-    runner.tick()
-    for (let i = 0; i < 30 && store.delivery(second.id)?.status !== 'done'; i++) await Bun.sleep(10)
-    // Turn 2 did NOT resume legacy-tool-session; started a fresh granted session instead!
-    expect(seenChats.filter(c => c.botId === 'b2').map(c => c.chatId)).toEqual([undefined])
+    await waitDone(second.id)
+    expect(runs.filter(c => c.botId === 'b2').map(c => c.chatId)).toEqual([undefined])
     expect(grants.hasActiveGrantForChat('acp-granted-1')).toBe(true)
 
-    // Turn 3 DOES resume acp-granted-1 because its grant is active!
     const third = store.accept(b1, b2, { requestId: 'r3', text: 'third turn', chatId: 'wh-1', threadId: first.threadId, capabilities: ['delegation'] })
+    await waitDone(third.id)
+    expect(runs.filter(c => c.botId === 'b2').map(c => c.chatId)).toEqual([undefined, 'acp-granted-1'])
+    db.close()
+  })
+
+  test('narrowed parent resumes with scope and sessionMcp for child answer/notice, and refuses ungranted or revoked parents', async () => {
+    const db = openDatabase(':memory:')
+    const grants = new SessionGrants(db, TOKEN, (_b, c) => c)
+    const store = new ThreadStore(db, (_b, c) => c)
+    const [b1, b2, b3] = BOTS
+    const parentWork = store.accept(b1, b2, { requestId: 'p1', text: 'parent task', chatId: 'wh-root', capabilities: ['delegation', 'shell'] })
+    const parentGrant = grants.ensure({
+      ownerKey: `thread:${parentWork.threadId}:b2`,
+      botId: 'b2',
+      scope: { kind: 'narrowed', threadId: parentWork.threadId, capabilities: ['delegation', 'shell'] }
+    })
+    grants.bindChat(parentGrant.id, 'parent-acp-1')
+    store.attach(parentWork, 'b2', 'parent-acp-1', true)
+    store.setStatus(parentWork.id, 'done')
+
+    const { runner, runs, waitDone } = makeRunner(db, grants, store)
+    const child = store.accept(b2, b3, { requestId: 'c1', text: 'child task', chatId: 'parent-acp-1', capabilities: ['delegation', 'shell'] })
+    await waitDone(child.id)
     runner.tick()
-    for (let i = 0; i < 30 && store.delivery(third.id)?.status !== 'done'; i++) await Bun.sleep(10)
-    expect(seenChats.filter(c => c.botId === 'b2').map(c => c.chatId)).toEqual([undefined, 'acp-granted-1'])
+    for (let i = 0; i < 40 && !runs.some(r => r.botId === 'b2'); i++) await Bun.sleep(10)
+    expect(runs.find(r => r.botId === 'b2')).toEqual({
+      botId: 'b2',
+      chatId: 'parent-acp-1',
+      access: { kind: 'narrowed', capabilities: ['delegation', 'shell'] },
+      hasMcp: true,
+      hasReady: true
+    })
+
+    // Notice into the active narrowed parent preserves scope and sessionMcp; ungranted or revoked parents settle cleanly without resuming.
+    store.enqueue('n1', child.threadId, 'b3', 'b2', 'parent-acp-1', 'Heads up', 'notice')
+    await waitDone('n1')
+    expect(runs.filter(r => r.botId === 'b2')).toHaveLength(2)
+    expect(runs.at(-1)).toMatchObject({ botId: 'b2', chatId: 'parent-acp-1', access: { kind: 'narrowed', capabilities: ['delegation', 'shell'] }, hasMcp: true })
+
+    grants.revoke(parentGrant.id)
+    store.enqueue('n2', child.threadId, 'b3', 'b2', 'parent-acp-1', 'Late notice', 'notice')
+    await waitDone('n2')
+    store.enqueue('n3', child.threadId, 'b3', 'b2', 'legacy-ungranted-parent', 'Legacy notice', 'notice')
+    await waitDone('n3')
+    expect([store.delivery('n2')?.status, store.delivery('n3')?.status]).toEqual(['done', 'done'])
+    expect(runs.filter(r => r.botId === 'b2')).toHaveLength(2)
     db.close()
   })
 
@@ -98,7 +164,6 @@ describe('Pre-deploy narrowed session cutover and direct checkId verdict binding
     grants.bindChat(grant.id, 'chk-chat-1')
     work.checks.attach(check.id, 'chk-chat-1')
 
-    // Wrong checkId refused without touching CallingChats.
     await expect(
       work.act(
         'b2',
@@ -109,7 +174,6 @@ describe('Pre-deploy narrowed session cutover and direct checkId verdict binding
     ).rejects.toThrow(/check session/)
     expect(callingChatUsed).toBe(0)
 
-    // Matching checkId settles the item and immediately revokes the check grant.
     const settled = await work.act(
       'b2',
       { requestId: 'v-ok', itemId: opened.id, verdict: 'verified', result: 'Confirmed', evidence: [{ proves: 'Checked', command: 'curl', output: 'ok' }] },

@@ -1,5 +1,6 @@
 /** What a bot is told when a delegation or worker reaches it. Bot text is untrusted data: always JSON-quoted in a named fence. */
 import type { ChatItem } from '../../shared/chat-schema'
+import { LilBotError } from '../../shared/lilbot-error'
 import type { BotThread } from '../../shared/thread-schema'
 import type { WebhookCapability } from '../../shared/webhook-schema'
 import type { WorkerDriverId } from '../../shared/worker-frame-schema'
@@ -109,11 +110,16 @@ interface PreparedNarrowedSession {
   onChat: (chatId: string) => void
   primaryChatId?: string
 }
+interface PreparedNarrowedReply extends PreparedNarrowedSession {
+  scopeKind: 'narrowed' | 'webhook'
+  capabilities: WebhookCapability[]
+}
 export interface NarrowedHost {
   sessionCapabilities?(botId: string, chatId: string): WebhookCapability[] | null
   hasNarrowed?(botId: string): boolean
   narrowedAccess?: NarrowedAccess
   prepareNarrowedSession?(botId: string, threadId: string, capabilities: WebhookCapability[]): PreparedNarrowedSession
+  prepareNarrowedReply?(botId: string, chatId: string): PreparedNarrowedReply | null
   revokeThreadGrants?(threadId: string): void
 }
 
@@ -128,6 +134,50 @@ export function workRunOptions(thread: BotThread, toWork: boolean, workSession?:
     ...(!thread.computer && scope ? { access: scope } : {}),
     ...(!workSession || thread.computer ? { ...(thread.model ? { model: thread.model } : {}), ...(thread.reasoningEffort ? { reasoningEffort: thread.reasoningEffort } : {}) } : {})
   }
+}
+
+/** Resolves the session id, narrowed access scope, and session-bound MCP attachment for both work turns and replies into narrowed parents. */
+export function deliveryRunOptions(
+  d: Delivery,
+  thread: BotThread,
+  toWork: boolean,
+  parentThread: BotThread | null,
+  savedSession: string | undefined,
+  host: NarrowedHost
+): { chatId: string | undefined; onChat?: (chatId: string) => void; options: Partial<ThreadRunOptions> } {
+  if (toWork) {
+    const narrowedLocal = !!thread.capabilities && !thread.computer
+    const prepared = narrowedLocal ? host.prepareNarrowedSession?.(d.target, d.threadId, thread.capabilities!) : undefined
+    // Never resume an ungranted pre-deploy or revoked/expired narrowed session: resume only the active grant's canonical primaryChatId.
+    const workSession = narrowedLocal && prepared ? prepared.primaryChatId : savedSession
+    return {
+      chatId: workSession,
+      onChat: prepared?.onChat,
+      options: {
+        ...workRunOptions(thread, true, workSession, host.narrowedAccess),
+        ...(prepared ? { sessionMcp: prepared.sessionMcp, assertSessionMcpReady: prepared.assertSessionMcpReady } : {})
+      }
+    }
+  }
+  const replyCaps = parentThread?.computer
+    ? null
+    : (parentThread?.capabilities ?? (thread.capabilities ? (host.sessionCapabilities?.(d.target, d.sourceChat) ?? thread.capabilities) : null))
+  if (!replyCaps) return { chatId: d.sourceChat, options: {} }
+  if (host.prepareNarrowedReply) {
+    const prepared = host.prepareNarrowedReply(d.target, d.sourceChat)
+    if (!prepared) throw new LilBotError('session_not_found', 'Narrowed parent session has no active grant.')
+    const resolved = host.narrowedAccess?.(prepared.capabilities)
+    const capabilities = [...(resolved && typeof resolved.access === 'object' ? resolved.access.capabilities : prepared.capabilities)]
+    const access: RunAccessScope = { kind: prepared.scopeKind, capabilities }
+    return {
+      chatId: d.sourceChat,
+      onChat: prepared.onChat,
+      options: { access, capabilities, sessionMcp: prepared.sessionMcp, assertSessionMcpReady: prepared.assertSessionMcpReady }
+    }
+  }
+  const resolved = host.narrowedAccess?.(replyCaps)
+  const access: RunAccessScope | undefined = resolved && typeof resolved.access === 'object' ? { kind: 'narrowed', capabilities: resolved.access.capabilities } : resolved?.access
+  return { chatId: d.sourceChat, options: { capabilities: replyCaps, ...(access ? { access } : {}) } }
 }
 
 /** Builds the prompt for a delivery and appends the narrowed-run tool note when the exchange or group carries narrowed capabilities. */
