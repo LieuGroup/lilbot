@@ -8,6 +8,7 @@
  *  - `[local only — requires ios/node_modules]` (reported as `(skip)` on CI): runs the full Expo `xcodeproj`
  *    mod pipeline (`buildAppConfig` + `BaseMods` + `evalModsAsync`) for on, idempotence, and off. */
 import { afterEach, describe, expect, test } from 'bun:test'
+import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
@@ -96,6 +97,11 @@ describe('withTabScrollMinimize config plugin', () => {
       'class_addMethod(cls, selector, imp, types)',
       'objc_msgSendSuper',
       'setContentScrollView:target forEdge:NSDirectionalRectEdgeBottom',
+      'if (current != target)',
+      'current.window != nil',
+      'LilBotIsValidVerticalScrollView(current) && [current isDescendantOfView:searchRoot]',
+      '__weak UIViewController *weakTabScreen',
+      'hops < kLilBotMaxResponderHops',
       '@selector(viewDidLayoutSubviews)',
       '@selector(didMoveToWindow)',
       '@"RCTEnhancedScrollView"',
@@ -109,7 +115,7 @@ describe('withTabScrollMinimize config plugin', () => {
       '(scrollView.alwaysBounceHorizontal && !scrollView.alwaysBounceVertical)',
       'contentSize.width > boundsSize.width + 1.0',
       'contentSize.height <= boundsSize.height + 1.0',
-      'if (!horizontalOnly) return scrollView;',
+      'return !horizontalOnly;',
       'while (head < queue.count && visited < kLilBotMaxVisitedViews)',
       'if (queue.count >= kLilBotMaxVisitedViews) break;'
     ]) {
@@ -177,5 +183,12 @@ describe('withTabScrollMinimize config plugin', () => {
       if (prevTeam !== undefined) process.env.APPLE_TEAM_ID = prevTeam
       if (prevProfile !== undefined) process.env.IOS_PROVISIONING_PROFILE_NAME = prevProfile
     }
+
+    // Exercise Node.js `@expo/config` + `withPlugins` resolution (the exact loader `npx expo prebuild` runs),
+    // which catches sibling `.ts` imports that Bun's test loader would silently accept.
+    const nodeScript =
+      "const { getConfig } = require('@expo/config'); const { withPlugins } = require('expo/config-plugins'); const { exp } = getConfig(process.cwd()); const resolved = withPlugins(exp, exp.plugins ?? []); if (!resolved.mods?.ios?.xcodeproj) throw new Error('missing xcodeproj mod'); console.log('NODE_EXPO_OK');"
+    const stdout = execFileSync('node', ['-e', nodeScript], { cwd: iosRoot, encoding: 'utf8' })
+    expect(stdout).toContain('NODE_EXPO_OK')
   })
 })

@@ -1,8 +1,4 @@
-/** Objective-C source emitted by `with-tab-scroll-minimize.ts` for software-mansion/react-native-screens#4145. */
-
-export const TAB_SCROLL_MINIMIZE_FILE = 'LilBotTabScrollMinimize.m'
-
-export const TAB_SCROLL_MINIMIZE_SOURCE = `// Workaround for software-mansion/react-native-screens#4145:
+// Workaround for software-mansion/react-native-screens#4145:
 // On iOS 26, UITabBarController.tabBarMinimizeBehavior = .onScrollDown never engages when
 // a tab hosts a nested native Stack because UIKit caches a one-shot contentScrollViewForEdge:
 // pull before React Native mounts the list and does not traverse Fabric wrapper views.
@@ -14,7 +10,7 @@ export const TAB_SCROLL_MINIMIZE_SOURCE = `// Workaround for software-mansion/re
 #import <objc/message.h>
 #import <objc/runtime.h>
 
-#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && defined(__IPHONE_26_0) && \\
+#if defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && defined(__IPHONE_26_0) && \
     __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_26_0 && !TARGET_OS_TV && !TARGET_OS_VISION
 
 static const NSUInteger kLilBotMaxVisitedViews = 2000;
@@ -48,6 +44,17 @@ static BOOL LilBotShouldResolveForTabBar(UIViewController *vc, NSDirectionalRect
   return NO;
 }
 
+static BOOL LilBotIsValidVerticalScrollView(UIScrollView *scrollView) {
+  if (scrollView == nil || scrollView.isHidden || scrollView.alpha <= 0.01) return NO;
+  if (scrollView.layer.transform.m22 < 0.0 || [scrollView isKindOfClass:UITextView.class] || !scrollView.scrollEnabled) return NO;
+  CGSize contentSize = scrollView.contentSize;
+  CGSize boundsSize = scrollView.bounds.size;
+  BOOL horizontalOnly =
+      (scrollView.alwaysBounceHorizontal && !scrollView.alwaysBounceVertical) ||
+      (contentSize.width > boundsSize.width + 1.0 && contentSize.height <= boundsSize.height + 1.0);
+  return !horizontalOnly;
+}
+
 static UIScrollView *LilBotFindVerticalScrollView(UIView *rootView) {
   if (rootView == nil || rootView.isHidden || rootView.alpha <= 0.01) return nil;
   NSMutableArray<UIView *> *queue = [NSMutableArray arrayWithObject:rootView];
@@ -62,18 +69,8 @@ static UIScrollView *LilBotFindVerticalScrollView(UIView *rootView) {
     // and multiline text inputs (UITextView subclasses UIScrollView).
     if (view.layer.transform.m22 < 0.0) continue;
     if ([view isKindOfClass:UITextView.class]) continue;
-
-    if ([view isKindOfClass:UIScrollView.class]) {
-      UIScrollView *scrollView = (UIScrollView *)view;
-      if (scrollView.scrollEnabled) {
-        CGSize contentSize = scrollView.contentSize;
-        CGSize boundsSize = scrollView.bounds.size;
-        BOOL horizontalOnly =
-            (scrollView.alwaysBounceHorizontal && !scrollView.alwaysBounceVertical) ||
-            (contentSize.width > boundsSize.width + 1.0 &&
-             contentSize.height <= boundsSize.height + 1.0);
-        if (!horizontalOnly) return scrollView;
-      }
+    if ([view isKindOfClass:UIScrollView.class] && LilBotIsValidVerticalScrollView((UIScrollView *)view)) {
+      return (UIScrollView *)view;
     }
     for (UIView *subview in view.subviews) {
       if (queue.count >= kLilBotMaxVisitedViews) break;
@@ -83,27 +80,35 @@ static UIScrollView *LilBotFindVerticalScrollView(UIView *rootView) {
   return nil;
 }
 
-static UIScrollView *LilBotResolveTabScreenScrollView(UIViewController *tabScreenVC) {
+static UIView *LilBotTabScreenSearchRoot(UIViewController *tabScreenVC) {
   if (tabScreenVC == nil || !tabScreenVC.isViewLoaded) return nil;
-  if (!LilBotShouldResolveForTabBar(tabScreenVC, NSDirectionalRectEdgeBottom)) return nil;
   for (UIViewController *child in tabScreenVC.childViewControllers) {
     if ([child isKindOfClass:UINavigationController.class]) {
       UIViewController *top = ((UINavigationController *)child).topViewController;
       if (top == nil || !top.isViewLoaded) return nil;
-      return LilBotFindVerticalScrollView(top.view);
+      return top.view;
     }
   }
-  return LilBotFindVerticalScrollView(tabScreenVC.view);
+  return tabScreenVC.view;
 }
 
 static void LilBotSyncTabScreenScrollView(UIViewController *tabScreenVC) {
   if (tabScreenVC == nil || !tabScreenVC.isViewLoaded) return;
   if (@available(iOS 26.0, *)) {
-    UIScrollView *target = LilBotResolveTabScreenScrollView(tabScreenVC);
-    UIScrollView *current = LilBotCallSuperContentScrollView(tabScreenVC, @selector(contentScrollViewForEdge:), sLilBotTabsScreenSuperclass, NSDirectionalRectEdgeBottom);
-    if (current != target) {
-      [tabScreenVC setContentScrollView:target forEdge:NSDirectionalRectEdgeBottom];
+    UIScrollView *current = LilBotCallSuperContentScrollView(
+        tabScreenVC, @selector(contentScrollViewForEdge:), sLilBotTabsScreenSuperclass, NSDirectionalRectEdgeBottom);
+    if (!LilBotShouldResolveForTabBar(tabScreenVC, NSDirectionalRectEdgeBottom)) {
+      if (current != nil) [tabScreenVC setContentScrollView:nil forEdge:NSDirectionalRectEdgeBottom];
+      return;
     }
+    UIView *searchRoot = LilBotTabScreenSearchRoot(tabScreenVC);
+    // O(1) steady-state fast path: skip BFS when the registered scroll view is still live inside searchRoot.
+    if (current != nil && searchRoot != nil && current.window != nil &&
+        LilBotIsValidVerticalScrollView(current) && [current isDescendantOfView:searchRoot]) {
+      return;
+    }
+    UIScrollView *target = searchRoot != nil ? LilBotFindVerticalScrollView(searchRoot) : nil;
+    if (current != target) [tabScreenVC setContentScrollView:target forEdge:NSDirectionalRectEdgeBottom];
   }
 }
 
@@ -149,8 +154,7 @@ static void LilBotScrollViewDidMoveToWindow(UIView *self, SEL _cmd) {
   }
 }
 
-static BOOL LilBotInstallOverrideIfMissing(
-    NSString *className, Class requiredSuper, SEL selector, IMP imp, Class *outSuperclass) {
+static BOOL LilBotInstallOverrideIfMissing(NSString *className, Class requiredSuper, SEL selector, IMP imp, Class *outSuperclass) {
   Class cls = NSClassFromString(className);
   if (cls == Nil || ![cls isSubclassOfClass:requiredSuper]) return NO;
   Method inherited = class_getInstanceMethod(requiredSuper, selector);
@@ -171,26 +175,20 @@ static void LilBotInstallTabScrollMinimize(void) {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
       SEL contentSel = @selector(contentScrollViewForEdge:);
-      if (LilBotInstallOverrideIfMissing(@"RNSTabsScreenViewController", UIViewController.class,
-                                         contentSel, (IMP)LilBotTabsScreenContentScrollViewForEdge,
-                                         &sLilBotTabsScreenSuperclass)) {
+      if (LilBotInstallOverrideIfMissing(@"RNSTabsScreenViewController", UIViewController.class, contentSel,
+                                         (IMP)LilBotTabsScreenContentScrollViewForEdge, &sLilBotTabsScreenSuperclass)) {
         sLilBotTabsScreenClass = NSClassFromString(@"RNSTabsScreenViewController");
       }
       LilBotInstallOverrideIfMissing(@"RNSScreen", UIViewController.class, contentSel,
-                                     (IMP)LilBotScreenContentScrollViewForEdge,
-                                     &sLilBotScreenSuperclass);
+                                     (IMP)LilBotScreenContentScrollViewForEdge, &sLilBotScreenSuperclass);
       if (sLilBotTabsScreenClass != Nil) {
         LilBotInstallOverrideIfMissing(@"RNSTabsScreenViewController", UIViewController.class,
-                                       @selector(viewDidLayoutSubviews),
-                                       (IMP)LilBotTabsScreenViewDidLayoutSubviews, NULL);
+                                       @selector(viewDidLayoutSubviews), (IMP)LilBotTabsScreenViewDidLayoutSubviews, NULL);
         LilBotInstallOverrideIfMissing(@"RCTEnhancedScrollView", UIScrollView.class,
-                                       @selector(didMoveToWindow),
-                                       (IMP)LilBotScrollViewDidMoveToWindow,
-                                       &sLilBotScrollViewSuperclass);
+                                       @selector(didMoveToWindow), (IMP)LilBotScrollViewDidMoveToWindow, &sLilBotScrollViewSuperclass);
       }
     });
   }
 }
 
 #endif
-`
