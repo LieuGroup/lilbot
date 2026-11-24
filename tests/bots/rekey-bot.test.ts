@@ -92,6 +92,12 @@ test('full re-key covers every table and all 6 composite shapes, passes schema-w
     ])
     expect(db.query('SELECT id FROM work_answers ORDER BY id').all()).toEqual([{ id: `check-${newCheck}` }, { id: `drop-${newMember}` }])
     expect(db.query('SELECT id, verdict_request FROM work_checks WHERE item_id = ?').get(newMember)).toEqual({ id: newCheck, verdict_request: `verdict-${newCheck}` })
+    expect(db.query('SELECT id, owner_key, bot_id, scope_json FROM session_grants ORDER BY id').all()).toEqual([
+      { id: 'sg-1', owner_key: 'webhook:wr-1', bot_id: newId, scope_json: '{"kind":"webhook","runId":"wr-1","capabilities":[]}' },
+      { id: 'sg-2', owner_key: `thread:thr-worker:${newId}`, bot_id: newId, scope_json: '{"kind":"narrowed","threadId":"thr-worker","capabilities":["delegation"]}' },
+      { id: 'sg-chk', owner_key: `check:${newCheck}`, bot_id: newId, scope_json: JSON.stringify({ kind: 'check', checkId: newCheck }) },
+      { id: 'sg-decoy', owner_key: `thread:thr-decoy:${DECOY_ID}`, bot_id: DECOY_ID, scope_json: '{"kind":"narrowed","threadId":"thr-decoy","capabilities":["delegation"]}' }
+    ])
     expect(db.query("SELECT target FROM system_changes WHERE tool = 'lilbot_work'").get()).toEqual({ target: newMember })
     expect(db.query('SELECT chat_id, event_key FROM activity_cursors WHERE bot_id = ? ORDER BY chat_id').all(newId)).toEqual([
       { chat_id: 'chat-main-1', event_key: 'evt-1' },

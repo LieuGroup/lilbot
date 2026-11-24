@@ -19,6 +19,7 @@ const GREETING =
   'Introduce yourself to Oscar in a short greeting and suggest three concrete tasks you could help him start, based on your instructions. Do not use tools or claim to have done work. This is your first message in your main conversation.'
 
 export class BotCreation {
+  private creating = new Map<string, Promise<void>>()
   private pending = new Map<string, Promise<{ id: string; url: string; greetingPending?: true }>>()
   private greetings = new Map<string, Promise<void>>()
   constructor(
@@ -45,6 +46,18 @@ export class BotCreation {
     return this.run(caller, input, id, false)
   }
 
+  private ensureCreated(caller: BotRecord, input: BotCreationInput, id: string): Promise<void> {
+    if (this.store.exists(id)) return Promise.resolve()
+    const existing = this.creating.get(id)
+    if (existing) return existing
+    const task = this.service
+      .createBot({ ...input, ...(caller.model ? { model: caller.model } : {}) }, id, caller.engineId)
+      .then(() => undefined)
+      .finally(() => this.creating.delete(id))
+    this.creating.set(id, task)
+    return task
+  }
+
   private startGreeting(id: string): Promise<void> {
     const existing = this.greetings.get(id)
     if (existing) return existing
@@ -64,7 +77,7 @@ export class BotCreation {
 
   private async run(caller: BotRecord, input: BotCreationInput, id: string, waitForGreeting: boolean) {
     if (!this.store.creationDone(id)) {
-      if (!this.store.exists(id)) await this.service.createBot({ ...input, ...(caller.model ? { model: caller.model } : {}) }, id, caller.engineId)
+      await this.ensureCreated(caller, input, id)
       const greeting = this.startGreeting(id)
       if (!waitForGreeting) {
         void greeting.catch(() => backgroundFailure('bot creation greeting'))

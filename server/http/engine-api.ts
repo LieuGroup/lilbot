@@ -47,18 +47,13 @@ export interface EngineApiOptions {
   library?: LibraryService
   botExists: (botId: string) => boolean
   onMemoryChanged?: () => void
-  /** The adapter version this LilBot ships. A bot calling with another one runs stale adapter code. */
   adapterVersion?: string
-  /** Receives finished turns and knows which chats are reviews. Without it there is no review. */
   reviewer?: MemoryReviewer
-  /** Durable record of pre-compress pieces already reviewed for memory. */
   checkpointStore?: CheckpointStore
-  /** Routine, thread and webhook sessions and their compression children are never reviewed, before or after compressing. */
   chatKind?: import('../bots/hidden-chats').ChatKind
-  /** Why a call that may come from a check session (no memory, no computers, no changes) is refused, or null. */
   inCheck?: (botId: string, chatId: string | undefined, use: CheckUse) => string | null
-  /** Webhook runs (`app-webhooks.ts`): why a session may not use memory, its capabilities, and plug-in call refusals. */
   memoryLocked?: (botId: string, chatId: string | undefined) => string | null
+  skillWriteLocked?: (botId: string, chatId: string | undefined) => string | null
   sessionCapabilities?: (botId: string, chatId: string | undefined) => WebhookCapability[] | null
   pluginRefusal?: (botId: string, pathname: string, body: unknown, session: string | undefined) => string | null | Promise<string | null>
 }
@@ -125,7 +120,10 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
             if (!options.skills.offered(caller.id).some(s => s.name === name)) return json(403, { error: 'Skill disabled or missing.' })
             return json(200, { content: options.skills.read(name)[String(skillBody.file_path ?? 'SKILL.md')] })
           }
-          if (pathname.endsWith('/write')) return json(200, options.skills.write(SkillWrite.parse(skillBody), caller.id))
+          if (pathname.endsWith('/write')) {
+            const locked = options.skillWriteLocked?.(caller.id, session)
+            return locked ? json(422, { error: locked }) : json(200, options.skills.write(SkillWrite.parse(skillBody), caller.id))
+          }
           return json(404, { error: 'Unknown skill operation.' })
         }
         if (pathname.startsWith('/engine/routines/')) {

@@ -182,7 +182,14 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
   const reviewer = mem.startReviewer(bots, store, repeat)
   const apiCore = { history, bots, skills, routines, library, threads, reviewer, checkpointStore: mem.checkpointStore }
   const apiHooks = { chatKind, adapterVersion: MEMORY_ADAPTER_VERSION, deploymentNotice: () => deployNotice(DATA_DIR), botExists: botAlive }
-  const engineApi = createEngineApi(memory, token, PORT, { ...apiCore, ...apiHooks, onMemoryChanged: memoryChanged, inCheck: sessionGrants.inCheck(checkSessions), ...gates })
+  const engineApi = createEngineApi(memory, token, PORT, {
+    ...apiCore,
+    ...apiHooks,
+    onMemoryChanged: memoryChanged,
+    inCheck: sessionGrants.inCheck(checkSessions),
+    skillWriteLocked: sessionGrants.skillWriteLocked,
+    ...gates
+  })
   const base = { bots, store, skills, library, computers, remoteWorkers, devices, attachments, t3Grants, mcp, system, engineApi }
   return { ...base, activity, routines, threads, boards, webhooks, hiddenChat }
 }

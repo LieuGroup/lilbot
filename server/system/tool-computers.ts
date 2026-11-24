@@ -9,6 +9,10 @@ const RETRY_NOTE = ' Reuse requestId only on retry; background queues even offli
 /** Keeps synchronous waits safely below Hermes's hardcoded 30 s `editor.mcp_servers` tool timeout. */
 export const SCOPED_COMPUTER_WAIT_MS = 20_000
 const waitCap = (ctx?: McpCallContext) => (ctx?.sessionBound ? SCOPED_COMPUTER_WAIT_MS : undefined)
+const withScopedNote = <T extends { status: string; requestId: string }>(res: T, ctx?: McpCallContext) =>
+  ctx?.sessionBound && (res.status === 'running' || res.status === 'pending')
+    ? { ...res, note: `Still ${res.status}; poll lilbot_computer_request_read with requestId "${res.requestId}" until completed.` }
+    : res
 const fsError = (error: unknown) => error instanceof Error && /^E[A-Z]+$/.test(String((error as { code?: unknown }).code))
 
 async function runComputer<T>(step: () => T | Promise<T>): Promise<T> {
@@ -41,16 +45,19 @@ export function computerTools({ computers }: SystemDeps): McpTool[] {
         timeoutMs: z.number().int().min(1).max(3_600_000).optional()
       }),
       (caller, { computer, requestId, background, command, cwd, timeoutMs }, _raw, ctx) =>
-        runComputer(() =>
-          computers.submit(
-            caller,
-            {
-              computer,
-              requestId: requestId ?? crypto.randomUUID(),
-              background: background ?? false,
-              operation: { kind: 'exec', command, ...(cwd !== undefined ? { cwd } : {}), ...(timeoutMs !== undefined ? { timeoutMs } : {}) }
-            },
-            waitCap(ctx)
+        runComputer(async () =>
+          withScopedNote(
+            await computers.submit(
+              caller,
+              {
+                computer,
+                requestId: requestId ?? crypto.randomUUID(),
+                background: background ?? false,
+                operation: { kind: 'exec', command, ...(cwd !== undefined ? { cwd } : {}), ...(timeoutMs !== undefined ? { timeoutMs } : {}) }
+              },
+              waitCap(ctx)
+            ),
+            ctx
           )
         )
     ),
@@ -59,8 +66,15 @@ export function computerTools({ computers }: SystemDeps): McpTool[] {
       `Read a file on a computer (returns base64).${RETRY_NOTE}`,
       z.object({ ...CommonSubmit, path: z.string().min(1).max(4096) }),
       (caller, { computer, requestId, background, path }, _raw, ctx) =>
-        runComputer(() =>
-          computers.submit(caller, { computer, requestId: requestId ?? crypto.randomUUID(), background: background ?? false, operation: { kind: 'read', path } }, waitCap(ctx))
+        runComputer(async () =>
+          withScopedNote(
+            await computers.submit(
+              caller,
+              { computer, requestId: requestId ?? crypto.randomUUID(), background: background ?? false, operation: { kind: 'read', path } },
+              waitCap(ctx)
+            ),
+            ctx
+          )
         )
     ),
     actionTool(
@@ -73,16 +87,19 @@ export function computerTools({ computers }: SystemDeps): McpTool[] {
         encoding: z.enum(['utf8', 'base64']).optional()
       }),
       (caller, { computer, requestId, background, path, data, encoding }, _raw, ctx) =>
-        runComputer(() =>
-          computers.submit(
-            caller,
-            {
-              computer,
-              requestId: requestId ?? crypto.randomUUID(),
-              background: background ?? false,
-              operation: { kind: 'write', path, data, ...(encoding !== undefined ? { encoding } : {}) }
-            },
-            waitCap(ctx)
+        runComputer(async () =>
+          withScopedNote(
+            await computers.submit(
+              caller,
+              {
+                computer,
+                requestId: requestId ?? crypto.randomUUID(),
+                background: background ?? false,
+                operation: { kind: 'write', path, data, ...(encoding !== undefined ? { encoding } : {}) }
+              },
+              waitCap(ctx)
+            ),
+            ctx
           )
         )
     ),
@@ -91,8 +108,15 @@ export function computerTools({ computers }: SystemDeps): McpTool[] {
       `List a folder on a computer.${RETRY_NOTE}`,
       z.object({ ...CommonSubmit, path: z.string().min(1).max(4096) }),
       (caller, { computer, requestId, background, path }, _raw, ctx) =>
-        runComputer(() =>
-          computers.submit(caller, { computer, requestId: requestId ?? crypto.randomUUID(), background: background ?? false, operation: { kind: 'list', path } }, waitCap(ctx))
+        runComputer(async () =>
+          withScopedNote(
+            await computers.submit(
+              caller,
+              { computer, requestId: requestId ?? crypto.randomUUID(), background: background ?? false, operation: { kind: 'list', path } },
+              waitCap(ctx)
+            ),
+            ctx
+          )
         )
     ),
     readTool('lilbot_computer_request_read', 'Read status and output of a computer request. Does not wait.', ComputerRequestRef, (caller, input) =>

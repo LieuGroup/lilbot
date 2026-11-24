@@ -19,7 +19,19 @@ function rewriteCursorPrefix(db: Database, oldPrefix: string, newPrefix: string,
   }
 }
 
-export function rewriteCompositeIds(db: Database, maps: IdMaps, record: (table: string, n: number) => void) {
+export function scanSessionGrantCompositeRefs(db: Database, oldId: string, checkIds: Map<string, string>, add: (key: string, count: number) => void) {
+  if (!tableExists(db, 'session_grants')) return
+  add(
+    'session_grants.owner_key',
+    db.query<{ n: number }, [string]>(`SELECT count(*) AS n FROM session_grants WHERE owner_key LIKE ? ESCAPE '\\'`).get(`thread:%:${escapeLike(oldId)}`)!.n
+  )
+  for (const oldCheck of checkIds.keys()) {
+    add('session_grants.owner_key', db.query<{ n: number }, [string]>('SELECT count(*) AS n FROM session_grants WHERE owner_key = ?').get(`check:${oldCheck}`)!.n)
+    add('session_grants.scope_json', db.query<{ n: number }, [string]>("SELECT count(*) AS n FROM session_grants WHERE json_extract(scope_json, '$.checkId') = ?").get(oldCheck)!.n)
+  }
+}
+
+export function rewriteCompositeIds(db: Database, maps: IdMaps, record: (table: string, n: number) => void, oldId?: string, newId?: string) {
   const { waitIds, deliveryIds, remoteRunIds, messageIds, workItemIds, checkIds } = maps
   if (tableExists(db, 'thread_waits')) {
     for (const [oldW, newW] of waitIds) record('thread_waits', runChanges(db, 'UPDATE thread_waits SET id = ? WHERE id = ?', newW, oldW))
@@ -71,6 +83,25 @@ export function rewriteCompositeIds(db: Database, maps: IdMaps, record: (table: 
     if (tableExists(db, 'activity_cursors')) {
       record('activity_cursors', runChanges(db, 'UPDATE activity_cursors SET chat_id = ? WHERE chat_id = ?', `check:${newCheck}`, `check:${oldCheck}`))
       rewriteCursorPrefix(db, oldCheck, newCheck, record)
+    }
+    if (tableExists(db, 'session_grants')) {
+      record('session_grants', runChanges(db, 'UPDATE session_grants SET owner_key = ? WHERE owner_key = ?', `check:${newCheck}`, `check:${oldCheck}`))
+      for (const row of db
+        .query<{ id: string; scope_json: string }, [string]>("SELECT id, scope_json FROM session_grants WHERE json_extract(scope_json, '$.checkId') = ?")
+        .all(oldCheck)) {
+        const parsed = JSON.parse(row.scope_json) as Record<string, unknown>
+        record('session_grants', runChanges(db, 'UPDATE session_grants SET scope_json = ? WHERE id = ?', JSON.stringify({ ...parsed, checkId: newCheck }), row.id))
+      }
+    }
+  }
+  if (oldId && newId && tableExists(db, 'session_grants')) {
+    const rows = db
+      .query<{ id: string; owner_key: string }, [string]>(`SELECT id, owner_key FROM session_grants WHERE owner_key LIKE ? ESCAPE '\\'`)
+      .all(`thread:%:${escapeLike(oldId)}`)
+    for (const row of rows) {
+      if (row.owner_key.endsWith(`:${oldId}`)) {
+        record('session_grants', runChanges(db, 'UPDATE session_grants SET owner_key = ? WHERE id = ?', `${row.owner_key.slice(0, -oldId.length)}${newId}`, row.id))
+      }
     }
   }
   if (tableExists(db, 'activity_cursors')) {

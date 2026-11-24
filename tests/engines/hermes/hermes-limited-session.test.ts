@@ -118,6 +118,12 @@ describe('Hermes limited-session isolation, verification, and edit policy', () =
 
     const sEmpty = fakeSocket({ sections: [] })
     await expect(createLimitedSession(sEmpty.socket, { requestId: 'r6', cwd: '/tmp/ws', access: scope, sessionMcp: [CONN] })).rejects.toThrow(/no tool sections/)
+
+    // Non-LilBot built-in skill_manage description (when lilbot-skills-v1 override is absent) fails closed.
+    const sRawSkill = fakeSocket({
+      sections: [{ name: 'skills', tools: [{ name: 'skill_manage', description: 'Manage skills on disk directly.' } as any] }]
+    })
+    await expect(createLimitedSession(sRawSkill.socket, { requestId: 'r7', cwd: '/tmp/ws', access: scope, sessionMcp: [CONN] })).rejects.toThrow(/non-LilBot skill_manage/)
   })
 
   test('resumeLimitedSession re-supplies editor.mcp_servers, verifies discovery readiness, and re-audits the resumed session', async () => {

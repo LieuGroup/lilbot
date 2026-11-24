@@ -55,26 +55,41 @@ describe('Session-bound 30 s tool bounds', () => {
     let seenWait: number | undefined
     const compTool = computerTools({
       computers: {
-        submit: async (_b: string, _raw: unknown, maxWait?: number) => {
+        submit: async (_b: string, req: { requestId: string }, maxWait?: number) => {
           seenWait = maxWait
-          return { status: 'running' }
+          return { status: 'running', requestId: req.requestId, result: null }
         }
       } as any
     } as any).find(t => t.name === 'lilbot_computer_exec')!
-    await compTool.run('b1', { computer: 'leader', command: 'echo hi' }, {}, { sessionBound: true })
+    const scopedComp = (await compTool.run('b1', { computer: 'leader', requestId: 'req-slow', command: 'echo hi' }, {}, { sessionBound: true })) as any
     expect(seenWait).toBe(SCOPED_COMPUTER_WAIT_MS)
-    await compTool.run('b1', { computer: 'leader', command: 'echo hi' }, {}, {})
+    expect(scopedComp.note).toContain('lilbot_computer_request_read')
+    expect(scopedComp.note).toContain('req-slow')
+    const plainComp = (await compTool.run('b1', { computer: 'leader', requestId: 'req-plain', command: 'echo hi' }, {}, {})) as any
     expect(seenWait).toBeUndefined()
+    expect(plainComp.note).toBeUndefined()
 
     const store = new BotStore(db)
+    let releaseCreate!: () => void
     let releaseGreeting!: () => void
+    let createCalls = 0
+    let greetingCalls = 0
+    const createBlocker = new Promise<void>(r => (releaseCreate = r))
     const greetingBlocker = new Promise<void>(r => (releaseGreeting = r))
     const creation = new BotCreation(
       {
         createBot: async (_input: any, id: string) => {
+          createCalls++
+          await createBlocker
           db.query("INSERT INTO bots VALUES (?, 'New', '', '', NULL, 0, 'scripted', 'n2', NULL, 'full-access', NULL)").run(id)
         },
-        openChat: async () => ({ send: () => greetingBlocker, close: () => {} })
+        openChat: async () => ({
+          send: () => {
+            greetingCalls++
+            return greetingBlocker
+          },
+          close: () => {}
+        })
       } as any,
       store
     )
@@ -90,10 +105,16 @@ describe('Session-bound 30 s tool bounds', () => {
       reasoningEffort: null,
       permissionMode: 'full-access' as const
     }
-    const created = await creation.create(caller, { name: 'Fast', function: 'Help', instructions: 'Be fast.', requestId: 'fast-1' }, { waitForGreeting: false })
+    const p1 = creation.create(caller, { name: 'Fast', function: 'Help', instructions: 'Be fast.', requestId: 'fast-1' }, { waitForGreeting: false })
+    const p2 = creation.create(caller, { name: 'Fast', function: 'Help', instructions: 'Be fast.', requestId: 'fast-1' }, { waitForGreeting: false })
+    releaseCreate()
+    const [created, created2] = await Promise.all([p1, p2])
+    expect(created).toEqual(created2)
     expect(created.greetingPending).toBe(true)
+    expect(createCalls).toBe(1)
     releaseGreeting()
     await Bun.sleep(20)
+    expect(greetingCalls).toBe(1)
     expect(store.creationDone(created.id)).toBe(true)
     db.close()
   })

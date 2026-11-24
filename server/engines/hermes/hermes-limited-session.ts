@@ -37,7 +37,8 @@ function editorMcpSpec(connections: readonly McpConnection[]) {
   }
 }
 
-type ToolShowSection = { name: string; tools: { name: string }[] }
+type ToolShowSection = { name: string; tools: { name: string; description?: string }[] }
+const LILBOT_SKILL_MANAGE_PREFIX = 'Create or improve a shared LilBot skill.'
 
 /** Verifies the live session's actual toolsets (`session.info`) and tools (`tools.show`) match the scope's explicit
  *  allow-list: catches silent `partial=True` discovery drops, plugin toolsets, `x_search`, or leaked profile MCPs. */
@@ -84,6 +85,9 @@ async function verifyLimitedSession(socket: HermesSocket, sessionId: string, acc
       if (isBuiltin) {
         if (!allowedBuiltinTools.has(toolName)) {
           throw new LilBotError('session_scope_violation', `Unexpected built-in tool "${toolName}" attached to limited session.`)
+        }
+        if (toolName === 'skill_manage' && typeof row?.description === 'string' && row.description.length > 0 && !row.description.startsWith(LILBOT_SKILL_MANAGE_PREFIX)) {
+          throw new LilBotError('session_scope_violation', 'Limited session exposed non-LilBot skill_manage tool.')
         }
         continue
       }

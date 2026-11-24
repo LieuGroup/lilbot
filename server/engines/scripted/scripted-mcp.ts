@@ -55,11 +55,12 @@ export async function attachSessionMcp(
   assertReady?: () => void
 ) {
   session.sessionMcp = connections
-  if (!discover) return
-  session.discoveredTools = new Map()
-  for (const conn of connections) {
-    const listed = await discoverMcpServer(conn)
-    if (listed) session.discoveredTools.set(conn.name, listed)
+  if (discover) {
+    session.discoveredTools = new Map()
+    for (const conn of connections) {
+      const listed = await discoverMcpServer(conn)
+      if (listed) session.discoveredTools.set(conn.name, listed)
+    }
   }
   assertReady?.()
 }

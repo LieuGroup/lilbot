@@ -119,7 +119,9 @@ export function createSessionGrants(
       if (resolved === null) return undefined
       if (resolved === 'unknown' || resolved.scope.kind === 'check' || resolved.scope.kind === 'review') return []
       return resolved.scope.capabilities
-    }
+    },
+    skillWriteLocked: (botId: string, chatId: string | undefined): string | null =>
+      grants.forChat(botId, chatId) === null ? null : 'Limited sessions cannot write, patch, or delete skills.'
   }
 }
 
