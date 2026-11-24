@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import type { RestartServer } from './restart-server'
 import { waitFor } from './restart-server'
 
-function passage(seed: number, chars = 90_000) {
+function passage(seed: number, chars = 100_000) {
   const words = 'the river ran past an old mill while slow clouds drifted over quiet fields and a cart rolled along the stony road toward hills'.split(' ')
   let state = seed * 100_003 + 17
   let out = ''
