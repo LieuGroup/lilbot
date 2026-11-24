@@ -50,7 +50,7 @@ describe('Hermes limited-session isolation, verification, and edit policy', () =
     expect(limitedNeedsFileEdits({ kind: 'webhook', capabilities: ['web'] })).toBe(false)
     expect(limitedNeedsFileEdits({ kind: 'webhook', capabilities: ['shell'] })).toBe(true)
     expect(limitedNeedsFileEdits({ kind: 'narrowed', capabilities: ['shell'] })).toBe(true)
-    expect(hermesToolsetsForRun('review')).toEqual(['skills', 'no_mcp'])
+    expect(hermesToolsetsForRun('review')).toEqual(['context_engine', 'no_mcp'])
 
     const checkSock = fakeSocket({
       enabledToolsets: ['web', 'vision', 'terminal', 'file', 'skills', 'mcp-editor_lilbot_a1b2c3d4']
