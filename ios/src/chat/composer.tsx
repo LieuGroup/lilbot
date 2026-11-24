@@ -152,6 +152,7 @@ export function Composer({ botId, botName, context, ready, running, model, botto
             placeholderTextColor={theme.mutedForeground}
             multiline
             editable={ready}
+            scrollEnabled={expanded}
             onSubmitEditing={submit}
             blurOnSubmit={false}
             maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.composerInput}
