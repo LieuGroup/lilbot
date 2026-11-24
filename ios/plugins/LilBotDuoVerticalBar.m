@@ -64,11 +64,15 @@ static void LilBotSyncNavigationItem(UINavigationItem *navItem) {
   if (@available(iOS 27.1, *)) {
     NSArray<UIBarButtonItem *> *rightItems = navItem.rightBarButtonItems;
     if (rightItems.count > 0 && LilBotApplyVerticalBehaviorToItems(rightItems)) {
-      navItem.rightBarButtonItems = [rightItems copy];
+      NSArray<UIBarButtonItem *> *copy = [rightItems copy];
+      navItem.rightBarButtonItems = nil;
+      navItem.rightBarButtonItems = copy;
     }
     NSArray<UIBarButtonItem *> *leftItems = navItem.leftBarButtonItems;
     if (leftItems.count > 0 && LilBotApplyVerticalBehaviorToItems(leftItems)) {
-      navItem.leftBarButtonItems = [leftItems copy];
+      NSArray<UIBarButtonItem *> *copy = [leftItems copy];
+      navItem.leftBarButtonItems = nil;
+      navItem.leftBarButtonItems = copy;
     }
   }
 }
