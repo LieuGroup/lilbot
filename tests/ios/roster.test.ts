@@ -24,9 +24,14 @@ describe('Round 4 iOS Roster display, web label parity, and detached orb guards'
     expect(workingAndUnread.unread).toBe(true)
     expect(workingAndUnread.boldName).toBe(true)
 
-    const primaryIdle = rosterRowDisplay(bot('chief', { isPrimary: true }))
+    const primaryIdle = rosterRowDisplay(bot('chief', { isPrimary: true, function: 'Coordinates daily priorities.' }))
     expect(primaryIdle.showPrimaryStar).toBe(true)
     expect(primaryIdle.statusMark).toBeNull()
+    expect(primaryIdle.inlineText).toBe('Coordinates daily priorities.')
+    expect(primaryIdle.inlineTone).toBe('muted')
+    expect(primaryIdle.timeText).toBeNull()
+    const rowSource = readFileSync(resolve(process.cwd(), 'ios/src/bots/roster-row.tsx'), 'utf8')
+    expect(rowSource).toContain('{display.timeText ? (')
 
     const waiting = rosterRowDisplay(bot('relay', { activity: { status: 'waiting', unread: true } }))
     expect(waiting.inlineText).toBe('Waiting for you')

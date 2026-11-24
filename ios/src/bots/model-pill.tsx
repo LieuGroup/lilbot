@@ -8,6 +8,7 @@ import { messageOf } from '../../../shared/client/socket'
 import { ensureSocket } from '../connection/lilbot'
 import { useConnectionStore } from '../connection/store'
 import { useTheme } from '../ui/theme'
+import { DYNAMIC_TYPE_CAPS } from '../ui/dynamic-type'
 import { AppText } from '../ui/text'
 import { ChevronDownIcon, InfoIcon } from '../ui/icon'
 import { useBotStore } from './store'
@@ -75,10 +76,11 @@ export function useModelPicker(bot: Bot): { pill: ReactNode; menu: ReactNode } {
         setNote(null)
         setOpen(true)
       }}
-      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 4, height: 28, maxWidth: 260, paddingHorizontal: 10, borderRadius: 14, opacity: pressed ? 0.7 : 1 })}
+      hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 28, maxWidth: '100%', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 14, flexShrink: 1, opacity: pressed ? 0.7 : 1 })}
     >
       {saving ? <ActivityIndicator size="small" color={ink} /> : null}
-      <AppText variant="preview" numberOfLines={1} color={ink} style={{ flexShrink: 1 }}>
+      <AppText variant="preview" numberOfLines={1} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.modelPill} color={ink} style={{ flexShrink: 1 }}>
         {label}
       </AppText>
       {view.differs && <InfoIcon color={theme.primary} />}

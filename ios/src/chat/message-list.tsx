@@ -1,12 +1,14 @@
-/** The conversation: messages from the end (preserving scroll offset across fold/unfold),
- *  the bot's live status below the newest message, and the composer (preserving unsent draft per bot). */
-import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
-import { AccessibilityInfo, Animated, Easing, FlatList, Keyboard, type NativeScrollEvent, type NativeSyntheticEvent, Platform, Pressable, TextInput, View } from 'react-native'
-import type { ChatView, MessageItem } from '../../../shared/client/chat/chat-state'
+/** Conversation transcript (newest at the bottom) and composer sized from MOBILE_SCALE.chat. */
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AccessibilityInfo, Animated, Easing, FlatList, Keyboard, type ListRenderItemInfo, type NativeScrollEvent, type NativeSyntheticEvent, Platform, Pressable, TextInput, useWindowDimensions, View } from 'react-native'
+import type { ChatView } from '../../../shared/client/chat/chat-state'
+import { composerInputMaxHeight, DYNAMIC_TYPE_CAPS } from '../ui/dynamic-type'
 import { SendIcon, SparklesIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
+import { MOBILE_SCALE } from '../ui/tokens'
 import { ChatItem } from './message-item'
+import { buildMessageRows, type MessageRow } from './message-rows'
 import type { ChatStatusLine } from './status'
 import { useChatStore } from './store'
 
@@ -22,16 +24,12 @@ interface MessageListProps {
  *  Because the list is inverted, ListHeaderComponent renders at the visual bottom right where the reply appears. */
 export function MessageList({ botId, botName, chat, statusLine = null, emptyHint }: MessageListProps) {
   const theme = useTheme()
-  const listRef = useRef<FlatList<{ key: string; item: MessageItem; queued: boolean }>>(null)
+  const listRef = useRef<FlatList<MessageRow>>(null)
   const initialOffset = useRef(useChatStore.getState().slots[botId]?.scrollOffset ?? 0)
   const restored = useRef(initialOffset.current <= 0)
   const setScrollOffset = useChatStore(state => state.setScrollOffset)
 
-  // An inverted list takes the newest row first.
-  const rows: { key: string; item: MessageItem; queued: boolean }[] = [
-    ...chat.items.filter((item): item is MessageItem => item.kind !== 'session').map((item, index) => ({ key: `item-${index}`, item, queued: false })),
-    ...chat.queued.map((message, index) => ({ key: `queued-${index}`, item: message as MessageItem, queued: true }))
-  ].reverse()
+  const rows = useMemo(() => buildMessageRows(chat.items, chat.queued), [chat.items, chat.queued])
 
   const handleContentSizeChange = useCallback(() => {
     if (restored.current || rows.length === 0) return
@@ -47,8 +45,14 @@ export function MessageList({ botId, botName, chat, statusLine = null, emptyHint
     [botId, setScrollOffset]
   )
 
+  const renderItem = useCallback(
+    ({ item: row }: ListRenderItemInfo<MessageRow>) => <ChatItem item={row.item} botName={botName} queued={row.queued} />,
+    [botName]
+  )
+
   return (
     <FlatList
+      testID="chat-message-list"
       ref={listRef}
       inverted
       data={rows}
@@ -58,16 +62,16 @@ export function MessageList({ botId, botName, chat, statusLine = null, emptyHint
       onMomentumScrollEnd={handleScroll}
       onScrollEndDrag={handleScroll}
       scrollEventThrottle={100}
-      contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 20, gap: 18, flexGrow: 1, justifyContent: rows.length === 0 ? 'center' : 'flex-end' }}
+      contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: 18, gap: 12, flexGrow: 1, justifyContent: rows.length === 0 ? 'center' : 'flex-end' }}
       ListHeaderComponent={statusLine ? <ConversationStatusRow status={statusLine} centered={rows.length === 0} /> : undefined}
       ListEmptyComponent={
         !statusLine && emptyHint ? (
-          <AppText testID="chat-empty-hint" variant="chat" color={theme.mutedForeground} style={{ textAlign: 'center' }}>
+          <AppText testID="chat-empty-hint" style={{ ...MOBILE_SCALE.chat.message, textAlign: 'center' }} color={theme.mutedForeground}>
             {emptyHint}
           </AppText>
         ) : undefined
       }
-      renderItem={({ item: row }) => <ChatItem item={row.item} botName={botName} queued={row.queued} />}
+      renderItem={renderItem}
     />
   )
 }
@@ -109,10 +113,10 @@ function ConversationStatusRow({ status, centered }: { status: ChatStatusLine; c
       testID="chat-status-line"
       accessibilityRole="text"
       accessibilityLiveRegion="polite"
-      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: centered ? 'center' : 'flex-start', gap: 6, minHeight: 20, maxWidth: '100%', opacity: status.tone === 'running' ? pulse : 1 }}
+      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: centered ? 'center' : 'flex-start', gap: 6, minHeight: 22, maxWidth: '100%', opacity: status.tone === 'running' ? pulse : 1 }}
     >
-      {status.tone === 'running' && <SparklesIcon color={theme.mutedForeground} size={13} />}
-      <AppText variant="preview" color={theme.mutedForeground} numberOfLines={1} style={{ flexShrink: 1 }}>
+      {status.tone === 'running' && <SparklesIcon color={theme.mutedForeground} size={14} />}
+      <AppText color={theme.mutedForeground} numberOfLines={1} style={{ ...MOBILE_SCALE.chat.statusLine, flexShrink: 1 }}>
         {status.text}
       </AppText>
     </Animated.View>
@@ -130,29 +134,27 @@ interface ComposerProps {
   onStop: () => void
 }
 
-/** The message box, shaped like the web composer's chat box: text on top, model and send/stop inside.
+/** Large soft pill composer with text input, model picker, and send/stop button.
  *  Clears the bottom safe-area inset at rest and collapses it to 12 pt when the iOS keyboard is open. */
 export function Composer({ botId, botName, ready, running, model, bottomInset = 0, onSend, onStop }: ComposerProps) {
   const theme = useTheme()
+  const { fontScale } = useWindowDimensions()
+  const chatScale = MOBILE_SCALE.chat
   const text = useChatStore(state => state.slots[botId]?.draft ?? '')
   const setDraft = useChatStore(state => state.setDraft)
   const [keyboardOpen, setKeyboardOpen] = useState(false)
 
   useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide'
-    const onShow = Keyboard.addListener(showEvent, () => setKeyboardOpen(true))
-    const onHide = Keyboard.addListener(hideEvent, () => setKeyboardOpen(false))
-    return () => {
-      onShow.remove()
-      onHide.remove()
-    }
+    const onShow = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardOpen(true))
+    const onHide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardOpen(false))
+    return () => { onShow.remove(); onHide.remove() }
   }, [])
 
   const hasContent = text.trim().length > 0
   const canSend = ready && hasContent
   const stopping = running && !hasContent
   const paddingBottom = keyboardOpen ? 12 : Math.max(12, bottomInset)
+  const btnSize = chatScale.composerActionSize
 
   const submit = () => {
     if (!canSend) return
@@ -161,8 +163,8 @@ export function Composer({ botId, botName, ready, running, model, bottomInset = 
   }
 
   return (
-    <View style={{ alignItems: 'center', paddingHorizontal: 16, paddingTop: 4, paddingBottom }}>
-      <View style={{ width: '100%', maxWidth: 680, backgroundColor: theme.card, borderRadius: 22, borderWidth: 1, borderColor: theme.hairline, paddingTop: 12, paddingHorizontal: 14, paddingBottom: 10 }}>
+    <View style={{ alignItems: 'center', paddingHorizontal: 14, paddingTop: 4, paddingBottom }}>
+      <View style={{ width: '100%', maxWidth: 680, minHeight: chatScale.composerMinHeight, backgroundColor: theme.card, borderRadius: chatScale.composerRadius, borderWidth: 1, borderColor: theme.border, paddingTop: 12, paddingHorizontal: 16, paddingBottom: 10 }}>
         <TextInput
           testID="composer-input"
           value={text}
@@ -173,18 +175,18 @@ export function Composer({ botId, botName, ready, running, model, bottomInset = 
           editable={ready}
           onSubmitEditing={submit}
           blurOnSubmit={false}
-          style={{ maxHeight: 120, paddingHorizontal: 0, paddingVertical: 0, fontFamily: 'Inter_400Regular', fontSize: 15, lineHeight: 22, color: theme.foreground }}
+          maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.composerInput}
+          style={{ maxHeight: composerInputMaxHeight(fontScale), paddingHorizontal: 0, paddingVertical: 0, fontFamily: 'Inter_400Regular', ...chatScale.composerInput, color: theme.foreground }}
         />
-        <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 32, marginTop: 8, gap: 8 }}>
-          {model}
-          <View style={{ flex: 1 }} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: btnSize, marginTop: 8, gap: 8 }}>
+          <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-start' }}>{model}</View>
           {stopping ? (
-            <Pressable onPress={onStop} accessibilityLabel="Stop" style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.foreground }}>
-              <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: theme.card }} />
+            <Pressable onPress={onStop} hitSlop={4} accessibilityRole="button" accessibilityLabel="Stop" style={{ width: btnSize, height: btnSize, borderRadius: btnSize / 2, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.foreground }}>
+              <View style={{ width: 12, height: 12, borderRadius: 2.5, backgroundColor: theme.card }} />
             </Pressable>
           ) : (
-            <Pressable onPress={submit} disabled={!canSend} accessibilityLabel="Send" accessibilityRole="button" accessibilityState={{ disabled: !canSend }} testID="send-button" style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: canSend ? theme.foreground : theme.muted }}>
-              <SendIcon color={canSend ? theme.background : theme.mutedForeground} size={18} />
+            <Pressable onPress={submit} disabled={!canSend} hitSlop={4} accessibilityLabel="Send" accessibilityRole="button" accessibilityState={{ disabled: !canSend }} testID="send-button" style={{ width: btnSize, height: btnSize, borderRadius: btnSize / 2, alignItems: 'center', justifyContent: 'center', backgroundColor: canSend ? theme.foreground : theme.muted }}>
+              <SendIcon color={canSend ? theme.background : theme.mutedForeground} size={19} />
             </Pressable>
           )}
         </View>

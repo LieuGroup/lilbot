@@ -62,18 +62,22 @@ export const TileAvatarMarks = memo(function TileAvatarMarks({ bot, size, surfac
   const theme = useTheme()
   const signal = tileSignal(bot)
   const showBottomBadge = signal.working || signal.showPrimaryStar
+  const large = size >= 56
+  const dotSize = large ? 12 : 10
+  const badgeSize = large ? 24 : 18
+  const iconSize = large ? 14 : 12
   return (
-    <View style={{ width: size + 10, height: size + 6, alignItems: 'center', justifyContent: 'center' }}>
+    <View style={{ width: size + 8, height: size + 4, alignItems: 'center', justifyContent: 'center' }}>
       <BotAvatar name={bot.name} avatar={bot.prefs.avatar} size={size} />
       {signal.unread && (
         <View
           style={{
             position: 'absolute',
-            top: 0,
+            top: 2,
             right: 2,
-            width: 10,
-            height: 10,
-            borderRadius: 5,
+            width: dotSize,
+            height: dotSize,
+            borderRadius: dotSize / 2,
             backgroundColor: theme.primary,
             borderWidth: 2,
             borderColor: surfaceColor
@@ -86,15 +90,17 @@ export const TileAvatarMarks = memo(function TileAvatarMarks({ bot, size, surfac
             position: 'absolute',
             bottom: 0,
             right: 0,
-            width: 18,
-            height: 18,
-            borderRadius: 9,
+            width: badgeSize,
+            height: badgeSize,
+            borderRadius: badgeSize / 2,
             backgroundColor: surfaceColor,
+            borderWidth: large ? 2 : 0,
+            borderColor: surfaceColor,
             alignItems: 'center',
             justifyContent: 'center'
           }}
         >
-          {signal.working ? <WorkingSpinner color={theme.primary} size={12} /> : <StarIcon color={theme.foreground} size={11} />}
+          {signal.working ? <WorkingSpinner color={theme.primary} size={iconSize} /> : <StarIcon color={theme.foreground} size={iconSize - 1} />}
         </View>
       )}
     </View>

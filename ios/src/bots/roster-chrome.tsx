@@ -1,18 +1,20 @@
-/** Pull-down / screen-reader Roster search bar, collapsible Unassigned/Hidden header,
- *  and zero-row-height inline header actions (Search bots when bar is hidden, plus New bot on split). */
+/** Roster search bar, collapsible section and Unassigned/Hidden headers, and inline header actions
+ *  (Search bots on ordinary iPhone/iPad when the bar is hidden, plus New bot on non-Duo split). */
 import { memo, type ReactNode, useCallback } from 'react'
-import { Pressable, TextInput, View } from 'react-native'
+import { Keyboard, Pressable, TextInput, View } from 'react-native'
 import { ChevronDownIcon, ChevronRightIcon, CloseIcon, PlusIcon, SearchIcon } from '../ui/icon'
+import { DYNAMIC_TYPE_CAPS } from '../ui/dynamic-type'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
-import { radius } from '../ui/tokens'
+import { MOBILE_SCALE, radius } from '../ui/tokens'
 
 const HEADER_ACTION_SLOP = { top: 14, bottom: 14, left: 8, right: 8 } as const
+const SECTION_SLOP = { top: 12, bottom: 12, left: 6, right: 12 } as const
 
 export const SplitNewBotFooter = memo(function SplitNewBotFooter({ onPress }: { onPress: () => void }) {
   const theme = useTheme()
   return (
-    <View style={{ paddingHorizontal: 16, paddingTop: 12, alignItems: 'flex-start' }}>
+    <View style={{ paddingHorizontal: 16, paddingTop: 14, alignItems: 'flex-start' }}>
       <Pressable
         testID="roster-new-bot-button"
         onPress={onPress}
@@ -21,8 +23,8 @@ export const SplitNewBotFooter = memo(function SplitNewBotFooter({ onPress }: { 
         accessibilityLabel="New bot"
         style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 44, paddingVertical: 6, opacity: pressed ? 0.6 : 1 })}
       >
-        <PlusIcon color={theme.mutedForeground} size={14} />
-        <AppText variant="meta" color={theme.mutedForeground} style={{ fontFamily: 'Inter_500Medium' }}>
+        <PlusIcon color={theme.mutedForeground} size={15} />
+        <AppText style={{ ...MOBILE_SCALE.roster.sectionHeader, fontFamily: 'Inter_500Medium' }} color={theme.mutedForeground}>
           New bot
         </AppText>
       </Pressable>
@@ -46,7 +48,7 @@ export const RosterHeaderActions = memo(function RosterHeaderActions({
   const theme = useTheme()
   if (!showSearch && !showNewBot) return null
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, flexShrink: 0 }}>
       {showSearch && (
         <Pressable
           testID="roster-search-button"
@@ -54,16 +56,9 @@ export const RosterHeaderActions = memo(function RosterHeaderActions({
           hitSlop={HEADER_ACTION_SLOP}
           accessibilityRole="button"
           accessibilityLabel="Search bots"
-          style={({ pressed }) => ({
-            width: 28,
-            height: 16,
-            borderRadius: 8,
-            alignItems: 'center',
-            justifyContent: 'center',
-            opacity: pressed ? 0.6 : 1
-          })}
+          style={({ pressed }) => ({ width: 28, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
         >
-          <SearchIcon color={theme.mutedForeground} size={14} />
+          <SearchIcon color={theme.mutedForeground} size={16} />
         </Pressable>
       )}
       {showNewBot && (
@@ -73,16 +68,9 @@ export const RosterHeaderActions = memo(function RosterHeaderActions({
           hitSlop={HEADER_ACTION_SLOP}
           accessibilityRole="button"
           accessibilityLabel="New bot"
-          style={({ pressed }) => ({
-            width: 28,
-            height: 16,
-            borderRadius: 8,
-            alignItems: 'center',
-            justifyContent: 'center',
-            opacity: pressed ? 0.6 : 1
-          })}
+          style={({ pressed }) => ({ width: 28, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
         >
-          <PlusIcon color={theme.mutedForeground} size={14} />
+          <PlusIcon color={theme.mutedForeground} size={16} />
         </Pressable>
       )}
     </View>
@@ -91,34 +79,25 @@ export const RosterHeaderActions = memo(function RosterHeaderActions({
 
 export const RosterSearchBar = memo(function RosterSearchBar({
   query,
-  canClose,
   autoFocus,
   onChange,
   onClose
 }: {
   query: string
-  canClose: boolean
   autoFocus: boolean
   onChange: (value: string) => void
   onClose: () => void
 }) {
   const theme = useTheme()
+  const handleClose = useCallback(() => {
+    Keyboard.dismiss()
+    onClose()
+  }, [onClose])
+
   return (
-    <View style={{ paddingHorizontal: 12, paddingTop: 6, paddingBottom: 8 }}>
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 8,
-          height: 40,
-          paddingHorizontal: 12,
-          borderRadius: radius.pill,
-          backgroundColor: theme.card,
-          borderWidth: 1,
-          borderColor: theme.border
-        }}
-      >
-        <SearchIcon color={theme.mutedForeground} size={16} />
+    <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, paddingLeft: 14, paddingRight: 4, borderRadius: radius.pill, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border }}>
+        <SearchIcon color={theme.mutedForeground} size={17} />
         <TextInput
           testID="roster-search-input"
           value={query}
@@ -129,69 +108,49 @@ export const RosterSearchBar = memo(function RosterSearchBar({
           autoCorrect={false}
           clearButtonMode="never"
           accessibilityLabel="Search bots"
-          style={{ flex: 1, fontFamily: 'Inter_400Regular', fontSize: 14, color: theme.foreground, paddingVertical: 0 }}
+          maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.composerInput}
+          style={{ flex: 1, fontFamily: 'Inter_400Regular', ...MOBILE_SCALE.roster.rowPreview, color: theme.foreground, paddingVertical: 8 }}
         />
-        {(query.length > 0 || canClose) && (
-          <Pressable
-            onPress={onClose}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Close search"
-            style={{ width: 24, height: 24, alignItems: 'center', justifyContent: 'center' }}
-          >
-            <CloseIcon color={theme.mutedForeground} size={14} />
-          </Pressable>
-        )}
+        <Pressable
+          testID="roster-search-close"
+          onPress={handleClose}
+          accessibilityRole="button"
+          accessibilityLabel="Close search"
+          style={({ pressed }) => ({ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.55 : 1 })}
+        >
+          <CloseIcon color={theme.mutedForeground} size={16} />
+        </Pressable>
       </View>
     </View>
   )
 })
 
-export const RosterSectionHeader = memo(function RosterSectionHeader({ name, trailing }: { name: string; trailing?: ReactNode }) {
+export const RosterSectionHeader = memo(function RosterSectionHeader({ sectionId, name, open, onToggle, trailing }: { sectionId: string; name: string; open: boolean; onToggle: (sectionId: string) => void; trailing?: ReactNode }) {
   const theme = useTheme()
+  const handlePress = useCallback(() => onToggle(sectionId), [onToggle, sectionId])
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 10, paddingBottom: 4 }}>
-      <AppText variant="meta" color={theme.mutedForeground} style={{ fontFamily: 'Inter_500Medium' }}>
-        {name}
-      </AppText>
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 16, paddingTop: 18, paddingBottom: 6 }}>
+      <Pressable testID={`roster-section-${sectionId}`} onPress={handlePress} hitSlop={SECTION_SLOP} accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={name} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1, minWidth: 0, opacity: pressed ? 0.6 : 1 })}>
+        <AppText numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.sectionHeader} style={{ ...MOBILE_SCALE.roster.sectionHeader, flexShrink: 1, fontFamily: 'Inter_500Medium' }} color={theme.mutedForeground}>
+          {name}
+        </AppText>
+        {open ? <ChevronDownIcon color={theme.mutedForeground} size={14} /> : <ChevronRightIcon color={theme.mutedForeground} size={14} />}
+      </Pressable>
       {trailing}
     </View>
   )
 })
 
-export const CollapsedGroupHeader = memo(function CollapsedGroupHeader({
-  testID,
-  groupId,
-  name,
-  count,
-  open,
-  onToggle,
-  trailing
-}: {
-  testID: string
-  groupId: 'unassigned' | 'hidden'
-  name: string
-  count: number
-  open: boolean
-  onToggle: (groupId: 'unassigned' | 'hidden') => void
-  trailing?: ReactNode
-}) {
+export const CollapsedGroupHeader = memo(function CollapsedGroupHeader({ testID, groupId, name, count, open, onToggle, trailing }: { testID: string; groupId: 'unassigned' | 'hidden'; name: string; count: number; open: boolean; onToggle: (groupId: 'unassigned' | 'hidden') => void; trailing?: ReactNode }) {
   const theme = useTheme()
   const handlePress = useCallback(() => onToggle(groupId), [groupId, onToggle])
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 6 }}>
-      <Pressable
-        testID={testID}
-        onPress={handlePress}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: open }}
-        accessibilityLabel={`${name}, ${count}`}
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
-      >
-        {open ? <ChevronDownIcon color={theme.mutedForeground} size={13} /> : <ChevronRightIcon color={theme.mutedForeground} size={13} />}
-        <AppText variant="meta" color={theme.mutedForeground} style={{ fontFamily: 'Inter_500Medium' }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 16, paddingTop: 18, paddingBottom: 6 }}>
+      <Pressable testID={testID} onPress={handlePress} hitSlop={SECTION_SLOP} accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={`${name}, ${count}`} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1, minWidth: 0, opacity: pressed ? 0.6 : 1 })}>
+        <AppText numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.sectionHeader} style={{ ...MOBILE_SCALE.roster.sectionHeader, flexShrink: 1, fontFamily: 'Inter_500Medium' }} color={theme.mutedForeground}>
           {name} · {count}
         </AppText>
+        {open ? <ChevronDownIcon color={theme.mutedForeground} size={14} /> : <ChevronRightIcon color={theme.mutedForeground} size={14} />}
       </Pressable>
       {trailing}
     </View>

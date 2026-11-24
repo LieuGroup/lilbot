@@ -1,13 +1,14 @@
-/** 3-up (or 2-up) pinned bot tiles above sections: primary bot first (with star badge when idle),
- *  then pinned bots in pinnedAt order. Memoized for 200-bot lists; long-press or VoiceOver opens bot menu. */
+/** Pinned bots above sections: large round avatars directly on the canvas with centered names underneath
+ *  (no card borders), primary bot first then pinnedAt order. Long-press or VoiceOver opens the bot menu. */
 import { memo, useCallback } from 'react'
-import { type AccessibilityActionEvent, Pressable, View } from 'react-native'
+import { type AccessibilityActionEvent, Pressable, useWindowDimensions, View } from 'react-native'
 import type { Bot } from '../../../shared/bot-schema'
 import { canArrange, isUnread } from '../../../shared/client/bots/bot-menu-rules'
+import { DYNAMIC_TYPE_CAPS, pinnedTileColumns } from '../ui/dynamic-type'
 import { rowAccessibilityActions } from '../ui/gestures/rules'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
-import { radius } from '../ui/tokens'
+import { MOBILE_SCALE, radius } from '../ui/tokens'
 import { setBotPrefs, setBotUnread } from './actions'
 import { useBotMenuStore } from './menu-store'
 import { rosterRowDisplay } from './roster-state'
@@ -16,28 +17,22 @@ import { TileAvatarMarks } from './status-marks'
 interface RosterTilesProps {
   bots: Bot[]
   selectedId: string | null
-  compactCardSurface: boolean
+  splitMode: boolean
   onSelect: (bot: Bot) => void
 }
 
-export const RosterTiles = memo(function RosterTiles({ bots, selectedId, compactCardSurface, onSelect }: RosterTilesProps) {
-  const columns = bots.length > 2 ? 3 : 2
+export const RosterTiles = memo(function RosterTiles({ bots, selectedId, splitMode, onSelect }: RosterTilesProps) {
+  const { fontScale } = useWindowDimensions()
+  const columns = pinnedTileColumns(bots.length, fontScale)
   const rows: Bot[][] = []
   for (let i = 0; i < bots.length; i += columns) rows.push(bots.slice(i, i + columns))
 
   return (
-    <View accessibilityLabel="Pinned bots" style={{ gap: 8, paddingHorizontal: 12, paddingTop: 4, paddingBottom: 8 }}>
+    <View accessibilityLabel="Pinned bots" style={{ gap: 12, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 12 }}>
       {rows.map((row, rowIndex) => (
-        <View key={rowIndex} style={{ flexDirection: 'row', gap: 8 }}>
+        <View key={rowIndex} style={{ flexDirection: 'row', gap: splitMode ? 8 : 16 }}>
           {row.map(bot => (
-            <PinnedTile
-              key={bot.id}
-              bot={bot}
-              selected={bot.id === selectedId}
-              cardSurface={compactCardSurface}
-              narrow={columns === 3}
-              onSelect={onSelect}
-            />
+            <PinnedTile key={bot.id} bot={bot} selected={bot.id === selectedId} splitMode={splitMode} narrow={columns === 3} onSelect={onSelect} />
           ))}
           {row.length < columns && Array.from({ length: columns - row.length }).map((_, pad) => <View key={`pad-${pad}`} style={{ flex: 1 }} />)}
         </View>
@@ -49,13 +44,13 @@ export const RosterTiles = memo(function RosterTiles({ bots, selectedId, compact
 const PinnedTile = memo(function PinnedTile({
   bot,
   selected,
-  cardSurface,
+  splitMode,
   narrow,
   onSelect
 }: {
   bot: Bot
   selected: boolean
-  cardSurface: boolean
+  splitMode: boolean
   narrow: boolean
   onSelect: (bot: Bot) => void
 }) {
@@ -80,7 +75,14 @@ const PinnedTile = memo(function PinnedTile({
     [bot, openMenu]
   )
 
-  const surfaceColor = selected ? theme.secondary : cardSurface ? theme.card : theme.background
+  const avatarSize = splitMode
+    ? narrow
+      ? MOBILE_SCALE.roster.pinnedAvatarSplitThreeUp
+      : MOBILE_SCALE.roster.pinnedAvatarSplitTwoUp
+    : narrow
+      ? MOBILE_SCALE.roster.pinnedAvatarThreeUp
+      : MOBILE_SCALE.roster.pinnedAvatarTwoUp
+  const surfaceColor = selected ? theme.secondary : theme.background
 
   return (
     <Pressable
@@ -96,25 +98,23 @@ const PinnedTile = memo(function PinnedTile({
       style={({ pressed }) => ({
         flex: 1,
         minWidth: 0,
-        minHeight: 74,
         alignItems: 'center',
-        justifyContent: 'center',
-        gap: 4,
+        justifyContent: 'flex-start',
+        gap: 8,
         paddingVertical: 8,
-        paddingHorizontal: 6,
-        borderRadius: radius.lg,
-        backgroundColor: selected ? theme.secondary : cardSurface ? theme.card : 'transparent',
-        borderWidth: selected ? 1 : cardSurface ? 1 : 0,
-        borderColor: selected ? theme.foreground : theme.hairline,
-        opacity: pressed ? 0.78 : 1
+        paddingHorizontal: 4,
+        borderRadius: radius.xl,
+        backgroundColor: selected ? theme.secondary : 'transparent',
+        opacity: pressed ? 0.72 : 1
       })}
     >
-      <TileAvatarMarks bot={bot} size={narrow && cardSurface ? 34 : 40} surfaceColor={surfaceColor} />
+      <TileAvatarMarks bot={bot} size={avatarSize} surfaceColor={surfaceColor} />
       <AppText
-        variant={narrow && cardSurface ? 'preview' : 'name'}
-        numberOfLines={1}
+        numberOfLines={2}
         ellipsizeMode="tail"
+        maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.pinnedLabel}
         style={{
+          ...MOBILE_SCALE.roster.pinnedLabel,
           maxWidth: '100%',
           textAlign: 'center',
           fontFamily: display.boldName ? 'Inter_600SemiBold' : 'Inter_500Medium'
