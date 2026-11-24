@@ -152,5 +152,9 @@ describe('Round 4 iOS Roster store guards, action error reporting, and 200-bot v
     const compactChatSource = readFileSync(resolve(process.cwd(), 'ios/src/app/(tabs)/(bots)/chat.tsx'), 'utf8')
     expect(chatScreenSource).toContain('<MoreHorizontalIcon color={theme.foreground} size={16} />')
     expect(compactChatSource).toContain('<MoreHorizontalIcon color={theme.foreground} size={16} />')
+
+    const menuSheetSource = readFileSync(resolve(process.cwd(), 'ios/src/bots/bot-menu-sheet.tsx'), 'utf8')
+    expect(menuSheetSource).toContain('accessible={false}')
+    expect(menuSheetSource).toContain('onDismiss={handleMenuDismiss}')
   })
 })

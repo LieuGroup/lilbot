@@ -1,5 +1,6 @@
 /** Long-press / VoiceOver Bot menu sheet and dialog host, mirroring `web/src/bots/bot-menu.tsx` 1:1. */
-import { Modal, Pressable, View } from 'react-native'
+import { useCallback, useRef } from 'react'
+import { Modal, Pressable, StyleSheet, View } from 'react-native'
 import { isUnread, primaryCandidates } from '../../../shared/client/bots/bot-menu-rules'
 import { BotAvatar } from '../ui/avatar'
 import { AppText } from '../ui/text'
@@ -8,7 +9,7 @@ import { radius } from '../ui/tokens'
 import { makeBotPrimary, setBotPrefs, setBotUnread } from './actions'
 import { DeleteBotSheet } from './delete-bot-sheet'
 import { EditAvatarSheet } from './edit-avatar-sheet'
-import { useBotMenuStore } from './menu-store'
+import { type BotDialogState, useBotMenuStore } from './menu-store'
 import { type RosterMenuActionSpec, rosterMenuActions } from './roster-state'
 import { SectionSheet } from './section-sheet'
 import { useBotStore } from './store'
@@ -19,44 +20,66 @@ export function BotMenuHost() {
   const menuBotId = useBotMenuStore(state => state.menuBotId)
   const closeMenu = useBotMenuStore(state => state.closeMenu)
   const openDialog = useBotMenuStore(state => state.openDialog)
+  const pendingDialogRef = useRef<BotDialogState | null>(null)
 
   const menuBot = bots.find(bot => bot.id === menuBotId) ?? null
   const candidates = primaryCandidates(bots)
   const actions = menuBot ? rosterMenuActions(menuBot, candidates.length > 0) : []
 
+  const dismissMenu = useCallback(() => {
+    pendingDialogRef.current = null
+    closeMenu()
+  }, [closeMenu])
+
+  const handoffToDialog = useCallback(
+    (dialog: BotDialogState) => {
+      // Dismiss the menu Modal first so iOS UIKit finishes dismissal before presenting the pageSheet Modal.
+      pendingDialogRef.current = dialog
+      closeMenu()
+    },
+    [closeMenu]
+  )
+
+  const handleMenuDismiss = useCallback(() => {
+    const next = pendingDialogRef.current
+    pendingDialogRef.current = null
+    if (next) openDialog(next)
+  }, [openDialog])
+
   const run = (action: RosterMenuActionSpec) => {
     if (!menuBot || action.disabled) return
     if (action.id === 'pin') {
-      closeMenu()
+      dismissMenu()
       void setBotPrefs({ botId: menuBot.id, pinned: !menuBot.prefs.pinned })
     } else if (action.id === 'move-section') {
-      openDialog({ kind: 'move-section', botId: menuBot.id })
+      handoffToDialog({ kind: 'move-section', botId: menuBot.id })
     } else if (action.id === 'toggle-unread') {
-      closeMenu()
+      dismissMenu()
       void setBotUnread(menuBot.id, !isUnread(menuBot))
     } else if (action.id === 'name-and-avatar') {
-      openDialog({ kind: 'name-and-avatar', botId: menuBot.id })
+      handoffToDialog({ kind: 'name-and-avatar', botId: menuBot.id })
     } else if (action.id === 'primary') {
       if (menuBot.isPrimary) {
-        openDialog({ kind: 'change-primary', botId: menuBot.id })
+        handoffToDialog({ kind: 'change-primary', botId: menuBot.id })
       } else {
-        closeMenu()
+        dismissMenu()
         void makeBotPrimary(menuBot.id)
       }
     } else if (action.id === 'hide') {
-      closeMenu()
+      dismissMenu()
       void setBotPrefs({ botId: menuBot.id, hidden: !menuBot.prefs.hidden })
     } else if (action.id === 'delete') {
-      openDialog({ kind: 'delete', botId: menuBot.id })
+      handoffToDialog({ kind: 'delete', botId: menuBot.id })
     }
   }
 
   return (
     <>
-      <Modal visible={!!menuBot} transparent animationType="fade" onRequestClose={closeMenu}>
-        <Pressable onPress={closeMenu} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.34)', justifyContent: 'flex-end', padding: 12 }}>
+      <Modal visible={!!menuBot} transparent animationType="fade" onRequestClose={dismissMenu} onDismiss={handleMenuDismiss}>
+        <View style={{ flex: 1, justifyContent: 'flex-end', padding: 12 }}>
+          <Pressable accessible={false} onPress={dismissMenu} style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.34)' }]} />
           {menuBot && (
-            <Pressable onPress={() => {}} style={{ backgroundColor: theme.popover, borderRadius: radius.xl, borderWidth: 1, borderColor: theme.border, overflow: 'hidden', paddingBottom: 8 }}>
+            <View style={{ backgroundColor: theme.popover, borderRadius: radius.xl, borderWidth: 1, borderColor: theme.border, overflow: 'hidden', paddingBottom: 8 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: theme.hairline }}>
                 <BotAvatar name={menuBot.name} avatar={menuBot.prefs.avatar} size={28} />
                 <AppText variant="title" numberOfLines={1} style={{ flex: 1 }}>
@@ -86,7 +109,7 @@ export function BotMenuHost() {
                 </Pressable>
               ))}
               <Pressable
-                onPress={closeMenu}
+                onPress={dismissMenu}
                 accessibilityRole="button"
                 style={({ pressed }) => ({
                   minHeight: 48,
@@ -102,9 +125,9 @@ export function BotMenuHost() {
                   Cancel
                 </AppText>
               </Pressable>
-            </Pressable>
+            </View>
           )}
-        </Pressable>
+        </View>
       </Modal>
       <EditAvatarSheet />
       <DeleteBotSheet />
