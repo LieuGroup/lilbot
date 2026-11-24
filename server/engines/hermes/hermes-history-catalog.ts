@@ -13,14 +13,24 @@ export function historyCatalog(nativeId: string) {
   return readHistoryCatalog(statePath(nativeId))
 }
 
-type Row = { id: string; started_at: number; parent_session_id: string | null; end_reason: string | null; hidden: number; archived: number; source: string }
+type Row = {
+  id: string
+  started_at: number
+  parent_session_id: string | null
+  end_reason: string | null
+  hidden: number
+  archived: number
+  source: string
+  created_source?: string | null
+}
 
 /** Conversations by the session their compression lineage began as. Hermes writes a compression child without its
  *  parent's hidden mark, so a lineage is left out when any session in it is hidden or not a conversation. */
 export function readHistoryCatalog(path: string): { id: string; at: number }[] {
   const db = new Database(path, { readonly: true })
   try {
-    const rows = db.query('SELECT id,started_at,parent_session_id,end_reason,hidden,archived,source FROM sessions').all() as Row[]
+    const hasCreated = (db.query('PRAGMA table_info(sessions)').all() as { name: string }[]).some(c => c.name === 'created_source')
+    const rows = db.query(`SELECT id,started_at,parent_session_id,end_reason,hidden,archived,source${hasCreated ? ',created_source' : ''} FROM sessions`).all() as Row[]
     const byId = new Map(rows.map(row => [row.id, row]))
     const roots = new Map<string, { id: string; at: number }>()
     for (const row of rows) {
@@ -28,7 +38,7 @@ export function readHistoryCatalog(path: string): { id: string; at: number }[] {
       const chain = [row]
       for (let parent = byId.get(row.parent_session_id ?? ''); parent?.end_reason === 'compression' && !chain.includes(parent); parent = byId.get(parent.parent_session_id ?? ''))
         chain.push(parent)
-      if (chain.some(session => session.hidden || UNLISTED.includes(session.source))) continue
+      if (chain.some(session => session.hidden || UNLISTED.includes(session.source) || (session.created_source ? UNLISTED.includes(session.created_source) : false))) continue
       const root = chain.at(-1)!
       roots.set(root.id, { id: root.id, at: Math.round(root.started_at * 1000) })
     }

@@ -128,16 +128,17 @@ describe('Hermes limited-session isolation, verification, and edit policy', () =
     await expect(resumeLimitedSession(bad.socket, 'stored-1', [CONN], scope)).rejects.toThrow(/Unexpected toolset/)
   })
 
-  test('readHistoryCatalog excludes acp sessions and their compression continuations', () => {
+  test('readHistoryCatalog excludes acp sessions (by source or created_source) and their compression continuations', () => {
     const dir = mkdtempSync(join(tmpdir(), 'acp-hist-'))
     const path = join(dir, 'state.db')
     const db = new Database(path)
     try {
-      db.exec('CREATE TABLE sessions(id TEXT, started_at REAL, parent_session_id TEXT, end_reason TEXT, hidden INTEGER, archived INTEGER, source TEXT)')
-      db.query("INSERT INTO sessions VALUES ('chat-main', 100, NULL, NULL, 0, 0, 'local')").run()
-      db.query("INSERT INTO sessions VALUES ('acp-root', 200, NULL, 'compression', 1, 0, 'acp')").run()
-      db.query("INSERT INTO sessions VALUES ('acp-child', 210, 'acp-root', NULL, 0, 0, 'acp')").run()
-      db.query("INSERT INTO sessions VALUES ('acp-unhidden', 220, NULL, NULL, 0, 0, 'acp')").run()
+      db.exec('CREATE TABLE sessions(id TEXT, started_at REAL, parent_session_id TEXT, end_reason TEXT, hidden INTEGER, archived INTEGER, source TEXT, created_source TEXT)')
+      db.query("INSERT INTO sessions VALUES ('chat-main', 100, NULL, NULL, 0, 0, 'local', 'gui')").run()
+      db.query("INSERT INTO sessions VALUES ('acp-root', 200, NULL, 'compression', 1, 0, 'acp', 'acp')").run()
+      db.query("INSERT INTO sessions VALUES ('acp-child', 210, 'acp-root', NULL, 0, 0, 'acp', 'acp')").run()
+      db.query("INSERT INTO sessions VALUES ('acp-unhidden', 220, NULL, NULL, 0, 0, 'acp', 'acp')").run()
+      db.query("INSERT INTO sessions VALUES ('acp-local-row', 230, NULL, NULL, 0, 0, 'local', 'acp')").run()
       expect(readHistoryCatalog(path).map(s => s.id)).toEqual(['chat-main'])
     } finally {
       db.close()
