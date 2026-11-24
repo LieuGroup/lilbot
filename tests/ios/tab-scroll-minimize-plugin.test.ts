@@ -89,14 +89,18 @@ describe('withTabScrollMinimize config plugin', () => {
     const imports = [...src.matchAll(/^\s*#(?:import|include)\s+(.+)$/gm)].map(m => m[1].trim())
     expect(imports).toEqual(['<QuartzCore/QuartzCore.h>', '<UIKit/UIKit.h>', '<objc/message.h>', '<objc/runtime.h>'])
 
-    // Missing/renamed classes, yielding to super, OS availability, hidden views, horizontal scrollers, BFS caps, inverted/text skips:
+    // Missing/renamed classes, yielding to super, OS availability, active registration, hidden/inverted/horizontal/text skips, BFS & responder caps:
     for (const guard of [
       'software-mansion/react-native-screens#4145',
-      'if (cls == Nil || ![cls isSubclassOfClass:UIViewController.class]) return;',
+      'if (cls == Nil || ![cls isSubclassOfClass:requiredSuper]) return NO;',
       'class_addMethod(cls, selector, imp, types)',
       'objc_msgSendSuper',
+      'setContentScrollView:target forEdge:NSDirectionalRectEdgeBottom',
+      '@selector(viewDidLayoutSubviews)',
+      '@selector(didMoveToWindow)',
+      '@"RCTEnhancedScrollView"',
       'if (superResult != nil || !LilBotShouldResolveForTabBar(self, edge)) return superResult;',
-      'if (superResult != nil || !LilBotShouldResolveForTabBar(self, edge) || !self.isViewLoaded)',
+      'if (superResult != nil || !LilBotShouldResolveForTabBar(self, edge) || !self.isViewLoaded) return superResult;',
       'if ((edge & NSDirectionalRectEdgeBottom) == 0) return NO;',
       'tabBarController.tabBarMinimizeBehavior != UITabBarMinimizeBehaviorNever',
       'if (view.isHidden || view.alpha <= 0.01) continue;',
@@ -111,7 +115,7 @@ describe('withTabScrollMinimize config plugin', () => {
     ]) {
       expect(src).toContain(guard)
     }
-    expect(src.match(/if \(@available\(iOS 26\.0, \*\)\)/g)?.length).toBeGreaterThanOrEqual(2)
+    expect(src.match(/if \(@available\(iOS 26\.0, \*\)\)/g)?.length).toBeGreaterThanOrEqual(3)
 
     for (const forbidden of ['method_exchangeImplementations', 'class_replaceMethod', 'method_setImplementation', 'NSSelectorFromString', 'performSelector', 'valueForKey:']) {
       expect(src).not.toContain(forbidden)
