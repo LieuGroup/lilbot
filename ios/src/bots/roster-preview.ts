@@ -1,18 +1,7 @@
 /** Pure iPhone roster last-message preview and locale-aware timestamp formatting.
- *  Matches PR #296's optional `Bot.lastMessage` shape so iOS wires cleanly before and after #296 merges.
  *  Zero React Native runtime imports so unit tests verify every rule and locale on Linux. */
-import type { Bot } from '../../../shared/bot-schema'
+import type { Bot, BotLastMessage } from '../../../shared/bot-schema'
 import type { RowTone } from '../../../shared/client/bots/row-state'
-
-export interface BotLastMessagePreview {
-  from: 'user' | 'bot'
-  text: string
-  at: number
-}
-
-export type BotWithLastMessage = Bot & {
-  lastMessage?: BotLastMessagePreview
-}
 
 export interface RosterTimeOptions {
   now?: number
@@ -25,7 +14,7 @@ export const USER_MESSAGE_PREFIX = 'You: '
 const MS_PER_DAY = 86_400_000
 
 /** Formats the second-line preview from `bot.lastMessage`, prefixing the owner's own messages with "You: ". */
-export function formatLastMessagePreview(lastMessage: BotLastMessagePreview | undefined): string | null {
+export function formatLastMessagePreview(lastMessage: BotLastMessage | undefined): string | null {
   if (!lastMessage) return null
   const trimmed = lastMessage.text.trim()
   if (!trimmed) return null
@@ -50,10 +39,10 @@ function calendarParts(ms: number, timeZone?: string): { year: number; month: nu
 }
 
 /** Formats a message timestamp in the device's locale:
- *  - today -> short time (e.g. "2:15 PM" / "14:15")
+ *  - today -> short time (e.g. "2:15 pm" / "14:15")
  *  - 1..6 calendar days ago -> short weekday (e.g. "Tue")
- *  - 7+ calendar days ago in the same year -> short month & day (e.g. "Nov 12" / "12 Nov")
- *  - earlier year -> short locale date (e.g. "12/11/25") */
+ *  - 7+ calendar days ago in the same year -> short month & day (e.g. "15 Nov" / "Nov 15")
+ *  - earlier year -> short locale date (e.g. "20/12/25") */
 export function formatRosterTime(at: number, options: RosterTimeOptions = {}): string | null {
   if (!Number.isFinite(at) || at <= 0) return null
   const now = options.now ?? Date.now()

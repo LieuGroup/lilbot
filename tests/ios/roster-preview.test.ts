@@ -1,16 +1,20 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { type BotWithLastMessage, formatLastMessagePreview, formatRosterTime, localDayKey, msUntilNextLocalDay, USER_MESSAGE_PREFIX } from '../../ios/src/bots/roster-preview'
+import { formatLastMessagePreview, formatRosterTime, localDayKey, msUntilNextLocalDay, USER_MESSAGE_PREFIX } from '../../ios/src/bots/roster-preview'
 import { rosterRowDisplay, sameRosterBotDisplay } from '../../ios/src/bots/roster-state'
+import type { Bot, BotLastMessage } from '../../shared/bot-schema'
 import { testBot as bot } from '../web/test-bot'
 
 // Anchor: Wednesday, Nov 25 2026 14:30:00 UTC (fixed UTC timezone for deterministic assertions).
 const NOW = Date.UTC(2026, 10, 25, 14, 30, 0)
 const UTC_US = { now: NOW, locale: 'en-US', timeZone: 'UTC' } as const
 const UTC_GB = { now: NOW, locale: 'en-GB', timeZone: 'UTC' } as const
+// Australian anchor: Wednesday, 25 Nov 2026 3:00 pm ACDT (Australia/Adelaide, UTC+10:30).
+const AU_NOW = Date.UTC(2026, 10, 25, 4, 30, 0)
+const AU_OPT = { now: AU_NOW, locale: 'en-AU', timeZone: 'Australia/Adelaide' } as const
 
-function botWithMsg(overrides: Parameters<typeof bot>[1], lastMessage?: BotWithLastMessage['lastMessage']): BotWithLastMessage {
+function botWithMsg(overrides: Parameters<typeof bot>[1], lastMessage?: BotLastMessage): Bot {
   return { ...bot('b', overrides), ...(lastMessage ? { lastMessage } : {}) }
 }
 
@@ -25,10 +29,13 @@ describe('iOS Roster last-message preview and locale-aware timestamps', () => {
     expect(botReply.accessibilityLabel).toContain('2.2.0 is submitted.')
     expect(botReply.accessibilityLabel).toContain('9:15')
 
-    // Owner's own message gets clear "You: " prefix.
+    // Owner's own message gets clear "You: " prefix, including attachment-only summaries from PR #296.
     const userMsg = rosterRowDisplay(botWithMsg({ function: 'Ships builds' }, { from: 'user', text: 'Ship 2.2.0 now?', at: todayAt }), UTC_US)
     expect(userMsg.inlineText).toBe(`${USER_MESSAGE_PREFIX}Ship 2.2.0 now?`)
     expect(userMsg.timeText).toMatch(/9:15\s*AM/)
+
+    const photoMsg = rosterRowDisplay(botWithMsg({ function: 'Ships builds' }, { from: 'user', text: 'Sent a photo', at: todayAt }), UTC_US)
+    expect(photoMsg.inlineText).toBe('You: Sent a photo')
 
     // Unread idle bot highlights the last message in foreground tone + bold name.
     const unreadReply = rosterRowDisplay(
@@ -90,23 +97,22 @@ describe('iOS Roster last-message preview and locale-aware timestamps', () => {
     expect(inGroup.inlineText).toBe('Leading a group')
   })
 
-  test('formatRosterTime formats today as time, 1..6 days ago as weekday, 7+ days ago as date, in device locale', () => {
+  test('formatRosterTime formats today as time, 1..6 days ago as weekday, 7+ days ago as date, in Australian and other locales', () => {
+    // Australian locale (en-AU, Australia/Adelaide): 12h lowercase am/pm today, short weekday, "15 Nov" older, "20/12/25" prior year.
+    expect(formatRosterTime(Date.UTC(2026, 10, 25, 3, 45, 0), AU_OPT)).toMatch(/2:15\s*pm/i)
+    expect(formatRosterTime(Date.UTC(2026, 10, 24, 12, 0, 0), AU_OPT)).toBe('Tue')
+    expect(formatRosterTime(Date.UTC(2026, 10, 20, 5, 0, 0), AU_OPT)).toBe('Fri')
+    expect(formatRosterTime(Date.UTC(2026, 10, 15, 5, 0, 0), AU_OPT)).toBe('15 Nov')
+    expect(formatRosterTime(Date.UTC(2025, 11, 20, 5, 0, 0), AU_OPT)).toMatch(/20\/12\/25|20\/12\/2025/)
+
+    // Other device locales (en-US, en-GB).
     const todayMorning = Date.UTC(2026, 10, 25, 9, 5, 0)
     expect(formatRosterTime(todayMorning, UTC_US)).toMatch(/9:05\s*AM/)
     expect(formatRosterTime(todayMorning, UTC_GB)).toBe('09:05')
-
-    // 1 day ago (Tuesday) through 6 days ago (Thursday) -> localized short weekday.
     expect(formatRosterTime(Date.UTC(2026, 10, 24, 23, 50, 0), UTC_US)).toBe('Tue')
     expect(formatRosterTime(Date.UTC(2026, 10, 19, 10, 0, 0), UTC_US)).toBe('Thu')
-
-    // Exactly 7 days ago in same year -> short month + day.
     expect(formatRosterTime(Date.UTC(2026, 10, 18, 10, 0, 0), UTC_US)).toBe('Nov 18')
     expect(formatRosterTime(Date.UTC(2026, 10, 18, 10, 0, 0), UTC_GB)).toBe('18 Nov')
-
-    // Earlier calendar year -> short locale date with year.
-    const priorYear = Date.UTC(2025, 11, 20, 15, 0, 0)
-    expect(formatRosterTime(priorYear, UTC_US)).toMatch(/12\/20\/25/)
-    expect(formatRosterTime(priorYear, UTC_GB)).toMatch(/20\/12\/2025|20\/12\/25/)
 
     // Slight forward clock skew within 24h stays a time; invalid timestamps return null.
     expect(formatRosterTime(NOW + 60_000, UTC_US)).toMatch(/2:31\s*PM/)
@@ -115,8 +121,8 @@ describe('iOS Roster last-message preview and locale-aware timestamps', () => {
     expect(formatRosterTime(Number.NaN, UTC_US)).toBeNull()
 
     // DST transition boundary (America/New_York spring forward on 2026-03-08: 23-hour day).
-    const dstNow = Date.UTC(2026, 2, 9, 15, 0, 0) // Mon Mar 9, 11:00 EDT
-    const dstYesterday = Date.UTC(2026, 2, 8, 12, 0, 0) // Sun Mar 8, 08:00 EDT
+    const dstNow = Date.UTC(2026, 2, 9, 15, 0, 0)
+    const dstYesterday = Date.UTC(2026, 2, 8, 12, 0, 0)
     expect(formatRosterTime(dstYesterday, { now: dstNow, locale: 'en-US', timeZone: 'America/New_York' })).toBe('Sun')
   })
 
