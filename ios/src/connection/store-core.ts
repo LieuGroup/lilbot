@@ -29,14 +29,21 @@ export interface SecretStorage {
   deleteItem: (key: string) => Promise<void>
 }
 
+export interface SaveConnectionOptions {
+  /** Only clear a previously unreadable Keychain token when the user explicitly edited the token field. */
+  clearToken?: boolean
+}
+
 export interface ConnectionState {
   settings: ServerSettings | null
   loaded: boolean
   connected: boolean
   device: Device | null
   tokenNotice: string
+  tokenReadFailed: boolean
   load: () => Promise<void>
-  save: (settings: ServerSettings) => Promise<void>
+  retryTokenRead: () => Promise<void>
+  save: (settings: ServerSettings, options?: SaveConnectionOptions) => Promise<void>
   setConnected: (connected: boolean) => void
   setDevice: (device: Device) => void
 }
@@ -52,12 +59,13 @@ function parseSavedAddress(raw: string | null): string | null {
 }
 
 export function createConnectionStore(deps: { plain: PlainStorage; secret: SecretStorage }) {
-  return create<ConnectionState>(set => ({
+  return create<ConnectionState>((set, get) => ({
     settings: null,
     loaded: false,
     connected: false,
     device: null,
     tokenNotice: '',
+    tokenReadFailed: false,
     load: async () => {
       let serverUrl: string | null = null
       try {
@@ -67,17 +75,38 @@ export function createConnectionStore(deps: { plain: PlainStorage; secret: Secre
         return
       }
       if (!serverUrl) {
-        set({ settings: null, loaded: true, tokenNotice: '' })
+        set({ settings: null, loaded: true, tokenNotice: '', tokenReadFailed: false })
         return
       }
       try {
         const token = await deps.secret.getItem(TOKEN_KEY)
-        set({ settings: { serverUrl, accessToken: token ?? '' }, loaded: true, tokenNotice: '' })
+        set({ settings: { serverUrl, accessToken: token ?? '' }, loaded: true, tokenNotice: '', tokenReadFailed: false })
       } catch {
-        set({ settings: { serverUrl, accessToken: '' }, loaded: true, tokenNotice: CONNECTION_STORE_MESSAGES.readTokenFailed })
+        set({
+          settings: { serverUrl, accessToken: '' },
+          loaded: true,
+          tokenNotice: CONNECTION_STORE_MESSAGES.readTokenFailed,
+          tokenReadFailed: true
+        })
       }
     },
-    save: async settings => {
+    retryTokenRead: async () => {
+      const { tokenReadFailed, settings } = get()
+      if (!tokenReadFailed || !settings?.serverUrl) return
+      try {
+        const token = await deps.secret.getItem(TOKEN_KEY)
+        const current = get()
+        if (!current.tokenReadFailed || !current.settings?.serverUrl) return
+        set({
+          settings: { serverUrl: current.settings.serverUrl, accessToken: token ?? '' },
+          tokenNotice: '',
+          tokenReadFailed: false
+        })
+      } catch {
+        // Still unavailable (for example, device locked or missing simulator entitlement); keep existing notice.
+      }
+    },
+    save: async (settings, options) => {
       const serverUrl = settings.serverUrl.trim()
       const accessToken = settings.accessToken.trim()
       try {
@@ -86,19 +115,27 @@ export function createConnectionStore(deps: { plain: PlainStorage; secret: Secre
         throw new Error(CONNECTION_STORE_MESSAGES.saveAddressFailed)
       }
       if (!accessToken) {
+        if (get().tokenReadFailed && !options?.clearToken) {
+          set({ settings: { serverUrl, accessToken: '' } })
+          return
+        }
         try {
           await deps.secret.deleteItem(TOKEN_KEY)
         } catch {
           // Best-effort clear when no token is configured.
         }
-        set({ settings: { serverUrl, accessToken: '' }, tokenNotice: '' })
+        set({ settings: { serverUrl, accessToken: '' }, tokenNotice: '', tokenReadFailed: false })
         return
       }
       try {
         await deps.secret.setItem(TOKEN_KEY, accessToken)
-        set({ settings: { serverUrl, accessToken }, tokenNotice: '' })
+        set({ settings: { serverUrl, accessToken }, tokenNotice: '', tokenReadFailed: false })
       } catch {
-        set({ settings: { serverUrl, accessToken: '' }, tokenNotice: CONNECTION_STORE_MESSAGES.saveTokenFailed })
+        set({
+          settings: { serverUrl, accessToken: '' },
+          tokenNotice: CONNECTION_STORE_MESSAGES.saveTokenFailed,
+          tokenReadFailed: false
+        })
         throw new Error(CONNECTION_STORE_MESSAGES.saveTokenFailed)
       }
     },

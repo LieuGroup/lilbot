@@ -1,6 +1,6 @@
 /** Settings: the server address and Access token this install talks to, plus connection state.
  *  The token is Oscar's Cloudflare Access JWT, kept in the Keychain; the app sends it on every request. */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Pressable, ScrollView, TextInput, View } from 'react-native'
 import { serverUrlError } from '../connection/lilbot'
 import { useConnectionStore } from '../connection/store'
@@ -17,8 +17,13 @@ export function SettingsScreen({ onDone }: { onDone?: () => void }) {
   const save = useConnectionStore(state => state.save)
   const [serverUrl, setServerUrl] = useState(settings?.serverUrl ?? '')
   const [accessToken, setAccessToken] = useState(settings?.accessToken ?? '')
+  const [tokenEdited, setTokenEdited] = useState(false)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!tokenEdited) setAccessToken(settings?.accessToken ?? '')
+  }, [settings?.accessToken, tokenEdited])
 
   const submit = async () => {
     const invalid = serverUrlError(serverUrl)
@@ -29,7 +34,8 @@ export function SettingsScreen({ onDone }: { onDone?: () => void }) {
     setSaving(true)
     setError('')
     try {
-      await save({ serverUrl: serverUrl.trim(), accessToken: accessToken.trim() })
+      await save({ serverUrl: serverUrl.trim(), accessToken: accessToken.trim() }, { clearToken: tokenEdited })
+      setTokenEdited(false)
       onDone?.()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not save the settings.')
@@ -65,7 +71,21 @@ export function SettingsScreen({ onDone }: { onDone?: () => void }) {
         <AppText variant="meta" color={theme.mutedForeground}>
           Access token (optional)
         </AppText>
-        <TextInput testID="access-token-input" value={accessToken} onChangeText={setAccessToken} placeholder="Optional on a private network" placeholderTextColor={theme.mutedForeground} autoCapitalize="none" autoCorrect={false} secureTextEntry textContentType="none" style={field} />
+        <TextInput
+          testID="access-token-input"
+          value={accessToken}
+          onChangeText={value => {
+            setTokenEdited(true)
+            setAccessToken(value)
+          }}
+          placeholder="Optional on a private network"
+          placeholderTextColor={theme.mutedForeground}
+          autoCapitalize="none"
+          autoCorrect={false}
+          secureTextEntry
+          textContentType="none"
+          style={field}
+        />
         <AppText variant="meta" color={theme.mutedForeground}>
           Sign-in through the public address is not supported from the iPhone app yet.
         </AppText>

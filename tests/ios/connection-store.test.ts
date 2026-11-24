@@ -8,23 +8,21 @@ function makeMemoryStorage() {
   const secretMap = new Map<string, string>()
   const calls = { secretGet: 0, secretSet: 0, secretDelete: 0 }
   const plain: PlainStorage = {
-    async getItem(key) {
-      return plainMap.get(key) ?? null
-    },
-    async setItem(key, value) {
+    getItem: async key => plainMap.get(key) ?? null,
+    setItem: async (key, value) => {
       plainMap.set(key, value)
     }
   }
   const secret: SecretStorage = {
-    async getItem(key) {
+    getItem: async key => {
       calls.secretGet += 1
       return secretMap.get(key) ?? null
     },
-    async setItem(key, value) {
+    setItem: async (key, value) => {
       calls.secretSet += 1
       secretMap.set(key, value)
     },
-    async deleteItem(key) {
+    deleteItem: async key => {
       calls.secretDelete += 1
       secretMap.delete(key)
     }
@@ -95,11 +93,22 @@ describe('iOS connection store keychain resilience and Settings rules', () => {
 
   test('round-trips address and non-empty token cleanly and clears prior notice', async () => {
     const { plainMap, secretMap, plain, secret } = makeMemoryStorage()
-    const store = createConnectionStore({ plain, secret })
+    plainMap.set(SETTINGS_KEY, JSON.stringify({ serverUrl: 'https://lilbot.example.com' }))
+    let failRead = true
+    const store = createConnectionStore({
+      plain,
+      secret: { ...secret, getItem: async key => (failRead ? Promise.reject(new Error('Keychain locked')) : secret.getItem(key)) }
+    })
+    await store.getState().load()
+    expect(store.getState().tokenNotice).toBe(CONNECTION_STORE_MESSAGES.readTokenFailed)
+
+    failRead = false
     await store.getState().save({ serverUrl: 'https://lilbot.example.com', accessToken: 'tok-123' })
     expect(plainMap.get(SETTINGS_KEY)).toBe(JSON.stringify({ serverUrl: 'https://lilbot.example.com' }))
     expect(secretMap.get(TOKEN_KEY)).toBe('tok-123')
     expect(store.getState().settings).toEqual({ serverUrl: 'https://lilbot.example.com', accessToken: 'tok-123' })
+    expect(store.getState().tokenNotice).toBe('')
+    expect(store.getState().tokenReadFailed).toBe(false)
 
     const reloaded = createConnectionStore({ plain, secret })
     await reloaded.getState().load()
@@ -107,10 +116,79 @@ describe('iOS connection store keychain resilience and Settings rules', () => {
     expect(reloaded.getState().tokenNotice).toBe('')
   })
 
-  test('Settings screen persists taps while keyboard is open and uses ink rather than accent blue on buttons', () => {
-    const src = readFileSync(resolve(process.cwd(), 'ios/src/settings/screen.tsx'), 'utf8')
-    expect(src).toContain('keyboardShouldPersistTaps="handled"')
-    expect(src).toContain('theme.foreground')
-    expect(src).not.toContain('theme.primary')
+  test('retryTokenRead recovers the token after a locked read and is a no-op when the last read succeeded', async () => {
+    const { plainMap, secretMap, calls, plain, secret } = makeMemoryStorage()
+    plainMap.set(SETTINGS_KEY, JSON.stringify({ serverUrl: 'https://lilbot.example.com' }))
+    secretMap.set(TOKEN_KEY, 'stored-jwt')
+    let locked = true
+    const store = createConnectionStore({
+      plain,
+      secret: {
+        ...secret,
+        async getItem(key) {
+          if (locked) {
+            calls.secretGet += 1
+            throw new Error('errSecInteractionNotAllowed')
+          }
+          return secret.getItem(key)
+        }
+      }
+    })
+
+    await store.getState().load()
+    expect(store.getState().tokenReadFailed).toBe(true)
+    expect(store.getState().settings).toEqual({ serverUrl: 'https://lilbot.example.com', accessToken: '' })
+    expect(calls.secretGet).toBe(1)
+
+    locked = false
+    await store.getState().retryTokenRead()
+    expect(calls.secretGet).toBe(2)
+    expect(store.getState().settings).toEqual({ serverUrl: 'https://lilbot.example.com', accessToken: 'stored-jwt' })
+    expect(store.getState().tokenNotice).toBe('')
+    expect(store.getState().tokenReadFailed).toBe(false)
+
+    await store.getState().retryTokenRead()
+    expect(calls.secretGet).toBe(2)
+  })
+
+  test('saving with an untouched blank token while readTokenFailed is active never wipes the stored token', async () => {
+    const { plainMap, secretMap, calls, plain, secret } = makeMemoryStorage()
+    plainMap.set(SETTINGS_KEY, JSON.stringify({ serverUrl: 'https://old.example.com' }))
+    secretMap.set(TOKEN_KEY, 'stored-jwt')
+    let locked = true
+    const store = createConnectionStore({
+      plain,
+      secret: { ...secret, getItem: async key => (locked ? Promise.reject(new Error('errSecInteractionNotAllowed')) : secret.getItem(key)) }
+    })
+
+    await store.getState().load()
+    expect(store.getState().tokenReadFailed).toBe(true)
+
+    await store.getState().save({ serverUrl: 'https://new.example.com', accessToken: '' })
+    expect(calls.secretDelete).toBe(0)
+    expect(secretMap.get(TOKEN_KEY)).toBe('stored-jwt')
+    expect(plainMap.get(SETTINGS_KEY)).toBe(JSON.stringify({ serverUrl: 'https://new.example.com' }))
+    expect(store.getState().tokenReadFailed).toBe(true)
+    expect(store.getState().tokenNotice).toBe(CONNECTION_STORE_MESSAGES.readTokenFailed)
+
+    locked = false
+    await store.getState().retryTokenRead()
+    expect(store.getState().settings).toEqual({ serverUrl: 'https://new.example.com', accessToken: 'stored-jwt' })
+    expect(store.getState().tokenNotice).toBe('')
+
+    await store.getState().save({ serverUrl: 'https://new.example.com', accessToken: '' }, { clearToken: true })
+    expect(calls.secretDelete).toBe(1)
+    expect(secretMap.has(TOKEN_KEY)).toBe(false)
+  })
+
+  test('Settings screen and AppGate wire foreground token retry, untouched-token guard, keyboard taps, and ink buttons', () => {
+    const screenSrc = readFileSync(resolve(process.cwd(), 'ios/src/settings/screen.tsx'), 'utf8')
+    const layoutSrc = readFileSync(resolve(process.cwd(), 'ios/src/app/_layout.tsx'), 'utf8')
+    expect(screenSrc).toContain('keyboardShouldPersistTaps="handled"')
+    expect(screenSrc).toContain('clearToken: tokenEdited')
+    expect(screenSrc).toContain('theme.foreground')
+    expect(screenSrc).not.toContain('theme.primary')
+    expect(layoutSrc).toContain("AppState.addEventListener('change'")
+    expect(layoutSrc).toContain('retryTokenRead')
   })
 })
