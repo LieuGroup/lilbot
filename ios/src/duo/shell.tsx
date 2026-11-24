@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { Bot } from '../../../shared/bot-schema'
 import { useBotMenuStore } from '../bots/menu-store'
 import { Roster } from '../bots/roster'
+import { closeRosterSearch, INITIAL_ROSTER_SEARCH_STATE, openRosterSearch, type RosterSearchState, setRosterSearchQuery, toggleRosterSearch } from '../bots/roster-list'
 import { useBotStore } from '../bots/store'
 import { ChatScreen } from '../chat/screen'
 import { useChatStore } from '../chat/store'
@@ -47,7 +48,7 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
   const autoSelectOnce = useBotSelection(state => state.autoSelectOnce)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [inspectorOpen, setInspectorOpen] = useState(false)
-  const [searchOpen, setSearchOpen] = useState(false)
+  const [search, setSearch] = useState<RosterSearchState>(INITIAL_ROSTER_SEARCH_STATE)
 
   const selected = bots.find(bot => bot.id === selectedId) ?? null
   const selectedSlotRunning = useChatStore(state => (selected ? (state.slots[selected.id]?.view.running ?? false) : false))
@@ -57,13 +58,17 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
   const showRoster = !layout.splitMode || layout.rosterWidth > 0
   const lastFocusedSplitMode = useRef(layout.splitMode)
   const pushPendingRef = useRef(false)
+  const prevSearchOpenRef = useRef(false)
 
-  const openSearch = useCallback(() => setSearchOpen(true), [])
-  const closeSearch = useCallback(() => {
-    Keyboard.dismiss()
-    setSearchOpen(false)
-  }, [])
-  const toggleSearch = useCallback(() => setSearchOpen(open => { if (open) Keyboard.dismiss(); return !open }), [])
+  const openSearch = useCallback(() => setSearch(openRosterSearch), [])
+  const closeSearch = useCallback(() => setSearch(closeRosterSearch), [])
+  const toggleSearch = useCallback(() => setSearch(toggleRosterSearch), [])
+  const changeSearchQuery = useCallback((query: string) => setSearch(prev => setRosterSearchQuery(prev, query)), [])
+
+  useEffect(() => {
+    if (prevSearchOpenRef.current && !search.open) Keyboard.dismiss()
+    prevSearchOpenRef.current = search.open
+  }, [search.open])
 
   useFocusEffect(useCallback(() => { pushPendingRef.current = false }, []))
   useEffect(() => { if (!isFocused || !showRoster) closeSearch() }, [closeSearch, isFocused, showRoster])
@@ -158,7 +163,7 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
       <Stack.Screen options={stackOptions} />
       <View style={{ flex: 1, flexDirection: 'row', backgroundColor: theme.background, paddingTop: useNativeStripHeader ? 0 : insets.top, paddingLeft: layout.horizontalPadding.left, paddingRight: layout.horizontalPadding.right }}>
         <View key="roster-pane" style={rosterStyle}>
-          <Roster bots={bots} sections={sections} loaded={loaded} connected={connected} error={error} selectedId={layout.splitMode ? (selected?.id ?? null) : null} splitMode={layout.splitMode} hideInlineSearch={verticalBarActive} hideInlineNewBot={verticalBarActive && layout.splitMode} searchOpen={searchOpen} onOpenSearch={openSearch} onCloseSearch={closeSearch} onSelect={handleSelectBot} />
+          <Roster bots={bots} sections={sections} loaded={loaded} connected={connected} error={error} selectedId={layout.splitMode ? (selected?.id ?? null) : null} splitMode={layout.splitMode} hideInlineSearch={verticalBarActive} hideInlineNewBot={verticalBarActive && layout.splitMode} searchOpen={search.open} searchQuery={search.query} onChangeSearchQuery={changeSearchQuery} onOpenSearch={openSearch} onCloseSearch={closeSearch} onSelect={handleSelectBot} />
         </View>
         {layout.splitMode && (
           <View key="chat-pane" style={{ flex: 1 }}>

@@ -144,7 +144,6 @@ export const GLASS_METRICS = {
   tabBarHeight: 44,
   railTabWidth: 48,
   tasksPillHeight: 32,
-  composerRestHeight: 42,
   minTouchTarget: 44
 } as const
 

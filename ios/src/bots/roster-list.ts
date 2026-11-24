@@ -146,18 +146,29 @@ export function standaloneRosterHeaderActions(input: {
   return { showSearch, showNewBot }
 }
 
-/** Pure search state transitions for the bot list:
- *  - strip/inline toggle opens when closed, closes and clears query when open;
+/** Pure search state transitions wired directly into DuoShell and Roster:
+ *  - open opens with a clean query;
+ *  - strip toggle opens when closed, closes and clears query when open;
  *  - close button (`X`) and leaving the list always close and clear query. */
 export interface RosterSearchState {
   open: boolean
   query: string
 }
 
+export const INITIAL_ROSTER_SEARCH_STATE: RosterSearchState = { open: false, query: '' }
+
+export function openRosterSearch(state: RosterSearchState): RosterSearchState {
+  return state.open ? state : { open: true, query: '' }
+}
+
 export function toggleRosterSearch(state: RosterSearchState): RosterSearchState {
-  return state.open ? { open: false, query: '' } : { open: true, query: state.query }
+  return state.open ? { open: false, query: '' } : { open: true, query: '' }
 }
 
 export function closeRosterSearch(): RosterSearchState {
   return { open: false, query: '' }
+}
+
+export function setRosterSearchQuery(state: RosterSearchState, query: string): RosterSearchState {
+  return state.open ? { open: true, query } : state
 }

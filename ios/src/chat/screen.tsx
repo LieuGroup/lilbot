@@ -14,6 +14,7 @@ import { BotAvatar } from '../ui/avatar'
 import { MoreHorizontalIcon, NewChatIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
+import { MOBILE_SCALE } from '../ui/tokens'
 
 export interface ChatScreenProps {
   bot: Bot
@@ -108,7 +109,7 @@ export function ChatScreen({ bot, hideHeader = false, headerLeading, showNewSess
       )}
       {chat.error ? (
         <View style={{ padding: 16 }}>
-          <AppText variant="chat" color={theme.destructive}>
+          <AppText style={MOBILE_SCALE.chat.message} color={theme.destructive}>
             {chat.error}
           </AppText>
         </View>

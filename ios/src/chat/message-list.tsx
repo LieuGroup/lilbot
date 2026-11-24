@@ -1,12 +1,14 @@
 /** Conversation transcript (newest at the bottom) and composer sized from MOBILE_SCALE.chat. */
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AccessibilityInfo, Animated, Easing, FlatList, Keyboard, type NativeScrollEvent, type NativeSyntheticEvent, Platform, Pressable, TextInput, View } from 'react-native'
-import type { ChatView, MessageItem } from '../../../shared/client/chat/chat-state'
+import { AccessibilityInfo, Animated, Easing, FlatList, Keyboard, type ListRenderItemInfo, type NativeScrollEvent, type NativeSyntheticEvent, Platform, Pressable, TextInput, useWindowDimensions, View } from 'react-native'
+import type { ChatView } from '../../../shared/client/chat/chat-state'
+import { composerInputMaxHeight, DYNAMIC_TYPE_CAPS } from '../ui/dynamic-type'
 import { SendIcon, SparklesIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { MOBILE_SCALE } from '../ui/tokens'
 import { ChatItem } from './message-item'
+import { buildMessageRows, type MessageRow } from './message-rows'
 import type { ChatStatusLine } from './status'
 import { useChatStore } from './store'
 
@@ -22,18 +24,12 @@ interface MessageListProps {
  *  Because the list is inverted, ListHeaderComponent renders at the visual bottom right where the reply appears. */
 export function MessageList({ botId, botName, chat, statusLine = null, emptyHint }: MessageListProps) {
   const theme = useTheme()
-  const listRef = useRef<FlatList<{ key: string; item: MessageItem; queued: boolean }>>(null)
+  const listRef = useRef<FlatList<MessageRow>>(null)
   const initialOffset = useRef(useChatStore.getState().slots[botId]?.scrollOffset ?? 0)
   const restored = useRef(initialOffset.current <= 0)
   const setScrollOffset = useChatStore(state => state.setScrollOffset)
 
-  const rows = useMemo(() => {
-    const sent = chat.items
-      .filter((item): item is MessageItem => item.kind !== 'session')
-      .map((item, i) => ({ key: `i-${i}`, item, queued: false }))
-    const waiting = chat.queued.map(q => ({ key: `q-${q.messageId}`, item: { kind: 'user', text: q.text } as MessageItem, queued: true }))
-    return [...sent, ...waiting].reverse()
-  }, [chat.items, chat.queued])
+  const rows = useMemo(() => buildMessageRows(chat.items, chat.queued), [chat.items, chat.queued])
 
   const handleContentSizeChange = useCallback(() => {
     if (restored.current || rows.length === 0) return
@@ -43,13 +39,20 @@ export function MessageList({ botId, botName, chat, statusLine = null, emptyHint
 
   const handleScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (!restored.current) return
       setScrollOffset(botId, event.nativeEvent.contentOffset.y)
     },
     [botId, setScrollOffset]
   )
 
+  const renderItem = useCallback(
+    ({ item: row }: ListRenderItemInfo<MessageRow>) => <ChatItem item={row.item} botName={botName} queued={row.queued} />,
+    [botName]
+  )
+
   return (
     <FlatList
+      testID="chat-message-list"
       ref={listRef}
       inverted
       data={rows}
@@ -68,7 +71,7 @@ export function MessageList({ botId, botName, chat, statusLine = null, emptyHint
           </AppText>
         ) : undefined
       }
-      renderItem={({ item: row }) => <ChatItem item={row.item} botName={botName} queued={row.queued} />}
+      renderItem={renderItem}
     />
   )
 }
@@ -135,20 +138,16 @@ interface ComposerProps {
  *  Clears the bottom safe-area inset at rest and collapses it to 12 pt when the iOS keyboard is open. */
 export function Composer({ botId, botName, ready, running, model, bottomInset = 0, onSend, onStop }: ComposerProps) {
   const theme = useTheme()
+  const { fontScale } = useWindowDimensions()
   const chatScale = MOBILE_SCALE.chat
   const text = useChatStore(state => state.slots[botId]?.draft ?? '')
   const setDraft = useChatStore(state => state.setDraft)
   const [keyboardOpen, setKeyboardOpen] = useState(false)
 
   useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow'
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide'
-    const onShow = Keyboard.addListener(showEvent, () => setKeyboardOpen(true))
-    const onHide = Keyboard.addListener(hideEvent, () => setKeyboardOpen(false))
-    return () => {
-      onShow.remove()
-      onHide.remove()
-    }
+    const onShow = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardOpen(true))
+    const onHide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardOpen(false))
+    return () => { onShow.remove(); onHide.remove() }
   }, [])
 
   const hasContent = text.trim().length > 0
@@ -176,16 +175,17 @@ export function Composer({ botId, botName, ready, running, model, bottomInset = 
           editable={ready}
           onSubmitEditing={submit}
           blurOnSubmit={false}
-          style={{ maxHeight: 132, paddingHorizontal: 0, paddingVertical: 0, fontFamily: 'Inter_400Regular', ...chatScale.composerInput, color: theme.foreground }}
+          maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.composerInput}
+          style={{ maxHeight: composerInputMaxHeight(fontScale), paddingHorizontal: 0, paddingVertical: 0, fontFamily: 'Inter_400Regular', ...chatScale.composerInput, color: theme.foreground }}
         />
         <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: btnSize, marginTop: 8, gap: 8 }}>
           <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-start' }}>{model}</View>
           {stopping ? (
-            <Pressable onPress={onStop} accessibilityLabel="Stop" style={{ width: btnSize, height: btnSize, borderRadius: btnSize / 2, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.foreground }}>
+            <Pressable onPress={onStop} hitSlop={4} accessibilityRole="button" accessibilityLabel="Stop" style={{ width: btnSize, height: btnSize, borderRadius: btnSize / 2, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.foreground }}>
               <View style={{ width: 12, height: 12, borderRadius: 2.5, backgroundColor: theme.card }} />
             </Pressable>
           ) : (
-            <Pressable onPress={submit} disabled={!canSend} accessibilityLabel="Send" accessibilityRole="button" accessibilityState={{ disabled: !canSend }} testID="send-button" style={{ width: btnSize, height: btnSize, borderRadius: btnSize / 2, alignItems: 'center', justifyContent: 'center', backgroundColor: canSend ? theme.foreground : theme.muted }}>
+            <Pressable onPress={submit} disabled={!canSend} hitSlop={4} accessibilityLabel="Send" accessibilityRole="button" accessibilityState={{ disabled: !canSend }} testID="send-button" style={{ width: btnSize, height: btnSize, borderRadius: btnSize / 2, alignItems: 'center', justifyContent: 'center', backgroundColor: canSend ? theme.foreground : theme.muted }}>
               <SendIcon color={canSend ? theme.background : theme.mutedForeground} size={19} />
             </Pressable>
           )}

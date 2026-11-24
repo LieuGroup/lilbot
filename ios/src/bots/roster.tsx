@@ -2,7 +2,7 @@
  *  collapsible user sections and Unassigned/Hidden groups, open two-line rows with scroll-gated swipes,
  *  and button-triggered Search bots (Duo strip button or ordinary iPhone/iPad first-section icon; no pull gesture). */
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { FlatList, Keyboard, type ListRenderItemInfo, View } from 'react-native'
+import { FlatList, type ListRenderItemInfo, View } from 'react-native'
 import { useSharedValue } from 'react-native-reanimated'
 import type { Bot, Section } from '../../../shared/bot-schema'
 import { closeAllSwipeRows } from '../ui/gestures/swipe-row'
@@ -27,6 +27,8 @@ interface RosterProps {
   hideInlineSearch?: boolean
   hideInlineNewBot?: boolean
   searchOpen: boolean
+  searchQuery: string
+  onChangeSearchQuery: (query: string) => void
   onOpenSearch: () => void
   onCloseSearch: () => void
   onSelect: (bot: Bot) => void
@@ -43,6 +45,8 @@ export function Roster({
   hideInlineSearch = false,
   hideInlineNewBot = false,
   searchOpen,
+  searchQuery,
+  onChangeSearchQuery,
   onOpenSearch,
   onCloseSearch,
   onSelect
@@ -53,26 +57,15 @@ export function Roster({
   const setActionError = useBotMenuStore(state => state.setError)
 
   const scrollingVertically = useSharedValue(false)
-  const [query, setQuery] = useState('')
   const [unassignedOpen, setUnassignedOpen] = useState(false)
   const [hiddenOpen, setHiddenOpen] = useState(false)
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
-
-  useEffect(() => {
-    if (!searchOpen) setQuery('')
-  }, [searchOpen])
 
   useEffect(() => {
     if (!actionError) return
     const timer = setTimeout(() => setActionError(''), 6000)
     return () => clearTimeout(timer)
   }, [actionError, setActionError])
-
-  const handleCloseSearch = useCallback(() => {
-    Keyboard.dismiss()
-    setQuery('')
-    onCloseSearch()
-  }, [onCloseSearch])
 
   const toggleGroup = useCallback((groupId: 'unassigned' | 'hidden') => {
     if (groupId === 'unassigned') setUnassignedOpen(open => !open)
@@ -93,11 +86,11 @@ export function Roster({
   }, [scrollingVertically])
 
   const items = useMemo(
-    () => buildRosterListItems({ bots, sections, loaded, connected, error, query: searchOpen ? query : '', selectedId, unassignedOpen, hiddenOpen, collapsedSections }),
-    [bots, collapsedSections, connected, error, hiddenOpen, loaded, query, searchOpen, sections, selectedId, unassignedOpen]
+    () => buildRosterListItems({ bots, sections, loaded, connected, error, query: searchOpen ? searchQuery : '', selectedId, unassignedOpen, hiddenOpen, collapsedSections }),
+    [bots, collapsedSections, connected, error, hiddenOpen, loaded, searchOpen, searchQuery, sections, selectedId, unassignedOpen]
   )
 
-  const firstHeaderKey = useMemo(() => (query.trim().length === 0 || !searchOpen ? firstRosterHeaderKey(items) : null), [items, query, searchOpen])
+  const firstHeaderKey = useMemo(() => (searchQuery.trim().length === 0 || !searchOpen ? firstRosterHeaderKey(items) : null), [items, searchOpen, searchQuery])
   const headerActionState = rosterHeaderActionsVisibility({
     hasHeader: firstHeaderKey !== null,
     splitMode,
@@ -145,7 +138,7 @@ export function Roster({
   const header =
     searchOpen || showStandaloneBar || bannerError ? (
       <View>
-        {searchOpen && <RosterSearchBar query={query} autoFocus onChange={setQuery} onClose={handleCloseSearch} />}
+        {searchOpen && <RosterSearchBar query={searchQuery} autoFocus onChange={onChangeSearchQuery} onClose={onCloseSearch} />}
         {showStandaloneBar && (
           <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 16, paddingTop: 10, paddingBottom: 4 }}>
             <RosterHeaderActions showSearch={standaloneActions.showSearch} showNewBot={standaloneActions.showNewBot} onOpenSearch={onOpenSearch} onNewBot={openNewBot} />
@@ -153,7 +146,7 @@ export function Roster({
         )}
         {bannerError ? (
           <View style={{ marginHorizontal: 16, marginTop: searchOpen || showStandaloneBar ? 0 : 8, marginBottom: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.md, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.destructive }}>
-            <AppText variant="preview" color={theme.destructive}>
+            <AppText style={MOBILE_SCALE.roster.rowPreview} color={theme.destructive}>
               {bannerError}
             </AppText>
           </View>
@@ -161,7 +154,7 @@ export function Roster({
       </View>
     ) : undefined
 
-  const footer = splitMode && !hideInlineNewBot && loaded && (!searchOpen || query.trim().length === 0) && !firstHeaderKey && !standaloneActions.showNewBot ? <SplitNewBotFooter onPress={openNewBot} /> : undefined
+  const footer = splitMode && !hideInlineNewBot && loaded && (!searchOpen || searchQuery.trim().length === 0) && !firstHeaderKey && !standaloneActions.showNewBot ? <SplitNewBotFooter onPress={openNewBot} /> : undefined
 
   return (
     <FlatList

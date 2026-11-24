@@ -1,11 +1,12 @@
 /** Memoized open two-line Roster row: large avatar, bold name on line 1, one-line muted state/preview
  *  from shared rowState(bot) on line 2, and trailing status/unread marks inside scroll-gated SwipeRow. */
 import { memo, useCallback, useMemo } from 'react'
-import { View } from 'react-native'
+import { useWindowDimensions, View } from 'react-native'
 import type { SharedValue } from 'react-native-reanimated'
 import type { Bot } from '../../../shared/bot-schema'
 import { canArrange, isUnread } from '../../../shared/client/bots/bot-menu-rules'
 import { BotAvatar } from '../ui/avatar'
+import { DYNAMIC_TYPE_CAPS, rosterRowTextLines, scaledRowAvatarSize } from '../ui/dynamic-type'
 import { rowAccessibilityActions } from '../ui/gestures/rules'
 import { SwipeRow, type SwipeRowAction } from '../ui/gestures/swipe-row'
 import { StarIcon } from '../ui/icon'
@@ -39,6 +40,7 @@ function areRosterRowPropsEqual(prev: RosterRowProps, next: RosterRowProps): boo
 
 export const RosterRow = memo(function RosterRow({ bot, selected, splitMode, spacedTop, scrollingVertically, onSelect }: RosterRowProps) {
   const theme = useTheme()
+  const { fontScale } = useWindowDimensions()
   const openMenu = useBotMenuStore(state => state.openMenu)
   const display = rosterRowDisplay(bot)
   const unread = isUnread(bot)
@@ -82,8 +84,9 @@ export const RosterRow = memo(function RosterRow({ bot, selected, splitMode, spa
   const previewColor =
     display.inlineTone === 'destructive' ? theme.destructive : display.inlineTone === 'foreground' ? theme.foreground : theme.mutedForeground
   const rowBackground = selected ? theme.secondary : theme.background
-  const avatarSize = splitMode ? MOBILE_SCALE.roster.rowAvatarSplit : MOBILE_SCALE.roster.rowAvatar
+  const avatarSize = scaledRowAvatarSize(splitMode ? MOBILE_SCALE.roster.rowAvatarSplit : MOBILE_SCALE.roster.rowAvatar, fontScale)
   const minHeight = splitMode ? MOBILE_SCALE.roster.rowMinHeightSplit : MOBILE_SCALE.roster.rowMinHeight
+  const textLines = rosterRowTextLines(fontScale)
 
   return (
     <View style={{ marginTop: spacedTop ? 8 : 0, paddingHorizontal: selected ? 8 : 0 }}>
@@ -106,7 +109,7 @@ export const RosterRow = memo(function RosterRow({ bot, selected, splitMode, spa
             <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 }}>
                 <AppText
-                  numberOfLines={1}
+                  numberOfLines={textLines}
                   ellipsizeMode="tail"
                   style={{ ...MOBILE_SCALE.roster.rowName, flex: 1, minWidth: 0, fontFamily: 'Inter_600SemiBold' }}
                 >
@@ -117,6 +120,7 @@ export const RosterRow = memo(function RosterRow({ bot, selected, splitMode, spa
                   <AppText
                     testID={`roster-row-time-${bot.id}`}
                     numberOfLines={1}
+                    maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowTime}
                     color={theme.mutedForeground}
                     style={{ ...MOBILE_SCALE.roster.rowTime, flexShrink: 0, fontFamily: 'Inter_400Regular' }}
                   >
@@ -126,7 +130,7 @@ export const RosterRow = memo(function RosterRow({ bot, selected, splitMode, spa
                 <RowStatusMarks statusMark={display.statusMark} unread={display.unread} />
               </View>
               {display.inlineText ? (
-                <AppText color={previewColor} numberOfLines={1} ellipsizeMode="tail" style={{ ...MOBILE_SCALE.roster.rowPreview, fontFamily: 'Inter_400Regular' }}>
+                <AppText color={previewColor} numberOfLines={textLines} ellipsizeMode="tail" style={{ ...MOBILE_SCALE.roster.rowPreview, fontFamily: 'Inter_400Regular' }}>
                   {display.inlineText}
                 </AppText>
               ) : null}

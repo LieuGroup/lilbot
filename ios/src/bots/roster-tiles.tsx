@@ -1,9 +1,10 @@
 /** Pinned bots above sections: large round avatars directly on the canvas with centered names underneath
  *  (no card borders), primary bot first then pinnedAt order. Long-press or VoiceOver opens the bot menu. */
 import { memo, useCallback } from 'react'
-import { type AccessibilityActionEvent, Pressable, View } from 'react-native'
+import { type AccessibilityActionEvent, Pressable, useWindowDimensions, View } from 'react-native'
 import type { Bot } from '../../../shared/bot-schema'
 import { canArrange, isUnread } from '../../../shared/client/bots/bot-menu-rules'
+import { DYNAMIC_TYPE_CAPS, pinnedTileColumns } from '../ui/dynamic-type'
 import { rowAccessibilityActions } from '../ui/gestures/rules'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
@@ -21,7 +22,8 @@ interface RosterTilesProps {
 }
 
 export const RosterTiles = memo(function RosterTiles({ bots, selectedId, splitMode, onSelect }: RosterTilesProps) {
-  const columns = bots.length > 2 ? 3 : 2
+  const { fontScale } = useWindowDimensions()
+  const columns = pinnedTileColumns(bots.length, fontScale)
   const rows: Bot[][] = []
   for (let i = 0; i < bots.length; i += columns) rows.push(bots.slice(i, i + columns))
 
@@ -108,8 +110,9 @@ const PinnedTile = memo(function PinnedTile({
     >
       <TileAvatarMarks bot={bot} size={avatarSize} surfaceColor={surfaceColor} />
       <AppText
-        numberOfLines={1}
+        numberOfLines={2}
         ellipsizeMode="tail"
+        maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.pinnedLabel}
         style={{
           ...MOBILE_SCALE.roster.pinnedLabel,
           maxWidth: '100%',

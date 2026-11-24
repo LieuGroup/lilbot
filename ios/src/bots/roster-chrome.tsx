@@ -3,12 +3,13 @@
 import { memo, type ReactNode, useCallback } from 'react'
 import { Keyboard, Pressable, TextInput, View } from 'react-native'
 import { ChevronDownIcon, ChevronRightIcon, CloseIcon, PlusIcon, SearchIcon } from '../ui/icon'
+import { DYNAMIC_TYPE_CAPS } from '../ui/dynamic-type'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { MOBILE_SCALE, radius } from '../ui/tokens'
 
 const HEADER_ACTION_SLOP = { top: 14, bottom: 14, left: 8, right: 8 } as const
-const SECTION_SLOP = { top: 10, bottom: 10, left: 6, right: 12 } as const
+const SECTION_SLOP = { top: 12, bottom: 12, left: 6, right: 12 } as const
 
 export const SplitNewBotFooter = memo(function SplitNewBotFooter({ onPress }: { onPress: () => void }) {
   const theme = useTheme()
@@ -107,6 +108,7 @@ export const RosterSearchBar = memo(function RosterSearchBar({
           autoCorrect={false}
           clearButtonMode="never"
           accessibilityLabel="Search bots"
+          maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.composerInput}
           style={{ flex: 1, fontFamily: 'Inter_400Regular', ...MOBILE_SCALE.roster.rowPreview, color: theme.foreground, paddingVertical: 8 }}
         />
         <Pressable
@@ -129,7 +131,7 @@ export const RosterSectionHeader = memo(function RosterSectionHeader({ sectionId
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 16, paddingTop: 18, paddingBottom: 6 }}>
       <Pressable testID={`roster-section-${sectionId}`} onPress={handlePress} hitSlop={SECTION_SLOP} accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={name} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1, minWidth: 0, opacity: pressed ? 0.6 : 1 })}>
-        <AppText numberOfLines={1} ellipsizeMode="tail" style={{ ...MOBILE_SCALE.roster.sectionHeader, flexShrink: 1, fontFamily: 'Inter_500Medium' }} color={theme.mutedForeground}>
+        <AppText numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.sectionHeader} style={{ ...MOBILE_SCALE.roster.sectionHeader, flexShrink: 1, fontFamily: 'Inter_500Medium' }} color={theme.mutedForeground}>
           {name}
         </AppText>
         {open ? <ChevronDownIcon color={theme.mutedForeground} size={14} /> : <ChevronRightIcon color={theme.mutedForeground} size={14} />}
@@ -145,7 +147,7 @@ export const CollapsedGroupHeader = memo(function CollapsedGroupHeader({ testID,
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 16, paddingTop: 18, paddingBottom: 6 }}>
       <Pressable testID={testID} onPress={handlePress} hitSlop={SECTION_SLOP} accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={`${name}, ${count}`} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1, minWidth: 0, opacity: pressed ? 0.6 : 1 })}>
-        <AppText numberOfLines={1} ellipsizeMode="tail" style={{ ...MOBILE_SCALE.roster.sectionHeader, flexShrink: 1, fontFamily: 'Inter_500Medium' }} color={theme.mutedForeground}>
+        <AppText numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.sectionHeader} style={{ ...MOBILE_SCALE.roster.sectionHeader, flexShrink: 1, fontFamily: 'Inter_500Medium' }} color={theme.mutedForeground}>
           {name} · {count}
         </AppText>
         {open ? <ChevronDownIcon color={theme.mutedForeground} size={14} /> : <ChevronRightIcon color={theme.mutedForeground} size={14} />}

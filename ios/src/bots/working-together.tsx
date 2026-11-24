@@ -1,10 +1,11 @@
 /** Active temporary groups ("Working together") shown above user sections whenever a group runs.
  *  Driven directly by `runningGroups(bots)` from `shared/client/bots/running-groups.ts`. */
 import { memo } from 'react'
-import { Pressable, View } from 'react-native'
+import { Pressable, useWindowDimensions, View } from 'react-native'
 import type { Bot } from '../../../shared/bot-schema'
 import type { RunningGroup } from '../../../shared/client/bots/running-groups'
 import { BotAvatar } from '../ui/avatar'
+import { rosterRowTextLines, scaledRowAvatarSize } from '../ui/dynamic-type'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { MOBILE_SCALE } from '../ui/tokens'
@@ -29,8 +30,10 @@ export const WorkingTogether = memo(function WorkingTogether({ groups, splitMode
 
 function GroupRow({ group, splitMode, onSelectBot }: { group: RunningGroup; splitMode: boolean; onSelectBot: (bot: Bot) => void }) {
   const theme = useTheme()
+  const { fontScale } = useWindowDimensions()
   const leader = group.bots[0]
-  const avatarSize = splitMode ? MOBILE_SCALE.roster.rowAvatarSplit : MOBILE_SCALE.roster.rowAvatar
+  const avatarSize = scaledRowAvatarSize(splitMode ? MOBILE_SCALE.roster.rowAvatarSplit : MOBILE_SCALE.roster.rowAvatar, fontScale)
+  const textLines = rosterRowTextLines(fontScale)
   return (
     <Pressable
       testID={`working-group-${group.id}`}
@@ -50,7 +53,7 @@ function GroupRow({ group, splitMode, onSelectBot }: { group: RunningGroup; spli
       <GroupAvatarCluster bots={group.bots} size={avatarSize} />
       <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <AppText numberOfLines={1} ellipsizeMode="tail" style={{ ...MOBILE_SCALE.roster.rowName, flex: 1, fontFamily: 'Inter_600SemiBold' }}>
+          <AppText numberOfLines={textLines} ellipsizeMode="tail" style={{ ...MOBILE_SCALE.roster.rowName, flex: 1, fontFamily: 'Inter_600SemiBold' }}>
             {group.purpose}
           </AppText>
           <AppText variant="meta" color={theme.mutedForeground}>
@@ -58,7 +61,7 @@ function GroupRow({ group, splitMode, onSelectBot }: { group: RunningGroup; spli
           </AppText>
           <WorkingSpinner color={theme.primary} size={14} />
         </View>
-        <AppText color={theme.mutedForeground} numberOfLines={1} ellipsizeMode="tail" style={{ ...MOBILE_SCALE.roster.rowPreview, fontFamily: 'Inter_400Regular' }}>
+        <AppText color={theme.mutedForeground} numberOfLines={textLines} ellipsizeMode="tail" style={{ ...MOBILE_SCALE.roster.rowPreview, fontFamily: 'Inter_400Regular' }}>
           Working together · {group.bots.length} bots
         </AppText>
       </View>

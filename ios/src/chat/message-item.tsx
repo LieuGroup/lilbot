@@ -1,5 +1,5 @@
-/** One transcript item: user bubble, bot reply in a soft filled bubble (markdown), tool trace line,
- *  session divider or error bubble, sized from MOBILE_SCALE.chat so Dynamic Type scales cleanly on top. */
+/** One transcript item: user bubble, bot reply in a soft filled bubble (markdown with horizontal-scroll
+ *  code/tables and bounded images), tool trace line, or error bubble, sized from MOBILE_SCALE.chat. */
 import { memo } from 'react'
 import { View } from 'react-native'
 import Markdown from 'react-native-markdown-display'
@@ -8,6 +8,7 @@ import type { MessageItem } from '../../../shared/client/chat/chat-state'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { MOBILE_SCALE, radius } from '../ui/tokens'
+import { getMarkdownStyle, markdownRules } from './markdown-rules'
 
 type Failure = NonNullable<Extract<ChatItemData, { kind: 'error' }>['reason']>
 
@@ -63,16 +64,18 @@ export const ChatItem = memo(function ChatItem({ item, botName, queued = false }
             testID="assistant-bubble"
             style={{
               maxWidth: '94%',
+              overflow: 'hidden',
               backgroundColor: theme.card,
               borderRadius: chatScale.bubbleRadius,
               borderWidth: 1,
               borderColor: theme.hairline,
               paddingHorizontal: chatScale.bubblePaddingX,
-              paddingTop: chatScale.bubblePaddingY,
-              paddingBottom: Math.max(2, chatScale.bubblePaddingY - 10)
+              paddingVertical: chatScale.bubblePaddingY
             }}
           >
-            <Markdown style={markdownStyle(theme)}>{item.text}</Markdown>
+            <Markdown style={getMarkdownStyle(theme)} rules={markdownRules}>
+              {item.text}
+            </Markdown>
           </View>
           {item.stopped && (
             <AppText variant="meta" color={theme.mutedForeground}>
@@ -119,27 +122,4 @@ function ToolTrace({ item }: { item: Extract<MessageItem, { kind: 'tool' }> }) {
       </AppText>
     </View>
   )
-}
-
-function markdownStyle(theme: ReturnType<typeof useTheme>) {
-  const { fontSize, lineHeight } = MOBILE_SCALE.chat.message
-  const base = { color: theme.foreground, fontFamily: 'Inter_400Regular', fontSize, lineHeight }
-  return {
-    body: { color: theme.foreground },
-    paragraph: { marginTop: 0, marginBottom: 10, ...base },
-    strong: { fontFamily: 'Inter_600SemiBold' },
-    em: { fontStyle: 'italic' as const },
-    heading1: { ...base, fontFamily: 'Inter_600SemiBold', fontSize: fontSize + 3, lineHeight: lineHeight + 3, marginBottom: 8 },
-    heading2: { ...base, fontFamily: 'Inter_600SemiBold', fontSize: fontSize + 2, lineHeight: lineHeight + 2, marginBottom: 8 },
-    heading3: { ...base, fontFamily: 'Inter_600SemiBold', fontSize: fontSize + 1, lineHeight: lineHeight + 1, marginBottom: 6 },
-    bullet_list: { marginBottom: 10 },
-    ordered_list: { marginBottom: 10 },
-    list_item: { marginBottom: 4, ...base },
-    code_inline: { ...base, backgroundColor: theme.muted, borderRadius: 4, paddingHorizontal: 4 },
-    code_block: { ...base, backgroundColor: theme.muted, borderRadius: 8, padding: 10, marginBottom: 10 },
-    fence: { ...base, backgroundColor: theme.muted, borderRadius: 8, padding: 10, marginBottom: 10 },
-    blockquote: { borderLeftWidth: 3, borderLeftColor: theme.border, paddingLeft: 10, marginBottom: 10 },
-    link: { color: theme.primary, textDecorationLine: 'underline' as const },
-    hr: { backgroundColor: theme.border, height: 1, marginVertical: 12 }
-  }
 }
