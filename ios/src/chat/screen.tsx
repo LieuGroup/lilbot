@@ -5,10 +5,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { Bot } from '../../../shared/bot-schema'
 import { useBotMenuStore } from '../bots/menu-store'
 import { useModelPicker } from '../bots/model-pill'
+import { canStartNewSession } from '../bots/roster-state'
 import { Composer, MessageList } from '../chat/message-list'
 import { useChat } from '../chat/use-chat'
+import { useConnectionStore } from '../connection/store'
 import { BotAvatar } from '../ui/avatar'
-import { MoreHorizontalIcon } from '../ui/icon'
+import { MoreHorizontalIcon, NewChatIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 
@@ -18,15 +20,19 @@ export interface ChatScreenProps {
   hideHeader?: boolean
   /** Optional inline leading control (e.g. unfolded sidebar toggle) placed cleanly before the avatar. */
   headerLeading?: ReactNode
+  /** Show a separate New session button beside `•••` on split surfaces without a side strip (iPad). */
+  showNewSession?: boolean
 }
 
-export function ChatScreen({ bot, hideHeader = false, headerLeading }: ChatScreenProps) {
+export function ChatScreen({ bot, hideHeader = false, headerLeading, showNewSession = false }: ChatScreenProps) {
   const theme = useTheme()
   const insets = useSafeAreaInsets()
+  const connected = useConnectionStore(state => state.connected)
   const openMenu = useBotMenuStore(state => state.openMenu)
   const chat = useChat(bot.id)
   const modelPicker = useModelPicker(bot)
   const send = useCallback((text: string) => void chat.send(text), [chat])
+  const newSessionAllowed = canStartNewSession({ connected, ready: chat.ready, botsTabActive: true, selectedId: bot.id })
 
   // Measure the avoiding container's live window origin so KeyboardAvoidingView clears the keyboard accurately
   // under both opaque native Stack headers and split-pane top safe-area padding across iPhone, Duo, and iPad.
@@ -53,23 +59,48 @@ export function ChatScreen({ bot, hideHeader = false, headerLeading }: ChatScree
               Working
             </AppText>
           )}
-          <Pressable
-            testID="chat-bot-menu-button"
-            onPress={() => openMenu(bot.id)}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={`More for ${bot.name}`}
-            style={({ pressed }) => ({
-              width: 28,
-              height: 28,
-              borderRadius: 14,
-              alignItems: 'center',
-              justifyContent: 'center',
-              opacity: pressed ? 0.6 : 1
-            })}
-          >
-            <MoreHorizontalIcon color={theme.foreground} size={16} />
-          </Pressable>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            {showNewSession && (
+              <Pressable
+                testID="chat-new-session-button"
+                onPress={() => {
+                  if (newSessionAllowed) void chat.newChat()
+                }}
+                disabled={!newSessionAllowed}
+                hitSlop={6}
+                accessibilityRole="button"
+                accessibilityLabel="New session"
+                accessibilityState={{ disabled: !newSessionAllowed }}
+                style={({ pressed }) => ({
+                  width: 32,
+                  height: 32,
+                  borderRadius: 16,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: !newSessionAllowed ? 0.35 : pressed ? 0.6 : 1
+                })}
+              >
+                <NewChatIcon color={theme.foreground} size={16} />
+              </Pressable>
+            )}
+            <Pressable
+              testID="chat-bot-menu-button"
+              onPress={() => openMenu(bot.id)}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel={`More for ${bot.name}`}
+              style={({ pressed }) => ({
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: pressed ? 0.6 : 1
+              })}
+            >
+              <MoreHorizontalIcon color={theme.foreground} size={16} />
+            </Pressable>
+          </View>
         </View>
       )}
       {chat.error ? (

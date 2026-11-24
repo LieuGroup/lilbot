@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { rosterPullDownDistance, rosterStatusNotice } from '../../ios/src/bots/roster-list'
+import { rosterStatusNotice } from '../../ios/src/bots/roster-list'
 import {
   canStartNewSession,
   detachedTabTriggerSpec,
@@ -95,9 +95,24 @@ describe('Round 4 iOS Roster display, web label parity, and detached orb guards'
     expect(rosterStatusNotice({ loaded: true, connected: true, error: '', count: 2 })).toBeNull()
   })
 
-  test('detached native orb switches cleanly between New bot (+) and New session with connection/ready/tab guards and Chat menu entry', () => {
-    expect(detachedTabTriggerSpec(false)).toEqual({ action: 'new-bot', sf: 'plus', label: 'New bot', testID: 'new-bot-trigger' })
-    expect(detachedTabTriggerSpec(true)).toEqual({ action: 'new-session', sf: 'square.and.pencil', label: 'New session', testID: 'new-session-trigger' })
+  test('detached native orb switches cleanly across phone, Folded Duo, Unfolded Duo, and omits iPad top-tab capsule', () => {
+    expect(detachedTabTriggerSpec({ surface: 'phone', chatFocused: false })).toEqual({ action: 'new-bot', sf: 'plus', label: 'New bot', testID: 'new-bot-trigger' })
+    expect(detachedTabTriggerSpec({ surface: 'duo-unfolded-portrait', chatFocused: false })).toEqual({ action: 'new-bot', sf: 'plus', label: 'New bot', testID: 'new-bot-trigger' })
+    expect(detachedTabTriggerSpec({ surface: 'duo-folded', chatFocused: false })).toEqual({ action: 'new-bot', sf: 'plus', label: 'New bot', testID: 'new-bot-trigger' })
+    expect(detachedTabTriggerSpec({ surface: 'duo-folded', chatFocused: true })).toEqual({
+      action: 'new-session',
+      sf: 'square.and.pencil',
+      label: 'New session',
+      testID: 'new-session-trigger'
+    })
+    expect(detachedTabTriggerSpec({ surface: 'duo-unfolded-landscape', chatFocused: false })).toEqual({
+      action: 'new-session',
+      sf: 'square.and.pencil',
+      label: 'New session',
+      testID: 'new-session-trigger'
+    })
+    expect(detachedTabTriggerSpec({ surface: 'pad', chatFocused: false })).toBeNull()
+    expect(detachedTabTriggerSpec({ surface: 'pad', chatFocused: true })).toBeNull()
     expect(isBotsTabSegments(['(tabs)', '(bots)'])).toBe(true)
     expect(isBotsTabSegments(['(tabs)', '(bots)', 'chat'])).toBe(true)
     expect(isBotsTabSegments(['(tabs)', 'settings'])).toBe(false)
@@ -110,13 +125,15 @@ describe('Round 4 iOS Roster display, web label parity, and detached orb guards'
     const layoutSource = readFileSync(resolve(process.cwd(), 'ios/src/app/(tabs)/_layout.tsx'), 'utf8')
     expect(layoutSource).toContain('role="search"')
     expect(layoutSource).toContain('disabled')
-    expect(layoutSource).toContain('detachedTabTriggerSpec(layout.splitMode)')
+    expect(layoutSource).toContain('detachedTabTriggerSpec({ surface, chatFocused })')
+    expect(layoutSource).toContain('{trigger ? (')
     expect(layoutSource).toContain('canStartNewSession(')
     expect(layoutSource).toContain('<BotMenuHost />')
 
     const shellSource = readFileSync(resolve(process.cwd(), 'ios/src/duo/shell.tsx'), 'utf8')
     const newBotSource = readFileSync(resolve(process.cwd(), 'ios/src/bots/new-bot-sheet.tsx'), 'utf8')
     expect(shellSource).toContain('useConnectionStore(state => state.connected)')
+    expect(shellSource).toContain("showNewSession={surface === 'pad'}")
     expect(newBotSource).toContain('useConnectionStore(state => state.connected)')
     expect(shellSource).not.toContain('useBotStore(state => state.connected)')
     expect(newBotSource).not.toContain('useBotStore(state => state.connected)')
@@ -124,6 +141,10 @@ describe('Round 4 iOS Roster display, web label parity, and detached orb guards'
     const chatScreenSource = readFileSync(resolve(process.cwd(), 'ios/src/chat/screen.tsx'), 'utf8')
     const compactChatSource = readFileSync(resolve(process.cwd(), 'ios/src/app/(tabs)/(bots)/chat.tsx'), 'utf8')
     expect(chatScreenSource).toMatch(/More for \$\{bot\.name\}/)
+    expect(chatScreenSource).toContain('testID="chat-new-session-button"')
+    expect(chatScreenSource).toContain('accessibilityLabel="New session"')
+    expect(chatScreenSource).toContain('<NewChatIcon color={theme.foreground} size={16} />')
+    expect(chatScreenSource).toContain('canStartNewSession(')
     expect(compactChatSource).toMatch(/More for \$\{bot\.name\}/)
   })
 
@@ -133,14 +154,5 @@ describe('Round 4 iOS Roster display, web label parity, and detached orb guards'
     const c = bot('clone', { activity: { status: 'working', text: 'Running commands', unread: true } })
     expect(sameRosterBotDisplay(a, b)).toBe(true)
     expect(sameRosterBotDisplay(a, c)).toBe(false)
-  })
-
-  test('rosterPullDownDistance ignores initial automatic top contentInset and requires an active drag', () => {
-    // iPad top segmented tab bar sets contentInset.top = 96 and resting contentOffset.y = -96 on mount.
-    expect(rosterPullDownDistance({ contentOffsetY: -96, contentInsetTop: 96, userDragging: false })).toBe(0)
-    expect(rosterPullDownDistance({ contentOffsetY: -96, contentInsetTop: 96, userDragging: true })).toBe(0)
-    expect(rosterPullDownDistance({ contentOffsetY: -150, contentInsetTop: 96, userDragging: true })).toBe(54)
-    expect(rosterPullDownDistance({ contentOffsetY: -50, contentInsetTop: 0, userDragging: false })).toBe(0)
-    expect(rosterPullDownDistance({ contentOffsetY: -50, contentInsetTop: 0, userDragging: true })).toBe(50)
   })
 })

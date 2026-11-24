@@ -11,6 +11,7 @@ import {
   visibilityActionLabel
 } from '../../../shared/client/bots/bot-menu-rules'
 import { type RowTone, rowState } from '../../../shared/client/bots/row-state'
+import type { SurfaceKind } from '../duo/layout'
 
 export type RowStatusMark = 'working' | 'finished' | 'failed' | null
 export type InlineTextTone = 'destructive' | 'foreground' | 'muted'
@@ -47,11 +48,16 @@ export interface DetachedTabTriggerSpec {
   testID: string
 }
 
-/** Detached native tab-bar trigger spec: New bot (+) on compact phones/folded Duo, New session on unfolded Duo/iPad split. */
-export function detachedTabTriggerSpec(splitMode: boolean): DetachedTabTriggerSpec {
-  return splitMode
-    ? { action: 'new-session', sf: 'square.and.pencil', label: 'New session', testID: 'new-session-trigger' }
-    : { action: 'new-bot', sf: 'plus', label: 'New bot', testID: 'new-bot-trigger' }
+/** Detached native tab-bar trigger spec (`role="search"`):
+ *  - iPad (`pad`): omitted (`null`) so the top tab capsule stays `Bots | Settings` only (New session lives in split Chat header).
+ *  - Unfolded Duo Landscape (`duo-unfolded-landscape`) and Folded Duo Chat (`duo-folded` + `chatFocused`): `New session`.
+ *  - Standard iPhone (`phone`), Folded Duo Roster, and Duo Unfolded Portrait: `+` (`New bot`). */
+export function detachedTabTriggerSpec(input: { surface: SurfaceKind; chatFocused: boolean }): DetachedTabTriggerSpec | null {
+  if (input.surface === 'pad') return null
+  if (input.surface === 'duo-unfolded-landscape' || (input.surface === 'duo-folded' && input.chatFocused)) {
+    return { action: 'new-session', sf: 'square.and.pencil', label: 'New session', testID: 'new-session-trigger' }
+  }
+  return { action: 'new-bot', sf: 'plus', label: 'New bot', testID: 'new-bot-trigger' }
 }
 
 /** Returns true when Expo Router segments are on the Bots tab rather than Settings. */

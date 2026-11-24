@@ -120,10 +120,66 @@ export function rosterHeaderActionsVisibility(input: {
   return { showSearch: !input.searchVisible, showNewBot: input.splitMode }
 }
 
-/** Pull-down distance past the resting top inset for pull-to-search.
- *  Returns 0 unless the user is actively dragging so iOS `contentInsetAdjustmentBehavior="automatic"`
- *  insets (such as iPad's top tab bar) never open Search on initial layout. */
-export function rosterPullDownDistance(input: { contentOffsetY: number; contentInsetTop?: number; userDragging: boolean }): number {
-  if (!input.userDragging) return 0
-  return Math.max(0, -(input.contentOffsetY + (input.contentInsetTop ?? 0)))
+export interface PullToSearchState {
+  /** Resting top contentOffset.y (e.g. -96 on iPad under the top tab capsule, 0 on iPhone). */
+  restTopY: number | null
+  /** contentOffset.y captured in onScrollBeginDrag while the user is actively dragging. */
+  dragStartY: number | null
+  /** True after the first drag since mount/layout reset so rubber-band bounce frames never overwrite restTopY. */
+  hasDragged: boolean
+  /** True during post-drag momentum deceleration. */
+  momentumActive: boolean
+}
+
+export const INITIAL_PULL_TO_SEARCH_STATE: PullToSearchState = {
+  restTopY: null,
+  dragStartY: null,
+  hasDragged: false,
+  momentumActive: false
+}
+
+export function resetPullToSearchState(): PullToSearchState {
+  return { restTopY: null, dragStartY: null, hasDragged: false, momentumActive: false }
+}
+
+/** Pull-down distance past the live resting top offset for pull-to-search.
+ *  React Native Fabric sends `_scrollView.contentInset` (0 on iPad) instead of `adjustedContentInset` (96),
+ *  so this learns `restTopY` from resting offsets (<= 0) and requires downward pull past BOTH `restTopY`
+ *  and `dragStartY` — scrolling down from rest on iPad (-96 -> -95 -> +100) always returns 0. */
+export function pullToSearchOnScroll(
+  state: PullToSearchState,
+  input: { contentOffsetY: number; contentInsetTop?: number }
+): { state: PullToSearchState; pullDistance: number } {
+  const y = input.contentOffsetY
+  const insetRest = -(input.contentInsetTop ?? 0)
+  if (state.dragStartY === null) {
+    if (!state.hasDragged && !state.momentumActive && y <= 0) {
+      const nextRest = Math.min(state.restTopY ?? insetRest, insetRest, y)
+      return { state: nextRest === state.restTopY ? state : { ...state, restTopY: nextRest }, pullDistance: 0 }
+    }
+    return { state, pullDistance: 0 }
+  }
+  if (state.restTopY === null) return { state, pullDistance: 0 }
+  const effectiveRest = Math.min(state.restTopY, insetRest)
+  const pullDistance = Math.max(0, Math.min(effectiveRest - y, state.dragStartY - y))
+  return { state, pullDistance }
+}
+
+export function pullToSearchOnDragStart(state: PullToSearchState, contentOffsetY: number): PullToSearchState {
+  const restTopY = state.restTopY === null && contentOffsetY <= 0 ? contentOffsetY : state.restTopY
+  return { restTopY, dragStartY: contentOffsetY, hasDragged: true, momentumActive: false }
+}
+
+export function pullToSearchOnDragEnd(state: PullToSearchState): PullToSearchState {
+  return { ...state, dragStartY: null }
+}
+
+export function pullToSearchOnMomentumStart(state: PullToSearchState): PullToSearchState {
+  return { ...state, dragStartY: null, momentumActive: true }
+}
+
+export function pullToSearchOnMomentumEnd(state: PullToSearchState, contentOffsetY: number): PullToSearchState {
+  const restTopY =
+    contentOffsetY <= 0 ? (state.restTopY === null ? contentOffsetY : Math.min(state.restTopY, contentOffsetY)) : state.restTopY
+  return { restTopY, dragStartY: null, hasDragged: state.hasDragged, momentumActive: false }
 }

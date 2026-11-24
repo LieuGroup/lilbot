@@ -151,7 +151,7 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
       </View>
       {layout.splitMode && (
         <View key="chat-pane" style={{ flex: 1 }}>
-          {selected ? <ChatScreen bot={selected} headerLeading={sidebarToggle} /> : <EmptyDetail />}
+          {selected ? <ChatScreen bot={selected} headerLeading={sidebarToggle} showNewSession={surface === 'pad'} /> : <EmptyDetail />}
         </View>
       )}
       {layout.splitMode && layout.inspectorWidth > 0 && renderInspector && (

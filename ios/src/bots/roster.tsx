@@ -1,21 +1,21 @@
 /** Virtualized Round 4 Roster (FlatList): 3-up pinned tiles flush at the top, active groups ("Working together"),
  *  non-sticky user sections, collapsed Unassigned/Hidden groups, scroll-gated row swipes without parent scroll re-renders,
  *  pull-down / screen-reader Search bots, and zero-row-height inline Search (+ New bot on split) on the first header line. */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { FlatList, type ListRenderItemInfo, type NativeScrollEvent, type NativeSyntheticEvent, View } from 'react-native'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { FlatList, type ListRenderItemInfo, View } from 'react-native'
 import { useSharedValue } from 'react-native-reanimated'
 import type { Bot, Section } from '../../../shared/bot-schema'
 import { useScreenReaderEnabled } from '../duo/use-surface'
 import { shouldRevealSearch } from '../ui/gestures/rules'
-import { closeAllSwipeRows } from '../ui/gestures/swipe-row'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { radius } from '../ui/tokens'
 import { useBotMenuStore } from './menu-store'
 import { CollapsedGroupHeader, RosterHeaderActions, RosterSearchBar, RosterSectionHeader, SplitNewBotFooter } from './roster-chrome'
-import { buildRosterListItems, firstRosterHeaderKey, type RosterListItem, rosterHeaderActionsVisibility, rosterPullDownDistance } from './roster-list'
+import { buildRosterListItems, firstRosterHeaderKey, type RosterListItem, rosterHeaderActionsVisibility } from './roster-list'
 import { RosterRow } from './roster-row'
 import { RosterTiles } from './roster-tiles'
+import { usePullToSearch } from './use-pull-to-search'
 import { WorkingTogether } from './working-together'
 
 interface RosterProps {
@@ -38,7 +38,6 @@ export function Roster({ bots, sections, loaded, connected, error, selectedId, c
   const setActionError = useBotMenuStore(state => state.setError)
 
   const scrollingVertically = useSharedValue(false)
-  const userDraggingRef = useRef(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [unassignedOpen, setUnassignedOpen] = useState(false)
@@ -50,48 +49,17 @@ export function Roster({ bots, sections, loaded, connected, error, selectedId, c
     return () => clearTimeout(timer)
   }, [actionError, setActionError])
 
-  const handleScroll = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      if (searchOpen) return
-      const pullDistance = rosterPullDownDistance({
-        contentOffsetY: event.nativeEvent.contentOffset.y,
-        contentInsetTop: event.nativeEvent.contentInset?.top,
-        userDragging: userDraggingRef.current
-      })
-      if (shouldRevealSearch({ pullDistance, alwaysVisible: false })) setSearchOpen(true)
-    },
-    [searchOpen]
-  )
-
-  const handleDragStart = useCallback(() => {
-    userDraggingRef.current = true
-    scrollingVertically.value = true
-    closeAllSwipeRows()
-  }, [scrollingVertically])
-
-  const handleDragEnd = useCallback(() => {
-    userDraggingRef.current = false
-    scrollingVertically.value = false
-  }, [scrollingVertically])
-
-  const handleMomentumStart = useCallback(() => {
-    scrollingVertically.value = true
-    closeAllSwipeRows()
-  }, [scrollingVertically])
-
-  const handleMomentumEnd = useCallback(() => {
-    scrollingVertically.value = false
-  }, [scrollingVertically])
-
-  const toggleGroup = useCallback((groupId: 'unassigned' | 'hidden') => {
-    if (groupId === 'unassigned') setUnassignedOpen(open => !open)
-    else setHiddenOpen(open => !open)
-  }, [])
-
   const openSearch = useCallback(() => setSearchOpen(true), [])
   const closeSearch = useCallback(() => {
     setQuery('')
     setSearchOpen(false)
+  }, [])
+
+  const pullHandlers = usePullToSearch({ searchOpen, onRevealSearch: openSearch, scrollingVertically })
+
+  const toggleGroup = useCallback((groupId: 'unassigned' | 'hidden') => {
+    if (groupId === 'unassigned') setUnassignedOpen(open => !open)
+    else setHiddenOpen(open => !open)
   }, [])
 
   const showSearchBar = shouldRevealSearch({ pullDistance: 0, alwaysVisible: screenReader || searchOpen || query.length > 0 })
@@ -172,11 +140,12 @@ export function Roster({ bots, sections, loaded, connected, error, selectedId, c
       initialNumToRender={20}
       maxToRenderPerBatch={16}
       windowSize={7}
-      onScroll={handleScroll}
-      onScrollBeginDrag={handleDragStart}
-      onScrollEndDrag={handleDragEnd}
-      onMomentumScrollBegin={handleMomentumStart}
-      onMomentumScrollEnd={handleMomentumEnd}
+      onLayout={pullHandlers.onLayout}
+      onScroll={pullHandlers.onScroll}
+      onScrollBeginDrag={pullHandlers.onScrollBeginDrag}
+      onScrollEndDrag={pullHandlers.onScrollEndDrag}
+      onMomentumScrollBegin={pullHandlers.onMomentumScrollBegin}
+      onMomentumScrollEnd={pullHandlers.onMomentumScrollEnd}
       contentContainerStyle={{ paddingBottom: 24 }}
     />
   )
