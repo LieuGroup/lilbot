@@ -76,7 +76,6 @@ export function createScopedMcp(options: ScopedMcpOptions) {
   async function handleSystem(grant: SessionGrant, bot: { id: string; name: string }, request: Request): Promise<Response> {
     const tracker = grant.scope.kind === 'review' ? options.reviewTracker : undefined
     if (request.method !== 'POST') {
-      if (request.method !== 'DELETE') tracker?.recordHardFailure(grant.id)
       return new Response(null, { status: request.method === 'DELETE' ? 204 : 405, headers: { allow: 'POST' } })
     }
     const message = await oneMessage(request)
@@ -111,7 +110,6 @@ export function createScopedMcp(options: ScopedMcpOptions) {
       case 'tools/call':
         return runCall(grant, bot, message, permittedNames, tracker)
       default:
-        if (message.id !== undefined) tracker?.recordHardFailure(grant.id)
         return message.id === undefined ? new Response(null, { status: 202 }) : rpcError(message.id, -32601, `${String(message.method)} is not supported.`)
     }
   }

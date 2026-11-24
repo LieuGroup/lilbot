@@ -35,17 +35,21 @@ function harness() {
     const list = () => rpc({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })
     const call = (name: string, args: Record<string, unknown>) => rpc({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name, arguments: args } })
     const finish = () => assertReviewRunOk(tracker.finish(grant.id, 'b1', (grants.get(grant.id)?.discoveredServers ?? []).includes('lilbot')))
-    return { grant, conn, rpc, list, call, finish }
+    const scopedGet = () =>
+      scoped(new Request(conn.url, { method: 'GET', headers: { host: '127.0.0.1:3370', authorization: `Bearer ${conn.bearerToken}` } }), new URL(conn.url).pathname)
+    return { grant, conn, rpc, list, call, finish, scopedGet }
   }
   return { db, memory, startPass }
 }
 
 describe('review and checkpoint pass outcome enforcement', () => {
-  test('passes when tools/list arrived and zero writes were needed', async () => {
+  test('passes when tools/list arrived and zero writes were needed (including Streamable HTTP GET/method probes)', async () => {
     const { db, startPass } = harness()
     try {
       const pass = startPass('empty')
       expect((await pass.list()).status).toBe(200)
+      expect((await pass.rpc({ jsonrpc: '2.0', id: 9, method: 'prompts/list', params: {} })).status).toBe(200)
+      expect((await pass.scopedGet()).status).toBe(405)
       expect(() => pass.finish()).not.toThrow()
     } finally {
       db.close()
