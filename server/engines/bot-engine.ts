@@ -3,6 +3,7 @@ import type { ActivityEvent } from '../../shared/activity-schema'
 import type { BotIdentity, BotModel, BotSetup, ModelProvider, PermissionMode, ReasoningEffort } from '../../shared/bot-schema'
 import type { ChatEvent, ChatSnapshot } from '../../shared/chat-schema'
 import type { MessageOrigin } from '../../shared/device-schema'
+import type { WebhookCapability } from '../../shared/webhook-schema'
 import type { ConnectionsApplied, McpConnection } from './mcp-connection'
 
 export type EngineBotDetail = BotIdentity & BotSetup
@@ -33,7 +34,7 @@ export interface ReviewOptions {
   onChat: (chatId: string) => void
 }
 
-export type RunAccessScope = 'check'
+export type RunAccessScope = 'check' | { kind: 'webhook'; capabilities: readonly WebhookCapability[] }
 export interface RoutineOptions {
   runId: string
   chatId?: string
@@ -41,9 +42,8 @@ export interface RoutineOptions {
   baseline?: (length: number) => number
   onChat: (chatId: string) => void
   origin?: TurnOrigin
-  /** LilBot access scope mapped inside each engine; `toolsets` stays only until webhooks migrate. */
+  /** LilBot access scope mapped inside each engine; absent means full access. */
   access?: RunAccessScope
-  toolsets?: string[]
   /** The model a new session runs on (a same-bot check or worker); without it, the bot's own. */
   model?: BotModel
   /** The reasoning effort a new session starts with; absent inherits on the bot's own model and omits on another model. */

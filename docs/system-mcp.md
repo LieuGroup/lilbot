@@ -228,7 +228,7 @@ Every tool acts as the calling bot and calls the function the screen uses. Reads
 | `lilbot_roster_set` | `bots.setPrefs` (pinned, which also sets or clears `pinnedAt`; hidden; section) |
 | `lilbot_section_create` | `sections.create` |
 | `lilbot_unread_set` | `activity.setUnread` (`bots/bot-unread.ts`, shared with the screen) |
-| `lilbot_memory_list`, `_save`, `_pause`, `_restore` | `memory.list`, `MemoryService.write` (caller's own `author: 'bot'`, `via: 'chat'`, with safety checks and overflow notice), `memory.pause`, `memory.restore` |
+| `lilbot_memory_list`, `_recall`, `_save`, `_forget`, `_pause`, `_restore` | `memory.list`, `MemoryService.recall` (caller's visible facts only), `MemoryService.write` (caller's own `author: 'bot'`, `via: 'chat'`, with safety checks and overflow notice), `MemoryService.forgetAsBot` (caller's visible facts only, reversible via restore), `memory.pause`, `memory.restore` |
 | `lilbot_memory_expiry` | `MemoryService.setExpiry` (no screen yet; same `memory.changed` push) |
 | `lilbot_skill_read` | `SkillsService.offered` and `SkillsService.read`: lists skills offered to the caller (respecting per-bot off switches and engine exclusions) or reads one offered skill file (`SKILL.md` by default) |
 | `lilbot_delete_defaults_get`, `_set` | `bots.deleteDefaults.get` and `.set` |
@@ -247,11 +247,12 @@ Every tool acts as the calling bot and calls the function the screen uses. Reads
 | `lilbot_workspace_read` | a text file (first 100 kB) or folder in the caller's own folder, through the Library's no-follow opens; for webhook runs, which have no engine file tools |
 | `lilbot_connection` | the MCP services bots add (#187): `action` add (name, address), sign_in (id: a fresh link), finish (the address Oscar's browser ended on), remove (id, one the caller added); `McpConnections` in `server/connections/` |
 | `lilbot_computers_list`, `lilbot_computer_exec`, `_read_file`, `_write_file`, `_list_folder`, `_request_read`, `_cancel`, `_copy` | `ComputerService` (`list`, `submit`, `read`, `cancel`, `copy`): the eight computer tools (#113), gated under `computers` for webhook runs and refused in check sessions; caller taken from the bot's key |
+| `lilbot_history_search` | `HistoryService.search`: searches only the calling bot's own main conversation record (excludes other bots, hidden runs, reviews, checks and their compression continuations, failing closed when lineage cannot be read); gated under `memory` for webhook runs and refused in check sessions |
 
 Not offered, by decision: deleting a bot, removing a computer, forgetting another bot's private facts, changing a bot's
 permission mode, registering computers. The deletes a bot has are of its own webhooks (Oscar's decision on #12) and its own routines (it always could: `delete_routine`),
 and removing an MCP service it added (any bot once the adder is gone; the service keeps its data and adding it again asks for a new sign-in).
-Skills (see below), computers, `search_conversations` and memory writes stay on the engine plug-ins until #113 moves them;
+Skills (see below) stay on the engine plug-ins until moved to System MCP; the memory plug-in stays temporarily for lifecycle hooks until retired separately;
 `ask_bot` and `list_bots` ended with adapter 0.10.0 (their work done by `lilbot_delegate` and `lilbot_bots_list`), and
 `create_bot` and the five routine tools with adapter 0.11.0 (`lilbot_bot_create`, `lilbot_routine`, `lilbot_routines_list`), and `give_file`
 with adapter 0.12.0 (`lilbot_give_file`).

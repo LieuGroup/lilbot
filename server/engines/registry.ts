@@ -1,4 +1,5 @@
-/** The single registration point for concrete server bot engines. */
+/** Runtime registration point for concrete server bot engines (startup only).
+ *  Pure metadata (environment rules, deploy rollback descriptors) lives in `metadata.ts`. */
 import { EngineRegistry } from './engine-registry'
 import { HermesEngine } from './hermes/hermes-engine'
 

@@ -84,6 +84,65 @@ test('production startup refuses overrides before database or engine access', as
   expect(error).toContain('Production refuses test-only setting')
 })
 
+test('environment guards enforce arbitrary registered engines without naming them and preserve LilBot core guards', () => {
+  const secondEngine = {
+    engineId: 'second',
+    protectedDevPaths: () => ({
+      SECOND_HOME: join(homedir(), '.second-engine'),
+      // Attempting to override a LilBot core path must not weaken LilBot's own guard.
+      LILBOT_DATA_DIR: join(developmentHome, 'unmatched-override')
+    }),
+    requiredDevPathVars: ['SECOND_HOME', 'SECOND_LOCKS']
+  }
+  expect(() => assertDevelopmentTarget({ SECOND_HOME: join(homedir(), '.second-engine/sub') }, [secondEngine])).toThrow('Development refuses production path: SECOND_HOME')
+  expect(() => assertDevelopmentTarget({ LILBOT_DATA_DIR: join(homedir(), '.local/share/lilbot') }, [secondEngine])).toThrow('Development refuses production path: LILBOT_DATA_DIR')
+  const baseDev = {
+    LILBOT_ENV: 'development',
+    LILBOT_DATA_DIR: join(developmentHome, 'runs/test/data'),
+    LILBOT_WORKSPACES_DIR: join(developmentHome, 'runs/test/workspaces'),
+    LILBOT_SKILLS_DIR: join(developmentHome, 'runs/test/skills'),
+    LILBOT_PORT: '3371',
+    SECOND_HOME: join(developmentHome, 'second'),
+    SECOND_LOCKS: join(developmentHome, 'second-locks')
+  }
+  expect(() => assertServerEnvironment(baseDev, [secondEngine])).not.toThrow()
+  expect(() => assertServerEnvironment({ ...baseDev, SECOND_LOCKS: undefined }, [secondEngine])).toThrow('Development requires SECOND_LOCKS')
+})
+
+test('environment guards fail closed when rules are empty or malformed', () => {
+  expect(() => assertDevelopmentTarget({ HERMES_HOME: join(homedir(), '.hermes') }, [])).toThrow('at least one registered engine rule')
+  expect(() => assertServerEnvironment({ ...development, HERMES_HOME: join(homedir(), '.hermes') }, [])).toThrow('at least one registered engine rule')
+  expect(() => assertServerEnvironment({ LILBOT_ENV: 'production' }, [])).toThrow('at least one registered engine rule')
+  const badRules: unknown[][] = [
+    [null],
+    [{ engineId: '', protectedDevPaths: () => ({}), requiredDevPathVars: [] }],
+    [{ engineId: '../bad', protectedDevPaths: () => ({}), requiredDevPathVars: [] }],
+    [{ engineId: 'a', protectedDevPaths: 'not-a-fn', requiredDevPathVars: [] }],
+    [{ engineId: 'a', protectedDevPaths: () => null, requiredDevPathVars: [] }],
+    [{ engineId: 'a', protectedDevPaths: () => ['bad'], requiredDevPathVars: [] }],
+    [{ engineId: 'a', protectedDevPaths: () => ({ FOO: '' }), requiredDevPathVars: [] }],
+    [
+      {
+        engineId: 'a',
+        protectedDevPaths: () => {
+          throw new Error('rule boom')
+        },
+        requiredDevPathVars: []
+      }
+    ],
+    [{ engineId: 'a', protectedDevPaths: () => ({}), requiredDevPathVars: 'not-an-array' }],
+    [{ engineId: 'a', protectedDevPaths: () => ({}), requiredDevPathVars: [''] }],
+    [
+      { engineId: 'dup', protectedDevPaths: () => ({}), requiredDevPathVars: [] },
+      { engineId: 'dup', protectedDevPaths: () => ({}), requiredDevPathVars: [] }
+    ]
+  ]
+  for (const rules of badRules) {
+    expect(() => assertDevelopmentTarget(development, rules as any)).toThrow()
+    expect(() => assertServerEnvironment(development, rules as any)).toThrow()
+  }
+})
+
 test('importing reusable check helpers does not select a development environment', async () => {
   const child = Bun.spawn(
     [

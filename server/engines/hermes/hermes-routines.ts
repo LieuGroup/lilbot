@@ -81,7 +81,7 @@ export async function runRoutine(botId: string, prompt: string, options: Routine
       socket = resumed.socket
       session = resumed.session
     } else {
-      const toolsets = hermesToolsetsForRun(options.access, options.toolsets)
+      const toolsets = hermesToolsetsForRun(options.access)
       session = await socket.request('session.create', {
         source: 'tool',
         hidden: true,

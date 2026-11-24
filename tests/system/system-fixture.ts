@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 /** LilBot's MCP server over the in-memory fake engine: real services, real database, no network. */
 import { giveFrom } from '../../server/app-work'
+import { chatKinds, hiddenChats } from '../../server/bots/hidden-chats'
 import { Workspaces } from '../../server/bots/workspaces'
 import type { ComputerService } from '../../server/computers/computer-service'
 import { connectionKey } from '../../server/connections/connection-keys'
@@ -8,7 +9,9 @@ import { McpConnectionStore } from '../../server/connections/mcp-connection-stor
 import { McpConnections } from '../../server/connections/mcp-connections'
 import { McpCredentials } from '../../server/connections/mcp-credentials'
 import { SignInFlows } from '../../server/connections/mcp-sign-in'
+import type { BotEngine } from '../../server/engines/bot-engine'
 import { GoalService } from '../../server/goals/goal-service'
+import { HistoryService } from '../../server/history/history-service'
 import { HistoryStore } from '../../server/history/history-store'
 import { LibraryService } from '../../server/library/library-service'
 import { LibraryStore } from '../../server/library/library-store'
@@ -95,6 +98,16 @@ export function systemFixture({ t3Enabled = false, makeComputers }: FixtureOpts 
     60
   )
   const history = new HistoryStore(fake.database)
+  const reviewChats = new Set<string>()
+  const ownChat = (chat: string) =>
+    routineStore.isRoutineChat(chat) || threadStore.isInternal(chat) || webhookStore.isWebhookChat(chat) || work.work.checks.isCheckChat(chat) || reviewChats.has(chat)
+  const hiddenChat = hiddenChats(chatKinds(rootOf, ownChat))
+  const historyService = new HistoryService(
+    history,
+    {} as BotEngine,
+    async () => [],
+    (bot, session) => fake.store.exists(bot) && !hiddenChat(bot, session)
+  )
   const signedIn: { botId: string; chatId: string; name: string }[] = []
   const connections = new McpConnections(
     new McpConnectionStore(fake.database),
@@ -121,6 +134,7 @@ export function systemFixture({ t3Enabled = false, makeComputers }: FixtureOpts 
     activity: fake.activity,
     memory: fake.memory,
     memoryChanged: () => state.memoryPushes++,
+    history: historyService,
     skills,
     delegation: { hand: new DelegationService(threads, host, async botId => `${botId}-main`, work.links), control: new DelegationControl(threads, host), groups: threads.groups! },
     work: work.work,
@@ -160,35 +174,9 @@ export function systemFixture({ t3Enabled = false, makeComputers }: FixtureOpts 
     // LilBot's refusals are ordinary results, so Hermes does not pause the server after three of them.
     return typeof data?.refused === 'string' ? { error: data.refused as string } : { data }
   }
-  return {
-    ...fake,
-    ...server,
-    state,
-    changes,
-    threads,
-    work,
-    goals,
-    routines,
-    routineStore,
-    webhookStore,
-    workspaces,
-    library,
-    skills,
-    calls,
-    from,
-    roots,
-    webhooks,
-    connections,
-    history,
-    signedIn,
-    webhookRuns,
-    shown,
-    rosterPushes: fake.changes,
-    request,
-    as,
-    rpc,
-    call
-  }
+  const refs = { state, changes, threads, work, goals, routines, routineStore, webhookStore, workspaces, library, skills }
+  const runtime = { calls, from, roots, reviewChats, webhooks, connections, history, historyService, signedIn, webhookRuns, shown }
+  return { ...fake, ...server, ...refs, ...runtime, rosterPushes: fake.changes, request, as, rpc, call }
 }
 
 /** A second bot in the roster. */

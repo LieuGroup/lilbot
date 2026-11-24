@@ -52,7 +52,7 @@ describe('engine conformance: safety stop, System MCP completeness, secrets & pr
     expect(services.skills.read('mcp-written-skill')?.body).toContain('Always check logs.')
   })
 
-  test.failing('[Lane B P1] memory recall and forget work over LilBot System MCP without an engine plugin', async () => {
+  test('memory recall and forget work over LilBot System MCP without an engine plugin', async () => {
     const { engine, services, bot } = await boot()
     const fact = await services.bots.writeMemory({ botId: bot.id, kind: 'profile', scope: 'bot', text: 'Prefers dark roast coffee in Adelaide.' })
     let recalled = ''
@@ -72,7 +72,7 @@ describe('engine conformance: safety stop, System MCP completeness, secrets & pr
     expect((await services.bots.listMemory(bot.id)).facts.some(item => item.id === fact.id)).toBe(false)
   })
 
-  test.failing('[Lane B P1] conversation search works over LilBot System MCP without an engine plugin', async () => {
+  test('conversation search works over LilBot System MCP without an engine plugin', async () => {
     const { engine, services, bot } = await boot()
     const chat = await services.bots.openChat(bot.id, undefined, () => {})
     await chat.send('quarterly alpaca census is forty two')
