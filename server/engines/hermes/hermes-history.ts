@@ -5,6 +5,8 @@ import { historyCatalog } from './hermes-history-catalog'
 import { historyRows } from './hermes-history-mapping'
 import { HermesSocket } from './hermes-socket'
 
+const UNLISTED = ['tool', 'acp', 'cron', 'subagent', 'unknown', 'api_server', 'kanban']
+
 export async function conversations(nativeId: string): Promise<ConversationSource> {
   requireProfileEnvironment(nativeId)
   const socket = await HermesSocket.connect(nativeId === 'default' ? '' : nativeId)
@@ -18,7 +20,7 @@ export async function conversations(nativeId: string): Promise<ConversationSourc
       return [
         ...new Map(
           [...stored.sessions, ...live.sessions]
-            .filter((s: any) => !['tool', 'cron', 'subagent', 'unknown'].includes(s.source))
+            .filter((s: any) => !UNLISTED.includes(s.source) && !(s.created_source && UNLISTED.includes(s.created_source)))
             .map((s: any) => [s.id, { id: s.id, at: Math.round((s.started_at ?? 0) * 1000) }])
         ).values()
       ] as { id: string; at: number }[]

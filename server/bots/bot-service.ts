@@ -289,8 +289,8 @@ export class BotService {
     return { isPrimary: identity.id === this.primaryId(this.runtimes.store.list()), prefs: this.prefs.prefs(identity.id), workspace: this.workspaces.pathFor(identity.id) }
   }
 
-  async createFromBot(callerId: string, input: import('./bot-creation').BotCreationInput) {
-    return this.creation.create(await this.requireBot(callerId), input)
+  async createFromBot(callerId: string, input: import('./bot-creation').BotCreationInput, options?: import('./bot-creation').BotCreationOptions) {
+    return this.creation.create(await this.requireBot(callerId), input, options)
   }
 
   private primaryId(bots: BotRecord[]): string | undefined {

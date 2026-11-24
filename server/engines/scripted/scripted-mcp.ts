@@ -7,6 +7,23 @@ export interface McpCallResult {
   data?: unknown
 }
 
+/** Sends `tools/list` to an MCP endpoint; returns the advertised tool names, or null when discovery failed. */
+async function discoverMcpServer(conn: McpConnection): Promise<string[] | null> {
+  try {
+    const response = await fetch(conn.url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${conn.bearerToken}` },
+      body: JSON.stringify({ jsonrpc: '2.0', id: crypto.randomUUID(), method: 'tools/list', params: {} })
+    })
+    if (!response.ok) return null
+    const payload = (await response.json()) as { result?: { tools?: { name?: string }[] } }
+    if (!Array.isArray(payload.result?.tools)) return null
+    return payload.result.tools.map(t => String(t.name ?? '')).filter(Boolean)
+  } catch {
+    return null
+  }
+}
+
 export async function callMcpServer(conn: McpConnection, tool: string, args: Record<string, unknown>, onStart: (callId: string) => void): Promise<McpCallResult> {
   const callId = crypto.randomUUID()
   onStart(callId)
@@ -29,4 +46,21 @@ export async function callMcpServer(conn: McpConnection, tool: string, args: Rec
   } catch {
     return { ok: true, text }
   }
+}
+
+export async function attachSessionMcp(
+  session: { sessionMcp?: McpConnection[]; discoveredTools?: Map<string, string[]> },
+  connections: McpConnection[],
+  discover: boolean,
+  assertReady?: () => void
+) {
+  session.sessionMcp = connections
+  if (discover) {
+    session.discoveredTools = new Map()
+    for (const conn of connections) {
+      const listed = await discoverMcpServer(conn)
+      if (listed) session.discoveredTools.set(conn.name, listed)
+    }
+  }
+  assertReady?.()
 }

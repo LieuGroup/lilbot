@@ -39,6 +39,7 @@ export interface GroupHost {
   /** The session a chat's compression lineage began as; null when it cannot be read just now. */
   rootOf(botId: string, chatId: string): string | null
   work?: GroupWork
+  revokeThreadGrants?(threadId: string): void
   /** The roster shows running groups. */
   rosterChanged(): void
 }
@@ -83,6 +84,7 @@ export class GroupEnding {
     this.store.enqueue(endId(groupId), groupId, leader.id, leader.id, this.groups.row(groupId)!.source_chat, prompt, 'notice')
     if (!thread.capabilities || thread.capabilities.includes('memory'))
       for (const member of thread.participants.slice(1)) this.journal(groupId, member.id, journalTexts(thread, member.id))
+    this.host.revokeThreadGrants?.(groupId)
     return true
   }
 

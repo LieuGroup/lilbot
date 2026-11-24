@@ -3,6 +3,7 @@
 import type { BotModel } from '../../shared/bot-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import { AttachInput, DelegateInput } from '../../shared/thread-schema'
+import type { WebhookCapability } from '../../shared/webhook-schema'
 import { refuseUnsafe } from '../memory/memory-safety'
 import type { Match } from './calling-chats'
 import { type ResolvedTask, type ResolveRemoteWorker, remoteAcceptFields, remoteExchangeMeta, validateTaskTargets } from './delegation-remote'
@@ -55,12 +56,13 @@ export class DelegationService {
       throw new LilBotError('thread_limit', `At most ${THREAD_LIMITS.workersPerBot} workers can be under way at once; ${openW} are. Wait for answers or stop one.`)
   }
 
-  async delegate(callerId: string, raw: DelegateInput) {
+  async delegate(callerId: string, raw: DelegateInput, ctx?: { chatId?: string; capabilities?: WebhookCapability[] | null }) {
     const input = DelegateInput.parse(raw)
     const caller = await this.host.requireBot(callerId)
     const ids = input.tasks.map((_, i) => `${input.requestId}:${i}`)
     const fresh = input.tasks.filter((_, i) => !this.store.delivery(`${callerId}:${ids[i]}`))
-    const chatId = fresh.length || this.host.hasNarrowed?.(callerId) ? await this.callingChat(callerId, input.requestId) : null
+    const knownCaps = ctx && ctx.capabilities !== undefined
+    const chatId = ctx?.chatId ?? (fresh.length || (!knownCaps && this.host.hasNarrowed?.(callerId)) ? await this.callingChat(callerId, input.requestId) : null)
     if (chatId && fresh.length)
       this.store.assertNotWorker(
         callerId,
@@ -86,7 +88,7 @@ export class DelegationService {
     const continuations = input.tasks.flatMap(t => (t.exchangeId ? [t.exchangeId] : []))
     if (new Set(continuations).size !== continuations.length) throw new LilBotError('thread_target', 'One task per exchange in a call.')
     for (const t of input.tasks) refuseUnsafe(t.task)
-    const capabilities = chatId ? (this.host.sessionCapabilities?.(callerId, chatId) ?? null) : null
+    const capabilities = knownCaps ? ctx.capabilities! : chatId ? (this.host.sessionCapabilities?.(callerId, chatId) ?? null) : null
     for (const id of ids) {
       const prior = this.store.delivery(`${callerId}:${id}`)
       if (prior) assertNarrowedAllowed(capabilities, { existing: this.store.get(prior.threadId) })
@@ -182,17 +184,17 @@ export class DelegationService {
   }
 
   /** The receiver's files for its answer: checked now, copied to the other bot when the answer goes out. */
-  async attach(botId: string, raw: { exchangeId: string; files: string[] }, callArgs?: unknown) {
+  async attach(botId: string, raw: { exchangeId: string; files: string[] }, callArgs?: unknown, ctx?: { capabilities?: WebhookCapability[] | null }) {
     const input = AttachInput.parse(raw)
     await this.host.requireBot(botId)
     const thread = this.store.get(input.exchangeId)
     if (thread.group) throw new LilBotError('thread_forbidden', 'That is a group: attach with lilbot_group.')
     const place = () => this.host.callingDelegation?.(botId, callArgs ?? { action: 'attach', ...raw }) ?? Promise.resolve(null)
-    assertNarrowedAllowed(await narrowedCaller(botId, this.host, place), { existing: thread })
+    const caps = ctx?.capabilities !== undefined ? ctx.capabilities : await narrowedCaller(botId, this.host, place)
+    assertNarrowedAllowed(caps, { existing: thread })
     const running = this.threads.runner.runningFor(input.exchangeId)
     if (!running || running.target !== botId) throw new LilBotError('not_running', 'Attach files while you work on that exchange; they go back with your answer.')
-    const at = { threadId: input.exchangeId, messageId: `${running.id}:reply`, sender: botId }
-    const files = await stageFiles(this.threads.files, await this.host.folder(botId), at, input.files)
+    const files = await stageFiles(this.threads.files, await this.host.folder(botId), { threadId: input.exchangeId, messageId: `${running.id}:reply`, sender: botId }, input.files)
     return { exchangeId: input.exchangeId, files, note: 'They are copied to the other bot with your answer.' }
   }
 }

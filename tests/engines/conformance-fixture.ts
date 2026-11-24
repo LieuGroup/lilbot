@@ -6,6 +6,7 @@ import { createAppServices } from '../../server/app-services'
 import type { BotEngine } from '../../server/engines/bot-engine'
 import type { EngineRegistry } from '../../server/engines/engine-registry'
 import { ScriptedEngine, type ScriptedEngineOptions } from '../../server/engines/scripted/scripted-engine'
+import { SESSION_MCP_PREFIX } from '../../server/system/session-grants'
 import { SYSTEM_PATH } from '../../server/system/system-connection'
 
 /** Hermes live-check parity map for every conformance area. */
@@ -99,6 +100,7 @@ export async function startConformanceApp(options: ConformanceAppOptions = {}) {
     fetch(request) {
       const url = new URL(request.url)
       if (url.pathname === SYSTEM_PATH) return services.system.handler(request)
+      if (services.system.scoped && url.pathname.startsWith(SESSION_MCP_PREFIX)) return services.system.scoped(request, url.pathname)
       if (url.pathname.startsWith('/engine/connections/')) return services.mcp.forward(request, url.pathname)
       if (url.pathname.startsWith('/engine/')) return services.engineApi(request, url.pathname)
       return new Response('Not found', { status: 404 })

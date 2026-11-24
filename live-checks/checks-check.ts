@@ -61,7 +61,7 @@ const checkChats = (checkId: string) => (db!.query('SELECT chat_id FROM work_che
 /** Hermes' own view of a check's hidden session (it knows it by either of its two ids). */
 async function checkView(native: string, checkId: string) {
   for (const chat of checkChats(checkId)) {
-    const info = await engineView(native, chat, 'tool').catch(() => null)
+    const info = await engineView(native, chat, 'acp').catch(() => null)
     if (info?.model) return info
   }
   throw new Error(`Hermes does not know the session of ${checkId}`)

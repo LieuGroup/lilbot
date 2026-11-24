@@ -49,18 +49,13 @@ export interface EngineApiOptions {
   library?: LibraryService
   botExists: (botId: string) => boolean
   onMemoryChanged?: () => void
-  /** The adapter version this LilBot ships. A bot calling with another one runs stale adapter code. */
   adapterVersion?: string
-  /** Receives finished turns and knows which chats are reviews. Without it there is no review. */
   reviewer?: MemoryReviewer
-  /** Durable record of pre-compress pieces already reviewed for memory. */
   checkpointStore?: CheckpointStore
-  /** Routine, thread and webhook sessions and their compression children are never reviewed, before or after compressing. */
   chatKind?: import('../bots/hidden-chats').ChatKind
-  /** Why a call that may come from a check session (no memory, no computers, no changes) is refused, or null. */
   inCheck?: (botId: string, chatId: string | undefined, use: CheckUse) => string | null
-  /** Webhook runs (`app-webhooks.ts`): why a session may not use memory, its capabilities, and plug-in call refusals. */
   memoryLocked?: (botId: string, chatId: string | undefined) => string | null
+  skillWriteLocked?: (botId: string, chatId: string | undefined) => string | null
   sessionCapabilities?: (botId: string, chatId: string | undefined) => WebhookCapability[] | null
   pluginRefusal?: (botId: string, pathname: string, body: unknown, session: string | undefined) => string | null | Promise<string | null>
 }
@@ -95,6 +90,10 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
         if (!caller || !options.bots || !options.botExists(caller.id)) return json(403, { error: 'Unknown bot credential.' })
         const body = await request.json()
         const session = verifiedSession(request, bodyChatId(body))
+        if (pathname.startsWith('/engine/skills/') && pathname.endsWith('/write')) {
+          const locked = options.skillWriteLocked?.(caller.id, session)
+          if (locked) return json(422, { error: locked })
+        }
         const refused = await options.pluginRefusal?.(caller.id, pathname, body, session)
         if (refused) return json(422, { error: refused })
         const use = checkUse(pathname)

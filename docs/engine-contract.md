@@ -51,7 +51,22 @@ conversations, reaches LilBot through MCP, and keeps a thin adapter for the few 
   as failed (with `unknownReceipt: true`, so the exchange can say LilBot could not confirm how it ended), never repeated.
   When resuming a named `chatId`, it throws `session_not_found` only after confirming the session no longer exists
   (never on a single transient failure). Its sessions are excluded from activity unread, history and both memory reviews.
-  Given `toolsets`, the session starts with only those (`server/webhooks/webhook-access.ts`).
+- [ ] **Session-bound limited runs (`RunAccessScope`, `sessionMcp`, `assertSessionMcpReady`):** When `runRoutine` (or
+  `reviewMemory`) is given a limited `access` scope (`'check'`, `'review'`, `{ kind: 'webhook', capabilities }`, or
+  `{ kind: 'narrowed', capabilities }`):
+  - Expose `options.sessionMcp` as the session's **only** MCP servers, excluding every profile-level MCP server
+    (`lilbot_system`, `lilbot_t3`, `lilbot_c_*`, and any user-configured server). Never attach a limited session to the
+    bot's ordinary full-access MCP endpoint.
+  - Fail closed if a limited `access` scope is requested without non-empty `sessionMcp`.
+  - Complete MCP `tools/list` discovery against every entry in `sessionMcp`, call `options.assertSessionMcpReady?.()`,
+    and verify that the session's live enabled toolsets and tools match the scope's explicit allow-list **before**
+    submitting any prompt.
+  - On resume (`chatId` set with a limited `access` scope), re-bind the exact `sessionMcp` connections, call
+    `options.assertSessionMcpReady?.()`, and re-verify the live tool surface before submitting the prompt.
+  - Enforce non-blocking file-edit policy for limited scopes (checks and non-`shell` runs deny file writes immediately
+    without waiting for a person; `shell`-enabled webhook/narrowed runs restrict auto-approved file edits to the
+    workspace and temp directory).
+  - Exclude limited sessions and their compression continuations from conversation history listings and imports.
 - [ ] An engine that continues a long session under a new id after compressing it implements `compressionRoot`
   (the session the lineage began as; read-only), so a continued hidden run stays hidden (`server/bots/hidden-chats.ts`).
 - [ ] `reviewMemory` runs a hidden session of the same bot with only its memory tools and resolves when it ends.
@@ -82,7 +97,10 @@ conversations, reaches LilBot through MCP, and keeps a thin adapter for the few 
 - [ ] The connections: `lilbot_system` (LilBot's own tools, [system-mcp.md](system-mcp.md)), `lilbot_t3` (legacy T3
   Code bridge, included only when `LILBOT_T3_ENABLED=1`) and one `lilbot_c_<name>` per MCP service a bot added
   (LilBot's forwarding route; LilBot holds
-  the service's sign-in and tokens, the engine only its own key). A bot's key is valid for that bot and that connection
+  the service's sign-in and tokens, the engine only its own key). Limited sessions instead receive per-session
+  `sessionMcp` connections pointing at `/engine/lilbot/session/<grantId>/mcp` (and `/t3/mcp` when `'coding'` is
+  granted), each carrying a per-grant bearer token; those endpoints advertise and execute only the grant's allowed
+  tools. A bot's key is valid for that bot and that connection
   only; a deleted bot's key is refused. An engine never runs its own OAuth for these: the routes never answer 401.
 - [ ] The system note (about 200 words) is delivered as the bot's instructions, the one engine-neutral system-prompt path.
   An engine need not show MCP `instructions`, and must not repeat the note on every turn.

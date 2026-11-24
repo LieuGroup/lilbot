@@ -17,7 +17,12 @@ export function webhookTools({ webhooks, webhookRuns }: SystemDeps): McpTool[] {
       'lilbot_webhook_message',
       'Only in a webhook run: leave your bot one short message (once per run). Shown in its main conversation; the bot reads it as outside data with Oscar’s next message.',
       z.object({ requestId: z.string().min(1).max(200), text: z.string().trim().min(1).max(MESSAGE_CHARS) }),
-      async (caller, { requestId, text }) => {
+      async (caller, { requestId, text }, _raw, ctx) => {
+        if (ctx?.webhookRunId) {
+          webhookRuns.messages.send(ctx.webhookRunId, text)
+          return { sent: true, runId: ctx.webhookRunId }
+        }
+        if (ctx?.capabilities === null) throw new LilBotError('webhook_message_outside_run', 'Only a webhook run sends its bot a message this way.')
         const run = webhookRuns.callers.run(caller, (await webhookRuns.callingChat(caller, requestId)) ?? '')
         if (run === undefined) throw new LilBotError('session_unknown', 'LilBot cannot tell where this session came from just now. Try again in a moment.')
         if (!run) throw new LilBotError('webhook_message_outside_run', 'Only a webhook run sends its bot a message this way.')

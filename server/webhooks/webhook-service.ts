@@ -6,6 +6,7 @@ import type { ChatEvent } from '../../shared/chat-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import { type Webhook, type WebhookAddress, type WebhookCapability, WebhookCreate, type WebhookRun } from '../../shared/webhook-schema'
 import { webhookLine } from '../devices/origin-line'
+import type { McpConnection } from '../engines/mcp-connection'
 import type { RoutineHost } from '../routines/routine-service'
 import { itemsForFinish, openRunTranscript, RunTranscriptBackfill } from '../routines/run-transcripts'
 import { webhookRunAccess } from './webhook-access'
@@ -17,6 +18,12 @@ import { newSigningSecret, signatureValid } from './webhook-signature'
 import type { LiveWebhook, WebhookStore } from './webhook-store'
 
 export type Delivery = 'accepted' | 'duplicate' | 'full'
+export interface PreparedScopedSession {
+  sessionMcp: McpConnection[]
+  assertSessionMcpReady: () => void
+  onChat: (chatId: string) => void
+  settle?: () => void
+}
 
 export class WebhookService {
   readonly kind = 'webhook'
@@ -30,7 +37,8 @@ export class WebhookService {
     private origin: string | undefined,
     private changed: () => void = () => {},
     private now = Date.now,
-    private t3Enabled = false
+    private t3Enabled = false,
+    private prepareSession?: (run: WebhookRun, capabilities: WebhookCapability[]) => PreparedScopedSession
   ) {
     this.backfill = new RunTranscriptBackfill(host, store.transcripts, now)
   }
@@ -143,17 +151,24 @@ export class WebhookService {
       return result
     }
     const access = webhookRunAccess(webhook.capabilities, this.t3Enabled)
-    const result = await this.host.runRoutine(run.botId, webhookPrompt(webhook, access.prompt, items, withheld.length), {
-      runId: `webhook-${run.id}`,
-      access: access.access,
-      origin: { line: webhookLine },
-      onChat: id => {
-        this.store.attach(run.id, id, this.now())
-        this.changed()
-      }
-    })
-    this.store.finish(run.id, result.status, result.text, this.now(), itemsForFinish(result))
-    this.changed()
-    return result
+    const prepared = this.prepareSession?.(run, webhook.capabilities)
+    try {
+      const result = await this.host.runRoutine(run.botId, webhookPrompt(webhook, access.prompt, items, withheld.length), {
+        runId: `webhook-${run.id}`,
+        access: access.access,
+        ...(prepared ? { sessionMcp: prepared.sessionMcp, assertSessionMcpReady: prepared.assertSessionMcpReady } : {}),
+        origin: { line: webhookLine },
+        onChat: id => {
+          prepared?.onChat(id)
+          this.store.attach(run.id, id, this.now())
+          this.changed()
+        }
+      })
+      this.store.finish(run.id, result.status, result.text, this.now(), itemsForFinish(result))
+      this.changed()
+      return result
+    } finally {
+      prepared?.settle?.()
+    }
   }
 }

@@ -10,18 +10,18 @@ export function delegationTools({ delegation: { hand, control } }: SystemDeps): 
     'lilbot_delegation',
     'Control work you handed out, or attach files to an exchange answer. action: status (exchangeIds/batchId), cancel (exchangeId), redirect (exchangeId, requestId, message), wait (exchangeIds/batchId), attach (receiver: exchangeId, files).',
     DelegationActionInput,
-    async (caller, parsed, raw) => {
+    async (caller, parsed, raw, ctx) => {
       const { action, exchangeId, exchangeIds, batchId, requestId, message, files } = parsed
       const callArgs = raw ?? parsed
       const pick = { exchangeIds: exchangeIds ?? (exchangeId ? [exchangeId] : undefined), batchId }
-      if (action === 'status') return control.status(caller, pick, callArgs)
-      if (action === 'wait') return control.wait(caller, pick, callArgs)
+      if (action === 'status') return control.status(caller, pick, callArgs, ctx)
+      if (action === 'wait') return control.wait(caller, pick, callArgs, ctx)
       if (action === 'cancel') {
         if (!exchangeId) throw new LilBotError('exchange_id_missing', 'Give the exchangeId to cancel.')
-        return control.cancel(caller, exchangeId, callArgs)
+        return control.cancel(caller, exchangeId, callArgs, ctx)
       }
-      if (action === 'redirect') return control.redirect(caller, RedirectInput.parse({ requestId, exchangeId, message }), callArgs)
-      return hand.attach(caller, AttachInput.parse({ exchangeId, files }), callArgs)
+      if (action === 'redirect') return control.redirect(caller, RedirectInput.parse({ requestId, exchangeId, message }), callArgs, ctx)
+      return hand.attach(caller, AttachInput.parse({ exchangeId, files }), callArgs, ctx)
     }
   )
   return [
@@ -29,7 +29,7 @@ export function delegationTools({ delegation: { hand, control } }: SystemDeps): 
       'lilbot_delegate',
       'Hand work to other bots (to; call lilbot_bots_list first to look up the roster) or your own fresh hidden worker session (worker: true, optional model, reasoningEffort, computer, cwd and engine), full access in parallel. Attach workspace files by path; answers arrive as new turns — never poll. Reuse requestId only on retry.',
       DelegateInput,
-      (caller, input) => hand.delegate(caller, input)
+      (caller, input, _raw, ctx) => hand.delegate(caller, input, ctx)
     ),
     { ...controlTool, readOnly: (args: DelegationActionInput) => args.action === 'status' }
   ]

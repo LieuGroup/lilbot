@@ -4,6 +4,7 @@
  *  `group-end.ts`. The caller is always the key's bot. */
 import { LilBotError } from '../../shared/lilbot-error'
 import { type BotThread, GroupInput } from '../../shared/thread-schema'
+import type { WebhookCapability } from '../../shared/webhook-schema'
 import { refuseUnsafe } from '../memory/memory-safety'
 import { checkFiles, stageFiles, withCopies } from './exchange-files'
 import type { GroupEnding, GroupHost } from './group-end'
@@ -33,21 +34,25 @@ export class GroupService {
   private get store() {
     return this.threads.store
   }
-  private folder(botId: string) {
+  private folder = (botId: string) => {
     if (!this.host.folder) throw new LilBotError('unavailable', 'Groups need bot folders.')
     return this.host.folder(botId)
   }
 
-  async act(callerId: string, raw: GroupInput, callArgs?: unknown) {
+  private resolveCaps(callerId: string, matchArgs: unknown, requestId: string | undefined, ctx?: { capabilities?: WebhookCapability[] | null }) {
+    if (ctx?.capabilities !== undefined) return Promise.resolve(ctx.capabilities)
+    const place = () => (this.host.callingAction ? this.host.callingAction(callerId, matchArgs) : requestId ? this.host.callingChat(callerId, requestId) : Promise.resolve(null))
+    return narrowedCaller(callerId, this.host, place)
+  }
+
+  async act(callerId: string, raw: GroupInput, callArgs?: unknown, ctx?: { chatId?: string; capabilities?: WebhookCapability[] | null }) {
     const input = GroupInput.parse(raw)
     const caller = await this.host.requireBot(callerId)
     const matchArgs = callArgs ?? raw
-    if (input.action === 'start') return this.start(caller, input, matchArgs)
+    if (input.action === 'start') return this.start(caller, input, matchArgs, ctx)
     const thread = this.store.get(need(input.groupId, 'the groupId'))
     if (!thread.group || !thread.participants.some(p => p.id === caller.id)) throw new LilBotError('thread_forbidden', 'You are not in that group.')
-    const caps = await narrowedCaller(caller.id, this.host, () =>
-      this.host.callingAction ? this.host.callingAction(caller.id, matchArgs) : input.requestId ? this.host.callingChat(caller.id, input.requestId) : Promise.resolve(null)
-    )
+    const caps = await this.resolveCaps(caller.id, matchArgs, input.requestId, ctx)
     assertNarrowedAllowed(caps, { existing: thread })
     if (input.action === 'status') return botStatus(this.threads.view(thread))
     if (input.action === 'attach') return this.attach(caller, thread, need(input.files, 'files'))
@@ -56,13 +61,12 @@ export class GroupService {
     return input.action === 'say' ? this.say(caller, thread, input) : this.close(caller, thread, input, caps)
   }
 
-  private async start(caller: Bot, input: GroupInput, matchArgs: unknown) {
+  private async start(caller: Bot, input: GroupInput, matchArgs: unknown, ctx?: { chatId?: string; capabilities?: WebhookCapability[] | null }) {
     const requestId = need(input.requestId, 'a requestId')
     const prior = this.groups.byRequest(caller.id, requestId)
     if (prior) {
       const existing = this.store.get(prior)
-      const place = () => (this.host.callingAction ? this.host.callingAction(caller.id, matchArgs) : this.host.callingChat(caller.id, requestId))
-      assertNarrowedAllowed(await narrowedCaller(caller.id, this.host, place), { existing })
+      assertNarrowedAllowed(await this.resolveCaps(caller.id, matchArgs, requestId, ctx), { existing })
       return botStatus(this.threads.view(existing))
     }
     const [purpose, text] = [need(input.purpose, 'the purpose'), need(input.text, 'the first point (text)')]
@@ -72,8 +76,8 @@ export class GroupService {
     if (members.some(m => m.id === caller.id)) throw new LilBotError('thread_self', 'You lead the group: name the other bots as members.')
     if (new Set(members.map(m => m.id)).size !== members.length || members.length > this.limits.members)
       throw new LilBotError('group_members', `Name 2 to ${this.limits.members} different bots as members.`)
-    const chatId = await this.host.callingChat(caller.id, requestId)
-    const capabilities = this.host.sessionCapabilities?.(caller.id, chatId) ?? null
+    const chatId = ctx?.chatId ?? (await this.host.callingChat(caller.id, requestId))
+    const capabilities = ctx && ctx.capabilities !== undefined ? ctx.capabilities : (this.host.sessionCapabilities?.(caller.id, chatId) ?? null)
     const depth = this.depthFrom(caller.id, chatId)
     if (this.groups.leading(caller.id) >= this.limits.perBot)
       throw new LilBotError('group_limit', `You already lead ${this.limits.perBot} running groups. Close one before starting another.`)
@@ -173,7 +177,7 @@ export class GroupService {
     return { groupId: thread.id, files: names, note: 'They are copied into the group folder with your reply.' }
   }
 
-  private async close(caller: Bot, thread: BotThread, input: GroupInput, caps: import('../../shared/webhook-schema').WebhookCapability[] | null) {
+  private async close(caller: Bot, thread: BotThread, input: GroupInput, caps: WebhookCapability[] | null) {
     if (thread.group!.end) return botStatus(this.threads.view(thread))
     const outcome = need(input.text, 'the outcome (text)')
     refuseUnsafe(outcome)
@@ -184,14 +188,11 @@ export class GroupService {
     if (this.store.db.transaction(() => this.ending.end(thread.id, 'closed', outcome, { kept }))()) await this.ending.settle(thread.id, true)
     return botStatus(this.threads.view(this.store.get(thread.id)))
   }
-
-  /** Oscar stops a group: every bot in it stops at once, and the leader is told in its own conversation. */
   async stop(groupId: string) {
     if (this.store.db.transaction(() => this.ending.end(groupId, 'stopped', '', { stoppedBy: { kind: 'oscar', id: null, name: 'Oscar' } }))()) await this.ending.settle(groupId)
     return this.threads.view(this.store.get(groupId))
   }
-
-  private pushed() {
+  private pushed = () => {
     this.threads.changed()
     this.host.rosterChanged()
   }

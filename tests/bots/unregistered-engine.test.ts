@@ -21,7 +21,7 @@ import type { ActivityEvent } from '../../shared/activity-schema'
 
 const dirs: string[] = []
 afterEach(() => {
-  while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true })
+  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true })
 })
 
 function setup() {
@@ -150,19 +150,24 @@ test('unregistered-engine webhooks fail cleanly on one tick without blocking hea
   f.addGhost('ghost-w2')
   let now = 2_000_000
   const webhookStore = new WebhookStore(f.db)
+  const stubSession = () => ({
+    sessionMcp: [{ name: 'lilbot', url: 'http://127.0.0.1:0/u', bearerToken: 't', timeoutSeconds: 30, tools: [] }],
+    assertSessionMcpReady: () => {},
+    onChat: () => {}
+  })
   const webhooks = new WebhookService(
     webhookStore,
     f.bots,
     'secret-key',
     'https://hooks.example.test',
     () => {},
-    () => now
+    () => now,
+    false,
+    stubSession
   )
   const scheduler = new RoutineScheduler(webhooks, f.observe, () => now)
-
-  const h1 = await webhooks.create('ghost-w1', { requestId: 'w1', description: 'Ghost 1', source: 'CI', createdBy: 'oscar' })
-  const h2 = await webhooks.create('ghost-w2', { requestId: 'w2', description: 'Ghost 2', source: 'CI', createdBy: 'oscar' })
-  const h3 = await webhooks.create(healthy.id, { requestId: 'w3', description: 'Healthy hook', source: 'CI', createdBy: 'oscar' })
+  const mk = (botId: string, requestId: string, description: string) => webhooks.create(botId, { requestId, description, source: 'CI', createdBy: 'oscar' })
+  const [h1, h2, h3] = [await mk('ghost-w1', 'w1', 'Ghost 1'), await mk('ghost-w2', 'w2', 'Ghost 2'), await mk(healthy.id, 'w3', 'Healthy hook')]
 
   const deliver = (address: string, payload: unknown) => {
     const live = webhooks.find(address.split('/hook/').at(-1)!)!

@@ -29,6 +29,7 @@ interface WorkHost {
   line(item: StoredItem): void
   /** A notice for the item's owner; `oscar` is his own words, the only part that goes on for a webhook run's item. */
   tell(id: string, item: StoredItem, prompt: string, oscar?: string): void
+  onCheckSettled?(checkId: string): void
   changed(): void
 }
 export type Actor = { by: 'bot' | 'oscar' | 'lilbot'; via: WorkOrigin | null }
@@ -69,10 +70,10 @@ export class WorkService {
   }
 
   /** Opens an item (no itemId) or reports on one of the caller's own items, all in one call; a check's verdict too. */
-  async act(callerId: string, raw: WorkInput): Promise<WorkItem> {
+  async act(callerId: string, raw: WorkInput, knownChatId?: string, knownCheckId?: string): Promise<WorkItem> {
     const input = WorkInput.parse(raw)
-    if (input.verdict) return this.checking.verdict(callerId, input)
-    return this.actFrom(callerId, input, await this.host.callingChat(callerId, 'lilbot_work', input.requestId))
+    if (input.verdict) return this.checking.verdict(callerId, input, knownChatId, knownCheckId)
+    return this.actFrom(callerId, input, knownChatId ?? (await this.host.callingChat(callerId, 'lilbot_work', input.requestId)))
   }
 
   /** The same, from the session `chatId` that made the call: a call's start is matched once, so a goal's review gives its own. */

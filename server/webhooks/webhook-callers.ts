@@ -21,11 +21,18 @@ export interface NarrowedSessions {
   narrowedForChat(botId: string, chatId: string): WebhookCapability[] | null | undefined
 }
 
-export function webhookCallers(store: Pick<WebhookStore, 'runForChat' | 'hasRuns'>, rootOf: SessionRoot, calls: Pick<CallingChats, 'gate'>, narrowed?: NarrowedSessions) {
+export function webhookCallers(
+  store: Pick<WebhookStore, 'runForChat' | 'hasRuns'>,
+  rootOf: SessionRoot,
+  calls: Pick<CallingChats, 'gate'>,
+  narrowed?: NarrowedSessions,
+  isMainChat: (botId: string, chatId: string) => boolean = () => false
+) {
   /** The session's webhook run (null: none), also after the engine compressed it; undefined while its lineage is unreadable. */
   const runOf = (botId: string, chatId: string) => {
     const direct = store.runForChat(botId, chatId)
     if (direct) return direct
+    if (isMainChat(botId, chatId)) return null
     const root = rootOf(botId, chatId)
     if (root === null) return undefined
     return root === chatId ? null : store.runForChat(botId, root)
@@ -50,6 +57,7 @@ export function webhookCallers(store: Pick<WebhookStore, 'runForChat' | 'hasRuns
       if (run) return run.capabilities
     }
     if (hasThread) {
+      if (isMainChat(botId, chatId)) return null
       const caps = narrowed!.narrowedForChat(botId, chatId)
       if (caps === undefined) return UNPLACED
       if (caps !== null) return caps

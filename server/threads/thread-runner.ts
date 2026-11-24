@@ -10,7 +10,7 @@ import type { GroupRounds } from './group-rounds'
 import { failExchange, turnFailure } from './thread-failure'
 import type { ThreadFiles } from './thread-files'
 import { canStartDelivery, isReply, THREAD_LIMITS } from './thread-limits'
-import { deliveryPrompt, type NarrowedHost, replyText, type ThreadRunOptions, workRunOptions } from './thread-prompts'
+import { deliveryPrompt, deliveryRunOptions, type NarrowedHost, replyText, type ThreadRunOptions } from './thread-prompts'
 import { isSoleRunningWorker } from './thread-roster'
 import { type Delivery, isWork, type ThreadStore } from './thread-store'
 import type { ThreadWaits } from './thread-waits'
@@ -23,7 +23,7 @@ export interface RunnerHost extends NarrowedHost {
   stopRun?(botId: string, chatId: string): Promise<boolean>
   activeRemoteThreads?(computerId: string): Iterable<string>
 }
-const TERMINAL = ['bot_not_found', 'unsafe_message', 'thread_limit', 'session_not_found']
+const TERMINAL = ['bot_not_found', 'unsafe_message', 'thread_limit', 'session_not_found', 'session_scope_violation']
 /** Kinds whose text is LilBot's own prompt, any bot text in it already checked and fenced. */
 const PREPARED = ['notice', 'oscar', 'point', 'round']
 
@@ -42,15 +42,9 @@ export class ThreadRunner {
     private groups?: GroupRounds
   ) {}
 
-  runningIn(threadId: string) {
-    return [...this.running.values()].filter(d => this.store.workThread(d) === threadId)
-  }
-  runningFor(threadId: string) {
-    return this.runningIn(threadId)[0]
-  }
-  lineOf(d: Delivery | undefined) {
-    return (d && this.lines.get(d.id)) ?? null
-  }
+  runningIn = (threadId: string) => [...this.running.values()].filter(d => this.store.workThread(d) === threadId)
+  runningFor = (threadId: string) => this.runningIn(threadId)[0]
+  lineOf = (d: Delivery | undefined) => (d && this.lines.get(d.id)) ?? null
   sawTool(chatId: string, line: string) {
     const d = [...this.running.values()].find(d => d.chatId === chatId)
     if (!d || this.lines.get(d.id) === line) return
@@ -122,16 +116,19 @@ export class ThreadRunner {
     const files = this.files.forMessage(d.id)
     const toWork = !isReply(d.kind)
     const prompt = deliveryPrompt(d, thread, sender, files, redirects, this.waits.foldedInto(d.id), PREPARED.includes(d.kind), toWork, this.host.narrowedAccess)
-    const workSession = toWork ? this.store.session(d.threadId, d.target) : undefined
-    const internal = toWork || !!this.store.context(d.target, d.sourceChat)
+    const parentCtx = !toWork ? this.store.context(d.target, d.sourceChat) : null
+    const parentThread = parentCtx ? this.store.get(parentCtx.thread_id) : null
+    const internal = toWork || !!parentCtx
+    const run = deliveryRunOptions(d, thread, toWork, parentThread, toWork ? this.store.session(d.threadId, d.target) : undefined, this.host)
     if (work && !group) this.store.update(work, t => t.status !== 'working' && Object.assign(t, { status: 'working', startedAt: Date.now(), endedAt: null, failure: undefined }))
     this.touched()
     const result = await this.host.runRoutine(d.target, prompt, {
       runId: `thread-${d.id}`,
-      chatId: toWork ? workSession : d.sourceChat,
-      ...workRunOptions(thread, toWork, workSession, this.host.narrowedAccess),
+      chatId: run.chatId,
+      ...run.options,
       onChat: id => {
         stillOn()
+        run.onChat?.(id)
         this.store.attach(d, d.target, id, internal)
         d.chatId = id
       },

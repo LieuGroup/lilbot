@@ -9,6 +9,7 @@ import { LilBotError } from '../shared/lilbot-error'
 import type { EventFrame } from '../shared/protocol'
 import type { WorkOrigin } from '../shared/work-schema'
 import type { ActivityService } from './activity/activity-service'
+import type { AppSessionGrants } from './app-session-grants'
 import type { BotPrefsStore } from './bots/bot-prefs-store'
 import type { BotService } from './bots/bot-service'
 import type { BotStore } from './bots/bot-store'
@@ -54,6 +55,7 @@ interface WorkDeps {
   reviewModel: BotModel | null
   publish: (frame: EventFrame) => void
   remoteWork?: { deliver: (threadId: string, runId: string, prompt: string) => boolean; stop: (botId: string, chatId: string) => Promise<unknown> }
+  sessionGrants?: AppSessionGrants
 }
 
 /** The line in a conversation that links to the item opened there. */
@@ -111,33 +113,35 @@ export function workSessions(threadStore: ThreadStore, routineStore: RoutineStor
  *  refuses, as the work board does. */
 export function giveFrom(library: LibraryService, calls: CallingChats, ...sessions: Parameters<typeof workSessions>) {
   const session = workSessions(...sessions)
-  return async (botId: string, { path, title, requestId }: z.infer<typeof GiveFileInput>) => {
-    const chatId = await calls.find(botId, 'lilbot_give_file', requestId)
+  return async (botId: string, { path, title, requestId }: z.infer<typeof GiveFileInput>, knownChatId?: string) => {
+    const chatId = knownChatId ?? (await calls.find(botId, 'lilbot_give_file', requestId))
     const { origin } = session(botId, chatId)
     return library.give(botId, { path, title, chatId, routineRunId: origin.kind === 'routine_run' ? origin.id : undefined })
   }
 }
 
-export function createWork({
-  database,
-  engine,
-  store,
-  prefs,
-  bots,
-  threadStore,
-  routineStore,
-  webhookStore,
-  rootOf,
-  goalStore,
-  libraryStore,
-  workspaces,
-  activity,
-  history,
-  calls,
-  reviewModel,
-  publish,
-  remoteWork
-}: WorkDeps) {
+export function createWork(deps: WorkDeps) {
+  const {
+    database,
+    engine,
+    store,
+    prefs,
+    bots,
+    threadStore,
+    routineStore,
+    webhookStore,
+    rootOf,
+    goalStore,
+    libraryStore,
+    workspaces,
+    activity,
+    history,
+    calls,
+    reviewModel,
+    publish,
+    remoteWork,
+    sessionGrants
+  } = deps
   const isNarrowedOrigin = (origin: WorkOrigin) => (origin.kind === 'exchange' || origin.kind === 'group') && threadStore.isNarrowed(origin.id)
   const work = new WorkService(new WorkStore(database), {
     requireBot: id => bots.requireBot(id),
@@ -155,6 +159,7 @@ export function createWork({
       if (item.chatId && !item.chatId.startsWith('remote:') && store.exists(item.ownerId)) history.reference(item.ownerId, item.chatId, workLine(item), item.createdAt)
     },
     tell: (id, item, prompt, oscar) => answers.queue(id, item, prompt, false, oscar),
+    onCheckSettled: checkId => sessionGrants?.revokeCheck(checkId),
     changed: () => publish({ event: 'work.changed' })
   })
   /** The session a bot's answer or notice goes to: the one it came from (never a synthetic `remote:` id), else its main conversation. */
@@ -178,13 +183,18 @@ export function createWork({
     },
     isNarrowedOrigin
   )
+  const checkRun = sessionGrants
+    ? sessionGrants.checkRun((b, p, o) => bots.runRoutine(b, p, o), boardLine)
+    : (botId: string, prompt: string, runId: string, onChat: (chatId: string) => void, model?: BotModel) =>
+        bots.runRoutine(botId, prompt, { runId, hiddenInput: true, onChat, model, access: 'check', origin: { line: boardLine } })
   const checks = new WorkCheckRunner(
     work,
-    (botId, prompt, runId, onChat, model) => bots.runRoutine(botId, prompt, { runId, hiddenInput: true, onChat, model, access: 'check', origin: { line: boardLine } }),
+    checkRun,
     (botId, checkId, working) => {
       if (store.exists(botId)) activity.observe({ botId, chatId: `check:${checkId}`, key: `${checkId}:${working}:${Date.now()}`, status: working ? 'working' : 'finished' })
     },
     botId => workspaces.pathFor(botId)
   )
-  return { work, answers, checks, links: new WorkLinks(work, answers), checkSessions: checkSessions(work.checks, rootOf) }
+  const isMain = (botId: string, chatId: string) => prefs.mainChat(botId) === chatId
+  return { work, answers, checks, links: new WorkLinks(work, answers), checkSessions: checkSessions(work.checks, rootOf, isMain) }
 }

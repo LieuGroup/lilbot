@@ -56,17 +56,20 @@ export class WorkChecks {
   }
 
   /** The verdict of the bot LilBot asked, given from the check session LilBot started, with its own evidence. */
-  async verdict(callerId: string, raw: WorkInput): Promise<WorkItem> {
+  async verdict(callerId: string, raw: WorkInput, knownChatId?: string, knownCheckId?: string): Promise<WorkItem> {
     const input = WorkInput.parse(raw)
     await this.work.host.requireBot(callerId)
     refuseUnsafe([input.result, ...(input.evidence ?? []).flatMap(evidenceTexts)])
     const { itemId, verdict } = input
     if (!itemId || !verdict) throw new LilBotError('work_verdict', 'Give your verdict with the itemId LilBot asked you to check.')
-    const chatId = await this.work.host.callingChat(callerId, 'lilbot_work', input.requestId)
+    const chatId = knownCheckId ? (knownChatId ?? '') : (knownChatId ?? (await this.work.host.callingChat(callerId, 'lilbot_work', input.requestId)))
     const saved = refusalLogged(() =>
       this.store.db.transaction(() => {
-        const callerCheck = this.checks.checkOfChat(chatId)
+        const callerCheck = knownCheckId ?? this.checks.checkOfChat(chatId)
         if (!callerCheck) throw new LilBotError('work_forbidden', 'Give the verdict from the check session LilBot started, not from another conversation.')
+        if (knownCheckId && chatId && this.checks.checkOfChat(chatId) !== knownCheckId) {
+          throw new LilBotError('work_forbidden', 'Give the verdict from the check session LilBot started, not from another conversation.')
+        }
         const item = this.store.get(itemId)
         const check = this.checks.open(itemId)
         // A retry repeats a verdict already given from that same check session. While a check of this same bot is open,
@@ -101,6 +104,7 @@ export class WorkChecks {
       const item = this.store.get(check.itemId)!
       if (item.status === 'checking') return this.settle(item, check, 'could_not_check', why, LILBOT)
       this.checks.settle(check.id, 'dropped', null, null, this.now())
+      this.work.host.onCheckSettled?.(check.id)
       return null
     })()
     if (saved) this.work.after(saved)
@@ -112,6 +116,7 @@ export class WorkChecks {
     const log = (kind: 'checked' | 'status', status: StoredItem['status'] | null, line: string | null) =>
       this.store.log(item.id, { at, by: actor.by, kind, status, text: line, via: actor.via })
     this.checks.settle(check.id, state, text, verdictRequest, at)
+    this.work.host.onCheckSettled?.(check.id)
     log('checked', null, `${checkerLabel(check)}: ${state.replace('_', ' ')}${text ? `. ${text}` : ''}`.slice(0, 2000))
     const next = afterCheck(state, this.checks.failures(item.id), checkerLabel(check))
     const change: ItemChange = { status: next.status, question: next.question ?? null }

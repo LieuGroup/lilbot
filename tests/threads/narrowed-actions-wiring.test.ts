@@ -134,7 +134,7 @@ test('createThreads gates group close/attach/status and delegation cancel/redire
   f.threads.tick()
   await Bun.sleep(20)
   const narrowRun = f.runs.find(r => r.capabilities?.join(',') === 'delegation')
-  expect(narrowRun?.access).toEqual({ kind: 'webhook', capabilities: ['delegation'] })
+  expect(narrowRun?.access).toEqual({ kind: 'narrowed', capabilities: ['delegation'] })
   expect(narrowRun?.prompt).toContain('You cannot')
   expect(f.threadStore.allowsWorkerMemory('missing-thread')).toBe(false)
   expect(f.threadStore.isNarrowed('missing-thread')).toBe(true)

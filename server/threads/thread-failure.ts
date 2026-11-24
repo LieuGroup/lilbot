@@ -29,6 +29,7 @@ async function reasonFor(host: { requireBot(id: string): Promise<unknown> }, thr
     return receiverGone ? 'the receiving bot is no longer available' : 'the bot that handed it over is no longer available'
   }
   if (error.code === 'session_not_found') return 'the conversation no longer exists'
+  if (error.code === 'session_scope_violation') return 'the limited session could not verify its tool scope'
   if (error.code === 'thread_limit') return 'the message limit was reached'
   const noun = isWork(d.kind) ? 'request' : 'answer'
   return d.text.length > THREAD_LIMITS.text ? `the ${noun} was too long to deliver` : `LilBot's safety check withheld the ${noun}`
@@ -36,7 +37,13 @@ async function reasonFor(host: { requireBot(id: string): Promise<unknown> }, thr
 
 /** A delivery LilBot can never make (a bot gone, a message refused): its exchange fails with the reason and what waits on it
  *  is released. A stopped exchange stays stopped: a late notice that cannot be delivered does not turn the stop into a failure. */
-export async function failExchange(store: ThreadStore, waits: ThreadWaits, host: { requireBot(id: string): Promise<unknown> }, d: Delivery, error: LilBotError) {
+export async function failExchange(
+  store: ThreadStore,
+  waits: ThreadWaits,
+  host: { requireBot(id: string): Promise<unknown>; revokeThreadGrants?(threadId: string): void },
+  d: Delivery,
+  error: LilBotError
+) {
   const failure = await reasonFor(host, store.get(d.threadId), d, error)
   store.db.transaction(() => {
     const thread = store.get(d.threadId)
@@ -51,4 +58,5 @@ export async function failExchange(store: ThreadStore, waits: ThreadWaits, host:
     store.setStatus(d.id, 'done')
     waits.settle(thread.id, null)
   })()
+  host.revokeThreadGrants?.(d.threadId)
 }

@@ -10,7 +10,7 @@ export function groupTools({ delegation: { groups } }: SystemDeps): McpTool[] {
     'lilbot_group',
     'Lead a temporary group of 2-4 bots replying in parallel, then close it (call lilbot_bots_list first to look up the roster). action: start (purpose, members, text, to, files), say (next point), attach (member files), close (text outcome, keep files), status. Replies arrive as new turns: never poll.',
     GroupInput,
-    (caller, input, raw) => groups.act(caller, input, raw ?? input)
+    (caller, input, raw, ctx) => groups.act(caller, input, raw ?? input, ctx)
   )
   return [{ ...tool, readOnly: (args: GroupInput) => args.action === 'status' }]
 }

@@ -1,6 +1,7 @@
 /** Read-only reference scanning, DB fingerprinting, and post-rekey SQLite self-checks. Never logs message or memory text. */
 import type { Database } from 'bun:sqlite'
 import { createHash } from 'node:crypto'
+import { scanSessionGrantCompositeRefs } from './rekey-composite'
 import { rewriteAttachmentMessage, rewriteChatItem, rewriteHistoryEvent, rewriteStoredAttachment, rewriteThreadData } from './rekey-json'
 import { buildIdMaps, escapeLike, PLAIN_TARGETS, tableExists, tableRowCounts } from './rekey-targets'
 
@@ -70,6 +71,7 @@ export function scanReferences(db: Database, oldId: string, probeId = '__probe__
       )
     }
   }
+  scanSessionGrantCompositeRefs(db, oldId, checkIds, add)
   if (tableExists(db, 'activity_cursors')) {
     for (const oldD of deliveryIds.keys()) {
       add('activity_cursors.chat_id', db.query<{ n: number }, [string]>('SELECT count(*) AS n FROM activity_cursors WHERE chat_id = ?').get(`thread:${oldD}`)!.n)

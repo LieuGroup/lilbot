@@ -10,12 +10,17 @@ export const NO_CHANGES = 'This session is a check: LilBot lets it read and give
 export type CheckUse = 'memory' | 'skills' | 'changes'
 
 /** `rootOf`: the session a chat's compression lineage began as, null while it cannot be read (`bots/hidden-chats.ts`). */
-export function checkSessions(checks: Pick<WorkCheckStore, 'checkOfChat' | 'running'>, rootOf: (botId: string, chatId: string) => string | null) {
+export function checkSessions(
+  checks: Pick<WorkCheckStore, 'checkOfChat' | 'running'>,
+  rootOf: (botId: string, chatId: string) => string | null,
+  isMainChat: (botId: string, chatId: string) => boolean = () => false
+) {
   /** Whether a check of this bot is under way, so one of its calls may come from a check session. */
   const checking = (botId: string) => checks.running().some(check => check.by.id === botId)
-  /** Whether this session is a check. While its lineage cannot be read it counts as one when the bot is checking. */
+  /** Whether this session is a check. Short-circuits the bot's main chat before reading `state.db`; otherwise fails closed while checking. */
   const isCheck = (botId: string, chatId: string): boolean => {
     if (checks.checkOfChat(chatId)) return true
+    if (isMainChat(botId, chatId)) return false
     const root = rootOf(botId, chatId)
     if (root === null) return checking(botId)
     return root !== chatId && checks.checkOfChat(root) !== null

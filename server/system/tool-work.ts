@@ -12,7 +12,7 @@ export function workTools({ work, goals }: SystemDeps): McpTool[] {
       'lilbot_work',
       'Open a work item, report status/evidence, or give a check verdict. Open (no itemId): title, kind, done. Report (itemId): done, evidence, status (needs_oscar: question; done/failed: result; dropped: reason). Done needs done+evidence unless level 0. Checker: pass verdict.',
       WorkInput,
-      async (caller, input) => fenceRunText(await work.act(caller, input), work.host.isNarrowedOrigin)
+      async (caller, input, _raw, ctx) => fenceRunText(await work.act(caller, input, ctx?.chatId, ctx?.checkId), work.host.isNarrowedOrigin)
     ),
     readTool(
       'lilbot_work_list',

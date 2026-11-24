@@ -2,6 +2,9 @@
 
 import { systemSessionRefusal } from './check-access'
 import { readsBeyondOwn } from './run-access'
+import { createScopedMcp } from './scoped-mcp'
+import type { SessionGrant } from './session-grants'
+import { scopedToolsFor } from './session-scope'
 import { systemConnection, toolsVersion } from './system-connection'
 import type { SystemDeps } from './system-deps'
 import { createSystemMcp } from './system-mcp'
@@ -53,6 +56,18 @@ export function createSystemServer(deps: SystemDeps & { engineToken: string; por
   const url = `http://127.0.0.1:${deps.port}`
   const beyondOwn = readsBeyondOwn(itemId => deps.work.store.get(itemId)?.ownerId)
   const refusal = systemSessionRefusal(tools, deps.checkSessions, deps.webhookRuns.callers, deps.calls, beyondOwn, Boolean(deps.t3Enabled))
+  const scoped = deps.grants
+    ? createScopedMcp({
+        port: deps.port,
+        grants: deps.grants,
+        bots: () => deps.store.list(),
+        tools,
+        changes: deps.changes,
+        beyondOwn,
+        t3Enabled: Boolean(deps.t3Enabled),
+        t3Forward: deps.t3Forward
+      })
+    : undefined
   return {
     tools,
     handler: createSystemMcp({
@@ -62,8 +77,15 @@ export function createSystemServer(deps: SystemDeps & { engineToken: string; por
       tools,
       changes: deps.changes,
       instructions: INSTRUCTIONS,
-      refusal
+      refusal,
+      ...(deps.grants ? { hasLegacyUngrantedRun: (botId: string) => deps.grants!.hasLegacyUngrantedRun(botId) } : {})
     }),
+    scoped,
+    sessionConnections: (grant: SessionGrant) => {
+      if (!deps.grants) throw new Error('Session grants unavailable.')
+      const allowedNames = scopedToolsFor(grant.scope, tools, Boolean(deps.t3Enabled)).map(tool => tool.name)
+      return deps.grants.connectionsFor(grant, url, allowedNames, Boolean(deps.t3Enabled))
+    },
     workerMcp: createWorkerMcp(deps, tools),
     connection: (botId: string) => systemConnection(url, deps.engineToken, botId, names, version)
   }

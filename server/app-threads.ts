@@ -3,6 +3,7 @@
 import type { EventFrame } from '../shared/protocol'
 import { type ActivityService, toolActivity } from './activity/activity-service'
 import type { RemoteWorkers } from './app-remote-workers'
+import type { AppSessionGrants } from './app-session-grants'
 import type { BotPrefsStore } from './bots/bot-prefs-store'
 import type { BotService } from './bots/bot-service'
 import type { BotStore } from './bots/bot-store'
@@ -43,6 +44,7 @@ interface ThreadDeps {
   rootOf: SessionRoot
   remoteWorkers?: RemoteWorkers
   callers?: Pick<WebhookCallers, 'forChat' | 'hasRuns'>
+  sessionGrants?: AppSessionGrants
   t3Enabled?: boolean
   publish: (frame: EventFrame) => void
   botsChanged: () => void
@@ -74,6 +76,14 @@ export function createThreads(deps: ThreadDeps) {
     sessionCapabilities: deps.callers?.forChat,
     hasNarrowed: deps.callers?.hasRuns,
     narrowedAccess: caps => webhookRunAccess(caps, Boolean(deps.t3Enabled)),
+    ...(deps.sessionGrants
+      ? {
+          prepareNarrowedSession: (botId: string, threadId: string, caps: import('../shared/webhook-schema').WebhookCapability[]) =>
+            deps.sessionGrants!.prepareNarrowed(botId, threadId, caps),
+          prepareNarrowedReply: (botId: string, chatId: string) => deps.sessionGrants!.prepareNarrowedReply(botId, chatId),
+          revokeThreadGrants: (threadId: string) => deps.sessionGrants!.revokeThread(threadId)
+        }
+      : {}),
     callingDelegation: (botId, raw) => calls.claim(botId, 'lilbot_delegation', raw, chat => deps.callers?.forChat(botId, chat) !== null),
     folder: botId => workspaces.ensure(botId),
     stopRun: async (botId, chatId) => {
@@ -108,6 +118,7 @@ export function createThreads(deps: ThreadDeps) {
     callingAction: (botId, raw) => calls.claim(botId, 'lilbot_group', raw, chat => deps.callers?.forChat(botId, chat) !== null),
     rootOf: deps.rootOf,
     work,
+    ...(deps.sessionGrants ? { revokeThreadGrants: (threadId: string) => deps.sessionGrants!.revokeThread(threadId) } : {}),
     rosterChanged: deps.botsChanged
   }
   const threads = new ThreadService(

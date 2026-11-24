@@ -52,12 +52,7 @@ export function createT3Bridge(options: T3BridgeOptions) {
     return new Response(body === undefined ? response.body : body, { status: response.status, headers })
   }
 
-  return async (request: Request): Promise<Response> => {
-    // Only engine processes on this machine: loopback Host, never a browser, and a bot's own key.
-    if (request.headers.has('origin') || !loopback.has(request.headers.get('host')?.toLowerCase() ?? '')) return Response.json({ error: 'Not allowed.' }, { status: 403 })
-    const botId = connectionCaller(options.engineToken, T3_KEY_PURPOSE, options.botIds(), request.headers.get('authorization') ?? '')
-    if (!botId) return Response.json({ error: 'Unknown bot credential.' }, { status: 403 })
-
+  async function forwardForBot(botId: string, request: Request, skipRefusal: boolean): Promise<Response> {
     if (request.method !== 'POST') {
       const grant = options.grants.usable()
       if (!grant) return new Response(null, { status: request.method === 'DELETE' ? 204 : 405, headers: { allow: 'POST' } })
@@ -78,8 +73,10 @@ export function createT3Bridge(options: T3BridgeOptions) {
           ]
         })
       if (!ALLOWED.has(name)) return signedIn ? toolError(message.id, `${String(name)} is not available to LilBot bots.`) : t3SignedOut(message, explanation())
-      const refused = await options.refusal(botId, name, message.params.arguments)
-      if (refused) return refusedResult(message.id, refused)
+      if (!skipRefusal) {
+        const refused = await options.refusal(botId, name, message.params.arguments)
+        if (refused) return refusedResult(message.id, refused)
+      }
       const args = message.params.arguments
       if (args && typeof args.clientRequestId === 'string') args.clientRequestId = scopedRequestId(botId, args.clientRequestId)
     }
@@ -115,4 +112,14 @@ export function createT3Bridge(options: T3BridgeOptions) {
     }
     return passThrough(response)
   }
+
+  const handler = async (request: Request): Promise<Response> => {
+    // Only engine processes on this machine: loopback Host, never a browser, and a bot's own key.
+    if (request.headers.has('origin') || !loopback.has(request.headers.get('host')?.toLowerCase() ?? '')) return Response.json({ error: 'Not allowed.' }, { status: 403 })
+    const botId = connectionCaller(options.engineToken, T3_KEY_PURPOSE, options.botIds(), request.headers.get('authorization') ?? '')
+    if (!botId) return Response.json({ error: 'Unknown bot credential.' }, { status: 403 })
+    return forwardForBot(botId, request, false)
+  }
+  handler.forBot = (botId: string, request: Request) => forwardForBot(botId, request, true)
+  return handler
 }

@@ -2,6 +2,20 @@
  *  never from the arguments, and the arguments as `input` checked them: keys the schema does not name are
  *  dropped, so no argument can claim another identity. */
 import { z } from 'zod'
+import type { WebhookCapability } from '../../shared/webhook-schema'
+
+/** Authoritative caller context supplied by the MCP endpoint itself (never from tool arguments).
+ *  Session-bound endpoints populate `chatId`, `capabilities`, `webhookRunId`, `checkId`, `review`, and
+ *  `sessionBound: true`; ordinary full-access endpoints pass `{ capabilities: null }` when no pre-deploy
+ *  ungranted run is in flight. */
+export interface McpCallContext {
+  chatId?: string
+  capabilities?: WebhookCapability[] | null
+  webhookRunId?: string
+  checkId?: string
+  review?: boolean
+  sessionBound?: boolean
+}
 
 export interface McpTool {
   name: string
@@ -10,12 +24,17 @@ export interface McpTool {
   /** Reads change nothing; every other call is logged as a change made by the calling bot. A tool with an action field
    *  says per call whether it only reads. */
   readOnly: boolean | ((args: any) => boolean)
-  run: (caller: string, args: any, raw?: unknown) => Promise<unknown>
+  run: (caller: string, args: any, raw?: unknown, ctx?: McpCallContext) => Promise<unknown>
 }
 
 const define =
   (readOnly: boolean) =>
-  <S extends z.ZodType>(name: string, description: string, input: S, run: (caller: string, args: z.output<S>, raw?: unknown) => Promise<unknown>): McpTool => ({
+  <S extends z.ZodType>(
+    name: string,
+    description: string,
+    input: S,
+    run: (caller: string, args: z.output<S>, raw?: unknown, ctx?: McpCallContext) => Promise<unknown>
+  ): McpTool => ({
     name,
     description,
     input,

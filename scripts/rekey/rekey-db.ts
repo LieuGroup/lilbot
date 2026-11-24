@@ -132,7 +132,7 @@ export function applyDatabaseRekey(db: Database, oldId: string, newId: string, e
         deletedCheckpointRows = runChanges(db, 'DELETE FROM memory_checkpoint_reviewed WHERE bot_id = ?', oldId)
         record('memory_checkpoint_reviewed', deletedCheckpointRows)
       }
-      rewriteCompositeIds(db, maps, record)
+      rewriteCompositeIds(db, maps, record, oldId, newId)
       rewriteJsonColumns(db, oldId, newId, maps, record)
       if (clearMainChat && tableExists(db, 'bot_prefs')) {
         clearedMainChat = runChanges(db, 'UPDATE bot_prefs SET main_chat_id = NULL WHERE bot_id = ? AND main_chat_id IS NOT NULL', newId) > 0

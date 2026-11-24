@@ -14,9 +14,9 @@ export function libraryTools({ giveFile }: SystemDeps): McpTool[] {
       'lilbot_give_file',
       'Give Oscar a finished file from your folder: it appears in your Library, and only what you give appears there. A regular file inside your folder, at most 50 MiB, with a short title; the Library points at the file, so do not move or delete it. Call it once for each file.',
       GiveFileInput,
-      async (caller, input) => {
+      async (caller, input, _raw, ctx) => {
         try {
-          const item = await giveFile(caller, input)
+          const item = await giveFile(caller, input, ctx?.chatId)
           return { id: item.id, title: item.title, kind: item.kind, size: item.size, url: `/api/library/${caller}/${item.id}` }
         } catch (error) {
           if (fileProblem(error)) throw new LilBotError('cannot_give', 'Cannot give this file. Use a regular file inside your folder, at most 50 MiB.')

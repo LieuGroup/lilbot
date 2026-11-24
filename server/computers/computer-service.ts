@@ -156,7 +156,7 @@ export class ComputerService {
     if (!found) throw new Error('Unknown or removed computer.')
     return found
   }
-  async submit(bot: string, raw: unknown) {
+  async submit(bot: string, raw: unknown, maxWaitMs = 25_000) {
     const input = ComputerSubmit.parse(raw)
     const computer = this.require(bot, input.computer)
     if (input.operation.kind === 'exec') assertCommandSafe(input.operation.command, computer.home)
@@ -166,7 +166,7 @@ export class ComputerService {
     const request = await this.payload(input.computer, () => this.store.enqueue(bot, input.computer, input.requestId, input.operation, input.background))
     this.dispatch(input.computer)
     if (input.background) return request
-    const until = Date.now() + 25_000
+    const until = Date.now() + Math.max(0, Math.min(maxWaitMs, 25_000))
     let offlineSince = 0
     while (Date.now() < until) {
       if (!['pending', 'running'].includes(this.store.status(request.id))) return this.store.get(bot, input.computer, input.requestId)!
@@ -257,12 +257,12 @@ export class ComputerService {
       .finally(() => this.local.delete(request.id))
       .catch(() => backgroundFailure('computer result'))
   }
-  async copy(bot: string, raw: unknown) {
+  async copy(bot: string, raw: unknown, w = 25_000) {
     const input = ComputerCopy.parse(raw)
     this.require(bot, input.computer)
     return workspaceFile(this.workspace(bot), input.workspacePath, async file => {
-      if (input.direction === 'fromWorkspace') return this.submit(bot, { ...input, operation: { kind: 'write', path: input.path, data: await file.read(), encoding: 'base64' } })
-      const request = await this.submit(bot, { ...input, operation: { kind: 'read', path: input.path } })
+      if (input.direction === 'fromWorkspace') return this.submit(bot, { ...input, operation: { kind: 'write', path: input.path, data: await file.read(), encoding: 'base64' } }, w)
+      const request = await this.submit(bot, { ...input, operation: { kind: 'read', path: input.path } }, w)
       if (request.status !== 'completed' || !request.result || request.result.error) return request
       await file.write(request.result.output)
       return { ...request, result: { output: 'Copied to workspace.' } }
@@ -272,6 +272,6 @@ export class ComputerService {
     this.closed = true
     clearTimeout(this.changeTimer)
     for (const p of [...[...this.contenders.values()].map(c => c.peer), ...this.peers.values()]) p.close(1001)
-    for (const controller of this.local.values()) controller.abort()
+    for (const c of this.local.values()) c.abort()
   }
 }

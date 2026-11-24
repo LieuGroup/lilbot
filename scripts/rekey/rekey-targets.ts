@@ -62,7 +62,9 @@ export const PLAIN_TARGETS: readonly PlainTarget[] = [
   { table: 'work_levels', column: 'bot_id' },
   { table: 'goals', column: 'bot_id' },
   { table: 'mcp_connections', column: 'added_by' },
-  { table: 'connection_sign_in_cards', column: 'bot_id' }
+  { table: 'connection_sign_in_cards', column: 'bot_id' },
+  { table: 'session_grants', column: 'bot_id' },
+  { table: 'session_grant_chats', column: 'bot_id' }
 ]
 
 export const waitHash = (botId: string, threadIdsJson: string) =>
@@ -188,12 +190,10 @@ export function inFlightCounts(db: Database, botId: string): Record<string, numb
   if (tableExists(db, 'work_answers'))
     add('work_answers', db.query<{ n: number }, [string]>("SELECT count(*) AS n FROM work_answers WHERE bot_id = ? AND status IN ('pending','stopping')").get(botId)!.n)
   if (tableExists(db, 'work_checks')) {
-    const n = db
-      .query<{ n: number }, [string, string]>(
-        "SELECT count(*) AS n FROM work_checks WHERE state = 'checking' AND (checker_id = ? OR item_id IN (SELECT id FROM work_items WHERE owner_id = ?))"
-      )
-      .get(botId, botId)!.n
-    add('work_checks', n)
+    const q = "SELECT count(*) AS n FROM work_checks WHERE state = 'checking' AND (checker_id = ? OR item_id IN (SELECT id FROM work_items WHERE owner_id = ?))"
+    add('work_checks', db.query<{ n: number }, [string, string]>(q).get(botId, botId)!.n)
   }
+  if (tableExists(db, 'session_grants'))
+    add('session_grants', db.query<{ n: number }, [string]>('SELECT count(*) AS n FROM session_grants WHERE bot_id = ? AND revoked_at IS NULL').get(botId)!.n)
   return counts
 }
