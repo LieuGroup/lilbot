@@ -184,9 +184,9 @@ export class ChatSessionManager {
 
   newChat(botId: string) {
     const entry = this.entries.get(botId)
-    if (!entry) return
+    if (!entry || !this.connected || !entry.chatId || !this.deps.getSlot(botId).ready) return
     this.deps.updateSlot(botId, cur => ({ ...cur, view: withNewSession(cur.view), ready: false }))
-    if (this.connected) this.open(botId, entry, true)
+    this.open(botId, entry, true)
   }
 
   activeChatId(botId: string): string {

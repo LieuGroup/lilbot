@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { railGroups, rosterGroups, searchBots } from '../../shared/client/bots/roster-groups'
+import { rowState } from '../../shared/client/bots/row-state'
 import { activitySince, formatElapsed } from '../../web/src/activity/activity-since'
-import { rowState } from '../../web/src/bots/row-state'
 import { testBot as bot } from './test-bot'
 
 const sections = [

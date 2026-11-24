@@ -1,5 +1,5 @@
 /** The sentences of the delete dialog and the Settings rows. Pure, so plurals are tested. */
-import type { BotDeleteDefaults } from '../../../shared/bot-delete-schema'
+import type { BotDeleteDefaults } from '../../bot-delete-schema'
 
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 

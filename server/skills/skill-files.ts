@@ -1,7 +1,86 @@
 import { createHash } from 'node:crypto'
-import { lstatSync, readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { LilBotError } from '../../shared/lilbot-error'
+
+// biome-ignore lint/suspicious/noControlCharactersInRegex: reject control, newline, separator, and invisible/bidi characters in paths
+const UNSAFE_PATH_CHARS = /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/u
+
+/** Safe relative path for reading or writing a skill file (printable, no control/newline/separator/invisible/bidi chars, no traversal or dotfiles). */
+export function safeSkillFilePath(file: string): boolean {
+  if (!file || file.length > 300 || file.includes('\\') || UNSAFE_PATH_CHARS.test(file)) return false
+  return !file.split('/').some(segment => !segment || segment === '.' || segment === '..' || segment.startsWith('.'))
+}
+
+/** True when `target` is a symlink (including a dangling symlink); false when missing (`ENOENT`). */
+export function isSymlink(target: string): boolean {
+  try {
+    return lstatSync(target).isSymbolicLink()
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') return false
+    throw error
+  }
+}
+
+/** Atomically writes a skill file, unlinking its temporary file if writing or renaming fails. */
+export function writeSkillFile(path: string, text: string) {
+  mkdirSync(dirname(path), { recursive: true })
+  const temp = `${path}.${crypto.randomUUID()}.tmp`
+  try {
+    writeFileSync(temp, text)
+    renameSync(temp, path)
+  } catch (error) {
+    rmSync(temp, { force: true })
+    throw error
+  }
+}
+
+/** Whether `root` holds only the exact relative paths in `expected` (no extra files, dotfiles, binaries, symlinks, or empty dirs). */
+export function hasExactFiles(root: string, expected: ReadonlySet<string>): boolean {
+  const seen = new Set<string>()
+  function walk(dir: string, prefix: string): boolean {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name)
+      if (entry.isSymbolicLink() || lstatSync(full).isSymbolicLink()) return false
+      const rel = prefix + entry.name
+      if (entry.isDirectory()) {
+        const sub = `${rel}/`
+        if (![...expected].some(path => path.startsWith(sub)) || !walk(full, sub)) return false
+      } else {
+        if (!expected.has(rel)) return false
+        seen.add(rel)
+      }
+    }
+    return true
+  }
+  return walk(root, '') && seen.size === expected.size
+}
+
+/** Removes any file, symlink, dotfile, or directory under `root` not belonging to `expected` (never following symlinks). */
+export function pruneUnexpectedFiles(root: string, expected: ReadonlySet<string>) {
+  const dirs = new Set<string>()
+  for (const rel of expected) {
+    const parts = rel.split('/')
+    for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join('/'))
+  }
+  function walk(dir: string, prefix: string) {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name)
+      const rel = prefix + entry.name
+      if (entry.isSymbolicLink() || lstatSync(full).isSymbolicLink()) {
+        rmSync(full, { force: true })
+        continue
+      }
+      if (entry.isDirectory()) {
+        if (!dirs.has(rel)) rmSync(full, { recursive: true, force: true })
+        else walk(full, `${rel}/`)
+      } else if (!expected.has(rel)) {
+        rmSync(full, { force: true })
+      }
+    }
+  }
+  walk(root, '')
+}
 
 export function safeText(text: string) {
   if (

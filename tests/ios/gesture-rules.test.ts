@@ -61,8 +61,8 @@ describe('Round 4 custom gesture guards and fallbacks', () => {
     expect(shouldRevealSearch({ pullDistance: 0, alwaysVisible: true })).toBe(true)
     expect(shouldRevealSearch({ pullDistance: 20, alwaysVisible: false })).toBe(false)
 
-    expect(rowAccessibilityActions({ pinned: false, unread: true, hidden: false }).map(a => a.label)).toEqual(['Pin', 'Mark read', 'Hide', 'Bot menu'])
-    expect(rowAccessibilityActions({ pinned: true, unread: false, hidden: true }).map(a => a.label)).toEqual(['Unpin', 'Mark unread', 'Unhide', 'Bot menu'])
+    expect(rowAccessibilityActions({ pinned: false, unread: true, hidden: false }).map(a => a.label)).toEqual(['Pin', 'Mark as read', 'Hide', 'Bot menu'])
+    expect(rowAccessibilityActions({ pinned: true, unread: false, hidden: true }).map(a => a.label)).toEqual(['Unpin', 'Mark as unread', 'Show', 'Bot menu'])
     expect(sendAccessibilityActions()).toEqual([{ name: 'model-menu', label: 'Change model and reasoning effort' }])
   })
 })

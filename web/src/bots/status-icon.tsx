@@ -1,7 +1,7 @@
 import { cn } from 'cn'
 import { CheckIcon, CircleDashedIcon, LoaderCircleIcon, MessageCircleIcon, XIcon } from 'lucide-react'
 
-import type { RowTone } from './row-state'
+import type { RowTone } from '../../../shared/client/bots/row-state'
 
 /** The small mark before a live state: blue spinner, green check, red cross. Accent blue is used
  *  only here and for the unread dot. */

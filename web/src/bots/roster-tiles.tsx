@@ -3,11 +3,11 @@ import { EllipsisIcon } from 'lucide-react'
 
 import { Button } from '@/ui/button'
 import type { Bot } from '../../../shared/bot-schema'
+import { rowState } from '../../../shared/client/bots/row-state'
 import { AvatarMarks, botLabel } from './avatar-marks'
 import { BotLink, menuOnContext } from './bot-link'
 import { openBotMenu } from './bot-menu-target'
 import type { DetailsTab } from './details-tabs'
-import { rowState } from './row-state'
 
 /** The strip above the sections: the primary bot, then pinned bots in the order they were
  *  pinned. Tiles share the width equally, at most three to a line; a shorter last line keeps the

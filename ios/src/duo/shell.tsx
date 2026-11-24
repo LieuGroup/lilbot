@@ -11,6 +11,7 @@ import type { Bot } from '../../../shared/bot-schema'
 import { Roster } from '../bots/roster'
 import { useBotStore } from '../bots/store'
 import { ChatScreen } from '../chat/screen'
+import { useConnectionStore } from '../connection/store'
 import { CloseIcon, SidebarToggleIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
@@ -31,6 +32,9 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
   const { surface, metrics } = useLiveSurface()
   const bots = useBotStore(state => state.bots)
   const sections = useBotStore(state => state.sections)
+  const loaded = useBotStore(state => state.loaded)
+  const connected = useConnectionStore(state => state.connected)
+  const error = useBotStore(state => state.error)
   const selectedId = useBotSelection(state => state.selectedId)
   const pendingInitialPush = useBotSelection(state => state.pendingInitialPush)
   const select = useBotSelection(state => state.select)
@@ -133,11 +137,21 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
       }}
     >
       <View key="roster-pane" style={rosterStyle}>
-        <Roster bots={bots} sections={sections} selectedId={layout.splitMode ? (selected?.id ?? null) : null} onSelect={handleSelectBot} />
+        <Roster
+          bots={bots}
+          sections={sections}
+          loaded={loaded}
+          connected={connected}
+          error={error}
+          selectedId={layout.splitMode ? (selected?.id ?? null) : null}
+          compactCardSurface={layout.splitMode || layout.hasSideStrip}
+          splitMode={layout.splitMode}
+          onSelect={handleSelectBot}
+        />
       </View>
       {layout.splitMode && (
         <View key="chat-pane" style={{ flex: 1 }}>
-          {selected ? <ChatScreen bot={selected} headerLeading={sidebarToggle} /> : <EmptyDetail />}
+          {selected ? <ChatScreen bot={selected} headerLeading={sidebarToggle} showNewSession={surface === 'pad'} /> : <EmptyDetail />}
         </View>
       )}
       {layout.splitMode && layout.inspectorWidth > 0 && renderInspector && (

@@ -128,6 +128,35 @@ describe('ChatSessionManager fold/unfold continuity', () => {
     release()
   })
 
+  test('newChat is a no-op when disconnected or not ready, and calls chat.new once ready', async () => {
+    const { fake, manager, getSlot } = makeHarness(30)
+    const release = manager.acquire('bot-a')
+    // Before chat.open resolves, ready is false so newChat must not fire chat.new or corrupt state.
+    manager.newChat('bot-a')
+    expect(fake.calls.filter(c => c.method === 'chat.new')).toHaveLength(0)
+
+    await flush()
+    expect(getSlot('bot-a').ready).toBe(true)
+    fake.emit('chat-1', { type: 'text.delta', text: 'existing reply' })
+    expect(getSlot('bot-a').view.items).toHaveLength(1)
+
+    // While disconnected, newChat must not wipe the existing transcript or call chat.new.
+    manager.setConnected(false)
+    manager.newChat('bot-a')
+    expect(fake.calls.filter(c => c.method === 'chat.new')).toHaveLength(0)
+    expect(getSlot('bot-a').view.items).toHaveLength(1)
+
+    // Once reconnected and ready, newChat starts a fresh session via chat.new.
+    manager.setConnected(true)
+    await flush()
+    expect(getSlot('bot-a').ready).toBe(true)
+    manager.newChat('bot-a')
+    await flush()
+    expect(fake.calls.filter(c => c.method === 'chat.new')).toHaveLength(1)
+    expect(getSlot('bot-a').ready).toBe(true)
+    release()
+  })
+
   test('useChatStore persists per-bot drafts and clamps scroll offsets across fold/unfold', () => {
     const store = useChatStore.getState()
     store.setDraft('bot-draft', 'half-written reply')

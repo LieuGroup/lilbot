@@ -180,7 +180,7 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
     repeat(name, 1000, fn)
   const routineScheduler = new RoutineScheduler(routines, observeRun)
   const reviewer = mem.startReviewer(bots, store, repeat)
-  const apiCore = { history, bots, skills, routines, library, threads, reviewer, checkpointStore: mem.checkpointStore }
+  const apiCore = { history, bots, skills, routines, library, threads, reviewer, checkpointStore: mem.checkpointStore, changes: extra.changes }
   const apiHooks = { chatKind, adapterVersion: MEMORY_ADAPTER_VERSION, deploymentNotice: () => deployNotice(DATA_DIR), botExists: botAlive }
   const engineApi = createEngineApi(memory, token, PORT, {
     ...apiCore,
