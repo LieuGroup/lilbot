@@ -13,6 +13,8 @@ afterEach(() => {
 })
 
 const sorted = (items: Iterable<string>) => [...new Set(items)].sort()
+const fireHook = (app: Awaited<ReturnType<typeof startConformanceApp>>, address: string) =>
+  app.services.webhooks.receive(app.services.webhooks.find(HOOK_PATH.exec(new URL(address).pathname)![1])!, new TextEncoder().encode('{}'), new Headers())
 
 describe('engine conformance: session-bound limited sessions & multi-engine binding', () => {
   test('ScriptedEngine exposes exact tools/list visibility for checks, webhooks, and narrowed hand-offs', async () => {
@@ -22,64 +24,54 @@ describe('engine conformance: session-bound limited sessions & multi-engine bind
     const beta = await app.services.bots.createBot({ name: 'Beta', function: 'Checker', instructions: '' })
     await app.services.bots.prepareRuntimes()
 
-    let checkTools: string[] = []
-    let hookEmptyTools: string[] = []
-    let hookCompTools: string[] = []
-    let narrowTools: string[] = []
+    const tools = { check: [] as string[], empty: [] as string[], comp: [] as string[], narrow: [] as string[] }
+    const seen: Record<string, boolean | undefined> = {}
 
     app.engine.setTurnHandler(async ctx => {
-      const sess = app.engine.sessionOf(ctx.chatId)!
-      const access = sess.routineOptions?.access
+      const access = app.engine.sessionOf(ctx.chatId)?.routineOptions?.access
       const discovered = sorted(app.engine.sessionDiscoveredTools(ctx.chatId)?.get('lilbot') ?? [])
       if (access === 'check') {
-        checkTools = discovered
+        tools.check = discovered
         const itemId = /work item (\S+)/.exec(ctx.input.text)?.[1] ?? ''
         const reqId = /requestId "([^"]+)"/.exec(ctx.input.text)?.[1] ?? 'v1'
-        const bad = await ctx.callMcp('lilbot_bot_edit', { name: 'Pwned' })
-        expect(bad.ok).toBe(false)
-        const ok = await ctx.callMcp('lilbot_work', {
-          requestId: reqId,
-          itemId,
-          verdict: 'verified',
-          result: 'Confirmed',
-          evidence: [{ proves: 'Checked', command: 'echo ok', output: 'ok' }]
-        })
-        expect(ok.ok).toBe(true)
+        seen.checkBad = (await ctx.callMcp('lilbot_bot_edit', { name: 'Pwned' })).ok
+        seen.checkVerdict = (
+          await ctx.callMcp('lilbot_work', {
+            requestId: reqId,
+            itemId,
+            verdict: 'verified',
+            result: 'Confirmed',
+            evidence: [{ proves: 'Checked', command: 'echo ok', output: 'ok' }]
+          })
+        ).ok
         return 'Verified.'
       }
       if (access && typeof access === 'object' && access.kind === 'webhook') {
-        if (access.capabilities.includes('computers')) hookCompTools = discovered
-        else hookEmptyTools = discovered
+        if (access.capabilities.includes('computers')) tools.comp = discovered
+        else tools.empty = discovered
         if (access.capabilities.includes('delegation')) {
-          const del = await ctx.callMcp('lilbot_delegate', { requestId: 'del-narrow-1', tasks: [{ to: beta.id, task: 'check narrow' }] })
-          expect(del.ok).toBe(true)
+          seen.delegate = (await ctx.callMcp('lilbot_delegate', { requestId: 'del-narrow-1', tasks: [{ to: beta.id, task: 'check narrow' }] })).ok
         }
         return 'Webhook done.'
       }
       if (access && typeof access === 'object' && access.kind === 'narrowed') {
-        narrowTools = discovered
-        const noHookMsg = await ctx.callMcp('lilbot_webhook_message', { text: 'nope' })
-        expect(noHookMsg.ok).toBe(false)
+        tools.narrow = discovered
+        seen.narrowNoHook = (await ctx.callMcp('lilbot_webhook_message', { text: 'nope' })).ok
         return 'Narrow done.'
       }
       if (ctx.input.text === 'open-and-finish') {
         const opened = await ctx.callMcp('lilbot_work', { requestId: 'c1', title: 'Check me', kind: 'deploy', done: 'Live' })
-        expect(opened.ok).toBe(true)
+        seen.opened = opened.ok
         const id = (opened.data as { id: string }).id
-        const done = await ctx.callMcp('lilbot_work', {
-          requestId: 'c2',
-          itemId: id,
-          status: 'done',
-          result: 'Live',
-          evidence: [{ proves: 'Health', command: 'curl', output: 'ok' }]
-        })
-        expect(done.ok).toBe(true)
+        seen.done = (
+          await ctx.callMcp('lilbot_work', { requestId: 'c2', itemId: id, status: 'done', result: 'Live', evidence: [{ proves: 'Health', command: 'curl', output: 'ok' }] })
+        ).ok
         return id
       }
       return 'ok'
     })
 
-    // 1. Check session visibility & verdict flow.
+    // 1. Check session visibility & verdict flow (every result asserted outside turn handler).
     const main = await app.services.bots.openChat(alpha.id, undefined, () => {})
     await main.send('open-and-finish')
     main.close()
@@ -88,31 +80,33 @@ describe('engine conformance: session-bound limited sessions & multi-engine bind
       await app.tickIntervals()
       return app.services.boards.work.open(itemId).status === 'done'
     })
-    expect(checkTools).toContain('lilbot_work')
-    expect(checkTools).toContain('lilbot_delegation')
-    expect(checkTools).toContain('lilbot_group')
-    expect(checkTools).toContain('lilbot_skill_read')
-    expect(checkTools).not.toContain('lilbot_bot_edit')
-    for (const refused of CHECK_REFUSED_READS) expect(checkTools).not.toContain(refused)
+    expect(seen).toMatchObject({ opened: true, done: true, checkBad: false, checkVerdict: true })
+    for (const req of ['lilbot_work', 'lilbot_delegation', 'lilbot_group', 'lilbot_skill_read']) expect(tools.check).toContain(req)
+    expect(tools.check).not.toContain('lilbot_bot_edit')
+    for (const refused of CHECK_REFUSED_READS) expect(tools.check).not.toContain(refused)
 
     // 2. Empty webhook & widened webhook + narrowed hand-off visibility.
     const hEmpty = await app.services.webhooks.create(alpha.id, { requestId: 'h-empty', description: 'Empty', source: 'GitHub', createdBy: 'oscar' })
     const hComp = await app.services.webhooks.create(alpha.id, { requestId: 'h-comp', description: 'Comp', source: 'GitHub', createdBy: 'oscar' })
     await app.services.webhooks.setCapabilities(alpha.id, hComp.id, ['computers', 'delegation'])
-    for (const h of [hEmpty, hComp]) {
-      const found = app.services.webhooks.find(HOOK_PATH.exec(new URL(h.address).pathname)![1])!
-      app.services.webhooks.receive(found, new TextEncoder().encode('{}'), new Headers())
-    }
-    const runs = app.services.webhooks.store.claimDue(Date.now() + 60_000)
-    await Promise.all(runs.map(r => app.services.webhooks.run(r)))
+    for (const h of [hEmpty, hComp]) fireHook(app, h.address)
+    await Promise.all(app.services.webhooks.store.claimDue(Date.now() + 60_000).map(r => app.services.webhooks.run(r)))
     await waitFor(async () => {
       await app.tickIntervals()
-      return narrowTools.length > 0
+      return seen.narrowNoHook !== undefined && (await app.services.threads.list(alpha.id))[0]?.status === 'finished'
     })
 
-    expect(hookEmptyTools).toEqual(sorted(RUN_TOOLS))
-    expect(hookCompTools).toEqual(sorted([...RUN_TOOLS, ...(TOOL_GROUPS.computers ?? []), ...(TOOL_GROUPS.delegation ?? [])]))
-    expect(narrowTools).toEqual(sorted([...RUN_TOOLS.filter(t => t !== 'lilbot_webhook_message'), ...(TOOL_GROUPS.computers ?? []), ...(TOOL_GROUPS.delegation ?? [])]))
+    expect(seen.delegate).toBe(true)
+    expect(seen.narrowNoHook).toBe(false)
+    expect(
+      app.services.webhooks.store
+        .list(alpha.id)
+        .flatMap(w => w.runs)
+        .map(r => r.status)
+    ).toEqual(['completed', 'completed'])
+    expect(tools.empty).toEqual(sorted(RUN_TOOLS))
+    expect(tools.comp).toEqual(sorted([...RUN_TOOLS, ...(TOOL_GROUPS.computers ?? []), ...(TOOL_GROUPS.delegation ?? [])]))
+    expect(tools.narrow).toEqual(sorted([...RUN_TOOLS.filter(t => t !== 'lilbot_webhook_message'), ...(TOOL_GROUPS.computers ?? []), ...(TOOL_GROUPS.delegation ?? [])]))
   })
 
   test('two engines in EngineRegistry bind and enforce independent session-bound scopes concurrently', async () => {
@@ -127,59 +121,79 @@ describe('engine conformance: session-bound limited sessions & multi-engine bind
 
     let toolsA: string[] = []
     let toolsB: string[] = []
+    let narrowedChatA: string | undefined
+    let resumeTurns = 0
+    const seen: Record<string, boolean | undefined> = {}
     let releaseA!: () => void
     const holdA = new Promise<void>(r => (releaseA = r))
 
     engA.setTurnHandler(async ctx => {
+      const access = engA.sessionOf(ctx.chatId)?.routineOptions?.access
+      if (ctx.input.text === 'follow-up') {
+        resumeTurns++
+        seen.resumeDenied = (await ctx.callMcp('lilbot_computers_list', {})).ok
+        seen.resumeAllowed = (await ctx.callMcp('lilbot_work_list', {})).ok
+        return 'A resumed'
+      }
+      if (access && typeof access === 'object' && access.kind === 'narrowed') {
+        narrowedChatA = ctx.chatId
+        return 'A narrowed turn 1'
+      }
       toolsA = sorted(engA.sessionDiscoveredTools(ctx.chatId)?.get('lilbot') ?? [])
-      const denied = await ctx.callMcp('lilbot_computers_list', {})
-      expect(denied.ok).toBe(false)
+      seen.deniedA = (await ctx.callMcp('lilbot_computers_list', {})).ok
       await holdA
       return 'A done'
     })
     engB.setTurnHandler(async ctx => {
+      const access = engB.sessionOf(ctx.chatId)?.routineOptions?.access
+      if (access && typeof access === 'object' && access.kind === 'webhook' && access.capabilities.includes('delegation')) {
+        seen.delB = (await ctx.callMcp('lilbot_delegate', { requestId: 'del-live-resume', tasks: [{ to: botA.id, task: 'first turn' }] })).ok
+        return 'B delegated'
+      }
       toolsB = sorted(engB.sessionDiscoveredTools(ctx.chatId)?.get('lilbot') ?? [])
-      const ok = await ctx.callMcp('lilbot_computers_list', {})
-      expect(ok.ok).toBe(true)
+      seen.allowedB = (await ctx.callMcp('lilbot_computers_list', {})).ok
       return 'B done'
     })
 
     const hookA = await app.services.webhooks.create(botA.id, { requestId: 'ha', description: 'A narrow', source: 'GitHub', createdBy: 'oscar' })
     const hookB = await app.services.webhooks.create(botB.id, { requestId: 'hb', description: 'B comp', source: 'GitHub', createdBy: 'oscar' })
     await app.services.webhooks.setCapabilities(botB.id, hookB.id, ['computers'])
-    for (const h of [hookA, hookB]) {
-      const found = app.services.webhooks.find(HOOK_PATH.exec(new URL(h.address).pathname)![1])!
-      app.services.webhooks.receive(found, new TextEncoder().encode('{}'), new Headers())
-    }
+    for (const h of [hookA, hookB]) fireHook(app, h.address)
     const [runA, runB] = app.services.webhooks.store.claimDue(Date.now() + 60_000)
     const pA = app.services.webhooks.run(runA)
-    const pB = app.services.webhooks.run(runB)
-    await pB
+    await app.services.webhooks.run(runB)
     releaseA()
     await pA
 
+    expect(seen).toMatchObject({ deniedA: false, allowedB: true })
+    expect([app.services.webhooks.store.list(botA.id)[0].runs[0].status, app.services.webhooks.store.list(botB.id)[0].runs[0].status]).toEqual(['completed', 'completed'])
     expect(toolsA).toEqual(sorted(RUN_TOOLS))
     expect(toolsB).toEqual(sorted([...RUN_TOOLS, ...(TOOL_GROUPS.computers ?? [])]))
 
-    // Resume of a limited session re-binds sessionMcp and enforces assertSessionMcpReady.
-    const callA = engA.routineCalls[0]
-    let readyCount = 0
-    await engA.runRoutine(callA.nativeId, 'follow-up', {
-      ...callA.options,
-      runId: 'resume-ok',
-      chatId: engA.sessionOf(engA.routineCalls[0].options.chatId ?? '')?.chatId ?? [...app.services.webhooks.store.list(botA.id)[0].runs][0].chatId!,
-      assertSessionMcpReady: () => void readyCount++
+    // Resume against a live (unsettled) narrowed grant with real tools/list discovery and real assertSessionMcpReady.
+    const hookDel = await app.services.webhooks.create(botB.id, { requestId: 'hd', description: 'B del', source: 'GitHub', createdBy: 'oscar' })
+    await app.services.webhooks.setCapabilities(botB.id, hookDel.id, ['delegation'])
+    fireHook(app, hookDel.address)
+    for (const r of app.services.webhooks.store.claimDue(Date.now() + 60_000)) await app.services.webhooks.run(r)
+    await waitFor(async () => {
+      await app.tickIntervals()
+      return narrowedChatA !== undefined && (await app.services.threads.list(botB.id))[0]?.status === 'finished'
     })
-    expect(readyCount).toBe(1)
+    expect(seen.delB).toBe(true)
+    const liveCall = engA.routineCalls.find(c => typeof c.options.access === 'object' && c.options.access.kind === 'narrowed')!
+    expect(sorted(engA.sessionDiscoveredTools(narrowedChatA!)?.get('lilbot') ?? [])).toEqual(
+      sorted([...RUN_TOOLS.filter(t => t !== 'lilbot_webhook_message'), ...(TOOL_GROUPS.delegation ?? [])])
+    )
+    const resumed = await engA.runRoutine(liveCall.nativeId, 'follow-up', { ...liveCall.options, runId: 'resume-live', chatId: narrowedChatA })
+    expect(resumed.status).toBe('completed')
+    expect(seen).toMatchObject({ resumeDenied: false, resumeAllowed: true })
+    expect(resumeTurns).toBe(1)
+    const badReady = () => {
+      throw new Error('discovery missing on resume')
+    }
     await expect(
-      engA.runRoutine(callA.nativeId, 'follow-up-fail', {
-        ...callA.options,
-        runId: 'resume-fail',
-        chatId: app.services.webhooks.store.list(botA.id)[0].runs[0].chatId!,
-        assertSessionMcpReady: () => {
-          throw new Error('discovery missing on resume')
-        }
-      })
+      engA.runRoutine(liveCall.nativeId, 'follow-up', { ...liveCall.options, runId: 'resume-fail', chatId: narrowedChatA, assertSessionMcpReady: badReady })
     ).rejects.toThrow(/discovery missing on resume/)
+    expect(resumeTurns).toBe(1)
   })
 })

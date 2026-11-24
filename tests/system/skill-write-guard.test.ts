@@ -107,4 +107,40 @@ describe('/engine/skills/write session-grant guard', () => {
     expect(f.skills.offered('b1').some(s => s.name === 'injected-skill')).toBe(true)
     f.db.close()
   })
+
+  test('check and review sessions refused a skill write receive neutral wording rather than webhook wording', async () => {
+    const f = fixture(true)
+    const api = createEngineApi(new MemoryService(new MemoryStore(f.db)), TOKEN, PORT, {
+      skills: f.skills,
+      bots: { listBots: async () => [{ id: 'b1', name: 'Bot One' }] } as any,
+      botExists: id => id === 'b1',
+      pluginRefusal: () => 'A webhook run cannot use skill_manage.',
+      skillWriteLocked: f.sg.skillWriteLocked
+    })
+    const gCheck = f.sg.grants.ensure({ ownerKey: 'check:ck-w', botId: 'b1', scope: { kind: 'check', checkId: 'ck-w' } })
+    const gReview = f.sg.grants.ensure({ ownerKey: 'review:rv-w', botId: 'b1', scope: { kind: 'review', runId: 'rv-w' } })
+    f.sg.grants.bindChat(gCheck.id, 'chat-check-w')
+    f.sg.grants.bindChat(gReview.id, 'chat-review-w')
+    for (const session of ['chat-check-w', 'chat-review-w']) {
+      const res = await api(
+        new Request(`http://127.0.0.1:${PORT}/engine/skills/write`, {
+          method: 'POST',
+          headers: {
+            host: `127.0.0.1:${PORT}`,
+            authorization: `Bearer ${TOKEN}`,
+            'x-lilbot-bot-capability': botCapability(TOKEN, 'b1'),
+            'content-type': 'application/json',
+            'x-lilbot-session': session
+          },
+          body: JSON.stringify(SKILL_BODY)
+        }),
+        '/engine/skills/write'
+      )
+      expect(res.status).toBe(422)
+      const { error } = (await res.json()) as { error: string }
+      expect(error).toContain('Limited sessions cannot write')
+      expect(error.toLowerCase()).not.toContain('webhook')
+    }
+    f.db.close()
+  })
 })

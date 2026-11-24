@@ -90,6 +90,10 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
         if (!caller || !options.bots || !options.botExists(caller.id)) return json(403, { error: 'Unknown bot credential.' })
         const body = await request.json()
         const session = verifiedSession(request, bodyChatId(body))
+        if (pathname.startsWith('/engine/skills/') && pathname.endsWith('/write')) {
+          const locked = options.skillWriteLocked?.(caller.id, session)
+          if (locked) return json(422, { error: locked })
+        }
         const refused = await options.pluginRefusal?.(caller.id, pathname, body, session)
         if (refused) return json(422, { error: refused })
         const use = checkUse(pathname)
@@ -115,10 +119,6 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
         if (pathname.startsWith('/engine/threads/')) return json(200, await threadApi(options, caller.id, pathname.slice('/engine/threads/'.length), body, session))
         if (pathname.startsWith('/engine/skills/')) {
           if (!options.skills) return json(404, { error: 'Skills unavailable.' })
-          if (pathname.endsWith('/write')) {
-            const locked = options.skillWriteLocked?.(caller.id, session)
-            if (locked) return json(422, { error: locked })
-          }
           const reply = skillApi(options.skills, caller, pathname.slice('/engine/skills/'.length), body, options.changes)
           return json(reply.status, reply.body)
         }
