@@ -5,8 +5,7 @@ import type { ChatEvent, ChatItem } from '../../shared/chat-schema'
 import { hasSecret, stripInvisibleLine } from '../memory/memory-safety'
 
 export const MAX_PREVIEW_CHARS = 140
-export type PersistedPreview = { preview: BotLastMessage; id?: string; messageId?: string }
-export type SourcedPreview = PersistedPreview & { session: string }
+export type PersistedPreview = { preview: BotLastMessage; id?: string }
 
 const ATTACHMENT_MARKER = /(?:\r?\n){0,2}\[LilBot attachment message [0-9a-f-]{36}\]/gi
 const ATTACHED_JSON_BLOCK = /(?:^|(?:\r?\n){1,2})The following JSON lists attached files\.[\s\S]*$/i
@@ -107,23 +106,20 @@ export function previewFromEvent(event: ChatEvent, at: number): BotLastMessage |
   return null
 }
 
-/** Extracts a preview plus optional stable row/message identity from a live event. */
-export function eventCandidate(event: ChatEvent, at: number, session: string): SourcedPreview | null {
+/** Extracts a preview plus optional engine turn row id from a live event. */
+export function eventCandidate(event: ChatEvent, at: number): PersistedPreview | null {
   const preview = previewFromEvent(event, at)
   if (!preview) return null
   const id = event.type === 'turn.finished' && typeof event.rowId === 'string' ? event.rowId : undefined
-  const messageId = event.type === 'user.message' && typeof event.messageId === 'string' ? event.messageId : undefined
-  return { preview, session, id, messageId }
+  return { preview, id }
 }
 
-/** Parses one persisted `history_items` JSON row into a preview with row/message identity, or null if skipped/corrupt. */
+/** Parses one persisted `history_items` JSON row into a preview with row id, or null if skipped/corrupt. */
 export function persistedRowPreview(row: { id?: string; at: number; item: string }): PersistedPreview | null {
   try {
     const item = JSON.parse(row.item) as ChatItem
     const preview = previewFromItem(item, row.at)
-    if (!preview) return null
-    const messageId = item.kind === 'user' && typeof item.messageId === 'string' ? item.messageId : undefined
-    return { preview, id: row.id, messageId }
+    return preview ? { preview, id: row.id } : null
   } catch {
     return null
   }

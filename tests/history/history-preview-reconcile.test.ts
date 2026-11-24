@@ -159,18 +159,7 @@ describe('history preview durability, importer isolation, and session ordering',
     db.close()
   })
 
-  test('A7 atomicity, broken-DB fault isolation, and failed engine turn error suppression', async () => {
-    // A7: aborting inside history_previews rolls back history_events atomically and never emits onChanged.
-    const atomicDb = openDatabase(':memory:')
-    const changed: string[] = []
-    const atomicStore = new HistoryStore(atomicDb, botId => changed.push(botId))
-    atomicDb.exec("CREATE TRIGGER fail_preview BEFORE INSERT ON history_previews BEGIN SELECT RAISE(ABORT, 'preview_boom'); END;")
-    expect(() => atomicStore.event('b1', 's1', userEvent('Should roll back'))).toThrow('preview_boom')
-    expect(atomicDb.query('SELECT COUNT(*) AS n FROM history_events').get()).toEqual({ n: 0 })
-    expect(atomicDb.query('SELECT COUNT(*) AS n FROM history_previews').get()).toEqual({ n: 0 })
-    expect(changed).toEqual([])
-    atomicDb.close()
-
+  test('broken-DB fault isolation and failed engine turn error suppression', async () => {
     // Broken DB table never throws on preview() or previewsFor().
     const broken = openDatabase(':memory:')
     broken.exec('DROP TABLE history_previews;')

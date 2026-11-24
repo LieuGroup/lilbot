@@ -109,7 +109,7 @@ describe('bot roster lastMessage preview (engine-neutral)', () => {
     })
     for (const run of app.services.webhooks.store.claimDue(Date.now() + 60_000)) await app.services.webhooks.run(run)
     await app.services.bots.runRoutine(alpha.id, 'routine prompt', { runId: 'rt-1', hiddenInput: true, onChat: () => {} })
-    await app.services.bots.reviewMemory(alpha.id, 'review prompt', { onChat: () => {} })
+    await app.services.bots.reviewMemory(alpha.id, 'review prompt', { onChat: () => {}, sessionMcp: [app.services.system.connection(alpha.id)] })
     for (let i = 0; i < 10; i++) await app.tickIntervals()
     const afterHidden = (await app.services.bots.listBots()).find(b => b.id === alpha.id)!.lastMessage!
     expect(afterHidden.text).toBe('Sent a photo')
