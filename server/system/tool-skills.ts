@@ -1,13 +1,21 @@
-/** Reading the shared skills library for the calling bot: lists only skills offered to it (respecting per-bot off
- *  switches and engine exclusions) and reads SKILL.md or a supporting file through `SkillsService`. */
+/** Reading and managing the shared skills library for the calling bot: lists/reads offered skills (`lilbot_skill_read`)
+ *  and lets a bot create or update ordinary shared skills (sharing `SkillsService.writeForBot` with `/engine/skills/write`)
+ *  or toggle its own per-bot switch on ordinary shared skills (`lilbot_skill_manage`). Built-in skills, reserved names,
+ *  engine skills across all registered engines, other bots' switches, and the per-engine inclusion switch stay off-limits. */
 import { z } from 'zod'
 import { LilBotError } from '../../shared/lilbot-error'
-import { SkillName } from '../../shared/skills-schema'
+import { SkillName, SkillWrite } from '../../shared/skills-schema'
 import { safeSkillFilePath } from '../skills/skill-files'
-import { type McpTool, readTool } from './mcp-tool'
+import { isReservedSkillName } from '../skills/skill-origin'
+import { actionTool, type McpTool, readTool } from './mcp-tool'
 import type { SystemDeps } from './system-deps'
 
-export function skillTools({ skills }: SystemDeps): McpTool[] {
+const SkillManageInput = SkillWrite.extend({
+  action: z.enum(['create', 'edit', 'patch', 'write_file', 'set_enabled']),
+  enabled: z.boolean().optional()
+})
+
+export function skillTools({ skills, bots }: SystemDeps): McpTool[] {
   return [
     readTool(
       'lilbot_skill_read',
@@ -25,6 +33,33 @@ export function skillTools({ skills }: SystemDeps): McpTool[] {
         const data = skills.read(name)
         if (!Object.hasOwn(data, file)) throw new LilBotError('skill_file_not_found', `No file named ${file} in skill ${name}.`)
         return { name, file, content: data[file], files: Object.keys(data).sort() }
+      }
+    ),
+    actionTool(
+      'lilbot_skill_manage',
+      'Manage shared skills: create, edit, patch, or write_file on shared skills (not built-in or engine skills), or set_enabled (enabled) for your own switch on a shared skill.',
+      SkillManageInput,
+      async (caller, input) => {
+        if (input.action === 'set_enabled') {
+          if (typeof input.enabled !== 'boolean') throw new LilBotError('invalid_skill', 'Specify enabled as true or false.')
+          const existing = skills.list(caller).find(skill => skill.name === input.name)
+          if (!existing) throw new LilBotError('skill_not_found', 'That skill does not exist.')
+          if (existing.origin.kind === 'engine') throw new LilBotError('skill_forbidden', 'Engine skills are managed by the owner.')
+          if (existing.origin.kind === 'lilbot' || isReservedSkillName(input.name)) throw new LilBotError('skill_forbidden', "LilBot's built-in skills are managed by the owner.")
+          if (bots.skills) await bots.skills.setEnabled(caller, input.name, input.enabled)
+          else skills.setEnabled(caller, input.name, input.enabled)
+          return { ok: true, id: input.name, name: input.name, action: 'set_enabled' as const, enabled: input.enabled }
+        }
+        const writeInput: z.infer<typeof SkillWrite> = {
+          name: input.name,
+          action: input.action,
+          content: input.content,
+          file_path: input.file_path,
+          old_string: input.old_string,
+          new_string: input.new_string
+        }
+        skills.writeForBot(writeInput, caller)
+        return { ok: true, id: input.name, name: input.name, action: input.action }
       }
     )
   ]

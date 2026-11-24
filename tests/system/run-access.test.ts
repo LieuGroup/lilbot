@@ -12,6 +12,7 @@ test('every LilBot tool is either open to webhook runs or in a capability group,
   expect(f.tools.map(tool => tool.name).filter(name => !grouped.has(name))).toEqual([])
   expect(RUN_TOOLS).not.toContain('lilbot_bot_create')
   expect(RUN_TOOLS).toContain('lilbot_skill_read')
+  expect(NO_RUN_TOOLS).toContain('lilbot_skill_manage')
   expect(TOOL_GROUPS.memory).toContain('lilbot_memory_pause')
   expect(TOOL_GROUPS.memory).toContain('lilbot_memory_save')
   expect(TOOL_GROUPS.memory).toContain('lilbot_memory_recall')
@@ -108,6 +109,10 @@ test('plug-in calls are judged by the session they name, for as long as it exist
   await f.webhooks.setCapabilities('b1', f.hook.id, [...ALL])
   expect(refusalFor(f.webhookRuns.callers.forChat('b1', RUN_CHAT), 'skill_manage', [])).toContain('No webhook run can use it')
   expect(refusalFor(f.webhookRuns.callers.forChat('b1', 'b1-main'), 'skill_manage', [])).toBeNull()
+  f.callFrom(RUN_CHAT)
+  expect((await f.call('b1', 'lilbot_skill_manage', { action: 'create', name: 'hook-skill', content: '---\nname: hook-skill\ndescription: No\n---\nNo.' })).error).toContain(
+    'No webhook run can use it'
+  )
 })
 
 test('each call is matched to one start: concurrent identical mixed calls refuse both without swapping, and an unreported call cannot pass on another’s start', async () => {

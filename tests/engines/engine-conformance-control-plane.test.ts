@@ -33,23 +33,36 @@ describe('engine conformance: safety stop, System MCP completeness, secrets & pr
     ).rejects.toMatchObject({ code: 'command_refused' })
   })
 
-  test.failing('[Lane B P1] shared skills can be written via LilBot System MCP without an engine plugin', async () => {
+  test('shared skills can be written and toggled via LilBot System MCP without an engine plugin', async () => {
     const { engine, services, bot } = await boot()
-    let wroteOk = false
+    const nativeId = services.store.get(bot.id).engineBotId
+    const md = (name: string, desc: string, body: string) => `---\nname: ${name}\ndescription: ${desc}\n---\n${body}`
+    const got = { wrote: false, patched: false, editedShared: false, toggled: false, builtinBlocked: false, lookalikeBlocked: false }
+    services.skills.write({ name: 'oscar-shared', action: 'create', content: md('oscar-shared', 'Owner skill', 'Keep.') }, 'oscar')
+    services.skills.provide('lilbot-work', { 'SKILL.md': md('lilbot-work', 'Built-in', 'Shipped.') })
     engine.setTurnHandler(async ctx => {
-      const res = await ctx.callMcp('lilbot_skill_manage', {
-        action: 'create',
-        name: 'mcp-written-skill',
-        content: '---\nname: mcp-written-skill\ndescription: Written over MCP\n---\nAlways check logs.'
-      })
-      wroteOk = res.ok
+      got.wrote = (await ctx.callMcp('lilbot_skill_manage', { action: 'create', name: 'mcp-written-skill', content: md('mcp-written-skill', 'MCP', 'Always check logs.') })).ok
+      got.patched = (
+        await ctx.callMcp('lilbot_skill_manage', { action: 'patch', name: 'mcp-written-skill', old_string: 'Always check logs.', new_string: 'Always check logs and metrics.' })
+      ).ok
+      got.editedShared = (await ctx.callMcp('lilbot_skill_manage', { action: 'edit', name: 'oscar-shared', content: md('oscar-shared', 'Owner skill', 'Updated.') })).ok
+      got.toggled = (await ctx.callMcp('lilbot_skill_manage', { action: 'set_enabled', name: 'mcp-written-skill', enabled: false })).ok
+      const deniedBuiltin = await ctx.callMcp('lilbot_skill_manage', { action: 'edit', name: 'lilbot-work', content: md('lilbot-work', 'Hijacked', 'Bad.') })
+      const deniedLookalike = await ctx.callMcp('lilbot_skill_manage', { action: 'create', name: 'lilbot_work', content: md('lilbot_work', 'Lookalike', 'Bad.') })
+      got.builtinBlocked = !deniedBuiltin.ok && deniedBuiltin.text.includes('built-in')
+      got.lookalikeBlocked = !deniedLookalike.ok && deniedLookalike.text.includes('built-in')
       return 'wrote skill'
     })
     const chat = await services.bots.openChat(bot.id, undefined, () => {})
     await chat.send('create a skill')
     chat.close()
-    expect(wroteOk).toBe(true)
-    expect(services.skills.read('mcp-written-skill')?.body).toContain('Always check logs.')
+    expect(got).toEqual({ wrote: true, patched: true, editedShared: true, toggled: true, builtinBlocked: true, lookalikeBlocked: true })
+    expect(services.skills.read('mcp-written-skill')['SKILL.md']).toContain('Always check logs and metrics.')
+    expect(services.skills.read('oscar-shared')['SKILL.md']).toContain('Updated.')
+    expect(services.skills.list(bot.id).find(s => s.name === 'mcp-written-skill')).toMatchObject({ author: bot.id, enabled: false })
+    expect(services.skills.list(bot.id).find(s => s.name === 'oscar-shared')).toMatchObject({ author: bot.id })
+    expect(engine.runtimeOf(nativeId)?.skills?.disabled).toContain('mcp-written-skill')
+    expect(services.skills.read('lilbot-work')['SKILL.md']).toContain('Shipped.')
   })
 
   test('memory recall and forget work over LilBot System MCP without an engine plugin', async () => {
