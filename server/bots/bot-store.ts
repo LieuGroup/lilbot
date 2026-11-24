@@ -40,6 +40,10 @@ export class BotStore {
     return Boolean(this.db.query('SELECT 1 FROM bots WHERE id = ? AND deletion IS NULL').get(id))
   }
 
+  engineId(id: string): string | undefined {
+    return (this.db.query('SELECT engine_id FROM bots WHERE id = ? AND deletion IS NULL').get(id) as { engine_id: string } | null)?.engine_id
+  }
+
   get(id: string): BotRecord {
     const row = this.db.query('SELECT * FROM bots WHERE id = ? AND deletion IS NULL').get(id) as Row | null
     if (!row) throw new LilBotError('bot_not_found', 'That bot does not exist.')
