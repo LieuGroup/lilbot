@@ -121,17 +121,23 @@ export async function installMemory(botId: string, connection: MemoryConnection)
   const home = profileHome(botId)
   const name = providerName(MEMORY_ADAPTER_VERSION)
   const target = join(home, 'plugins', name)
+  const existed = existsSync(target)
+  try {
+    await cp(PLUGIN_SOURCE, target, { recursive: true, force: true, filter: source => !source.includes('__pycache__') })
+    // Hermes selects a provider by name; the installed copy carries its versioned one.
+    const manifest = await readFile(join(PLUGIN_SOURCE, 'plugin.yaml'), 'utf8')
+    await writeFile(join(target, 'plugin.yaml'), manifest.replace(/^name:.*$/m, `name: ${name}`))
+    await writeMemorySettings(home, connection, connection.botId ?? botId)
+    await configSet(botId, 'memory.provider', name)
+    await configSet(botId, 'memory.memory_enabled', 'false')
+    await configSet(botId, 'memory.user_profile_enabled', 'false')
+    await configSet(botId, 'compression.checkpoint_required', 'true')
+    await configSet(botId, 'known_plugin_toolsets.acp', JSON.stringify(knownAcpPluginToolsets(home)))
+  } catch (error) {
+    if (!existed) await rm(target, { recursive: true, force: true }).catch(() => {})
+    throw error
+  }
   for (const folder of installedFolders(home)) if (folder !== name) await rm(join(home, 'plugins', folder), { recursive: true, force: true })
-  await cp(PLUGIN_SOURCE, target, { recursive: true, force: true, filter: source => !source.includes('__pycache__') })
-  // Hermes selects a provider by name; the installed copy carries its versioned one.
-  const manifest = await readFile(join(PLUGIN_SOURCE, 'plugin.yaml'), 'utf8')
-  await writeFile(join(target, 'plugin.yaml'), manifest.replace(/^name:.*$/m, `name: ${name}`))
-  await writeMemorySettings(home, connection, connection.botId ?? botId)
-  await configSet(botId, 'memory.provider', name)
-  await configSet(botId, 'memory.memory_enabled', 'false')
-  await configSet(botId, 'memory.user_profile_enabled', 'false')
-  await configSet(botId, 'compression.checkpoint_required', 'true')
-  await configSet(botId, 'known_plugin_toolsets.acp', JSON.stringify(knownAcpPluginToolsets(home)))
 }
 
 export async function removeMemory(botId: string) {
@@ -146,7 +152,7 @@ export async function removeMemory(botId: string) {
 
 /** Upgrades connected adapters and repairs drifted connection settings or capabilities. Profiles whose settings are
  *  missing or bound to a different bot id are skipped here so `connectAllMemory` connects them cleanly once. */
-export async function refreshMemoryAdapters(bots: RuntimeBinding[], current?: MemoryConnection): Promise<string[]> {
+export async function refreshMemoryAdapters(bots: RuntimeBinding[], current?: MemoryConnection, onFailed?: (engineBotId: string) => void): Promise<string[]> {
   const updated: string[] = []
   for (const { id: botId, engineBotId } of bots) {
     if (!memoryInstalled(engineBotId, botId)) continue
@@ -171,6 +177,7 @@ export async function refreshMemoryAdapters(bots: RuntimeBinding[], current?: Me
       updated.push(engineBotId)
     } catch {
       console.error('[memory] could not update the memory adapter for a bot')
+      onFailed?.(engineBotId)
     }
   }
   return updated

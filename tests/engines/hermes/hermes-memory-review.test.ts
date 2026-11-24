@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { hermesToolsetsForRun, limitedNeedsFileEdits } from '../../../server/engines/hermes/hermes-access'
 import { reviewMemory } from '../../../server/engines/hermes/hermes-memory-review'
-import { knownAcpPluginToolsets } from '../../../server/engines/hermes/hermes-skills'
+import { ensureKnownAcpSkillsToolset, hasKnownAcpSkillsToolset, knownAcpPluginToolsets } from '../../../server/engines/hermes/hermes-skills'
 import type { McpConnection } from '../../../server/engines/mcp-connection'
 
 const CONN: McpConnection = {
@@ -48,11 +48,28 @@ describe('Hermes reviewMemory isolated session lifecycle', () => {
     expect(limitedNeedsFileEdits('review')).toBe(false)
     expect(hermesToolsetsForRun('review')).toEqual(['context_engine', 'no_mcp'])
     const dir = mkdtempSync(join(tmpdir(), 'known-acp-'))
+    const prevHome = process.env.HERMES_HOME
+    process.env.HERMES_HOME = dir
     try {
-      expect(knownAcpPluginToolsets(dir)).toEqual(['skills'])
-      writeFileSync(join(dir, 'config.yaml'), 'known_plugin_toolsets:\n  acp:\n    - custom_plugin\n    - skills\n')
-      expect(knownAcpPluginToolsets(dir)).toEqual(['custom_plugin', 'skills'])
+      const profDir = join(dir, 'profiles', 'bot-1')
+      const { mkdirSync } = await import('node:fs')
+      mkdirSync(profDir, { recursive: true })
+      expect(hasKnownAcpSkillsToolset(profDir)).toBe(false)
+      expect(knownAcpPluginToolsets(profDir)).toEqual(['skills'])
+      writeFileSync(join(profDir, 'config.yaml'), 'known_plugin_toolsets:\n  acp:\n    - custom_plugin\n')
+      const cliCalls: string[][] = []
+      await ensureKnownAcpSkillsToolset('bot-1', async (_id, args) => {
+        cliCalls.push(args)
+        writeFileSync(join(profDir, 'config.yaml'), 'known_plugin_toolsets:\n  acp:\n    - custom_plugin\n    - skills\n')
+      })
+      expect(cliCalls).toEqual([['config', 'set', 'known_plugin_toolsets.acp', '["custom_plugin","skills"]']])
+      expect(hasKnownAcpSkillsToolset(profDir)).toBe(true)
+      // Steady state: config.yaml already lists 'skills' -> zero CLI spawns.
+      await ensureKnownAcpSkillsToolset('bot-1', async (_id, args) => void cliCalls.push(args))
+      expect(cliCalls).toHaveLength(1)
     } finally {
+      if (prevHome === undefined) delete process.env.HERMES_HOME
+      else process.env.HERMES_HOME = prevHome
       rmSync(dir, { recursive: true, force: true })
     }
     await expect(reviewMemory('bot-1', 'Review', { onChat: () => {} })).rejects.toMatchObject({ code: 'session_mcp_unavailable' })
@@ -62,6 +79,7 @@ describe('Hermes reviewMemory isolated session lifecycle', () => {
     const { connect, calls, isClosed } = makeConnect({ emitApproval: true })
     const chats: string[] = []
     let readyCalled = 0
+    const order: string[] = []
     await reviewMemory(
       'bot-1',
       'Review prompt',
@@ -72,8 +90,15 @@ describe('Hermes reviewMemory isolated session lifecycle', () => {
         assertSessionMcpReady: () => void readyCalled++,
         onChat: id => chats.push(id)
       },
-      connect
+      async (profile, onEvent, onClose) => {
+        order.push('connect')
+        return connect(profile, onEvent, onClose)
+      },
+      async id => {
+        order.push(`ensure:${id}`)
+      }
     )
+    expect(order).toEqual(['ensure:bot-1', 'connect'])
     expect(readyCalled).toBe(1)
     expect(chats).toEqual(['stored-1', 'live-1'])
     const create = calls.find(c => c.method === 'session.create')!
@@ -99,20 +124,23 @@ describe('Hermes reviewMemory isolated session lifecycle', () => {
         { name: 'mcp-editor_lilbot_a1b2c3d4', tools: [{ name: 'mcp__editor_lilbot_a1b2c3d4__lilbot_memory_save' }] }
       ]
     })
-    await expect(reviewMemory('bot-1', 'Review', { workspace: '/tmp/ws', sessionMcp: [CONN], onChat: () => {} }, withSkills.connect)).rejects.toMatchObject({
+    const noop = async () => {}
+    await expect(reviewMemory('bot-1', 'Review', { workspace: '/tmp/ws', sessionMcp: [CONN], onChat: () => {} }, withSkills.connect, noop)).rejects.toMatchObject({
       code: 'session_scope_violation'
     })
     expect(withSkills.calls.some(c => c.method === 'prompt.submit')).toBe(false)
     expect(withSkills.isClosed()).toBe(true)
 
     const malformed = makeConnect({ sections: null })
-    await expect(reviewMemory('bot-1', 'Review', { workspace: '/tmp/ws', sessionMcp: [CONN], onChat: () => {} }, malformed.connect)).rejects.toMatchObject({
+    await expect(reviewMemory('bot-1', 'Review', { workspace: '/tmp/ws', sessionMcp: [CONN], onChat: () => {} }, malformed.connect, noop)).rejects.toMatchObject({
       code: 'session_scope_violation'
     })
     expect(malformed.calls.some(c => c.method === 'prompt.submit')).toBe(false)
 
     const failed = makeConnect({ completeStatus: 'error' })
-    await expect(reviewMemory('bot-1', 'Review', { workspace: '/tmp/ws', sessionMcp: [CONN], onChat: () => {} }, failed.connect)).rejects.toMatchObject({ code: 'review_failed' })
+    await expect(reviewMemory('bot-1', 'Review', { workspace: '/tmp/ws', sessionMcp: [CONN], onChat: () => {} }, failed.connect, noop)).rejects.toMatchObject({
+      code: 'review_failed'
+    })
     expect(failed.isClosed()).toBe(true)
   })
 })

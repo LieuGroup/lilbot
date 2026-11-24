@@ -8,6 +8,44 @@ import { MemoryService } from './memory/memory-service'
 import { MemoryStore } from './memory/memory-store'
 import { ReviewQueue } from './memory/review-queue'
 
+const REFRESH_RETRY_MS: readonly number[] = [5_000, 15_000, 45_000, 120_000]
+
+/** Runs startup memory preparation and retries with bounded backoff whenever a pass throws or reports failed bots. */
+export function startMemoryPreparation(run: (onFailed: (id: string) => void) => Promise<void>, delays: readonly number[] = REFRESH_RETRY_MS): { stop: () => void } {
+  let stopped = false
+  let attempt = 0
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const schedule = () => {
+    if (stopped) return
+    const wait = delays[Math.min(attempt++, delays.length - 1)]
+    timer = setTimeout(() => {
+      timer = undefined
+      void tick()
+    }, wait)
+    timer.unref?.()
+  }
+  const tick = async () => {
+    if (stopped) return
+    let failed = 0
+    try {
+      await run(() => {
+        failed++
+      })
+    } catch (error) {
+      failed++
+      console.error('[memory] could not prepare memory for the bots:', error instanceof Error ? error.message : error)
+    }
+    if (failed > 0) schedule()
+  }
+  void tick()
+  return {
+    stop: () => {
+      stopped = true
+      if (timer) clearTimeout(timer)
+    }
+  }
+}
+
 export function createMemory(database: Database) {
   const settings = reviewSettingsFrom(process.env)
   const memory = new MemoryService(new MemoryStore(database))

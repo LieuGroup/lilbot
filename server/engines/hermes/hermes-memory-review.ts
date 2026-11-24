@@ -4,14 +4,22 @@ import type { ReviewOptions } from '../bot-engine'
 import { DEFAULT_PROFILE } from './hermes-bot-mapping'
 import { createLimitedSession, denyLimitedApproval } from './hermes-limited-session'
 import { ensureFullAccess } from './hermes-permissions'
+import { ensureKnownAcpSkillsToolset } from './hermes-skills'
 import { HermesSocket } from './hermes-socket'
 
 const REVIEW_TIMEOUT_MS = 180_000
 
-export async function reviewMemory(botId: string, prompt: string, options: ReviewOptions, connect = HermesSocket.connect): Promise<void> {
+export async function reviewMemory(
+  botId: string,
+  prompt: string,
+  options: ReviewOptions,
+  connect = HermesSocket.connect,
+  ensureAcpSkills: (id: string) => Promise<void> = ensureKnownAcpSkillsToolset
+): Promise<void> {
   if (!options.sessionMcp?.length) {
     throw new LilBotError('session_mcp_unavailable', 'Limited sessions require a session-bound MCP connection.')
   }
+  await ensureAcpSkills(botId)
   let finish: (status: unknown) => void = () => {}
   const finished = new Promise<unknown>(resolve => {
     finish = resolve

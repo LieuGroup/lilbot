@@ -42,9 +42,10 @@ export function createSessionGrants(
   token: string,
   rootOf: SessionRoot,
   isMainChat: (botId: string, chatId: string) => boolean,
-  connections: () => (grant: SessionGrant) => McpConnection[]
+  connections: () => (grant: SessionGrant) => McpConnection[],
+  now: () => number = Date.now
 ) {
-  const grants = new SessionGrants(database, token, rootOf, isMainChat)
+  const grants = new SessionGrants(database, token, rootOf, isMainChat, now)
   const reviewTracker = new ReviewOutcomeTracker()
 
   const prepare = (grant: SessionGrant): PreparedSession => {
@@ -72,7 +73,7 @@ export function createSessionGrants(
         assertPassOk: () => {
           finished = true
           const listed = (grants.get(grant.id)?.discoveredServers ?? []).includes(SESSION_SYSTEM_NAME)
-          assertReviewRunOk(reviewTracker.finish(grant.id, botId, listed))
+          assertReviewRunOk(reviewTracker.finish(grant.id, botId, listed, grants.isLive(grant.id)))
         },
         settle: () => {
           if (!finished) reviewTracker.discard(grant.id)

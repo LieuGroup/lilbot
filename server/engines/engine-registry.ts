@@ -67,12 +67,12 @@ export class EngineRegistry {
     }
   }
 
-  async refreshMemory(bindingsFor: (engineId: string) => RuntimeBinding[], connection?: MemoryConnection): Promise<string[]> {
+  async refreshMemory(bindingsFor: (engineId: string) => RuntimeBinding[], connection?: MemoryConnection, onFailed?: (engineBotId: string) => void): Promise<string[]> {
     const updated: string[] = []
     for (const engine of this.list()) {
       const id = engine.id || this.defaultId
       const bots = bindingsFor(id)
-      if (bots.length) updated.push(...(await engine.refreshMemory(bots, connection)))
+      if (bots.length) updated.push(...(await engine.refreshMemory(bots, connection, onFailed)))
     }
     return updated
   }

@@ -1,3 +1,4 @@
+import { startMemoryPreparation } from './app-memory'
 import { createAppServices } from './app-services'
 import { checkPublicPort, isTunnelRequest, plainServerError } from './http/listener-safety'
 /** LilBot server: serves the built web app and answers the browser's `/ws` requests through the bot engine.
@@ -71,18 +72,13 @@ const services = createAppServices(engines, {
 })
 const { bots, store, skills, hiddenChat, library, computers, devices, attachments, t3Grants, mcp, system, engineApi, activity, routines, threads, boards, webhooks } = services
 
-// Every bot uses LilBot's memory: bots on an older adapter are updated, and a bot that is not
-// connected yet is connected. Both take effect from the bot's next session.
-async function prepareMemory() {
-  // Temporary test servers must opt in: never rewrite real profiles' memory endpoints.
+async function prepareMemory(onFailed: (id: string) => void) {
   await bots.prepareRuntimes()
   if (process.env.LILBOT_SKIP_MEMORY_SETUP === '1') return
-  const updated = await engines.refreshMemory(engineId => store.list().filter(bot => bot.engineId === engineId), {
-    url: `http://127.0.0.1:${PORT}`,
-    tokenFile: join(DATA_DIR, 'engine-token')
-  })
+  const conn = { url: `http://127.0.0.1:${PORT}`, tokenFile: join(DATA_DIR, 'engine-token') }
+  const updated = await engines.refreshMemory(engineId => store.list().filter(bot => bot.engineId === engineId), conn, onFailed)
   if (updated.length) console.log(`Memory adapter updated to ${MEMORY_ADAPTER_VERSION} for: ${updated.join(', ')}`)
-  const connected = await bots.connectAllMemory()
+  const connected = await bots.connectAllMemory(onFailed)
   if (connected.length) console.log(`Connected to LilBot memory: ${connected.join(', ')}`)
 }
 
@@ -190,7 +186,7 @@ try {
   console.error('[skills] could not remove inactive coding skill:', error instanceof Error ? error.message : error)
   mcp.onCodingSkillsReady(false)
 }
-prepareMemory().catch(error => console.error('[memory] could not prepare memory for the bots:', error instanceof Error ? error.message : error))
+startMemoryPreparation(prepareMemory)
 bots.resumeIncompleteDeletions()
 
 console.log(`LilBot listening on http://${server.hostname}:${server.port} (engines: ${engines.ids().join(', ')})`)

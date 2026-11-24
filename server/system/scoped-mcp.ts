@@ -176,11 +176,17 @@ export function createScopedMcp(options: ScopedMcpOptions) {
   }
 
   return async (request: Request, pathname: string): Promise<Response> => {
-    if (!checkLoopback(request)) return Response.json({ error: 'Not allowed.' }, { status: 403 })
     const sysMatch = SYSTEM_ROUTE.exec(pathname)
+    if (!checkLoopback(request)) {
+      if (sysMatch) options.reviewTracker?.recordHardFailure(sysMatch[1])
+      return Response.json({ error: 'Not allowed.' }, { status: 403 })
+    }
     if (sysMatch) {
       const authed = authGrant(sysMatch[1], request)
-      if (!authed) return Response.json({ error: 'Unknown or expired session credential.' }, { status: 403 })
+      if (!authed) {
+        options.reviewTracker?.recordHardFailure(sysMatch[1])
+        return Response.json({ error: 'Unknown or expired session credential.' }, { status: 403 })
+      }
       return handleSystem(authed.grant, authed.bot, request)
     }
     const t3Match = T3_ROUTE.exec(pathname)

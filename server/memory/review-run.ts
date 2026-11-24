@@ -9,6 +9,7 @@ export interface ReviewRunSummary {
   botId: string
   grantId: string
   listed: boolean
+  grantLive: boolean
   hardFailures: number
   writesAttempted: number
   writesSucceeded: number
@@ -26,6 +27,7 @@ export class ReviewOutcomeTracker {
       botId,
       grantId,
       listed: false,
+      grantLive: true,
       hardFailures: 0,
       writesAttempted: 0,
       writesSucceeded: 0,
@@ -73,7 +75,7 @@ export class ReviewOutcomeTracker {
     this.recordHardFailure(grantId)
   }
 
-  finish(grantId: string, botId: string, listedFromGrant: boolean): ReviewRunSummary {
+  finish(grantId: string, botId: string, listedFromGrant: boolean, grantLive = true): ReviewRunSummary {
     const run = this.runs.get(grantId)
     this.runs.delete(grantId)
     if (!run) {
@@ -81,6 +83,7 @@ export class ReviewOutcomeTracker {
         botId,
         grantId,
         listed: listedFromGrant,
+        grantLive,
         hardFailures: 0,
         writesAttempted: 0,
         writesSucceeded: 0,
@@ -89,7 +92,7 @@ export class ReviewOutcomeTracker {
         domainRefusals: {}
       }
     }
-    return { ...run, listed: run.listed || listedFromGrant }
+    return { ...run, listed: run.listed || listedFromGrant, grantLive }
   }
 
   discard(grantId: string) {
@@ -110,6 +113,9 @@ export function assertReviewRunOk(summary: ReviewRunSummary) {
   }
   if (!summary.listed) {
     throw new LilBotError('review_failed', 'The memory review session did not connect to its memory tools.')
+  }
+  if (!summary.grantLive) {
+    throw new LilBotError('review_failed', 'The memory review session grant expired or was revoked before completion.')
   }
   if (summary.hardFailures > 0) {
     throw new LilBotError('review_failed', 'One or more memory review tool calls failed.')

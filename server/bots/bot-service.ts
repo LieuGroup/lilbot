@@ -225,7 +225,7 @@ export class BotService {
 
   listMemory = (botId: string) => this.botMemory.list(botId)
   connectMemory = (botId: string, options?: { keepOwnNotes: boolean }) => this.botMemory.connect(botId, options)
-  connectAllMemory = () => this.botMemory.connectAll()
+  connectAllMemory = (onFailed?: (botId: string) => void) => this.botMemory.connectAll(onFailed)
   async listModels(target?: string | { botId?: string; engineId?: string }): Promise<ModelProvider[]> {
     if (typeof target === 'string') return this.engines.require(target).listModels()
     const engineId = target?.botId ? (await this.requireBot(target.botId)).engineId : target?.engineId

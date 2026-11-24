@@ -37,7 +37,7 @@ export class BotMemory {
     return { imported: this.memory.list(botId).length - before }
   }
 
-  async connectAll(): Promise<string[]> {
+  async connectAll(onFailed?: (botId: string) => void): Promise<string[]> {
     if (!this.connection) return []
     await this.runtimes.initialize()
     const connected: string[] = []
@@ -49,6 +49,7 @@ export class BotMemory {
         connected.push(bot.id)
       } catch {
         backgroundFailure('memory connection')
+        onFailed?.(bot.id)
       }
     }
     return connected

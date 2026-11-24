@@ -106,7 +106,7 @@ are in `AGENTS.md` under "Webhooks"; tunnel ingress is in [cloudflare.md](cloudf
     `memory`; computers, bots, delegation, routines and webhooks live on `lilbot_system`). Hermes freezes a session's
     toolsets. Naming one MCP server leaves the others out. Hermes' `file` toolset
     is read and write together and has no per-session write root, so a narrow run reads with `lilbot_workspace_read`
-    instead. Without `memory` the engine's memory tools and `search_conversations` are gone too. `lilbot_give_file` is
+    instead. Without `memory`, `lilbot_memory_*` and `lilbot_history_search` are withheld too. `lilbot_give_file` is
     in `shell` (a run can only give a file it could write); `lilbot_goal` is refused to every run.
   - LilBot refuses at the call what a run's session may not do (`webhooks/webhook-callers.ts`), because Hermes adds the
     skills plug-in back to any session and LilBot's own server lists every tool (`tools/list` has no

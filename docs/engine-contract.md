@@ -120,10 +120,10 @@ These stay in the engine's folder because they hook the engine's own turn loop. 
 | After-chat review hand-off | Sends each finished turn of a real conversation (not routines, threads, reviews or sub-agents), without blocking the turn | `/engine/memory/turn` |
 | Save-before-compress | Hands over every user and assistant message before the engine compresses, and lets the engine compress only once LilBot answers `saved` (or `skipped` for LilBot's own sessions); any other answer keeps the conversation as it is. Waits out a LilBot restart, and lets LilBot tell a turn that stopped for want of the save (`failure: memory_save`) from any other failed turn | `/engine/history/save` |
 
-Until their families move to the system server ([#113](https://github.com/LieuGroup/lilbot/issues/113)), the engine also
-carries the bot tools for memory, skills and `search_conversations`. Computer tools (`lilbot_computers_list`,
-`lilbot_computer_*`) and the library's `lilbot_give_file` are already on the system server, and command safety is
-enforced in `ComputerService.submit` for every engine.
+Memory tools (`lilbot_memory_recall`, `lilbot_memory_save`, `lilbot_memory_forget`), conversation search
+(`lilbot_history_search`), computer tools (`lilbot_computers_list`, `lilbot_computer_*`), and the library's
+`lilbot_give_file` all live on LilBot's System MCP server, and command safety is enforced in `ComputerService.submit`
+for every engine.
 
 Skill reading (`lilbot_skill_read`) and skill management (`lilbot_skill_manage`) are on LilBot's System MCP server for
 every engine, calling the same `SkillsService` and `BotSkills` methods as the Skills screen. While Hermes still ships

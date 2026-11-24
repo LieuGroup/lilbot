@@ -120,10 +120,11 @@ export class HermesEngine implements BotEngine {
     }
   }
 
-  refreshMemory(bots: RuntimeBinding[], connection?: MemoryConnection): Promise<string[]> {
+  refreshMemory(bots: RuntimeBinding[], connection?: MemoryConnection, onFailed?: (engineBotId: string) => void): Promise<string[]> {
     return refreshMemoryAdapters(
       bots.filter(bot => allowedProfile(bot.engineBotId) && (!this.botIds || this.botIds.includes(bot.engineBotId))),
-      connection
+      connection,
+      onFailed
     )
   }
 
@@ -157,7 +158,7 @@ export class HermesEngine implements BotEngine {
     const key = JSON.stringify(settings)
     if (this.skillSettings.get(id) === key) return
     const activate = !this.skillSettings.has(id)
-    await applied(id, 'skills', hashOf(adapterHash('skills-adapter'), ...skillsFingerprint(id, settings)), () => configureSkills(id, settings, activate))
+    await applied(id, 'skills', hashOf('acp-skills-known-v1', adapterHash('skills-adapter'), ...skillsFingerprint(id, settings)), () => configureSkills(id, settings, activate))
     this.skillSettings.set(id, key)
   }
   validateModel = async (model: BotModel) => requireListedModel(await this.listModels(), model)
