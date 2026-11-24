@@ -8,7 +8,6 @@ import { join } from 'node:path'
 import { z } from 'zod'
 import { LibraryGiveInput } from '../../shared/library-schema'
 import { LilBotError } from '../../shared/lilbot-error'
-import { SkillWrite } from '../../shared/skills-schema'
 import type { WebhookCapability } from '../../shared/webhook-schema'
 import { matchesCapability } from '../bots/bot-capability'
 import { BotCreationInput } from '../bots/bot-creation'
@@ -19,12 +18,14 @@ import { endOfDay } from '../memory/memory-expiry'
 import type { MemoryReviewer } from '../memory/memory-reviewer'
 import type { MemoryService } from '../memory/memory-service'
 import type { RoutineService } from '../routines/routine-service'
+import type { SystemChanges } from '../system/system-changes'
 import { withoutWebhookNotes } from '../webhooks/webhook-messages'
 import type { CheckUse } from '../work/check-sessions'
 import { bodyChatId, checkUse, verifiedSession } from './engine-run-gate'
 import { historyApi } from './history-api'
 import { forBot, memoryRoutes as routes } from './memory-protocol'
 import { routineApi } from './routine-api'
+import { skillApi } from './skill-api'
 import { threadApi } from './thread-api'
 
 /** Reads the token, creating it (readable by the user only) on first start. */
@@ -42,6 +43,7 @@ export interface EngineApiOptions {
   deploymentNotice?: () => string | undefined
   threads?: import('../threads/thread-service').ThreadService
   skills?: import('../skills/skills-service').SkillsService
+  changes?: SystemChanges
   bots?: BotService
   routines?: RoutineService
   library?: LibraryService
@@ -118,15 +120,8 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
         if (pathname.startsWith('/engine/threads/')) return json(200, await threadApi(options, caller.id, pathname.slice('/engine/threads/'.length), body, session))
         if (pathname.startsWith('/engine/skills/')) {
           if (!options.skills) return json(404, { error: 'Skills unavailable.' })
-          const skillBody = body as Record<string, unknown>
-          if (pathname.endsWith('/list')) return json(200, options.skills.offered(caller.id))
-          if (pathname.endsWith('/read')) {
-            const name = String(skillBody.name)
-            if (!options.skills.offered(caller.id).some(s => s.name === name)) return json(403, { error: 'Skill disabled or missing.' })
-            return json(200, { content: options.skills.read(name)[String(skillBody.file_path ?? 'SKILL.md')] })
-          }
-          if (pathname.endsWith('/write')) return json(200, options.skills.write(SkillWrite.parse(skillBody), caller.id))
-          return json(404, { error: 'Unknown skill operation.' })
+          const reply = skillApi(options.skills, caller, pathname.slice('/engine/skills/'.length), body, options.changes)
+          return json(reply.status, reply.body)
         }
         if (pathname.startsWith('/engine/routines/')) {
           if (!options.routines) return json(404, { error: 'Routines are unavailable.' })

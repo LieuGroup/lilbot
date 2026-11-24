@@ -26,7 +26,7 @@ export const SkillWrite = z.object({
   name: SkillName,
   action: z.enum(['create', 'edit', 'patch', 'write_file']),
   content: z.string().max(200_000).optional(),
-  file_path: z.string().optional(),
-  old_string: z.string().optional(),
-  new_string: z.string().optional()
+  file_path: z.string().max(300).optional(),
+  old_string: z.string().max(200_000).optional(),
+  new_string: z.string().max(200_000).optional()
 })

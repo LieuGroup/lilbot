@@ -3,10 +3,9 @@
 import { z } from 'zod'
 import { LilBotError } from '../../shared/lilbot-error'
 import { SkillName } from '../../shared/skills-schema'
+import { safeSkillReadPath } from '../skills/skill-files'
 import { type McpTool, readTool } from './mcp-tool'
 import type { SystemDeps } from './system-deps'
-
-const safeRelative = (file: string) => file.length > 0 && !file.includes('\\') && !file.split('/').some(part => !part || part === '.' || part === '..' || part.startsWith('.'))
 
 export function skillTools({ skills }: SystemDeps): McpTool[] {
   return [
@@ -22,7 +21,7 @@ export function skillTools({ skills }: SystemDeps): McpTool[] {
         }
         if (!offered.some(skill => skill.name === name)) throw new LilBotError('skill_unavailable', 'Skill disabled or missing.')
         const file = filePath ?? 'SKILL.md'
-        if (!safeRelative(file)) throw new LilBotError('unsafe_path', 'Use a relative skill file path.')
+        if (!safeSkillReadPath(file)) throw new LilBotError('unsafe_path', 'Use a relative skill file path.')
         const data = skills.read(name)
         if (!Object.hasOwn(data, file)) throw new LilBotError('skill_file_not_found', `No file named ${file} in skill ${name}.`)
         return { name, file, content: data[file], files: Object.keys(data).sort() }

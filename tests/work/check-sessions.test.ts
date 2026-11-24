@@ -56,7 +56,7 @@ test('the engine API gives a check session an empty memory block and refuses its
     bots: { listBots: async () => [{ id: 'b' }] } as unknown as BotService,
     botExists: id => id === 'b',
     deploymentNotice: () => 'the last deploy failed',
-    skills: { write: () => ({ written: true }) } as unknown as SkillsService,
+    skills: { writeForBot: () => ({ written: true }) } as unknown as SkillsService,
     inCheck: sessions.refusal
   })
   const post = async (path: string, body: Record<string, unknown>) => {
@@ -128,7 +128,7 @@ test('the engine API refuses mutating legacy routes from a check session while a
     skills: {
       offered: () => [{ name: 'lilbot-check' }],
       read: () => ({ 'SKILL.md': '# Check' }),
-      write: () => ({ written: true })
+      writeForBot: () => ({ written: true })
     } as unknown as SkillsService,
     inCheck: sessions.refusal
   })
