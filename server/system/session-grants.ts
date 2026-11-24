@@ -14,8 +14,7 @@ import { hasLegacyUngrantedRun as legacyUngranted } from './session-grant-legacy
 export const SESSION_MCP_PREFIX = '/engine/lilbot/session/'
 export const SESSION_SYSTEM_NAME = 'lilbot'
 export const SESSION_T3_NAME = 't3'
-const SYSTEM_TIMEOUT_SECONDS = 30
-const T3_TIMEOUT_SECONDS = 30
+const MCP_TIMEOUT_SECONDS = 30
 const MAX_THREAD_TTL_MS = 7 * 24 * 3600_000
 const SINGLE_TURN_TTL_MS = 2 * 3600_000
 const NARROWED_THREAD_TTL_MS = 24 * 3600_000
@@ -43,7 +42,6 @@ type Row = {
   id: string
   owner_key: string
   bot_id: string
-  kind: SessionGrantScope['kind']
   scope_json: string
   primary_chat_id: string | null
   created_at: number
@@ -53,27 +51,24 @@ type Row = {
   revoked_at: number | null
 }
 
-const parseServers = (raw: string) => (raw ? raw.split(',').filter(Boolean) : [])
-
-const fromRow = (row: Row): SessionGrant => ({
-  id: row.id,
-  ownerKey: row.owner_key,
-  botId: row.bot_id,
-  scope: JSON.parse(row.scope_json) as SessionGrantScope,
-  primaryChatId: row.primary_chat_id,
-  createdAt: row.created_at,
-  expiresAt: row.expires_at,
-  discoveredAt: row.discovered_at,
-  discoveredServers: parseServers(row.discovered_servers),
-  revokedAt: row.revoked_at
+const fromRow = (r: Row): SessionGrant => ({
+  id: r.id,
+  ownerKey: r.owner_key,
+  botId: r.bot_id,
+  scope: JSON.parse(r.scope_json) as SessionGrantScope,
+  primaryChatId: r.primary_chat_id,
+  createdAt: r.created_at,
+  expiresAt: r.expires_at,
+  discoveredAt: r.discovered_at,
+  discoveredServers: r.discovered_servers ? r.discovered_servers.split(',').filter(Boolean) : [],
+  revokedAt: r.revoked_at
 })
 
 /** Deterministic per-session bearer token: unique to `(engineToken, botId, grantId)`, never stored in SQLite. */
-export function sessionGrantToken(engineToken: string, botId: string, grantId: string): string {
-  return createHmac('sha256', engineToken).update(`lilbot-session:${botId}:${grantId}`).digest('hex')
-}
+export const sessionGrantToken = (engineToken: string, botId: string, grantId: string) =>
+  createHmac('sha256', engineToken).update(`lilbot-session:${botId}:${grantId}`).digest('hex')
 
-function bearerMatches(engineToken: string, botId: string, grantId: string, header: string): boolean {
+function bearerMatches(engineToken: string, botId: string, grantId: string, header: string) {
   if (!header.startsWith('Bearer ')) return false
   const given = Buffer.from(header.slice('Bearer '.length).trim())
   const expected = Buffer.from(sessionGrantToken(engineToken, botId, grantId))
@@ -110,18 +105,7 @@ export class SessionGrants {
     this.db
       .query('INSERT INTO session_grants(id, owner_key, bot_id, kind, scope_json, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
       .run(id, input.ownerKey, input.botId, input.scope.kind, JSON.stringify(input.scope), at, expiresAt)
-    return {
-      id,
-      ownerKey: input.ownerKey,
-      botId: input.botId,
-      scope: input.scope,
-      primaryChatId: null,
-      createdAt: at,
-      expiresAt,
-      discoveredAt: null,
-      discoveredServers: [],
-      revokedAt: null
-    }
+    return this.get(id)!
   }
 
   get(grantId: string): SessionGrant | null {
@@ -147,16 +131,13 @@ export class SessionGrants {
   markDiscovered(grantId: string, server = SESSION_SYSTEM_NAME) {
     const row = this.db.query('SELECT discovered_servers FROM session_grants WHERE id = ?').get(grantId) as { discovered_servers: string } | null
     if (!row) return
-    const servers = new Set(parseServers(row.discovered_servers))
-    servers.add(server)
-    this.db
-      .query('UPDATE session_grants SET discovered_at = COALESCE(discovered_at, ?), discovered_servers = ? WHERE id = ?')
-      .run(this.now(), [...servers].sort().join(','), grantId)
+    const existing = row.discovered_servers ? row.discovered_servers.split(',').filter(Boolean) : []
+    const servers = [...new Set([...existing, server])].sort().join(',')
+    this.db.query('UPDATE session_grants SET discovered_at = COALESCE(discovered_at, ?), discovered_servers = ? WHERE id = ?').run(this.now(), servers, grantId)
   }
 
   assertDiscovered(grantId: string, requiredServers: readonly string[]) {
-    const grant = this.get(grantId)
-    const seen = new Set(grant?.discoveredServers ?? [])
+    const seen = new Set(this.get(grantId)?.discoveredServers ?? [])
     if (requiredServers.some(name => !seen.has(name))) throw new LilBotError('session_mcp_unavailable', 'Limited session tool endpoint failed to attach.')
   }
 
@@ -165,12 +146,12 @@ export class SessionGrants {
   revokeByPrefix = (prefix: string) =>
     void this.db.query("UPDATE session_grants SET revoked_at = COALESCE(revoked_at, ?) WHERE owner_key LIKE ? || '%' AND revoked_at IS NULL").run(this.now(), prefix)
   revokeForBot = (botId: string) => void this.db.query('UPDATE session_grants SET revoked_at = COALESCE(revoked_at, ?) WHERE bot_id = ?').run(this.now(), botId)
-  ownsChat = (chatId: string): boolean => !!this.db.query('SELECT 1 FROM session_grant_chats WHERE chat_id = ? LIMIT 1').get(chatId)
-  hasActiveGrantForChat = (chatId: string): boolean =>
+  ownsChat = (chatId: string) => !!this.db.query('SELECT 1 FROM session_grant_chats WHERE chat_id = ? LIMIT 1').get(chatId)
+  hasActiveGrantForChat = (chatId: string) =>
     !!this.db
       .query('SELECT 1 FROM session_grant_chats c JOIN session_grants g ON g.id = c.grant_id WHERE c.chat_id = ? AND g.revoked_at IS NULL AND g.expires_at > ? LIMIT 1')
       .get(chatId, this.now())
-  hasAnyGrant = (botId: string): boolean => !!this.db.query('SELECT 1 FROM session_grants WHERE bot_id = ? LIMIT 1').get(botId)
+  hasAnyGrant = (botId: string) => !!this.db.query('SELECT 1 FROM session_grants WHERE bot_id = ? LIMIT 1').get(botId)
 
   private directChat(botId: string, chatId: string): SessionGrant | null {
     const row = this.db
@@ -190,25 +171,17 @@ export class SessionGrants {
     if (!this.hasAnyGrant(botId)) return null
     if (!chatId) return 'unknown'
     const root = this.rootOf(botId, chatId)
-    if (root === null) return 'unknown'
-    return root !== chatId ? this.directChat(botId, root) : null
+    return root === null ? 'unknown' : root !== chatId ? this.directChat(botId, root) : null
   }
 
-  hasLegacyUngrantedRun = (botId: string): boolean => legacyUngranted(this.db, botId)
+  hasLegacyUngrantedRun = (botId: string) => legacyUngranted(this.db, botId)
 
   connectionsFor(grant: SessionGrant, lilbotUrl: string, tools: readonly string[], t3Enabled: boolean): McpConnection[] {
     const bearerToken = sessionGrantToken(this.engineToken, grant.botId, grant.id)
-    const list: McpConnection[] = [
-      { name: SESSION_SYSTEM_NAME, url: `${lilbotUrl}${SESSION_MCP_PREFIX}${grant.id}/mcp`, bearerToken, timeoutSeconds: SYSTEM_TIMEOUT_SECONDS, tools }
-    ]
+    const base = `${lilbotUrl}${SESSION_MCP_PREFIX}${grant.id}`
+    const list: McpConnection[] = [{ name: SESSION_SYSTEM_NAME, url: `${base}/mcp`, bearerToken, timeoutSeconds: MCP_TIMEOUT_SECONDS, tools }]
     if (t3Enabled && (grant.scope.kind === 'webhook' || grant.scope.kind === 'narrowed') && grant.scope.capabilities.includes('coding')) {
-      list.push({
-        name: SESSION_T3_NAME,
-        url: `${lilbotUrl}${SESSION_MCP_PREFIX}${grant.id}/t3/mcp`,
-        bearerToken,
-        timeoutSeconds: T3_TIMEOUT_SECONDS,
-        tools: [...T3_TOOLS, T3_STATUS_TOOL]
-      })
+      list.push({ name: SESSION_T3_NAME, url: `${base}/t3/mcp`, bearerToken, timeoutSeconds: MCP_TIMEOUT_SECONDS, tools: [...T3_TOOLS, T3_STATUS_TOOL] })
     }
     return list
   }

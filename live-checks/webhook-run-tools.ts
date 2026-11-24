@@ -122,7 +122,7 @@ export const githubDelivery =
   }
 
 /** Probes a running webhook run's session-bound MCP endpoint: checks tools/list allow-list and tools/call refusals,
- *  and returns a check that proves the grant returns 401 once revoked. */
+ *  and returns a check that proves the grant returns 403 once revoked. */
 export async function probeScopedRun(port: number, token: string, botId: string, grantId: string) {
   const url = `http://127.0.0.1:${port}${SESSION_MCP_PREFIX}${grantId}/mcp`
   const headers = { authorization: `Bearer ${sessionGrantToken(token, botId, grantId)}`, 'content-type': 'application/json' }
@@ -142,6 +142,6 @@ export async function probeScopedRun(port: number, token: string, botId: string,
     assert.ok(String(body.refused).includes(refusal), `scoped endpoint did not refuse ${name}: ${JSON.stringify(body)}`)
   }
   return async () => {
-    assert.equal((await rpc('tools/list', {})).status, 401, 'revoked session grant stayed usable after the run')
+    assert.equal((await rpc('tools/list', {})).status, 403, 'revoked session grant stayed usable after the run')
   }
 }
