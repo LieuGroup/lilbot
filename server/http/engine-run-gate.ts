@@ -25,6 +25,13 @@ export function verifiedSession(request: Request, bodyChat: string | undefined):
   return header ?? bodyChat
 }
 
+/** Session id strictly from `x-lilbot-session` (never falls back to body `chatId`), still refusing header/body mismatch. */
+export function headerSession(request: Request, bodyChat: string | undefined): string | undefined {
+  const header = request.headers.get(SESSION_HEADER) || undefined
+  if (header && bodyChat && header !== bodyChat) throw new LilBotError('session_mismatch', 'Session header does not match chatId.')
+  return header
+}
+
 export function bodyChatId(body: unknown): string | undefined {
   return body && typeof body === 'object' && typeof (body as { chatId?: unknown }).chatId === 'string' ? (body as { chatId: string }).chatId || undefined : undefined
 }

@@ -7,9 +7,15 @@ import { HermesSocket } from './hermes-socket'
 
 const UNLISTED = ['tool', 'acp', 'cron', 'subagent', 'unknown', 'api_server', 'kanban']
 
-export async function conversations(nativeId: string): Promise<ConversationSource> {
-  requireProfileEnvironment(nativeId)
-  const socket = await HermesSocket.connect(nativeId === 'default' ? '' : nativeId)
+type HistorySocket = { request: (method: string, params?: Record<string, unknown>) => Promise<any>; close: () => void }
+
+export async function conversations(nativeId: string, connect?: () => Promise<HistorySocket>): Promise<ConversationSource> {
+  const socket = connect
+    ? await connect()
+    : await (async () => {
+        requireProfileEnvironment(nativeId)
+        return HermesSocket.connect(nativeId === 'default' ? '' : nativeId)
+      })()
   return {
     close: () => socket.close(),
     async list() {

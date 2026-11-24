@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { hermesToolsetsForRun, limitedNeedsFileEdits } from '../../../server/engines/hermes/hermes-access'
+import { conversations } from '../../../server/engines/hermes/hermes-history'
 import { readHistoryCatalog } from '../../../server/engines/hermes/hermes-history-catalog'
 import { createLimitedSession, denyLimitedApproval, resumeLimitedSession } from '../../../server/engines/hermes/hermes-limited-session'
 import type { McpConnection } from '../../../server/engines/mcp-connection'
@@ -119,11 +120,15 @@ describe('Hermes limited-session isolation, verification, and edit policy', () =
     const sEmpty = fakeSocket({ sections: [] })
     await expect(createLimitedSession(sEmpty.socket, { requestId: 'r6', cwd: '/tmp/ws', access: scope, sessionMcp: [CONN] })).rejects.toThrow(/no tool sections/)
 
-    // Non-LilBot built-in skill_manage description (when lilbot-skills-v1 override is absent) fails closed.
-    const sRawSkill = fakeSocket({
-      sections: [{ name: 'skills', tools: [{ name: 'skill_manage', description: 'Manage skills on disk directly.' } as any] }]
+    // Non-LilBot, empty, or missing skill_manage description fails closed; LilBot's own description passes.
+    for (const row of [{ name: 'skill_manage', description: 'Manage skills on disk directly.' }, { name: 'skill_manage', description: '' }, { name: 'skill_manage' }]) {
+      const sRaw = fakeSocket({ sections: [{ name: 'skills', tools: [row as any] }] })
+      await expect(createLimitedSession(sRaw.socket, { requestId: 'r7', cwd: '/tmp/ws', access: scope, sessionMcp: [CONN] })).rejects.toThrow(/non-LilBot skill_manage/)
+    }
+    const sLilbot = fakeSocket({
+      sections: [{ name: 'skills', tools: [{ name: 'skill_manage', description: 'Create or improve a shared LilBot skill.' } as any] }]
     })
-    await expect(createLimitedSession(sRawSkill.socket, { requestId: 'r7', cwd: '/tmp/ws', access: scope, sessionMcp: [CONN] })).rejects.toThrow(/non-LilBot skill_manage/)
+    await expect(createLimitedSession(sLilbot.socket, { requestId: 'r8', cwd: '/tmp/ws', access: scope, sessionMcp: [CONN] })).resolves.toBeDefined()
   })
 
   test('resumeLimitedSession re-supplies editor.mcp_servers, verifies discovery readiness, and re-audits the resumed session', async () => {
@@ -167,5 +172,29 @@ describe('Hermes limited-session isolation, verification, and edit policy', () =
       db.close()
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+
+  test('conversations().list() filters out unlisted source and created_source sessions', async () => {
+    const source = await conversations('dev-hist', async () => ({
+      close: () => {},
+      request: async (_method: string, params?: Record<string, unknown>) =>
+        params?.scope === 'live'
+          ? {
+              sessions: [
+                { id: 'live-gui', started_at: 10, source: 'local', created_source: 'gui' },
+                { id: 'live-acp-local', started_at: 11, source: 'local', created_source: 'acp' },
+                { id: 'live-tool', started_at: 12, source: 'tool', created_source: 'tool' }
+              ]
+            }
+          : {
+              sessions: [
+                { id: 'stored-acp-local', started_at: 8, source: 'local', created_source: 'acp' },
+                { id: 'stored-acp', started_at: 9, source: 'acp', created_source: 'acp' },
+                { id: 'stored-gui', started_at: 7, source: 'local', created_source: 'gui' }
+              ]
+            }
+    }))
+    expect((await source.list()).map(s => s.id)).toEqual(['stored-gui', 'live-gui'])
+    source.close()
   })
 })
