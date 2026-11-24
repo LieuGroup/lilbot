@@ -29,8 +29,7 @@ export function recordRowHeight(botId: string, key: string, height: number) {
     map = {}
     measuredHeights.set(botId, map)
   }
-  const rounded = Math.round(height)
-  if (map[key] !== rounded) map[key] = rounded
+  if (Math.abs((map[key] ?? -1) - height) >= 0.01) map[key] = height
 }
 
 export function getRowHeights(botId: string): Readonly<Record<string, number>> {

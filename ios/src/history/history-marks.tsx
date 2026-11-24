@@ -88,15 +88,15 @@ export const StartMarker = memo(function StartMarker({ name, avatar, at }: { nam
 export const CompactionLine = memo(function CompactionLine({ item }: { item: Extract<ChatItem, { kind: 'compaction' }> }) {
   const theme = useTheme()
   return (
-    <View testID="chat-compaction-line" style={{ flexDirection: 'row', alignItems: 'center', width: '100%', gap: 10, paddingVertical: 8 }}>
-      <View style={{ flex: 1, minWidth: 12, height: 1, backgroundColor: theme.hairline }} />
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, flexShrink: 1 }}>
-        <CompressIcon color={theme.mutedForeground} size={13} />
+    <View testID="chat-compaction-line" style={{ flexDirection: 'row', alignItems: 'center', width: '100%', gap: 6, paddingVertical: 8 }}>
+      <View style={{ flex: 1, minWidth: 8, height: 1, backgroundColor: theme.hairline }} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, flexShrink: 1 }}>
+        <CompressIcon color={theme.mutedForeground} size={12} />
         <AppText variant="meta" color={theme.mutedForeground} style={{ flexShrink: 1, textAlign: 'center', fontVariant: ['tabular-nums'] }}>
           {compactionLineText(item)}
         </AppText>
       </View>
-      <View style={{ flex: 1, minWidth: 12, height: 1, backgroundColor: theme.hairline }} />
+      <View style={{ flex: 1, minWidth: 8, height: 1, backgroundColor: theme.hairline }} />
     </View>
   )
 })

@@ -122,24 +122,6 @@ export function Composer({ botId, botName, context, ready, running, model, botto
     </Pressable>
   )
 
-  const input = (
-    <TextInput
-      testID="composer-input"
-      value={text}
-      onChangeText={next => setDraft(botId, next)}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
-      placeholder={COMPOSER_REST_PLACEHOLDER}
-      placeholderTextColor={theme.mutedForeground}
-      multiline
-      editable={ready}
-      onSubmitEditing={submit}
-      blurOnSubmit={false}
-      maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.composerInput}
-      style={{ flex: expanded ? undefined : 1, maxHeight: composerInputMaxHeight(fontScale), paddingHorizontal: 0, paddingVertical: 0, fontFamily: 'Inter_400Regular', ...chatScale.composerInput, color: theme.foreground }}
-    />
-  )
-
   return (
     <View style={{ alignItems: 'center', paddingHorizontal: 14, paddingTop: 4, paddingBottom }}>
       <View
@@ -157,26 +139,44 @@ export function Composer({ botId, botName, context, ready, running, model, botto
           paddingBottom: expanded ? 10 : 9
         }}
       >
+        {expanded ? <ComposerAttachments staged={staged} /> : null}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: expanded ? 0 : 10 }}>
+          {!expanded ? attachButton : null}
+          <TextInput
+            testID="composer-input"
+            value={text}
+            onChangeText={next => setDraft(botId, next)}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            placeholder={COMPOSER_REST_PLACEHOLDER}
+            placeholderTextColor={theme.mutedForeground}
+            multiline
+            editable={ready}
+            onSubmitEditing={submit}
+            blurOnSubmit={false}
+            maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.composerInput}
+            style={{
+              flex: 1,
+              maxHeight: composerInputMaxHeight(fontScale),
+              paddingHorizontal: 0,
+              paddingVertical: 0,
+              fontFamily: 'Inter_400Regular',
+              ...chatScale.composerInput,
+              color: theme.foreground
+            }}
+          />
+          {!expanded ? actionButton : null}
+        </View>
         {expanded ? (
-          <>
-            <ComposerAttachments staged={staged} />
-            {input}
-            <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: btnSize, marginTop: 10, gap: 6 }}>
-              {attachButton}
-              <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', flexWrap: fontScale >= 1.35 ? 'wrap' : 'nowrap', alignItems: 'center', gap: 6 }}>
-                {model}
-                <ContextMeter botName={botName} context={context} />
-              </View>
-              {actionButton}
-            </View>
-          </>
-        ) : (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: btnSize, marginTop: 10, gap: 6 }}>
             {attachButton}
-            {input}
+            <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', flexWrap: fontScale >= 1.35 ? 'wrap' : 'nowrap', alignItems: 'center', gap: 6 }}>
+              {model}
+              <ContextMeter botName={botName} context={context} />
+            </View>
             {actionButton}
           </View>
-        )}
+        ) : null}
       </View>
       <AttachSourceSheet
         visible={attachSheetOpen}

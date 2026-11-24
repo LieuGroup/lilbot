@@ -1,7 +1,7 @@
 /** Conversation transcript (newest at the bottom) with upward history paging, quiet history dividers,
  *  exact multi-pass deep-history & fold/unfold scroll restore, and a floating scroll-to-bottom orb. */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AccessibilityInfo, Animated, Easing, FlatList, type ListRenderItemInfo, type NativeScrollEvent, type NativeSyntheticEvent, Pressable, useWindowDimensions, View } from 'react-native'
+import { AccessibilityInfo, Animated, Easing, FlatList, type ListRenderItemInfo, Pressable, useWindowDimensions, View } from 'react-native'
 import type { Avatar } from '../../../shared/avatar'
 import type { ChatView } from '../../../shared/client/chat/chat-state'
 import { LoadingEarlier } from '../history/history-marks'
@@ -13,10 +13,10 @@ import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { MOBILE_SCALE } from '../ui/tokens'
 import { buildTranscriptRows, type TranscriptRow } from './message-rows'
-import { computeRestorePlan, createScrollRestoreController, findScrollAnchor, ROW_GAP, shouldShowScrollToBottom } from './scroll-restore'
+import { CONTENT_PADDING_VERTICAL, ROW_GAP } from './scroll-restore'
 import type { ChatStatusLine } from './status'
-import { getRowHeights, useChatStore } from './store'
 import { TranscriptRowItem } from './transcript-row'
+import { useScrollRestore } from './use-scroll-restore'
 
 export interface MessageListProps {
   botId: string
@@ -33,67 +33,12 @@ export function MessageList({ botId, botName, botAvatar, deviceId, chat, statusL
   const theme = useTheme()
   const { width: viewportWidth } = useWindowDimensions()
   const listRef = useRef<FlatList<TranscriptRow>>(null)
-  const slot0 = useRef(useChatStore.getState().slots[botId]).current
-  const initialOffset = useRef(slot0?.scrollOffset ?? 0)
-  const initialAnchor = useRef(slot0?.scrollAnchor ?? null)
-  const restore = useRef(createScrollRestoreController(initialOffset.current > 2 || initialAnchor.current !== null))
-  const settleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const nearOldest = useRef(false)
-  const setScrollOffset = useChatStore(state => state.setScrollOffset)
-  const [showJumpDown, setShowJumpDown] = useState(shouldShowScrollToBottom(initialOffset.current))
-  useEffect(() => () => clearTimeout(settleTimer.current), [])
-
   const rows = useMemo(() => buildTranscriptRows(chat, botName), [botName, chat])
   const rowsRef = useRef(rows)
   rowsRef.current = rows
-  const { loading: loadingOlder, load: loadOlder } = useOlderHistory(botId, nearOldest)
 
-  const handleContentSizeChange = useCallback(
-    (_w: number, contentHeight: number) => {
-      if (!restore.current.isRestoring() || rowsRef.current.length === 0) return
-      const plan = computeRestorePlan(rowsRef.current, getRowHeights(botId), initialAnchor.current, initialOffset.current, viewportWidth)
-      if (plan.kind === 'none') return restore.current.markSettled()
-      if (plan.kind === 'index') {
-        if (!restore.current.onContentSize(contentHeight, plan.index, true)) return
-        listRef.current?.scrollToIndex({ index: plan.index, viewPosition: 0, animated: false })
-      } else {
-        if (!restore.current.onContentSize(contentHeight, plan.offset, plan.exact)) return
-        listRef.current?.scrollToOffset({ offset: plan.offset, animated: false })
-        if (contentHeight < plan.offset) return
-      }
-      clearTimeout(settleTimer.current)
-      settleTimer.current = setTimeout(() => restore.current.markSettled(), 250)
-    },
-    [botId, viewportWidth]
-  )
-
-  const handleScrollToIndexFailed = useCallback((info: { index: number; averageItemLength: number }) => {
-    listRef.current?.scrollToOffset({ offset: Math.max(0, info.index * (info.averageItemLength + ROW_GAP)), animated: false })
-    setTimeout(() => {
-      if (restore.current.isRestoring()) listRef.current?.scrollToIndex({ index: Math.min(info.index, Math.max(0, rowsRef.current.length - 1)), viewPosition: 0, animated: false })
-    }, 60)
-  }, [])
-
-  const handleScrollBeginDrag = useCallback(() => restore.current.onUserDrag(), [])
-
-  const handleScroll = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent
-      const y = Math.max(0, contentOffset.y)
-      nearOldest.current = contentSize.height - (y + layoutMeasurement.height) < 160
-      setShowJumpDown(shouldShowScrollToBottom(y))
-      if (!restore.current.canRecordScroll()) return
-      setScrollOffset(botId, y, findScrollAnchor(rowsRef.current, getRowHeights(botId), y, viewportWidth))
-    },
-    [botId, setScrollOffset, viewportWidth]
-  )
-
-  const jumpToBottom = useCallback(() => {
-    restore.current.onUserDrag()
-    listRef.current?.scrollToOffset({ offset: 0, animated: true })
-    setShowJumpDown(false)
-    setScrollOffset(botId, 0, null)
-  }, [botId, setScrollOffset])
+  const scroll = useScrollRestore(botId, listRef, rowsRef, viewportWidth, statusLine?.tone === 'muted')
+  const { loading: loadingOlder, load: loadOlder } = useOlderHistory(botId, scroll.nearOldest)
 
   const renderItem = useCallback(
     ({ item: row }: ListRenderItemInfo<TranscriptRow>) => (
@@ -112,17 +57,20 @@ export function MessageList({ botId, botName, botAvatar, deviceId, chat, statusL
         data={rows}
         keyExtractor={row => row.key}
         maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
-        onContentSizeChange={handleContentSizeChange}
-        onScrollBeginDrag={handleScrollBeginDrag}
-        onScroll={handleScroll}
-        onMomentumScrollEnd={handleScroll}
-        onScrollEndDrag={handleScroll}
+        onLayout={event => {
+          scroll.viewportHeight.current = event.nativeEvent.layout.height
+        }}
+        onContentSizeChange={scroll.handleContentSizeChange}
+        onScrollBeginDrag={scroll.handleScrollBeginDrag}
+        onScroll={scroll.handleScroll}
+        onMomentumScrollEnd={scroll.handleScroll}
+        onScrollEndDrag={scroll.handleScroll}
         onEndReached={loadOlder}
         onEndReachedThreshold={0.25}
-        onScrollToIndexFailed={handleScrollToIndexFailed}
+        onScrollToIndexFailed={scroll.handleScrollToIndexFailed}
         keyboardDismissMode="interactive"
         scrollEventThrottle={64}
-        contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: 18, gap: ROW_GAP, flexGrow: 1, justifyContent: rows.length === 0 ? 'center' : 'flex-end' }}
+        contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: CONTENT_PADDING_VERTICAL, gap: ROW_GAP, flexGrow: 1, justifyContent: rows.length === 0 ? 'center' : 'flex-end' }}
         ListHeaderComponent={statusLine ? <ConversationStatusRow status={statusLine} centered={rows.length === 0} /> : undefined}
         ListEmptyComponent={
           !statusLine && emptyHint ? (
@@ -133,9 +81,9 @@ export function MessageList({ botId, botName, botAvatar, deviceId, chat, statusL
         }
         renderItem={renderItem}
       />
-      {showJumpDown ? (
+      {scroll.showJumpDown ? (
         <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: 10, alignItems: 'center' }}>
-          <Pressable testID="chat-scroll-to-bottom" onPress={jumpToBottom} hitSlop={4} accessibilityRole="button" accessibilityLabel="Scroll to latest message">
+          <Pressable testID="chat-scroll-to-bottom" onPress={scroll.jumpToBottom} hitSlop={4} accessibilityRole="button" accessibilityLabel="Scroll to latest message">
             <GlassSurface interactive style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }}>
               <ArrowDownIcon color={theme.foreground} size={18} />
             </GlassSurface>

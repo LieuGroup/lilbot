@@ -3,8 +3,9 @@
  *  (scrollToIndex on the anchored message key), yielding immediately if the user drags. */
 
 export const ROW_GAP = 12
+export const CONTENT_PADDING_VERTICAL = 18
 export const SCROLL_TO_BOTTOM_THRESHOLD = 280
-export const MAX_RESTORE_PASSES = 8
+export const MAX_RESTORE_PASSES = 12
 const BOTTOM_EPSILON = 2
 const WIDTH_EPSILON = 2
 
@@ -27,7 +28,7 @@ export interface KeyedRow {
  *  Returns `null` when sitting at the bottom (newest messages). */
 export function findScrollAnchor(rows: readonly KeyedRow[], rowHeights: Readonly<Record<string, number>>, scrollOffset: number, viewportWidth: number): ScrollAnchor | null {
   if (scrollOffset <= BOTTOM_EPSILON || rows.length === 0) return null
-  let cursor = 0
+  let cursor = CONTENT_PADDING_VERTICAL
   for (let i = 0; i < rows.length; i++) {
     const key = rows[i].key
     const h = rowHeights[key]
@@ -36,7 +37,7 @@ export function findScrollAnchor(rows: readonly KeyedRow[], rowHeights: Readonly
     }
     const stride = h + ROW_GAP
     if (scrollOffset < cursor + stride || i === rows.length - 1) {
-      return { key, offsetWithinRow: Math.min(h, Math.max(0, scrollOffset - cursor)), viewportWidth }
+      return { key, offsetWithinRow: Math.min(stride, Math.max(0, scrollOffset - cursor)), viewportWidth }
     }
     cursor += stride
   }
@@ -58,7 +59,7 @@ export function computeRestorePlan(
     if (index >= 0) {
       const widthChanged = viewportWidth > 0 && anchor.viewportWidth > 0 && Math.abs(viewportWidth - anchor.viewportWidth) >= WIDTH_EPSILON
       if (widthChanged) return { kind: 'index', index }
-      let sum = 0
+      let sum = CONTENT_PADDING_VERTICAL
       let allMeasured = true
       for (let i = 0; i < index; i++) {
         const h = rowHeights[rows[i].key]
@@ -89,7 +90,7 @@ export function createScrollRestoreController(needsRestore: boolean, maxPasses =
     onUserDrag: () => {
       active = false
     },
-    onContentSize: (contentHeight: number, targetOffset: number, exact: boolean): boolean => {
+    onContentSize: (contentHeight: number, targetOffset: number, exact: boolean, viewportHeight = 0): boolean => {
       if (!active) return false
       if (passes >= maxPasses) {
         active = false
@@ -104,7 +105,8 @@ export function createScrollRestoreController(needsRestore: boolean, maxPasses =
       passes += 1
       lastContentHeight = contentHeight
       lastOffset = targetOffset
-      if (exact && contentHeight >= targetOffset && passes >= 2 && !heightChanged) active = false
+      const maxScrollable = Math.max(0, contentHeight - viewportHeight)
+      if (exact && maxScrollable >= targetOffset && passes >= 2 && !heightChanged) active = false
       return true
     },
     markSettled: () => {

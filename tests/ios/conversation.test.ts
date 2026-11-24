@@ -4,23 +4,39 @@ import { resolve } from 'node:path'
 import { compactModelLabel, modelPillSegments } from '../../ios/src/bots/model-pill-format'
 import { COMPOSER_REST_PLACEHOLDER, composerActionState, isComposerExpanded } from '../../ios/src/chat/composer-state'
 import { buildTranscriptRows } from '../../ios/src/chat/message-rows'
-import { computeRestorePlan, createScrollRestoreController, findScrollAnchor, ROW_GAP, shouldShowScrollToBottom } from '../../ios/src/chat/scroll-restore'
+import { CONTENT_PADDING_VERTICAL, computeRestorePlan, createScrollRestoreController, findScrollAnchor, ROW_GAP, shouldShowScrollToBottom } from '../../ios/src/chat/scroll-restore'
 
 describe('iOS Conversation: exact scroll restore, model-pill Duo formatting, and resting-vs-typing composer', () => {
   test('findScrollAnchor and computeRestorePlan restore exact offset on deep same-width histories', () => {
     const rows = Array.from({ length: 40 }, (_, i) => ({ key: `id:m-${i}` }))
     const heights: Record<string, number> = {}
-    for (let i = 0; i < 40; i++) heights[`id:m-${i}`] = 60 + (i % 5) * 18
+    for (let i = 0; i < 40; i++) heights[`id:m-${i}`] = 60 + (i % 5) * 18.33
 
-    // Target sitting 24px into row 22.
-    let expected = 24
+    // Target sitting 24px into row 22 (accounting for contentContainerStyle paddingVertical).
+    let expected = CONTENT_PADDING_VERTICAL + 24
     for (let i = 0; i < 22; i++) expected += heights[`id:m-${i}`] + ROW_GAP
 
     const anchor = findScrollAnchor(rows, heights, expected, 466)
-    expect(anchor).toEqual({ key: 'id:m-22', offsetWithinRow: 24, viewportWidth: 466 })
+    expect(anchor?.key).toBe('id:m-22')
+    expect(anchor?.offsetWithinRow).toBeCloseTo(24, 5)
+    expect(anchor?.viewportWidth).toBe(466)
 
-    // Same width: exact pixel sum matches to the pixel.
-    expect(computeRestorePlan(rows, heights, anchor, 999, 466)).toEqual({ kind: 'offset', offset: expected, exact: true })
+    // Same width: exact pixel sum matches to the sub-pixel, including gap offsets.
+    const plan = computeRestorePlan(rows, heights, anchor, 999, 466)
+    expect(plan.kind).toBe('offset')
+    if (plan.kind === 'offset') {
+      expect(plan.exact).toBe(true)
+      expect(plan.offset).toBeCloseTo(expected, 5)
+    }
+
+    // Offset landing inside ROW_GAP after row 5 preserves exact sub-gap offset without clamping.
+    let inGap = CONTENT_PADDING_VERTICAL
+    for (let i = 0; i < 5; i++) inGap += heights[`id:m-${i}`] + ROW_GAP
+    inGap += heights['id:m-5'] + 7
+    const gapAnchor = findScrollAnchor(rows, heights, inGap, 466)
+    const gapPlan = computeRestorePlan(rows, heights, gapAnchor, 0, 466)
+    expect(gapPlan.kind).toBe('offset')
+    if (gapPlan.kind === 'offset') expect(gapPlan.offset).toBeCloseTo(inGap, 5)
 
     // Width changed across fold/unfold (466 -> 951): switches to exact row index anchor.
     expect(computeRestorePlan(rows, heights, anchor, expected, 951)).toEqual({ kind: 'index', index: 22 })
