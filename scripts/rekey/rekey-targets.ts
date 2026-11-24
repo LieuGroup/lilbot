@@ -32,6 +32,7 @@ export const PLAIN_TARGETS: readonly PlainTarget[] = [
   { table: 'history_items', column: 'bot' },
   { table: 'history_events', column: 'bot' },
   { table: 'history_exclusions', column: 'bot' },
+  { table: 'history_preview_marks', column: 'bot' },
   { table: 'history_turn_usage', column: 'bot_id' },
   { table: 'history_compactions', column: 'bot_id' },
   { table: 'memory_facts', column: 'bot_id' },

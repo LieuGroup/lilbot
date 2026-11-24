@@ -86,6 +86,7 @@ export function createRekeyFixture(root: string) {
   history.session(OTHER_ID, 'chat-other', 1000)
   db.query('INSERT INTO history_imports VALUES (?)').run(OLD_ID)
   db.query('INSERT INTO history_exclusions VALUES (?, ?, ?, 1000)').run(OLD_ID, 'excl-1', 'reason')
+  db.query('INSERT INTO history_preview_marks VALUES (?, ?, 1, ?)').run(OLD_ID, 'chat-main-1', `hermes:${OLD_ID}:1`)
   const userItem = JSON.stringify({
     kind: 'user',
     text: SECRET_MESSAGE,

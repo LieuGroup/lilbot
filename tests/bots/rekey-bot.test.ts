@@ -76,6 +76,7 @@ test('full re-key covers every table and all 6 composite shapes, passes schema-w
       if (table === 'bots' && col === 'engine_bot_id' && val === OLD_ID) return true
       if ((table === 'history_items' && col === 'id') || (table === 'message_origins' && col === 'row_id')) return val.startsWith(`hermes:${OLD_ID}:`)
       if ((table === 'history_turn_usage' || table === 'history_compactions') && col === 'row_id') return val.startsWith(`hermes:${OLD_ID}:`)
+      if (table === 'history_preview_marks' && col === 'latest_id') return val.startsWith(`hermes:${OLD_ID}:`)
       return false
     })
     expect(leaks).toEqual([])
