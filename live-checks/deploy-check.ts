@@ -36,12 +36,17 @@ try {
   // final scenario fail both revisions without changing any already-verified source files.
   const startup = await f.read('server/main.ts')
   await f.edit(
-    'server/main.ts',
-    startup.replace(
-      'const COMMIT =',
-      "if (await Bun.file(join(process.env.LILBOT_DATA_DIR ?? '', 'fail-all-starts')).exists()) throw new Error('rollback-check failure')\nconst COMMIT ="
-    )
+    'server/deploy/check-gate.ts',
+    "import { join } from 'node:path'\n\nexport async function checkStart(dataDir: string) {\n  if (await Bun.file(join(dataDir, 'fail-all-starts')).exists()) throw new Error('rollback-check failure')\n}\n"
   )
+  const gated = startup
+    .replace("import { deployNotice } from './deploy/deploy-notice'", "import { checkStart } from './deploy/check-gate'\nimport { deployNotice } from './deploy/deploy-notice'")
+    .replace(
+      "/** LilBot's own database file lives here. */\nconst DATA_DIR = process.env.LILBOT_DATA_DIR ?? join(homedir(), '.local', 'share', 'lilbot')\n/** Each bot's workspace folder is created under here. */",
+      "const DATA_DIR = process.env.LILBOT_DATA_DIR ?? join(homedir(), '.local', 'share', 'lilbot')\nawait checkStart(DATA_DIR)"
+    )
+  assert.notEqual(gated, startup, 'the start-up lines deploy-check gates have moved')
+  await f.edit('server/main.ts', gated)
   await f.commit('test: isolated startup failure gate')
   const good = await git(f.checkout, 'rev-parse', 'HEAD')
   await f.refuse('verify on this exact clean commit')
@@ -65,15 +70,12 @@ try {
   db.query("INSERT INTO bots(id, name, function, instructions, engine_id, engine_bot_id) VALUES ('rollback-check', 'Rollback check', '', '', 'hermes', ?)").run(profile)
   db.close()
   const key = await readFile(join(f.data, 'computer-server-key.pem'), 'utf8')
-  const main = await f.read('server/main.ts')
   assert.equal(await Bun.file(join(f.link, '.git')).exists(), false, 'Releases must be clean exports, not working trees')
   // Typechecks and tests pass; actual startup fails after a schema/data change.
-  const failing = main.replace(
-    'const engine = new HermesEngine(',
-    "if (process.env.LILBOT_DATA_DIR) {\nnew (await import('bun:sqlite')).Database(join(DATA_DIR, 'lilbot.db')).exec(\"INSERT INTO deployment_marker VALUES ('failed version'); PRAGMA user_version=999\")\nthrow new Error('deploy-check deliberate startup failure; password=do-not-record-me')\n}\nconst engine = new HermesEngine("
+  await f.edit(
+    'server/deploy/check-gate.ts',
+    "import { Database } from 'bun:sqlite'\nimport { join } from 'node:path'\n\nexport async function checkStart(dataDir: string) {\n  if (await Bun.file(join(dataDir, 'fail-all-starts')).exists()) throw new Error('rollback-check failure')\n  if (process.env.LILBOT_DATA_DIR) {\n    new Database(join(dataDir, 'lilbot.db')).exec(\"INSERT INTO deployment_marker VALUES ('failed version'); PRAGMA user_version=999\")\n    throw new Error('deploy-check deliberate startup failure; password=do-not-record-me')\n  }\n}\n"
   )
-  assert.notEqual(failing, main, 'the start-up line the broken commit edits has moved')
-  await f.edit('server/main.ts', failing)
   const broken = await f.commit('test: deliberately broken startup')
   await f.verify()
   const started = Date.now()
@@ -94,6 +96,10 @@ try {
   restored.close()
   assert.equal(await readFile(join(f.data, 'computer-server-key.pem'), 'utf8'), key)
   assert.equal((await stat(join(f.data, 'deploy/notice.json'))).mode & 0o777, 0o600)
+  assert.equal((await stat(join(f.data, 'deploy/runner'))).mode & 0o777, 0o700)
+  assert.equal((await stat(join(f.data, 'deploy/runner/engine-hooks'))).mode & 0o777, 0o700)
+  assert.equal((await stat(join(f.data, 'deploy/runner/engine-hooks/manifest.json'))).mode & 0o777, 0o600)
+  assert.equal((await stat(join(f.data, 'deploy/runner/engine-hooks/hermes.ts'))).mode & 0o777, 0o600)
   const socket = new WebSocket(`ws://127.0.0.1:${f.port}/ws`)
   try {
     await within(

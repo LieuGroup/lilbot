@@ -35,7 +35,16 @@ export const TOOL_GROUPS: Partial<Record<WebhookCapability, string[]>> = {
     'lilbot_computer_copy'
   ],
   coding: ['lilbot_status'],
-  memory: ['lilbot_memory_list', 'lilbot_memory_save', 'lilbot_memory_pause', 'lilbot_memory_restore', 'lilbot_memory_expiry'],
+  memory: [
+    'lilbot_memory_list',
+    'lilbot_memory_recall',
+    'lilbot_memory_save',
+    'lilbot_memory_forget',
+    'lilbot_memory_pause',
+    'lilbot_memory_restore',
+    'lilbot_memory_expiry',
+    'lilbot_history_search'
+  ],
   routines: ['lilbot_routine', 'lilbot_routines_list'],
   // A run can only give the Library a file it could write.
   shell: ['lilbot_give_file'],

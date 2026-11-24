@@ -13,17 +13,19 @@ export function createMemory(database: Database) {
   const memory = new MemoryService(new MemoryStore(database))
   const reviewQueue = new ReviewQueue(database)
   const checkpointStore = new MemoryCheckpointStore(database)
+  let reviewer: MemoryReviewer | undefined
   return {
     memory,
     checkpointStore,
     reviewModel: settings.model ?? null,
+    isReview: (chat: string) => reviewer?.isReview(chat) ?? false,
     forgetBot: (botId: string) => {
       reviewQueue.forgetBot(botId)
       checkpointStore.forgetBot(botId)
     },
     startReviewer: (bots: BotService, store: BotStore, repeat: (name: string, interval: number, run: () => unknown | Promise<unknown>) => unknown) => {
-      const reviewer = new MemoryReviewer(reviewQueue, bots, settings, Date.now, id => store.exists(id))
-      repeat('memory reviewer', 20_000, () => reviewer.tick())
+      reviewer = new MemoryReviewer(reviewQueue, bots, settings, Date.now, id => store.exists(id))
+      repeat('memory reviewer', 20_000, () => reviewer!.tick())
       return reviewer
     }
   }

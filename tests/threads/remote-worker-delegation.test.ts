@@ -93,6 +93,7 @@ async function makeHarness() {
     activity: { snapshot: () => ({}) } as any,
     memory: core.memory,
     memoryChanged: noop,
+    history: dummy,
     skills: core.skills,
     delegation: { delegate: delegation.delegate.bind(delegation), control, attach: delegation.attach.bind(delegation) } as any,
     work,

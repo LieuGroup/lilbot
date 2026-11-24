@@ -9,6 +9,7 @@ import type { Workspaces } from '../bots/workspaces'
 import type { ComputerService } from '../computers/computer-service'
 import type { McpConnections } from '../connections/mcp-connections'
 import type { GoalService } from '../goals/goal-service'
+import type { HistoryService } from '../history/history-service'
 import type { LibraryService } from '../library/library-service'
 import type { MemoryService } from '../memory/memory-service'
 import type { RoutineService } from '../routines/routine-service'
@@ -41,6 +42,7 @@ export interface SystemDeps extends SystemFacts {
   activity: ActivityService
   memory: MemoryService
   memoryChanged: () => void
+  history: Pick<HistoryService, 'search'>
   skills: SkillsService
   /** Handing work to one bot, and working together in temporary groups. */
   delegation: { hand: DelegationService; control: DelegationControl; groups: GroupService }

@@ -3,6 +3,8 @@ import type { ChatEvent, ChatItem } from '../../shared/chat-schema'
 import type { HistoryItem, HistoryPage, SessionReason } from '../../shared/history-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import { HistoryMetaStore } from './history-meta-store'
+import { type HistorySearchMatch, searchHistory } from './history-search'
+import { pruneSupersededJournalRows } from './history-tail'
 
 interface HistorySession {
   bot: string
@@ -42,21 +44,21 @@ export class HistoryStore {
   discovered(bot: string) {
     this.db.query('INSERT OR IGNORE INTO history_imports VALUES(?)').run(bot)
   }
-  write(bot: string, session: string, rows: HistoryRow[], cursor?: string | null, complete = false) {
-    this.db
-      .transaction(() => {
-        // Checked under the write lock, so an exclusion committed meanwhile is never undone by a late page.
-        if (this.excluded(bot, session)) return
-        const enriched = this.meta.mergeRows(bot, session, rows)
-        const insert = this.db.query(`INSERT INTO history_items(bot,session,id,at,position,item,text) VALUES(?,?,?,?,?,?,?)
+  writeUnchecked(bot: string, session: string, rows: HistoryRow[], cursor?: string | null, complete = false) {
+    // Checked under the write lock, so an exclusion committed meanwhile is never undone by a late page.
+    if (this.excluded(bot, session)) return
+    const enriched = this.meta.mergeRows(bot, session, rows)
+    pruneSupersededJournalRows(this.db, bot, session, enriched)
+    const insert = this.db.query(`INSERT INTO history_items(bot,session,id,at,position,item,text) VALUES(?,?,?,?,?,?,?)
         ON CONFLICT(bot,id) DO UPDATE SET item=excluded.item,text=excluded.text`)
-        for (const row of enriched) {
-          const text = 'text' in row.item ? row.item.text : ''
-          insert.run(bot, session, row.id, row.at, row.order, JSON.stringify(row.item), text)
-        }
-        if (cursor !== undefined) this.db.query('UPDATE history_sessions SET cursor=?,complete=? WHERE bot=? AND id=?').run(cursor, +complete, bot, session)
-      })
-      .immediate()
+    for (const row of enriched) {
+      const text = 'text' in row.item ? row.item.text : ''
+      insert.run(bot, session, row.id, row.at, row.order, JSON.stringify(row.item), text)
+    }
+    if (cursor !== undefined) this.db.query('UPDATE history_sessions SET cursor=?,complete=? WHERE bot=? AND id=?').run(cursor, +complete, bot, session)
+  }
+  write(bot: string, session: string, rows: HistoryRow[], cursor?: string | null, complete = false) {
+    this.db.transaction(() => this.writeUnchecked(bot, session, rows, cursor, complete)).immediate()
   }
   event(bot: string, session: string, event: ChatEvent, key: string = crypto.randomUUID()) {
     const now = Date.now()
@@ -70,7 +72,7 @@ export class HistoryStore {
       sessions: number
       completed: number
     }
-    const { items } = this.db.query('SELECT count(*) items FROM history_items WHERE bot=?').get(bot) as { items: number }
+    const { items } = this.db.query(`SELECT count(*) items FROM history_items i WHERE bot=? AND ${notExcluded('i.bot', 'i.session')}`).get(bot) as { items: number }
     return { ...p, items, complete: !!this.db.query('SELECT 1 FROM history_imports WHERE bot=?').get(bot) && p.sessions === p.completed }
   }
   /** `main` is the bot's main session: its divider shows while it is still empty (just after New session). */
@@ -98,7 +100,9 @@ export class HistoryStore {
     const rows: (StoredRow & { session_at: number; session_id: string })[] = []
     // A session without a user or assistant message (another client's empty session, one left behind) shows no
     // divider. Decided here, when the page is built, so stored and re-imported rows follow the same rule.
-    const spoken = this.db.query(`SELECT 1 FROM history_items WHERE bot=? AND session=? AND json_extract(item,'$.kind') IN ('user','assistant') LIMIT 1`)
+    const spoken = this.db.query(
+      `SELECT 1 FROM history_items WHERE bot=? AND session=? AND (json_extract(item,'$.kind') IN ('user','assistant') OR json_extract(item,'$.reason')='engine_switched_gap') LIMIT 1`
+    )
     // Seek within each session's index instead of sorting every row across a join.
     for (const session of this.sessions(bot).reverse()) {
       if (key && (session.at > key[0] || (session.at === key[0] && session.id > key[1]))) continue
@@ -145,17 +149,8 @@ export class HistoryStore {
       ON CONFLICT(bot,id) DO ${reason ? 'UPDATE SET item=excluded.item' : 'NOTHING'}`)
       .run(bot, session, `session:${session}`, at, JSON.stringify({ kind: 'session', text: 'New session', ...(reason ? { reason } : {}) }))
   }
-  search(bot: string, query: string, limit = 20) {
-    const terms = query
-      .match(/[\p{L}\p{N}_]+/gu)
-      ?.map(t => `"${t}"`)
-      .join(' AND ')
-    if (!terms) return []
-    return this.db
-      .query(`SELECT i.id,i.session sessionId,i.at,snippet(history_search,0,'','',' … ',32) snippet FROM history_search f
-      JOIN history_items i ON i.rowid=f.rowid WHERE history_search MATCH ? AND i.bot=?
-      ORDER BY rank LIMIT ?`)
-      .all(terms, bot, limit)
+  search(bot: string, query: string, limit = 20, allow?: (sessionId: string) => boolean): HistorySearchMatch[] {
+    return searchHistory(this.db, bot, query, limit, allow)
   }
   /** Whether Oscar sent a visible user message in `(bot, session)` containing `needle`. Hidden prompts, tool output and assistant turns never match. */
   hasUserMessageContaining(bot: string, session: string, needle: string): boolean {
@@ -165,6 +160,15 @@ export class HistoryStore {
       .get(bot, session, needle)
     if (inEvents) return true
     return !!this.db.query(`SELECT 1 FROM history_items WHERE bot=? AND session=? AND json_extract(item,'$.kind')='user' AND instr(text,?)>0 LIMIT 1`).get(bot, session, needle)
+  }
+  /** Marks old sessions for a bot complete (excluding any sessions already belonging to the target engine). */
+  sealSessions(bot: string, exclude?: ReadonlySet<string>) {
+    if (!exclude?.size) {
+      this.db.query('UPDATE history_sessions SET complete=1 WHERE bot=?').run(bot)
+      return
+    }
+    const mark = this.db.query('UPDATE history_sessions SET complete=1 WHERE bot=? AND id=?')
+    for (const session of this.sessions(bot)) if (!exclude.has(session.id)) mark.run(bot, session.id)
   }
   forget(bot: string) {
     this.db.transaction(() => {

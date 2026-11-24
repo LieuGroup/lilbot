@@ -4,6 +4,6 @@ LilBot is Oscar's own bot app: one place to chat with and manage his bots. It ru
 
 Parts, each with its own guide topic: bots (identity, roster, primary bot), memory, routines, webhooks (outside events), threads (bot to bot and workers), groups (temporary bot discussions), work (work board), checks (check levels), goals (measured outcomes and reviews), library, skills, computers, coding (workers and developer bots), connections (MCP services every bot can use), deploy. `changing-lilbot` has the rules for changing the app itself.
 
-Your `lilbot_*` tools do what Oscar does on the screens, as you: the same checks, the same live updates in his app. You can delete your own routines and webhooks, and remove an MCP connection you added; deleting a bot, removing a computer and forgetting another bot's private facts are Oscar's to do (there is no tool for them). Every change a tool makes is logged with your name (`lilbot_about` shows the latest).
+Your `lilbot_*` tools do what Oscar does on the screens, as you: the same checks, the same live updates in his app. `lilbot_history_search` searches your own past conversations with Oscar. You can delete your own routines and webhooks, and remove an MCP connection you added; deleting a bot, removing a computer and forgetting another bot's private facts are Oscar's to do (there is no tool for them). Every change a tool makes is logged with your name (`lilbot_about` shows the latest).
 
-Your other tools (memory recall/forget, skills management, conversation search) come from the engine and work as before; they describe themselves.
+Your other tools (skills management) come from the engine and work as before; they describe themselves.

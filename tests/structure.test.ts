@@ -1,6 +1,7 @@
 /** Keeps the project map in AGENTS.md true: checks which folders import from which (via TypeScript AST). */
 import { expect, test } from 'bun:test'
 import { relative } from 'node:path'
+import { forbiddenServerEngineImports } from './engines/boundary-rules'
 import { concreteDriverIds, concreteEngineIds, forbiddenSubfolderImports, importsOf, sourceFiles } from './engines/boundary-scanner'
 
 /** Every import from a file under `from` into `into`, as "file -> target". */
@@ -35,10 +36,10 @@ test('product code never imports from tests/', () => {
   expect(['server', 'shared', 'web', 'ios', 'helper'].flatMap(root => crossings(root, 'tests'))).toEqual([])
 })
 
-test('only the single engine registration point knows which engines exist: nothing else in the server imports a concrete engine', () => {
+test('only the engine registration points know which engines exist: nothing else in the server imports a concrete engine', () => {
   const engines = concreteEngineIds()
   const leaks = sourceFiles('server')
-    .flatMap(file => forbiddenSubfolderImports(file, importsOf(file), 'server/engines', engines, 'server/engines/registry.ts'))
+    .flatMap(file => forbiddenServerEngineImports(file, importsOf(file), engines))
     .sort()
   expect(leaks).toEqual([])
 })

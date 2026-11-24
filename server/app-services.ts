@@ -94,7 +94,8 @@ export function createAppServices(
   const devices = createDevices(database, computers, publish)
   const [routineStore, libraryStore] = [new RoutineStore(database), new LibraryStore(database)]
   const [webhookStore, checkStore] = [new WebhookStore(database), new WorkCheckStore(database)]
-  const ownChat = (chat: string) => routineStore.isRoutineChat(chat) || threadStore.isInternal(chat) || webhookStore.isWebhookChat(chat) || checkStore.isCheckChat(chat)
+  const ownChat = (chat: string) =>
+    routineStore.isRoutineChat(chat) || threadStore.isInternal(chat) || webhookStore.isWebhookChat(chat) || checkStore.isCheckChat(chat) || mem.isReview(chat)
   const chatKind = chatKinds(rootOf, ownChat)
   const hiddenChat = hiddenChats(chatKind)
   const library = new LibraryService(
@@ -182,7 +183,7 @@ export function createAppServices(
   const routines = new RoutineService(routineStore, bots, () => publish({ event: 'routines.changed' }), routineSettings(process.env))
   const { goals, boards } = createGoals({ goalStore: runs.goalStore, work, answers, threads, routines, activity, store, publish, repeat })
   const giveFile = giveFrom(library, calls, threadStore, routineStore, webhookStore, rootOf)
-  const core = { ...facts, bots, activity, memory, memoryChanged, skills, delegation, work, goals, routines, giveFile, library }
+  const core = { ...facts, bots, activity, memory, memoryChanged, history, skills, delegation, work, goals, routines, giveFile, library }
   const extra = { webhooks, webhookRuns, connections: mcp.services, calls, checkSessions, changes: new SystemChanges(database), engineToken: token, port: PORT }
   const system = createSystemServer({ ...core, ...extra, workerAllowMemory: id => threadStore.allowsWorkerMemory(id) })
   repeat('threads', 1000, () => threads.tick())

@@ -1,7 +1,16 @@
 /** Self-tests for the AST boundary scanner: verifies every import dodge, cross-driver isolation,
  *  registration/declaration points, built-string/comment-marker tricks, exact allow-lists, and harmless cases. */
 import { describe, expect, test } from 'bun:test'
-import { HELPER_REGISTRATION_POINT, isNameExempt, LEADER_DRIVER_DECLARATION, NAME_ALLOWLIST, SERVER_REGISTRATION_POINT } from './boundary-rules'
+import {
+  bunUsagesInSource,
+  forbiddenServerEngineImports,
+  HELPER_REGISTRATION_POINT,
+  isNameExempt,
+  LEADER_DRIVER_DECLARATION,
+  NAME_ALLOWLIST,
+  SERVER_METADATA_POINT,
+  SERVER_REGISTRATION_POINTS
+} from './boundary-rules'
 import { engineNamesInSource, forbiddenSubfolderImports, relativeImportsInSource } from './boundary-scanner'
 
 describe('boundary scanner self-tests', () => {
@@ -22,7 +31,7 @@ describe('boundary scanner self-tests', () => {
     ]
     for (const [label, code] of engineCases) {
       const targets = relativeImportsInSource(code, 'server/bots/example.ts')
-      expect(forbiddenSubfolderImports('server/bots/example.ts', targets, 'server/engines', engines, SERVER_REGISTRATION_POINT).length, label).toBeGreaterThan(0)
+      expect(forbiddenSubfolderImports('server/bots/example.ts', targets, 'server/engines', engines, SERVER_REGISTRATION_POINTS).length, label).toBeGreaterThan(0)
     }
 
     const testCases: [string, string][] = [
@@ -57,7 +66,7 @@ describe('boundary scanner self-tests', () => {
         relativeImportsInSource(`import { x } from '../hermes/hermes-engine'`, 'server/engines/scripted/scripted-engine.ts'),
         'server/engines',
         engines,
-        SERVER_REGISTRATION_POINT
+        SERVER_REGISTRATION_POINTS
       )
     ).toEqual(['server/engines/scripted/scripted-engine.ts -> server/engines/hermes/hermes-engine'])
     expect(
@@ -66,16 +75,16 @@ describe('boundary scanner self-tests', () => {
         relativeImportsInSource(`import { x } from '../engines/hermes/hermes-engine'`, LEADER_DRIVER_DECLARATION),
         'server/engines',
         engines,
-        SERVER_REGISTRATION_POINT
+        SERVER_REGISTRATION_POINTS
       )
     ).toEqual([`${LEADER_DRIVER_DECLARATION} -> server/engines/hermes/hermes-engine`])
 
-    // Name exemptions cover only engine/driver folders and the three registration/declaration points.
+    // Name exemptions cover only engine/driver folders and the registration/declaration points.
     expect(isNameExempt('helper/drivers/hermes/session.ts', engines, drivers)).toBe(true)
     expect(isNameExempt('helper/drivers/claude-code/driver.ts', engines, drivers)).toBe(true)
     expect(isNameExempt(HELPER_REGISTRATION_POINT, engines, drivers)).toBe(true)
     expect(isNameExempt(LEADER_DRIVER_DECLARATION, engines, drivers)).toBe(true)
-    expect(isNameExempt(SERVER_REGISTRATION_POINT, engines, drivers)).toBe(true)
+    for (const point of SERVER_REGISTRATION_POINTS) expect(isNameExempt(point, engines, drivers)).toBe(true)
     expect(isNameExempt('helper/worker-host.ts', engines, drivers)).toBe(false)
     expect(isNameExempt('server/computers/remote-worker-select.ts', engines, drivers)).toBe(false)
   })
@@ -123,6 +132,49 @@ describe('boundary scanner self-tests', () => {
     ]
     for (const [label, code, path] of cases) {
       expect(engineNamesInSource(code, path, allIds), label).toEqual([])
+    }
+  })
+
+  test('metadata registration enforces strict allow-list, forbids sibling/runtime engine imports, and blocks Bun-specific usage in both directions', () => {
+    const check = (file: string, code: string) => forbiddenServerEngineImports(file, relativeImportsInSource(code, file), engines)
+
+    // Allowed: metadata.ts importing declarative env-rules/rollback modules and neutral contracts; metadata modules importing neutral contracts / node:*.
+    expect(
+      check(
+        SERVER_METADATA_POINT,
+        `import { hermesEnvironmentRules } from './hermes/hermes-env-rules'\nimport { rollbackHook } from './hermes/hermes-rollback'\nimport type { EngineEnvironmentRules } from './engine-ops'`
+      )
+    ).toEqual([])
+    expect(check('server/engines/hermes/hermes-env-rules.ts', `import { join } from 'node:path'\nimport type { EngineEnvironmentRules } from '../engine-ops'`)).toEqual([])
+    expect(check('server/engines/hermes/hermes-rollback.ts', `import type { EngineRollbackHook } from '../engine-ops'`)).toEqual([])
+    expect(bunUsagesInSource(`import { join } from 'node:path'\nconst obj = { Bun: 1 }; export const x = obj.Bun`, SERVER_METADATA_POINT)).toEqual([])
+
+    // Blocked in metadata.ts: any non-metadata file from an engine folder (not only *-engine.ts) or wrong-prefix file.
+    expect(check(SERVER_METADATA_POINT, `import './hermes/hermes-attach'`)).toEqual([`${SERVER_METADATA_POINT} -> server/engines/hermes/hermes-attach`])
+    expect(check(SERVER_METADATA_POINT, `import { HermesEngine } from './hermes/hermes-engine'`)).toEqual([`${SERVER_METADATA_POINT} -> server/engines/hermes/hermes-engine`])
+    expect(check(SERVER_METADATA_POINT, `import { x } from './hermes/other-env-rules'`)).toEqual([`${SERVER_METADATA_POINT} -> server/engines/hermes/other-env-rules`])
+    expect(check(SERVER_METADATA_POINT, `const m = await import('./hermes/' + 'hermes-socket')`)).toEqual([`${SERVER_METADATA_POINT} -> server/engines/hermes/hermes-socket`])
+
+    // Blocked in engine metadata modules: any import from their own or another engine folder.
+    expect(check('server/engines/hermes/hermes-env-rules.ts', `import { attach } from './hermes-attach'`)).toEqual([
+      'server/engines/hermes/hermes-env-rules.ts -> server/engines/hermes/hermes-attach'
+    ])
+    expect(check('server/engines/hermes/hermes-rollback.ts', `import { ensureFullAccess } from './hermes-permissions'`)).toEqual([
+      'server/engines/hermes/hermes-rollback.ts -> server/engines/hermes/hermes-permissions'
+    ])
+    expect(check('server/engines/hermes/hermes-env-rules.ts', `import { x } from '../scripted/scripted-env-rules'`)).toEqual([
+      'server/engines/hermes/hermes-env-rules.ts -> server/engines/scripted/scripted-env-rules'
+    ])
+
+    // Blocked Bun-specific imports and globals in metadata.ts and engine metadata modules.
+    for (const [label, code, expected] of [
+      ['bun:sqlite static', `import { Database } from 'bun:sqlite'`, 'bun:sqlite'],
+      ['bun package', `import { file } from 'bun'`, 'bun'],
+      ['bun dynamic import', `const m = await import('bun:' + 'test')`, 'bun:test'],
+      ['Bun global', `export const f = Bun.file('x')`, 'Bun'],
+      ['import.meta.dir', `export const d = import.meta.dir`, 'import.meta.dir']
+    ] as const) {
+      expect(bunUsagesInSource(code, 'server/engines/hermes/hermes-env-rules.ts'), label).toContain(`server/engines/hermes/hermes-env-rules.ts -> ${expected}`)
     }
   })
 })

@@ -12,6 +12,7 @@ import { connectionTools } from './tool-connections'
 import { delegationTools } from './tool-delegation'
 import { goalTools } from './tool-goals'
 import { groupTools } from './tool-groups'
+import { historyTools } from './tool-history'
 import { libraryTools } from './tool-library'
 import { memoryTools } from './tool-memory'
 import { rosterTools } from './tool-roster'
@@ -33,6 +34,7 @@ export function createSystemServer(deps: SystemDeps & { engineToken: string; por
     ...botTools(deps),
     ...rosterTools(deps),
     ...memoryTools(deps),
+    ...historyTools(deps),
     ...skillTools(deps),
     ...settingsTools(deps),
     ...delegationTools(deps),
