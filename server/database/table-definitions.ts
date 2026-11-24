@@ -97,3 +97,8 @@ export const SESSION_GRANT_TABLES = `CREATE TABLE IF NOT EXISTS session_grants(i
    CREATE TABLE IF NOT EXISTS session_grant_chats(chat_id TEXT PRIMARY KEY, grant_id TEXT NOT NULL REFERENCES session_grants(id),
      bot_id TEXT NOT NULL, created_at INTEGER NOT NULL);
    CREATE INDEX IF NOT EXISTS session_grant_chats_grant ON session_grant_chats(grant_id);`
+
+/** Schema step 42: partial index on `history_events` so per-bot preview reconciliation stays O(log N) regardless of streaming delta history length. Repeatable. */
+export const HISTORY_EVENTS_PREVIEW_INDEX = `CREATE INDEX IF NOT EXISTS history_events_preview
+   ON history_events(bot, at DESC)
+   WHERE json_extract(event, '$.type') IN ('user.message', 'turn.finished');`

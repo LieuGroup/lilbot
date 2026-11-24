@@ -112,6 +112,7 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
     (botId, chatId, rows) => devices.mergeRows(botId, rows).map(row => ({ ...row, item: attachments.mergeItem(botId, chatId, row.item) })),
     botId => publish({ event: 'history.changed', botId })
   )
+  history.store.warmPreviews(store.list().map(b => b.id))
   repeat('history', 1000, () => history.tick())
   const messages = webhookMessages(database, { store, prefs, history: history.store, activity, bots: () => bots }, publish)
   const codingSwitch = new CodingSwitchNotice(join(DATA_DIR, 'coding-switch.json'))

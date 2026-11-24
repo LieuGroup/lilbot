@@ -38,6 +38,7 @@ export class HistoryStore {
   }
   preview = (bot: string) => this.previews.get(bot)
   previewsFor = (bots: readonly string[]) => this.previews.getMany(bots)
+  warmPreviews = (bots: readonly string[]) => this.previews.warm(bots)
   excluded(bot: string, session: string) {
     return !!this.db.query('SELECT 1 FROM history_exclusions WHERE bot=? AND session=?').get(bot, session)
   }
