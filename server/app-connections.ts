@@ -12,6 +12,7 @@ import type { BotService } from './bots/bot-service'
 import type { BotStore } from './bots/bot-store'
 import type { CodingSwitchNotice } from './connections/coding-switch-notice'
 import { ConnectionApplier, cancelledPrompt, failedPrompt } from './connections/connection-apply'
+import { ENGINE_PREFIX } from './connections/mcp-address'
 import { connectionCallback } from './connections/mcp-callback'
 import { McpConnectionStore } from './connections/mcp-connection-store'
 import { McpConnections } from './connections/mcp-connections'
@@ -87,8 +88,7 @@ export function createConnections({
 }: ConnectionDeps) {
   const published = () => publish({ event: 'connections.changed' })
   const botIds = () => store.list().map(bot => bot.id)
-  const toolName = (server: string, tool: string, botId?: string) =>
-    (botId && store.exists(botId) ? engines.get(store.get(botId).engineId) : engines.defaultEngine)?.mcpToolName?.(server, tool) ?? `mcp__${server}__${tool}`
+  const toolName = (server: string, tool: string, botId?: string) => engines.mcpToolName(botId ? store.engineId(botId) : undefined, server, tool)
   // A sign-in from `bun run t3:sign-in`, an expiry or a revocation changes which tools bots should see.
   if (t3Enabled) watchT3SignIn(t3Grants, published, () => bots.refreshConnections())
   const [rows, credentials] = [new McpConnectionStore(database), new McpCredentials(join(dataDir, 'mcp-credentials.json'))]
@@ -148,6 +148,7 @@ export function createConnections({
   const lilbotUrl = `http://127.0.0.1:${port}`
   return {
     services,
+    serviceTools: () => rows.list().map(c => ({ server: `${ENGINE_PREFIX}${c.name}`, tools: c.toolNames })),
     t3Bridge: createT3Bridge({ upstream: process.env.LILBOT_T3_MCP_URL ?? T3_DEFAULT_MCP_URL, grants: t3Grants, engineToken, port, botIds, refusal: t3Refusal }),
     forward: createServiceForward({
       services,

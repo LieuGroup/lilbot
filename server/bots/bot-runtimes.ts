@@ -170,6 +170,7 @@ export class BotRuntimes {
       engineBotId: ''
     }
     this.validateMode(bot)
+    if (bot.model) await engine.validateModel(bot.model)
     // Persist before asking the runtime. A failed creation leaves a recoverable, visible bot.
     bot.engineBotId = bot.id
     this.store.save(bot)

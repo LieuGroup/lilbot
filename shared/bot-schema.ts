@@ -27,7 +27,7 @@ export const BotIdentity = z.object({
   /** The user's choice, kept as chosen when the model changes. Null: the engine's default. */
   reasoningEffort: ReasoningEffort.nullable().default(null),
   permissionMode: PermissionMode.default('full-access'),
-  /** The engine's built-in main bot; it cannot be deleted. */
+  /** The engine's built-in default bot; defaults as primary when no primary bot is chosen. */
   isDefault: z.boolean()
 })
 export type BotIdentity = z.infer<typeof BotIdentity>
