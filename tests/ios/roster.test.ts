@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { rosterStatusNotice } from '../../ios/src/bots/roster-list'
+import { rosterPullDownDistance, rosterStatusNotice } from '../../ios/src/bots/roster-list'
 import {
   canStartNewSession,
   detachedTabTriggerSpec,
@@ -133,5 +133,14 @@ describe('Round 4 iOS Roster display, web label parity, and detached orb guards'
     const c = bot('clone', { activity: { status: 'working', text: 'Running commands', unread: true } })
     expect(sameRosterBotDisplay(a, b)).toBe(true)
     expect(sameRosterBotDisplay(a, c)).toBe(false)
+  })
+
+  test('rosterPullDownDistance ignores initial automatic top contentInset and requires an active drag', () => {
+    // iPad top segmented tab bar sets contentInset.top = 96 and resting contentOffset.y = -96 on mount.
+    expect(rosterPullDownDistance({ contentOffsetY: -96, contentInsetTop: 96, userDragging: false })).toBe(0)
+    expect(rosterPullDownDistance({ contentOffsetY: -96, contentInsetTop: 96, userDragging: true })).toBe(0)
+    expect(rosterPullDownDistance({ contentOffsetY: -150, contentInsetTop: 96, userDragging: true })).toBe(54)
+    expect(rosterPullDownDistance({ contentOffsetY: -50, contentInsetTop: 0, userDragging: false })).toBe(0)
+    expect(rosterPullDownDistance({ contentOffsetY: -50, contentInsetTop: 0, userDragging: true })).toBe(50)
   })
 })

@@ -1,7 +1,7 @@
 /** Virtualized Round 4 Roster (FlatList): 3-up pinned tiles flush at the top, active groups ("Working together"),
  *  non-sticky user sections, collapsed Unassigned/Hidden groups, scroll-gated row swipes without parent scroll re-renders,
  *  pull-down / screen-reader Search bots, and zero-row-height inline Search (+ New bot on split) on the first header line. */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FlatList, type ListRenderItemInfo, type NativeScrollEvent, type NativeSyntheticEvent, View } from 'react-native'
 import { useSharedValue } from 'react-native-reanimated'
 import type { Bot, Section } from '../../../shared/bot-schema'
@@ -13,7 +13,7 @@ import { useTheme } from '../ui/theme'
 import { radius } from '../ui/tokens'
 import { useBotMenuStore } from './menu-store'
 import { CollapsedGroupHeader, RosterHeaderActions, RosterSearchBar, RosterSectionHeader, SplitNewBotFooter } from './roster-chrome'
-import { buildRosterListItems, firstRosterHeaderKey, type RosterListItem, rosterHeaderActionsVisibility } from './roster-list'
+import { buildRosterListItems, firstRosterHeaderKey, type RosterListItem, rosterHeaderActionsVisibility, rosterPullDownDistance } from './roster-list'
 import { RosterRow } from './roster-row'
 import { RosterTiles } from './roster-tiles'
 import { WorkingTogether } from './working-together'
@@ -38,6 +38,7 @@ export function Roster({ bots, sections, loaded, connected, error, selectedId, c
   const setActionError = useBotMenuStore(state => state.setError)
 
   const scrollingVertically = useSharedValue(false)
+  const userDraggingRef = useRef(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [unassignedOpen, setUnassignedOpen] = useState(false)
@@ -52,17 +53,33 @@ export function Roster({ bots, sections, loaded, connected, error, selectedId, c
   const handleScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       if (searchOpen) return
-      if (shouldRevealSearch({ pullDistance: -event.nativeEvent.contentOffset.y, alwaysVisible: false })) setSearchOpen(true)
+      const pullDistance = rosterPullDownDistance({
+        contentOffsetY: event.nativeEvent.contentOffset.y,
+        contentInsetTop: event.nativeEvent.contentInset?.top,
+        userDragging: userDraggingRef.current
+      })
+      if (shouldRevealSearch({ pullDistance, alwaysVisible: false })) setSearchOpen(true)
     },
     [searchOpen]
   )
 
-  const handleScrollStart = useCallback(() => {
+  const handleDragStart = useCallback(() => {
+    userDraggingRef.current = true
     scrollingVertically.value = true
     closeAllSwipeRows()
   }, [scrollingVertically])
 
-  const handleScrollEnd = useCallback(() => {
+  const handleDragEnd = useCallback(() => {
+    userDraggingRef.current = false
+    scrollingVertically.value = false
+  }, [scrollingVertically])
+
+  const handleMomentumStart = useCallback(() => {
+    scrollingVertically.value = true
+    closeAllSwipeRows()
+  }, [scrollingVertically])
+
+  const handleMomentumEnd = useCallback(() => {
     scrollingVertically.value = false
   }, [scrollingVertically])
 
@@ -156,10 +173,10 @@ export function Roster({ bots, sections, loaded, connected, error, selectedId, c
       maxToRenderPerBatch={16}
       windowSize={7}
       onScroll={handleScroll}
-      onScrollBeginDrag={handleScrollStart}
-      onScrollEndDrag={handleScrollEnd}
-      onMomentumScrollBegin={handleScrollStart}
-      onMomentumScrollEnd={handleScrollEnd}
+      onScrollBeginDrag={handleDragStart}
+      onScrollEndDrag={handleDragEnd}
+      onMomentumScrollBegin={handleMomentumStart}
+      onMomentumScrollEnd={handleMomentumEnd}
       contentContainerStyle={{ paddingBottom: 24 }}
     />
   )

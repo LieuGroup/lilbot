@@ -119,3 +119,11 @@ export function rosterHeaderActionsVisibility(input: {
   if (!input.hasHeader) return { showSearch: false, showNewBot: false }
   return { showSearch: !input.searchVisible, showNewBot: input.splitMode }
 }
+
+/** Pull-down distance past the resting top inset for pull-to-search.
+ *  Returns 0 unless the user is actively dragging so iOS `contentInsetAdjustmentBehavior="automatic"`
+ *  insets (such as iPad's top tab bar) never open Search on initial layout. */
+export function rosterPullDownDistance(input: { contentOffsetY: number; contentInsetTop?: number; userDragging: boolean }): number {
+  if (!input.userDragging) return 0
+  return Math.max(0, -(input.contentOffsetY + (input.contentInsetTop ?? 0)))
+}
