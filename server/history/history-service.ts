@@ -128,13 +128,11 @@ export class HistoryService {
   }
   private scheduleCatchUp(botId: string) {
     if (this.closed || this.switching.has(botId) || this.catchUpTimers.has(botId)) return
-    this.catchUpTimers.set(
-      botId,
-      setTimeout(() => {
-        this.catchUpTimers.delete(botId)
-        void this.catchUp(botId)
-      }, 25)
-    )
+    const run = () => {
+      this.catchUpTimers.delete(botId)
+      void this.catchUp(botId)
+    }
+    this.catchUpTimers.set(botId, setTimeout(run, 25))
   }
   private async catchUp(botId: string) {
     const dirty = this.dirty.get(botId)
@@ -188,6 +186,7 @@ export class HistoryService {
       this.scheduleCatchUp(bot)
     }
   }
+  search = (bot: string, query: string, limit = 20) => ({ matches: this.store.search(bot, query, limit, s => this.allowed(bot, s)), import: this.store.progress(bot) })
   close() {
     this.closed = true
     for (const timer of [...this.catchUpTimers.values(), ...this.switchTimers]) clearTimeout(timer)

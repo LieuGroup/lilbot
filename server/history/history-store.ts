@@ -3,6 +3,7 @@ import type { ChatEvent, ChatItem } from '../../shared/chat-schema'
 import type { HistoryItem, HistoryPage, SessionReason } from '../../shared/history-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import { HistoryMetaStore } from './history-meta-store'
+import { type HistorySearchMatch, searchHistory } from './history-search'
 import { pruneSupersededJournalRows } from './history-tail'
 
 interface HistorySession {
@@ -71,7 +72,7 @@ export class HistoryStore {
       sessions: number
       completed: number
     }
-    const { items } = this.db.query('SELECT count(*) items FROM history_items WHERE bot=?').get(bot) as { items: number }
+    const { items } = this.db.query(`SELECT count(*) items FROM history_items i WHERE bot=? AND ${notExcluded('i.bot', 'i.session')}`).get(bot) as { items: number }
     return { ...p, items, complete: !!this.db.query('SELECT 1 FROM history_imports WHERE bot=?').get(bot) && p.sessions === p.completed }
   }
   /** `main` is the bot's main session: its divider shows while it is still empty (just after New session). */
@@ -148,17 +149,8 @@ export class HistoryStore {
       ON CONFLICT(bot,id) DO ${reason ? 'UPDATE SET item=excluded.item' : 'NOTHING'}`)
       .run(bot, session, `session:${session}`, at, JSON.stringify({ kind: 'session', text: 'New session', ...(reason ? { reason } : {}) }))
   }
-  search(bot: string, query: string, limit = 20) {
-    const terms = query
-      .match(/[\p{L}\p{N}_]+/gu)
-      ?.map(t => `"${t}"`)
-      .join(' AND ')
-    if (!terms) return []
-    return this.db
-      .query(`SELECT i.id,i.session sessionId,i.at,snippet(history_search,0,'','',' … ',32) snippet FROM history_search f
-      JOIN history_items i ON i.rowid=f.rowid WHERE history_search MATCH ? AND i.bot=?
-      ORDER BY rank LIMIT ?`)
-      .all(terms, bot, limit)
+  search(bot: string, query: string, limit = 20, allow?: (sessionId: string) => boolean): HistorySearchMatch[] {
+    return searchHistory(this.db, bot, query, limit, allow)
   }
   /** Whether Oscar sent a visible user message in `(bot, session)` containing `needle`. Hidden prompts, tool output and assistant turns never match. */
   hasUserMessageContaining(bot: string, session: string, needle: string): boolean {
