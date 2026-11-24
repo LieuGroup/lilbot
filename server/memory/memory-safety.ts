@@ -45,7 +45,7 @@ interface Rule {
 }
 const matches = (pattern: RegExp, reason: string): Rule => ({ test: text => pattern.test(text), reason })
 
-const EXTRA_SECRET = /\bgithub_pat_[A-Za-z0-9_]{20,}|\bAIza[0-9A-Za-z_-]{35}\b|\bBearer\s+[A-Za-z0-9._~+/-]{20,}=*/
+const EXTRA_SECRET = /\bgithub_pat_[A-Za-z0-9_]{20,}|\bAIza[0-9A-Za-z_-]{35}\b|\bBearer\s+[A-Za-z0-9._~+/-]{20,}=*|:\/\/[^/\s:@]+:[^/\s@]+@/
 
 const secretRules: Rule[] = [
   matches(/-----BEGIN [A-Z ]*PRIVATE KEY-----/, 'it contains a private key'),

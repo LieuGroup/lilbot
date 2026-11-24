@@ -1,89 +1,25 @@
-/** Per-bot last-message preview derived solely from LilBot's own conversation record.
+/** Per-bot last-message preview cache derived solely from LilBot's own conversation record.
  *  Cached in memory per bot so roster and detail reads stay O(1) without per-bot history queries on every read. */
 import type { Database } from 'bun:sqlite'
 import type { BotLastMessage } from '../../shared/bot-schema'
 import type { ChatEvent, ChatItem } from '../../shared/chat-schema'
-import { hasSecret, stripInvisibleLine } from '../memory/memory-safety'
+import { MAX_PREVIEW_CHARS, previewFromEvent, previewFromItem } from './history-preview-text'
 import type { HistoryRow } from './history-store'
 
-export const MAX_PREVIEW_CHARS = 140
+export { MAX_PREVIEW_CHARS, previewFromEvent, previewFromItem }
 
-const ATTACHMENT_MARKER = /(?:\r?\n){0,2}\[LilBot attachment message [0-9a-f-]{36}\]/gi
-const ATTACHED_JSON_BLOCK = /(?:\r?\n){1,2}The following JSON lists attached files\.[\s\S]*$/i
-const WEBHOOK_NOTE = /\[LilBot notice, not from Oscar: a run of your webhook[\s\S]*?<\/webhook-run-message>/g
-const WEBHOOK_TAGS = /<(?:webhook-run-message|webhook-work-item)>[\s\S]*?<\/(?:webhook-run-message|webhook-work-item)>/g
-const ATTACHMENT_PATH = /(?:\/api\/attachments\/[^\s"'`<>]+|(?:~|\/|[A-Za-z]:\\)?(?:[^\s"'`<>]*[/\\])?attachments[/\\][0-9a-f-]{36}(?:\.[A-Za-z0-9]{1,10})?)/gi
+const CLOCK_SKEW_MS = 10_000
 const NOT_EXCLUDED = (bot: string, session: string) => `NOT EXISTS (SELECT 1 FROM history_exclusions x WHERE x.bot=${bot} AND x.session=${session})`
 
-function attachmentSummary(attachments?: readonly { mime?: string }[]): string {
-  const count = attachments?.length ?? 0
-  if (count === 0) return 'Sent an attachment'
-  const allImages = attachments!.every(file => typeof file.mime === 'string' && file.mime.startsWith('image/'))
-  if (allImages) return count === 1 ? 'Sent a photo' : `Sent ${count} photos`
-  return count === 1 ? 'Sent an attachment' : `Sent ${count} attachments`
-}
-
-function stripMarkdown(raw: string): string {
-  const text = raw
-    .replace(/```[A-Za-z0-9_+-]*\r?\n?/g, ' ')
-    .replace(/`([^`\n]+)`/g, '$1')
-    .replace(/!\[([^\]]*)\]\([^)\n]*\)/g, '$1')
-    .replace(/\[([^\]]+)\]\([^)\n]*\)/g, '$1')
-    .replace(/^\s*#{1,6}\s+/gm, '')
-    .replace(/^\s*(?:>\s?)+/gm, '')
-    .replace(/^\s*(?:[-*+]\s+|\d+\.\s+)/gm, '')
-    .replace(/^\s*[-*_]{3,}\s*$/gm, '')
-    .replace(/\|/g, ' ')
-    .replace(/\*\*([^*\n]+)\*\*/g, '$1')
-    .replace(/__([^_\n]+)__/g, '$1')
-    .replace(/~~([^~\n]+)~~/g, '$1')
-    .replace(/(?<!\w)\*([^*\n]+)\*(?!\w)/g, '$1')
-    .replace(/(?<!\w)_([^_\n]+)_(?!\w)/g, '$1')
-    .replace(/[\r\n\t]+/g, ' ')
-  return stripInvisibleLine(text).replace(/\s+/g, ' ').trim()
-}
-
-function truncatePreview(text: string): string {
-  const chars = Array.from(text)
-  if (chars.length <= MAX_PREVIEW_CHARS) return text
-  return `${chars
-    .slice(0, MAX_PREVIEW_CHARS - 1)
-    .join('')
-    .trimEnd()}…`
-}
-
-/** Builds a safe single-line preview for a visible main-conversation item, or null when the item should be skipped. */
-export function previewFromItem(item: ChatItem, at: number): BotLastMessage | null {
-  if (item.kind !== 'user' && item.kind !== 'assistant') return null
-  const raw = typeof item.text === 'string' ? item.text : ''
-  const from = item.kind === 'user' ? 'user' : 'bot'
-  const hasMarker = ATTACHMENT_MARKER.test(raw)
-  ATTACHMENT_MARKER.lastIndex = 0
-  const cleaned = raw.replace(WEBHOOK_NOTE, '').replace(WEBHOOK_TAGS, '').replace(ATTACHED_JSON_BLOCK, '').replace(ATTACHMENT_MARKER, '').replace(ATTACHMENT_PATH, '')
-  if (hasSecret(cleaned)) return null
-  const plain = stripMarkdown(cleaned)
-  if (plain) {
-    if (hasSecret(plain)) return null
-    return { from, text: truncatePreview(plain), at: Math.max(0, Math.round(at)) }
-  }
-  if (item.kind === 'user' && (item.attachments?.length || hasMarker)) {
-    return { from: 'user', text: attachmentSummary(item.attachments), at: Math.max(0, Math.round(at)) }
-  }
-  return null
-}
-
-/** Builds a safe preview for a live event (`user.message` or non-empty `turn.finished`), or null otherwise. */
-export function previewFromEvent(event: ChatEvent, at: number): BotLastMessage | null {
-  if (event.type === 'user.message') return previewFromItem({ kind: 'user', text: typeof event.text === 'string' ? event.text : '', attachments: event.attachments }, at)
-  if (event.type === 'turn.finished' && !event.failure && typeof event.text === 'string' && event.text.trim()) return previewFromItem({ kind: 'assistant', text: event.text }, at)
-  return null
-}
+type SourcedPreview = { preview: BotLastMessage; session: string }
 
 const samePreview = (a: BotLastMessage | null, b: BotLastMessage | null) =>
   (a === null && b === null) || (a !== null && b !== null && a.from === b.from && a.text === b.text && a.at === b.at)
 
-/** Computes the newest safe visible main-conversation preview for `bot` from SQLite via indexed session/item seeks. */
-function computePreview(db: Database, bot: string): BotLastMessage | null {
+const sameMessage = (a: SourcedPreview, b: SourcedPreview) =>
+  a.session === b.session && a.preview.from === b.preview.from && a.preview.text === b.preview.text && Math.abs(a.preview.at - b.preview.at) <= CLOCK_SKEW_MS
+
+function latestItemPreview(db: Database, bot: string): SourcedPreview | null {
   const sessions = db.query(`SELECT id FROM history_sessions s WHERE bot=? AND ${NOT_EXCLUDED('s.bot', 's.id')} ORDER BY at DESC, id DESC`).all(bot) as { id: string }[]
   const firstBatch = db.query(
     `SELECT id, at, position, item FROM history_items WHERE bot=? AND session=? AND json_extract(item,'$.kind') IN ('user','assistant')
@@ -99,7 +35,7 @@ function computePreview(db: Database, bot: string): BotLastMessage | null {
       for (const row of rows) {
         try {
           const preview = previewFromItem(JSON.parse(row.item) as ChatItem, row.at)
-          if (preview) return preview
+          if (preview) return { preview, session: session.id }
         } catch {}
       }
       if (rows.length < 20) break
@@ -109,30 +45,57 @@ function computePreview(db: Database, bot: string): BotLastMessage | null {
   }
   const unindexed = db
     .query(
-      `SELECT at, item FROM history_items i WHERE bot=? AND json_extract(item,'$.kind') IN ('user','assistant') AND ${NOT_EXCLUDED('i.bot', 'i.session')}
+      `SELECT session, at, item FROM history_items i WHERE bot=? AND json_extract(item,'$.kind') IN ('user','assistant') AND ${NOT_EXCLUDED('i.bot', 'i.session')}
        ORDER BY at DESC, position DESC, id DESC LIMIT 20`
     )
-    .all(bot) as { at: number; item: string }[]
+    .all(bot) as { session: string; at: number; item: string }[]
   for (const row of unindexed) {
     try {
       const preview = previewFromItem(JSON.parse(row.item) as ChatItem, row.at)
-      if (preview) return preview
-    } catch {}
-  }
-  const events = db.query(`SELECT at, event FROM history_events e WHERE bot=? AND ${NOT_EXCLUDED('e.bot', 'e.session')} ORDER BY rowid DESC LIMIT 20`).all(bot) as {
-    at: number
-    event: string
-  }[]
-  for (const row of events) {
-    try {
-      const preview = previewFromEvent(JSON.parse(row.event) as ChatEvent, row.at)
-      if (preview) return preview
+      if (preview) return { preview, session: row.session }
     } catch {}
   }
   return null
 }
 
-type CacheEntry = { preview: BotLastMessage | null; live?: { session: string; at: number } }
+function latestEventPreview(db: Database, bot: string, afterAt: number): SourcedPreview | null {
+  const first = db.query(
+    `SELECT rowid, session, at, event FROM history_events e
+     WHERE bot=? AND at > ? AND json_extract(event,'$.type') IN ('user.message','turn.finished') AND ${NOT_EXCLUDED('e.bot', 'e.session')}
+     ORDER BY rowid DESC LIMIT 1`
+  )
+  const next = db.query(
+    `SELECT rowid, session, at, event FROM history_events e
+     WHERE bot=? AND at > ? AND rowid < ? AND json_extract(event,'$.type') IN ('user.message','turn.finished') AND ${NOT_EXCLUDED('e.bot', 'e.session')}
+     ORDER BY rowid DESC LIMIT 5`
+  )
+  const head = first.get(bot, afterAt) as { rowid: number; session: string; at: number; event: string } | null
+  if (!head) return null
+  let rows = [head]
+  while (rows.length) {
+    for (const row of rows) {
+      try {
+        const preview = previewFromEvent(JSON.parse(row.event) as ChatEvent, row.at)
+        if (preview) return { preview, session: row.session }
+      } catch {}
+    }
+    const last = rows.at(-1)!
+    rows = next.all(bot, afterAt, last.rowid) as { rowid: number; session: string; at: number; event: string }[]
+  }
+  return null
+}
+
+/** Reconciles persisted `history_items` and live `history_events`, preferring canonical rows when matched within clock skew. */
+function computePreview(db: Database, bot: string): SourcedPreview | null {
+  const item = latestItemPreview(db, bot)
+  const ev = latestEventPreview(db, bot, item ? item.preview.at : -1)
+  if (!item) return ev
+  if (!ev) return item
+  if (sameMessage(item, ev)) return item
+  return ev.preview.at > item.preview.at ? ev : item
+}
+
+type CacheEntry = { preview: BotLastMessage | null; session?: string; live?: { session: string; at: number } }
 
 /** Per-bot in-memory preview cache maintained on every history write/event and seeded lazily once per bot. */
 export class HistoryPreviewCache {
@@ -146,7 +109,8 @@ export class HistoryPreviewCache {
   get(botId: string): BotLastMessage | undefined {
     let entry = this.entries.get(botId)
     if (!entry) {
-      entry = { preview: computePreview(this.db, botId) }
+      const found = computePreview(this.db, botId)
+      entry = { preview: found?.preview ?? null, session: found?.session }
       this.entries.set(botId, entry)
     }
     return entry.preview ?? undefined
@@ -165,17 +129,33 @@ export class HistoryPreviewCache {
     const candidate = previewFromEvent(event, at)
     if (!candidate) return
     const prev = this.entries.get(botId)
-    if (prev?.live?.session === session && prev.preview?.from === candidate.from && prev.preview?.text === candidate.text) return
-    this.entries.set(botId, { preview: candidate, live: { session, at: candidate.at } })
+    if (
+      prev?.preview &&
+      prev.session === session &&
+      prev.preview.from === candidate.from &&
+      prev.preview.text === candidate.text &&
+      Math.abs(prev.preview.at - candidate.at) <= CLOCK_SKEW_MS
+    ) {
+      return
+    }
+    this.entries.set(botId, { preview: candidate, session, live: { session, at: candidate.at } })
     if (!samePreview(prev?.preview ?? null, candidate)) this.onChanged(botId)
   }
 
-  onWrite(botId: string, session: string, rows: readonly HistoryRow[]) {
+  onWrite(botId: string, _session: string, rows: readonly HistoryRow[]) {
     if (!rows.some(row => row.item.kind === 'user' || row.item.kind === 'assistant')) return
-    const next = computePreview(this.db, botId)
+    const found = computePreview(this.db, botId)
+    const next = found?.preview ?? null
     const prev = this.entries.get(botId)
-    if (prev?.live && prev.live.session !== session && (!next || next.at < prev.live.at)) return
-    this.entries.set(botId, { preview: next })
+    if (prev?.live && prev.preview) {
+      const liveSource: SourcedPreview = { preview: prev.preview, session: prev.live.session }
+      if (!found || (found.preview.at < prev.live.at && !sameMessage(found, liveSource))) return
+      const keepLive =
+        found.preview.at === prev.live.at && found.session === prev.live.session && found.preview.text === prev.preview.text && found.preview.from === prev.preview.from
+      this.entries.set(botId, keepLive ? { preview: next, session: found.session, live: prev.live } : { preview: next, session: found.session })
+    } else {
+      this.entries.set(botId, { preview: next, session: found?.session })
+    }
     if (!samePreview(prev?.preview ?? null, next)) this.onChanged(botId)
   }
 
