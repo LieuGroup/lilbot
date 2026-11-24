@@ -46,8 +46,11 @@ export async function checkCompactionMarker(server: RestartServer, botId: string
   const done = Bun.spawnSync([process.env.LILBOT_HERMES_BIN ?? 'hermes', '-p', native, 'config', 'set', 'compression.threshold_tokens', '65000'], { env: process.env })
   assert.equal(done.exitCode, 0, 'failed to set compression.threshold_tokens on dev profile')
   const chat = await server.call('chat.new', { botId })
-  // Opener + 3 passages + short tail ensures >= 9 messages (above Hermes' minimum) and > 65k tokens.
+  // Warm up message count past Hermes' protected head+tail before crossing 65k tokens so the first
+  // compression attempt has compressible middle messages instead of hitting structural no-op backoff.
   await turn(chat.chatId, 'Reply with just START.')
+  await turn(chat.chatId, 'Reply with just STEP_ONE.')
+  await turn(chat.chatId, 'Reply with just STEP_TWO.')
   await turn(chat.chatId, `Here is passage one. Reply with just OK.\n\n${passage(1)}`)
   await turn(chat.chatId, `Here is passage two. Reply with just OK.\n\n${passage(2)}`)
   const third = await turn(chat.chatId, `Here is passage three. Reply with just OK.\n\n${passage(3)}`)

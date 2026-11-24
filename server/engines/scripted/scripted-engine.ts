@@ -4,7 +4,7 @@ import type { ChatEvent } from '../../../shared/chat-schema'
 import { LilBotError } from '../../../shared/lilbot-error'
 import type { BotEngine, ChatOptions, MemoryConnection, ReviewOptions, RoutineOptions, RuntimeIdentity, SessionChange, SkillSettings, ToolCallSeen } from '../bot-engine'
 import type { McpConnection } from '../mcp-connection'
-import { conversationSource, newSession, openScriptedChat, type ResumeOutcome, type ScriptedSession, type ScriptedTurnHandler } from './scripted-chat'
+import { conversationSource, newSession, openScriptedChat, type ResumeOutcome, runScriptedTurn, type ScriptedSession, type ScriptedTurnHandler } from './scripted-chat'
 import { attachSessionMcp, callMcpServer } from './scripted-mcp'
 import { DEFAULT_SCRIPTED_MODELS, ScriptedRoutineLedger, type ScriptedRuntime } from './scripted-routines'
 
@@ -38,24 +38,14 @@ export class ScriptedEngine implements BotEngine {
     this.mcpToolName = options.mcpToolName ?? ((_server, tool) => tool)
   }
 
-  setTurnHandler(handler: ScriptedTurnHandler | undefined) {
+  setTurnHandler = (handler: ScriptedTurnHandler | undefined) => {
     this.onTurn = handler
   }
-  runtimeOf(nativeId: string) {
-    return this.runtimes.get(nativeId)
-  }
-  sessionOf(chatId: string) {
-    return this.sessions.get(chatId)
-  }
-  dropSessions() {
-    this.sessions.clear()
-  }
-  scriptResume(chatId: string, outcomes: ResumeOutcome[]) {
-    this.resumeOutcomes.set(chatId, [...outcomes])
-  }
-  loseReceipt(runId: string) {
-    this.ledger.loseReceipt(runId)
-  }
+  runtimeOf = (nativeId: string) => this.runtimes.get(nativeId)
+  sessionOf = (chatId: string) => this.sessions.get(chatId)
+  dropSessions = () => this.sessions.clear()
+  scriptResume = (chatId: string, outcomes: ResumeOutcome[]) => void this.resumeOutcomes.set(chatId, [...outcomes])
+  loseReceipt = (runId: string) => this.ledger.loseReceipt(runId)
   /** Simulates the LilBot server process crashing: drops client listeners and awaits while engine turns keep running. */
   disconnectClient() {
     this.client.abort()
@@ -130,11 +120,15 @@ export class ScriptedEngine implements BotEngine {
     return { aboutUser: [], ownNotes: [] }
   }
   refreshMemory = async () => []
-  async reviewMemory(engineBotId: string, _prompt: string, options: ReviewOptions) {
+  async reviewMemory(engineBotId: string, prompt: string, options: ReviewOptions) {
     this.requireRuntime(engineBotId)
+    if (!options.sessionMcp?.length) throw new LilBotError('session_mcp_unavailable', 'Limited sessions require a session-bound MCP connection.')
     const session = this.createSession(engineBotId, options.workspace ?? '', true)
-    if (options.sessionMcp?.length) await attachSessionMcp(session, options.sessionMcp, true, options.assertSessionMcpReady)
+    await attachSessionMcp(session, options.sessionMcp, true, options.assertSessionMcpReady)
     options.onChat(session.chatId)
+    if (!this.onTurn) return
+    const result = await runScriptedTurn(session, { text: prompt, hidden: true }, (t, a, s) => this.callMcp(engineBotId, session.chatId, t, a, s), this.onTurn)
+    if (result.status !== 'completed') throw new LilBotError('review_failed', `The memory review did not finish (${result.status}).`)
   }
   async runRoutine(engineBotId: string, prompt: string, options: RoutineOptions & ChatOptions) {
     this.requireRuntime(engineBotId)

@@ -10,7 +10,7 @@ const server = await RestartServer.create()
 try {
   await server.start()
   await server.connect()
-  const bot = await server.createBot('History check', 'Follow the request briefly. Use search_conversations when asked about old conversations. Never delegate.')
+  const bot = await server.createBot('History check', 'Follow the request briefly. Use lilbot_history_search when asked about old conversations. Never delegate.')
   async function turn(chatId: string, text: string) {
     const start = server.events.length
     await server.call('chat.send', { chatId, text })
@@ -43,9 +43,9 @@ try {
   const second = await server.call('chat.new', { botId: bot.id })
   await assertBotContext(server, bot.id, 'zero')
   await turn(second.chatId, 'Reply THIRD.')
-  await turn(second.chatId, 'Use search_conversations to find the calibration code from our earlier conversation and report it.')
+  await turn(second.chatId, 'Use lilbot_history_search to find the calibration code from our earlier conversation and report it.')
   assert.ok(
-    server.events.some(f => f.data?.type === 'tool.started' && f.data.name === 'search_conversations'),
+    server.events.some(f => f.data?.type === 'tool.started' && String(f.data.name).endsWith('lilbot_history_search')),
     'Bot did not use history search'
   )
   await waitFor(

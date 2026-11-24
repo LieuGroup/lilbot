@@ -51,36 +51,28 @@ describe('who may call it', () => {
 })
 
 describe('what a bot can do through it', () => {
-  test('write, see it in the context block, recall it, forget it', async () => {
-    const { call, changes } = api()
-    const written = await call('write', { botId: 'footy', kind: 'profile', text: 'Post at 5 pm Adelaide time.' })
-    expect(written.body.saved).toEqual({ id: expect.any(String), kind: 'profile', scope: 'shared', text: 'Post at 5 pm Adelaide time.', date: '2026-11-16' })
-    expect(written.body.saved.id).toHaveLength(8)
-
+  test('context block shows saved facts and retired memory tool routes answer 410', async () => {
+    const { call, memory } = api()
+    const fact = memory.write({ botId: 'footy', kind: 'profile', text: 'Post at 5 pm Adelaide time.', author: 'bot' })
     expect((await call('context', { botId: 'footy' })).body.text).toContain('Post at 5 pm Adelaide time.')
-    const other = await call('recall', { botId: 'researcher', query: 'adelaide' })
-    expect(other.body.facts).toEqual([{ ...written.body.saved, from: 'footy' }])
-
-    expect((await call('forget', { botId: 'footy', id: written.body.saved.id })).body.forgotten.text).toBe('Post at 5 pm Adelaide time.')
+    expect((await call('context', { botId: 'researcher' })).body.text).toContain('from footy')
+    memory.forgetAsBot('footy', fact.id)
     expect((await call('context', { botId: 'footy' })).body).toEqual({ text: '', shown: 0, total: 0 })
-    expect(changes()).toBe(2)
+
+    expect((await call('recall', { botId: 'footy', query: 'adelaide' })).status).toBe(410)
+    expect((await call('write', { botId: 'footy', kind: 'profile', text: 'x' })).status).toBe(410)
+    expect((await call('forget', { botId: 'footy', id: fact.id })).status).toBe(410)
   })
 
-  test('a refusal comes back as a message the bot can read', async () => {
+  test('malformed requests and odd bot ids are refused on active hooks', async () => {
     const { call } = api()
-    expect(await call('forget', { botId: 'b', id: 'deadbeef' })).toEqual({ status: 422, body: { error: 'No remembered fact has that id.' } })
-    expect(await call('write', { botId: 'b', kind: 'profile', text: '  ' })).toEqual({ status: 422, body: { error: 'Write the fact to remember.' } })
-  })
-
-  test('malformed requests and odd bot ids are refused', async () => {
-    const { call } = api()
-    expect((await call('write', { botId: '../x', kind: 'profile', text: 'a' })).status).toBe(400)
-    expect((await call('write', { botId: 'b', kind: 'secret', text: 'a' })).status).toBe(400)
-    expect((await call('recall', 'not an object')).status).toBe(400)
+    expect((await call('context', { botId: '../x' })).status).toBe(400)
+    expect((await call('turn', { botId: 'b', chatId: '', user: 'hi', assistant: 'ok' })).status).toBe(400)
+    expect((await call('context', 'not an object')).status).toBe(400)
   })
 })
 
-test('unknown and deleted bots cannot read, write, forget or enqueue turns', async () => {
+test('unknown and deleted bots cannot read context or enqueue turns', async () => {
   const database = openDatabase(':memory:')
   const store = new BotStore(database)
   store.save({
@@ -101,7 +93,7 @@ test('unknown and deleted bots cannot read, write, forget or enqueue turns', asy
   const reviewer = new MemoryReviewer(queue, fakeEngine().engine)
   const handle = createEngineApi(memory, TOKEN, 3370, { botExists: id => store.exists(id), reviewer })
   for (const botId of ['unknown', 'gone'])
-    for (const endpoint of ['context', 'recall', 'write', 'forget', 'turn']) {
+    for (const endpoint of ['context', 'turn']) {
       const response = await handle(
         new Request(`http://127.0.0.1:3370/engine/memory/${endpoint}`, {
           method: 'POST',

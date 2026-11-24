@@ -1,7 +1,8 @@
 /** Maps LilBot's engine-neutral hidden-run access scopes to Hermes toolset lists and exact built-in allow-lists.
- *  Every limited scope includes `'skills'` and `'no_mcp'`: `'no_mcp'` excludes all profile-level MCP servers
- *  (`lilbot_system`, `lilbot_t3`, `lilbot_c_*`, user servers), while `'skills'` forces Hermes's explicit-toolset
- *  branch so composite fallback cannot inject `x_search` when xAI credentials exist. */
+ *  Every limited scope includes `'no_mcp'` to exclude all profile-level MCP servers (`lilbot_system`, `lilbot_t3`,
+ *  `lilbot_c_*`, user servers), plus a Hermes `CONFIGURABLE_TOOLSETS` key so Hermes takes its explicit-toolset branch
+ *  and composite fallback cannot inject `x_search` when xAI credentials exist. Reviews use `'context_engine'` (zero
+ *  built-in tools) so skills tools are never attached to a memory review session. */
 import type { WebhookCapability } from '../../../shared/webhook-schema'
 import type { RunAccessScope } from '../bot-engine'
 
@@ -9,7 +10,7 @@ import type { RunAccessScope } from '../bot-engine'
  *  lilbot-check skill), with `'no_mcp'` so only the session-bound check MCP endpoint attaches. */
 const CHECK_TOOLSETS = ['web', 'vision', 'terminal', 'file', 'skills', 'no_mcp']
 const NARROW_BASE = ['skills', 'no_mcp']
-const REVIEW_TOOLSETS = ['skills', 'no_mcp']
+const REVIEW_TOOLSETS = ['context_engine', 'no_mcp']
 
 /** Exact built-in tool names each Hermes toolset exposes (`hermes-agent/toolsets.py`), used by post-create
  *  verification to fail closed if Hermes attaches any tool outside the scope's explicit allow-list. */
@@ -21,6 +22,7 @@ const HERMES_BUILTIN_TOOLS: Readonly<Record<string, readonly string[]>> = {
   file: ['patch', 'read_file', 'search_files', 'write_file'],
   code_execution: ['execute_code'],
   memory: ['memory'],
+  context_engine: [],
   no_mcp: []
 }
 

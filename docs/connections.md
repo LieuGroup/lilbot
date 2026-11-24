@@ -14,7 +14,7 @@ decide when to use a separate working copy and follow `~/code/home/AGENTS.md` an
 - Bot instructions live in the built-in skill `lilbot-coding` (`server/threads/coding-skill/SKILL.md`), installed at
   startup and restored if it differs. Workers open a `code` work item automatically, ask Oscar via `needs_oscar` on real
   decisions, record branch, PR link and check output as evidence, and save lasting technical facts directly with
-  `update_memory`.
+  `lilbot_memory_save`.
 - **T3 Code switch (`LILBOT_T3_ENABLED=1`, off by default):** during the trial, T3 Code stays behind one switch. When
   off, `t3Connection` is withheld from every bot (removing `lilbot_t3` from Hermes profiles), `t3-coding` is removed
   from the skills library if present, `/engine/t3/mcp` returns 404, the T3 sign-in watcher does not run, and no system

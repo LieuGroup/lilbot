@@ -89,7 +89,6 @@ test('the native coding skill ships with LilBot, passes safety rules, mentions n
       'lilbot_work',
       'needs_oscar',
       'lilbot_memory_save',
-      'update_memory',
       'writes findings and progress',
       'any added computer',
       'lilbot_status',

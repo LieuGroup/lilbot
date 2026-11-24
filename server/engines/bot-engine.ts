@@ -157,7 +157,7 @@ export interface BotEngine {
   /** Switch the bot to LilBot memory from its next session; returns legacy engine notes. */
   connectMemory(engineBotId: string, connection: MemoryConnection): Promise<LegacyNotes>
   /** Upgrade connected adapters and repair drifted connection settings only for LilBot's non-deleted bindings. */
-  refreshMemory(bots: RuntimeBinding[], connection?: MemoryConnection): Promise<string[]>
+  refreshMemory(bots: RuntimeBinding[], connection?: MemoryConnection, onFailed?: (engineBotId: string) => void): Promise<string[]>
   /** Run `prompt` as a hidden memory-only session for the after-chat review. */
   reviewMemory(engineBotId: string, prompt: string, options: ReviewOptions): Promise<void>
   /** Run or recover one scheduled task, using runId as a durable execution identity. Throws `session_not_found` only

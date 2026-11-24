@@ -62,8 +62,8 @@ export function memoryTools({ bots, memory, memoryChanged }: SystemDeps): McpToo
       'lilbot_memory_forget',
       'Mark one of your visible facts (your own or shared) as forgotten by short or full id. Reversible: Oscar can restore it in Memory.',
       z.object({ id: fact }),
-      async (caller, { id }) => {
-        const forgotten = memory.forgetAsBot(caller, id)
+      async (caller, { id }, _raw, context) => {
+        const forgotten = memory.forgetAsBot(caller, id, { review: context?.review === true })
         memoryChanged()
         return view(forgotten, caller)
       }
@@ -100,10 +100,19 @@ export function memoryTools({ bots, memory, memoryChanged }: SystemDeps): McpToo
       'lilbot_memory_save',
       'Save one short lasting fact (profile) or dated note (journal) to your memory. Facts with instructions, secrets or hidden characters are refused.',
       z.object({ kind: MemoryKind.default('profile'), scope: MemoryScope.optional(), text: factText, expires: expiryDay.optional() }),
-      async (caller, input) => {
+      async (caller, input, _raw, context) => {
         const expiresAt = input.expires ? endOfDay(input.expires) : undefined
         if (expiresAt !== undefined && Number.isNaN(expiresAt)) throw new LilBotError('invalid_fact', 'Use a real date like 2026-12-31.')
-        const saved = memory.write({ botId: caller, kind: input.kind, scope: input.scope, text: input.text, author: 'bot', via: 'chat', expiresAt })
+        const saved = memory.write({
+          botId: caller,
+          kind: input.kind,
+          scope: input.scope,
+          text: input.text,
+          author: 'bot',
+          via: context?.review ? 'review' : 'chat',
+          sourceChatId: context?.chatId,
+          expiresAt
+        })
         memoryChanged()
         const notice = memory.overflowNotice(caller)
         return { ...view(saved), ...(notice ? { notice } : {}) }

@@ -8,6 +8,7 @@
 import { ZodError } from 'zod'
 import { LilBotError } from '../../shared/lilbot-error'
 import { type JsonRpc, oneMessage, refusedResult, rpcError, rpcResult, toolError } from '../connections/mcp-json-rpc'
+import type { ReviewOutcomeTracker } from '../memory/review-run'
 import { inputSchema, type McpCallContext, type McpTool } from './mcp-tool'
 import { SESSION_MCP_PREFIX, SESSION_SYSTEM_NAME, SESSION_T3_NAME, type SessionGrant, type SessionGrants } from './session-grants'
 import { scopedCallRefusal, scopedToolsFor, scopeInstructions } from './session-scope'
@@ -22,6 +23,7 @@ interface ScopedMcpOptions {
   beyondOwn: (botId: string, tool: string, args: unknown) => boolean
   t3Enabled?: boolean
   t3Forward?: (botId: string, request: Request) => Promise<Response>
+  reviewTracker?: ReviewOutcomeTracker
 }
 
 const SERVER_INFO = { name: 'LilBot', version: '1.0.0' }
@@ -72,13 +74,17 @@ export function createScopedMcp(options: ScopedMcpOptions) {
   }
 
   async function handleSystem(grant: SessionGrant, bot: { id: string; name: string }, request: Request): Promise<Response> {
-    if (request.method !== 'POST') return new Response(null, { status: request.method === 'DELETE' ? 204 : 405, headers: { allow: 'POST' } })
+    const tracker = grant.scope.kind === 'review' ? options.reviewTracker : undefined
+    if (request.method !== 'POST') {
+      return new Response(null, { status: request.method === 'DELETE' ? 204 : 405, headers: { allow: 'POST' } })
+    }
     const message = await oneMessage(request)
-    if (message instanceof Response) return message
-
+    if (message instanceof Response) {
+      tracker?.recordHardFailure(grant.id)
+      return message
+    }
     const permitted = scopedToolsFor(grant.scope, options.tools, t3Enabled)
     const permittedNames = new Set(permitted.map(t => t.name))
-
     switch (message.method) {
       case 'initialize':
         return rpcResult(message.id, {
@@ -91,6 +97,7 @@ export function createScopedMcp(options: ScopedMcpOptions) {
         return rpcResult(message.id, {})
       case 'tools/list': {
         options.grants.markDiscovered(grant.id, SESSION_SYSTEM_NAME)
+        tracker?.markListed(grant.id)
         return rpcResult(message.id, {
           tools: permitted.map(tool => ({
             name: tool.name,
@@ -101,25 +108,33 @@ export function createScopedMcp(options: ScopedMcpOptions) {
         })
       }
       case 'tools/call':
-        return runCall(grant, bot, message, permittedNames)
+        return runCall(grant, bot, message, permittedNames, tracker)
       default:
         return message.id === undefined ? new Response(null, { status: 202 }) : rpcError(message.id, -32601, `${String(message.method)} is not supported.`)
     }
   }
 
-  async function runCall(grant: SessionGrant, bot: { id: string; name: string }, message: JsonRpc, permittedNames: Set<string>): Promise<Response> {
+  async function runCall(grant: SessionGrant, bot: { id: string; name: string }, message: JsonRpc, permittedNames: Set<string>, tracker?: ReviewOutcomeTracker): Promise<Response> {
+    const fail = (res: Response) => {
+      tracker?.recordHardFailure(grant.id)
+      return res
+    }
     const name = String(message.params?.name ?? '')
     const tool = allTools.get(name)
-    if (!tool) return toolError(message.id, `${name} is not a LilBot tool.`)
+    if (!tool) return fail(toolError(message.id, `${name} is not a LilBot tool.`))
     const refused = scopedCallRefusal(grant.scope, bot.id, tool, message.params?.arguments, options.beyondOwn, t3Enabled)
-    if (refused) return refusedResult(message.id, refused)
-    if (!permittedNames.has(tool.name)) return refusedResult(message.id, `${tool.name} is not available in this session.`)
+    if (refused) return fail(refusedResult(message.id, refused))
+    if (!permittedNames.has(tool.name)) return fail(refusedResult(message.id, `${tool.name} is not available in this session.`))
     const primaryChatId = grant.primaryChatId
-    if (!primaryChatId) return refusedResult(message.id, 'This session is not bound yet. Try again in a moment.')
+    if (!primaryChatId) return fail(refusedResult(message.id, 'This session is not bound yet. Try again in a moment.'))
+    const isSave = tool.name === 'lilbot_memory_save'
+    const isWrite = isSave || tool.name === 'lilbot_memory_forget'
     try {
       const rawArgs = message.params?.arguments ?? {}
       const args = tool.input.parse(rawArgs) as Record<string, unknown>
+      if (isWrite) tracker?.recordWriteAttempt(grant.id, isSave)
       const result = await tool.run(bot.id, args, rawArgs, callContext(grant, primaryChatId))
+      if (isWrite) tracker?.recordWriteSuccess(grant.id, isSave)
       if (!(typeof tool.readOnly === 'function' ? tool.readOnly(args) : tool.readOnly)) {
         const target = [(result as { id?: unknown } | undefined)?.id, args.botId, args.factId].find(value => typeof value === 'string') ?? ''
         const fields = Object.keys(args).filter(key => !['botId', 'factId', 'requestId'].includes(key))
@@ -127,6 +142,7 @@ export function createScopedMcp(options: ScopedMcpOptions) {
       }
       return rpcResult(message.id, { content: [{ type: 'text', text: JSON.stringify(result ?? { ok: true }) }] })
     } catch (error) {
+      tracker?.recordError(grant.id, error)
       const text = formatError(error)
       if (!text) console.error(`[scoped-mcp] ${tool.name} failed:`, error instanceof Error ? error.message : error)
       return toolError(message.id, text ?? 'LilBot could not run this tool.')
@@ -160,11 +176,17 @@ export function createScopedMcp(options: ScopedMcpOptions) {
   }
 
   return async (request: Request, pathname: string): Promise<Response> => {
-    if (!checkLoopback(request)) return Response.json({ error: 'Not allowed.' }, { status: 403 })
     const sysMatch = SYSTEM_ROUTE.exec(pathname)
+    if (!checkLoopback(request)) {
+      if (sysMatch) options.reviewTracker?.recordHardFailure(sysMatch[1])
+      return Response.json({ error: 'Not allowed.' }, { status: 403 })
+    }
     if (sysMatch) {
       const authed = authGrant(sysMatch[1], request)
-      if (!authed) return Response.json({ error: 'Unknown or expired session credential.' }, { status: 403 })
+      if (!authed) {
+        options.reviewTracker?.recordHardFailure(sysMatch[1])
+        return Response.json({ error: 'Unknown or expired session credential.' }, { status: 403 })
+      }
       return handleSystem(authed.grant, authed.bot, request)
     }
     const t3Match = T3_ROUTE.exec(pathname)

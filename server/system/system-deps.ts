@@ -12,6 +12,7 @@ import type { GoalService } from '../goals/goal-service'
 import type { HistoryService } from '../history/history-service'
 import type { LibraryService } from '../library/library-service'
 import type { MemoryService } from '../memory/memory-service'
+import type { ReviewOutcomeTracker } from '../memory/review-run'
 import type { RoutineService } from '../routines/routine-service'
 import type { SkillsService } from '../skills/skills-service'
 import type { CallingChats } from '../threads/calling-chats'
@@ -64,6 +65,7 @@ export interface SystemDeps extends SystemFacts {
   changes: SystemChanges
   /** Session-bound grants for limited sessions (checks, webhooks, narrowed hand-offs, reviews). */
   grants?: SessionGrants
+  reviewTracker?: ReviewOutcomeTracker
   /** Authenticated T3 forwarder for session-bound `'coding'` grants. */
   t3Forward?: (botId: string, request: Request) => Promise<Response>
   /** Whether a remote worker thread is permitted to read/save memory (narrowed threads without `memory` are refused). */

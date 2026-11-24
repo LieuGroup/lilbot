@@ -7,6 +7,9 @@ import { join } from 'node:path'
 import { BotStore } from '../server/bots/bot-store'
 import { openDatabase } from '../server/database/database'
 import { HermesEngine } from '../server/engines/hermes/hermes-engine'
+import { engineToken } from '../server/http/engine-api'
+import { SessionGrants } from '../server/system/session-grants'
+import { REVIEW_TOOLS } from '../server/system/session-scope'
 
 const root = devScratch('activity-check')
 const engine = new HermesEngine()
@@ -137,7 +140,25 @@ try {
   await c.call('activity.setUnread', { botId: ids[0], unread: true })
   assert((await after()).unread, 'manual unread works')
   const before = JSON.stringify(await after())
-  await engine.reviewMemory(nativeIds[0], 'This is a test. Save nothing. Reply OK.', { onChat: () => {} })
+  const reviewDb = openDatabase(join(root, 'lilbot.db'))
+  const grants = new SessionGrants(reviewDb, engineToken(root), (_b, c) => c)
+  const grant = grants.ensure({ ownerKey: `review:activity-${Date.now()}`, botId: ids[0], scope: { kind: 'review', runId: 'activity' } })
+  const sessionMcp = grants.connectionsFor(grant, `http://127.0.0.1:${port}`, REVIEW_TOOLS, false)
+  try {
+    await engine.reviewMemory(nativeIds[0], 'This is a test. Save nothing. Reply OK.', {
+      workspace: join(root, 'workspaces', ids[0]),
+      sessionMcp,
+      assertSessionMcpReady: () =>
+        grants.assertDiscovered(
+          grant.id,
+          sessionMcp.map(c => c.name)
+        ),
+      onChat: id => grants.bindChat(grant.id, id)
+    })
+  } finally {
+    grants.revoke(grant.id)
+    reviewDb.close()
+  }
   await Bun.sleep(4000)
   assert(JSON.stringify(await after()) === before, 'hidden memory review changes neither activity nor unread')
 } finally {

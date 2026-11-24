@@ -65,7 +65,8 @@ export function createSystemServer(deps: SystemDeps & { engineToken: string; por
         changes: deps.changes,
         beyondOwn,
         t3Enabled: Boolean(deps.t3Enabled),
-        t3Forward: deps.t3Forward
+        t3Forward: deps.t3Forward,
+        reviewTracker: deps.reviewTracker
       })
     : undefined
   return {

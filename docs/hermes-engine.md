@@ -117,7 +117,16 @@ folder is gone uses `profile purge-identity` to finish gateway identity settleme
   status `error`, live or replayed) or its stored closing row (`display_kind` `failed_turn`) while the session's latest
   save had failed maps to LilBot's own `memory_save` failure instead of Hermes' text. Hermes' `error_surface` cannot tell
   this failure apart (it is a local runtime error like any other), so the record is what decides.
-- The rules text and the tool schemas live beside the adapter (`rules.md`, `tools.json`) and ship in its folder.
+- As of `v0.15.0`, the memory adapter exposes zero plug-in tools (`tools.json` removed); only the usage rules text
+  (`rules.md`, kept byte-identical to `server/memory/rules.md`) ships in its folder alongside the lifecycle hooks.
+- **Adapter-managed `known_plugin_toolsets.acp`:** Because `lilbot-skills-v1` registers tools under `toolset='skills'`,
+  Hermes treats `'skills'` as a plugin toolset and auto-enrolls it on any `acp` session unless `known_plugin_toolsets.acp`
+  lists `'skills'`. The Hermes adapter owns `'skills'` in `known_plugin_toolsets.acp` (read-merged to preserve any
+  existing entries and written through `hermes config set`, never raw-editing `config.yaml`, during `configureSkills`,
+  `installMemory`, and as a fast-path check before opening any memory-review session). Limited sessions that request
+  `'skills'` (`check`, `webhook`, `narrowed`) keep it; memory reviews (`['context_engine', 'no_mcp']`) receive zero
+  skills tools; and rolling back to an earlier release leaves the entry harmless because earlier releases explicitly
+  request `'skills'` wherever they expect it.
 - The deploy watchdog clears the flag for a rollback and the next start-up of a release with #148 sets it again (see
   `docs/deploy.md`).
 

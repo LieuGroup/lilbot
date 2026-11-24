@@ -119,6 +119,12 @@ export class SessionGrants {
     return grant
   }
 
+  /** Whether a grant still exists, has not been revoked, and has not expired. */
+  isLive(grantId: string): boolean {
+    const grant = this.get(grantId)
+    return Boolean(grant && grant.revokedAt === null && this.now() <= grant.expiresAt)
+  }
+
   /** Constant-time bearer check plus live bot, expiry, and revocation checks. */
   authenticate(grantId: string, authHeader: string, botExists: (botId: string) => boolean): SessionGrant | null {
     const grant = this.get(grantId)

@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 NAME = Path(__file__).resolve().parent.name
 SETTINGS_FILE = "lilbot-memory.json"
 # Keep equal to plugin.yaml. LilBot warns when a bot still calls with an older one.
-VERSION = "0.14.0"
+VERSION = "0.15.0"
 DEFAULT_URL = "http://127.0.0.1:3370"
 DEFAULT_TOKEN_FILE = "~/.local/share/lilbot/engine-token"
 TIMEOUT_SECONDS = 5
@@ -37,9 +37,13 @@ SAVES_FILE = "lilbot-memory-saves.jsonl"
 SAVES_KEPT = 500
 
 HERE = Path(__file__).resolve().parent
-# The memory rules every session gets, and the two memory tools.
+# The memory rules every session gets. Tools moved to LilBot's own System MCP server.
 RULES = (HERE / "rules.md").read_text().rstrip("\n")
-TOOLS = json.loads((HERE / "tools.json").read_text())
+RETIRED_TOOLS = {
+    "search_conversations": "Legacy conversation search plug-in tool is retired. Use the LilBot System MCP tool lilbot_history_search instead.",
+    "recall_memory": "Legacy memory plug-in tools are retired. Use the LilBot System MCP tool lilbot_memory_recall instead.",
+    "update_memory": "Legacy memory plug-in tools are retired. Use the LilBot System MCP tools lilbot_memory_save or lilbot_memory_forget instead.",
+}
 
 
 def _text(content: Any) -> str:
@@ -183,34 +187,11 @@ class LilBotMemoryProvider(MemoryProvider):
         self._chat = str(new_session_id or self._chat)
 
     def get_tool_schemas(self) -> list[dict[str, Any]]:
-        return [{
-            "name": "search_conversations",
-            "description": "Search your past conversations with Oscar (excludes other bots, threads, routine runs). Returns snippets with ids and times.",
-            "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["query"]}
-        }] + list(TOOLS)
+        return []
 
     def handle_tool_call(self, tool_name: str, args: dict[str, Any], **kwargs) -> str:
-        if tool_name == "search_conversations":
-            return json.dumps(self._call("history/search", {"query": str(args.get("query") or ""), "limit": args.get("limit", 20)}))
-        if tool_name == "recall_memory":
-            body = {"query": str(args.get("query") or "")}
-            if args.get("kind"):
-                body["kind"] = args["kind"]
-            if isinstance(args.get("limit"), int):
-                body["limit"] = args["limit"]
-            return json.dumps(self._call("recall", body))
-        if tool_name == "update_memory":
-            action = args.get("action")
-            if action == "write":
-                body = {"kind": args.get("kind") or "profile", "text": str(args.get("fact") or "")}
-                if args.get("scope"):
-                    body["scope"] = args["scope"]
-                if args.get("expires"):
-                    body["expires"] = str(args["expires"])
-                return json.dumps(self._call("write", body))
-            if action == "forget":
-                return json.dumps(self._call("forget", {"id": str(args.get("id") or "")}))
-            return json.dumps({"error": 'action must be "write" or "forget".'})
+        if tool_name in RETIRED_TOOLS:
+            return json.dumps({"error": RETIRED_TOOLS[tool_name]})
         return json.dumps({"error": f"Unknown tool: {tool_name}"})
 
     def get_config_schema(self) -> list[dict[str, Any]]:

@@ -70,8 +70,16 @@ async function verifyLimitedSession(socket: HermesSocket, sessionId: string, acc
     throw new LilBotError('session_mcp_unavailable', 'Limited session tool endpoint failed to attach.')
   }
 
-  const sections: ToolShowSection[] = Array.isArray(shown?.sections) ? shown.sections : []
-  if (!sections.length) throw new LilBotError('session_scope_violation', 'Limited session reported no tool sections.')
+  if (!shown || !Array.isArray(shown.sections)) {
+    throw new LilBotError('session_scope_violation', 'Limited session returned malformed tools.show response.')
+  }
+  const sections: ToolShowSection[] = shown.sections
+  // When a scope allows zero built-in tools (such as 'review' with ['context_engine', 'no_mcp']),
+  // Hermes tools.show runs outside the per-session MCP scope and legitimately returns sections: []
+  // while session.info.enabled_toolsets + assertSessionMcpReady verify the scoped MCP attachment.
+  if (!sections.length && allowedBuiltinTools.size > 0) {
+    throw new LilBotError('session_scope_violation', 'Limited session reported no tool sections.')
+  }
   for (const section of sections) {
     const secName = typeof section?.name === 'string' ? section.name : ''
     const isBuiltin = allowedBuiltins.has(secName)

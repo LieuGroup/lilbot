@@ -106,7 +106,7 @@ are in `AGENTS.md` under "Webhooks"; tunnel ingress is in [cloudflare.md](cloudf
     `memory`; computers, bots, delegation, routines and webhooks live on `lilbot_system`). Hermes freezes a session's
     toolsets. Naming one MCP server leaves the others out. Hermes' `file` toolset
     is read and write together and has no per-session write root, so a narrow run reads with `lilbot_workspace_read`
-    instead. Without `memory` the engine's memory tools and `search_conversations` are gone too. `lilbot_give_file` is
+    instead. Without `memory`, `lilbot_memory_*` and `lilbot_history_search` are withheld too. `lilbot_give_file` is
     in `shell` (a run can only give a file it could write); `lilbot_goal` is refused to every run.
   - LilBot refuses at the call what a run's session may not do (`webhooks/webhook-callers.ts`), because Hermes adds the
     skills plug-in back to any session and LilBot's own server lists every tool (`tools/list` has no
@@ -116,10 +116,11 @@ are in `AGENTS.md` under "Webhooks"; tunnel ingress is in [cloudflare.md](cloudf
     seconds), so a run's identical call cannot get Oscar's refused, nor pass on his start. A call that cannot be placed
     (no start seen, no session named, an unreadable lineage) counts as a webhook run's: it fails closed. A bot that
     never had a webhook run is never held. Every `lilbot_*` tool is in `RUN_TOOLS` or a group (`system/run-access.ts`,
-    tested). The T3 bridge refuses its tools without `coding`; the engine API retires `/engine/computers/*` (410) and
-    refuses `skill_manage` always (the skills handler's own `/write` test) and the routes only older adapters call
-    (`bots/create`, `routines/*`, `threads/*`) without their groups; memory reads and writes and `give_file` need
-    `memory` (the memory block comes back empty).
+    tested). The T3 bridge refuses its tools without `coding`; the engine API retires `/engine/computers/*`,
+    `/engine/memory/{recall,write,forget}`, and `/engine/history/search` (410), refuses `skill_manage` always (the
+    skills handler's own `/write` test) and the routes only older adapters call (`bots/create`, `routines/*`,
+    `threads/*`) without their groups; the per-turn memory block (`/engine/memory/context`) comes back empty without
+    `memory`.
   - A refusal is an ordinary tool result (`{"refused": ...}`), not a tool error: Hermes pauses a whole MCP server for
     about a minute after three tool errors in a row, keyed by the profile's connection, which could reach the bot's
     other conversations.

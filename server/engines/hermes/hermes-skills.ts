@@ -3,6 +3,7 @@ import { cp, mkdir, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { SkillSettings } from '../bot-engine'
+import { applied } from './hermes-applied'
 import { requireProfileEnvironment } from './hermes-environment'
 import { configurePlugin, hermesCli } from './hermes-plugins'
 
@@ -56,6 +57,35 @@ export function userSkillPaths(id: string) {
   walk(root)
   return result
 }
+function readKnownAcpPluginToolsets(home: string): string[] {
+  const configPath = join(home, 'config.yaml')
+  if (!existsSync(configPath)) return []
+  try {
+    const parsed = Bun.YAML.parse(readFileSync(configPath, 'utf8'))
+    const acp = (parsed as { known_plugin_toolsets?: { acp?: unknown } } | null)?.known_plugin_toolsets?.acp
+    return Array.isArray(acp) ? acp.filter((name): name is string => typeof name === 'string' && name.length > 0) : []
+  } catch {
+    return []
+  }
+}
+
+/** Whether the profile's `config.yaml` already marks `'skills'` as a known ACP plugin toolset. */
+export const hasKnownAcpSkillsToolset = (home: string): boolean => readKnownAcpPluginToolsets(home).includes('skills')
+
+/** Reads any existing `known_plugin_toolsets.acp` entries and includes `'skills'` so ACP sessions that omit
+ *  `'skills'` (such as memory reviews) are not auto-enrolled in `lilbot-skills-v1` as an unknown plugin toolset. */
+export const knownAcpPluginToolsets = (home: string): string[] => [...new Set([...readKnownAcpPluginToolsets(home), 'skills'])]
+
+/** Ensures `known_plugin_toolsets.acp` includes `'skills'` before a review session opens (fast-path read in steady state). */
+export async function ensureKnownAcpSkillsToolset(id: string, runCli = hermesCli): Promise<void> {
+  const home = skillHome(id)
+  if (hasKnownAcpSkillsToolset(home)) return
+  await applied(id, null, '', async () => {
+    if (hasKnownAcpSkillsToolset(home)) return
+    await runCli(id, ['config', 'set', 'known_plugin_toolsets.acp', JSON.stringify(knownAcpPluginToolsets(home))])
+  })
+}
+
 export async function configureSkills(id: string, settings: SkillSettings, activate = true) {
   const home = skillHome(id)
   const plugin = 'lilbot-skills-v1'
@@ -65,6 +95,7 @@ export async function configureSkills(id: string, settings: SkillSettings, activ
   // Preserve profile files but suppress their stale user-skill manifest entries. The plugin supplies
   // the authoritative catalog and tools; shipped engine skills still use Hermes' own implementation.
   const values: Record<string, unknown> = {
+    'known_plugin_toolsets.acp': knownAcpPluginToolsets(home),
     'skills.create_dir': settings.root,
     'skills.external_dirs': [settings.root],
     'skills.disabled': [
