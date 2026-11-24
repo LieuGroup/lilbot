@@ -169,31 +169,11 @@ static void LilBotInstallDuoVerticalBarItems(void) {
   if (@available(iOS 27.1, *)) {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-      LilBotAddMethodIfAbsent(
-          NSClassFromString(@"RNSBarButtonItem"),
-          UIBarButtonItem.class,
-          @selector(setIdentifier:),
-          (IMP)LilBotBarButtonSetIdentifier,
-          &sLilBotBarButtonSuperclass);
-      LilBotAddMethodIfAbsent(
-          NSClassFromString(@"RNSScreen"),
-          UIViewController.class,
-          @selector(viewWillLayoutSubviews),
-          (IMP)LilBotScreenViewWillLayoutSubviews,
-          &sLilBotScreenSuperclass);
+      LilBotAddMethodIfAbsent(NSClassFromString(@"RNSBarButtonItem"), UIBarButtonItem.class, @selector(setIdentifier:), (IMP)LilBotBarButtonSetIdentifier, &sLilBotBarButtonSuperclass);
+      LilBotAddMethodIfAbsent(NSClassFromString(@"RNSScreen"), UIViewController.class, @selector(viewWillLayoutSubviews), (IMP)LilBotScreenViewWillLayoutSubviews, &sLilBotScreenSuperclass);
       Class headerSubview = NSClassFromString(@"RNSScreenStackHeaderSubview");
-      LilBotAddMethodIfAbsent(
-          headerSubview,
-          UIView.class,
-          @selector(didMoveToWindow),
-          (IMP)LilBotHeaderSubviewDidMoveToWindow,
-          &sLilBotHeaderSubviewWindowSuperclass);
-      LilBotAddMethodIfAbsent(
-          headerSubview,
-          UIView.class,
-          @selector(didAddSubview:),
-          (IMP)LilBotHeaderSubviewDidAddSubview,
-          &sLilBotHeaderSubviewAddSuperclass);
+      LilBotAddMethodIfAbsent(headerSubview, UIView.class, @selector(didMoveToWindow), (IMP)LilBotHeaderSubviewDidMoveToWindow, &sLilBotHeaderSubviewWindowSuperclass);
+      LilBotAddMethodIfAbsent(headerSubview, UIView.class, @selector(didAddSubview:), (IMP)LilBotHeaderSubviewDidAddSubview, &sLilBotHeaderSubviewAddSuperclass);
     });
   }
 }
