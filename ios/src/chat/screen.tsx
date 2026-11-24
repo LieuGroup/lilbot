@@ -60,7 +60,7 @@ export function ChatScreen({ bot, hideHeader = false, headerLeading }: ChatScree
         </View>
       ) : (
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={keyboardOffset}>
-          <MessageList key={bot.id} botId={bot.id} botName={bot.name} chat={chat.view} emptyHint={chat.ready ? `Message ${bot.name}` : 'Opening the conversation…'} />
+          <MessageList key={bot.id} botId={bot.id} botName={bot.name} chat={chat.view} emptyHint={chat.ready ? '' : 'Opening the conversation…'} />
           <Composer botId={bot.id} botName={bot.name} ready={chat.ready} running={chat.view.running} model={modelPicker.pill} bottomInset={insets.bottom} onSend={send} onStop={() => void chat.stop()} />
         </KeyboardAvoidingView>
       )}

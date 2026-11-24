@@ -1,21 +1,25 @@
 /** Compact Chat pushed as the second native Stack screen inside the Bots tab.
  *  - Standard iPhone (`phone`): hides the Back button at rest (`headerBackVisible: false`) so UIKit's native
- *    left-edge swipe back (`gestureEnabled: true`) replaces it, restoring Back for VoiceOver and letting
- *    UIKit handle Assistive Access natively.
- *  - Folded Duo (`duo-folded`): keeps `headerBackVisible: true` so UIKit places native Back in the 84 pt rail.
- *  - Native `headerTitle` renders the bot avatar, name, and live "Working" label (matching main).
- *  - Unfolding pops through this stack's own navigator only while focused, resetting its pop guard if layout flips back. */
+ *    left-edge swipe back (`gestureEnabled: true`) replaces it, restoring Back for VoiceOver.
+ *  - Folded Duo (`duo-folded`, iOS 27.1+ vertical bar active): removes the horizontal Chat header completely
+ *    so the conversation uses the full vertical height, placing the bot avatar (with working ring / unread dot)
+ *    and native Back in the 84 pt vertical strip.
+ *  - Unfolded Portrait (`duo-unfolded-portrait`), ordinary iPhone, and iOS < 27.1 keep `ChatHeaderTitle`. */
 import { Stack, useFocusEffect, useIsFocused, useLocalSearchParams, useNavigation } from 'expo-router'
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View } from 'react-native'
 import type { Bot } from '../../../../../shared/bot-schema'
 import { useBotStore } from '../../../bots/store'
 import { ChatScreen } from '../../../chat/screen'
 import { useChatStore } from '../../../chat/store'
+import { startNewChat } from '../../../chat/use-chat'
+import { DuoBotSheet } from '../../../duo/bot-sheet'
 import { computeShellLayout } from '../../../duo/layout'
 import { useBotSelection } from '../../../duo/selection'
 import { chatStackAction, shouldClearSelectionOnChatPop, shouldShowNativeBack } from '../../../duo/stack-sync'
-import { useLiveSurface, useScreenReaderEnabled } from '../../../duo/use-surface'
+import { DuoStripAvatar } from '../../../duo/strip-avatar'
+import { useLiveSurface, useScreenReaderEnabled, useVerticalBarEdge } from '../../../duo/use-surface'
+import { buildDuoVerticalBarItems, duoVerticalHeaderOptions, resolveDuoStripScreen, shouldHideDuoChatHeader } from '../../../duo/vertical-bar'
 import { BotAvatar } from '../../../ui/avatar'
 import { AppText } from '../../../ui/text'
 import { useTheme } from '../../../ui/theme'
@@ -26,6 +30,7 @@ export default function CompactChatRoute() {
   const isFocused = useIsFocused()
   const params = useLocalSearchParams<{ botId?: string }>()
   const { surface, metrics } = useLiveSurface()
+  const verticalBarEdge = useVerticalBarEdge()
   const screenReaderEnabled = useScreenReaderEnabled()
   const bots = useBotStore(state => state.bots)
   const selectedId = useBotSelection(state => state.selectedId)
@@ -34,10 +39,14 @@ export default function CompactChatRoute() {
   const focusChat = useBotSelection(state => state.focusChat)
   const blurChat = useBotSelection(state => state.blurChat)
   const clearIfSelected = useBotSelection(state => state.clearIfSelected)
+  const [sheetOpen, setSheetOpen] = useState(false)
 
   const botId = (typeof params.botId === 'string' && params.botId) || selectedId || ''
   const bot = bots.find(candidate => candidate.id === botId) ?? null
-  const running = useChatStore(state => (botId ? (state.slots[botId]?.view.running ?? false) : false))
+  const slotRunning = useChatStore(state => (botId ? (state.slots[botId]?.view.running ?? false) : false))
+  const slotReady = useChatStore(state => (botId ? (state.slots[botId]?.ready ?? false) : false))
+  const running = Boolean(slotRunning || bot?.activity?.status === 'working')
+  const unread = Boolean(bot?.activity?.unread)
   const layout = computeShellLayout(surface, metrics)
 
   const splitModeRef = useRef(layout.splitMode)
@@ -59,7 +68,10 @@ export default function CompactChatRoute() {
   useFocusEffect(
     useCallback(() => {
       focusChat()
-      return () => blurChat()
+      return () => {
+        blurChat()
+        setSheetOpen(false)
+      }
     }, [blurChat, focusChat])
   )
 
@@ -76,23 +88,55 @@ export default function CompactChatRoute() {
     }
   }, [bot, bots.length, isFocused, layout.splitMode, navigation])
 
+  const openSheet = useCallback(() => setSheetOpen(true), [])
+  const closeSheet = useCallback(() => setSheetOpen(false), [])
+  const handleNewSession = useCallback(() => {
+    if (botId) void startNewChat(botId)
+  }, [botId])
+
   const backVisible = shouldShowNativeBack(surface, screenReaderEnabled)
+  const hideDuoHeader = shouldHideDuoChatHeader({ surface, verticalBarEdge, hasBot: bot !== null })
+  const stripScreen = resolveDuoStripScreen({ surface, chatFocused: true })
+  const verticalBarItems = useMemo(
+    () =>
+      hideDuoHeader && bot
+        ? buildDuoVerticalBarItems({
+            screen: stripScreen,
+            actions: {
+              'bot-avatar': { element: <DuoStripAvatar bot={bot} running={running} unread={unread} onPress={openSheet} />, hidesSharedBackground: false },
+              'bot-menu': { label: `More for ${bot.name}`, onPress: openSheet }
+            },
+            tintColor: theme.foreground
+          })
+        : [],
+    [bot, hideDuoHeader, openSheet, running, stripScreen, theme.foreground, unread]
+  )
+
+  const screenOptions = useMemo(() => {
+    if (hideDuoHeader && verticalBarItems.length > 0) {
+      return {
+        ...duoVerticalHeaderOptions(verticalBarItems, theme.foreground, { backVisible }),
+        gestureEnabled: true
+      }
+    }
+    return {
+      headerShown: true,
+      title: bot?.name ?? 'Chat',
+      headerTitle: bot ? () => <ChatHeaderTitle bot={bot} running={running} /> : undefined,
+      gestureEnabled: true,
+      headerBackVisible: backVisible,
+      headerBackButtonDisplayMode: 'minimal' as const,
+      headerTransparent: false,
+      headerShadowVisible: false,
+      headerStyle: { backgroundColor: theme.background },
+      headerTintColor: theme.foreground,
+      unstable_headerRightItems: undefined
+    }
+  }, [backVisible, bot, hideDuoHeader, running, theme.background, theme.foreground, verticalBarItems])
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: bot?.name ?? 'Chat',
-          headerTitle: bot ? () => <ChatHeaderTitle bot={bot} running={running} /> : undefined,
-          gestureEnabled: true,
-          headerBackVisible: backVisible,
-          headerBackButtonDisplayMode: 'minimal',
-          headerShadowVisible: false,
-          headerStyle: { backgroundColor: theme.background },
-          headerTintColor: theme.foreground
-        }}
-      />
+      <Stack.Screen options={screenOptions} />
       <View
         style={{
           flex: 1,
@@ -103,6 +147,7 @@ export default function CompactChatRoute() {
       >
         {bot ? <ChatScreen bot={bot} hideHeader /> : null}
       </View>
+      <DuoBotSheet bot={bot} visible={sheetOpen} running={running} canStartNewSession={slotReady} onClose={closeSheet} onNewSession={handleNewSession} />
     </>
   )
 }

@@ -58,9 +58,11 @@ export function MessageList({ botId, botName, chat, emptyHint }: MessageListProp
       scrollEventThrottle={100}
       contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 20, gap: 18, flexGrow: 1, justifyContent: rows.length === 0 ? 'center' : 'flex-end' }}
       ListEmptyComponent={
-        <AppText variant="chat" color={theme.mutedForeground} style={{ textAlign: 'center' }}>
-          {emptyHint}
-        </AppText>
+        emptyHint ? (
+          <AppText variant="chat" color={theme.mutedForeground} style={{ textAlign: 'center' }}>
+            {emptyHint}
+          </AppText>
+        ) : undefined
       }
       ListFooterComponent={
         activity ? (
