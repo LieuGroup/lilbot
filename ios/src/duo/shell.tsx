@@ -1,20 +1,20 @@
 /** Adaptive iPhone / iPhone Duo Bots root screen inside Expo Router's native Stack & NativeTabs.
  *  Compact surfaces show Roster and push `/chat`; split surfaces show Roster + Chat side by side.
- *  On iOS 27.1+ Duo Unfolded Landscape, hides ChatScreen's header and puts bot avatar + controls in the 84 pt strip. */
+ *  On iOS 27.1+ Duo, places Roster/Chat strip controls (and unfolded Chat's tappable bot avatar) in the 84 pt strip. */
 import { Stack, useFocusEffect, useIsFocused, useRouter } from 'expo-router'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { Bot } from '../../../shared/bot-schema'
+import { useBotMenuStore } from '../bots/menu-store'
 import { Roster } from '../bots/roster'
 import { useBotStore } from '../bots/store'
 import { ChatScreen } from '../chat/screen'
 import { useChatStore } from '../chat/store'
-import { startNewChat } from '../chat/use-chat'
+import { useConnectionStore } from '../connection/store'
 import { CloseIcon, SidebarToggleIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
-import { DuoBotSheet } from './bot-sheet'
 import { computeShellLayout, nextSidebarState } from './layout'
 import { useBotSelection } from './selection'
 import { indexStackAction, shouldPushOnBotSelect } from './stack-sync'
@@ -35,6 +35,11 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
   const verticalBarEdge = useVerticalBarEdge()
   const bots = useBotStore(state => state.bots)
   const sections = useBotStore(state => state.sections)
+  const loaded = useBotStore(state => state.loaded)
+  const error = useBotStore(state => state.error)
+  const connected = useConnectionStore(state => state.connected)
+  const openMenu = useBotMenuStore(state => state.openMenu)
+  const openNewBot = useBotMenuStore(state => state.openNewBot)
   const selectedId = useBotSelection(state => state.selectedId)
   const pendingInitialPush = useBotSelection(state => state.pendingInitialPush)
   const select = useBotSelection(state => state.select)
@@ -42,11 +47,10 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
   const autoSelectOnce = useBotSelection(state => state.autoSelectOnce)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [inspectorOpen, setInspectorOpen] = useState(false)
-  const [sheetOpen, setSheetOpen] = useState(false)
+  const [searchToggleToken, setSearchToggleToken] = useState(0)
 
   const selected = bots.find(bot => bot.id === selectedId) ?? null
   const selectedSlotRunning = useChatStore(state => (selected ? (state.slots[selected.id]?.view.running ?? false) : false))
-  const selectedSlotReady = useChatStore(state => (selected ? (state.slots[selected.id]?.ready ?? false) : false))
   const selectedRunning = Boolean(selectedSlotRunning || selected?.activity?.status === 'working')
   const selectedUnread = Boolean(selected?.activity?.unread)
   const layout = computeShellLayout(surface, metrics, { inspectorOpen: inspectorOpen && !!renderInspector, sidebarOpen })
@@ -56,7 +60,6 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
   useFocusEffect(
     useCallback(() => {
       pushPendingRef.current = false
-      return () => setSheetOpen(false)
     }, [])
   )
 
@@ -105,11 +108,10 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
     setInspectorOpen(next.inspectorOpen)
   }, [sidebarOpen, inspectorOpen])
 
-  const openSheet = useCallback(() => setSheetOpen(true), [])
-  const closeSheet = useCallback(() => setSheetOpen(false), [])
-  const handleNewSession = useCallback(() => {
-    if (selected) void startNewChat(selected.id)
-  }, [selected])
+  const toggleSearch = useCallback(() => setSearchToggleToken(n => n + 1), [])
+  const openSelectedMenu = useCallback(() => {
+    if (selected) openMenu(selected.id)
+  }, [openMenu, selected])
 
   const showRoster = !layout.splitMode || layout.rosterWidth > 0
   const verticalBarActive = isDuoVerticalBarActive({ surface, verticalBarEdge })
@@ -117,21 +119,23 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
   const stripScreen = resolveDuoStripScreen({ surface, chatFocused: false })
   const sidebarLabel = showRoster ? 'Hide bots sidebar' : 'Show bots sidebar'
   const verticalBarItems = useMemo(() => {
-    if (!verticalBarActive || !layout.splitMode) return []
+    if (!verticalBarActive) return []
     return buildDuoVerticalBarItems({
       screen: stripScreen,
       actions: {
-        ...(selected
+        ...(layout.splitMode && selected
           ? {
-              'bot-avatar': { element: <DuoStripAvatar bot={selected} running={selectedRunning} unread={selectedUnread} onPress={openSheet} />, hidesSharedBackground: false },
-              'bot-menu': { label: `More for ${selected.name}`, onPress: openSheet }
+              'bot-avatar': { element: <DuoStripAvatar bot={selected} running={selectedRunning} unread={selectedUnread} onPress={openSelectedMenu} />, hidesSharedBackground: false },
+              'bot-menu': { label: `More for ${selected.name}`, onPress: openSelectedMenu }
             }
           : {}),
-        ...(layout.showSidebarToggle ? { 'sidebar-toggle': { label: sidebarLabel, onPress: handleToggleSidebar } } : {})
+        ...(layout.showSidebarToggle ? { 'sidebar-toggle': { label: sidebarLabel, onPress: handleToggleSidebar } } : {}),
+        ...(layout.splitMode ? { 'new-bot': { onPress: openNewBot } } : {}),
+        ...(showRoster ? { 'search-bots': { onPress: toggleSearch } } : {})
       },
       tintColor: theme.foreground
     })
-  }, [handleToggleSidebar, layout.showSidebarToggle, layout.splitMode, openSheet, selected, selectedRunning, selectedUnread, sidebarLabel, stripScreen, theme.foreground, verticalBarActive])
+  }, [handleToggleSidebar, layout.showSidebarToggle, layout.splitMode, openNewBot, openSelectedMenu, selected, selectedRunning, selectedUnread, showRoster, sidebarLabel, stripScreen, theme.foreground, toggleSearch, verticalBarActive])
 
   const useNativeStripHeader = verticalBarActive && verticalBarItems.length > 0
   const stackOptions = useMemo(() => duoVerticalHeaderOptions(verticalBarItems, theme.foreground), [theme.foreground, verticalBarItems])
@@ -150,12 +154,12 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
       <Stack.Screen options={stackOptions} />
       <View style={{ flex: 1, flexDirection: 'row', backgroundColor: theme.background, paddingTop: useNativeStripHeader ? 0 : insets.top, paddingLeft: layout.horizontalPadding.left, paddingRight: layout.horizontalPadding.right }}>
         <View key="roster-pane" style={rosterStyle}>
-          <Roster bots={bots} sections={sections} selectedId={layout.splitMode ? (selected?.id ?? null) : null} onSelect={handleSelectBot} />
+          <Roster bots={bots} sections={sections} loaded={loaded} connected={connected} error={error} selectedId={layout.splitMode ? (selected?.id ?? null) : null} compactCardSurface={layout.splitMode || layout.hasSideStrip} splitMode={layout.splitMode} hideInlineSearch={verticalBarActive} hideInlineNewBot={verticalBarActive && layout.splitMode} searchToggleToken={searchToggleToken} onSelect={handleSelectBot} />
         </View>
         {layout.splitMode && (
           <View key="chat-pane" style={{ flex: 1 }}>
             {selected ? (
-              <ChatScreen bot={selected} hideHeader={hideDuoChatHeader} headerLeading={sidebarToggle} />
+              <ChatScreen bot={selected} hideHeader={hideDuoChatHeader} headerLeading={sidebarToggle} showNewSession={surface === 'pad'} />
             ) : (
               <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                 <AppText variant="chat" color={theme.mutedForeground}>
@@ -176,7 +180,6 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
           </View>
         )}
       </View>
-      <DuoBotSheet bot={selected} visible={sheetOpen} running={selectedRunning} canStartNewSession={selectedSlotReady} onClose={closeSheet} onNewSession={handleNewSession} />
     </>
   )
 }

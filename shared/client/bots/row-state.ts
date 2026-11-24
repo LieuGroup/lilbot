@@ -1,5 +1,5 @@
 /** What a roster row says about its bot, from the live activity the server sends. Pure. */
-import type { Bot } from '../../../shared/bot-schema'
+import type { Bot } from '../../bot-schema'
 
 export type RowTone = 'working' | 'waiting' | 'finished' | 'failed' | 'idle'
 

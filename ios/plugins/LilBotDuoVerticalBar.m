@@ -16,7 +16,8 @@ static NSString *const kLilBotDuoVerticalPrefix = @"lilbot.duo.vertical.";
 static const NSUInteger kLilBotMaxViewSearchNodes = 24;
 static Class sLilBotBarButtonSuperclass = Nil;
 static Class sLilBotScreenSuperclass = Nil;
-static Class sLilBotHeaderSubviewSuperclass = Nil;
+static Class sLilBotHeaderSubviewWindowSuperclass = Nil;
+static Class sLilBotHeaderSubviewAddSuperclass = Nil;
 
 static BOOL LilBotViewSubtreeHasVerticalPrefix(UIView *root) {
   if (root == nil) return NO;
@@ -70,6 +71,33 @@ static void LilBotSyncNavigationItem(UINavigationItem *navItem) {
   }
 }
 
+static void LilBotSyncHeaderSubview(UIView *view) {
+  if (view == nil || view.window == nil || !LilBotViewSubtreeHasVerticalPrefix(view)) return;
+  UIResponder *responder = view.nextResponder;
+  NSUInteger hops = 0;
+  while (responder != nil && hops < 32) {
+    if ([responder isKindOfClass:UINavigationController.class]) {
+      LilBotSyncNavigationItem(((UINavigationController *)responder).topViewController.navigationItem);
+      return;
+    }
+    if ([responder isKindOfClass:UIViewController.class]) {
+      LilBotSyncNavigationItem(((UIViewController *)responder).navigationItem);
+      return;
+    }
+    responder = responder.nextResponder;
+    hops++;
+  }
+}
+
+static void LilBotScheduleHeaderSubviewSync(UIView *view) {
+  if (view == nil) return;
+  LilBotSyncHeaderSubview(view);
+  __weak UIView *weakView = view;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    LilBotSyncHeaderSubview(weakView);
+  });
+}
+
 static void LilBotBarButtonSetIdentifier(UIBarButtonItem *self, SEL _cmd, NSString *identifier) {
   if (sLilBotBarButtonSuperclass != Nil) {
     struct objc_super superInfo = { .receiver = self, .super_class = sLilBotBarButtonSuperclass };
@@ -91,25 +119,21 @@ static void LilBotScreenViewWillLayoutSubviews(UIViewController *self, SEL _cmd)
 }
 
 static void LilBotHeaderSubviewDidMoveToWindow(UIView *self, SEL _cmd) {
-  if (sLilBotHeaderSubviewSuperclass != Nil) {
-    struct objc_super superInfo = { .receiver = self, .super_class = sLilBotHeaderSubviewSuperclass };
+  if (sLilBotHeaderSubviewWindowSuperclass != Nil) {
+    struct objc_super superInfo = { .receiver = self, .super_class = sLilBotHeaderSubviewWindowSuperclass };
     ((void (*)(struct objc_super *, SEL))objc_msgSendSuper)(&superInfo, _cmd);
   }
-  if (self.window == nil || !LilBotViewSubtreeHasVerticalPrefix(self)) return;
-  UIResponder *responder = self.nextResponder;
-  NSUInteger hops = 0;
-  while (responder != nil && hops < 32) {
-    if ([responder isKindOfClass:UINavigationController.class]) {
-      LilBotSyncNavigationItem(((UINavigationController *)responder).topViewController.navigationItem);
-      return;
-    }
-    if ([responder isKindOfClass:UIViewController.class]) {
-      LilBotSyncNavigationItem(((UIViewController *)responder).navigationItem);
-      return;
-    }
-    responder = responder.nextResponder;
-    hops++;
+  if (self.window != nil) {
+    LilBotScheduleHeaderSubviewSync(self);
   }
+}
+
+static void LilBotHeaderSubviewDidAddSubview(UIView *self, SEL _cmd, UIView *subview) {
+  if (sLilBotHeaderSubviewAddSuperclass != Nil) {
+    struct objc_super superInfo = { .receiver = self, .super_class = sLilBotHeaderSubviewAddSuperclass };
+    ((void (*)(struct objc_super *, SEL, UIView *))objc_msgSendSuper)(&superInfo, _cmd, subview);
+  }
+  LilBotScheduleHeaderSubviewSync(self);
 }
 
 static void LilBotAddMethodIfAbsent(Class cls, Class requiredBase, SEL selector, IMP imp, Class *outSuper) {
@@ -141,12 +165,19 @@ static void LilBotInstallDuoVerticalBarItems(void) {
           @selector(viewWillLayoutSubviews),
           (IMP)LilBotScreenViewWillLayoutSubviews,
           &sLilBotScreenSuperclass);
+      Class headerSubview = NSClassFromString(@"RNSScreenStackHeaderSubview");
       LilBotAddMethodIfAbsent(
-          NSClassFromString(@"RNSScreenStackHeaderSubview"),
+          headerSubview,
           UIView.class,
           @selector(didMoveToWindow),
           (IMP)LilBotHeaderSubviewDidMoveToWindow,
-          &sLilBotHeaderSubviewSuperclass);
+          &sLilBotHeaderSubviewWindowSuperclass);
+      LilBotAddMethodIfAbsent(
+          headerSubview,
+          UIView.class,
+          @selector(didAddSubview:),
+          (IMP)LilBotHeaderSubviewDidAddSubview,
+          &sLilBotHeaderSubviewAddSuperclass);
     });
   }
 }

@@ -31,6 +31,14 @@ function Shape({ shape, color }: ShapeProps & { shape: Avatar['shape'] }): React
   }
 }
 
+export function AvatarShapeIcon({ shape, color, size = 22 }: { shape: Avatar['shape']; color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 64 64">
+      <Shape shape={shape} color={color} />
+    </Svg>
+  )
+}
+
 export function BotAvatar({ name, avatar, size = 36 }: { name: string; avatar: Avatar; size?: number }) {
   const { cy, scale, r, dx, tab } = AVATAR_METRICS[avatar.shape]
   const cover = avatarColors[avatar.color]

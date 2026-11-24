@@ -5,11 +5,11 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/ui/dial
 import { Notice } from '@/ui/notice'
 import type { BotDeleteDefaults } from '../../../shared/bot-delete-schema'
 import type { Bot } from '../../../shared/bot-schema'
+import { deleteSummary } from '../../../shared/client/bots/delete-copy'
 import { lilbot, messageOf } from '../app/lilbot-socket'
 import { openSettings } from '../settings/settings-store'
 import { deleteBot } from './bot-actions'
 import { DeleteChoices, LOADING_CHOICES } from './delete-choices'
-import { deleteSummary } from './delete-copy'
 import { useOpenBotId } from './details-tabs'
 
 const footButton = 'h-8 rounded-lg px-3 text-[13px]/[18px] font-medium'

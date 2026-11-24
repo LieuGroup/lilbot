@@ -3,7 +3,7 @@ import { LoaderCircleIcon, StarIcon } from 'lucide-react'
 
 import { BotBadge } from '@/ui/bot-badge'
 import type { Bot } from '../../../shared/bot-schema'
-import { rowState } from './row-state'
+import { rowState } from '../../../shared/client/bots/row-state'
 
 const sizes = {
   tile: { avatar: 52, dot: 'top-0 right-0.5 size-3', badge: '-right-[3px] -bottom-[3px] size-[18px]', icon: 'size-3' },

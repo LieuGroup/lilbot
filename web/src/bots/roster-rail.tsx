@@ -7,6 +7,7 @@ import { iconButton } from '@/ui/icon-button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/ui/tooltip'
 import type { Bot } from '../../../shared/bot-schema'
 import { railGroups, rosterGroups } from '../../../shared/client/bots/roster-groups'
+import { rowState } from '../../../shared/client/bots/row-state'
 import { loadSettings, openSettings } from '../settings/settings-store'
 import { WorkRailSlot } from '../work/work-rail-slot'
 import { AvatarMarks, botLabel } from './avatar-marks'
@@ -16,7 +17,6 @@ import { useBotStore } from './bot-store'
 import { type DetailsTab, useDetailsTab, useOpenBotId } from './details-tabs'
 import { RosterOverlays } from './roster-overlays'
 import { setCollapsed, useRosterView } from './roster-view'
-import { rowState } from './row-state'
 
 const RailGroups = lazy(() => import('../threads/working-together').then(module => ({ default: module.RailGroups })))
 

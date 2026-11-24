@@ -3,6 +3,10 @@
 import type { ConfigContext, ExpoConfig } from 'expo/config'
 import { withXcodeProject } from 'expo/config-plugins'
 
+/** Workaround for software-mansion/react-native-screens#4145 (nested Stack inside NativeTabs on iOS 26).
+ *  Flip to `false` to omit the native file completely from prebuild; delete once upstream resolves #4145. */
+export const ENABLE_NESTED_TAB_SCROLL_MINIMIZE = true
+
 /** Enables iOS 27.1+ `UIBarButtonItemAxisBehaviorVerticalPreferred` for Duo side-strip bar items.
  *  Flip to `false` to omit the native file completely from prebuild; delete once `react-native-screens`
  *  exposes `axisBehavior` natively. */
@@ -48,9 +52,13 @@ function withReleaseSigning(config: ExpoConfig, bundleId: string): ExpoConfig {
   })
 }
 
-export function buildAppConfig({ config }: ConfigContext, options: { enableDuoVerticalBar?: boolean } = {}): ExpoConfig {
+export function buildAppConfig(
+  { config }: ConfigContext,
+  options: { enableTabScrollMinimize?: boolean; enableDuoVerticalBar?: boolean } = {}
+): ExpoConfig {
   const variant = variantName()
   const chosen = VARIANTS[variant]
+  const enableScrollMinimize = options.enableTabScrollMinimize ?? ENABLE_NESTED_TAB_SCROLL_MINIMIZE
   const enableDuoVerticalBar = options.enableDuoVerticalBar ?? ENABLE_DUO_VERTICAL_BAR_ITEMS
   const base: ExpoConfig = {
     ...config,
@@ -74,6 +82,7 @@ export function buildAppConfig({ config }: ConfigContext, options: { enableDuoVe
       'expo-router',
       'expo-secure-store',
       ['expo-splash-screen', { image: './assets/images/splash-icon.png', resizeMode: 'contain', backgroundColor: '#f6f6f4' }],
+      ...(enableScrollMinimize ? ['./plugins/with-tab-scroll-minimize'] : []),
       ...(enableDuoVerticalBar ? ['./plugins/with-duo-vertical-bar'] : [])
     ],
     experiments: { typedRoutes: true }
