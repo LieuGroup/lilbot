@@ -13,6 +13,7 @@ export function SettingsScreen({ onDone }: { onDone?: () => void }) {
   const settings = useConnectionStore(state => state.settings)
   const connected = useConnectionStore(state => state.connected)
   const device = useConnectionStore(state => state.device)
+  const tokenNotice = useConnectionStore(state => state.tokenNotice)
   const save = useConnectionStore(state => state.save)
   const [serverUrl, setServerUrl] = useState(settings?.serverUrl ?? '')
   const [accessToken, setAccessToken] = useState(settings?.accessToken ?? '')
@@ -50,7 +51,7 @@ export function SettingsScreen({ onDone }: { onDone?: () => void }) {
   } as const
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: theme.background }} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ padding: 20, gap: 16 }}>
+    <ScrollView style={{ flex: 1, backgroundColor: theme.background }} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, gap: 16 }}>
       <AppText variant="title">Settings</AppText>
 
       <View style={{ gap: 6 }}>
@@ -70,15 +71,15 @@ export function SettingsScreen({ onDone }: { onDone?: () => void }) {
         </AppText>
       </View>
 
-      <Pressable onPress={() => void submit()} disabled={saving || !serverUrl.trim()} style={{ backgroundColor: serverUrl.trim() ? theme.primary : theme.muted, borderRadius: radius.md, paddingVertical: 12, alignItems: 'center' }}>
-        <AppText variant="name" color={serverUrl.trim() ? theme.primaryForeground : theme.mutedForeground}>
+      <Pressable onPress={() => void submit()} disabled={saving || !serverUrl.trim()} style={{ backgroundColor: serverUrl.trim() ? theme.foreground : theme.muted, borderRadius: radius.md, paddingVertical: 12, alignItems: 'center' }}>
+        <AppText variant="name" color={serverUrl.trim() ? theme.background : theme.mutedForeground}>
           {saving ? 'Saving…' : 'Save and connect'}
         </AppText>
       </Pressable>
 
-      {error ? (
+      {error || tokenNotice ? (
         <AppText variant="meta" color={theme.destructive}>
-          {error}
+          {error || tokenNotice}
         </AppText>
       ) : null}
 
@@ -91,7 +92,7 @@ export function SettingsScreen({ onDone }: { onDone?: () => void }) {
 
       {settings && onDone && (
         <Pressable onPress={onDone} style={{ marginTop: 8 }}>
-          <AppText variant="name" color={theme.primary}>
+          <AppText variant="name" color={theme.foreground}>
             Back
           </AppText>
         </Pressable>
