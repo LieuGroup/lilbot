@@ -97,3 +97,7 @@ export const SESSION_GRANT_TABLES = `CREATE TABLE IF NOT EXISTS session_grants(i
    CREATE TABLE IF NOT EXISTS session_grant_chats(chat_id TEXT PRIMARY KEY, grant_id TEXT NOT NULL REFERENCES session_grants(id),
      bot_id TEXT NOT NULL, created_at INTEGER NOT NULL);
    CREATE INDEX IF NOT EXISTS session_grant_chats_grant ON session_grant_chats(grant_id);`
+
+/** Schema step 42: one small preview row per bot, written in the same transaction as qualifying live events
+ *  and backfilled once from `history_items` for bots without a row. Repeatable. */
+export const HISTORY_PREVIEW_TABLE = `CREATE TABLE IF NOT EXISTS history_previews(bot TEXT PRIMARY KEY, who TEXT NOT NULL CHECK(who IN ('user', 'bot')), text TEXT NOT NULL, at INTEGER NOT NULL, session TEXT NOT NULL, last_turn_id TEXT);`

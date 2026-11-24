@@ -50,6 +50,7 @@ export function excludeSession(db: Database, bot: string, session: string, reaso
       db.query('DELETE FROM history_items WHERE bot=? AND session=?').run(bot, session)
       db.query('DELETE FROM history_events WHERE bot=? AND session=?').run(bot, session)
       db.query('DELETE FROM history_sessions WHERE bot=? AND id=?').run(bot, session)
+      db.query('DELETE FROM history_previews WHERE bot=? AND session=?').run(bot, session)
       db.query('DELETE FROM history_turn_usage WHERE bot_id=? AND session_id=?').run(bot, session)
       db.query('DELETE FROM history_compactions WHERE bot_id=? AND session_id=?').run(bot, session)
       // The first remaining session starts the conversation and carries no divider.

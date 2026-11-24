@@ -107,6 +107,7 @@ export async function startConformanceApp(options: ConformanceAppOptions = {}) {
     }
   })
 
+  let botsChanged = 0
   const engine = options.engine instanceof ScriptedEngine ? options.engine : new ScriptedEngine(options)
   const runtimeEngine = options.engine ?? engine
   services = createAppServices(runtimeEngine, {
@@ -118,7 +119,7 @@ export async function startConformanceApp(options: ConformanceAppOptions = {}) {
     HOOK_ORIGIN: 'https://hooks.example.test',
     ACCESS_HOST: undefined,
     publish: () => {},
-    botsChanged: () => {}
+    botsChanged: () => void botsChanged++
   })
 
   const tickIntervals = async () => {
@@ -138,7 +139,7 @@ export async function startConformanceApp(options: ConformanceAppOptions = {}) {
     else process.env.LILBOT_SKILLS_DIR = prevSkills
   }
 
-  return { engine, services, dir, dataDir, workspacesDir, skillsDir, port: server.port!, tickIntervals, close }
+  return { engine, services, dir, dataDir, workspacesDir, skillsDir, port: server.port!, botsChangedCount: () => botsChanged, tickIntervals, close }
 }
 
 export async function waitFor(check: () => boolean | Promise<boolean>, timeoutMs = 4000) {

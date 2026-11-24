@@ -45,6 +45,19 @@ interface Rule {
 }
 const matches = (pattern: RegExp, reason: string): Rule => ({ test: text => pattern.test(text), reason })
 
+const EXTRA_SECRET = /\bgithub_pat_[A-Za-z0-9_]{20,}|\bAIza[0-9A-Za-z_-]{35}\b|\bBearer\s+[A-Za-z0-9._~+/-]{20,}=*|:\/\/[^/\s:@]+:[^/\s@]+@/
+
+const secretRules: Rule[] = [
+  matches(/-----BEGIN [A-Z ]*PRIVATE KEY-----/, 'it contains a private key'),
+  matches(/\b(sk|pk|rk)-[A-Za-z0-9_-]{20,}|\bAKIA[0-9A-Z]{16}\b|\bgh[pousr]_[A-Za-z0-9]{30,}|\bxox[abprs]-[A-Za-z0-9-]{10,}/, 'it contains what looks like an access key or token'),
+  { test: hasJwt, reason: 'it contains what looks like an access key or token' },
+  { test: hasCredential, reason: 'it contains what looks like a password or key' },
+  matches(new RegExp(WEBHOOK_ADDRESS.source, 'i'), 'it contains a webhook address')
+]
+
+/** Whether `text` contains a credential, token, private key, JWT, or webhook address. */
+export const hasSecret = (text: string): boolean => secretRules.some(rule => rule.test(text)) || EXTRA_SECRET.test(text)
+
 const rules: Rule[] = [
   // Text addressed to the model instead of describing the user or the work.
   matches(
@@ -55,11 +68,7 @@ const rules: Rule[] = [
   matches(/\byou are now\b|\bfrom now on you (are|must|will)\b|\bact as (an?|the) (unrestricted|jailbroken|different)\b/i, 'it tries to redefine who you are'),
   matches(/\bdo not (tell|inform|mention|reveal)[^.\n]{0,30}\b(user|owner|oscar)\b/i, 'it asks to hide something from the user'),
   // Secrets.
-  matches(/-----BEGIN [A-Z ]*PRIVATE KEY-----/, 'it contains a private key'),
-  matches(/\b(sk|pk|rk)-[A-Za-z0-9_-]{20,}|\bAKIA[0-9A-Z]{16}\b|\bgh[pousr]_[A-Za-z0-9]{30,}|\bxox[abprs]-[A-Za-z0-9-]{10,}/, 'it contains what looks like an access key or token'),
-  { test: hasJwt, reason: 'it contains what looks like an access key or token' },
-  { test: hasCredential, reason: 'it contains what looks like a password or key' },
-  matches(new RegExp(WEBHOOK_ADDRESS.source, 'i'), 'it contains a webhook address'),
+  ...secretRules,
   // Sending data out, or running fetched code.
   matches(/\b(curl|wget)\b[^\n]{0,80}\|\s*(ba|z)?sh\b/i, 'it contains a command that runs downloaded code'),
   // Characters that hide or reorder text (zero-width, bidi controls and isolates, the byte-order mark, stray tags, DEL, C1 controls, variation selectors 17 and up).
