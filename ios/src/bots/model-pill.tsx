@@ -75,7 +75,7 @@ export function useModelPicker(bot: Bot): { pill: ReactNode; menu: ReactNode } {
         setNote(null)
         setOpen(true)
       }}
-      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 4, height: 28, maxWidth: 260, paddingHorizontal: 10, borderRadius: 14, opacity: pressed ? 0.7 : 1 })}
+      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 28, maxWidth: '100%', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 14, flexShrink: 1, opacity: pressed ? 0.7 : 1 })}
     >
       {saving ? <ActivityIndicator size="small" color={ink} /> : null}
       <AppText variant="preview" numberOfLines={1} color={ink} style={{ flexShrink: 1 }}>

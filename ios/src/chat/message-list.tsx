@@ -179,8 +179,7 @@ export function Composer({ botId, botName, ready, running, model, bottomInset = 
           style={{ maxHeight: 132, paddingHorizontal: 0, paddingVertical: 0, fontFamily: 'Inter_400Regular', ...chatScale.composerInput, color: theme.foreground }}
         />
         <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: btnSize, marginTop: 8, gap: 8 }}>
-          {model}
-          <View style={{ flex: 1 }} />
+          <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-start' }}>{model}</View>
           {stopping ? (
             <Pressable onPress={onStop} accessibilityLabel="Stop" style={{ width: btnSize, height: btnSize, borderRadius: btnSize / 2, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.foreground }}>
               <View style={{ width: 12, height: 12, borderRadius: 2.5, backgroundColor: theme.card }} />

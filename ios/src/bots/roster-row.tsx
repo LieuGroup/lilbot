@@ -108,11 +108,21 @@ export const RosterRow = memo(function RosterRow({ bot, selected, splitMode, spa
                 <AppText
                   numberOfLines={1}
                   ellipsizeMode="tail"
-                  style={{ ...MOBILE_SCALE.roster.rowName, flex: 1, fontFamily: 'Inter_600SemiBold' }}
+                  style={{ ...MOBILE_SCALE.roster.rowName, flex: 1, minWidth: 0, fontFamily: 'Inter_600SemiBold' }}
                 >
                   {bot.name}
                 </AppText>
                 {display.showPrimaryStar && <StarIcon color={theme.mutedForeground} size={13} />}
+                {display.timeText ? (
+                  <AppText
+                    testID={`roster-row-time-${bot.id}`}
+                    numberOfLines={1}
+                    color={theme.mutedForeground}
+                    style={{ ...MOBILE_SCALE.roster.rowTime, flexShrink: 0, fontFamily: 'Inter_400Regular' }}
+                  >
+                    {display.timeText}
+                  </AppText>
+                ) : null}
                 <RowStatusMarks statusMark={display.statusMark} unread={display.unread} />
               </View>
               {display.inlineText ? (

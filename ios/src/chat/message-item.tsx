@@ -113,7 +113,7 @@ function ToolTrace({ item }: { item: Extract<MessageItem, { kind: 'tool' }> }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 }}>
       <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: item.failed ? theme.destructive : item.running ? theme.primary : theme.mutedForeground }} />
-      <AppText style={MOBILE_SCALE.chat.statusLine} color={item.running ? theme.foreground : theme.mutedForeground} numberOfLines={1}>
+      <AppText style={{ ...MOBILE_SCALE.chat.statusLine, flexShrink: 1 }} color={item.running ? theme.foreground : theme.mutedForeground} numberOfLines={1}>
         {item.name}
         {item.detail ? `  ${item.detail}` : ''}
       </AppText>

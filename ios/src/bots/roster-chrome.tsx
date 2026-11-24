@@ -47,7 +47,7 @@ export const RosterHeaderActions = memo(function RosterHeaderActions({
   const theme = useTheme()
   if (!showSearch && !showNewBot) return null
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, flexShrink: 0 }}>
       {showSearch && (
         <Pressable
           testID="roster-search-button"
@@ -127,9 +127,9 @@ export const RosterSectionHeader = memo(function RosterSectionHeader({ sectionId
   const theme = useTheme()
   const handlePress = useCallback(() => onToggle(sectionId), [onToggle, sectionId])
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 18, paddingBottom: 6 }}>
-      <Pressable testID={`roster-section-${sectionId}`} onPress={handlePress} hitSlop={SECTION_SLOP} accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={name} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, opacity: pressed ? 0.6 : 1 })}>
-        <AppText style={{ ...MOBILE_SCALE.roster.sectionHeader, fontFamily: 'Inter_500Medium' }} color={theme.mutedForeground}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 16, paddingTop: 18, paddingBottom: 6 }}>
+      <Pressable testID={`roster-section-${sectionId}`} onPress={handlePress} hitSlop={SECTION_SLOP} accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={name} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1, minWidth: 0, opacity: pressed ? 0.6 : 1 })}>
+        <AppText numberOfLines={1} ellipsizeMode="tail" style={{ ...MOBILE_SCALE.roster.sectionHeader, flexShrink: 1, fontFamily: 'Inter_500Medium' }} color={theme.mutedForeground}>
           {name}
         </AppText>
         {open ? <ChevronDownIcon color={theme.mutedForeground} size={14} /> : <ChevronRightIcon color={theme.mutedForeground} size={14} />}
@@ -143,9 +143,9 @@ export const CollapsedGroupHeader = memo(function CollapsedGroupHeader({ testID,
   const theme = useTheme()
   const handlePress = useCallback(() => onToggle(groupId), [groupId, onToggle])
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 18, paddingBottom: 6 }}>
-      <Pressable testID={testID} onPress={handlePress} hitSlop={SECTION_SLOP} accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={`${name}, ${count}`} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, opacity: pressed ? 0.6 : 1 })}>
-        <AppText style={{ ...MOBILE_SCALE.roster.sectionHeader, fontFamily: 'Inter_500Medium' }} color={theme.mutedForeground}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 16, paddingTop: 18, paddingBottom: 6 }}>
+      <Pressable testID={testID} onPress={handlePress} hitSlop={SECTION_SLOP} accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={`${name}, ${count}`} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1, minWidth: 0, opacity: pressed ? 0.6 : 1 })}>
+        <AppText numberOfLines={1} ellipsizeMode="tail" style={{ ...MOBILE_SCALE.roster.sectionHeader, flexShrink: 1, fontFamily: 'Inter_500Medium' }} color={theme.mutedForeground}>
           {name} · {count}
         </AppText>
         {open ? <ChevronDownIcon color={theme.mutedForeground} size={14} /> : <ChevronRightIcon color={theme.mutedForeground} size={14} />}

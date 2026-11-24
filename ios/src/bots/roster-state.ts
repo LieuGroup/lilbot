@@ -23,6 +23,7 @@ export interface RosterRowDisplay {
   showPrimaryStar: boolean
   inlineText: string
   inlineTone: InlineTextTone
+  timeText: string | null
   statusMark: RowStatusMark
   accessibilityLabel: string
 }
@@ -132,6 +133,7 @@ export function rosterRowDisplay(bot: Bot): RosterRowDisplay {
     showPrimaryStar: bot.isPrimary,
     inlineText: state.text,
     inlineTone,
+    timeText: null,
     statusMark,
     accessibilityLabel
   }

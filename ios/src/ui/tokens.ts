@@ -121,17 +121,18 @@ export const MOBILE_SCALE = {
     rowMinHeight: 76,
     rowMinHeightSplit: 66,
     rowName: { fontSize: 17, lineHeight: 22 },
-    rowPreview: { fontSize: 15, lineHeight: 20 }
+    rowPreview: { fontSize: 15, lineHeight: 20 },
+    rowTime: { fontSize: 13, lineHeight: 18 }
   },
   chat: {
-    message: { fontSize: 17, lineHeight: 25 },
+    message: { fontSize: 18, lineHeight: 26 },
     statusLine: { fontSize: 15, lineHeight: 20 },
     bubbleRadius: 20,
     bubblePaddingX: 16,
     bubblePaddingY: 12,
-    composerMinHeight: 52,
+    composerMinHeight: 54,
     composerRadius: 26,
-    composerInput: { fontSize: 17, lineHeight: 24 },
+    composerInput: { fontSize: 18, lineHeight: 25 },
     composerActionSize: 36
   }
 } as const
