@@ -5,6 +5,7 @@ import type { HistoryService } from '../history/history-service'
 import type { BotPrefsStore } from './bot-prefs-store'
 import type { BotRuntimes } from './bot-runtimes'
 import type { SessionSettings } from './bot-session-settings'
+import { ConversationTurnTracker } from './conversation-turn-tracker'
 import type { Workspaces } from './workspaces'
 
 /** Model-only text LilBot gives a bot with Oscar's next message in its main conversation (a webhook run's message or
@@ -20,7 +21,10 @@ export function combineTurnNotes(...sources: (TurnNotes | undefined)[]): TurnNot
       const hits = sources.map(source => source?.pending(botId, chatId)).filter((hit): hit is { text: string; taken: () => void } => Boolean(hit))
       if (!hits.length) return null
       return {
-        text: hits.map(hit => hit.text).join('\n\n'),
+        text: hits
+          .map(hit => hit.text)
+          .filter(Boolean)
+          .join('\n\n'),
         taken: () => {
           for (const hit of hits) hit.taken()
         }
@@ -29,11 +33,17 @@ export function combineTurnNotes(...sources: (TurnNotes | undefined)[]): TurnNot
   }
 }
 
+export interface ConversationHooks {
+  onTurnCompleted?: (botId: string, chatId: string, userText: string, assistantText: string) => void
+  onCompacted?: (botId: string, chatId: string) => void
+}
+
 type OpenTurn = { running: boolean; sending: number }
 
 /** Main-session selection and the history journal share one chat lifecycle. */
 export class BotConversations {
   private active = new Map<string, Set<OpenTurn>>()
+  private turns: ConversationTurnTracker
   constructor(
     private runtimes: BotRuntimes,
     private prefs: BotPrefsStore,
@@ -41,8 +51,11 @@ export class BotConversations {
     private sessions: SessionSettings,
     private history?: HistoryService,
     private notes?: TurnNotes,
-    private readOnlyChat?: (botId: string, chatId: string) => boolean
-  ) {}
+    private readOnlyChat?: (botId: string, chatId: string) => boolean,
+    hooks?: ConversationHooks
+  ) {
+    this.turns = new ConversationTurnTracker(history, hooks)
+  }
 
   hasActiveTurn(botId: string): boolean {
     for (const turn of this.active.get(botId) ?? []) if (turn.running || turn.sending > 0) return true
@@ -64,9 +77,11 @@ export class BotConversations {
     const event = (event: ChatEvent) => {
       if (event.type === 'turn.started') turn.running = true
       else if (event.type === 'turn.finished' || event.type === 'error' || event.type === 'closed') turn.running = false
+      const replay = id ? this.turns.prepareEvent(botId, id, event) : false
       if (id && useHistory) this.history?.record(botId, id, event)
       else if (!id) pending.push(event)
       if (id && isMain) this.sessions.noteContextFromEvent(botId, id, event)
+      if (id) this.turns.onEvent(botId, id, event, replay)
       onEvent(event)
     }
     // What the engine says it sends belongs to the bot only while this is its main conversation.
@@ -118,10 +133,20 @@ export class BotConversations {
             ...(options?.origin?.device ? { origin: options.origin.device } : {})
           })
         }
+        const cancelTurn = !options?.hidden ? this.turns.enqueue(botId, id, text) : () => {}
         const note = !options?.hidden && id === this.prefs.mainChat(botId) ? this.notes?.pending(botId, id) : null
-        if (!note) return await send(text, options)
-        await send(text, { ...options, origin: { ...options?.origin, line: [options?.origin?.line, note.text].filter(Boolean).join('\n\n') } })
-        note.taken()
+        try {
+          if (!note?.text) {
+            await send(text, options)
+            note?.taken()
+            return
+          }
+          await send(text, { ...options, origin: { ...options?.origin, line: [options?.origin?.line, note.text].filter(Boolean).join('\n\n') } })
+          note.taken()
+        } catch (error) {
+          cancelTurn()
+          throw error
+        }
       } finally {
         turn.sending--
       }
@@ -150,7 +175,9 @@ export class BotConversations {
 
   /** Records a replayed event from background activity observation and updates main-chat context. */
   observe(botId: string, chatId: string, event: ChatEvent, key: string) {
+    const replay = this.turns.prepareEvent(botId, chatId, event, key)
     this.history?.record(botId, chatId, event, key)
     this.sessions.noteContextFromEvent(botId, chatId, event)
+    this.turns.onEvent(botId, chatId, event, replay)
   }
 }

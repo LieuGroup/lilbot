@@ -45,26 +45,21 @@ test('missing deployment notices do not break startup', () => {
   expect(deployNotice('/does-not-exist')).toBeUndefined()
 })
 
-test('the next bot turn receives the durable rollback notice through existing memory context', async () => {
+test('the next bot turn receives the durable rollback notice through MemoryTurnContext', async () => {
   const { openDatabase } = await import('../../server/database/database')
-  const { createEngineApi } = await import('../../server/http/engine-api')
   const { MemoryService } = await import('../../server/memory/memory-service')
   const { MemoryStore } = await import('../../server/memory/memory-store')
+  const { MemoryTurnContext } = await import('../../server/memory/memory-turn-context')
   const db = openDatabase(':memory:')
   try {
     let notice = 'Restored working commit and its database.'
-    const handler = createEngineApi(new MemoryService(new MemoryStore(db)), 'test-only-token', 3379, { botExists: () => true, deploymentNotice: () => notice })
-    const call = async () => {
-      const request = new Request('http://127.0.0.1:3379/engine/memory/context', {
-        method: 'POST',
-        headers: { host: '127.0.0.1:3379', authorization: 'Bearer test-only-token' },
-        body: JSON.stringify({ botId: 'test' })
-      })
-      return (await handler(request, '/engine/memory/context')).json() as Promise<{ text: string }>
-    }
-    expect((await call()).text).toContain(notice)
+    const turnContext = new MemoryTurnContext(new MemoryService(new MemoryStore(db)), { deploymentNotice: () => notice })
+    const first = turnContext.prepare('test', 'chat-1')
+    expect(first.text).toContain(notice)
+    first.taken()
     notice = 'A later deployment also failed.'
-    expect((await call()).text).toContain(notice)
+    const second = turnContext.prepare('test', 'chat-1')
+    expect(second.text).toContain(notice)
   } finally {
     db.close()
   }

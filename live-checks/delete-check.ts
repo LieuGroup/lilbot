@@ -7,6 +7,7 @@ import { Database } from 'bun:sqlite'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { botCapability } from '../server/bots/bot-capability'
 
 const root = devScratch('lilbot-delete')
 const port = devPort()
@@ -50,9 +51,10 @@ try {
       created.push(native.engine_bot_id)
       const profile = join(process.env.HERMES_HOME!, 'profiles', native.engine_bot_id)
       const binding = join(profile, 'lilbot-memory.json')
-      const capability = JSON.parse(await readFile(binding, 'utf8')).creation_capability
-      assert(typeof capability === 'string' && capability.length > 0, 'Missing capability')
+      const checkpointKey = JSON.parse(await readFile(binding, 'utf8')).checkpoint_key
+      assert(typeof checkpointKey === 'string' && checkpointKey.length > 0, 'Missing checkpoint_key')
       const token = (await readFile(join(root, 'engine-token'), 'utf8')).trim()
+      const capability = botCapability(token, bot.id)
       await mkdir(bot.workspace, { recursive: true })
       await writeFile(join(bot.workspace, 'proof.txt'), 'temporary')
       const own = await call('memory.write', { botId: bot.id, kind: 'journal', text: 'Private deletion test.' })
@@ -76,6 +78,12 @@ try {
         body: JSON.stringify({ requestId: 'deleted-caller', name: 'Must not exist', function: '', instructions: '' })
       })
       assert(denied.status === 403, 'Deleted capability still accepted')
+      const deniedCheckpoint = await fetch(`http://127.0.0.1:${port}/engine/history/save`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${checkpointKey}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ chatId: 'old', messages: [{ role: 'user', text: 'late' }] })
+      })
+      assert(deniedCheckpoint.status === 403, 'Deleted checkpoint_key still accepted')
       assert(!existsSync(bot.workspace), 'Workspace remains')
       const archived = existsSync(join(root, 'workspaces', '.archive', bot.id, 'proof.txt'))
       assert(archived === (files === 'archive'), 'Archive mismatch')

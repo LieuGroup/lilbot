@@ -10,6 +10,7 @@ import { openDatabase } from '../server/database/database'
 import { HermesEngine } from '../server/engines/hermes/hermes-engine'
 import { installMemory, MEMORY_ADAPTER_VERSION } from '../server/engines/hermes/hermes-memory-setup'
 import { engineToken } from '../server/http/engine-api'
+import { checkpointConnectionFor } from '../server/memory/memory-checkpoint-key'
 
 const root = devScratch('lilbot-startup')
 const db = openDatabase(join(root, 'lilbot.db'))
@@ -48,11 +49,12 @@ async function config(id: string, value: string) {
 try {
   // Reserve a free port, then start the real server on it.
   const port = devPort()
-  engineToken(root)
+  const token = engineToken(root)
   for (let i = 0; i < 2; i++) {
     const id = await engine.createRuntime(identity)
     ids.push(id)
-    await installMemory(id, { url: `http://127.0.0.1:${port}`, tokenFile: join(root, 'engine-token'), botId: i === 0 ? 'owned-app' : 'unbound-app' })
+    const appId = i === 0 ? 'owned-app' : 'unbound-app'
+    await installMemory(id, checkpointConnectionFor(`http://127.0.0.1:${port}`, token, appId))
     renameSync(join(profile(id), 'plugins', `lilbot-memory-v${MEMORY_ADAPTER_VERSION.replaceAll('.', '-')}`), join(profile(id), 'plugins', 'lilbot-memory-v0-1-0'))
     await config(id, 'lilbot-memory-v0-1-0')
   }

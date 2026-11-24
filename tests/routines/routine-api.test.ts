@@ -40,7 +40,7 @@ test('HTTP capabilities bind routines to caller; cross-bot, missing and deleted 
   }
 })
 
-test('routine aliases cannot enqueue memory review turns, including after restart', async () => {
+test('routine aliases are excluded from checkpoint saves and review queueing after restart', async () => {
   const f = fakeService()
   try {
     const store = new RoutineStore(f.database)
@@ -50,21 +50,35 @@ test('routine aliases cannot enqueue memory review turns, including after restar
     store.attach(run.id, 'stored-id', 300_000)
     const restarted = new RoutineStore(f.database)
     const reviewer = new MemoryReviewer(f.queue, f.engine)
+    const chatKind = (_bot: string, chat: string) => (restarted.isRoutineChat(chat) ? ('lilbot' as const) : ('conversation' as const))
     const handle = createEngineApi(f.memory, 'test', 3371, {
+      bots: f.service,
+      history: {} as never,
       botExists: () => true,
-      chatKind: (_bot, chat) => (restarted.isRoutineChat(chat) ? 'lilbot' : 'conversation'),
+      chatKind,
       reviewer
     })
-    for (const chatId of ['live-id', 'stored-id', 'real-chat'])
-      await handle(
-        new Request('http://localhost:3371/engine/memory/turn', {
+    for (const chatId of ['live-id', 'stored-id']) {
+      const res = await handle(
+        new Request('http://localhost:3371/engine/history/save', {
           method: 'POST',
-          headers: { host: 'localhost:3371', authorization: 'Bearer test' },
-          body: JSON.stringify({ botId: 'b1', chatId, user: 'hello', assistant: 'world' })
+          headers: { host: 'localhost:3371', authorization: 'Bearer test', 'x-lilbot-bot-capability': botCapability('test', 'b1') },
+          body: JSON.stringify({ chatId, messages: [{ role: 'user', text: 'hello' }] })
         }),
-        '/engine/memory/turn'
+        '/engine/history/save'
       )
-    expect(f.queue.take('b1', 10).map(turn => turn.chatId)).toEqual(['real-chat'])
+      expect(await res.json()).toEqual({ saved: false, skipped: true })
+    }
+    const real = await handle(
+      new Request('http://localhost:3371/engine/history/save', {
+        method: 'POST',
+        headers: { host: 'localhost:3371', authorization: 'Bearer test', 'x-lilbot-bot-capability': botCapability('test', 'b1') },
+        body: JSON.stringify({ chatId: 'real-chat', messages: [{ role: 'user', text: 'hello' }] })
+      }),
+      '/engine/history/save'
+    )
+    expect(await real.json()).toEqual({ saved: true, passes: 1 })
+    expect(f.log.filter(line => line.startsWith('review:'))).toHaveLength(1)
   } finally {
     f.database.close()
     rmSync(f.root, { recursive: true, force: true })

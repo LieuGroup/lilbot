@@ -120,7 +120,7 @@ test('full re-key covers every table and all 6 composite shapes, passes schema-w
 
     const mem = JSON.parse(readFileSync(join(f.profileDir, 'lilbot-memory.json'), 'utf8'))
     expect(mem.bot_id).toBe(newId)
-    expect(mem.creation_capability).toBe(createHmac('sha256', SECRET_TOKEN).update(`create-bot:${newId}`).digest('hex'))
+    expect(mem.checkpoint_key).toBe(createHmac('sha256', SECRET_TOKEN).update(`memory-checkpoint:${newId}`).digest('hex'))
 
     // Idempotent second run.
     const again = await runRekey({ from: OLD_ID, to: newId, dataDir: f.dataDir, workspacesDir: f.workspacesDir, hermesHome: f.hermesHome, clearMainChat: true, dryRun: false })

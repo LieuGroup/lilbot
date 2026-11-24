@@ -4,7 +4,7 @@ import { deleteProfile } from './check-process'
  *  afterwards: `bun run check:memory`. It starts its own small LilBot memory + System MCP + scoped review MCP
  *  endpoint with a throwaway database, connects the temporary bot to it, checks that a fact told in one session
  *  is known in the next, and proves the after-chat review runs on scoped MCP with zero skills tools. */
-import { rmSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type { OpenChat } from '../server/engines/bot-engine'
 import { installMemory, MEMORY_ADAPTER_VERSION, removeMemory } from '../server/engines/hermes/hermes-memory-setup'
@@ -18,7 +18,7 @@ const TURN_TIMEOUT_MS = 120_000
 
 const scratch = devScratch('lilbot-memory')
 const [reviewProvider, reviewModel] = (process.env.LILBOT_REVIEW_MODEL ?? 'cliproxyapi::anthropic/claude-sonnet-5-5').split('::')
-const { database, store, memory, queue, bots, reviewer, server, memoryCalls, adapterVersions } = startMemoryCheckHarness(scratch, PORT, reviewProvider, reviewModel)
+const { database, store, memory, queue, bots, reviewer, server, memoryConnection, memoryCalls } = startMemoryCheckHarness(scratch, PORT, reviewProvider, reviewModel)
 
 let botId = ''
 let failures = 0
@@ -108,13 +108,20 @@ try {
   const before = await turnInNewSession('Reply with exactly: OK')
   check('baseline turn without LilBot memory', before.finished?.status === 'completed', `${before.finished?.contextTokens ?? '?'} tokens sent`)
 
-  await installMemory(store.get(botId).engineBotId, { botId, url: `http://127.0.0.1:${PORT}`, tokenFile: join(scratch, 'engine-token') })
-  check('memory connected to the bot', true)
+  const engineBotId = store.get(botId).engineBotId
+  await installMemory(engineBotId, memoryConnection(botId))
+  const profileDir = join(process.env.HERMES_HOME!, 'profiles', engineBotId)
+  const settings = JSON.parse(readFileSync(join(profileDir, 'lilbot-memory.json'), 'utf8')) as Record<string, unknown>
+  check(
+    `memory connected at v${MEMORY_ADAPTER_VERSION} with per-bot checkpoint_key and no master token_file`,
+    typeof settings.checkpoint_key === 'string' &&
+      !('token_file' in settings) &&
+      existsSync(join(profileDir, 'plugins', `lilbot-memory-v${MEMORY_ADAPTER_VERSION.replaceAll('.', '-')}`))
+  )
 
   const empty = await turnInNewSession('Reply with exactly: OK')
   check('a turn with LilBot memory and no facts', empty.finished?.status === 'completed', `${empty.finished?.contextTokens ?? '?'} tokens sent`)
-  check('Hermes asked LilBot for the memory block', memoryCalls() > 0, `${memoryCalls()} calls`)
-  check('the bot runs this version of the memory adapter', adapterVersions.size === 1 && adapterVersions.has(MEMORY_ADAPTER_VERSION), [...adapterVersions].join(', '))
+  check('ordinary turns make zero Hermes->LilBot memory HTTP calls', memoryCalls() === 0, `${memoryCalls()} calls`)
 
   const told = await turnInNewSession(
     'My favourite test colour is ultramarine, and I always want release notes as a table. Remember both for later. Then reply with exactly: SAVED'
@@ -140,9 +147,11 @@ try {
   check('it knew from the memory block, without searching', !asked.tools.some(t => t.endsWith('lilbot_memory_recall')), asked.tools.join(', ') || 'no tools used')
 
   const prompt = await systemPromptOf(store.get(botId).engineBotId)
-  check('the memory rules are in the bot’s instructions', prompt.includes('# Memory') && prompt.includes('lilbot_memory_save'), `${prompt.length} characters`)
-  check('Hermes’ own memory files are no longer in the prompt', !prompt.includes('USER PROFILE') && !/MEMORY \(your personal notes\)/.test(prompt))
-  check('facts ride with the message, not in the cached instructions', !/ultramarine/i.test(prompt))
+  check(
+    'Hermes’ own memory files and plug-in system prompt block are absent',
+    !prompt.includes('USER PROFILE') && !/MEMORY \(your personal notes\)/.test(prompt) && !prompt.includes('# Memory')
+  )
+  check('facts ride with turn 1, not in the cached instructions', !/ultramarine/i.test(prompt))
 
   const countBefore = memory.list(botId).length
   const oneOff = await turnInNewSession('For this one reply only, answer in capital letters: what is two plus two?')
@@ -171,7 +180,7 @@ try {
     return condition()
   }
   const turnsOf = () => queue.pending().find(pending => pending.botId === botId)?.turns ?? 0
-  check('Hermes handed the finished turns to LilBot', await waitFor(() => turnsOf() >= 3, 8000), `${turnsOf()} turns waiting`)
+  check('LilBot queued the finished turns directly for review', await waitFor(() => turnsOf() >= 3, 8000), `${turnsOf()} turns waiting`)
 
   reviewer.record(
     botId,

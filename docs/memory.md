@@ -15,11 +15,14 @@ corrected by Oscar. The short version is in `AGENTS.md` under "Memory"; Hermes a
   before each turn (lasting facts, then its last 10 journal entries, within about 1,500 tokens; the rest by recall).
   A write tells the bot when it holds more lasting facts than it is shown, so it tidies.
 - Bots read, save and forget memory through LilBot's System MCP server (`lilbot_memory_recall`, `lilbot_memory_save`,
-  `lilbot_memory_forget`); the retired plug-in tool routes (`/engine/memory/{recall,write,forget}`) answer HTTP 410.
-  The Hermes memory plug-in (`lilbot-memory` v0.15.0, zero tools) supplies only the per-turn memory block
-  (`/engine/memory/context`), finished-turn hand-off (`/engine/memory/turn`), and pre-compress checkpoint hook
-  (`/engine/history/save`). New bots use LilBot memory from their first session; an existing bot is connected from its
-  Memory panel, from its next session.
+  `lilbot_memory_forget`); all five retired plug-in memory routes (`/engine/memory/{context,turn,recall,write,forget}`)
+  answer HTTP 410. LilBot's conversation layer (`MemoryTurnContext`, `BotConversations`, `BackgroundRuns`) delivers
+  verbatim rules and saved facts on turn 1 of every memory-eligible session (and refreshes on content changes, every
+  `LILBOT_MEMORY_REFRESH_TURNS` unchanged turns, default 15, or after compaction/session rotation) and queues completed
+  turns for review directly. The Hermes memory plug-in (`lilbot-memory` v0.16.0, zero tools) supplies only the
+  fail-closed pre-compress checkpoint bridge (`/engine/history/save`) authenticated with a per-bot `memory-checkpoint`
+  HMAC key (never the master `engine-token`). New bots use LilBot memory from their first session; an existing bot is
+  connected from its Memory panel, from its next session.
 - Saving rules (in the plug-in's instructions): save only what is grounded in the conversation, never infer traits, a
   one-off request is not a standing preference, one fact goes in once, and never save secrets, what can be looked up,
   task progress or "tool X is broken". `memory-safety.ts` refuses facts carrying model instructions, secrets or

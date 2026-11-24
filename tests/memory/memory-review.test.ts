@@ -150,9 +150,10 @@ describe('when a review runs', () => {
 })
 
 describe('what a review may do to memory', () => {
-  test('finished turns arrive through the engine endpoint, and review writes are marked as such', async () => {
+  test('finished turns queue directly and review writes are marked as such; legacy /engine/memory/turn is retired (410)', async () => {
     const { call, mcpCall, reviewer, queue, memory } = setup({ turns: 1 })
-    expect((await call('turn', { botId: 'a', chatId: 'chat-9', user: 'From now on, tables.', assistant: 'OK.' })).status).toBe(200)
+    expect((await call('turn', { botId: 'a', chatId: 'chat-9', user: 'From now on, tables.', assistant: 'OK.' })).status).toBe(410)
+    reviewer.record('a', 'chat-9', 'From now on, tables.', 'OK.')
     expect(queue.pending()[0]).toMatchObject({ botId: 'a', turns: 1 })
     await reviewer.review('a')
     expect((await mcpCall('a', 'lilbot_memory_save', { kind: 'profile', text: 'Wants release notes as tables.' }, true)).isError).toBe(false)

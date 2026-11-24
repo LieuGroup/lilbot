@@ -8,9 +8,11 @@ import { openDatabase } from '../server/database/database'
 import { HermesEngine } from '../server/engines/hermes/hermes-engine'
 import { MEMORY_ADAPTER_VERSION } from '../server/engines/hermes/hermes-memory-setup'
 import { createEngineApi, engineToken } from '../server/http/engine-api'
+import { checkpointConnectionFor } from '../server/memory/memory-checkpoint-key'
 import { MemoryReviewer } from '../server/memory/memory-reviewer'
 import { MemoryService } from '../server/memory/memory-service'
 import { MemoryStore } from '../server/memory/memory-store'
+import { MemoryTurnContext } from '../server/memory/memory-turn-context'
 import { ReviewQueue } from '../server/memory/review-queue'
 import { createScopedMcp } from '../server/system/scoped-mcp'
 import { SESSION_MCP_PREFIX } from '../server/system/session-grants'
@@ -57,10 +59,20 @@ export function startMemoryCheckHarness(scratch: string, port: number, reviewPro
     beyondOwn: () => false,
     reviewTracker: sessionGrants.reviewTracker
   })
+  const turnContext = new MemoryTurnContext(memory)
+  let reviewer: MemoryReviewer
+  const memoryConnection = (botId: string) => checkpointConnectionFor(url, token, botId)
   const bots = new BotService(engine, store, new BotPrefsStore(database), new Workspaces(join(scratch, 'workspaces')), memory, {
-    connections: botId => [systemConnection(url, token, botId, names, version)]
+    connections: botId => [systemConnection(url, token, botId, names, version)],
+    memoryConnection,
+    memoryContext: turnContext,
+    turnNotes: turnContext,
+    conversationHooks: {
+      onTurnCompleted: (id, chatId, user, assistant) => reviewer.record(id, chatId, user, assistant),
+      onCompacted: (id, chatId) => turnContext.invalidateChat(id, chatId)
+    }
   })
-  const reviewer = new MemoryReviewer(
+  reviewer = new MemoryReviewer(
     queue,
     bots,
     { enabled: true, turns: 10, quietMs: 120_000, minTurns: 3, model: { provider: reviewProvider, model: reviewModel } },
@@ -90,5 +102,5 @@ export function startMemoryCheckHarness(scratch: string, port: number, reviewPro
       return engineApi(request, pathname)
     }
   })
-  return { database, store, memory, queue, bots, reviewer, server, memoryCalls: () => memoryCalls, adapterVersions }
+  return { database, store, memory, queue, bots, reviewer, server, memoryConnection, memoryCalls: () => memoryCalls, adapterVersions }
 }

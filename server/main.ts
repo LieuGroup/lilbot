@@ -75,8 +75,7 @@ const { bots, store, skills, hiddenChat, library, computers, devices, attachment
 async function prepareMemory(onFailed: (id: string) => void) {
   await bots.prepareRuntimes()
   if (process.env.LILBOT_SKIP_MEMORY_SETUP === '1') return
-  const conn = { url: `http://127.0.0.1:${PORT}`, tokenFile: join(DATA_DIR, 'engine-token') }
-  const updated = await engines.refreshMemory(engineId => store.list().filter(bot => bot.engineId === engineId), conn, onFailed)
+  const updated = await engines.refreshMemory(engineId => store.list().filter(bot => bot.engineId === engineId), services.memoryConnection, onFailed)
   if (updated.length) console.log(`Memory adapter updated to ${MEMORY_ADAPTER_VERSION} for: ${updated.join(', ')}`)
   const connected = await bots.connectAllMemory(onFailed)
   if (connected.length) console.log(`Connected to LilBot memory: ${connected.join(', ')}`)

@@ -2,6 +2,7 @@
  *  A run starts with its explicit reasoning effort when its model thinks, else the bot's effort on the bot's own model. */
 import { LilBotError } from '../../shared/lilbot-error'
 import type { ReviewOptions, RoutineOptions } from '../engines/bot-engine'
+import { allowsMemoryForScope, type MemoryTurnContext } from '../memory/memory-turn-context'
 import type { BotRuntimes } from './bot-runtimes'
 import type { SessionSettings } from './bot-session-settings'
 import type { BotRecord } from './bot-store'
@@ -12,7 +13,8 @@ export class BackgroundRuns {
   constructor(
     private runtimes: BotRuntimes,
     private workspaces: Workspaces,
-    private sessions: SessionSettings
+    private sessions: SessionSettings,
+    private memoryContext?: MemoryTurnContext
   ) {}
 
   hasActiveRun(botId: string): boolean {
@@ -40,11 +42,21 @@ export class BackgroundRuns {
         : options.model
           ? undefined
           : await this.sessions.forNewSession(bot)
-      return this.runtimes.engineFor(bot).runRoutine(bot.engineBotId, prompt, {
+      const mem = allowsMemoryForScope(options.access) ? this.memoryContext?.prepare(bot.id, options.chatId) : undefined
+      let resolvedChat = options.chatId
+      const origin = mem?.text ? { ...options.origin, line: [options.origin?.line, mem.text].filter(Boolean).join('\n\n') } : options.origin
+      const result = await this.runtimes.engineFor(bot).runRoutine(bot.engineBotId, prompt, {
         ...options,
+        origin,
+        onChat: id => {
+          resolvedChat ??= id
+          options.onChat(id)
+        },
         workspace: await this.workspaces.ensure(bot.id),
         reasoningEffort
       })
+      mem?.taken(resolvedChat)
+      return result
     })
   }
 

@@ -1,4 +1,3 @@
-/** Engines run identities supplied by LilBot. Native runtime ids never become public bot ids. */
 import type { ActivityEvent } from '../../shared/activity-schema'
 import type { BotIdentity, BotModel, BotSetup, ModelProvider, PermissionMode, ReasoningEffort } from '../../shared/bot-schema'
 import type { ChatEvent, ChatSnapshot } from '../../shared/chat-schema'
@@ -9,15 +8,15 @@ import type { ConnectionsApplied, McpConnection } from './mcp-connection'
 export type EngineBotDetail = BotIdentity & BotSetup
 export type RuntimeIdentity = BotIdentity & { instructions: string }
 export type RuntimeState = Pick<BotSetup, 'abilities' | 'memoryConnected'>
-/** Where an engine adapter on this machine reaches LilBot's memory. */
+/** Per-bot pre-compress checkpoint connection (`/engine/history/save`, never the server's master token). */
 export interface MemoryConnection {
   url: string
-  tokenFile: string
-  /** Stable LilBot id, independent of the engine profile id. */
+  checkpointKey: string
   botId?: string
 }
-
-/** Notes an engine kept in its own memory before the bot was connected to LilBot's. */
+export type SkillConnection = { url: string; tokenFile: string }
+export type PreCompressEvidence = { role: 'user' | 'assistant'; text: string }
+export type PreCompressHandler = (botId: string, chatId: string, evidence: PreCompressEvidence[]) => Promise<{ saved: boolean; skipped?: boolean; passes?: number }>
 export type LegacyNotes = { aboutUser: string[]; ownNotes: string[] }
 
 /** Where a turn came from, given by LilBot beside the user's text and never part of it. `line` is what the model is told
@@ -157,7 +156,9 @@ export interface BotEngine {
   /** Switch the bot to LilBot memory from its next session; returns legacy engine notes. */
   connectMemory(engineBotId: string, connection: MemoryConnection): Promise<LegacyNotes>
   /** Upgrade connected adapters and repair drifted connection settings only for LilBot's non-deleted bindings. */
-  refreshMemory(bots: RuntimeBinding[], connection?: MemoryConnection, onFailed?: (engineBotId: string) => void): Promise<string[]>
+  refreshMemory(bots: RuntimeBinding[], connectionFor?: (botId: string) => MemoryConnection, onFailed?: (engineBotId: string) => void): Promise<string[]>
+  /** Registers LilBot's pre-compress memory checkpoint handler for engines that invoke it in-process. */
+  setPreCompressCheckpoint?(handler: PreCompressHandler): void
   /** Run `prompt` as a hidden memory-only session for the after-chat review. */
   reviewMemory(engineBotId: string, prompt: string, options: ReviewOptions): Promise<void>
   /** Run or recover one scheduled task, using runId as a durable execution identity. Throws `session_not_found` only

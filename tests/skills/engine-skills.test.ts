@@ -136,7 +136,7 @@ test('start-up imports from an engine only while its switch is on, and switching
     const skills = new SkillsService(join(root, 'skills'), db)
     const bots = new BotService(engine, store, new BotPrefsStore(db), new Workspaces(join(root, 'workspaces')), new MemoryService(new MemoryStore(db)), {
       skills,
-      memoryConnection: { url: 'http://localhost:1', tokenFile: '/unused' }
+      skillConnection: { url: 'http://localhost:1', tokenFile: '/unused' }
     })
     await bots.prepareRuntimes()
     expect(skills.list('b1')).toEqual([])

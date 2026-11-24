@@ -69,12 +69,12 @@ test('a fresh database importing a profile with stale lilbot-memory.json reconne
     engine.importBots = async () => [{ ...detail, id: 'existing', name: 'Existing', isDefault: true }]
     engine.applyIdentity = async (engineBotId, identity) => ({ abilities: [], memoryConnected: memoryInstalled(engineBotId, identity.id) })
     engine.connectMemory = async (engineBotId, connection) => {
-      writeFileSync(settingsPath(engineBotId), JSON.stringify({ url: connection.url, token_file: connection.tokenFile, bot_id: connection.botId ?? engineBotId }))
+      writeFileSync(settingsPath(engineBotId), JSON.stringify({ url: connection.url, checkpoint_key: connection.checkpointKey, bot_id: connection.botId ?? engineBotId }))
       return { aboutUser: [], ownNotes: [] }
     }
 
-    const connection = { url: 'http://127.0.0.1:3370', tokenFile }
-    const service = new BotService(engine, store, prefs, new Workspaces(join(root, 'workspaces')), memory, { memoryConnection: connection })
+    const connectionFor = (id: string) => ({ url: 'http://127.0.0.1:3370', checkpointKey: `key-${id}`, botId: id })
+    const service = new BotService(engine, store, prefs, new Workspaces(join(root, 'workspaces')), memory, { memoryConnection: connectionFor })
     await service.prepareRuntimes()
     const [bot] = store.list()
     expect(bot.engineBotId).toBe('existing')
@@ -86,13 +86,13 @@ test('a fresh database importing a profile with stale lilbot-memory.json reconne
     expect(connected).toEqual([bot.id])
     expect((await service.listMemory(bot.id)).connected).toBe(true)
     expect(JSON.parse(readFileSync(settingsPath('existing'), 'utf8'))).toEqual({
-      url: connection.url,
-      token_file: tokenFile,
+      url: 'http://127.0.0.1:3370',
+      checkpoint_key: `key-${bot.id}`,
       bot_id: bot.id
     })
 
     // A subsequent start sees the matching bot_id and skips reconnecting.
-    const next = new BotService(engine, store, prefs, new Workspaces(join(root, 'workspaces')), memory, { memoryConnection: connection })
+    const next = new BotService(engine, store, prefs, new Workspaces(join(root, 'workspaces')), memory, { memoryConnection: connectionFor })
     await next.prepareRuntimes()
     expect((await next.listMemory(bot.id)).connected).toBe(true)
     expect(await next.connectAllMemory()).toEqual([])
@@ -121,7 +121,7 @@ test('an already-imported database where bot id equals engine id stays connected
         return { aboutUser: [], ownNotes: [] }
       }
       const service = new BotService(engine, store, new BotPrefsStore(db), new Workspaces(join(root, 'workspaces')), new MemoryService(new MemoryStore(db)), {
-        memoryConnection: { url: 'http://127.0.0.1:3370', tokenFile: '/t' }
+        memoryConnection: id => ({ url: 'http://127.0.0.1:3370', checkpointKey: `key-${id}`, botId: id })
       })
       await service.prepareRuntimes()
       expect((await service.listMemory('default')).connected).toBe(true)
@@ -145,18 +145,17 @@ test('an equal-id bot with an empty or blank-id settings object is reported disc
       runtimeIds.add('default')
       engine.applyIdentity = async (engineBotId, identity) => ({ abilities: [], memoryConnected: memoryInstalled(engineBotId, identity.id) })
       engine.connectMemory = async (engineBotId, connection) => {
-        writeFileSync(settingsPath(engineBotId), JSON.stringify({ url: connection.url, token_file: connection.tokenFile, bot_id: connection.botId ?? engineBotId }))
+        writeFileSync(settingsPath(engineBotId), JSON.stringify({ url: connection.url, checkpoint_key: connection.checkpointKey, bot_id: connection.botId ?? engineBotId }))
         return { aboutUser: [], ownNotes: [] }
       }
-      const connection = { url: 'http://127.0.0.1:3370', tokenFile: '/t' }
       const service = new BotService(engine, store, new BotPrefsStore(db), new Workspaces(join(root, 'workspaces')), new MemoryService(new MemoryStore(db)), {
-        memoryConnection: connection
+        memoryConnection: id => ({ url: 'http://127.0.0.1:3370', checkpointKey: `key-${id}`, botId: id })
       })
       await service.prepareRuntimes()
       expect((await service.listMemory('default')).connected).toBe(false)
       expect(await service.connectAllMemory()).toEqual(['default'])
       expect((await service.listMemory('default')).connected).toBe(true)
-      expect(JSON.parse(readFileSync(settingsPath('default'), 'utf8'))).toEqual({ url: connection.url, token_file: '/t', bot_id: 'default' })
+      expect(JSON.parse(readFileSync(settingsPath('default'), 'utf8'))).toEqual({ url: 'http://127.0.0.1:3370', checkpoint_key: 'key-default', bot_id: 'default' })
     } finally {
       db.close()
     }

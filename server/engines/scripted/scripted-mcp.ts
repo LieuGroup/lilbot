@@ -48,6 +48,13 @@ export async function callMcpServer(conn: McpConnection, tool: string, args: Rec
   }
 }
 
+export function findMcpConnection(sessionMcp: McpConnection[] | undefined, runtimeMcp: McpConnection[], server: string) {
+  const conn = sessionMcp
+    ? sessionMcp.find(c => c.name === server || (server === 'lilbot_system' && c.name === 'lilbot') || (server === 'lilbot_t3' && c.name === 't3'))
+    : runtimeMcp.find(c => c.name === server)
+  return conn ? { conn, reportServer: sessionMcp ? `editor_${conn.name}` : server } : null
+}
+
 export async function attachSessionMcp(
   session: { sessionMcp?: McpConnection[]; discoveredTools?: Map<string, string[]> },
   connections: McpConnection[],

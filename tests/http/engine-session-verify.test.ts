@@ -51,7 +51,7 @@ test('engine routes verify x-lilbot-session vs chatId, lock history search, requ
       list: async () => sampleThreads,
       open: async (_caller: string, id: string) => sampleThreads.find(t => t.id === id)!
     } as never,
-    memoryLocked: (_bot, chat) => (chat === 'webhook-chat' ? 'A webhook run cannot use memory.' : null),
+
     sessionCapabilities: (_bot, chat) => (chat === 'webhook-chat' ? ['delegation'] : null),
     pluginRefusal: (_bot, pathname, body, session) => {
       const call = pluginCall(pathname, body)
@@ -81,7 +81,7 @@ test('engine routes verify x-lilbot-session vs chatId, lock history search, requ
   expect((await post('/engine/threads/ask', { requestId: 'r1', to: 'b2', text: 'hi', chatId: 'webhook-chat' }, 'webhook-chat')).status).toBe(200)
   expect(asked).toEqual([{ caller: 'bot', chatId: 'webhook-chat' }])
   expect((await post('/engine/library/give', { path: 'a.txt', title: 'A', chatId: 'main' }, 'webhook-chat')).status).toBe(422)
-  expect((await post('/engine/memory/context', { botId: 'bot', chatId: 'main' }, 'webhook-chat')).status).toBe(422)
+  expect((await post('/engine/memory/context', { botId: 'bot', chatId: 'main' }, 'webhook-chat')).status).toBe(410)
   expect((await post('/engine/memory/recall', { botId: 'bot', chatId: 'main', query: 'x' }, 'webhook-chat')).status).toBe(410)
 
   // Retired /engine/history/search returns 410 unconditionally for authorised callers

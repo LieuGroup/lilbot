@@ -9,7 +9,7 @@ export class BotMemory {
   constructor(
     private runtimes: BotRuntimes,
     private memory: MemoryService,
-    private connection: MemoryConnection | undefined,
+    private connectionFor: ((botId: string) => MemoryConnection) | undefined,
     private changed: () => void
   ) {}
 
@@ -22,13 +22,13 @@ export class BotMemory {
   }
 
   async connectNew(botId: string) {
-    if (this.connection) await this.connect(botId, { keepOwnNotes: false })
+    if (this.connectionFor) await this.connect(botId, { keepOwnNotes: false })
   }
 
   async connect(botId: string, options = { keepOwnNotes: true }): Promise<{ imported: number }> {
-    if (!this.connection) throw new LilBotError('memory_unavailable', 'Memory is not set up on this LilBot server.')
+    if (!this.connectionFor) throw new LilBotError('memory_unavailable', 'Memory is not set up on this LilBot server.')
     const bot = await this.runtimes.require(botId)
-    const notes = await this.runtimes.engineFor(bot).connectMemory(bot.engineBotId, { ...this.connection, botId })
+    const notes = await this.runtimes.engineFor(bot).connectMemory(bot.engineBotId, { ...this.connectionFor(botId), botId })
     this.runtimes.memoryConnected(botId)
     const before = this.memory.list(botId).length
     for (const text of notes.aboutUser) this.importNote(botId, 'shared', text)
@@ -38,7 +38,7 @@ export class BotMemory {
   }
 
   async connectAll(onFailed?: (botId: string) => void): Promise<string[]> {
-    if (!this.connection) return []
+    if (!this.connectionFor) return []
     await this.runtimes.initialize()
     const connected: string[] = []
     for (const bot of this.runtimes.store.list()) {

@@ -54,7 +54,9 @@ export interface ScriptedTurnContext {
   callMcp: (tool: string, args?: Record<string, unknown>, server?: string) => Promise<McpCallResult>
 }
 
-export type ScriptedTurnHandler = (ctx: ScriptedTurnContext) => Promise<string | { text: string; status?: 'completed' | 'stopped' | 'failed'; usage?: TurnUsage }>
+export type ScriptedTurnHandler = (
+  ctx: ScriptedTurnContext
+) => Promise<string | { text: string; status?: 'completed' | 'stopped' | 'failed'; usage?: TurnUsage; compacted?: { beforeTokens?: number; afterTokens?: number } }>
 
 const DEFAULT_USAGE: TurnUsage = { inputTokens: 12, outputTokens: 8, contextTokens: 20, contextWindow: 8192 }
 
@@ -107,8 +109,9 @@ export async function runScriptedTurn(
     const finalText = typeof out === 'string' ? out : out.text
     const status = controller.signal.aborted ? 'stopped' : typeof out === 'string' ? 'completed' : (out.status ?? 'completed')
     const usage = typeof out === 'string' ? DEFAULT_USAGE : (out.usage ?? DEFAULT_USAGE)
+    const compacted = typeof out === 'string' ? undefined : out.compacted
     const rowId = appendRow(session, { kind: 'assistant', text: finalText, ...(status === 'stopped' ? { stopped: true } : {}), usage })
-    session.emit?.({ type: 'turn.finished', status, text: finalText, contextTokens: usage.contextTokens, usage, rowId })
+    session.emit?.({ type: 'turn.finished', status, text: finalText, contextTokens: usage.contextTokens, usage, rowId, ...(compacted ? { compacted } : {}) })
     return { status, text: finalText }
   } catch (error) {
     const stopped = controller.signal.aborted

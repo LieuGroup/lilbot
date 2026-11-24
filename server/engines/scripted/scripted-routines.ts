@@ -2,7 +2,7 @@
 import type { ModelProvider } from '../../../shared/bot-schema'
 import type { ChatItem } from '../../../shared/chat-schema'
 import { LilBotError } from '../../../shared/lilbot-error'
-import type { ChatOptions, MemoryConnection, RoutineOptions, RuntimeIdentity, SkillSettings } from '../bot-engine'
+import type { ChatOptions, MemoryConnection, PreCompressHandler, RoutineOptions, RuntimeIdentity, SkillSettings } from '../bot-engine'
 import type { McpConnection } from '../mcp-connection'
 import { runScriptedTurn, type ScriptedSession, type ScriptedTurnContext, type ScriptedTurnHandler } from './scripted-chat'
 
@@ -32,6 +32,13 @@ export type ScriptedRoutineResult = {
   text: string
   items: ChatItem[]
   unknownReceipt?: true
+}
+
+export function runSessionPreCompress(session: ScriptedSession | undefined, handler: PreCompressHandler | undefined, botId: string, chatId: string) {
+  if (!session) throw new LilBotError('session_not_found', 'Session not found.')
+  if (!handler) throw new LilBotError('unavailable', 'Pre-compress checkpoint is not registered.')
+  const evidence = session.items.flatMap(item => (item.kind === 'user' || item.kind === 'assistant' ? [{ role: item.kind, text: item.text }] : []))
+  return handler(botId, chatId, evidence)
 }
 
 export function awaitWithDisconnect<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {

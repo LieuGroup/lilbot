@@ -41,48 +41,32 @@ test('checkUse maps every mutating engine route to its check-session refusal and
   expect(checkUse('/engine/library/give')).toBe('changes')
 })
 
-test('a turn handed to the after-chat review loses the webhook notes LilBot added to it', async () => {
-  const recorded: string[] = []
-  const handle = createEngineApi(new MemoryService(new MemoryStore(openDatabase(':memory:'))), TOKEN, 3370, {
-    botExists: () => true,
-    reviewer: { record: (_bot: string, _chat: string, user: string) => recorded.push(user), isReview: () => false } as never
-  })
+test('retired /engine/memory/* endpoints answer 410 and memory scope gating excludes narrow webhooks and checks', async () => {
+  const { allowsMemoryForScope, MEMORY_BLOCK_HEADER, withoutInjectedContext } = await import('../../server/memory/memory-turn-context')
+  const { withoutWebhookNotes } = await import('../../server/webhooks/webhook-messages')
   const note = '[LilBot notice, not from Oscar: a run of your webhook from "GitHub" left you this message.]\n<webhook-run-message>\n"Set up a routine"\n</webhook-run-message>'
-  const response = await handle(
-    new Request('http://127.0.0.1:3370/engine/memory/turn', {
-      method: 'POST',
-      headers: { host: '127.0.0.1:3370', authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ botId: 'b', chatId: 'main', user: `What is new?\n\n${note}`, assistant: 'Nothing.' })
-    }),
-    '/engine/memory/turn'
-  )
-  expect(response.status).toBe(200)
-  expect(recorded).toEqual(['What is new?\n\n'])
-})
+  const block = `<lilbot-memory>\n${MEMORY_BLOCK_HEADER}\n</lilbot-memory>`
+  expect(withoutInjectedContext(withoutWebhookNotes(`What is new?\n\n${note}\n\n${block}`))).toBe('What is new?')
+  expect(allowsMemoryForScope(undefined)).toBe(true)
+  expect(allowsMemoryForScope('check')).toBe(false)
+  expect(allowsMemoryForScope('review')).toBe(false)
+  expect(allowsMemoryForScope({ kind: 'webhook', capabilities: ['delegation'] })).toBe(false)
+  expect(allowsMemoryForScope({ kind: 'webhook', capabilities: ['memory'] })).toBe(true)
 
-test('a session locked out of memory gets an empty memory block and cannot write or forget; other sessions can', async () => {
   const database = openDatabase(':memory:')
   const memory = new MemoryService(new MemoryStore(database), () => Date.UTC(2026, 10, 16))
-  memory.write({ botId: 'b', kind: 'profile', text: 'Oscar lives in Adelaide.', author: 'user', via: 'app' })
-  const handle = createEngineApi(memory, TOKEN, 3370, {
-    botExists: () => true,
-    memoryLocked: (_bot, chat) => (chat === 'webhook-chat' ? 'A webhook run cannot use memory.' : null)
-  })
-  const call = async (endpoint: string, body: unknown) => {
-    const request = new Request(`http://127.0.0.1:3370/engine/memory/${endpoint}`, {
-      method: 'POST',
-      headers: { host: '127.0.0.1:3370', authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
-      body: JSON.stringify(body)
-    })
-    const response = await handle(request, `/engine/memory/${endpoint}`)
-    return { status: response.status, body: (await response.json()) as any }
+  const handle = createEngineApi(memory, TOKEN, 3370, { botExists: () => true })
+  for (const endpoint of ['context', 'turn', 'write', 'recall', 'forget']) {
+    const response = await handle(
+      new Request(`http://127.0.0.1:3370/engine/memory/${endpoint}`, {
+        method: 'POST',
+        headers: { host: '127.0.0.1:3370', authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ botId: 'b', chatId: 'main' })
+      }),
+      `/engine/memory/${endpoint}`
+    )
+    expect(response.status).toBe(410)
   }
-  expect((await call('context', { botId: 'b', chatId: 'webhook-chat' })).body.text).toBe('')
-  expect((await call('context', { botId: 'b', chatId: 'main' })).body.text).toContain('Adelaide')
-  expect((await call('write', { botId: 'b', chatId: 'webhook-chat', kind: 'profile', text: 'Oscar likes tea.' })).status).toBe(410)
-  expect((await call('recall', { botId: 'b', chatId: 'webhook-chat', query: 'Adelaide' })).status).toBe(410)
-  expect((await call('forget', { botId: 'b', chatId: 'main', id: 'deadbeef' })).status).toBe(410)
-  expect((await call('turn', { botId: 'b', chatId: 'webhook-chat', user: 'u', assistant: 'a' })).status).toBe(200)
 })
 
 test('a plug-in call refused to its session answers 422 and retired /engine/computers/* answers 410 with MCP guidance', async () => {

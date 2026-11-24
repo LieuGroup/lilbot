@@ -84,9 +84,10 @@ folder is gone uses `profile purge-identity` to finish gateway identity settleme
 
 ## Memory adapter (`memory-adapter/`)
 
-- A memory provider plug-in, Python standard library only, holding no data. It puts the usage rules in the system
-  prompt (static, so prompt caching holds) and supplies the memory block once per turn. Hermes itself fences what a
-  provider supplies as "recalled memory, not new user input".
+- A minimal tool-less memory provider plug-in (`v0.16.0`, Python standard library only, holding no data). Before-turn
+  memory delivery and after-chat review queueing live in LilBot's engine-neutral conversation layer
+  (`server/memory/memory-turn-context.ts`, `server/bots/bot-conversations.ts`); the plug-in implements only
+  `on_pre_compress` because Hermes's OpenRPC API has no pre-compress RPC callback.
 - Connecting a bot (`hermes-memory-setup.ts`) copies the plug-in into the profile, selects it, and switches Hermes'
   own `MEMORY.md`/`USER.md` memory off. Hermes' notes about the user become shared facts; an existing bot's own notes
   become its private facts (a new bot starts as a copy of the main bot, so its notes are not imported). It takes
@@ -94,8 +95,6 @@ folder is gone uses `profile purge-identity` to finish gateway identity settleme
 - Hermes keeps a plug-in's code loaded per folder until the gateway restarts, so each version has its own folder and
   provider name (`lilbot-memory-v0-11-0`), loaded fresh on the bot's next session. Hermes' own background memory review
   runs only with its built-in memory tool, which a connected bot no longer has.
-- `sync_turn` hands every finished turn of a real conversation to `/engine/memory/turn` on a thread (not scheduled
-  runs or sub-agents).
 - The save before compressing is Hermes' pre-compress checkpoint API v2 (`pre_compress_checkpoint_api_version = 2`,
   #148). Hermes hands v2 providers its normalised evidence (user and assistant messages; earlier summaries, tool rows and
   system text left out); the adapter sends all of it to `/engine/history/save` and raises on anything but `saved` or
@@ -117,8 +116,16 @@ folder is gone uses `profile purge-identity` to finish gateway identity settleme
   status `error`, live or replayed) or its stored closing row (`display_kind` `failed_turn`) while the session's latest
   save had failed maps to LilBot's own `memory_save` failure instead of Hermes' text. Hermes' `error_surface` cannot tell
   this failure apart (it is a local runtime error like any other), so the record is what decides.
-- As of `v0.15.0`, the memory adapter exposes zero plug-in tools (`tools.json` removed); only the usage rules text
-  (`rules.md`, kept byte-identical to `server/memory/rules.md`) ships in its folder alongside the lifecycle hooks.
+- As of `v0.16.0`, the memory adapter exposes zero plug-in tools, zero `prefetch`/`sync_turn`/`system_prompt_block`
+  hooks, and no `rules.md` copy. `lilbot-memory.json` stores only `{ url, bot_id, checkpoint_key }` (a per-bot HMAC
+  key scoped exclusively to `POST /engine/history/save`, never the master `engine-token` path). `/engine/history/save`
+  temporarily accepts the legacy master-token + capability fallback during the v0.15.0 -> v0.16.0 rollout window so
+  already-open sessions can finish compressing without restarting Hermes; that legacy fallback is removed once all
+  deployed profiles have rotated past v0.15.0. In the reverse direction (rolling back to a pre-v0.16.0 release while a
+  v0.16.0 session is still live in Hermes), an HTTP 403 on `/engine/history/save` re-reads `lilbot-memory.json` (polling
+  briefly within `RETRY_SECONDS` while rollback rewrites it), adopts a rotated `checkpoint_key`, or sends a one-shot
+  loopback legacy request only if rollback wrote `token_file` and `creation_capability` back without `checkpoint_key`
+  (normal v0.16.0 profiles hold neither, and no master token is cached).
 - **Adapter-managed `known_plugin_toolsets.acp`:** Because `lilbot-skills-v1` registers tools under `toolset='skills'`,
   Hermes treats `'skills'` as a plugin toolset and auto-enrolls it on any `acp` session unless `known_plugin_toolsets.acp`
   lists `'skills'`. The Hermes adapter owns `'skills'` in `known_plugin_toolsets.acp` (read-merged to preserve any

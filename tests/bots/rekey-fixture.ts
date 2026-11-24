@@ -34,7 +34,7 @@ export function createRekeyFixture(root: string) {
   writeFileSync(tokenFile, `${SECRET_TOKEN}\n`, { mode: 0o600 })
   writeFileSync(join(dataDir, 'computer-server-key.pem'), `${SECRET_KEY}\n`, { mode: 0o600 })
   const profileDir = join(hermesHome, 'profiles', OLD_ID)
-  writeFileSync(join(profileDir, 'lilbot-memory.json'), JSON.stringify({ url: 'http://127.0.0.1:3370', token_file: tokenFile, bot_id: OLD_ID, creation_capability: 'stale-cap' }))
+  writeFileSync(join(profileDir, 'lilbot-memory.json'), JSON.stringify({ url: 'http://127.0.0.1:3370', bot_id: OLD_ID, checkpoint_key: 'stale-key' }))
   writeFileSync(join(profileDir, 'lilbot-skills.json'), JSON.stringify({ root: '/skills', url: 'http://127.0.0.1:3370', tokenFile, botId: OLD_ID, disabled: [], names: [] }))
   writeFileSync(join(profileDir, 'lilbot-computers.json'), JSON.stringify({ url: 'http://127.0.0.1:3370', tokenFile, botId: OLD_ID }))
   writeFileSync(join(profileDir, 'lilbot-applied.json'), JSON.stringify({ config: 'abc', steps: { connections: 'old' } }))

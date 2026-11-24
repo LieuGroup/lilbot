@@ -1,7 +1,7 @@
 /** What LilBot gives every bot's runtime besides its identity: the shared skills and
  *  LilBot's own MCP connections. The engine skips what it has already applied. */
 import { backgroundFailure } from '../background'
-import type { BotEngine, MemoryConnection } from '../engines/bot-engine'
+import type { BotEngine, SkillConnection } from '../engines/bot-engine'
 import type { EngineRegistry } from '../engines/engine-registry'
 import type { McpConnection } from '../engines/mcp-connection'
 import { files } from '../skills/skill-files'
@@ -65,7 +65,7 @@ export class PrepareTracker {
 
 interface ToolSources {
   skills?: SkillsService
-  connection?: MemoryConnection
+  connection?: SkillConnection
   connections?: (botId: string) => McpConnection[]
   onConnectionsChanged?: (botId: string) => void
 }

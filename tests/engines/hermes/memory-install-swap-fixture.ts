@@ -59,13 +59,11 @@ if (process.env.FAIL_AFTER_KEY === key) { console.error('injected fail after ' +
 
 export function seedProfile(root: string, profile = 'owned', provider = OLD_NAME, acp: string[] = ['custom_plugin']) {
   const home = join(root, 'profiles', profile)
-  const token = join(root, 'token')
-  writeFileSync(token, 'fixture-token')
   mkdirSync(join(home, 'plugins', provider), { recursive: true })
   writeFileSync(join(home, 'plugins', provider, 'plugin.yaml'), `name: ${provider}\nversion: 0.14.0\n`)
-  writeFileSync(join(home, 'lilbot-memory.json'), JSON.stringify({ url: 'http://127.0.0.1:1', token_file: token, bot_id: 'bot-a' }))
+  writeFileSync(join(home, 'lilbot-memory.json'), JSON.stringify({ url: 'http://127.0.0.1:1', checkpoint_key: 'ckpt-bot-a', bot_id: 'bot-a' }))
   writeFileSync(join(home, 'config.yaml'), JSON.stringify({ memory: { provider }, compression: { checkpoint_required: true }, known_plugin_toolsets: { acp } }, null, 2))
-  return { home, token }
+  return { home, checkpointKey: 'ckpt-bot-a' }
 }
 
 export function readState(home: string) {

@@ -117,10 +117,10 @@ are in `AGENTS.md` under "Webhooks"; tunnel ingress is in [cloudflare.md](cloudf
     (no start seen, no session named, an unreadable lineage) counts as a webhook run's: it fails closed. A bot that
     never had a webhook run is never held. Every `lilbot_*` tool is in `RUN_TOOLS` or a group (`system/run-access.ts`,
     tested). The T3 bridge refuses its tools without `coding`; the engine API retires `/engine/computers/*`,
-    `/engine/memory/{recall,write,forget}`, and `/engine/history/search` (410), refuses `skill_manage` always (the
-    skills handler's own `/write` test) and the routes only older adapters call (`bots/create`, `routines/*`,
-    `threads/*`) without their groups; the per-turn memory block (`/engine/memory/context`) comes back empty without
-    `memory`.
+    `/engine/memory/{context,turn,recall,write,forget}`, and `/engine/history/search` (410), refuses `skill_manage`
+    always (the skills handler's own `/write` test) and the routes only older adapters call (`bots/create`,
+    `routines/*`, `threads/*`) without their groups; LilBot's `BackgroundRuns` skips `<lilbot-memory>` injection
+    whenever `access` lacks `memory`.
   - A refusal is an ordinary tool result (`{"refused": ...}`), not a tool error: Hermes pauses a whole MCP server for
     about a minute after three tool errors in a row, keyed by the profile's connection, which could reach the bot's
     other conversations.

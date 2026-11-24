@@ -120,10 +120,10 @@ export class HermesEngine implements BotEngine {
     }
   }
 
-  refreshMemory(bots: RuntimeBinding[], connection?: MemoryConnection, onFailed?: (engineBotId: string) => void): Promise<string[]> {
+  refreshMemory(bots: RuntimeBinding[], connectionFor?: (botId: string) => MemoryConnection, onFailed?: (engineBotId: string) => void): Promise<string[]> {
     return refreshMemoryAdapters(
       bots.filter(bot => allowedProfile(bot.engineBotId) && (!this.botIds || this.botIds.includes(bot.engineBotId))),
-      connection,
+      connectionFor,
       onFailed
     )
   }

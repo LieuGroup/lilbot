@@ -118,7 +118,7 @@ describe('engine conformance: core bot lifecycle', () => {
     expect(workResult.ok).toBe(true)
   }, 10_000)
 
-  test.failing('[Lane B P2] memory reaches a chat turn without an engine memory plugin', async () => {
+  test('memory reaches a chat turn without an engine memory plugin', async () => {
     const { engine, services, bot } = await boot()
     await services.bots.writeMemory({ botId: bot.id, kind: 'profile', scope: 'bot', text: 'Always prefer metric units.' })
     const chat = await services.bots.openChat(bot.id, undefined, () => {})
@@ -128,7 +128,7 @@ describe('engine conformance: core bot lifecycle', () => {
     expect([received?.apiText, received?.origin?.line].filter(Boolean).join('\n')).toContain('Always prefer metric units.')
   })
 
-  test.failing('[Lane B P2] after-chat memory review is queued without an engine plugin', async () => {
+  test('after-chat memory review is queued without an engine plugin', async () => {
     const { services, bot } = await boot()
     const chat = await services.bots.openChat(bot.id, undefined, () => {})
     await chat.send('remember my favorite colour is cobalt blue')

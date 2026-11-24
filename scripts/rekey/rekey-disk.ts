@@ -16,6 +16,7 @@ export interface DiskReport {
 }
 
 const capabilityFor = (tokenFile: string, botId: string) => createHmac('sha256', readFileSync(tokenFile, 'utf8').trim()).update(`create-bot:${botId}`).digest('hex')
+const checkpointKeyFor = (tokenFile: string, botId: string) => createHmac('sha256', readFileSync(tokenFile, 'utf8').trim()).update(`memory-checkpoint:${botId}`).digest('hex')
 
 function moveFolder(src: string, dst: string, dryRun: boolean): DiskAction {
   if (!existsSync(src)) return existsSync(dst) ? 'already-moved' : 'absent'
@@ -59,11 +60,17 @@ export function applyDiskRekey(params: {
       failIf('hermes-memory')
       const parsed = parseJsonObject(memPath, 'lilbot-memory.json')
       const tokenFile = existsSync(join(dataDir, 'engine-token')) ? join(dataDir, 'engine-token') : typeof parsed.token_file === 'string' ? parsed.token_file : ''
-      const nextCap = tokenFile && existsSync(tokenFile) ? capabilityFor(tokenFile, newId) : undefined
-      if (parsed.bot_id === newId && (!nextCap || parsed.creation_capability === nextCap)) hermes['lilbot-memory.json'] = 'already-current'
+      const hasToken = Boolean(tokenFile && existsSync(tokenFile))
+      const nextCap = hasToken && 'creation_capability' in parsed ? capabilityFor(tokenFile, newId) : undefined
+      const nextKey = hasToken && ('checkpoint_key' in parsed || !('creation_capability' in parsed)) ? checkpointKeyFor(tokenFile, newId) : undefined
+      if (parsed.bot_id === newId && (!nextCap || parsed.creation_capability === nextCap) && (!nextKey || parsed.checkpoint_key === nextKey))
+        hermes['lilbot-memory.json'] = 'already-current'
       else if (dryRun) hermes['lilbot-memory.json'] = 'would-update'
       else {
-        writeAtomicPrivate(memPath, `${JSON.stringify({ ...parsed, bot_id: newId, ...(nextCap ? { creation_capability: nextCap } : {}) }, null, 2)}\n`)
+        writeAtomicPrivate(
+          memPath,
+          `${JSON.stringify({ ...parsed, bot_id: newId, ...(nextCap ? { creation_capability: nextCap } : {}), ...(nextKey ? { checkpoint_key: nextKey } : {}) }, null, 2)}\n`
+        )
         hermes['lilbot-memory.json'] = 'updated'
       }
     } else hermes['lilbot-memory.json'] = 'absent'
@@ -113,8 +120,13 @@ export function verifyDiskRekey(workspacesDir: string | null, hermesHome: string
       const parsed = parseJsonObject(memPath, 'lilbot-memory.json')
       if (parsed.bot_id !== newId) failures.push('lilbot-memory.json bot_id does not match new id')
       const tokenFile = existsSync(join(dataDir, 'engine-token')) ? join(dataDir, 'engine-token') : String(parsed.token_file ?? '')
-      if (tokenFile && existsSync(tokenFile) && parsed.creation_capability !== capabilityFor(tokenFile, newId)) {
-        failures.push('lilbot-memory.json creation_capability does not match new id')
+      if (tokenFile && existsSync(tokenFile)) {
+        if ('creation_capability' in parsed && parsed.creation_capability !== capabilityFor(tokenFile, newId)) {
+          failures.push('lilbot-memory.json creation_capability does not match new id')
+        }
+        if ('checkpoint_key' in parsed && parsed.checkpoint_key !== checkpointKeyFor(tokenFile, newId)) {
+          failures.push('lilbot-memory.json checkpoint_key does not match new id')
+        }
       }
     }
     for (const name of ['lilbot-skills.json', 'lilbot-computers.json']) {

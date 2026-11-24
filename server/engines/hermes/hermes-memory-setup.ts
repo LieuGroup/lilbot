@@ -7,7 +7,6 @@
  *  of the plug-in is installed under its own folder name (`lilbot-memory-v0-3-0`): a new version is
  *  a new folder, which Hermes loads fresh on the bot's next session, with no gateway restart. */
 
-import { createHmac } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { cp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
@@ -56,7 +55,8 @@ export function memoryInstalled(engineBotId: string, expectedBotId: string): boo
     const settings = JSON.parse(readFileSync(join(profileHome(engineBotId), SETTINGS_FILE), 'utf8'))
     if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return false
     if (typeof settings.bot_id === 'string') return settings.bot_id.length > 0 && settings.bot_id === expectedBotId
-    return settings.bot_id === undefined && typeof settings.url === 'string' && typeof settings.token_file === 'string' && engineBotId === expectedBotId
+    const hasAuth = typeof settings.checkpoint_key === 'string' || typeof settings.token_file === 'string'
+    return settings.bot_id === undefined && typeof settings.url === 'string' && hasAuth && engineBotId === expectedBotId
   } catch {
     return false
   }
@@ -81,36 +81,26 @@ const memoryCurrent = (botId: string) => {
   return installedFolders(home).includes(name) && configuredProvider(home) === name && hasKnownAcpSkillsToolset(home)
 }
 
-/** Where a connected bot was told LilBot is, so an upgrade keeps the same connection. */
-async function memorySettings(botId: string): Promise<(MemoryConnection & { creationCapability?: string }) | null> {
+/** Reads stored per-bot checkpoint settings (null if legacy `token_file`-only or missing). */
+async function memorySettings(botId: string): Promise<(MemoryConnection & { legacyToken?: boolean }) | null> {
   try {
     const settings = JSON.parse(await readFile(join(profileHome(botId), SETTINGS_FILE), 'utf8'))
-    return typeof settings.url === 'string' && typeof settings.token_file === 'string'
-      ? {
-          url: settings.url,
-          tokenFile: settings.token_file,
-          botId: typeof settings.bot_id === 'string' ? settings.bot_id : undefined,
-          creationCapability: typeof settings.creation_capability === 'string' ? settings.creation_capability : undefined
-        }
-      : null
+    if (typeof settings?.url !== 'string') return null
+    if (typeof settings.checkpoint_key !== 'string' || !settings.checkpoint_key) return null
+    return {
+      url: settings.url,
+      checkpointKey: settings.checkpoint_key,
+      botId: typeof settings.bot_id === 'string' ? settings.bot_id : undefined,
+      legacyToken: 'token_file' in settings || 'creation_capability' in settings
+    }
   } catch {
     return null
   }
 }
 
-const memoryCapability = async (tokenFile: string, botId: string) =>
-  createHmac('sha256', (await readFile(tokenFile, 'utf8')).trim())
-    .update(`create-bot:${botId}`)
-    .digest('hex')
-
 async function writeMemorySettings(home: string, connection: MemoryConnection, botId: string) {
   const file = join(home, `${SETTINGS_FILE}.tmp`)
-  const payload = {
-    url: connection.url,
-    token_file: connection.tokenFile,
-    bot_id: botId,
-    creation_capability: await memoryCapability(connection.tokenFile, botId)
-  }
+  const payload = { url: connection.url, bot_id: botId, checkpoint_key: connection.checkpointKey }
   await writeFile(file, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 })
   await rename(file, join(home, SETTINGS_FILE))
 }
@@ -158,21 +148,25 @@ export async function removeMemory(botId: string) {
 
 /** Upgrades connected adapters and repairs drifted connection settings or capabilities. Profiles whose settings are
  *  missing or bound to a different bot id are skipped here so `connectAllMemory` connects them cleanly once. */
-export async function refreshMemoryAdapters(bots: RuntimeBinding[], current?: MemoryConnection, onFailed?: (engineBotId: string) => void): Promise<string[]> {
+export async function refreshMemoryAdapters(
+  bots: RuntimeBinding[],
+  connectionFor?: (botId: string) => MemoryConnection,
+  onFailed?: (engineBotId: string) => void
+): Promise<string[]> {
   const updated: string[] = []
   for (const { id: botId, engineBotId } of bots) {
     if (!memoryInstalled(engineBotId, botId)) continue
     try {
       const saved = await memorySettings(engineBotId)
+      const current = connectionFor?.(botId)
       if (!saved && !current) continue
       const url = current?.url ?? saved!.url
-      const tokenFile = current?.tokenFile ?? saved!.tokenFile
-      const connection: MemoryConnection = { url, tokenFile, botId }
+      const checkpointKey = current?.checkpointKey ?? saved!.checkpointKey
+      const connection: MemoryConnection = { url, checkpointKey, botId }
       // Fail-closed again after the deploy watchdog cleared it for a rollback (`server/deploy/rollback-profiles.ts`);
       // once, not on every start: a changed `checkpoint_required` rebuilds every cached Hermes agent of the bot.
       if (memoryCurrent(engineBotId)) {
-        const expectedCapability = await memoryCapability(tokenFile, botId)
-        if (!saved || saved.url !== url || saved.tokenFile !== tokenFile || saved.botId !== botId || saved.creationCapability !== expectedCapability) {
+        if (!saved || saved.legacyToken || saved.url !== url || saved.checkpointKey !== checkpointKey || saved.botId !== botId) {
           await writeMemorySettings(profileHome(engineBotId), connection, botId)
           updated.push(engineBotId)
         }
