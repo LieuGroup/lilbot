@@ -133,3 +133,38 @@ export function CloseIcon({ color, size = 16 }: IconProps) {
     </Svg>
   )
 }
+
+export function SearchIcon({ color, size = 16 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Circle cx="11" cy="11" r="7" fill="none" stroke={color} strokeWidth={1.75} />
+      <Path d="M20 20l-3.8-3.8" fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" />
+    </Svg>
+  )
+}
+
+export function ChevronRightIcon({ color, size = 14 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Path d="M9 6l6 6-6 6" fill="none" stroke={color} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  )
+}
+
+export function StarIcon({ color, size = 11 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Path d="M12 2.5l2.9 5.88 6.5.94-4.7 4.58 1.11 6.47L12 17.3l-5.81 3.07 1.11-6.47-4.7-4.58 6.5-.94L12 2.5z" fill={color} />
+    </Svg>
+  )
+}
+
+export function MoreHorizontalIcon({ color, size = 16 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Circle cx="6" cy="12" r="1.5" fill={color} />
+      <Circle cx="12" cy="12" r="1.5" fill={color} />
+      <Circle cx="18" cy="12" r="1.5" fill={color} />
+    </Svg>
+  )
+}

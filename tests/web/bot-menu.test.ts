@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
-import { canArrange, canDelete, isUnread, primaryCandidates } from '../../web/src/bots/bot-menu-rules'
-import { deleteSummary, filesHint, memoriesHint } from '../../web/src/bots/delete-copy'
+import { canArrange, canDelete, isUnread, primaryCandidates } from '../../shared/client/bots/bot-menu-rules'
+import { deleteSummary, filesHint, memoriesHint } from '../../shared/client/bots/delete-copy'
 import { testBot as bot } from './test-bot'
 
 test('the primary bot cannot be arranged or deleted; non-primary bots can be deleted regardless of engine isDefault', () => {

@@ -7,8 +7,9 @@
  *  - Unfolding pops through this stack's own navigator only while focused, resetting its pop guard if layout flips back. */
 import { Stack, useFocusEffect, useIsFocused, useLocalSearchParams, useNavigation } from 'expo-router'
 import { useCallback, useEffect, useRef } from 'react'
-import { View } from 'react-native'
+import { Pressable, View } from 'react-native'
 import type { Bot } from '../../../../../shared/bot-schema'
+import { useBotMenuStore } from '../../../bots/menu-store'
 import { useBotStore } from '../../../bots/store'
 import { ChatScreen } from '../../../chat/screen'
 import { useChatStore } from '../../../chat/store'
@@ -17,6 +18,7 @@ import { useBotSelection } from '../../../duo/selection'
 import { chatStackAction, shouldClearSelectionOnChatPop, shouldShowNativeBack } from '../../../duo/stack-sync'
 import { useLiveSurface, useScreenReaderEnabled } from '../../../duo/use-surface'
 import { BotAvatar } from '../../../ui/avatar'
+import { MoreHorizontalIcon } from '../../../ui/icon'
 import { AppText } from '../../../ui/text'
 import { useTheme } from '../../../ui/theme'
 
@@ -85,6 +87,7 @@ export default function CompactChatRoute() {
           headerShown: true,
           title: bot?.name ?? 'Chat',
           headerTitle: bot ? () => <ChatHeaderTitle bot={bot} running={running} /> : undefined,
+          headerRight: bot ? () => <ChatHeaderMenuButton bot={bot} /> : undefined,
           gestureEnabled: true,
           headerBackVisible: backVisible,
           headerBackButtonDisplayMode: 'minimal',
@@ -121,5 +124,29 @@ function ChatHeaderTitle({ bot, running }: { bot: Bot; running: boolean }) {
         </AppText>
       )}
     </View>
+  )
+}
+
+function ChatHeaderMenuButton({ bot }: { bot: Bot }) {
+  const theme = useTheme()
+  const openMenu = useBotMenuStore(state => state.openMenu)
+  return (
+    <Pressable
+      testID="chat-bot-menu-button"
+      onPress={() => openMenu(bot.id)}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel={`More for ${bot.name}`}
+      style={({ pressed }) => ({
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: pressed ? 0.6 : 1
+      })}
+    >
+      <MoreHorizontalIcon color={theme.foreground} size={16} />
+    </Pressable>
   )
 }
