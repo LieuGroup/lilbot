@@ -117,7 +117,7 @@ export default function CompactChatRoute() {
     return {
       headerShown: true,
       title: bot?.name ?? 'Chat',
-      headerTitle: bot ? () => <ChatHeaderTitle bot={bot} running={running} /> : undefined,
+      headerTitle: bot ? () => <ChatHeaderTitle bot={bot} /> : undefined,
       headerRight: bot ? () => <ChatHeaderMenuButton bot={bot} /> : undefined,
       gestureEnabled: true,
       headerBackVisible: backVisible,
@@ -128,7 +128,7 @@ export default function CompactChatRoute() {
       headerTintColor: theme.foreground,
       unstable_headerRightItems: undefined
     }
-  }, [backVisible, bot, hideDuoHeader, running, theme.background, theme.foreground, verticalBarItems])
+  }, [backVisible, bot, hideDuoHeader, theme.background, theme.foreground, verticalBarItems])
 
   return (
     <>
@@ -147,19 +147,13 @@ export default function CompactChatRoute() {
   )
 }
 
-function ChatHeaderTitle({ bot, running }: { bot: Bot; running: boolean }) {
-  const theme = useTheme()
+function ChatHeaderTitle({ bot }: { bot: Bot }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, maxWidth: 240 }}>
       <BotAvatar name={bot.name} avatar={bot.prefs.avatar} size={24} />
       <AppText variant="title" numberOfLines={1} style={{ flexShrink: 1 }}>
         {bot.name}
       </AppText>
-      {running && (
-        <AppText variant="meta" color={theme.primary} numberOfLines={1}>
-          Working
-        </AppText>
-      )}
     </View>
   )
 }

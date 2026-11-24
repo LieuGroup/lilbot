@@ -38,6 +38,8 @@ IOS_PROVISIONING_PROFILE_NAME="<profile name>" bun run testflight -- --upload
 
 - `APP_VARIANT` defaults to `production` (`com.lilbot.app`) for TestFlight; pass `--variant preview` for `com.lilbot.app.preview`.
 - `APP_BUILD_NUMBER` defaults to a monotonic UTC timestamp (`YYYYMMDDHHMM`) when omitted.
+- `app.config.ts` sets `ITSAppUsesNonExemptEncryption: false` so TestFlight does not prompt for export compliance on each build, and disables `NSAllowsArbitraryLoads` outside `development` (HTTPS / `wss://` with a trusted certificate is required).
+- Signing values (`APPLE_TEAM_ID`, `IOS_PROVISIONING_PROFILE_NAME`, `IOS_CODE_SIGN_IDENTITY`, `IOS_KEYCHAIN` / `--keychain`) stay in environment variables; generated `ExportOptions.plist`, `.xcarchive` and `.ipa` files land under `ios/build/` (gitignored). Pass `IOS_KEYCHAIN=~/Library/Keychains/login.keychain-db` on a Mac with other locked keychains to scope identity lookup and `xcodebuild archive` signing to that keychain.
 - Provisioning profiles are read from `~/Library/MobileDevice/Provisioning Profiles` and `~/Library/Developer/Xcode/UserData/Provisioning Profiles`, selecting the newest valid App Store profile matching the bundle id, name, and local signing identity. No Apple credentials or team IDs live in git.
 
 ## Rules

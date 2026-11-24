@@ -15,11 +15,13 @@ interface MessageListProps {
   botName: string
   chat: ChatView
   statusLine?: ChatStatusLine | null
+  emptyHint?: string
 }
 
 /** The transcript, newest at the bottom. Restores the bot's saved scrollOffset when remounted across fold/unfold.
  *  Because the list is inverted, ListHeaderComponent renders at the visual bottom right where the reply appears. */
-export function MessageList({ botId, botName, chat, statusLine = null }: MessageListProps) {
+export function MessageList({ botId, botName, chat, statusLine = null, emptyHint }: MessageListProps) {
+  const theme = useTheme()
   const listRef = useRef<FlatList<{ key: string; item: MessageItem; queued: boolean }>>(null)
   const initialOffset = useRef(useChatStore.getState().slots[botId]?.scrollOffset ?? 0)
   const restored = useRef(initialOffset.current <= 0)
@@ -58,6 +60,13 @@ export function MessageList({ botId, botName, chat, statusLine = null }: Message
       scrollEventThrottle={100}
       contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 20, gap: 18, flexGrow: 1, justifyContent: rows.length === 0 ? 'center' : 'flex-end' }}
       ListHeaderComponent={statusLine ? <ConversationStatusRow status={statusLine} centered={rows.length === 0} /> : undefined}
+      ListEmptyComponent={
+        !statusLine && emptyHint ? (
+          <AppText testID="chat-empty-hint" variant="chat" color={theme.mutedForeground} style={{ textAlign: 'center' }}>
+            {emptyHint}
+          </AppText>
+        ) : undefined
+      }
       renderItem={({ item: row }) => <ChatItem item={row.item} botName={botName} queued={row.queued} />}
     />
   )
@@ -100,17 +109,10 @@ function ConversationStatusRow({ status, centered }: { status: ChatStatusLine; c
       testID="chat-status-line"
       accessibilityRole="text"
       accessibilityLiveRegion="polite"
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: centered ? 'center' : 'flex-start',
-        gap: 6,
-        minHeight: 20,
-        opacity: status.tone === 'running' ? pulse : 1
-      }}
+      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: centered ? 'center' : 'flex-start', gap: 6, minHeight: 20, maxWidth: '100%', opacity: status.tone === 'running' ? pulse : 1 }}
     >
       {status.tone === 'running' && <SparklesIcon color={theme.mutedForeground} size={13} />}
-      <AppText variant="preview" color={theme.mutedForeground} numberOfLines={1}>
+      <AppText variant="preview" color={theme.mutedForeground} numberOfLines={1} style={{ flexShrink: 1 }}>
         {status.text}
       </AppText>
     </Animated.View>

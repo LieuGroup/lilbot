@@ -62,11 +62,6 @@ export function ChatScreen({ bot, hideHeader = false, headerLeading, showNewSess
           <AppText variant="title" numberOfLines={1} style={{ flex: 1 }}>
             {bot.name}
           </AppText>
-          {chat.view.running && (
-            <AppText variant="meta" color={theme.primary}>
-              Working
-            </AppText>
-          )}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             {showNewSession && (
               <Pressable
@@ -119,7 +114,7 @@ export function ChatScreen({ bot, hideHeader = false, headerLeading, showNewSess
         </View>
       ) : (
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={keyboardOffset}>
-          <MessageList key={bot.id} botId={bot.id} botName={bot.name} chat={chat.view} statusLine={statusLine} />
+          <MessageList key={bot.id} botId={bot.id} botName={bot.name} chat={chat.view} statusLine={statusLine} emptyHint={`Send a message to start with ${bot.name}.`} />
           <Composer botId={bot.id} botName={bot.name} ready={chat.ready} running={chat.view.running} model={modelPicker.pill} bottomInset={insets.bottom} onSend={send} onStop={() => void chat.stop()} />
         </KeyboardAvoidingView>
       )}

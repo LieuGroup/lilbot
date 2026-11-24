@@ -10,7 +10,7 @@ import { BotAvatar } from '../ui/avatar'
 import { useTheme } from '../ui/theme'
 import { DUO_AVATAR_TEST_ID, duoAvatarAccessibilityLabel } from './vertical-bar'
 
-const SLOT_SIZE = 40
+const SLOT_SIZE = 44
 const RING_SIZE = 38
 const AVATAR_SIZE_IDLE = 28
 const AVATAR_SIZE_WORKING = 24
@@ -79,8 +79,8 @@ export const DuoStripAvatar = memo(function DuoStripAvatar({ bot, running, unrea
           pointerEvents="none"
           style={{
             position: 'absolute',
-            top: 2,
-            right: 2,
+            top: 3,
+            right: 3,
             width: 9,
             height: 9,
             borderRadius: 4.5,

@@ -59,23 +59,25 @@ describe('iPhone Duo native vertical side-strip table and availability guards', 
     expect(resolveDuoStripScreen({ surface: 'duo-unfolded-portrait', chatFocused: true })).toBe('unfolded-portrait')
   })
 
-  test('DUO_VERTICAL_BAR_TABLE places bot-avatar first on Duo chat surfaces and keeps overflow labels intact', () => {
+  test('DUO_VERTICAL_BAR_TABLE places bot-avatar first on Duo chat surfaces with exact overflow priorities', () => {
     expect(DUO_AVATAR_TEST_ID).toBe(`${DUO_VERTICAL_ITEM_PREFIX}bot-avatar`)
     expect(DUO_VERTICAL_BAR_TABLE['folded-roster'].map(s => s.id)).toEqual(['search-bots'])
+    expect(DUO_VERTICAL_BAR_TABLE['folded-roster'].map(s => s.priority)).toEqual(['high'])
     expect(DUO_VERTICAL_BAR_TABLE['folded-chat'].map(s => s.id)).toEqual(['bot-avatar', 'bot-menu'])
+    expect(DUO_VERTICAL_BAR_TABLE['folded-chat'].map(s => s.priority)).toEqual(['high', 'high'])
     expect(DUO_VERTICAL_BAR_TABLE['unfolded-split'].map(s => s.id)).toEqual(['bot-avatar', 'sidebar-toggle', 'bot-menu', 'new-bot', 'search-bots'])
+    expect(DUO_VERTICAL_BAR_TABLE['unfolded-split'].map(s => s.priority)).toEqual(['high', 'high', 'high', 'standard', 'low'])
     expect(DUO_VERTICAL_BAR_TABLE['unfolded-portrait']).toEqual([])
 
     for (const slots of Object.values(DUO_VERTICAL_BAR_TABLE)) {
       for (const slot of slots) {
         expect(slot.defaultLabel.trim().length).toBeGreaterThan(0)
         if (slot.kind === 'button') expect(slot.sfSymbol.trim().length).toBeGreaterThan(0)
-        expect(['high', 'standard', 'low']).toContain(slot.priority)
       }
     }
   })
 
-  test('buildDuoVerticalBarItems preserves table order with shipped avatar + more and prefixes ids', () => {
+  test('buildDuoVerticalBarItems preserves table order, prefixes ids, and maps exact visibilityPriority', () => {
     const noop = () => {}
     const unfolded = buildDuoVerticalBarItems({
       screen: 'unfolded-split',
@@ -95,6 +97,7 @@ describe('iPhone Duo native vertical side-strip table and availability guards', 
       `${DUO_VERTICAL_ITEM_PREFIX}new-bot`,
       `${DUO_VERTICAL_ITEM_PREFIX}search-bots`
     ])
+    expect(unfolded.filter(i => i.type === 'button').map(i => i.visibilityPriority)).toEqual(['high', 'high', 'standard', 'low'])
     expect(unfolded[0]).toEqual({ type: 'custom', element: fakeElement, hidesSharedBackground: false })
 
     const folded = buildDuoVerticalBarItems({
@@ -106,7 +109,10 @@ describe('iPhone Duo native vertical side-strip table and availability guards', 
     })
     expect(folded).toHaveLength(2)
     expect(folded[0]?.type).toBe('custom')
-    expect(folded[1]).toMatchObject({ type: 'button', identifier: `${DUO_VERTICAL_ITEM_PREFIX}bot-menu`, label: 'Bot options' })
+    expect(folded[1]).toMatchObject({ type: 'button', identifier: `${DUO_VERTICAL_ITEM_PREFIX}bot-menu`, label: 'Bot options', visibilityPriority: 'high' })
+    const foldedRoster = buildDuoVerticalBarItems({ screen: 'folded-roster', actions: { 'search-bots': { onPress: noop } } })
+    expect(foldedRoster).toHaveLength(1)
+    expect(foldedRoster[0]).toMatchObject({ type: 'button', identifier: `${DUO_VERTICAL_ITEM_PREFIX}search-bots`, visibilityPriority: 'high' })
     expect(buildDuoVerticalBarItems({ screen: null, actions: { 'sidebar-toggle': { onPress: noop } } })).toEqual([])
     expect(buildDuoVerticalBarItems({ screen: 'unfolded-portrait', actions: { 'sidebar-toggle': { onPress: noop } } })).toEqual([])
   })
@@ -136,18 +142,33 @@ describe('iPhone Duo native vertical side-strip table and availability guards', 
     expect(active.unstable_headerRightItems?.()).toEqual(items)
   })
 
-  test('DuoShell, CompactChatRoute, ChatScreen, and MessageList wire avatar + more in strip, header removal, and bottom status line', () => {
+  test('screens wire avatar + more in strip, 44 pt hit target, single bottom status line, idle empty hint, and AGENTS rules', () => {
     const shellSource = readFileSync(resolve(process.cwd(), 'ios/src/duo/shell.tsx'), 'utf8')
     const chatRouteSource = readFileSync(resolve(process.cwd(), 'ios/src/app/(tabs)/(bots)/chat.tsx'), 'utf8')
     const chatScreenSource = readFileSync(resolve(process.cwd(), 'ios/src/chat/screen.tsx'), 'utf8')
     const messageListSource = readFileSync(resolve(process.cwd(), 'ios/src/chat/message-list.tsx'), 'utf8')
+    const stripAvatarSource = readFileSync(resolve(process.cwd(), 'ios/src/duo/strip-avatar.tsx'), 'utf8')
+    const iosAgentsSource = readFileSync(resolve(process.cwd(), 'ios/AGENTS.md'), 'utf8')
+
     expect(shellSource).toContain('shouldHideDuoChatHeader(')
     expect(shellSource).toContain('DuoStripAvatar')
     expect(chatRouteSource).toContain('shouldHideDuoChatHeader(')
     expect(chatRouteSource).toContain('DuoStripAvatar')
+    expect(chatRouteSource).not.toContain('>Working<')
+    expect(chatRouteSource).not.toContain('\n          Working\n')
     expect(chatScreenSource).toContain('resolveChatStatusLine(')
+    expect(chatScreenSource).toMatch(/emptyHint=\{`Send a message to start with \$\{bot\.name\}\.`\}/)
+    expect(chatScreenSource).not.toContain('\n              Working\n')
     expect(messageListSource).toContain('ListHeaderComponent=')
+    expect(messageListSource).toContain('ListEmptyComponent=')
     expect(messageListSource).toContain('testID="chat-status-line"')
+    expect(messageListSource).toContain('testID="chat-empty-hint"')
+    expect(messageListSource).toContain('flexShrink: 1')
+    expect(messageListSource).toContain("maxWidth: '100%'")
     expect(messageListSource).not.toContain('ListFooterComponent')
+    expect(stripAvatarSource).toContain('const SLOT_SIZE = 44')
+    expect(iosAgentsSource).toContain('ITSAppUsesNonExemptEncryption')
+    expect(iosAgentsSource).toContain('IOS_KEYCHAIN')
+    expect(iosAgentsSource).toContain('DUO_VERTICAL_BAR_TABLE')
   })
 })
