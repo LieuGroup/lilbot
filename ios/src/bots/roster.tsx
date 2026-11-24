@@ -12,7 +12,7 @@ import { MOBILE_SCALE, radius } from '../ui/tokens'
 import { useBotMenuStore } from './menu-store'
 import { CollapsedGroupHeader, RosterHeaderActions, RosterSearchBar, RosterSectionHeader, SplitNewBotFooter } from './roster-chrome'
 import { buildRosterListItems, firstRosterHeaderKey, type RosterListItem, rosterHeaderActionsVisibility, standaloneRosterHeaderActions } from './roster-list'
-import { localDayKey, msUntilNextLocalDay } from './roster-preview'
+import { createDayRolloverController } from './roster-preview'
 import { RosterRow } from './roster-row'
 import { RosterTiles } from './roster-tiles'
 import { WorkingTogether } from './working-together'
@@ -64,16 +64,15 @@ export function Roster({
   const [dayAnchor, setDayAnchor] = useState(() => Date.now())
 
   useEffect(() => {
-    const syncDay = () => setDayAnchor(prev => (localDayKey(prev) === localDayKey() ? prev : Date.now()))
-    const timer = setTimeout(syncDay, msUntilNextLocalDay(dayAnchor))
+    const rollover = createDayRolloverController({ onDayChange: setDayAnchor })
     const sub = AppState.addEventListener('change', next => {
-      if (next === 'active') syncDay()
+      if (next === 'active') rollover.sync()
     })
     return () => {
-      clearTimeout(timer)
+      rollover.stop()
       sub.remove()
     }
-  }, [dayAnchor])
+  }, [])
 
   useEffect(() => {
     if (!actionError) return

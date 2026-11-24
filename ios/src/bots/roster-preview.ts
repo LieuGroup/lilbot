@@ -1,5 +1,5 @@
-/** Pure iPhone roster last-message preview and locale-aware timestamp formatting.
- *  Zero React Native runtime imports so unit tests verify every rule and locale on Linux. */
+/** Pure iPhone roster last-message preview, locale-aware timestamp formatting, and midnight rollover controller.
+ *  Zero React Native runtime imports so unit tests verify every rule, locale, and timer edge case on Linux. */
 import type { Bot, BotLastMessage } from '../../../shared/bot-schema'
 import type { RowTone } from '../../../shared/client/bots/row-state'
 
@@ -7,9 +7,20 @@ export interface RosterTimeOptions {
   now?: number
   locale?: string
   timeZone?: string
+  weekday?: 'short' | 'long'
+}
+
+export type DayRolloverTimer = ReturnType<typeof setTimeout> | number
+
+export interface DayRolloverOptions {
+  now?: () => number
+  setTimeout?: (fn: () => void, ms: number) => DayRolloverTimer
+  clearTimeout?: (id: DayRolloverTimer) => void
+  onDayChange: (now: number) => void
 }
 
 export const USER_MESSAGE_PREFIX = 'You: '
+export const MAX_FORWARD_SKEW_MS = 10 * 60_000
 
 const MS_PER_DAY = 86_400_000
 
@@ -39,10 +50,10 @@ function calendarParts(ms: number, timeZone?: string): { year: number; month: nu
 }
 
 /** Formats a message timestamp in the device's locale:
- *  - today -> short time (e.g. "2:15 pm" / "14:15")
- *  - 1..6 calendar days ago -> short weekday (e.g. "Tue")
+ *  - today (or <= 10 min forward clock skew across midnight) -> short time (e.g. "2:15 pm" / "14:15")
+ *  - 1..6 calendar days ago -> short (or long for VoiceOver) weekday (e.g. "Tue" / "Tuesday")
  *  - 7+ calendar days ago in the same year -> short month & day (e.g. "15 Nov" / "Nov 15")
- *  - earlier year -> short locale date (e.g. "20/12/25") */
+ *  - earlier year -> short locale date (e.g. "20/12/2025") */
 export function formatRosterTime(at: number, options: RosterTimeOptions = {}): string | null {
   if (!Number.isFinite(at) || at <= 0) return null
   const now = options.now ?? Date.now()
@@ -54,11 +65,11 @@ export function formatRosterTime(at: number, options: RosterTimeOptions = {}): s
   const date = new Date(at)
   const tz = options.timeZone ? { timeZone: options.timeZone } : {}
 
-  if (dayDiff === 0 || (dayDiff < 0 && at - now < MS_PER_DAY)) {
+  if (dayDiff === 0 || (dayDiff < 0 && at - now <= MAX_FORWARD_SKEW_MS)) {
     return new Intl.DateTimeFormat(options.locale, { ...tz, timeStyle: 'short' }).format(date)
   }
   if (dayDiff >= 1 && dayDiff <= 6) {
-    return new Intl.DateTimeFormat(options.locale, { ...tz, weekday: 'short' }).format(date)
+    return new Intl.DateTimeFormat(options.locale, { ...tz, weekday: options.weekday ?? 'short' }).format(date)
   }
   if (atParts.year === nowParts.year) {
     return new Intl.DateTimeFormat(options.locale, { ...tz, month: 'short', day: 'numeric' }).format(date)
@@ -77,4 +88,52 @@ export function msUntilNextLocalDay(now = Date.now()): number {
 export function localDayKey(ms = Date.now()): string {
   const d = new Date(ms)
   return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`
+}
+
+/** Re-arms the local-midnight timer on every timer fire (even early) and every `sync()` call (e.g. foreground
+ *  return after iOS sleep) so "today" timestamps roll over to weekdays at midnight reliably. */
+export function createDayRolloverController(opts: DayRolloverOptions): { sync: () => void; stop: () => void } {
+  const getNow = opts.now ?? Date.now
+  const schedule = opts.setTimeout ?? ((fn: () => void, ms: number) => setTimeout(fn, ms))
+  const cancel = opts.clearTimeout ?? ((id: DayRolloverTimer) => clearTimeout(id as ReturnType<typeof setTimeout>))
+  let lastDay = localDayKey(getNow())
+  let timer: DayRolloverTimer | null = null
+  let stopped = false
+
+  const clear = () => {
+    if (timer !== null) {
+      cancel(timer)
+      timer = null
+    }
+  }
+
+  const arm = (current: number) => {
+    clear()
+    if (stopped) return
+    timer = schedule(() => {
+      timer = null
+      sync()
+    }, msUntilNextLocalDay(current))
+  }
+
+  const sync = () => {
+    if (stopped) return
+    const current = getNow()
+    const key = localDayKey(current)
+    if (key !== lastDay) {
+      lastDay = key
+      opts.onDayChange(current)
+    }
+    arm(current)
+  }
+
+  arm(getNow())
+
+  return {
+    sync,
+    stop: () => {
+      stopped = true
+      clear()
+    }
+  }
 }

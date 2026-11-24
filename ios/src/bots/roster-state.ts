@@ -115,16 +115,17 @@ export function sameRosterBotDisplay(a: Bot, b: Bot): boolean {
   return true
 }
 
-/** Maps shared rowState(bot) plus optional `bot.lastMessage` into two-line Roster row presentation:
- *  live status wins whenever the bot is working, waiting, failed, finished, unavailable, or in a group;
- *  otherwise the latest message preview is shown (prefixed with "You: " for the owner's own message),
- *  falling back to the bot's description only when no message exists yet. */
+/** Maps shared rowState(bot) + optional `bot.lastMessage` into two-line Roster row display: live status wins
+ *  over `lastMessage` (with time suppressed whenever line 2 is not showing `lastMessage`). */
 export function rosterRowDisplay(bot: Bot, timeOptions?: RosterTimeOptions): RosterRowDisplay {
   const state = rowState(bot)
   const previewText = formatLastMessagePreview(bot.lastMessage)
-  const inlineText = hasActiveLiveRowState(bot, state.tone) ? state.text : (previewText ?? state.text)
-  const timeText = bot.lastMessage ? formatRosterTime(bot.lastMessage.at, timeOptions) : null
-  const accessibilityLabel = [bot.name, bot.isPrimary ? 'Primary bot' : '', inlineText, timeText ?? '', state.unread ? 'Unread' : ''].filter(Boolean).join(', ')
+  const showingLastMessage = !hasActiveLiveRowState(bot, state.tone) && previewText !== null
+  const inlineText = showingLastMessage ? previewText : state.text
+  const timeText = showingLastMessage && bot.lastMessage ? formatRosterTime(bot.lastMessage.at, timeOptions) : null
+  const spokenTime = showingLastMessage && bot.lastMessage ? formatRosterTime(bot.lastMessage.at, { ...timeOptions, weekday: 'long' }) : null
+  const spokenStatus = state.tone === 'working' && !/\bworking\b/i.test(inlineText) ? 'Working' : ''
+  const accessibilityLabel = [bot.name, bot.isPrimary ? 'Primary bot' : '', spokenStatus, inlineText, spokenTime ?? '', state.unread ? 'Unread' : ''].filter(Boolean).join(', ')
 
   let inlineTone: InlineTextTone = 'muted'
   if (state.tone === 'failed') {
