@@ -1,13 +1,12 @@
 /** Conversation transcript (newest at the bottom) with upward history paging, quiet history dividers,
  *  exact multi-pass deep-history & fold/unfold scroll restore, and a floating scroll-to-bottom orb. */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AccessibilityInfo, Animated, Easing, FlatList, type ListRenderItemInfo, Pressable, useWindowDimensions, View } from 'react-native'
+import { AccessibilityInfo, Animated, Easing, FlatList, type ListRenderItemInfo, Pressable, useColorScheme, useWindowDimensions, View } from 'react-native'
 import type { Avatar } from '../../../shared/avatar'
 import type { ChatView } from '../../../shared/client/chat/chat-state'
 import { LoadingEarlier } from '../history/history-marks'
 import { useOlderHistory } from '../history/use-older-history'
 import { ArrowDownIcon } from '../ui/chat-icons'
-import { GlassSurface } from '../ui/glass'
 import { SparklesIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
@@ -31,6 +30,7 @@ export interface MessageListProps {
 
 export function MessageList({ botId, botName, botAvatar, deviceId, chat, statusLine = null, emptyHint, onChangeModel }: MessageListProps) {
   const theme = useTheme()
+  const isDark = useColorScheme() === 'dark'
   const { width: viewportWidth } = useWindowDimensions()
   const listRef = useRef<FlatList<TranscriptRow>>(null)
   const rows = useMemo(() => buildTranscriptRows(chat, botName), [botName, chat])
@@ -83,11 +83,35 @@ export function MessageList({ botId, botName, botAvatar, deviceId, chat, statusL
         renderItem={renderItem}
       />
       {scroll.showJumpDown ? (
-        <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: 10, alignItems: 'center' }}>
-          <Pressable testID="chat-scroll-to-bottom" onPress={scroll.jumpToBottom} hitSlop={4} accessibilityRole="button" accessibilityLabel="Scroll to latest message">
-            <GlassSurface interactive style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }}>
-              <ArrowDownIcon color={theme.foreground} size={18} />
-            </GlassSurface>
+        <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: 8, alignItems: 'center' }}>
+          <Pressable
+            testID="chat-scroll-to-bottom"
+            onPress={scroll.jumpToBottom}
+            hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="Scroll to latest message"
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 5,
+              minHeight: 32,
+              paddingLeft: 10,
+              paddingRight: 13,
+              borderRadius: 16,
+              backgroundColor: theme.card,
+              borderWidth: 1,
+              borderColor: theme.border,
+              shadowColor: '#000000',
+              shadowOpacity: isDark ? 0.45 : 0.16,
+              shadowRadius: 10,
+              shadowOffset: { width: 0, height: 4 },
+              opacity: pressed ? 0.8 : 1
+            })}
+          >
+            <ArrowDownIcon color={theme.foreground} size={14} />
+            <AppText variant="preview" maxFontSizeMultiplier={1.35} color={theme.foreground} style={{ fontFamily: 'Inter_500Medium' }}>
+              Latest
+            </AppText>
           </Pressable>
         </View>
       ) : null}

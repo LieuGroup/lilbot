@@ -43,6 +43,7 @@ export function SentAttachments({ files }: { files: Attachment[] }) {
             return (
               <Pressable
                 key={file.id}
+                testID="sent-attachment-image"
                 onPress={() => setViewed({ uri, name: file.name })}
                 accessibilityRole="button"
                 accessibilityLabel={`Open ${file.name}`}
@@ -57,6 +58,7 @@ export function SentAttachments({ files }: { files: Attachment[] }) {
       {others.map(file => (
         <View
           key={file.id}
+          testID="sent-attachment-file"
           style={{
             flexDirection: 'row',
             alignItems: 'center',
@@ -88,6 +90,7 @@ export function SentAttachments({ files }: { files: Attachment[] }) {
         <View style={{ flex: 1, backgroundColor: glassFallbackBackground(theme, { reduceTransparency, scrim: true }), justifyContent: 'center', alignItems: 'center', padding: 16 }}>
           {viewed ? <Image source={{ uri: viewed.uri, headers }} style={{ width: '100%', height: '80%' }} resizeMode="contain" /> : null}
           <Pressable
+            testID="image-viewer-close"
             onPress={() => setViewed(null)}
             hitSlop={8}
             accessibilityRole="button"
