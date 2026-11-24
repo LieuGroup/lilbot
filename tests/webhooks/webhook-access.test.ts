@@ -31,6 +31,12 @@ test('a narrow run emits an empty webhook access scope; each granted group passe
   expect(webhookRunAccess(['memory', 'bots']).prompt).toContain("Oscar also lets this webhook's runs read and change memory and manage bots.")
 })
 
+test('hermesToolsetsForRun rejects unknown scope kinds and ignores prototype or unknown capability keys', () => {
+  expect(hermesToolsetsForRun({ kind: 'webhook', capabilities: ['__proto__', 'constructor', 'toString', 'unknown'] as any })).toEqual(['lilbot_system'])
+  expect(hermesToolsetsForRun({ kind: 'webhook', capabilities: ['web', 'toString'] as any })).toEqual(['lilbot_system', 'web'])
+  expect(() => hermesToolsetsForRun({ kind: 'other', capabilities: ['web'] } as any)).toThrow('Unknown run access scope')
+})
+
 test('a webhook limited to computers gets exactly the computer tools on System MCP and refuses every other capability group', () => {
   const beyondOwn = () => false
   for (const tool of [...RUN_TOOLS, ...(TOOL_GROUPS.computers ?? [])]) {

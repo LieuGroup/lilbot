@@ -8,7 +8,7 @@ import { health, waitHealthy } from './health'
 import { command, systemctl } from './process'
 import { redact } from './redact'
 import { currentRelease, releaseCommit, switchRelease } from './releases'
-import { clearCheckpointFlags } from './rollback-profiles'
+import { runEngineRollbacks } from './rollback-profiles'
 
 const jobPath = process.argv[2]
 const job = await readJson<Deployment>(jobPath)
@@ -35,7 +35,7 @@ async function rollback() {
   await restoreDatabase(join(snapshot, 'lilbot.db'), join(job.dataDir, 'lilbot.db'))
   if (!job.previousRelease || !job.previous) throw new Error('First release failed; database restored, but no earlier release exists.')
   await switchRelease(job.releaseLink, job.previousRelease)
-  const flags = await clearCheckpointFlags(join(job.dataDir, 'lilbot.db'), await systemctl('show', job.unit, '--property=Environment', '--value').catch(() => null))
+  const flags = await runEngineRollbacks(join(job.dataDir, 'lilbot.db'), await systemctl('show', job.unit, '--property=Environment', '--value').catch(() => null))
   const line = `[rollback] memory save flag cleared for ${flags.cleared} bots${flags.failed ? `; ${flags.failed} could not be checked or cleared` : ''}`
   console.log(line)
   job.logs = [job.logs, line].filter(Boolean).join('\n')
@@ -76,3 +76,5 @@ try {
 } finally {
   if (releaseLock) await rm(join(root, 'lock'), { recursive: true, force: true })
 }
+// Exit explicitly after releasing the lock so a timed-out rollback hook with a lingering timer cannot hold the unit open.
+process.exit(process.exitCode ?? 0)

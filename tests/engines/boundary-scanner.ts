@@ -51,7 +51,7 @@ export function sourceFiles(folder: string): string[] {
   })
 }
 
-function parseSource(source: string, filePath: string): ts.SourceFile {
+export function parseSource(source: string, filePath: string): ts.SourceFile {
   const kind = filePath.endsWith('.tsx') ? ts.ScriptKind.TSX : filePath.endsWith('.jsx') ? ts.ScriptKind.JSX : /\.[cm]?js$/.test(filePath) ? ts.ScriptKind.JS : ts.ScriptKind.TS
   return ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true, kind)
 }
@@ -102,22 +102,20 @@ function evalStaticString(node: ts.Node): string | null {
   return null
 }
 
-/** Every relative module specifier imported, re-exported, required, or dynamically imported in `source`. */
-export function relativeImportsInSource(source: string, filePath: string): string[] {
+/** Every raw module specifier imported, re-exported, required, or dynamically imported in `source`. */
+export function specifiersInSource(source: string, filePath: string): string[] {
   const sf = parseSource(source, filePath)
   const specs: string[] = []
   const add = (spec: string | null) => {
-    if (spec && (spec.startsWith('./') || spec.startsWith('../'))) specs.push(normalize(join(dirname(filePath), spec)))
+    if (spec) specs.push(spec)
   }
   const visit = (node: ts.Node) => {
-    if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier) {
-      add(evalStaticString(node.moduleSpecifier))
-    } else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) {
-      add(evalStaticString(node.argument.literal))
-    } else if (ts.isCallExpression(node) && node.arguments.length >= 1) {
-      const isDynImport = node.expression.kind === ts.SyntaxKind.ImportKeyword
-      const isRequire = ts.isIdentifier(node.expression) && node.expression.text === 'require'
-      if (isDynImport || isRequire) add(evalStaticString(node.arguments[0]))
+    if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier) add(evalStaticString(node.moduleSpecifier))
+    else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) add(evalStaticString(node.argument.literal))
+    else if (ts.isCallExpression(node) && node.arguments.length >= 1) {
+      const isDyn = node.expression.kind === ts.SyntaxKind.ImportKeyword
+      const isReq = ts.isIdentifier(node.expression) && node.expression.text === 'require'
+      if (isDyn || isReq) add(evalStaticString(node.arguments[0]))
     }
     ts.forEachChild(node, visit)
   }
@@ -125,12 +123,17 @@ export function relativeImportsInSource(source: string, filePath: string): strin
   return specs
 }
 
+export function relativeImportsInSource(source: string, filePath: string): string[] {
+  return specifiersInSource(source, filePath)
+    .filter(spec => spec.startsWith('./') || spec.startsWith('../'))
+    .map(spec => normalize(join(dirname(filePath), spec)))
+}
+
 export const importsOf = (file: string) => relativeImportsInSource(readFileSync(join(ROOT, file), 'utf8'), file)
 
-/** Returns disallowed imports from `file` into any concrete subfolder under `baseDir` (e.g. `server/engines` or `helper/drivers`).
- *  Only `registrationPoint` and files inside the same `<baseDir>/<id>/` folder may import from `<baseDir>/<id>/`. */
-export function forbiddenSubfolderImports(file: string, targets: readonly string[], baseDir: string, ids: readonly string[], registrationPoint: string): string[] {
-  if (file === registrationPoint) return []
+/** Disallowed imports from `file` into `<baseDir>/<id>/`; only `allowed` registration points and the same folder may import it. */
+export function forbiddenSubfolderImports(file: string, targets: readonly string[], baseDir: string, ids: readonly string[], allowed: string | readonly string[]): string[] {
+  if (Array.isArray(allowed) ? allowed.includes(file) : file === allowed) return []
   const ownId = ids.find(id => file.startsWith(`${baseDir}/${id}/`))
   return targets.filter(target => ids.some(id => id !== ownId && (target === `${baseDir}/${id}` || target.startsWith(`${baseDir}/${id}/`)))).map(target => `${file} -> ${target}`)
 }
@@ -147,13 +150,7 @@ function tokenizeWords(text: string): string[] {
 function hasWordSequence(words: string[], target: string[]): boolean {
   if (!target.length || words.length < target.length) return false
   for (let i = 0; i <= words.length - target.length; i++) {
-    let ok = true
-    for (let j = 0; j < target.length; j++)
-      if (words[i + j] !== target[j]) {
-        ok = false
-        break
-      }
-    if (ok) return true
+    if (target.every((word, j) => words[i + j] === word)) return true
   }
   return false
 }

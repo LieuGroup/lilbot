@@ -26,5 +26,6 @@ const WEBHOOK_TOOLSETS: Record<WebhookCapability, readonly string[]> = {
 export function hermesToolsetsForRun(access?: RunAccessScope): string[] | undefined {
   if (!access) return undefined
   if (access === 'check') return [...CHECK_TOOLSETS]
-  return [...new Set([...WEBHOOK_NARROW, ...access.capabilities.flatMap(group => WEBHOOK_TOOLSETS[group])])]
+  if (access.kind !== 'webhook') throw new Error('Unknown run access scope')
+  return [...new Set([...WEBHOOK_NARROW, ...access.capabilities.flatMap(group => (Object.hasOwn(WEBHOOK_TOOLSETS, group) ? WEBHOOK_TOOLSETS[group] : []))])]
 }
