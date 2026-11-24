@@ -66,16 +66,18 @@ test('createAppServices wires narrowed threadStore, webhook callers, and workerA
     expect(services.threads.store.get(threadId).capabilities).toEqual(['delegation'])
     services.threads.store.attach(services.threads.store.delivery(`${b1.id}:a1`)!, b2.id, 'b2-narrow', true)
 
-    // narrowed threadStore wired into createWebhooks -> engineApi locks memory & System MCP blocks computers for b2-narrow.
+    // narrowed threadStore wired into createWebhooks -> engineApi locks memory context & System MCP blocks computers/memory for b2-narrow.
+    await services.bots.writeMemory({ botId: b2.id, kind: 'profile', text: 'Secret narrowed fact.' })
     const memRes = await services.engineApi(
-      new Request('http://127.0.0.1:3999/engine/memory/recall', {
+      new Request('http://127.0.0.1:3999/engine/memory/context', {
         method: 'POST',
         headers: { host: '127.0.0.1:3999', authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ botId: b2.id, chatId: 'b2-narrow', query: 'x' })
+        body: JSON.stringify({ botId: b2.id, chatId: 'b2-narrow' })
       }),
-      '/engine/memory/recall'
+      '/engine/memory/context'
     )
-    expect(memRes.status).toBe(422)
+    expect(memRes.status).toBe(200)
+    expect(((await memRes.json()) as { text: string }).text).toBe('')
     onTool?.({ engineBotId: b2.engineBotId, chatId: 'b2-narrow', tool: 'mcp__lilbot_system__lilbot_computers_list', args: {}, callId: 'c1' })
     const compMcp = await services.system.handler(
       new Request('http://127.0.0.1:3999/engine/lilbot/mcp', {

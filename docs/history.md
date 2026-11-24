@@ -43,7 +43,7 @@ LilBot never summarises. The short version is in `AGENTS.md` under "Conversation
 - `chat.history` pages are newest first, records within a page chronological. Cursors are bot-bound sort keys, so new
   messages do not shift old pages. `start` appears only on the oldest page after import completes; `null` is not a
   definitive beginning while import is pending. `history.changed {botId}` tells clients to refresh.
-- `lilbot_history_search(query, limit?)` on LilBot's System MCP server (and the legacy `search_conversations` plug-in tool while both exist) call `HistoryService.search` to search only the calling bot's main conversation rows and report import progress. Hidden sessions (routines, webhooks, exchanges, reviews, checks) and their compression continuations stay excluded, failing closed when lineage cannot be read.
+- `lilbot_history_search(query, limit?)` on LilBot's System MCP server calls `HistoryService.search` to search only the calling bot's main conversation rows and report import progress (the legacy `search_conversations` plug-in tool and `/engine/history/search` route are retired with HTTP `410`). Hidden sessions (routines, webhooks, exchanges, reviews, checks) and their compression continuations stay excluded, failing closed when lineage cannot be read.
 
 ## Per-turn usage, context and compaction markers (#180)
 

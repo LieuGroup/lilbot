@@ -14,11 +14,13 @@ spec = importlib.util.spec_from_file_location('adapter', sys.argv[1])
 module = importlib.util.module_from_spec(spec)
 sys.modules['adapter'] = module
 spec.loader.exec_module(module)
-assert module.VERSION == "0.14.0"
-assert "version: 0.14.0" in pathlib.Path(sys.argv[1]).with_name("plugin.yaml").read_text()
-tools = {tool["name"] for tool in module.LilBotMemoryProvider().get_tool_schemas()}
-assert {"search_conversations", "recall_memory", "update_memory"} == tools
+assert module.VERSION == "0.15.0"
+assert "version: 0.15.0" in pathlib.Path(sys.argv[1]).with_name("plugin.yaml").read_text()
+assert not pathlib.Path(sys.argv[1]).with_name("tools.json").exists()
+assert pathlib.Path(sys.argv[1]).with_name("rules.md").read_text() == pathlib.Path(sys.argv[2]).read_text()
+assert module.LilBotMemoryProvider().get_tool_schemas() == []
 assert 'lilbot_routine' in module.LilBotMemoryProvider().system_prompt_block()
+assert 'lilbot_memory_save' in module.LilBotMemoryProvider().system_prompt_block()
 calls = []
 answer = {"saved": True}
 adapter = module.LilBotMemoryProvider()
@@ -66,8 +68,9 @@ adapter._primary = False
 assert adapter.on_pre_compress([{"role": "user", "content": "a sub-agent's task"}]) == ""
 assert calls == []
 answer = {}
-adapter.handle_tool_call("search_conversations", {"query": "orchids"})
-assert calls.pop() == ("history/search", {"query": "orchids", "limit": 20})
+assert "lilbot_history_search" in json.loads(adapter.handle_tool_call("search_conversations", {"query": "orchids"}))["error"]
+assert "lilbot_memory_recall" in json.loads(adapter.handle_tool_call("recall_memory", {"query": "orchids"}))["error"]
+assert "lilbot_memory_save" in json.loads(adapter.handle_tool_call("update_memory", {"action": "write", "fact": "x"}))["error"]
 assert calls == []
 assert json.loads(adapter.handle_tool_call("give_file", {}))["error"].startswith("Unknown tool")
 with tempfile.TemporaryDirectory() as directory:
@@ -85,7 +88,10 @@ with tempfile.TemporaryDirectory() as directory:
     instance.initialize('chat', hermes_home=home)
     assert instance._bot == 'native-id'
 `
-  const child = Bun.spawn(['python3', '-B', '-c', script, join(import.meta.dir, '../../../server/engines/hermes/memory-adapter/__init__.py')], { stdout: 'pipe', stderr: 'pipe' })
+  const child = Bun.spawn(
+    ['python3', '-B', '-c', script, join(import.meta.dir, '../../../server/engines/hermes/memory-adapter/__init__.py'), join(import.meta.dir, '../../../server/memory/rules.md')],
+    { stdout: 'pipe', stderr: 'pipe' }
+  )
   const error = await new Response(child.stderr).text()
   expect(await child.exited, error).toBe(0)
 })

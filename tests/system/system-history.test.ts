@@ -1,12 +1,10 @@
 import { expect, spyOn, test } from 'bun:test'
-import { botCapability } from '../../server/bots/bot-capability'
 import { excludeSession } from '../../server/history/history-exclusion'
-import { createEngineApi } from '../../server/http/engine-api'
 import { addBot, systemFixture } from './system-fixture'
 
 const msg = (id: string, at: number, text: string, kind: 'user' | 'assistant' = 'user') => ({ id, at, order: at, item: { kind, text } })
 
-test('lilbot_history_search searches only the caller’s own conversation, accepts no botId, and agrees with /engine/history/search', async () => {
+test('lilbot_history_search searches only the caller’s own conversation, accepts no botId, and agrees with HistoryService.search', async () => {
   const f = systemFixture()
   const other = await addBot(f, 'Other')
 
@@ -23,31 +21,13 @@ test('lilbot_history_search searches only the caller’s own conversation, accep
   f.history.write(other.id, 'o1', [msg('om1', 201, 'orchid secret belonging to other bot'), msg('om2', 202, 'velvet unique phrase')], 'c2', true)
   f.history.discovered(other.id)
 
-  const api = createEngineApi(f.memory, 'tok', 4321, {
-    history: f.historyService,
-    bots: f.service,
-    botExists: id => f.store.exists(id)
-  })
-  const engineSearch = async (botId: string, body: Record<string, unknown>) =>
-    (
-      await api(
-        new Request('http://127.0.0.1:4321/engine/history/search', {
-          method: 'POST',
-          headers: { host: '127.0.0.1:4321', authorization: 'Bearer tok', 'x-lilbot-bot-capability': botCapability('tok', botId) },
-          body: JSON.stringify(body)
-        }),
-        '/engine/history/search'
-      )
-    ).json()
-
   // Ordinary bot is never held or slowed by CallingChats.gate.
   const gate = spyOn(f.calls, 'gate')
   const mcpRes = (await f.call('b1', 'lilbot_history_search', { query: 'orchid' }, false)).data
   expect(gate).not.toHaveBeenCalled()
   gate.mockRestore()
 
-  const apiRes = await engineSearch('b1', { query: 'orchid' })
-  expect(mcpRes).toEqual(apiRes)
+  expect(mcpRes).toEqual(f.historyService.search('b1', 'orchid', 20))
   expect(mcpRes.matches.map((m: { id: string }) => m.id).sort()).toEqual(['m1', 'm2'])
   expect(mcpRes.import).toEqual({ sessions: 1, completed: 1, items: 2, complete: true })
 
@@ -57,9 +37,9 @@ test('lilbot_history_search searches only the caller’s own conversation, accep
   expect(JSON.stringify(forged)).not.toContain('velvet')
   expect(JSON.stringify(forged)).not.toContain(other.id)
 
-  // Validation, limits, punctuation-only query, and read-only change-log silence match /engine/history/search.
-  expect((await f.call('b1', 'lilbot_history_search', { query: 'orchid', limit: 1 }, false)).data).toEqual(await engineSearch('b1', { query: 'orchid', limit: 1 }))
-  expect((await f.call('b1', 'lilbot_history_search', { query: '!!!' }, false)).data).toEqual(await engineSearch('b1', { query: '!!!' }))
+  // Validation, limits, punctuation-only query, and read-only change-log silence match HistoryService.search.
+  expect((await f.call('b1', 'lilbot_history_search', { query: 'orchid', limit: 1 }, false)).data).toEqual(f.historyService.search('b1', 'orchid', 1))
+  expect((await f.call('b1', 'lilbot_history_search', { query: '!!!' }, false)).data).toEqual(f.historyService.search('b1', '!!!', 20))
   expect((await f.call('b1', 'lilbot_history_search', { query: '   ' }, false)).error).toContain('Invalid arguments')
   expect((await f.call('b1', 'lilbot_history_search', { query: 'orchid', limit: 0 }, false)).error).toContain('Invalid arguments')
   expect((await f.call('b1', 'lilbot_history_search', { query: 'orchid', limit: 51 }, false)).error).toContain('Invalid arguments')
@@ -140,7 +120,7 @@ test('hidden sessions (routines, webhooks, exchanges, reviews, checks), their co
   expect(recovered.matches.map((m: { sessionId: string }) => m.sessionId).sort()).toEqual(['main-1', 'main-2', 'unreadable-chat'])
 })
 
-test('default limit (20), snippet ellipsis (32 tokens) and ordering match /engine/history/search on long messages', async () => {
+test('default limit (20), snippet ellipsis (32 tokens) and ordering match HistoryService.search on long messages', async () => {
   const f = systemFixture()
   f.history.session('b1', 'long', 100)
   const filler = Array.from({ length: 40 }, (_, i) => `word${i}`).join(' ')
@@ -148,24 +128,8 @@ test('default limit (20), snippet ellipsis (32 tokens) and ordering match /engin
   f.history.write('b1', 'long', rows, 'c', true)
   f.history.discovered('b1')
 
-  const api = createEngineApi(f.memory, 'tok', 4321, {
-    history: f.historyService,
-    bots: f.service,
-    botExists: id => f.store.exists(id)
-  })
-  const engineRes = await (
-    await api(
-      new Request('http://127.0.0.1:4321/engine/history/search', {
-        method: 'POST',
-        headers: { host: '127.0.0.1:4321', authorization: 'Bearer tok', 'x-lilbot-bot-capability': botCapability('tok', 'b1') },
-        body: JSON.stringify({ query: 'marigold' })
-      }),
-      '/engine/history/search'
-    )
-  ).json()
-
   const mcpRes = (await f.call('b1', 'lilbot_history_search', { query: 'marigold' }, false)).data
-  expect(mcpRes).toEqual(engineRes)
+  expect(mcpRes).toEqual(f.historyService.search('b1', 'marigold', 20))
   expect(mcpRes.matches).toHaveLength(20)
   expect(mcpRes.matches[0].snippet).toContain(' … ')
   expect(mcpRes.matches[0].snippet).toContain('marigold')

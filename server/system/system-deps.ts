@@ -58,6 +58,8 @@ export interface SystemDeps extends SystemFacts {
   /** Which session made a call, and which sessions are checks: a check session only reads and gives its verdict. */
   calls: CallingChats
   checkSessions: CheckSessions
+  /** Active memory-review and pre-compress checkpoint sessions (absent in standalone fixtures without a reviewer). */
+  reviewSessions?: { reviewing: (botId: string) => boolean; isReview: (chatId: string) => boolean }
   /** Which calls come from webhook runs, the one message a run may send its bot, and which session made a call. */
   webhookRuns: { callers: WebhookCallers; messages: WebhookMessages; callingChat: (botId: string, requestId: string) => Promise<string | null> }
   changes: SystemChanges

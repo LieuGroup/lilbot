@@ -73,14 +73,16 @@ test('the engine API gives a check session an empty memory block and refuses its
   const inCheck = { botId: 'b', chatId: 'check-continued' }
   expect(await post('/engine/memory/context', inCheck)).toEqual({ status: 200, body: { text: '', shown: 0, total: 0 } })
   expect((await post('/engine/memory/context', { botId: 'b', chatId: 'b-main' })).body.text).toContain('report by Friday')
-  for (const [path, body] of [
-    ['/engine/memory/recall', { query: 'report' }],
-    ['/engine/memory/write', { kind: 'profile', text: 'The report was checked' }],
-    ['/engine/memory/forget', { id: 'abcd' }],
-    ['/engine/history/search', { query: 'report' }]
-  ] as const)
-    expect(await post(path, { ...inCheck, ...body })).toEqual({ status: 422, body: { error: NO_MEMORY } })
-  expect((await post('/engine/history/search', { chatId: 'b-main', query: 'report' })).body.matches).toHaveLength(1)
+  for (const [path, body, replacement] of [
+    ['/engine/memory/recall', { query: 'report' }, 'lilbot_memory_recall'],
+    ['/engine/memory/write', { kind: 'profile', text: 'The report was checked' }, 'lilbot_memory_save'],
+    ['/engine/memory/forget', { id: 'abcd' }, 'lilbot_memory_forget'],
+    ['/engine/history/search', { query: 'report' }, 'lilbot_history_search']
+  ] as const) {
+    const res = await post(path, { ...inCheck, ...body })
+    expect(res.status).toBe(410)
+    expect(res.body.error).toContain(replacement)
+  }
   expect(memory.recall('b', 'checked')).toEqual([])
   // A skill change names no session, so none is made while the bot checks.
   const skill = { name: 'notes', action: 'create', content: '---\nname: notes\ndescription: Notes\n---\nWrite notes.' }

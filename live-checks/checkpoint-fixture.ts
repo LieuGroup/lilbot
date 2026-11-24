@@ -6,6 +6,7 @@ import assert from 'node:assert/strict'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { botCapability } from '../server/bots/bot-capability'
+import { MEMORY_ADAPTER_VERSION } from '../server/engines/hermes/hermes-memory-setup'
 import { HermesSocket } from '../server/engines/hermes/hermes-socket'
 import { observeChat } from './engine-observer'
 import { type RestartServer, waitFor } from './restart-server'
@@ -40,7 +41,7 @@ export async function checkpointBot(server: RestartServer, review: string) {
     assert.equal(done.exitCode, 0, `hermes config set ${key}`)
   }
   assert.match(readFileSync(join(home, 'config.yaml'), 'utf8'), /checkpoint_required: true/, 'the new bot is not fail-closed')
-  assert.ok(existsSync(join(home, 'plugins', 'lilbot-memory-v0-13-0')), 'the new bot does not have the v2 adapter')
+  assert.ok(existsSync(join(home, 'plugins', `lilbot-memory-v${MEMORY_ADAPTER_VERSION.replaceAll('.', '-')}`)), 'the new bot does not have the current v2 adapter')
   config('compression.threshold_tokens', String(TRIGGER))
   const facts = async (): Promise<string[]> => (await server.call('memory.list', { botId: bot.id })).facts.map((f: { text: string }) => f.text)
   /** Hermes' own record of the review sessions LilBot started since a time (seconds): how many, how long, how many tokens. */

@@ -15,7 +15,6 @@ import { BotCreationInput } from '../bots/bot-creation'
 import type { BotService } from '../bots/bot-service'
 import type { LibraryService } from '../library/library-service'
 import type { CheckpointStore } from '../memory/memory-checkpoint-store'
-import { endOfDay } from '../memory/memory-expiry'
 import type { MemoryReviewer } from '../memory/memory-reviewer'
 import type { MemoryService } from '../memory/memory-service'
 import type { RoutineService } from '../routines/routine-service'
@@ -23,7 +22,7 @@ import { withoutWebhookNotes } from '../webhooks/webhook-messages'
 import type { CheckUse } from '../work/check-sessions'
 import { bodyChatId, checkUse, verifiedSession } from './engine-run-gate'
 import { historyApi } from './history-api'
-import { forBot, memoryRoutes as routes } from './memory-protocol'
+import { memoryRoutes as routes } from './memory-protocol'
 import { routineApi } from './routine-api'
 import { threadApi } from './thread-api'
 
@@ -46,7 +45,6 @@ export interface EngineApiOptions {
   routines?: RoutineService
   library?: LibraryService
   botExists: (botId: string) => boolean
-  onMemoryChanged?: () => void
   /** The adapter version this LilBot ships. A bot calling with another one runs stale adapter code. */
   adapterVersion?: string
   /** Receives finished turns and knows which chats are reviews. Without it there is no review. */
@@ -63,8 +61,14 @@ export interface EngineApiOptions {
   pluginRefusal?: (botId: string, pathname: string, body: unknown, session: string | undefined) => string | null | Promise<string | null>
 }
 
+const RETIRED_ROUTES: Record<string, string> = {
+  '/engine/memory/recall': 'Legacy memory plug-in tools are retired. Use the LilBot System MCP tool lilbot_memory_recall instead.',
+  '/engine/memory/write': 'Legacy memory plug-in tools are retired. Use the LilBot System MCP tool lilbot_memory_save instead.',
+  '/engine/memory/forget': 'Legacy memory plug-in tools are retired. Use the LilBot System MCP tool lilbot_memory_forget instead.',
+  '/engine/history/search': 'Legacy conversation search plug-in tool is retired. Use the LilBot System MCP tool lilbot_history_search instead.'
+}
+
 export function createEngineApi(memory: MemoryService, token: string, port: number, options: EngineApiOptions) {
-  const onMemoryChanged = options.onMemoryChanged ?? (() => {})
   const history = historyApi(options)
   const staleBots = new Set<string>()
   const expected = Buffer.from(`Bearer ${token}`)
@@ -86,6 +90,7 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
           'Legacy computer plug-in tools are retired. Use the LilBot System MCP tools (lilbot_computers_list, lilbot_computer_exec, lilbot_computer_read_file, lilbot_computer_write_file, lilbot_computer_list_folder, lilbot_computer_request_read, lilbot_computer_cancel, lilbot_computer_copy) instead.'
       })
     }
+    if (Object.hasOwn(RETIRED_ROUTES, pathname)) return json(410, { error: RETIRED_ROUTES[pathname] })
     if (pathname === '/engine/bots/create' || pathname === '/engine/library/give' || /^\/engine\/(routines|skills|threads|history)\//.test(pathname)) {
       try {
         const capability = request.headers.get('x-lilbot-bot-capability') ?? ''
@@ -109,10 +114,6 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
           } catch {
             return json(422, { error: 'Cannot give this file. Use a regular file inside your workspace, at most 50 MiB.' })
           }
-        }
-        if (pathname === '/engine/history/search') {
-          const locked = options.memoryLocked?.(caller.id, session)
-          if (locked) return json(422, { error: locked })
         }
         if (pathname.startsWith('/engine/history/')) return json(200, await history(caller.id, pathname.slice('/engine/history/'.length), body))
         if (pathname.startsWith('/engine/threads/')) return json(200, await threadApi(options, caller.id, pathname.slice('/engine/threads/'.length), body, session))
@@ -160,29 +161,6 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
           const context = memory.contextBlock(body.botId)
           const notice = options.deploymentNotice?.()
           return json(200, { ...context, text: [context.text, notice && `LilBot deployment status: ${notice}`].filter(Boolean).join('\n\n') })
-        }
-        case '/engine/memory/recall':
-          return json(200, { facts: memory.recall(body.botId, body.query, { kind: body.kind, limit: body.limit }).map(fact => forBot(fact, body.botId)) })
-        case '/engine/memory/write': {
-          const review = options.reviewer?.isReview(body.chatId) ?? false
-          const fact = memory.write({
-            botId: body.botId,
-            kind: body.kind,
-            scope: body.scope,
-            text: body.text,
-            author: 'bot',
-            via: review ? 'review' : 'chat',
-            sourceChatId: body.chatId,
-            expiresAt: body.expires ? endOfDay(body.expires) : undefined
-          })
-          onMemoryChanged()
-          const notice = memory.overflowNotice(body.botId)
-          return json(200, { saved: forBot(fact, body.botId), ...(notice ? { notice } : {}) })
-        }
-        case '/engine/memory/forget': {
-          const fact = memory.forgetAsBot(body.botId, body.id, { review: options.reviewer?.isReview(body.chatId) ?? false })
-          onMemoryChanged()
-          return json(200, { forgotten: forBot(fact, body.botId) })
         }
         case '/engine/memory/turn':
           if ((options.chatKind?.(body.botId, body.chatId) ?? 'conversation') === 'conversation')

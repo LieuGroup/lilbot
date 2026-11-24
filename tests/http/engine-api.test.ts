@@ -13,8 +13,7 @@ const TOKEN = 'test-token'
 
 function api() {
   const memory = new MemoryService(new MemoryStore(openDatabase(':memory:')), () => Date.UTC(2026, 10, 16))
-  let changes = 0
-  const handle = createEngineApi(memory, TOKEN, 3370, { botExists: () => true, onMemoryChanged: () => changes++ })
+  const handle = createEngineApi(memory, TOKEN, 3370, { botExists: () => true })
   const call = async (endpoint: string, body: unknown, headers: Record<string, string> = {}) => {
     const request = new Request(`http://127.0.0.1:3370/engine/memory/${endpoint}`, {
       method: 'POST',
@@ -24,7 +23,7 @@ function api() {
     const response = await handle(request, `/engine/memory/${endpoint}`)
     return { status: response.status, body: (await response.json()) as any }
   }
-  return { call, memory, handle, changes: () => changes }
+  return { call, memory, handle }
 }
 
 describe('who may call it', () => {
@@ -51,36 +50,30 @@ describe('who may call it', () => {
 })
 
 describe('what a bot can do through it', () => {
-  test('write, see it in the context block, recall it, forget it', async () => {
-    const { call, changes } = api()
-    const written = await call('write', { botId: 'footy', kind: 'profile', text: 'Post at 5 pm Adelaide time.' })
-    expect(written.body.saved).toEqual({ id: expect.any(String), kind: 'profile', scope: 'shared', text: 'Post at 5 pm Adelaide time.', date: '2026-11-16' })
-    expect(written.body.saved.id).toHaveLength(8)
-
+  test('context returns visible facts and retired memory tool routes answer 410 naming System MCP tools', async () => {
+    const { call, memory } = api()
+    memory.write({ botId: 'footy', kind: 'profile', text: 'Post at 5 pm Adelaide time.', author: 'bot' })
     expect((await call('context', { botId: 'footy' })).body.text).toContain('Post at 5 pm Adelaide time.')
-    const other = await call('recall', { botId: 'researcher', query: 'adelaide' })
-    expect(other.body.facts).toEqual([{ ...written.body.saved, from: 'footy' }])
-
-    expect((await call('forget', { botId: 'footy', id: written.body.saved.id })).body.forgotten.text).toBe('Post at 5 pm Adelaide time.')
-    expect((await call('context', { botId: 'footy' })).body).toEqual({ text: '', shown: 0, total: 0 })
-    expect(changes()).toBe(2)
-  })
-
-  test('a refusal comes back as a message the bot can read', async () => {
-    const { call } = api()
-    expect(await call('forget', { botId: 'b', id: 'deadbeef' })).toEqual({ status: 422, body: { error: 'No remembered fact has that id.' } })
-    expect(await call('write', { botId: 'b', kind: 'profile', text: '  ' })).toEqual({ status: 422, body: { error: 'Write the fact to remember.' } })
+    for (const [endpoint, tool] of [
+      ['recall', 'lilbot_memory_recall'],
+      ['write', 'lilbot_memory_save'],
+      ['forget', 'lilbot_memory_forget']
+    ] as const) {
+      const res = await call(endpoint, { botId: 'footy' })
+      expect(res.status).toBe(410)
+      expect(res.body.error).toContain(tool)
+    }
   })
 
   test('malformed requests and odd bot ids are refused', async () => {
     const { call } = api()
-    expect((await call('write', { botId: '../x', kind: 'profile', text: 'a' })).status).toBe(400)
-    expect((await call('write', { botId: 'b', kind: 'secret', text: 'a' })).status).toBe(400)
-    expect((await call('recall', 'not an object')).status).toBe(400)
+    expect((await call('context', { botId: '../x' })).status).toBe(400)
+    expect((await call('context', 'not an object')).status).toBe(400)
+    expect((await call('turn', { botId: 'b', chatId: '', user: 'u', assistant: 'a' })).status).toBe(400)
   })
 })
 
-test('unknown and deleted bots cannot read, write, forget or enqueue turns', async () => {
+test('unknown and deleted bots cannot read context or enqueue turns', async () => {
   const database = openDatabase(':memory:')
   const store = new BotStore(database)
   store.save({
@@ -101,12 +94,12 @@ test('unknown and deleted bots cannot read, write, forget or enqueue turns', asy
   const reviewer = new MemoryReviewer(queue, fakeEngine().engine)
   const handle = createEngineApi(memory, TOKEN, 3370, { botExists: id => store.exists(id), reviewer })
   for (const botId of ['unknown', 'gone'])
-    for (const endpoint of ['context', 'recall', 'write', 'forget', 'turn']) {
+    for (const endpoint of ['context', 'turn']) {
       const response = await handle(
         new Request(`http://127.0.0.1:3370/engine/memory/${endpoint}`, {
           method: 'POST',
           headers: { host: '127.0.0.1:3370', authorization: `Bearer ${TOKEN}` },
-          body: JSON.stringify({ botId, id: 'deadbeef', chatId: 'old', kind: 'journal', text: 'Late fact.', user: 'Hello', assistant: 'Hello' })
+          body: JSON.stringify({ botId, chatId: 'old', user: 'Hello', assistant: 'Hello' })
         }),
         `/engine/memory/${endpoint}`
       )

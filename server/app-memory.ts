@@ -19,6 +19,10 @@ export function createMemory(database: Database) {
     checkpointStore,
     reviewModel: settings.model ?? null,
     isReview: (chat: string) => reviewer?.isReview(chat) ?? false,
+    reviewSessions: {
+      reviewing: (botId: string) => reviewer?.reviewing(botId) ?? false,
+      isReview: (chat: string) => reviewer?.isReview(chat) ?? false
+    },
     forgetBot: (botId: string) => {
       reviewQueue.forgetBot(botId)
       checkpointStore.forgetBot(botId)

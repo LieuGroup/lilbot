@@ -3,6 +3,11 @@
  *  dropped, so no argument can claim another identity. */
 import { z } from 'zod'
 
+export interface ToolCallContext {
+  review?: boolean
+  chatId?: string
+}
+
 export interface McpTool {
   name: string
   description: string
@@ -10,12 +15,17 @@ export interface McpTool {
   /** Reads change nothing; every other call is logged as a change made by the calling bot. A tool with an action field
    *  says per call whether it only reads. */
   readOnly: boolean | ((args: any) => boolean)
-  run: (caller: string, args: any, raw?: unknown) => Promise<unknown>
+  run: (caller: string, args: any, raw?: unknown, context?: ToolCallContext) => Promise<unknown>
 }
 
 const define =
   (readOnly: boolean) =>
-  <S extends z.ZodType>(name: string, description: string, input: S, run: (caller: string, args: z.output<S>, raw?: unknown) => Promise<unknown>): McpTool => ({
+  <S extends z.ZodType>(
+    name: string,
+    description: string,
+    input: S,
+    run: (caller: string, args: z.output<S>, raw?: unknown, context?: ToolCallContext) => Promise<unknown>
+  ): McpTool => ({
     name,
     description,
     input,

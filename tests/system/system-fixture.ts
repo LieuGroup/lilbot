@@ -99,6 +99,7 @@ export function systemFixture({ t3Enabled = false, makeComputers }: FixtureOpts 
   )
   const history = new HistoryStore(fake.database)
   const reviewChats = new Set<string>()
+  const reviewingBots = new Set<string>()
   const ownChat = (chat: string) =>
     routineStore.isRoutineChat(chat) || threadStore.isInternal(chat) || webhookStore.isWebhookChat(chat) || work.work.checks.isCheckChat(chat) || reviewChats.has(chat)
   const hiddenChat = hiddenChats(chatKinds(rootOf, ownChat))
@@ -146,6 +147,7 @@ export function systemFixture({ t3Enabled = false, makeComputers }: FixtureOpts 
     connections,
     calls,
     checkSessions: checkSessions(work.work.checks, rootOf),
+    reviewSessions: { reviewing: id => reviewingBots.has(id), isReview: chat => reviewChats.has(chat) },
     webhookRuns,
     changes,
     dataDir: fake.root,
@@ -175,7 +177,7 @@ export function systemFixture({ t3Enabled = false, makeComputers }: FixtureOpts 
     return typeof data?.refused === 'string' ? { error: data.refused as string } : { data }
   }
   const refs = { state, changes, threads, work, goals, routines, routineStore, webhookStore, workspaces, library, skills }
-  const runtime = { calls, from, roots, reviewChats, webhooks, connections, history, historyService, signedIn, webhookRuns, shown }
+  const runtime = { calls, from, roots, reviewChats, reviewingBots, webhooks, connections, history, historyService, signedIn, webhookRuns, shown }
   return { ...fake, ...server, ...refs, ...runtime, rosterPushes: fake.changes, request, as, rpc, call }
 }
 

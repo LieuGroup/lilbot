@@ -14,9 +14,7 @@ corrected by Oscar. The short version is in `AGENTS.md` under "Memory"; Hermes a
   private; either can be overridden), visibility, de-duplication, recall by search, and `contextBlock`, what a bot sees
   before each turn (lasting facts, then its last 10 journal entries, within about 1,500 tokens; the rest by recall).
   A write tells the bot when it holds more lasting facts than it is shown, so it tidies.
-- The engine reads and writes memory through a plug-in (Hermes: Python, standard library only, holding no data) and
-  the engine API: `recall_memory` and `update_memory` (write or forget one fact, optional `expires`). New bots use
-  LilBot memory from their first session; an existing bot is connected from its Memory panel, from its next session.
+- Bots read and write memory through LilBot's System MCP server (`lilbot_memory_recall`, `lilbot_memory_save`, `lilbot_memory_forget`); the Hermes memory plug-in (`lilbot-memory` v0.15.0, Python stdlib only, zero plug-in tools) keeps only the turn hooks (`/engine/memory/context`, `/engine/memory/turn`, `/engine/history/save`), and legacy `/engine/memory/{recall,write,forget}` routes return HTTP `410` naming the System MCP replacements. After-chat and pre-compress review sessions run with `toolsets: ['lilbot_system']`, gated by LilBot's session gate to `lilbot_memory_{recall,save,forget}` only, preserving `via: 'review'` attribution and protecting owner-authored facts (`author: 'user'`) while ordinary chats never enter the review placement gate. New bots use LilBot memory from their first session; an existing bot is connected from its Memory panel, from its next session.
 - Saving rules (in the plug-in's instructions): save only what is grounded in the conversation, never infer traits, a
   one-off request is not a standing preference, one fact goes in once, and never save secrets, what can be looked up,
   task progress or "tool X is broken". `memory-safety.ts` refuses facts carrying model instructions, secrets or

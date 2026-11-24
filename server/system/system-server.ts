@@ -1,6 +1,6 @@
 /** LilBot's own MCP server, assembled: the tools, the key check, and the connection every bot is given. */
 
-import { systemSessionRefusal } from './check-access'
+import { systemSessionGate } from './check-access'
 import { readsBeyondOwn } from './run-access'
 import { systemConnection, toolsVersion } from './system-connection'
 import type { SystemDeps } from './system-deps'
@@ -52,7 +52,7 @@ export function createSystemServer(deps: SystemDeps & { engineToken: string; por
   const names = tools.map(tool => tool.name)
   const url = `http://127.0.0.1:${deps.port}`
   const beyondOwn = readsBeyondOwn(itemId => deps.work.store.get(itemId)?.ownerId)
-  const refusal = systemSessionRefusal(tools, deps.checkSessions, deps.webhookRuns.callers, deps.calls, beyondOwn, Boolean(deps.t3Enabled))
+  const gate = systemSessionGate(tools, deps.checkSessions, deps.webhookRuns.callers, deps.calls, beyondOwn, Boolean(deps.t3Enabled), deps.reviewSessions)
   return {
     tools,
     handler: createSystemMcp({
@@ -62,7 +62,7 @@ export function createSystemServer(deps: SystemDeps & { engineToken: string; por
       tools,
       changes: deps.changes,
       instructions: INSTRUCTIONS,
-      refusal
+      gate
     }),
     workerMcp: createWorkerMcp(deps, tools),
     connection: (botId: string) => systemConnection(url, deps.engineToken, botId, names, version)

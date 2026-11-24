@@ -23,7 +23,6 @@ test('plug-in calls are named as the tool the engine reported, with the groups t
 })
 
 test('checkUse maps every mutating engine route to its check-session refusal and leaves read-only routes open', () => {
-  expect(checkUse('/engine/history/search')).toBe('memory')
   expect(checkUse('/engine/history/save')).toBeNull()
   expect(checkUse('/engine/skills/write')).toBe('skills')
   expect(checkUse('/engine/skills/list')).toBeNull()
@@ -79,9 +78,8 @@ test('a session locked out of memory gets an empty memory block and cannot write
   }
   expect((await call('context', { botId: 'b', chatId: 'webhook-chat' })).body.text).toBe('')
   expect((await call('context', { botId: 'b', chatId: 'main' })).body.text).toContain('Adelaide')
-  expect((await call('write', { botId: 'b', chatId: 'webhook-chat', kind: 'profile', text: 'Oscar likes tea.' })).status).toBe(422)
-  expect((await call('recall', { botId: 'b', chatId: 'webhook-chat', query: 'Adelaide' })).status).toBe(422)
-  expect((await call('write', { botId: 'b', chatId: 'main', kind: 'profile', text: 'Oscar likes tea.' })).status).toBe(200)
+  expect((await call('write', { botId: 'b', chatId: 'webhook-chat', kind: 'profile', text: 'Oscar likes tea.' })).status).toBe(410)
+  expect((await call('recall', { botId: 'b', chatId: 'webhook-chat', query: 'Adelaide' })).status).toBe(410)
   expect((await call('turn', { botId: 'b', chatId: 'webhook-chat', user: 'u', assistant: 'a' })).status).toBe(200)
 })
 
