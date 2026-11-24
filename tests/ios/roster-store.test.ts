@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { type BotActionsSocket, createBotActions } from '../../ios/src/bots/actions-core'
 import { useBotMenuStore } from '../../ios/src/bots/menu-store'
-import { buildRosterListItems, firstRosterHeaderKey } from '../../ios/src/bots/roster-list'
+import { buildRosterListItems, firstRosterHeaderKey, rosterHeaderActionsVisibility } from '../../ios/src/bots/roster-list'
 import { type BotRosterSocket, createBotStore } from '../../ios/src/bots/store-core'
 import { runningGroups } from '../../shared/client/bots/running-groups'
 import { testBot as bot } from '../web/test-bot'
@@ -131,10 +131,21 @@ describe('Round 4 iOS Roster store guards, action error reporting, and 200-bot v
     const layoutSource = readFileSync(resolve(process.cwd(), 'ios/src/app/(tabs)/_layout.tsx'), 'utf8')
     expect(layoutSource).toContain('if (!botsTabActive) closeBotOverlays()')
 
+    expect(rosterHeaderActionsVisibility({ hasHeader: false, splitMode: true, searchVisible: false })).toEqual({ showSearch: false, showNewBot: false })
+    expect(rosterHeaderActionsVisibility({ hasHeader: true, splitMode: false, searchVisible: false })).toEqual({ showSearch: true, showNewBot: false })
+    expect(rosterHeaderActionsVisibility({ hasHeader: true, splitMode: false, searchVisible: true })).toEqual({ showSearch: false, showNewBot: false })
+    expect(rosterHeaderActionsVisibility({ hasHeader: true, splitMode: true, searchVisible: false })).toEqual({ showSearch: true, showNewBot: true })
+    expect(rosterHeaderActionsVisibility({ hasHeader: true, splitMode: true, searchVisible: true })).toEqual({ showSearch: false, showNewBot: true })
+
+    const rosterSource = readFileSync(resolve(process.cwd(), 'ios/src/bots/roster.tsx'), 'utf8')
+    expect(rosterSource).toContain('rosterHeaderActionsVisibility(')
+    expect(rosterSource).toContain('showSearch={headerActionState.showSearch}')
+
     const chromeSource = readFileSync(resolve(process.cwd(), 'ios/src/bots/roster-chrome.tsx'), 'utf8')
     expect(chromeSource).toContain('const HEADER_ACTION_SLOP = { top: 14, bottom: 14, left: 8, right: 8 } as const')
-    expect(chromeSource).toContain('accessibilityLabel="Search bots"')
-    expect(chromeSource).toContain('accessibilityLabel="New bot"')
+    expect(chromeSource).toContain('if (!showSearch && !showNewBot) return null')
+    expect(chromeSource).toMatch(/testID="roster-search-button"[\s\S]{0,220}accessibilityLabel="Search bots"/)
+    expect(chromeSource).toMatch(/testID="roster-new-bot-button"[\s\S]{0,220}accessibilityLabel="New bot"/)
     expect(chromeSource).toContain('hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}')
 
     const chatScreenSource = readFileSync(resolve(process.cwd(), 'ios/src/chat/screen.tsx'), 'utf8')

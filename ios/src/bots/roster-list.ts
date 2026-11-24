@@ -108,3 +108,14 @@ export function firstRosterHeaderKey(items: readonly RosterListItem[]): string |
   const first = items.find(item => item.kind === 'section-header' || item.kind === 'group-toggle')
   return first ? first.key : null
 }
+
+/** Which inline actions to show at the right end of the first roster header line.
+ *  Hides the Search icon whenever the search bar is already visible (pull-down or screen reader). */
+export function rosterHeaderActionsVisibility(input: {
+  hasHeader: boolean
+  splitMode: boolean
+  searchVisible: boolean
+}): { showSearch: boolean; showNewBot: boolean } {
+  if (!input.hasHeader) return { showSearch: false, showNewBot: false }
+  return { showSearch: !input.searchVisible, showNewBot: input.splitMode }
+}
