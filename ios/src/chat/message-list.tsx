@@ -1,78 +1,148 @@
-/** Conversation transcript (newest at the bottom) and composer sized from MOBILE_SCALE.chat. */
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AccessibilityInfo, Animated, Easing, FlatList, Keyboard, type ListRenderItemInfo, type NativeScrollEvent, type NativeSyntheticEvent, Platform, Pressable, TextInput, useWindowDimensions, View } from 'react-native'
+/** Conversation transcript (newest at the bottom) with upward history paging, quiet history dividers,
+ *  exact multi-pass deep-history & fold/unfold scroll restore, and a floating scroll-to-bottom orb. */
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AccessibilityInfo, Animated, Easing, FlatList, type ListRenderItemInfo, type NativeScrollEvent, type NativeSyntheticEvent, Pressable, useWindowDimensions, View } from 'react-native'
+import type { Avatar } from '../../../shared/avatar'
 import type { ChatView } from '../../../shared/client/chat/chat-state'
-import { composerInputMaxHeight, DYNAMIC_TYPE_CAPS } from '../ui/dynamic-type'
-import { SendIcon, SparklesIcon } from '../ui/icon'
+import { LoadingEarlier } from '../history/history-marks'
+import { useOlderHistory } from '../history/use-older-history'
+import { ArrowDownIcon } from '../ui/chat-icons'
+import { GlassSurface } from '../ui/glass'
+import { SparklesIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { MOBILE_SCALE } from '../ui/tokens'
-import { ChatItem } from './message-item'
-import { buildMessageRows, type MessageRow } from './message-rows'
+import { buildTranscriptRows, type TranscriptRow } from './message-rows'
+import { computeRestorePlan, createScrollRestoreController, findScrollAnchor, ROW_GAP, shouldShowScrollToBottom } from './scroll-restore'
 import type { ChatStatusLine } from './status'
-import { useChatStore } from './store'
+import { getRowHeights, useChatStore } from './store'
+import { TranscriptRowItem } from './transcript-row'
 
-interface MessageListProps {
+export interface MessageListProps {
   botId: string
   botName: string
+  botAvatar?: Avatar
+  deviceId: string
   chat: ChatView
   statusLine?: ChatStatusLine | null
   emptyHint?: string
+  onChangeModel: () => void
 }
 
-/** The transcript, newest at the bottom. Restores the bot's saved scrollOffset when remounted across fold/unfold.
- *  Because the list is inverted, ListHeaderComponent renders at the visual bottom right where the reply appears. */
-export function MessageList({ botId, botName, chat, statusLine = null, emptyHint }: MessageListProps) {
+export function MessageList({ botId, botName, botAvatar, deviceId, chat, statusLine = null, emptyHint, onChangeModel }: MessageListProps) {
   const theme = useTheme()
-  const listRef = useRef<FlatList<MessageRow>>(null)
-  const initialOffset = useRef(useChatStore.getState().slots[botId]?.scrollOffset ?? 0)
-  const restored = useRef(initialOffset.current <= 0)
+  const { width: viewportWidth } = useWindowDimensions()
+  const listRef = useRef<FlatList<TranscriptRow>>(null)
+  const slot0 = useRef(useChatStore.getState().slots[botId]).current
+  const initialOffset = useRef(slot0?.scrollOffset ?? 0)
+  const initialAnchor = useRef(slot0?.scrollAnchor ?? null)
+  const restore = useRef(createScrollRestoreController(initialOffset.current > 2 || initialAnchor.current !== null))
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const nearOldest = useRef(false)
   const setScrollOffset = useChatStore(state => state.setScrollOffset)
+  const [showJumpDown, setShowJumpDown] = useState(shouldShowScrollToBottom(initialOffset.current))
+  useEffect(() => () => clearTimeout(settleTimer.current), [])
 
-  const rows = useMemo(() => buildMessageRows(chat.items, chat.queued), [chat.items, chat.queued])
+  const rows = useMemo(() => buildTranscriptRows(chat, botName), [botName, chat])
+  const rowsRef = useRef(rows)
+  rowsRef.current = rows
+  const { loading: loadingOlder, load: loadOlder } = useOlderHistory(botId, nearOldest)
 
-  const handleContentSizeChange = useCallback(() => {
-    if (restored.current || rows.length === 0) return
-    restored.current = true
-    listRef.current?.scrollToOffset({ offset: initialOffset.current, animated: false })
-  }, [rows.length])
+  const handleContentSizeChange = useCallback(
+    (_w: number, contentHeight: number) => {
+      if (!restore.current.isRestoring() || rowsRef.current.length === 0) return
+      const plan = computeRestorePlan(rowsRef.current, getRowHeights(botId), initialAnchor.current, initialOffset.current, viewportWidth)
+      if (plan.kind === 'none') return restore.current.markSettled()
+      if (plan.kind === 'index') {
+        if (!restore.current.onContentSize(contentHeight, plan.index, true)) return
+        listRef.current?.scrollToIndex({ index: plan.index, viewPosition: 0, animated: false })
+      } else {
+        if (!restore.current.onContentSize(contentHeight, plan.offset, plan.exact)) return
+        listRef.current?.scrollToOffset({ offset: plan.offset, animated: false })
+        if (contentHeight < plan.offset) return
+      }
+      clearTimeout(settleTimer.current)
+      settleTimer.current = setTimeout(() => restore.current.markSettled(), 250)
+    },
+    [botId, viewportWidth]
+  )
+
+  const handleScrollToIndexFailed = useCallback((info: { index: number; averageItemLength: number }) => {
+    listRef.current?.scrollToOffset({ offset: Math.max(0, info.index * (info.averageItemLength + ROW_GAP)), animated: false })
+    setTimeout(() => {
+      if (restore.current.isRestoring()) listRef.current?.scrollToIndex({ index: Math.min(info.index, Math.max(0, rowsRef.current.length - 1)), viewPosition: 0, animated: false })
+    }, 60)
+  }, [])
+
+  const handleScrollBeginDrag = useCallback(() => restore.current.onUserDrag(), [])
 
   const handleScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      if (!restored.current) return
-      setScrollOffset(botId, event.nativeEvent.contentOffset.y)
+      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent
+      const y = Math.max(0, contentOffset.y)
+      nearOldest.current = contentSize.height - (y + layoutMeasurement.height) < 160
+      setShowJumpDown(shouldShowScrollToBottom(y))
+      if (!restore.current.canRecordScroll()) return
+      setScrollOffset(botId, y, findScrollAnchor(rowsRef.current, getRowHeights(botId), y, viewportWidth))
     },
-    [botId, setScrollOffset]
+    [botId, setScrollOffset, viewportWidth]
   )
 
+  const jumpToBottom = useCallback(() => {
+    restore.current.onUserDrag()
+    listRef.current?.scrollToOffset({ offset: 0, animated: true })
+    setShowJumpDown(false)
+    setScrollOffset(botId, 0, null)
+  }, [botId, setScrollOffset])
+
   const renderItem = useCallback(
-    ({ item: row }: ListRenderItemInfo<MessageRow>) => <ChatItem item={row.item} botName={botName} queued={row.queued} />,
-    [botName]
+    ({ item: row }: ListRenderItemInfo<TranscriptRow>) => (
+      <TranscriptRowItem row={row} botId={botId} botName={botName} botAvatar={botAvatar} deviceId={deviceId} onChangeModel={onChangeModel} />
+    ),
+    [botAvatar, botId, botName, deviceId, onChangeModel]
   )
 
   return (
-    <FlatList
-      testID="chat-message-list"
-      ref={listRef}
-      inverted
-      data={rows}
-      keyExtractor={row => row.key}
-      onContentSizeChange={handleContentSizeChange}
-      onScroll={handleScroll}
-      onMomentumScrollEnd={handleScroll}
-      onScrollEndDrag={handleScroll}
-      scrollEventThrottle={100}
-      contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: 18, gap: 12, flexGrow: 1, justifyContent: rows.length === 0 ? 'center' : 'flex-end' }}
-      ListHeaderComponent={statusLine ? <ConversationStatusRow status={statusLine} centered={rows.length === 0} /> : undefined}
-      ListEmptyComponent={
-        !statusLine && emptyHint ? (
-          <AppText testID="chat-empty-hint" style={{ ...MOBILE_SCALE.chat.message, textAlign: 'center' }} color={theme.mutedForeground}>
-            {emptyHint}
-          </AppText>
-        ) : undefined
-      }
-      renderItem={renderItem}
-    />
+    <View style={{ flex: 1 }}>
+      {loadingOlder ? <LoadingEarlier /> : null}
+      <FlatList
+        testID="chat-message-list"
+        ref={listRef}
+        inverted
+        data={rows}
+        keyExtractor={row => row.key}
+        maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+        onContentSizeChange={handleContentSizeChange}
+        onScrollBeginDrag={handleScrollBeginDrag}
+        onScroll={handleScroll}
+        onMomentumScrollEnd={handleScroll}
+        onScrollEndDrag={handleScroll}
+        onEndReached={loadOlder}
+        onEndReachedThreshold={0.25}
+        onScrollToIndexFailed={handleScrollToIndexFailed}
+        keyboardDismissMode="interactive"
+        scrollEventThrottle={64}
+        contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: 18, gap: ROW_GAP, flexGrow: 1, justifyContent: rows.length === 0 ? 'center' : 'flex-end' }}
+        ListHeaderComponent={statusLine ? <ConversationStatusRow status={statusLine} centered={rows.length === 0} /> : undefined}
+        ListEmptyComponent={
+          !statusLine && emptyHint ? (
+            <AppText testID="chat-empty-hint" style={{ ...MOBILE_SCALE.chat.message, textAlign: 'center' }} color={theme.mutedForeground}>
+              {emptyHint}
+            </AppText>
+          ) : undefined
+        }
+        renderItem={renderItem}
+      />
+      {showJumpDown ? (
+        <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: 10, alignItems: 'center' }}>
+          <Pressable testID="chat-scroll-to-bottom" onPress={jumpToBottom} hitSlop={4} accessibilityRole="button" accessibilityLabel="Scroll to latest message">
+            <GlassSurface interactive style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }}>
+              <ArrowDownIcon color={theme.foreground} size={18} />
+            </GlassSurface>
+          </Pressable>
+        </View>
+      ) : null}
+    </View>
   )
 }
 
@@ -100,8 +170,8 @@ function ConversationStatusRow({ status, centered }: { status: ChatStatusLine; c
     }
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 0.5, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true })
+        Animated.timing(pulse, { toValue: 0.45, duration: 700, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.ease), useNativeDriver: true })
       ])
     )
     loop.start()
@@ -113,84 +183,12 @@ function ConversationStatusRow({ status, centered }: { status: ChatStatusLine; c
       testID="chat-status-line"
       accessibilityRole="text"
       accessibilityLiveRegion="polite"
-      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: centered ? 'center' : 'flex-start', gap: 6, minHeight: 22, maxWidth: '100%', opacity: status.tone === 'running' ? pulse : 1 }}
+      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: centered ? 'center' : 'flex-start', gap: 6, maxWidth: '100%', paddingHorizontal: 4, paddingTop: centered ? 0 : 4, opacity: pulse }}
     >
-      {status.tone === 'running' && <SparklesIcon color={theme.mutedForeground} size={14} />}
+      <SparklesIcon color={theme.mutedForeground} size={14} />
       <AppText color={theme.mutedForeground} numberOfLines={1} style={{ ...MOBILE_SCALE.chat.statusLine, flexShrink: 1 }}>
         {status.text}
       </AppText>
     </Animated.View>
-  )
-}
-
-interface ComposerProps {
-  botId: string
-  botName: string
-  ready: boolean
-  running: boolean
-  model?: ReactNode
-  bottomInset?: number
-  onSend: (text: string) => void
-  onStop: () => void
-}
-
-/** Large soft pill composer with text input, model picker, and send/stop button.
- *  Clears the bottom safe-area inset at rest and collapses it to 12 pt when the iOS keyboard is open. */
-export function Composer({ botId, botName, ready, running, model, bottomInset = 0, onSend, onStop }: ComposerProps) {
-  const theme = useTheme()
-  const { fontScale } = useWindowDimensions()
-  const chatScale = MOBILE_SCALE.chat
-  const text = useChatStore(state => state.slots[botId]?.draft ?? '')
-  const setDraft = useChatStore(state => state.setDraft)
-  const [keyboardOpen, setKeyboardOpen] = useState(false)
-
-  useEffect(() => {
-    const onShow = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardOpen(true))
-    const onHide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardOpen(false))
-    return () => { onShow.remove(); onHide.remove() }
-  }, [])
-
-  const hasContent = text.trim().length > 0
-  const canSend = ready && hasContent
-  const stopping = running && !hasContent
-  const paddingBottom = keyboardOpen ? 12 : Math.max(12, bottomInset)
-  const btnSize = chatScale.composerActionSize
-
-  const submit = () => {
-    if (!canSend) return
-    onSend(text.trim())
-    setDraft(botId, '')
-  }
-
-  return (
-    <View style={{ alignItems: 'center', paddingHorizontal: 14, paddingTop: 4, paddingBottom }}>
-      <View style={{ width: '100%', maxWidth: 680, minHeight: chatScale.composerMinHeight, backgroundColor: theme.card, borderRadius: chatScale.composerRadius, borderWidth: 1, borderColor: theme.border, paddingTop: 12, paddingHorizontal: 16, paddingBottom: 10 }}>
-        <TextInput
-          testID="composer-input"
-          value={text}
-          onChangeText={next => setDraft(botId, next)}
-          placeholder={`Message ${botName}`}
-          placeholderTextColor={theme.mutedForeground}
-          multiline
-          editable={ready}
-          onSubmitEditing={submit}
-          blurOnSubmit={false}
-          maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.composerInput}
-          style={{ maxHeight: composerInputMaxHeight(fontScale), paddingHorizontal: 0, paddingVertical: 0, fontFamily: 'Inter_400Regular', ...chatScale.composerInput, color: theme.foreground }}
-        />
-        <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: btnSize, marginTop: 8, gap: 8 }}>
-          <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-start' }}>{model}</View>
-          {stopping ? (
-            <Pressable onPress={onStop} hitSlop={4} accessibilityRole="button" accessibilityLabel="Stop" style={{ width: btnSize, height: btnSize, borderRadius: btnSize / 2, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.foreground }}>
-              <View style={{ width: 12, height: 12, borderRadius: 2.5, backgroundColor: theme.card }} />
-            </Pressable>
-          ) : (
-            <Pressable onPress={submit} disabled={!canSend} hitSlop={4} accessibilityLabel="Send" accessibilityRole="button" accessibilityState={{ disabled: !canSend }} testID="send-button" style={{ width: btnSize, height: btnSize, borderRadius: btnSize / 2, alignItems: 'center', justifyContent: 'center', backgroundColor: canSend ? theme.foreground : theme.muted }}>
-              <SendIcon color={canSend ? theme.background : theme.mutedForeground} size={19} />
-            </Pressable>
-          )}
-        </View>
-      </View>
-    </View>
   )
 }

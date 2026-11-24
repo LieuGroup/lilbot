@@ -1,21 +1,25 @@
-/** One bot's conversation screen: header, transcript and composer with live keyboard & safe-area clearance. */
-import { type ComponentRef, type ReactNode, useCallback, useRef, useState } from 'react'
+/** One bot's conversation screen: header, transcript (with history paging and exact scroll restore),
+ *  and Round 4 resting-vs-typing composer with live keyboard & safe-area clearance. */
+import { type ComponentRef, type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import type { Attachment } from '../../../shared/attachment-schema'
 import type { Bot } from '../../../shared/bot-schema'
 import { useBotMenuStore } from '../bots/menu-store'
 import { useModelPicker } from '../bots/model-pill'
 import { canStartNewSession } from '../bots/roster-state'
-import { Composer, MessageList } from '../chat/message-list'
-import { resolveChatStatusLine } from '../chat/status'
-import { useChat } from '../chat/use-chat'
 import { useConnectionStore } from '../connection/store'
+import { thisDeviceId } from '../devices/device'
 import { BotAvatar } from '../ui/avatar'
 import { DYNAMIC_TYPE_CAPS } from '../ui/dynamic-type'
 import { MoreHorizontalIcon, NewChatIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { MOBILE_SCALE } from '../ui/tokens'
+import { Composer } from './composer'
+import { MessageList } from './message-list'
+import { resolveChatStatusLine } from './status'
+import { useChat } from './use-chat'
 
 export interface ChatScreenProps {
   bot: Bot
@@ -34,8 +38,19 @@ export function ChatScreen({ bot, hideHeader = false, headerLeading, showNewSess
   const openMenu = useBotMenuStore(state => state.openMenu)
   const chat = useChat(bot.id)
   const modelPicker = useModelPicker(bot)
-  const send = useCallback((text: string) => void chat.send(text), [chat])
+  const send = useCallback((text: string, attachments: Attachment[]) => void chat.send(text, attachments), [chat])
   const newSessionAllowed = canStartNewSession({ connected, ready: chat.ready, botsTabActive: true, selectedId: bot.id })
+  const [deviceId, setDeviceId] = useState('')
+
+  useEffect(() => {
+    let active = true
+    void thisDeviceId().then(id => {
+      if (active) setDeviceId(id)
+    })
+    return () => {
+      active = false
+    }
+  }, [])
 
   // Measure the avoiding container's live window origin so KeyboardAvoidingView clears the keyboard accurately
   // under both opaque native Stack headers and split-pane top safe-area padding across iPhone, Duo, and iPad.
@@ -116,8 +131,29 @@ export function ChatScreen({ bot, hideHeader = false, headerLeading, showNewSess
         </View>
       ) : (
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={keyboardOffset}>
-          <MessageList key={bot.id} botId={bot.id} botName={bot.name} chat={chat.view} statusLine={statusLine} emptyHint={`Send a message to start with ${bot.name}.`} />
-          <Composer botId={bot.id} botName={bot.name} ready={chat.ready} running={chat.view.running} model={modelPicker.pill} bottomInset={insets.bottom} onSend={send} onStop={() => void chat.stop()} />
+          <MessageList
+            key={bot.id}
+            botId={bot.id}
+            botName={bot.name}
+            botAvatar={bot.prefs.avatar}
+            deviceId={deviceId}
+            chat={chat.view}
+            statusLine={statusLine}
+            emptyHint={`Send a message to start with ${bot.name}.`}
+            onChangeModel={modelPicker.open}
+          />
+          <Composer
+            botId={bot.id}
+            botName={bot.name}
+            context={bot.context}
+            ready={chat.ready}
+            running={chat.view.running}
+            model={modelPicker.pill}
+            bottomInset={insets.bottom}
+            onSend={send}
+            onStop={() => void chat.stop()}
+            onOpenModelPicker={modelPicker.open}
+          />
         </KeyboardAvoidingView>
       )}
       {modelPicker.menu}

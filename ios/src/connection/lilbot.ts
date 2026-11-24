@@ -12,11 +12,30 @@ export function serverUrlError(url: string): string | null {
   return null
 }
 
+/** "https://lilbot.example.com" or a bare host becomes the normalized HTTP origin for uploads and images. */
+export function httpOrigin(base: string): string {
+  const trimmed = base.trim().replace(/\/+$/, '')
+  return /^https?:\/\//.test(trimmed) ? trimmed : `https://${trimmed}`
+}
+
 /** "https://lilbot.example.com" or a bare host becomes the `/ws` address of that server. */
 export function socketUrl(base: string): string {
-  const trimmed = base.trim().replace(/\/+$/, '')
-  const http = /^https?:\/\//.test(trimmed) ? trimmed : `https://${trimmed}`
-  return `${http.replace(/^http/, 'ws')}/ws`
+  return `${httpOrigin(base).replace(/^http/, 'ws')}/ws`
+}
+
+/** Resolves a server-relative path (like `/api/attachments/...`) against the configured server address. */
+export function serverAssetUrl(path: string): string | null {
+  const settings = useConnectionStore.getState().settings
+  if (!settings?.serverUrl) return null
+  if (/^https?:\/\//.test(path)) return path
+  const normalized = path.startsWith('/') ? path : `/${path}`
+  return `${httpOrigin(settings.serverUrl)}${normalized}`
+}
+
+/** Auth headers for HTTP uploads and authenticated attachment image loads against the configured server. */
+export function serverAuthHeaders(): Record<string, string> {
+  const token = useConnectionStore.getState().settings?.accessToken.trim() ?? ''
+  return token ? { 'cf-access-jwt-assertion': token } : {}
 }
 
 let socket: LilBotSocket | null = null

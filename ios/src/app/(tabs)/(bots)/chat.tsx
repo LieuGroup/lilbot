@@ -21,7 +21,7 @@ import { useLiveSurface, useScreenReaderEnabled, useVerticalBarEdge } from '../.
 import { buildDuoVerticalBarItems, duoVerticalHeaderOptions, resolveDuoStripScreen, shouldHideDuoChatHeader } from '../../../duo/vertical-bar'
 import { BotAvatar } from '../../../ui/avatar'
 import { DYNAMIC_TYPE_CAPS } from '../../../ui/dynamic-type'
-import { MoreHorizontalIcon } from '../../../ui/icon'
+import { ChevronRightIcon, MoreHorizontalIcon } from '../../../ui/icon'
 import { AppText } from '../../../ui/text'
 import { useTheme } from '../../../ui/theme'
 
@@ -149,13 +149,23 @@ export default function CompactChatRoute() {
 }
 
 function ChatHeaderTitle({ bot }: { bot: Bot }) {
+  const theme = useTheme()
+  const openMenu = useBotMenuStore(state => state.openMenu)
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, maxWidth: 240 }}>
-      <BotAvatar name={bot.name} avatar={bot.prefs.avatar} size={24} />
+    <Pressable
+      testID="chat-header-pill"
+      onPress={() => openMenu(bot.id)}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel={`${bot.name}, open bot options`}
+      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 7, maxWidth: 240, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 9999, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.hairline, opacity: pressed ? 0.7 : 1 })}
+    >
+      <BotAvatar name={bot.name} avatar={bot.prefs.avatar} size={22} />
       <AppText variant="title" numberOfLines={1} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.headerTitle} style={{ flexShrink: 1 }}>
         {bot.name}
       </AppText>
-    </View>
+      <ChevronRightIcon color={theme.mutedForeground} size={13} />
+    </Pressable>
   )
 }
 
