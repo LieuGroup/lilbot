@@ -31,10 +31,25 @@ test('refresh touches only supplied native ids, respects the allowlist, and skip
       mkdirSync(join(home, 'plugins', 'lilbot-memory-v0-1-0'), { recursive: true })
       writeFileSync(join(home, 'lilbot-memory.json'), JSON.stringify({ url: 'http://localhost:1', token_file: token, bot_id: `bot-${id}` }))
     }
+    const hermes = join(root, 'hermes')
+    writeFileSync(
+      hermes,
+      `#!/usr/bin/env bun
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+const a = process.argv.slice(2), p = a[a.indexOf('-p') + 1], k = a.at(-2)!, r = a.at(-1)!
+const f = join(process.env.HERMES_HOME!, 'profiles', p, 'config.yaml')
+const d: Record<string, any> = existsSync(f) ? ((Bun.YAML.parse(readFileSync(f, 'utf8')) as any) ?? {}) : {}
+let v: unknown = r; try { v = JSON.parse(r) } catch {}
+const ks = k.split('.'); let c = d; for (const s of ks.slice(0, -1)) c = c[s] = typeof c[s] === 'object' && c[s] ? c[s] : {}
+c[ks.at(-1)!] = v; writeFileSync(f, JSON.stringify(d, null, 2))
+`,
+      { mode: 0o755 }
+    )
     const unbound = readFileSync(join(root, 'profiles/unbound/lilbot-memory.json'), 'utf8')
     const excluded = readFileSync(join(root, 'profiles/excluded/lilbot-memory.json'), 'utf8')
     const child = Bun.spawn(['bun', script], {
-      env: { ...process.env, HERMES_HOME: root, LILBOT_HERMES_BIN: '/usr/bin/true' },
+      env: { ...process.env, HERMES_HOME: root, LILBOT_HERMES_BIN: hermes },
       stdout: 'pipe',
       stderr: 'pipe'
     })
@@ -62,7 +77,8 @@ test('a current adapter makes its bot fail-closed again once after an outside ed
     const config = '${join(root, 'profiles/owned/config.yaml')}'
     await refreshMemoryAdapters([{ id: 'bot-owned', engineBotId: 'owned' }])
     await refreshMemoryAdapters([{ id: 'bot-owned', engineBotId: 'owned' }])
-    writeFileSync(config, 'compression:\\n  checkpoint_required: false\\n')
+    const provider = 'lilbot-memory-v' + MEMORY_ADAPTER_VERSION.replaceAll('.', '-')
+    writeFileSync(config, JSON.stringify({ memory: { provider }, known_plugin_toolsets: { acp: ['skills'] }, compression: { checkpoint_required: false } }))
     await refreshMemoryAdapters([{ id: 'bot-owned', engineBotId: 'owned' }])
     if (!MEMORY_ADAPTER_VERSION) process.exit(1)
   `
@@ -72,9 +88,10 @@ test('a current adapter makes its bot fail-closed again once after an outside ed
     const token = join(root, 'token')
     writeFileSync(token, 'fixture-only')
     const version = /^version:\s*(\S+)/m.exec(readFileSync(join(modulePath, 'memory-adapter/plugin.yaml'), 'utf8'))![1]
-    mkdirSync(join(home, 'plugins', `lilbot-memory-v${version.replaceAll('.', '-')}`), { recursive: true })
+    const provider = `lilbot-memory-v${version.replaceAll('.', '-')}`
+    mkdirSync(join(home, 'plugins', provider), { recursive: true })
     writeFileSync(join(home, 'lilbot-memory.json'), JSON.stringify({ url: 'http://localhost:1', token_file: token, bot_id: 'bot-owned' }))
-    writeFileSync(join(home, 'config.yaml'), 'compression:\n  checkpoint_required: true\n')
+    writeFileSync(join(home, 'config.yaml'), `memory:\n  provider: ${provider}\nknown_plugin_toolsets:\n  acp:\n    - skills\ncompression:\n  checkpoint_required: true\n`)
     const child = Bun.spawn(['bun', script], { env: { ...process.env, HERMES_HOME: root, LILBOT_HERMES_BIN: hermes }, stdout: 'pipe', stderr: 'pipe' })
     const error = await new Response(child.stderr).text()
     expect(await child.exited, error).toBe(0)
@@ -112,15 +129,17 @@ test('a current adapter repairs drifted url, token_file, or creation_capability 
   )
   try {
     const version = /^version:\s*(\S+)/m.exec(readFileSync(join(modulePath, 'memory-adapter/plugin.yaml'), 'utf8'))![1]
+    const provider = `lilbot-memory-v${version.replaceAll('.', '-')}`
+    const currentConfig = `memory:\n  provider: ${provider}\nknown_plugin_toolsets:\n  acp:\n    - skills\ncompression:\n  checkpoint_required: true\n`
     const owned = join(root, 'profiles', 'owned')
-    mkdirSync(join(owned, 'plugins', `lilbot-memory-v${version.replaceAll('.', '-')}`), { recursive: true })
+    mkdirSync(join(owned, 'plugins', provider), { recursive: true })
     writeFileSync(join(owned, 'lilbot-memory.json'), JSON.stringify({ url: 'http://127.0.0.1:9999', token_file: staleToken, bot_id: 'new-bot-uuid', creation_capability: 'stale' }))
-    writeFileSync(join(owned, 'config.yaml'), 'compression:\n  checkpoint_required: true\n')
+    writeFileSync(join(owned, 'config.yaml'), currentConfig)
     const stale = join(root, 'profiles', 'stale')
-    mkdirSync(join(stale, 'plugins', `lilbot-memory-v${version.replaceAll('.', '-')}`), { recursive: true })
+    mkdirSync(join(stale, 'plugins', provider), { recursive: true })
     const mismatchedBefore = JSON.stringify({ url: 'http://127.0.0.1:9999', token_file: staleToken, bot_id: 'old-id', creation_capability: 'stale' })
     writeFileSync(join(stale, 'lilbot-memory.json'), mismatchedBefore)
-    writeFileSync(join(stale, 'config.yaml'), 'compression:\n  checkpoint_required: true\n')
+    writeFileSync(join(stale, 'config.yaml'), currentConfig)
     const child = Bun.spawn(['bun', script], { env: { ...process.env, HERMES_HOME: root, LILBOT_HERMES_BIN: '/usr/bin/true' }, stdout: 'pipe', stderr: 'pipe' })
     const error = await new Response(child.stderr).text()
     expect(await child.exited, error).toBe(0)

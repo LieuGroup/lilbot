@@ -1,8 +1,9 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { hermesToolsetsForRun, limitedNeedsFileEdits } from '../../../server/engines/hermes/hermes-access'
+import { applied } from '../../../server/engines/hermes/hermes-applied'
 import { reviewMemory } from '../../../server/engines/hermes/hermes-memory-review'
 import { ensureKnownAcpSkillsToolset, hasKnownAcpSkillsToolset, knownAcpPluginToolsets } from '../../../server/engines/hermes/hermes-skills'
 import type { McpConnection } from '../../../server/engines/mcp-connection'
@@ -52,21 +53,48 @@ describe('Hermes reviewMemory isolated session lifecycle', () => {
     process.env.HERMES_HOME = dir
     try {
       const profDir = join(dir, 'profiles', 'bot-1')
-      const { mkdirSync } = await import('node:fs')
       mkdirSync(profDir, { recursive: true })
       expect(hasKnownAcpSkillsToolset(profDir)).toBe(false)
       expect(knownAcpPluginToolsets(profDir)).toEqual(['skills'])
       writeFileSync(join(profDir, 'config.yaml'), 'known_plugin_toolsets:\n  acp:\n    - custom_plugin\n')
+      // Two concurrent cold-profile calls serialize through applied() and invoke the CLI only once.
       const cliCalls: string[][] = []
-      await ensureKnownAcpSkillsToolset('bot-1', async (_id, args) => {
-        cliCalls.push(args)
-        writeFileSync(join(profDir, 'config.yaml'), 'known_plugin_toolsets:\n  acp:\n    - custom_plugin\n    - skills\n')
-      })
+      await Promise.all([
+        ensureKnownAcpSkillsToolset('bot-1', async (_id, args) => {
+          await Bun.sleep(10)
+          cliCalls.push(args)
+          writeFileSync(join(profDir, 'config.yaml'), 'known_plugin_toolsets:\n  acp:\n    - custom_plugin\n    - skills\n')
+        }),
+        ensureKnownAcpSkillsToolset('bot-1', async (_id, args) => void cliCalls.push(args))
+      ])
       expect(cliCalls).toEqual([['config', 'set', 'known_plugin_toolsets.acp', '["custom_plugin","skills"]']])
       expect(hasKnownAcpSkillsToolset(profDir)).toBe(true)
-      // Steady state: config.yaml already lists 'skills' -> zero CLI spawns.
-      await ensureKnownAcpSkillsToolset('bot-1', async (_id, args) => void cliCalls.push(args))
+      // Outer fast-path: returns without queueing on applied() or touching lilbot-applied.json.
+      const fastDir = join(dir, 'profiles', 'bot-fast')
+      mkdirSync(fastDir, { recursive: true })
+      writeFileSync(join(fastDir, 'config.yaml'), 'known_plugin_toolsets:\n  acp:\n    - skills\n')
+      let release!: () => void
+      const gate = new Promise<void>(resolve => {
+        release = resolve
+      })
+      let markEntered!: () => void
+      const entered = new Promise<void>(resolve => {
+        markEntered = resolve
+      })
+      const hold = applied('bot-fast', null, '', async () => {
+        markEntered()
+        await gate
+      })
+      await entered
+      const winner = await Promise.race([
+        ensureKnownAcpSkillsToolset('bot-fast', async (_id, args) => void cliCalls.push(args)).then(() => 'fast-path'),
+        Bun.sleep(60).then(() => 'blocked-on-applied')
+      ])
+      expect(winner).toBe('fast-path')
       expect(cliCalls).toHaveLength(1)
+      expect(existsSync(join(fastDir, 'lilbot-applied.json'))).toBe(false)
+      release()
+      await hold
     } finally {
       if (prevHome === undefined) delete process.env.HERMES_HOME
       else process.env.HERMES_HOME = prevHome

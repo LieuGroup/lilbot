@@ -14,20 +14,14 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { LegacyNotes, MemoryConnection, RuntimeBinding } from '../bot-engine'
 import { applied } from './hermes-applied'
-import { knownAcpPluginToolsets } from './hermes-skills'
+import { hasKnownAcpSkillsToolset, knownAcpPluginToolsets } from './hermes-skills'
 
-/** The name Hermes knows the provider by (plus a version). The data is not here: it is LilBot's. */
 const PLUGIN = 'lilbot-memory'
-/** The adapter's source in this repo: the only memory code that is specific to Hermes. */
 const PLUGIN_SOURCE = join(import.meta.dir, 'memory-adapter')
 const SETTINGS_FILE = `${PLUGIN}.json`
 const hermesBin = () => process.env.LILBOT_HERMES_BIN ?? 'hermes'
 const PROFILE_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/
-
-/** The version of the plug-in in this repo, read from its `plugin.yaml`. */
 export const MEMORY_ADAPTER_VERSION = /^version:\s*(\S+)/m.exec(readFileSync(join(PLUGIN_SOURCE, 'plugin.yaml'), 'utf8'))?.[1] ?? 'unknown'
-
-/** The name Hermes knows this version of the provider by: also its folder name. */
 const providerName = (version: string) => `${PLUGIN}-v${version.replaceAll('.', '-')}`
 
 export function profileHome(botId: string): string {
@@ -49,16 +43,12 @@ async function configSet(botId: string, key: string, value: string) {
   if (code !== 0) throw new Error(`hermes config set ${key} exited ${code}: ${stderr.trim().slice(0, 200)}`)
 }
 
-/** Hermes separates the entries of its two memory files with a line holding only this sign. */
 const ENTRY_SEPARATOR = /\n§\n/
-
-async function entries(path: string): Promise<string[]> {
-  const text = await readFile(path, 'utf8').catch(() => '')
-  return text
+const entries = async (path: string) =>
+  (await readFile(path, 'utf8').catch(() => ''))
     .split(ENTRY_SEPARATOR)
-    .map(entry => entry.trim())
+    .map(e => e.trim())
     .filter(Boolean)
-}
 
 /** Whether the profile's memory settings file is readable and bound to `expectedBotId`. */
 export function memoryInstalled(engineBotId: string, expectedBotId: string): boolean {
@@ -72,8 +62,24 @@ export function memoryInstalled(engineBotId: string, expectedBotId: string): boo
   }
 }
 
-/** Whether a connected bot has this repo's version of the plug-in. */
-const memoryCurrent = (botId: string) => installedFolders(profileHome(botId)).includes(providerName(MEMORY_ADAPTER_VERSION))
+/** Reads `memory.provider` from `config.yaml`, or `null` when absent or unreadable. */
+function configuredProvider(home: string): string | null {
+  const path = join(home, 'config.yaml')
+  if (!existsSync(path)) return null
+  try {
+    const parsed = Bun.YAML.parse(readFileSync(path, 'utf8')) as { memory?: { provider?: unknown } } | null
+    return typeof parsed?.memory?.provider === 'string' && parsed.memory.provider.length > 0 ? parsed.memory.provider : null
+  } catch {
+    return null
+  }
+}
+
+/** Whether a connected bot has this repo's plug-in folder, points `memory.provider` at it, and records `'skills'` for ACP. */
+const memoryCurrent = (botId: string) => {
+  const home = profileHome(botId)
+  const name = providerName(MEMORY_ADAPTER_VERSION)
+  return installedFolders(home).includes(name) && configuredProvider(home) === name && hasKnownAcpSkillsToolset(home)
+}
 
 /** Where a connected bot was told LilBot is, so an upgrade keeps the same connection. */
 async function memorySettings(botId: string): Promise<(MemoryConnection & { creationCapability?: string }) | null> {
@@ -92,11 +98,10 @@ async function memorySettings(botId: string): Promise<(MemoryConnection & { crea
   }
 }
 
-async function memoryCapability(tokenFile: string, botId: string): Promise<string> {
-  return createHmac('sha256', (await readFile(tokenFile, 'utf8')).trim())
+const memoryCapability = async (tokenFile: string, botId: string) =>
+  createHmac('sha256', (await readFile(tokenFile, 'utf8')).trim())
     .update(`create-bot:${botId}`)
     .digest('hex')
-}
 
 async function writeMemorySettings(home: string, connection: MemoryConnection, botId: string) {
   const file = join(home, `${SETTINGS_FILE}.tmp`)
@@ -116,28 +121,29 @@ export async function legacyNotes(botId: string): Promise<LegacyNotes> {
   return { aboutUser: await entries(join(memories, 'USER.md')), ownNotes: await entries(join(memories, 'MEMORY.md')) }
 }
 
-/** Installs this repo's version of the plug-in, replacing any other version. Safe to repeat. */
+/** Installs this repo's version of the plug-in, replacing any other version. Safe to repeat.
+ *  Invariant: at every instant, and after a failure at any step, the profile points at a plug-in folder that exists.
+ *  Other settings land first and `memory.provider` flips last; the target folder is never deleted on error, and
+ *  post-switch clean-up reads `memory.provider` live from `config.yaml` so it never removes the active folder. */
 export async function installMemory(botId: string, connection: MemoryConnection) {
   const home = profileHome(botId)
   const name = providerName(MEMORY_ADAPTER_VERSION)
   const target = join(home, 'plugins', name)
-  const existed = existsSync(target)
-  try {
-    await cp(PLUGIN_SOURCE, target, { recursive: true, force: true, filter: source => !source.includes('__pycache__') })
-    // Hermes selects a provider by name; the installed copy carries its versioned one.
-    const manifest = await readFile(join(PLUGIN_SOURCE, 'plugin.yaml'), 'utf8')
-    await writeFile(join(target, 'plugin.yaml'), manifest.replace(/^name:.*$/m, `name: ${name}`))
-    await writeMemorySettings(home, connection, connection.botId ?? botId)
-    await configSet(botId, 'memory.provider', name)
-    await configSet(botId, 'memory.memory_enabled', 'false')
-    await configSet(botId, 'memory.user_profile_enabled', 'false')
-    await configSet(botId, 'compression.checkpoint_required', 'true')
-    await configSet(botId, 'known_plugin_toolsets.acp', JSON.stringify(knownAcpPluginToolsets(home)))
-  } catch (error) {
-    if (!existed) await rm(target, { recursive: true, force: true }).catch(() => {})
-    throw error
+  await cp(PLUGIN_SOURCE, target, { recursive: true, force: true, filter: source => !source.includes('__pycache__') })
+  // Hermes selects a provider by name; the installed copy carries its versioned one.
+  const manifest = await readFile(join(PLUGIN_SOURCE, 'plugin.yaml'), 'utf8')
+  await writeFile(join(target, 'plugin.yaml'), manifest.replace(/^name:.*$/m, `name: ${name}`))
+  await writeMemorySettings(home, connection, connection.botId ?? botId)
+  await configSet(botId, 'memory.memory_enabled', 'false')
+  await configSet(botId, 'memory.user_profile_enabled', 'false')
+  await configSet(botId, 'compression.checkpoint_required', 'true')
+  await configSet(botId, 'known_plugin_toolsets.acp', JSON.stringify(knownAcpPluginToolsets(home)))
+  await configSet(botId, 'memory.provider', name)
+  for (const folder of installedFolders(home)) {
+    const active = configuredProvider(home)
+    if (!active || folder === name || folder === active) continue
+    await rm(join(home, 'plugins', folder), { recursive: true, force: true })
   }
-  for (const folder of installedFolders(home)) if (folder !== name) await rm(join(home, 'plugins', folder), { recursive: true, force: true })
 }
 
 export async function removeMemory(botId: string) {
