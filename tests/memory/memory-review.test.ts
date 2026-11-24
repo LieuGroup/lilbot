@@ -62,13 +62,13 @@ describe('when a review runs', () => {
   test('each bot is reviewed on its own, with the conversation in order and the chosen model', async () => {
     const { reviewer, turn, reviews, log } = setup({ turns: 2, model: { provider: 'p', model: 'cheap' } })
     turn('a', 'first')
-    turn('b', 'other bot')
+    turn('b', 'other-bot-message')
     turn('a', 'second')
     expect(reviewer.tick()).toEqual(['a'])
     await settle()
     expect(log).toEqual(['review:a:cheap'])
     expect(reviews[0]).toContain('USER: first\nASSISTANT: reply to first\nUSER: second\nASSISTANT: reply to second')
-    expect(reviews[0]).not.toContain('other bot')
+    expect(reviews[0]).not.toContain('other-bot-message')
   })
 
   test('the review’s own session is never queued for review', async () => {
