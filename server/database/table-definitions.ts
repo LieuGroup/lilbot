@@ -82,3 +82,8 @@ export const RUN_TRANSCRIPT_TABLES = `CREATE TABLE IF NOT EXISTS routine_run_tra
      status TEXT NOT NULL CHECK(status IN ('saved', 'missing')), items TEXT, saved_at INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS webhook_run_transcripts(run_id TEXT PRIMARY KEY REFERENCES webhook_runs(id) ON DELETE CASCADE,
      status TEXT NOT NULL CHECK(status IN ('saved', 'missing')), items TEXT, saved_at INTEGER NOT NULL);`
+
+/** Schema step 41, persisted memory-review and pre-compress checkpoint session ids. Survives restarts so review
+ *  sessions and their compression continuations stay excluded from history, re-review queuing, and skill writes. */
+export const REVIEW_SESSION_TABLES = `CREATE TABLE IF NOT EXISTS review_sessions(chat_id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, created_at INTEGER NOT NULL);
+   CREATE INDEX IF NOT EXISTS review_sessions_bot ON review_sessions(bot_id, created_at);`

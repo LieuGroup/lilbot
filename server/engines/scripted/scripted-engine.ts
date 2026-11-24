@@ -4,8 +4,8 @@ import type { ChatEvent } from '../../../shared/chat-schema'
 import { LilBotError } from '../../../shared/lilbot-error'
 import type { BotEngine, ChatOptions, MemoryConnection, ReviewOptions, RoutineOptions, RuntimeIdentity, SessionChange, SkillSettings, ToolCallSeen } from '../bot-engine'
 import type { McpConnection } from '../mcp-connection'
-import { conversationSource, newSession, openScriptedChat, type ResumeOutcome, type ScriptedSession, type ScriptedTurnHandler } from './scripted-chat'
-import { callMcpServer } from './scripted-mcp'
+import { conversationSource, newSession, openScriptedChat, type ResumeOutcome, runScriptedTurn, type ScriptedSession, type ScriptedTurnHandler } from './scripted-chat'
+import { callMcpServer, listMcpTools } from './scripted-mcp'
 import { DEFAULT_SCRIPTED_MODELS, ScriptedRoutineLedger, type ScriptedRuntime } from './scripted-routines'
 
 export interface ScriptedEngineOptions {
@@ -130,9 +130,16 @@ export class ScriptedEngine implements BotEngine {
     return { aboutUser: [], ownNotes: [] }
   }
   refreshMemory = async () => []
-  async reviewMemory(engineBotId: string, _prompt: string, options: ReviewOptions) {
+  async reviewMemory(engineBotId: string, prompt: string, options: ReviewOptions) {
     this.requireRuntime(engineBotId)
-    options.onChat(this.createSession(engineBotId, '', true).chatId)
+    const conn = options.mcpConnection
+    if (!conn) throw new LilBotError('review_failed', 'Memory review connection is missing.')
+    const session = this.createSession(engineBotId, options.workspace ?? '', true)
+    options.onChat(session.chatId)
+    session.reviewTools = await listMcpTools(conn)
+    const turn = runScriptedTurn(session, { text: prompt, hidden: true }, (tool, args) => callMcpServer(conn, tool, args ?? {}, () => {}), this.onTurn)
+    const done = await turn
+    if (done.status !== 'completed') throw new LilBotError('review_failed', `The memory review did not finish (${done.status}).`)
   }
   async runRoutine(engineBotId: string, prompt: string, options: RoutineOptions & ChatOptions) {
     this.requireRuntime(engineBotId)

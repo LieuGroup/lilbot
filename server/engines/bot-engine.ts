@@ -28,13 +28,15 @@ export interface TurnOrigin {
 }
 
 export interface ReviewOptions {
-  /** The model to run the review on; without it, the bot's own. */
   model?: BotModel
+  workspace?: string
+  /** Narrow memory-only MCP connection for this review pass (only recall, save, forget). */
+  mcpConnection?: McpConnection
   /** Called with every id the engine knows the review session by, before the review starts. */
   onChat: (chatId: string) => void
 }
 
-export type RunAccessScope = 'check' | { kind: 'webhook'; capabilities: readonly WebhookCapability[] }
+export type RunAccessScope = 'check' | 'review' | { kind: 'webhook'; capabilities: readonly WebhookCapability[] }
 export interface RoutineOptions {
   runId: string
   chatId?: string
@@ -42,15 +44,13 @@ export interface RoutineOptions {
   baseline?: (length: number) => number
   onChat: (chatId: string) => void
   origin?: TurnOrigin
-  /** LilBot access scope mapped inside each engine; absent means full access. */
   access?: RunAccessScope
-  /** The model a new session runs on (a same-bot check or worker); without it, the bot's own. */
+  /** Session-only LilBot MCP endpoint for scoped runs, replacing profile MCP servers. */
+  mcpConnection?: McpConnection
   model?: BotModel
-  /** The reasoning effort a new session starts with; absent inherits on the bot's own model and omits on another model. */
   reasoningEffort?: ReasoningEffort
 }
 
-/** Partial or full context report from an engine. */
 export interface ContextReport {
   used?: number
   window?: number | null

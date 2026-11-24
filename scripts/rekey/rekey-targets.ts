@@ -36,6 +36,7 @@ export const PLAIN_TARGETS: readonly PlainTarget[] = [
   { table: 'history_compactions', column: 'bot_id' },
   { table: 'memory_facts', column: 'bot_id' },
   { table: 'review_turns', column: 'bot_id' },
+  { table: 'review_sessions', column: 'bot_id' },
   { table: 'message_origins', column: 'bot_id' },
   { table: 'routines', column: 'bot_id' },
   { table: 'routine_runs', column: 'bot_id' },

@@ -32,6 +32,8 @@ export interface BotServiceOptions {
   memoryConnection?: MemoryConnection
   /** LilBot-owned MCP connections given to every bot, by LilBot id. */
   connections?: (botId: string) => import('../engines/mcp-connection').McpConnection[]
+  /** Starts a live per-pass memory-review MCP connection for one review or checkpoint session. */
+  startReviewRun?: (botId: string) => import('../memory/review-run').ReviewRunHandle
   onConnectionsChanged?: (botId: string) => void
   systemNote?: (bot: BotRecord) => string
   busyReason?: (botId: string) => string | null
@@ -71,7 +73,7 @@ export class BotService {
     this.changed = options.changed ?? (() => {})
     if (options.skills) this.skills = new BotSkills(options.skills, this.runtimes, this.engines, this.changed)
     this.sessions = new SessionSettings(this.engines, prefs, this.changed)
-    this.background = new BackgroundRuns(this.runtimes, workspaces, this.sessions)
+    this.background = new BackgroundRuns(this.runtimes, workspaces, this.sessions, options.startReviewRun)
     this.conversations = new BotConversations(this.runtimes, prefs, workspaces, this.sessions, options.history, options.turnNotes, options.readOnlyChat)
     this.creation = new BotCreation(this, store)
     this.memoryChanged = options.memoryChanged ?? (() => {})
@@ -289,17 +291,14 @@ export class BotService {
     return { isPrimary: identity.id === this.primaryId(this.runtimes.store.list()), prefs: this.prefs.prefs(identity.id), workspace: this.workspaces.pathFor(identity.id) }
   }
 
-  async createFromBot(callerId: string, input: import('./bot-creation').BotCreationInput) {
-    return this.creation.create(await this.requireBot(callerId), input)
-  }
+  createFromBot = async (callerId: string, input: import('./bot-creation').BotCreationInput) => this.creation.create(await this.requireBot(callerId), input)
 
   private primaryId(bots: BotRecord[]): string | undefined {
     return bots.find(bot => bot.id === this.prefs.primaryBot())?.id ?? bots.find(bot => bot.isDefault)?.id
   }
 
-  async reviewMemory(botId: string, prompt: string, options: import('../engines/bot-engine').ReviewOptions): Promise<void> {
-    return this.background.review(await this.requireBot(botId), prompt, options)
-  }
+  reviewMemory = async (botId: string, prompt: string, options: import('../engines/bot-engine').ReviewOptions) =>
+    this.background.review(await this.requireBot(botId), prompt, options)
 
   async setPrimary(botId: string): Promise<{ ok: true }> {
     await this.requireBot(botId)

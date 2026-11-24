@@ -54,7 +54,7 @@ conversations, reaches LilBot through MCP, and keeps a thin adapter for the few 
   Given `toolsets`, the session starts with only those (`server/webhooks/webhook-access.ts`).
 - [ ] An engine that continues a long session under a new id after compressing it implements `compressionRoot`
   (the session the lineage began as; read-only), so a continued hidden run stays hidden (`server/bots/hidden-chats.ts`).
-- [ ] `reviewMemory` runs a hidden session of the same bot with only its memory tools and resolves when it ends.
+- [ ] `reviewMemory` runs a hidden session of the same bot in the `review` access scope, bound only to the narrow per-pass `mcpConnection` supplied in `ReviewOptions` (`lilbot_memory_recall`, `lilbot_memory_save`, `lilbot_memory_forget`), with no access to `lilbot_system` or host tools, and resolves when the turn ends.
 - [ ] `stopRun` and `steerRun` interrupt or add text to a hidden or visible running turn (delegation control);
   `steerRun` answers `not_running` on an idle session.
 - [ ] `onToolCall` reports every tool start the engine sees, with the declared arguments, from any chat including

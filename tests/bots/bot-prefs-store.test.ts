@@ -118,7 +118,7 @@ test('the primary migration upgrades an existing database without losing prefere
     expect(prefs.prefs('b1').pinned).toBe(true)
     prefs.setPrimaryBot('b1')
     expect(prefs.primaryBot()).toBe('b1')
-    expect((upgraded.query('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(40)
+    expect((upgraded.query('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(41)
     upgraded.close()
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -131,12 +131,12 @@ test('upgrading the shipped creation schema preserves markers before adding dele
   try {
     const db = openDatabase(path)
     db.exec(
-      "INSERT INTO bot_creations VALUES ('created-before-upgrade'); ALTER TABLE bots DROP COLUMN reasoning_effort; DROP TABLE computer_payloads; DROP TABLE computer_requests; DROP TABLE computer_bytes; DROP TABLE computer_nonces; DROP TABLE computer_codes; DROP TABLE computers; DROP TABLE thread_chats; DROP TABLE thread_deliveries; DROP TABLE threads; ALTER TABLE bot_prefs DROP COLUMN pinned_at; ALTER TABLE bot_prefs DROP COLUMN avatar_face_color; DROP TABLE library_items; DROP TABLE skills; DROP TABLE skill_off; DROP TABLE skill_imports; DROP TABLE IF EXISTS routine_run_transcripts; DROP TABLE routine_chats; DROP TABLE routine_runs; DROP TABLE routines; ALTER TABLE bots DROP COLUMN permission_mode; DROP TABLE bot_delete_defaults; ALTER TABLE bots DROP COLUMN deletion; DROP TABLE IF EXISTS history_search; DROP TABLE IF EXISTS history_items; DROP TABLE IF EXISTS history_sessions; DROP TABLE IF EXISTS history_events; DROP TABLE IF EXISTS history_imports; DROP TABLE IF EXISTS attachment_messages; DROP TABLE IF EXISTS attachments; ALTER TABLE work_items DROP COLUMN kind; ALTER TABLE work_items DROP COLUMN default_level; ALTER TABLE webhooks DROP COLUMN capabilities; ALTER TABLE webhook_runs DROP COLUMN message; ALTER TABLE webhook_runs DROP COLUMN message_state; DROP INDEX work_items_goal; ALTER TABLE work_items DROP COLUMN goal_id; ALTER TABLE work_checks DROP COLUMN same_bot; ALTER TABLE work_checks DROP COLUMN checker_model; PRAGMA user_version = 7"
+      "INSERT INTO bot_creations VALUES ('created-before-upgrade'); ALTER TABLE bots DROP COLUMN reasoning_effort; DROP TABLE computer_payloads; DROP TABLE computer_requests; DROP TABLE computer_bytes; DROP TABLE computer_nonces; DROP TABLE computer_codes; DROP TABLE computers; DROP TABLE thread_chats; DROP TABLE thread_deliveries; DROP TABLE threads; ALTER TABLE bot_prefs DROP COLUMN pinned_at; ALTER TABLE bot_prefs DROP COLUMN avatar_face_color; DROP TABLE library_items; DROP TABLE skills; DROP TABLE skill_off; DROP TABLE skill_imports; DROP TABLE IF EXISTS review_sessions; DROP TABLE IF EXISTS routine_run_transcripts; DROP TABLE routine_chats; DROP TABLE routine_runs; DROP TABLE routines; ALTER TABLE bots DROP COLUMN permission_mode; DROP TABLE bot_delete_defaults; ALTER TABLE bots DROP COLUMN deletion; DROP TABLE IF EXISTS history_search; DROP TABLE IF EXISTS history_items; DROP TABLE IF EXISTS history_sessions; DROP TABLE IF EXISTS history_events; DROP TABLE IF EXISTS history_imports; DROP TABLE IF EXISTS attachment_messages; DROP TABLE IF EXISTS attachments; ALTER TABLE work_items DROP COLUMN kind; ALTER TABLE work_items DROP COLUMN default_level; ALTER TABLE webhooks DROP COLUMN capabilities; ALTER TABLE webhook_runs DROP COLUMN message; ALTER TABLE webhook_runs DROP COLUMN message_state; DROP INDEX work_items_goal; ALTER TABLE work_items DROP COLUMN goal_id; ALTER TABLE work_checks DROP COLUMN same_bot; ALTER TABLE work_checks DROP COLUMN checker_model; PRAGMA user_version = 7"
     )
     db.close()
     const upgraded = openDatabase(path)
     expect(upgraded.query('SELECT bot_id FROM bot_creations').all()).toEqual([{ bot_id: 'created-before-upgrade' }])
-    expect((upgraded.query('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(40)
+    expect((upgraded.query('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(41)
     expect(new BotPrefsStore(upgraded).primaryBot()).toBeNull()
     upgraded.close()
   } finally {

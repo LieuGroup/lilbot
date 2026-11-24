@@ -2,6 +2,7 @@
  *  A run starts with its explicit reasoning effort when its model thinks, else the bot's effort on the bot's own model. */
 import { LilBotError } from '../../shared/lilbot-error'
 import type { ReviewOptions, RoutineOptions } from '../engines/bot-engine'
+import { assertReviewRunOk, type ReviewRunHandle, type ReviewRunSummary } from '../memory/review-run'
 import type { BotRuntimes } from './bot-runtimes'
 import type { SessionSettings } from './bot-session-settings'
 import type { BotRecord } from './bot-store'
@@ -12,7 +13,8 @@ export class BackgroundRuns {
   constructor(
     private runtimes: BotRuntimes,
     private workspaces: Workspaces,
-    private sessions: SessionSettings
+    private sessions: SessionSettings,
+    private startReviewRun?: (botId: string) => ReviewRunHandle
   ) {}
 
   hasActiveRun(botId: string): boolean {
@@ -50,14 +52,26 @@ export class BackgroundRuns {
 
   review(bot: BotRecord, prompt: string, options: ReviewOptions) {
     return this.track(bot.id, async () => {
+      let handle: ReviewRunHandle | undefined
+      let summary: ReviewRunSummary | undefined
       try {
         await this.runtimes.use(bot)
-        return await this.runtimes.engineFor(bot).reviewMemory(bot.engineBotId, prompt, options)
+        const workspace = await this.workspaces.ensure(bot.id)
+        handle = this.startReviewRun?.(bot.id)
+        const mcpConnection = options.mcpConnection ?? handle?.connection
+        const onChat = (chatId: string) => {
+          handle?.setChat(chatId)
+          options.onChat(chatId)
+        }
+        await this.runtimes.engineFor(bot).reviewMemory(bot.engineBotId, prompt, { ...options, workspace, mcpConnection, onChat })
       } catch (error) {
         // The app still owns this bot. A lost runtime must not discard its waiting turns.
         if (error instanceof LilBotError && error.code === 'bot_not_found') throw new LilBotError('runtime_unavailable', 'This bot’s runtime is missing.')
         throw error
+      } finally {
+        if (handle) summary = handle.finish()
       }
+      if (summary) assertReviewRunOk(summary)
     })
   }
 }

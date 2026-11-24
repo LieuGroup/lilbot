@@ -1,6 +1,7 @@
 /** LilBot's own MCP server, assembled: the tools, the key check, and the connection every bot is given. */
 
-import { systemSessionGate } from './check-access'
+import { systemSessionRefusal } from './check-access'
+import { createMemoryReviewMcp } from './memory-review-mcp'
 import { readsBeyondOwn } from './run-access'
 import { systemConnection, toolsVersion } from './system-connection'
 import type { SystemDeps } from './system-deps'
@@ -52,7 +53,14 @@ export function createSystemServer(deps: SystemDeps & { engineToken: string; por
   const names = tools.map(tool => tool.name)
   const url = `http://127.0.0.1:${deps.port}`
   const beyondOwn = readsBeyondOwn(itemId => deps.work.store.get(itemId)?.ownerId)
-  const gate = systemSessionGate(tools, deps.checkSessions, deps.webhookRuns.callers, deps.calls, beyondOwn, Boolean(deps.t3Enabled), deps.reviewSessions)
+  const refusal = systemSessionRefusal(tools, deps.checkSessions, deps.webhookRuns.callers, deps.calls, beyondOwn, Boolean(deps.t3Enabled))
+  const reviewMcp = createMemoryReviewMcp({
+    engineToken: deps.engineToken,
+    port: deps.port,
+    bots: () => deps.store.list(),
+    tools,
+    changes: deps.changes
+  })
   return {
     tools,
     handler: createSystemMcp({
@@ -62,8 +70,10 @@ export function createSystemServer(deps: SystemDeps & { engineToken: string; por
       tools,
       changes: deps.changes,
       instructions: INSTRUCTIONS,
-      gate
+      refusal
     }),
+    reviewHandler: reviewMcp.handler,
+    startReviewRun: reviewMcp.startRun,
     workerMcp: createWorkerMcp(deps, tools),
     connection: (botId: string) => systemConnection(url, deps.engineToken, botId, names, version)
   }

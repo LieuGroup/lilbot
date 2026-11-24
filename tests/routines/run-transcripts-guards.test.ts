@@ -55,10 +55,10 @@ test('migration 40 upgrades from schema 39 and enforces FK cascade on both routi
   const path = join(dir, 'lilbot.db')
   try {
     let db = openDatabase(path)
-    db.exec('DROP TABLE routine_run_transcripts; DROP TABLE webhook_run_transcripts; PRAGMA user_version = 39;')
+    db.exec('DROP TABLE IF EXISTS review_sessions; DROP TABLE routine_run_transcripts; DROP TABLE webhook_run_transcripts; PRAGMA user_version = 39;')
     db.close()
     db = openDatabase(path)
-    expect(db.query('PRAGMA user_version').get()).toEqual({ user_version: 40 })
+    expect(db.query('PRAGMA user_version').get()).toEqual({ user_version: 41 })
 
     for (const b of ['b1', 'b2']) {
       db.query(`INSERT INTO bots (id, name, function, instructions, engine_id, engine_bot_id) VALUES (?, ?, '', '', 'test', ?)`).run(b, b, `n-${b}`)

@@ -55,6 +55,8 @@ export interface EngineApiOptions {
   chatKind?: import('../bots/hidden-chats').ChatKind
   /** Why a call that may come from a check session (no memory, no computers, no changes) is refused, or null. */
   inCheck?: (botId: string, chatId: string | undefined, use: CheckUse) => string | null
+  /** Why a mutating engine API call (such as `/engine/skills/write`) is refused because it came from a review session. */
+  inReview?: (botId: string, chatId: string | undefined) => string | null
   /** Webhook runs (`app-webhooks.ts`): why a session may not use memory, its capabilities, and plug-in call refusals. */
   memoryLocked?: (botId: string, chatId: string | undefined) => string | null
   sessionCapabilities?: (botId: string, chatId: string | undefined) => WebhookCapability[] | null
@@ -69,7 +71,7 @@ const RETIRED_ROUTES: Record<string, string> = {
 }
 
 export function createEngineApi(memory: MemoryService, token: string, port: number, options: EngineApiOptions) {
-  const history = historyApi(options)
+  const history = historyApi(options, memory)
   const staleBots = new Set<string>()
   const expected = Buffer.from(`Bearer ${token}`)
   const loopback = new Set([`127.0.0.1:${port}`, `localhost:${port}`])
@@ -103,6 +105,8 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
         const use = checkUse(pathname)
         const inCheck = use && options.inCheck?.(caller.id, session, use)
         if (inCheck) return json(422, { error: inCheck })
+        const inReview = use && options.inReview?.(caller.id, session)
+        if (inReview) return json(422, { error: inReview })
         if (pathname === '/engine/library/give') {
           const input = LibraryGiveInput.safeParse(body)
           if (!input.success) return json(400, { error: 'Invalid file delivery.' })

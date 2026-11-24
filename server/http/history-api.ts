@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { LilBotError } from '../../shared/lilbot-error'
 import { MemoryCheckpoint } from '../memory/memory-checkpoint'
+import type { MemoryService } from '../memory/memory-service'
 import { withoutWebhookNotes } from '../webhooks/webhook-messages'
 import type { EngineApiOptions } from './engine-api'
 
@@ -8,12 +9,16 @@ import type { EngineApiOptions } from './engine-api'
 const Save = z.object({ chatId: z.string().min(1).max(200), messages: z.array(z.object({ role: z.enum(['user', 'assistant']), text: z.string() })).max(200_000) })
 
 /** Pre-compress memory checkpoint. Caller identity has already been derived from the bot-bound capability, never from body.botId. */
-export function historyApi({ history, bots, reviewer, chatKind, checkpointStore }: EngineApiOptions) {
-  const checkpoint = new MemoryCheckpoint((bot, prompt) => {
-    if (!bots) return Promise.reject(new LilBotError('unavailable', 'History is unavailable.'))
-    const run = () => bots.reviewMemory(bot, prompt, { model: reviewer?.model, onChat: id => reviewer?.trackReview(id) })
-    return reviewer ? reviewer.runSession(bot, run) : run()
-  }, checkpointStore)
+export function historyApi({ history, bots, reviewer, chatKind, checkpointStore }: EngineApiOptions, memory?: MemoryService) {
+  const checkpoint = new MemoryCheckpoint(
+    (bot, prompt) => {
+      if (!bots) return Promise.reject(new LilBotError('unavailable', 'History is unavailable.'))
+      const run = () => bots.reviewMemory(bot, prompt, { model: reviewer?.model, onChat: id => reviewer?.trackReview(bot, id) })
+      return reviewer ? reviewer.runSession(bot, run) : run()
+    },
+    checkpointStore,
+    memory ? bot => memory.contextBlock(bot).text : () => ''
+  )
   return async (bot: string, path: string, body: unknown) => {
     if (!history || !bots) throw new LilBotError('unavailable', 'History is unavailable.')
     if (path === 'save') {

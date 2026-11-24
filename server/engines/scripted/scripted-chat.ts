@@ -37,6 +37,8 @@ export interface ScriptedSession {
   seenInputIds: Set<string>
   controller: AbortController | null
   routineOptions?: RoutineOptions
+  /** Tool names discovered on a review session's narrow MCP connection. */
+  reviewTools?: string[]
   emit?: (event: ChatEvent) => void
 }
 
@@ -49,6 +51,8 @@ export interface ScriptedTurnContext {
   signal: AbortSignal
   emitDelta: (text: string) => void
   callMcp: (tool: string, args?: Record<string, unknown>, server?: string) => Promise<McpCallResult>
+  /** Populated on review sessions: the exact tool names advertised by the review MCP server. */
+  reviewTools?: string[]
 }
 
 export type ScriptedTurnHandler = (ctx: ScriptedTurnContext) => Promise<string | { text: string; status?: 'completed' | 'stopped' | 'failed'; usage?: TurnUsage }>
@@ -99,7 +103,8 @@ export async function runScriptedTurn(
       hidden: session.hidden,
       signal: controller.signal,
       emitDelta,
-      callMcp
+      callMcp,
+      ...(session.reviewTools ? { reviewTools: [...session.reviewTools] } : {})
     })
     const finalText = typeof out === 'string' ? out : out.text
     const status = controller.signal.aborted ? 'stopped' : typeof out === 'string' ? 'completed' : (out.status ?? 'completed')

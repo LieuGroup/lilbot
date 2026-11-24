@@ -128,9 +128,9 @@ export function createRekeyFixture(root: string) {
 
   db.query("INSERT INTO memory_facts(id, bot_id, kind, scope, text, author, learned_at) VALUES ('f1', ?, 'profile', 'bot', ?, 'bot', 1000)").run(OLD_ID, SECRET_MEMORY)
   db.query('INSERT INTO review_turns(bot_id, chat_id, user_text, assistant_text, created_at) VALUES (?, ?, ?, ?, 1000)').run(OLD_ID, 'chat-main-1', SECRET_MESSAGE, 'reply')
+  db.query('INSERT INTO review_sessions(chat_id, bot_id, created_at) VALUES (?, ?, 1000)').run('rev-chat-1', OLD_ID)
   db.query('INSERT INTO memory_checkpoint_reviewed VALUES (?, ?, 1000)').run(OLD_ID, 'hash-old')
   db.query('INSERT INTO memory_checkpoint_reviewed VALUES (?, ?, 1000)').run(OTHER_ID, 'hash-other')
-
   db.query("INSERT INTO routines VALUES ('rot-1', ?, 'rq1', 'd', '{}', 'oscar', 0, NULL, 2000, 0)").run(OLD_ID)
   db.query("INSERT INTO routine_runs(id, routine_id, bot_id, due_at, status) VALUES ('rr-1', 'rot-1', ?, 2000, 'completed')").run(OLD_ID)
   db.query("INSERT INTO webhooks VALUES ('wh-1', ?, 'wq1', 'd', 'gh', 'oscar', 1000, 'n', NULL, 0, 0, NULL, '[]')").run(OLD_ID)

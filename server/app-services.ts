@@ -92,8 +92,7 @@ export function createAppServices(
   )
   repeat('computers', 1000, () => computers.tick())
   const devices = createDevices(database, computers, publish)
-  const [routineStore, libraryStore] = [new RoutineStore(database), new LibraryStore(database)]
-  const [webhookStore, checkStore] = [new WebhookStore(database), new WorkCheckStore(database)]
+  const [routineStore, libraryStore, webhookStore, checkStore] = [new RoutineStore(database), new LibraryStore(database), new WebhookStore(database), new WorkCheckStore(database)]
   const ownChat = (chat: string) =>
     routineStore.isRoutineChat(chat) || threadStore.isInternal(chat) || webhookStore.isWebhookChat(chat) || checkStore.isCheckChat(chat) || mem.isReview(chat)
   const chatKind = chatKinds(rootOf, ownChat)
@@ -154,6 +153,7 @@ export function createAppServices(
     memoryChanged,
     memoryConnection: { url: `http://127.0.0.1:${PORT}`, tokenFile: join(DATA_DIR, 'engine-token') },
     connections: botId => [...t3For(botId), system.connection(botId), ...mcp.connections(botId)],
+    startReviewRun: botId => system.startReviewRun(botId),
     onConnectionsChanged: botId => mcp.applyBot(botId),
     systemNote: systemNote(facts),
     busyReason: botBusyReason({ database, activity, routineStore, webhookStore }),
@@ -185,7 +185,7 @@ export function createAppServices(
   const giveFile = giveFrom(library, calls, threadStore, routineStore, webhookStore, rootOf)
   const core = { ...facts, bots, activity, memory, memoryChanged, history, skills, delegation, work, goals, routines, giveFile, library }
   const extra = { webhooks, webhookRuns, connections: mcp.services, calls, checkSessions, changes: new SystemChanges(database), engineToken: token, port: PORT }
-  const system = createSystemServer({ ...core, ...extra, reviewSessions: mem.reviewSessions, workerAllowMemory: id => threadStore.allowsWorkerMemory(id) })
+  const system = createSystemServer({ ...core, ...extra, workerAllowMemory: id => threadStore.allowsWorkerMemory(id) })
   repeat('threads', 1000, () => threads.tick())
   repeat('work answers', 1000, () => answers.tick())
   repeat('work checks', 1000, () => checks.tick())
@@ -194,7 +194,7 @@ export function createAppServices(
   const reviewer = mem.startReviewer(bots, store, repeat)
   const apiCore = { history, bots, skills, routines, library, threads, reviewer, checkpointStore: mem.checkpointStore }
   const apiHooks = { chatKind, adapterVersion: MEMORY_ADAPTER_VERSION, deploymentNotice: () => deployNotice(DATA_DIR), botExists: (id: string) => store.exists(id) }
-  const engineApi = createEngineApi(memory, token, PORT, { ...apiCore, ...apiHooks, inCheck: checkSessions.refusal, ...gates })
+  const engineApi = createEngineApi(memory, token, PORT, { ...apiCore, ...apiHooks, inCheck: checkSessions.refusal, inReview: mem.reviewRefusal(rootOf), ...gates })
   const base = { bots, store, skills, library, computers, remoteWorkers, devices, attachments, t3Grants, mcp, system, engineApi }
   return { ...base, activity, routines, threads, boards, webhooks, hiddenChat }
 }

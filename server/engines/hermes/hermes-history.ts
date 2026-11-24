@@ -18,7 +18,7 @@ export async function conversations(nativeId: string): Promise<ConversationSourc
       return [
         ...new Map(
           [...stored.sessions, ...live.sessions]
-            .filter((s: any) => !['tool', 'cron', 'subagent', 'unknown'].includes(s.source))
+            .filter((s: any) => !['tool', 'acp', 'cron', 'subagent', 'unknown'].includes(s.source))
             .map((s: any) => [s.id, { id: s.id, at: Math.round((s.started_at ?? 0) * 1000) }])
         ).values()
       ] as { id: string; at: number }[]

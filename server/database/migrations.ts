@@ -191,5 +191,6 @@ export const migrations: string[] = [
   tables.MCP_CONNECTION_TABLES,
   tables.MCP_SIGN_IN_CARD_TABLES,
   tables.REMOTE_WORKER_TABLES,
-  tables.RUN_TRANSCRIPT_TABLES
+  tables.RUN_TRANSCRIPT_TABLES,
+  tables.REVIEW_SESSION_TABLES
 ]

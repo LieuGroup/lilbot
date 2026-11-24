@@ -22,7 +22,7 @@ import { startPublicDoor } from './http/public-door'
 import { allowedHosts } from './http/socket-guard'
 import { webhookRoute } from './http/webhook-route'
 import { files } from './skills/skill-files'
-import { SYSTEM_PATH } from './system/system-connection'
+import { SESSION_MCP_PATH, SYSTEM_PATH } from './system/system-connection'
 
 assertServerEnvironment(process.env)
 const COMMIT = runningCommit(join(import.meta.dir, '..'))
@@ -148,10 +148,10 @@ const server = Bun.serve<SocketData>({
         server.timeout(request, 0)
         return mcp.forward(request, url.pathname)
       }
-      if (url.pathname === SYSTEM_PATH) {
+      if (url.pathname === SYSTEM_PATH || url.pathname === SESSION_MCP_PATH) {
         // Creating a bot waits for its greeting: no idle timeout.
         server.timeout(request, 0)
-        return system.handler(request)
+        return url.pathname === SYSTEM_PATH ? system.handler(request) : system.reviewHandler(request)
       }
       if (url.pathname.startsWith('/engine/')) return engineApi(request, url.pathname)
       if (url.pathname === '/api/health') return Response.json({ ok: true, engine: engines.defaultId, engines: engines.ids(), commit: COMMIT, pid: process.pid })

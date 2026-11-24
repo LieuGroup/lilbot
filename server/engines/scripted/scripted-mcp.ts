@@ -7,6 +7,25 @@ export interface McpCallResult {
   data?: unknown
 }
 
+export async function listMcpTools(conn: McpConnection): Promise<string[]> {
+  const headers = { 'content-type': 'application/json', authorization: `Bearer ${conn.bearerToken}` }
+  const init = await fetch(conn.url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ jsonrpc: '2.0', id: 'init', method: 'initialize', params: { protocolVersion: '2025-06-18' } })
+  })
+  if (!init.ok) throw new Error(`MCP initialize HTTP ${init.status}`)
+  const listed = await fetch(conn.url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ jsonrpc: '2.0', id: 'list', method: 'tools/list', params: {} })
+  })
+  if (!listed.ok) throw new Error(`MCP tools/list HTTP ${listed.status}`)
+  const payload = (await listed.json()) as { result?: { tools?: { name?: unknown }[] }; error?: { message?: string } }
+  if (payload.error) throw new Error(payload.error.message ?? 'MCP tools/list error')
+  return (payload.result?.tools ?? []).map(t => String(t.name ?? '')).filter(Boolean)
+}
+
 export async function callMcpServer(conn: McpConnection, tool: string, args: Record<string, unknown>, onStart: (callId: string) => void): Promise<McpCallResult> {
   const callId = crypto.randomUUID()
   onStart(callId)

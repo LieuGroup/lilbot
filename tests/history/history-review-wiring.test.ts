@@ -52,6 +52,19 @@ test('createAppServices excludes memory-review sessions from own-conversation ch
     await services.bots.createBot({ name: 'Review Bot', function: 'Testing', instructions: '' })
     const [bot] = services.store.list()
     const token = engineToken(join(dir, 'data'))
+    const origReview = fake.engine.reviewMemory.bind(fake.engine)
+    fake.engine.reviewMemory = async (engineBotId, prompt, options) => {
+      await origReview(engineBotId, prompt, options)
+      if (options.mcpConnection) {
+        await services.system.reviewHandler(
+          new Request(options.mcpConnection.url, {
+            method: 'POST',
+            headers: { host: '127.0.0.1:3998', authorization: `Bearer ${options.mcpConnection.bearerToken}`, 'content-type': 'application/json' },
+            body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })
+          })
+        )
+      }
+    }
 
     // Trigger a memory-review session through the real service wiring so reviewer.trackReview(reviewChatId) runs.
     const saveRes = await services.engineApi(
