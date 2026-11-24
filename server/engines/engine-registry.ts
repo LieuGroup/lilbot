@@ -51,9 +51,13 @@ export class EngineRegistry {
     return this.fallback ? [this.defaultId] : [...this.byId.keys()]
   }
 
-  mcpToolName(engineId: string | undefined, server: string, tool: string): string {
+  namer(engineId?: string): (server: string, tool: string) => string {
     const engine = engineId ? this.get(engineId) : this.defaultEngine
-    return engine?.mcpToolName?.(server, tool) ?? `mcp__${server}__${tool}`
+    return engine?.mcpToolName ? (server, tool) => engine.mcpToolName!(server, tool) : (server, tool) => `mcp__${server}__${tool}`
+  }
+
+  mcpToolName(engineId: string | undefined, server: string, tool: string): string {
+    return this.namer(engineId)(server, tool)
   }
 
   onBotsChanged(listener: () => void): () => void {

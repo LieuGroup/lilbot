@@ -20,7 +20,10 @@ export const HERMES_LIVE_PARITY = [
   'check:webhooks',
   'check:delegation',
   'check:worker',
+  'check:groups',
   'check:checks',
+  'check:goals',
+  'check:connections',
   'check:restart'
 ] as const
 
@@ -28,13 +31,14 @@ export const HERMES_LIVE_PARITY = [
 const origSetInterval = globalThis.setInterval
 const origSetTimeout = globalThis.setTimeout
 const origClearTimeout = globalThis.clearTimeout
-const activeTrackers = new Set<{ intervals: Set<ReturnType<typeof setInterval>>; timeouts: Set<ReturnType<typeof setTimeout>> }>()
+const activeTrackers = new Set<{ intervals: Map<ReturnType<typeof setInterval>, () => unknown>; timeouts: Set<ReturnType<typeof setTimeout>> }>()
 
 function installTimerHook() {
   if (activeTrackers.size > 0) return
   ;(globalThis as { setInterval: typeof setInterval }).setInterval = ((...args: Parameters<typeof setInterval>) => {
     const id = origSetInterval(...args)
-    for (const t of activeTrackers) t.intervals.add(id)
+    const run = typeof args[0] === 'function' ? () => (args[0] as (...a: unknown[]) => unknown)(...args.slice(2)) : () => {}
+    for (const t of activeTrackers) t.intervals.set(id, run)
     return id
   }) as typeof setInterval
   ;(globalThis as { setTimeout: typeof setTimeout }).setTimeout = ((fn: (...a: unknown[]) => void, ms?: number, ...rest: unknown[]) => {
@@ -85,7 +89,7 @@ export async function startConformanceApp(options: ConformanceAppOptions = {}) {
   process.env.LILBOT_SKILLS_DIR = skillsDir
 
   installTimerHook()
-  const tracker = { intervals: new Set<ReturnType<typeof setInterval>>(), timeouts: new Set<ReturnType<typeof setTimeout>>() }
+  const tracker = { intervals: new Map<ReturnType<typeof setInterval>, () => unknown>(), timeouts: new Set<ReturnType<typeof setTimeout>>() }
   activeTrackers.add(tracker)
 
   let services!: ReturnType<typeof createAppServices>
@@ -115,10 +119,14 @@ export async function startConformanceApp(options: ConformanceAppOptions = {}) {
     botsChanged: () => {}
   })
 
+  const tickIntervals = async () => {
+    for (const run of tracker.intervals.values()) await run()
+  }
+
   const close = () => {
     activeTrackers.delete(tracker)
     uninstallTimerHookIfIdle()
-    for (const id of tracker.intervals) clearInterval(id)
+    for (const id of tracker.intervals.keys()) clearInterval(id)
     for (const id of tracker.timeouts) origClearTimeout(id)
     server.stop(true)
     services.computers.close()
@@ -128,7 +136,15 @@ export async function startConformanceApp(options: ConformanceAppOptions = {}) {
     else process.env.LILBOT_SKILLS_DIR = prevSkills
   }
 
-  return { engine, services, dir, dataDir, workspacesDir, skillsDir, port: server.port!, close }
+  return { engine, services, dir, dataDir, workspacesDir, skillsDir, port: server.port!, tickIntervals, close }
+}
+
+export async function waitFor(check: () => boolean | Promise<boolean>, timeoutMs = 4000) {
+  const deadline = Date.now() + timeoutMs
+  while (!(await check())) {
+    if (Date.now() > deadline) throw new Error('Timed out waiting for conformance condition.')
+    await Bun.sleep(20)
+  }
 }
 
 export async function collectHistory(services: ReturnType<typeof createAppServices>, botId: string, pageSize = 2) {
