@@ -159,7 +159,7 @@ export function createAppServices(
     busyReason: botBusyReason({ database, activity, routineStore, webhookStore }),
     readOnlyChat: (botId, chatId) => webhookRuns.callers.isKnownLimited(botId, chatId)
   })
-  const calls = new CallingChats()
+  const calls = new CallingChats(undefined, (botId, server, tool) => engines.mcpToolName(store.exists(botId) ? store.get(botId).engineId : undefined, server, tool))
   const observeRun = (event: ActivityEvent) => store.exists(event.botId) && activity.observe(event)
   const hookDeps = { webhookStore, messages, bots, rootOf, calls, token, origin: HOOK_ORIGIN, t3Enabled, narrowed: threadStore }
   const { webhooks, webhookRuns, gates } = createWebhooks({ ...hookDeps, observeRun, publish, repeat })

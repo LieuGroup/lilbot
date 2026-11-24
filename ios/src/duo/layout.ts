@@ -15,7 +15,10 @@ export interface WindowMetrics {
   safeAreaBottom?: number
 }
 
-/** Single source of truth for every [UNCONFIRMED UNTIL SIMULATOR] Duo geometry constant (build-spec.md §4A).
+/** Single source of truth for iPhone Duo geometry constants.
+ *  Confirmed on folded iPhone Duo (hardware + Xcode 27.2 Simulator): foldedWidth (466), foldedHeight (678),
+ *  railWidth (84), topInset (0), and homeBarHeight (34).
+ *  All unfolded dimensions, live safe-area insets, creaseWidth, and transient hinge sizes stay unconfirmed until measured unfolded.
  *  Live UIKit safeAreaInsets and window metrics override these at runtime whenever present. */
 export const UNCONFIRMED_DUO_METRICS = {
   foldedWidth: 466,
