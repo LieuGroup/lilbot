@@ -23,6 +23,7 @@ interface RosterRowProps {
   selected: boolean
   splitMode: boolean
   spacedTop: boolean
+  now?: number
   scrollingVertically: SharedValue<boolean>
   onSelect: (bot: Bot) => void
 }
@@ -32,17 +33,18 @@ function areRosterRowPropsEqual(prev: RosterRowProps, next: RosterRowProps): boo
     prev.selected === next.selected &&
     prev.splitMode === next.splitMode &&
     prev.spacedTop === next.spacedTop &&
+    prev.now === next.now &&
     prev.scrollingVertically === next.scrollingVertically &&
     prev.onSelect === next.onSelect &&
     sameRosterBotDisplay(prev.bot, next.bot)
   )
 }
 
-export const RosterRow = memo(function RosterRow({ bot, selected, splitMode, spacedTop, scrollingVertically, onSelect }: RosterRowProps) {
+export const RosterRow = memo(function RosterRow({ bot, selected, splitMode, spacedTop, now, scrollingVertically, onSelect }: RosterRowProps) {
   const theme = useTheme()
   const { fontScale } = useWindowDimensions()
   const openMenu = useBotMenuStore(state => state.openMenu)
-  const display = rosterRowDisplay(bot)
+  const display = rosterRowDisplay(bot, { now })
   const unread = isUnread(bot)
 
   const swipeActions = useMemo<SwipeRowAction[]>(
@@ -107,7 +109,7 @@ export const RosterRow = memo(function RosterRow({ bot, selected, splitMode, spa
           <View style={{ minHeight, flexDirection: 'row', alignItems: 'center', gap: splitMode ? 12 : 14, paddingHorizontal: selected ? 8 : 16, paddingVertical: splitMode ? 10 : 12 }}>
             <BotAvatar name={bot.name} avatar={bot.prefs.avatar} size={avatarSize} />
             <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 }}>
+              <View style={{ flexDirection: 'row', alignItems: textLines > 1 ? 'flex-start' : 'center', gap: 6, minWidth: 0 }}>
                 <AppText
                   numberOfLines={textLines}
                   ellipsizeMode="tail"
@@ -123,12 +125,16 @@ export const RosterRow = memo(function RosterRow({ bot, selected, splitMode, spa
                     numberOfLines={1}
                     maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowTime}
                     color={theme.mutedForeground}
-                    style={{ ...MOBILE_SCALE.roster.rowTime, flexShrink: 0, fontFamily: 'Inter_400Regular' }}
+                    style={{ ...MOBILE_SCALE.roster.rowTime, flexShrink: 0, fontFamily: 'Inter_400Regular', paddingTop: textLines > 1 ? 4 : 0 }}
                   >
                     {display.timeText}
                   </AppText>
                 ) : null}
-                <RowStatusMarks statusMark={display.statusMark} unread={display.unread} />
+                {display.statusMark || display.unread ? (
+                  <View style={{ paddingTop: textLines > 1 ? 6 : 0 }}>
+                    <RowStatusMarks statusMark={display.statusMark} unread={display.unread} />
+                  </View>
+                ) : null}
               </View>
               {display.inlineText ? (
                 <AppText

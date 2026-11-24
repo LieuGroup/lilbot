@@ -2,7 +2,7 @@
  *  collapsible user sections and Unassigned/Hidden groups, open two-line rows with scroll-gated swipes,
  *  and button-triggered Search bots (Duo strip button or ordinary iPhone/iPad first-section icon; no pull gesture). */
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { FlatList, type ListRenderItemInfo, View } from 'react-native'
+import { AppState, FlatList, type ListRenderItemInfo, View } from 'react-native'
 import { useSharedValue } from 'react-native-reanimated'
 import type { Bot, Section } from '../../../shared/bot-schema'
 import { closeAllSwipeRows } from '../ui/gestures/swipe-row'
@@ -12,6 +12,7 @@ import { MOBILE_SCALE, radius } from '../ui/tokens'
 import { useBotMenuStore } from './menu-store'
 import { CollapsedGroupHeader, RosterHeaderActions, RosterSearchBar, RosterSectionHeader, SplitNewBotFooter } from './roster-chrome'
 import { buildRosterListItems, firstRosterHeaderKey, type RosterListItem, rosterHeaderActionsVisibility, standaloneRosterHeaderActions } from './roster-list'
+import { localDayKey, msUntilNextLocalDay } from './roster-preview'
 import { RosterRow } from './roster-row'
 import { RosterTiles } from './roster-tiles'
 import { WorkingTogether } from './working-together'
@@ -60,6 +61,19 @@ export function Roster({
   const [unassignedOpen, setUnassignedOpen] = useState(false)
   const [hiddenOpen, setHiddenOpen] = useState(false)
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
+  const [dayAnchor, setDayAnchor] = useState(() => Date.now())
+
+  useEffect(() => {
+    const syncDay = () => setDayAnchor(prev => (localDayKey(prev) === localDayKey() ? prev : Date.now()))
+    const timer = setTimeout(syncDay, msUntilNextLocalDay(dayAnchor))
+    const sub = AppState.addEventListener('change', next => {
+      if (next === 'active') syncDay()
+    })
+    return () => {
+      clearTimeout(timer)
+      sub.remove()
+    }
+  }, [dayAnchor])
 
   useEffect(() => {
     if (!actionError) return
@@ -128,9 +142,9 @@ export function Roster({
           </AppText>
         )
       }
-      return <RosterRow bot={item.bot} selected={item.bot.id === selectedId} splitMode={splitMode} spacedTop={item.spacedTop} scrollingVertically={scrollingVertically} onSelect={onSelect} />
+      return <RosterRow bot={item.bot} selected={item.bot.id === selectedId} splitMode={splitMode} spacedTop={item.spacedTop} now={dayAnchor} scrollingVertically={scrollingVertically} onSelect={onSelect} />
     },
-    [firstHeaderKey, headerActionState.showNewBot, headerActionState.showSearch, onOpenSearch, onSelect, openNewBot, scrollingVertically, selectedId, splitMode, theme.destructive, theme.mutedForeground, toggleGroup, toggleSection]
+    [dayAnchor, firstHeaderKey, headerActionState.showNewBot, headerActionState.showSearch, onOpenSearch, onSelect, openNewBot, scrollingVertically, selectedId, splitMode, theme.destructive, theme.mutedForeground, toggleGroup, toggleSection]
   )
 
   const bannerError = actionError || (bots.length > 0 && error ? error : '')

@@ -12,6 +12,7 @@ import {
 } from '../../../shared/client/bots/bot-menu-rules'
 import { type RowTone, rowState } from '../../../shared/client/bots/row-state'
 import type { SurfaceKind } from '../duo/layout'
+import { type BotWithLastMessage, formatLastMessagePreview, formatRosterTime, hasActiveLiveRowState, type RosterTimeOptions } from './roster-preview'
 
 export type RowStatusMark = 'working' | 'finished' | 'failed' | null
 export type InlineTextTone = 'destructive' | 'foreground' | 'muted'
@@ -78,7 +79,7 @@ export function canStartNewSession(state: {
 }
 
 /** Value-compares every Bot field rendered or acted on by RosterRow so fresh bots.list payloads skip unchanged rows. */
-export function sameRosterBotDisplay(a: Bot, b: Bot): boolean {
+export function sameRosterBotDisplay(a: BotWithLastMessage, b: BotWithLastMessage): boolean {
   if (a === b) return true
   if (
     a.id !== b.id ||
@@ -98,7 +99,10 @@ export function sameRosterBotDisplay(a: Bot, b: Bot): boolean {
     a.activity?.unread !== b.activity?.unread ||
     a.workingFor?.name !== b.workingFor?.name ||
     a.workers?.count !== b.workers?.count ||
-    a.workers?.activity !== b.workers?.activity
+    a.workers?.activity !== b.workers?.activity ||
+    a.lastMessage?.from !== b.lastMessage?.from ||
+    a.lastMessage?.text !== b.lastMessage?.text ||
+    a.lastMessage?.at !== b.lastMessage?.at
   ) {
     return false
   }
@@ -111,11 +115,16 @@ export function sameRosterBotDisplay(a: Bot, b: Bot): boolean {
   return true
 }
 
-/** Maps shared rowState(bot) into two-line Roster row presentation (1:1 with web's RosterRow)
- *  without suppressing simultaneous unread + status marks. */
-export function rosterRowDisplay(bot: Bot): RosterRowDisplay {
+/** Maps shared rowState(bot) plus optional `bot.lastMessage` into two-line Roster row presentation:
+ *  live status wins whenever the bot is working, waiting, failed, finished, unavailable, or in a group;
+ *  otherwise the latest message preview is shown (prefixed with "You: " for the owner's own message),
+ *  falling back to the bot's description only when no message exists yet. */
+export function rosterRowDisplay(bot: BotWithLastMessage, timeOptions?: RosterTimeOptions): RosterRowDisplay {
   const state = rowState(bot)
-  const accessibilityLabel = [bot.name, bot.isPrimary ? 'Primary bot' : '', state.text, state.unread ? 'Unread' : ''].filter(Boolean).join(', ')
+  const previewText = formatLastMessagePreview(bot.lastMessage)
+  const inlineText = hasActiveLiveRowState(bot, state.tone) ? state.text : (previewText ?? state.text)
+  const timeText = bot.lastMessage ? formatRosterTime(bot.lastMessage.at, timeOptions) : null
+  const accessibilityLabel = [bot.name, bot.isPrimary ? 'Primary bot' : '', inlineText, timeText ?? '', state.unread ? 'Unread' : ''].filter(Boolean).join(', ')
 
   let inlineTone: InlineTextTone = 'muted'
   if (state.tone === 'failed') {
@@ -131,9 +140,9 @@ export function rosterRowDisplay(bot: Bot): RosterRowDisplay {
     unread: state.unread,
     boldName: state.unread,
     showPrimaryStar: bot.isPrimary,
-    inlineText: state.text,
+    inlineText,
     inlineTone,
-    timeText: null,
+    timeText,
     statusMark,
     accessibilityLabel
   }
