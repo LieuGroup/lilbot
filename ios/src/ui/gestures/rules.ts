@@ -2,7 +2,7 @@
  *  Native stack/tabs handle back navigation and Assistive Access Back; this module governs custom gestures only.
  *  Zero React Native runtime imports so every rule is unit-tested on Linux. */
 
-/** Five controls NEVER replaced by a gesture whenever their state applies (build-spec.md §5A). */
+/** Five controls NEVER replaced by a gesture whenever their state applies. */
 export const HARD_INVARIANT_CONTROLS = ['answer', 'stop', 'send', 'attach', 'inspector-close'] as const
 export type HardInvariantControl = (typeof HARD_INVARIANT_CONTROLS)[number]
 
@@ -74,7 +74,7 @@ export interface AccessibleActionSpec {
   label: string
 }
 
-/** VoiceOver custom actions mirroring swipe-left and long-press on every bot row (build-spec.md §5B). */
+/** VoiceOver custom actions mirroring swipe-left and long-press on every bot row. */
 export function rowAccessibilityActions(state: { pinned: boolean; unread: boolean; hidden: boolean }): AccessibleActionSpec[] {
   return [
     { name: 'toggle-pin', label: state.pinned ? 'Unpin' : 'Pin' },
@@ -84,7 +84,7 @@ export function rowAccessibilityActions(state: { pinned: boolean; unread: boolea
   ]
 }
 
-/** VoiceOver custom action mirroring long-press Send for Model & Reasoning Effort (build-spec.md §5B). */
+/** VoiceOver custom action mirroring long-press Send for Model & Reasoning Effort. */
 export function sendAccessibilityActions(): AccessibleActionSpec[] {
   return [{ name: 'model-menu', label: 'Change model and reasoning effort' }]
 }
