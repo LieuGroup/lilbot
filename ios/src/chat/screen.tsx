@@ -7,6 +7,7 @@ import { useBotMenuStore } from '../bots/menu-store'
 import { useModelPicker } from '../bots/model-pill'
 import { canStartNewSession } from '../bots/roster-state'
 import { Composer, MessageList } from '../chat/message-list'
+import { resolveChatStatusLine } from '../chat/status'
 import { useChat } from '../chat/use-chat'
 import { useConnectionStore } from '../connection/store'
 import { BotAvatar } from '../ui/avatar'
@@ -45,6 +46,13 @@ export function ChatScreen({ bot, hideHeader = false, headerLeading, showNewSess
     })
   }, [])
 
+  const statusLine = resolveChatStatusLine({
+    connected,
+    ready: chat.ready,
+    running: chat.view.running,
+    activity: chat.view.activity
+  })
+
   return (
     <View ref={rootRef} onLayout={handleLayout} style={{ flex: 1, backgroundColor: theme.background }}>
       {!hideHeader && (
@@ -54,11 +62,6 @@ export function ChatScreen({ bot, hideHeader = false, headerLeading, showNewSess
           <AppText variant="title" numberOfLines={1} style={{ flex: 1 }}>
             {bot.name}
           </AppText>
-          {chat.view.running && (
-            <AppText variant="meta" color={theme.primary}>
-              Working
-            </AppText>
-          )}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             {showNewSession && (
               <Pressable
@@ -111,7 +114,7 @@ export function ChatScreen({ bot, hideHeader = false, headerLeading, showNewSess
         </View>
       ) : (
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={keyboardOffset}>
-          <MessageList key={bot.id} botId={bot.id} botName={bot.name} chat={chat.view} emptyHint={chat.ready ? `Message ${bot.name}` : 'Opening the conversation…'} />
+          <MessageList key={bot.id} botId={bot.id} botName={bot.name} chat={chat.view} statusLine={statusLine} emptyHint={`Send a message to start with ${bot.name}.`} />
           <Composer botId={bot.id} botName={bot.name} ready={chat.ready} running={chat.view.running} model={modelPicker.pill} bottomInset={insets.bottom} onSend={send} onStop={() => void chat.stop()} />
         </KeyboardAvoidingView>
       )}

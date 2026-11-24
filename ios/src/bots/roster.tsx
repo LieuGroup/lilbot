@@ -27,10 +27,26 @@ interface RosterProps {
   selectedId: string | null
   compactCardSurface?: boolean
   splitMode?: boolean
+  hideInlineSearch?: boolean
+  hideInlineNewBot?: boolean
+  searchToggleToken?: number
   onSelect: (bot: Bot) => void
 }
 
-export function Roster({ bots, sections, loaded, connected, error, selectedId, compactCardSurface = false, splitMode = false, onSelect }: RosterProps) {
+export function Roster({
+  bots,
+  sections,
+  loaded,
+  connected,
+  error,
+  selectedId,
+  compactCardSurface = false,
+  splitMode = false,
+  hideInlineSearch = false,
+  hideInlineNewBot = false,
+  searchToggleToken = 0,
+  onSelect
+}: RosterProps) {
   const theme = useTheme()
   const screenReader = useScreenReaderEnabled()
   const openNewBot = useBotMenuStore(state => state.openNewBot)
@@ -55,6 +71,14 @@ export function Roster({ bots, sections, loaded, connected, error, selectedId, c
     setSearchOpen(false)
   }, [])
 
+  useEffect(() => {
+    if (searchToggleToken <= 0) return
+    setSearchOpen(open => {
+      if (open) setQuery('')
+      return !open
+    })
+  }, [searchToggleToken])
+
   const pullHandlers = usePullToSearch({ searchOpen, onRevealSearch: openSearch, scrollingVertically })
 
   const toggleGroup = useCallback((groupId: 'unassigned' | 'hidden') => {
@@ -70,7 +94,13 @@ export function Roster({ bots, sections, loaded, connected, error, selectedId, c
   )
 
   const firstHeaderKey = useMemo(() => (query.trim().length === 0 ? firstRosterHeaderKey(items) : null), [items, query])
-  const headerActionState = rosterHeaderActionsVisibility({ hasHeader: firstHeaderKey !== null, splitMode, searchVisible: showSearchBar })
+  const headerActionState = rosterHeaderActionsVisibility({
+    hasHeader: firstHeaderKey !== null,
+    splitMode,
+    searchVisible: showSearchBar,
+    hideInlineSearch,
+    hideInlineNewBot
+  })
 
   const renderItem = useCallback(
     ({ item }: ListRenderItemInfo<RosterListItem>) => {
@@ -122,7 +152,7 @@ export function Roster({ bots, sections, loaded, connected, error, selectedId, c
       </View>
     ) : undefined
 
-  const footer = splitMode && loaded && query.trim().length === 0 && !firstHeaderKey ? <SplitNewBotFooter onPress={openNewBot} /> : undefined
+  const footer = splitMode && !hideInlineNewBot && loaded && query.trim().length === 0 && !firstHeaderKey ? <SplitNewBotFooter onPress={openNewBot} /> : undefined
 
   return (
     <FlatList

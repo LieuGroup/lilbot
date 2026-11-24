@@ -110,14 +110,20 @@ export function firstRosterHeaderKey(items: readonly RosterListItem[]): string |
 }
 
 /** Which inline actions to show at the right end of the first roster header line.
- *  Hides the Search icon whenever the search bar is already visible (pull-down or screen reader). */
+ *  Hides the Search icon whenever the search bar is already visible (pull-down or screen reader),
+ *  and hides actions that live in iPhone Duo's native 84 pt vertical side strip. */
 export function rosterHeaderActionsVisibility(input: {
   hasHeader: boolean
   splitMode: boolean
   searchVisible: boolean
+  hideInlineSearch?: boolean
+  hideInlineNewBot?: boolean
 }): { showSearch: boolean; showNewBot: boolean } {
   if (!input.hasHeader) return { showSearch: false, showNewBot: false }
-  return { showSearch: !input.searchVisible, showNewBot: input.splitMode }
+  return {
+    showSearch: !input.searchVisible && !input.hideInlineSearch,
+    showNewBot: input.splitMode && !input.hideInlineNewBot
+  }
 }
 
 export interface PullToSearchState {

@@ -1,9 +1,11 @@
 /** Live Duo/iPhone surface hook with ~150 ms fold-transition debounce, trusting live UIKit safeAreaInsets.
  *  VoiceOver status is exposed as a separate opt-in hook so only screens that consume it subscribe. */
+import { useVerticalBarEdgeIOS } from 'expo-status-bar'
 import { useEffect, useRef, useState } from 'react'
-import { AccessibilityInfo, useWindowDimensions } from 'react-native'
+import { AccessibilityInfo, Platform, useWindowDimensions } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { classifySurface, type SurfaceKind, surfaceTransitionDelayMs, type WindowMetrics } from './layout'
+import type { VerticalBarEdge } from './vertical-bar'
 
 export interface LiveSurfaceState {
   surface: SurfaceKind
@@ -55,4 +57,13 @@ export function useScreenReaderEnabled(): boolean {
   }, [])
 
   return enabled
+}
+
+/** Tracks iOS 27.1+ `UITraitCollection.verticalBarEdge` via `expo-status-bar`.
+ *  Returns `'leading'` or `'trailing'` when the system vertical bar is active (iPhone Duo),
+ *  and `null` on iOS < 27.1, ordinary iPhones, iPads, Duo Unfolded Portrait, and non-iOS platforms. */
+export function useVerticalBarEdge(): VerticalBarEdge {
+  const edge = useVerticalBarEdgeIOS()
+  if (Platform.OS !== 'ios') return null
+  return edge === 'leading' || edge === 'trailing' ? edge : null
 }
