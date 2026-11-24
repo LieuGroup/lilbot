@@ -13,12 +13,35 @@ export function onToolCall(listener: (call: ToolCallSeen) => void) {
   }
 }
 
+const record = (value: unknown) => (value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {})
+
+/** Hermes tool search wraps deferred tools as `tool_call({ calls: [{ name, arguments }] })` or a single
+ *  `{ name, arguments }`, with each call's arguments as an object or JSON text. */
+function unwrapToolCalls(tool: string, args: unknown): { name: string; args: unknown }[] {
+  if (tool !== 'tool_call') return [{ name: tool, args }]
+  const outer = record(args)
+  return (Array.isArray(outer.calls) ? outer.calls : [outer]).flatMap(entry => {
+    const call = record(entry)
+    if (typeof call.name !== 'string') return []
+    try {
+      return [{ name: call.name, args: record(typeof call.arguments === 'string' ? JSON.parse(call.arguments) : call.arguments) }]
+    } catch {
+      return []
+    }
+  })
+}
+
 /** `profile` empty = the default profile. Reads only `tool_id`, `name` and `args`, all declared on `tool.start`. */
 export function reportToolCall(profile: string, chatId: string | undefined, type: string, payload: Record<string, unknown> | undefined) {
   if (type !== 'tool.start' || !chatId || !payload) return
-  const callId = typeof payload.tool_id === 'string' ? payload.tool_id : undefined
-  const call = { engineBotId: profile || DEFAULT_PROFILE, chatId, tool: typeof payload.name === 'string' ? payload.name : '', args: payload.args ?? null, callId }
-  for (const listener of listeners) listener(call)
+  const engineBotId = profile || DEFAULT_PROFILE
+  const baseId = typeof payload.tool_id === 'string' && payload.tool_id ? payload.tool_id : undefined
+  const tool = typeof payload.name === 'string' ? payload.name : ''
+  for (const [i, entry] of unwrapToolCalls(tool, payload.args ?? null).entries()) {
+    const callId = baseId ? (tool === 'tool_call' ? `${baseId}:${i}` : baseId) : undefined
+    const call: ToolCallSeen = { engineBotId, chatId, tool: entry.name, args: entry.args, callId }
+    for (const listener of listeners) listener(call)
+  }
 }
 
 /** A replayed batch of one session's events. Only calls still under way are reported: a call LilBot is matching waits for

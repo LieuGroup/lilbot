@@ -14,30 +14,15 @@ const FALLBACK_GRACE_MS = 500
 /** The tools that need to know their calling conversation. Engines may prefix the name with the server's. */
 type CallingTool = 'lilbot_delegate' | 'lilbot_delegation' | 'lilbot_work' | 'lilbot_group' | 'lilbot_goal' | 'lilbot_give_file' | 'lilbot_webhook_message' | 'lilbot_connection'
 
-/** Matches a LilBot-owned server prefix or exact tool name, never an outside `lilbot_c_*` or third-party server. */
-const names = (name: string, tool: string) => {
-  if (name === tool) return true
-  if (tool.startsWith('mcp__')) return false
-  if (tool.startsWith('lilbot_')) return name === `mcp__lilbot_system__${tool}`
-  return name === `mcp__lilbot_t3__${tool}`
-}
-const record = (value: unknown) => (value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {})
+const SYSTEM_SERVER = 'lilbot_system'
+const T3_SERVER = 'lilbot_t3'
+const RAW_TOOL = /^[a-z0-9]+(?:_[a-z0-9]+)*$/
 
-/** The tools a call runs. Tool search wraps them: `tool_call({ calls: [{ name, arguments }] })` or a single
- *  `{ name, arguments }`, with each call's arguments as an object or JSON text. */
-function called(tool: string, args: unknown): { name: string; args: Record<string, unknown> }[] {
-  const outer = record(args)
-  if (tool !== 'tool_call') return [{ name: tool, args: outer }]
-  return (Array.isArray(outer.calls) ? outer.calls : [outer]).flatMap(entry => {
-    const call = record(entry)
-    if (typeof call.name !== 'string') return []
-    try {
-      return [{ name: call.name, args: record(typeof call.arguments === 'string' ? JSON.parse(call.arguments) : call.arguments) }]
-    } catch {
-      return []
-    }
-  })
-}
+/** Maps a LilBot-owned MCP server and raw tool name to the name `botId`'s engine reports in `onToolCall`. */
+export type ToolName = (botId: string, server: string, tool: string) => string
+const defaultToolName: ToolName = (_botId, server, tool) => `mcp__${server}__${tool}`
+
+const record = (value: unknown) => (value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {})
 
 /** Arguments as text that does not depend on key order, to tell two calls of one tool apart. */
 export function argsKey(value: unknown): string {
@@ -75,25 +60,35 @@ const TWO = 'Two of your conversations made this call with the same requestId at
 export class CallingChats {
   private seen: Seen[] = []
   /** How long a call waits for its start to be reported. */
-  constructor(readonly waitMs = 5000) {}
+  constructor(
+    readonly waitMs = 5000,
+    private toolName: ToolName = defaultToolName
+  ) {}
+
+  /** Matches a LilBot-owned server prefix for the bot's engine or exact tool name, never an outside `lilbot_c_*` or third-party server. */
+  private matches(botId: string, seen: string, tool: string): boolean {
+    if (seen === tool) return true
+    if (!RAW_TOOL.test(tool) || tool.startsWith('lilbot_c_')) return false
+    const server = tool.startsWith('lilbot_') ? SYSTEM_SERVER : T3_SERVER
+    return seen === this.toolName(botId, server, tool)
+  }
 
   saw(botId: string, chatId: string, tool: string, args: unknown, callId?: string) {
     const now = Date.now()
     this.seen = this.seen.filter(s => now - s.at < KEEP_MS)
-    for (const [i, call] of called(tool, args).entries()) {
-      if (!call.name.includes('lilbot_')) continue
-      const requestId = typeof call.args.requestId === 'string' ? call.args.requestId : null
-      const entry: Omit<Seen, 'key'> = { botId, chatId, tool: call.name, args: argsKey(call.args), requestId, at: now, claimed: 'open', gated: 'open' }
-      const key = callId ? `${botId}\n${callId}\n${i}\n${entry.tool}\n${entry.args}` : null
-      if (!key || !this.seen.some(s => s.key === key)) this.seen.push({ ...entry, key })
-    }
+    if (!tool.includes('lilbot_')) return
+    const parsed = record(args)
+    const requestId = typeof parsed.requestId === 'string' ? parsed.requestId : null
+    const entry: Omit<Seen, 'key'> = { botId, chatId, tool, args: argsKey(parsed), requestId, at: now, claimed: 'open', gated: 'open' }
+    const key = callId ? `${botId}\n${callId}\n${entry.tool}\n${entry.args}` : null
+    if (!key || !this.seen.some(s => s.key === key)) this.seen.push({ ...entry, key })
   }
 
   /** The session that made this call of `tool`, matched once; refuses (retryable) when that cannot be known. */
   async find(botId: string, tool: CallingTool, requestId: string): Promise<string> {
     const asked = Date.now()
     for (;;) {
-      const own = this.seen.filter(s => s.claimed === 'open' && s.botId === botId && s.requestId === requestId && s.at >= asked - EARLY_MS && names(s.tool, tool))
+      const own = this.seen.filter(s => s.claimed === 'open' && s.botId === botId && s.requestId === requestId && s.at >= asked - EARLY_MS && this.matches(botId, s.tool, tool))
       if (new Set(own.map(s => s.chatId)).size > 1) {
         console.warn(`[calling-session] ${tool}: two sessions could have made this call; refused`)
         throw new LilBotError('session_unknown', TWO)
@@ -115,7 +110,7 @@ export class CallingChats {
    *  (`AMBIGUOUS_MATCH`) when starts span multiple sessions and at least one is restricted (`prefer`). */
   take(botId: string, tool: string, since: number, args: string, requestId: string | null, prefer?: (chatId: string) => boolean, slot: 'gated' | 'claimed' = 'gated'): Match {
     const matches = this.seen.filter(
-      s => s[slot] !== 'taken' && s.botId === botId && s.at >= since && names(s.tool, tool) && (s.args === args || (requestId !== null && s.requestId === requestId))
+      s => s[slot] !== 'taken' && s.botId === botId && s.at >= since && this.matches(botId, s.tool, tool) && (s.args === args || (requestId !== null && s.requestId === requestId))
     )
     if (!matches.length) return null
     const marked = matches.find(s => s[slot] === 'ambiguous')
@@ -139,7 +134,7 @@ export class CallingChats {
   /** Fail-closed fallback for tools without requestId whose raw model arguments differ after coercion or truncation:
    *  succeeds only when strictly ONE unmatched start of `tool` exists in `[since, maxAt]`, never when zero or multiple exist. */
   takeSingle(botId: string, tool: string, since: number, maxAt: number, slot: 'gated' | 'claimed' = 'gated'): string | null {
-    const unmatched = this.seen.filter(s => s[slot] === 'open' && s.botId === botId && s.at >= since && names(s.tool, tool))
+    const unmatched = this.seen.filter(s => s[slot] === 'open' && s.botId === botId && s.at >= since && this.matches(botId, s.tool, tool))
     if (unmatched.length !== 1 || unmatched[0].at > maxAt) return null
     unmatched[0][slot] = 'taken'
     return unmatched[0].chatId
@@ -177,7 +172,7 @@ export class CallingChats {
 
   /** Retires the unclaimed slot of a call that a gate already placed and refused, so it never collides with later calls. */
   dropClaim(botId: string, tool: string, chatId: string) {
-    const entry = [...this.seen].reverse().find(s => s.botId === botId && s.chatId === chatId && s.gated === 'taken' && s.claimed === 'open' && names(s.tool, tool))
+    const entry = [...this.seen].reverse().find(s => s.botId === botId && s.chatId === chatId && s.gated === 'taken' && s.claimed === 'open' && this.matches(botId, s.tool, tool))
     if (entry) entry.claimed = 'taken'
   }
 
@@ -185,7 +180,7 @@ export class CallingChats {
    *  them. Matched or not: for checks that only refuse. */
   starts(botId: string, tool: string, since: number): { chatId: string; args: string; requestId: string | null }[] {
     return this.seen
-      .filter(s => s.botId === botId && s.at >= since && names(s.tool, tool))
+      .filter(s => s.botId === botId && s.at >= since && this.matches(botId, s.tool, tool))
       .reverse()
       .map(({ chatId, args, requestId }) => ({ chatId, args, requestId }))
   }
