@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { hermesToolsetsForRun, limitedNeedsFileEdits } from '../../../server/engines/hermes/hermes-access'
 import { readHistoryCatalog } from '../../../server/engines/hermes/hermes-history-catalog'
-import { createLimitedSession, resumeLimitedSession } from '../../../server/engines/hermes/hermes-limited-session'
+import { createLimitedSession, denyLimitedApproval, resumeLimitedSession } from '../../../server/engines/hermes/hermes-limited-session'
 import type { McpConnection } from '../../../server/engines/mcp-connection'
 
 const CONN: McpConnection = {
@@ -126,6 +126,12 @@ describe('Hermes limited-session isolation, verification, and edit policy', () =
 
     const bad = fakeSocket({ enabledToolsets: ['skills', 'mcp-editor_lilbot_a1b2c3d4', 'x_search'] })
     await expect(resumeLimitedSession(bad.socket, 'stored-1', [CONN], scope)).rejects.toThrow(/Unexpected toolset/)
+  })
+
+  test('denyLimitedApproval sends immediate approval.respond deny for limited-session edit prompts', () => {
+    const s = fakeSocket()
+    denyLimitedApproval(s.socket, 'sid-1', { kind: 'approval', prompt_id: 'p-1', execution_generation: 2 })
+    expect(s.calls).toEqual([{ method: 'approval.respond', params: { session_id: 'sid-1', execution_generation: 2, prompt_id: 'p-1', choice: 'deny' } }])
   })
 
   test('readHistoryCatalog excludes acp sessions (by source or created_source) and their compression continuations', () => {

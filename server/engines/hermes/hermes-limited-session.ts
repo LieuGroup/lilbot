@@ -133,6 +133,15 @@ export async function createLimitedSession(socket: HermesSocket, params: Limited
   return session
 }
 
+/** Immediately denies an edit-approval prompt on a limited ACP session (`ask` for checks, or out-of-workspace writes
+ *  under `workspace_session`) so Hermes never blocks for the 300 s approval timeout. */
+export function denyLimitedApproval(socket: HermesSocket, sessionId: string, payload: Record<string, any>, fallbackGen?: number) {
+  const promptId = typeof payload?.prompt_id === 'string' ? payload.prompt_id : ''
+  const gen = typeof payload?.execution_generation === 'number' ? payload.execution_generation : fallbackGen
+  if (!promptId || typeof gen !== 'number') return
+  void socket.request('approval.respond', { session_id: sessionId, execution_generation: gen, prompt_id: promptId, choice: 'deny' }).catch(() => {})
+}
+
 /** Resumes a hidden ACP limited session, re-supplying its deterministic `editor.mcp_servers` spec and auditing its
  *  tool surface so Hermes re-attaches the exact same policy across `acp_disconnect` or a gateway restart. */
 export async function resumeLimitedSession(socket: HermesSocket, chatId: string, sessionMcp: readonly McpConnection[], access?: RunAccessScope, displayProjection = true) {
@@ -145,6 +154,9 @@ export async function resumeLimitedSession(socket: HermesSocket, chatId: string,
   })
   if (access && typeof session.session_id === 'string' && session.session_id) {
     await verifyLimitedSession(socket, session.session_id, access, sessionMcp)
+    if (Array.isArray(session.prompts)) {
+      for (const prompt of session.prompts) if (prompt?.kind === 'approval') denyLimitedApproval(socket, session.session_id, prompt, session.execution_generation)
+    }
   }
   return session
 }
