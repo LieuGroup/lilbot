@@ -168,7 +168,7 @@ describe('engine conformance: bot-added MCP forwarding', () => {
     expect(upstream.calls()).toBe(1)
   }, 15_000)
 
-  test.failing('[CallingChats.saw non-lilbot_ filter] default unprefixed ScriptedEngine allows main-chat service call while webhook runs exist', async () => {
+  test('default unprefixed ScriptedEngine allows main-chat service call while webhook runs exist', async () => {
     const upstream = startMockUpstream()
     const app = await startConformanceApp()
     cleanups.push(app.close)

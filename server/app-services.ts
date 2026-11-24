@@ -26,7 +26,7 @@ import { ComputerStore } from './computers/computer-store'
 import { loadServerKey } from './computers/server-key'
 import { CodingSwitchNotice } from './connections/coding-switch-notice'
 import { CALLBACK_PATH } from './connections/mcp-callback'
-import { isT3Enabled, t3Connection } from './connections/t3-connection'
+import { isT3Enabled, T3_TOOLS, t3Connection } from './connections/t3-connection'
 import { T3Grants } from './connections/t3-grant'
 import { openDatabase } from './database/database'
 import { deployNotice } from './deploy/deploy-notice'
@@ -159,7 +159,7 @@ export function createAppServices(
     busyReason: botBusyReason({ database, activity, routineStore, webhookStore }),
     readOnlyChat: (botId, chatId) => webhookRuns.callers.isKnownLimited(botId, chatId)
   })
-  const calls = new CallingChats(undefined, (botId, server, tool) => engines.mcpToolName(store.exists(botId) ? store.get(botId).engineId : undefined, server, tool))
+  const calls = new CallingChats(undefined, { namer: botId => engines.namer(store.engineId(botId)), services: () => mcp.serviceTools(), t3Tools: T3_TOOLS })
   const observeRun = (event: ActivityEvent) => store.exists(event.botId) && activity.observe(event)
   const hookDeps = { webhookStore, messages, bots, rootOf, calls, token, origin: HOOK_ORIGIN, t3Enabled, narrowed: threadStore }
   const { webhooks, webhookRuns, gates } = createWebhooks({ ...hookDeps, observeRun, publish, repeat })
