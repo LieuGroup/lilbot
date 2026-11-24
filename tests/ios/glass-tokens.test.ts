@@ -98,7 +98,7 @@ describe('iOS Liquid Glass tokens', () => {
       sectionHeader: 1.6,
       rowName: 2.0,
       rowPreview: 1.8,
-      rowTime: 1.6,
+      rowTime: 1.45,
       headerTitle: 1.35,
       modelPill: 1.5,
       composerInput: 2.0

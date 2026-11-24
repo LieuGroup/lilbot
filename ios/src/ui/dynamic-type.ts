@@ -11,8 +11,8 @@ export const DYNAMIC_TYPE_CAPS = {
   rowName: 2.0,
   /** Caps roster row previews (~27 pt at AX5) so 2-line AX5 previews keep multiple readable words. */
   rowPreview: 1.8,
-  /** Caps right-aligned row timestamps (~21 pt) so bot names keep room on narrow screens. */
-  rowTime: 1.6,
+  /** Caps right-aligned row timestamps (~19 pt) so bot names keep room at AX5 on folded width. */
+  rowTime: 1.45,
   /** Caps chat navigation header titles (~21.6 pt) so bot names fit inside the 44 pt iOS bar at AX5. */
   headerTitle: 1.35,
   /** Caps composer model pill (~19.5 pt) so model + effort remain readable at AX5 instead of "Default...". */

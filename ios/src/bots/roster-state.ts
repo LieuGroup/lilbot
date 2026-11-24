@@ -12,6 +12,7 @@ import {
 } from '../../../shared/client/bots/bot-menu-rules'
 import { type RowTone, rowState } from '../../../shared/client/bots/row-state'
 import type { SurfaceKind } from '../duo/layout'
+import { formatLastMessagePreview, formatRosterTime, hasActiveLiveRowState, type RosterTimeOptions } from './roster-preview'
 
 export type RowStatusMark = 'working' | 'finished' | 'failed' | null
 export type InlineTextTone = 'destructive' | 'foreground' | 'muted'
@@ -98,7 +99,10 @@ export function sameRosterBotDisplay(a: Bot, b: Bot): boolean {
     a.activity?.unread !== b.activity?.unread ||
     a.workingFor?.name !== b.workingFor?.name ||
     a.workers?.count !== b.workers?.count ||
-    a.workers?.activity !== b.workers?.activity
+    a.workers?.activity !== b.workers?.activity ||
+    a.lastMessage?.from !== b.lastMessage?.from ||
+    a.lastMessage?.text !== b.lastMessage?.text ||
+    a.lastMessage?.at !== b.lastMessage?.at
   ) {
     return false
   }
@@ -111,11 +115,17 @@ export function sameRosterBotDisplay(a: Bot, b: Bot): boolean {
   return true
 }
 
-/** Maps shared rowState(bot) into two-line Roster row presentation (1:1 with web's RosterRow)
- *  without suppressing simultaneous unread + status marks. */
-export function rosterRowDisplay(bot: Bot): RosterRowDisplay {
+/** Maps shared rowState(bot) + optional `bot.lastMessage` into two-line Roster row display: live status wins
+ *  over `lastMessage` (with time suppressed whenever line 2 is not showing `lastMessage`). */
+export function rosterRowDisplay(bot: Bot, timeOptions?: RosterTimeOptions): RosterRowDisplay {
   const state = rowState(bot)
-  const accessibilityLabel = [bot.name, bot.isPrimary ? 'Primary bot' : '', state.text, state.unread ? 'Unread' : ''].filter(Boolean).join(', ')
+  const previewText = formatLastMessagePreview(bot.lastMessage)
+  const showingLastMessage = !hasActiveLiveRowState(bot, state.tone) && previewText !== null
+  const inlineText = showingLastMessage ? previewText : state.text
+  const timeText = showingLastMessage && bot.lastMessage ? formatRosterTime(bot.lastMessage.at, timeOptions) : null
+  const spokenTime = showingLastMessage && bot.lastMessage ? formatRosterTime(bot.lastMessage.at, { ...timeOptions, weekday: 'long' }) : null
+  const spokenStatus = state.tone === 'working' && !/\bworking\b/i.test(inlineText) ? 'Working' : ''
+  const accessibilityLabel = [bot.name, bot.isPrimary ? 'Primary bot' : '', spokenStatus, inlineText, spokenTime ?? '', state.unread ? 'Unread' : ''].filter(Boolean).join(', ')
 
   let inlineTone: InlineTextTone = 'muted'
   if (state.tone === 'failed') {
@@ -131,9 +141,9 @@ export function rosterRowDisplay(bot: Bot): RosterRowDisplay {
     unread: state.unread,
     boldName: state.unread,
     showPrimaryStar: bot.isPrimary,
-    inlineText: state.text,
+    inlineText,
     inlineTone,
-    timeText: null,
+    timeText,
     statusMark,
     accessibilityLabel
   }

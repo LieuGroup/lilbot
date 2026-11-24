@@ -23,6 +23,7 @@ interface RosterRowProps {
   selected: boolean
   splitMode: boolean
   spacedTop: boolean
+  now?: number
   scrollingVertically: SharedValue<boolean>
   onSelect: (bot: Bot) => void
 }
@@ -32,17 +33,18 @@ function areRosterRowPropsEqual(prev: RosterRowProps, next: RosterRowProps): boo
     prev.selected === next.selected &&
     prev.splitMode === next.splitMode &&
     prev.spacedTop === next.spacedTop &&
+    prev.now === next.now &&
     prev.scrollingVertically === next.scrollingVertically &&
     prev.onSelect === next.onSelect &&
     sameRosterBotDisplay(prev.bot, next.bot)
   )
 }
 
-export const RosterRow = memo(function RosterRow({ bot, selected, splitMode, spacedTop, scrollingVertically, onSelect }: RosterRowProps) {
+export const RosterRow = memo(function RosterRow({ bot, selected, splitMode, spacedTop, now, scrollingVertically, onSelect }: RosterRowProps) {
   const theme = useTheme()
   const { fontScale } = useWindowDimensions()
   const openMenu = useBotMenuStore(state => state.openMenu)
-  const display = rosterRowDisplay(bot)
+  const display = rosterRowDisplay(bot, { now })
   const unread = isUnread(bot)
 
   const swipeActions = useMemo<SwipeRowAction[]>(
@@ -87,6 +89,25 @@ export const RosterRow = memo(function RosterRow({ bot, selected, splitMode, spa
   const avatarSize = scaledRowAvatarSize(splitMode ? MOBILE_SCALE.roster.rowAvatarSplit : MOBILE_SCALE.roster.rowAvatar, fontScale)
   const minHeight = splitMode ? MOBILE_SCALE.roster.rowMinHeightSplit : MOBILE_SCALE.roster.rowMinHeight
   const textLines = rosterRowTextLines(fontScale)
+  const stackMeta = textLines > 1
+  const hasMeta = Boolean(display.timeText || display.statusMark || display.unread)
+
+  const metaRow = hasMeta ? (
+    <View testID={`roster-row-meta-${bot.id}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+      {display.timeText ? (
+        <AppText
+          testID={`roster-row-time-${bot.id}`}
+          numberOfLines={1}
+          maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowTime}
+          color={theme.mutedForeground}
+          style={{ ...MOBILE_SCALE.roster.rowTime, flexShrink: 0, fontFamily: 'Inter_400Regular' }}
+        >
+          {display.timeText}
+        </AppText>
+      ) : null}
+      {display.statusMark || display.unread ? <RowStatusMarks statusMark={display.statusMark} unread={display.unread} /> : null}
+    </View>
+  ) : null
 
   return (
     <View style={{ marginTop: spacedTop ? 8 : 0, paddingHorizontal: selected ? 8 : 0 }}>
@@ -106,7 +127,7 @@ export const RosterRow = memo(function RosterRow({ bot, selected, splitMode, spa
         >
           <View style={{ minHeight, flexDirection: 'row', alignItems: 'center', gap: splitMode ? 12 : 14, paddingHorizontal: selected ? 8 : 16, paddingVertical: splitMode ? 10 : 12 }}>
             <BotAvatar name={bot.name} avatar={bot.prefs.avatar} size={avatarSize} />
-            <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+            <View style={{ flex: 1, minWidth: 0, gap: stackMeta ? 4 : 2 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0 }}>
                 <AppText
                   numberOfLines={textLines}
@@ -117,19 +138,9 @@ export const RosterRow = memo(function RosterRow({ bot, selected, splitMode, spa
                   {bot.name}
                 </AppText>
                 {display.showPrimaryStar && <StarIcon color={theme.mutedForeground} size={13} />}
-                {display.timeText ? (
-                  <AppText
-                    testID={`roster-row-time-${bot.id}`}
-                    numberOfLines={1}
-                    maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowTime}
-                    color={theme.mutedForeground}
-                    style={{ ...MOBILE_SCALE.roster.rowTime, flexShrink: 0, fontFamily: 'Inter_400Regular' }}
-                  >
-                    {display.timeText}
-                  </AppText>
-                ) : null}
-                <RowStatusMarks statusMark={display.statusMark} unread={display.unread} />
+                {!stackMeta && metaRow}
               </View>
+              {stackMeta && metaRow}
               {display.inlineText ? (
                 <AppText
                   color={previewColor}
