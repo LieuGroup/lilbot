@@ -5,7 +5,7 @@ import { LilBotError } from '../../../shared/lilbot-error'
 import type { BotEngine, ChatOptions, MemoryConnection, ReviewOptions, RoutineOptions, RuntimeIdentity, SessionChange, SkillSettings, ToolCallSeen } from '../bot-engine'
 import type { McpConnection } from '../mcp-connection'
 import { conversationSource, newSession, openScriptedChat, type ResumeOutcome, type ScriptedSession, type ScriptedTurnHandler } from './scripted-chat'
-import { callMcpServer } from './scripted-mcp'
+import { attachSessionMcp, callMcpServer } from './scripted-mcp'
 import { DEFAULT_SCRIPTED_MODELS, ScriptedRoutineLedger, type ScriptedRuntime } from './scripted-routines'
 
 export interface ScriptedEngineOptions {
@@ -132,19 +132,28 @@ export class ScriptedEngine implements BotEngine {
   refreshMemory = async () => []
   async reviewMemory(engineBotId: string, _prompt: string, options: ReviewOptions) {
     this.requireRuntime(engineBotId)
-    options.onChat(this.createSession(engineBotId, '', true).chatId)
+    const session = this.createSession(engineBotId, options.workspace ?? '', true)
+    if (options.sessionMcp?.length) await attachSessionMcp(session, options.sessionMcp, true, options.assertSessionMcpReady)
+    options.onChat(session.chatId)
   }
   async runRoutine(engineBotId: string, prompt: string, options: RoutineOptions & ChatOptions) {
     this.requireRuntime(engineBotId)
+    if (options.access && !options.sessionMcp?.length) throw new LilBotError('session_mcp_unavailable', 'Limited sessions require a session-bound MCP connection.')
     this.routineCalls.push({ nativeId: engineBotId, prompt, options })
+    const existing = options.chatId ? this.sessions.get(options.chatId) : undefined
+    const prepared = options.sessionMcp?.length ? (existing ?? this.createSession(engineBotId, options.workspace, true)) : undefined
+    if (prepared && options.sessionMcp?.length) await attachSessionMcp(prepared, options.sessionMcp, !existing, options.assertSessionMcpReady)
     return this.ledger.run(
       options,
       prompt,
       this.client.signal,
-      () => (options.chatId && this.sessions.get(options.chatId)) || this.createSession(engineBotId, options.workspace, true),
+      () => prepared ?? existing ?? this.createSession(engineBotId, options.workspace, true),
       chatId => (t, a, s) => this.callMcp(engineBotId, chatId, t, a, s),
       this.onTurn
     )
+  }
+  sessionDiscoveredTools(chatId: string): Map<string, string[]> | undefined {
+    return this.sessions.get(chatId)?.discoveredTools
   }
   onBotsChanged = (listener: () => void) => {
     this.botListeners.add(listener)
@@ -176,10 +185,14 @@ export class ScriptedEngine implements BotEngine {
     return runtime
   }
   private async callMcp(nativeId: string, chatId: string, tool: string, args: Record<string, unknown> = {}, server = 'lilbot_system') {
-    const conn = this.requireRuntime(nativeId).connections.find(c => c.name === server)
+    const session = this.sessions.get(chatId)
+    const conn = session?.sessionMcp
+      ? session.sessionMcp.find(c => c.name === server || (server === 'lilbot_system' && c.name === 'lilbot') || (server === 'lilbot_t3' && c.name === 't3'))
+      : this.requireRuntime(nativeId).connections.find(c => c.name === server)
     if (!conn) return { ok: false, text: `Missing MCP connection: ${server}` }
+    const reportServer = session?.sessionMcp ? `editor_${conn.name}` : server
     return callMcpServer(conn, tool, args, callId => {
-      const reported: ToolCallSeen = { engineBotId: nativeId, chatId, tool: this.mcpToolName(server, tool), args, callId }
+      const reported: ToolCallSeen = { engineBotId: nativeId, chatId, tool: this.mcpToolName(reportServer, tool), args, callId }
       for (const listener of this.toolListeners) listener(reported)
     })
   }

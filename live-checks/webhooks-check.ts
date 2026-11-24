@@ -17,8 +17,8 @@ import { connectionKey } from '../server/connections/connection-keys'
 import { SYSTEM_KEY_PURPOSE, SYSTEM_PATH } from '../server/system/system-connection'
 import { checkClient } from './check-client'
 import { deleteProfile, startServer } from './check-process'
+import { createHook, ENGINE_TOOLS, fromServer, githubDelivery, has, hasEditorToolset, PAGE, probeScopedRun, serverUp, sessionTools, waitFor } from './webhook-run-tools'
 import { afterRun, createDelegationHook, delegationOnlyCheck, pauseResumeDelete } from './webhook-session-checks'
-import { createHook, ENGINE_TOOLS, fromServer, githubDelivery, has, PAGE, serverUp, sessionTools, waitFor } from './webhook-run-tools'
 
 const root = devScratch('lilbot-webhooks')
 const port = devPort()
@@ -94,8 +94,8 @@ try {
     assert.equal(count('SELECT COUNT(*) AS n FROM computer_requests WHERE bot_id = ?', bot.id), 0, 'a webhook run used a computer')
     const opened = await call('webhooks.openRun', { botId: bot.id, runId: run.id })
     assert.ok(
-      opened.items.some((item: { kind: string; detail: string }) => item.kind === 'tool' && item.detail.includes('bot create')),
-      'the run never tried bot creation'
+      opened.items.some((item: { kind: string; detail: string }) => item.kind === 'tool' && item.detail.includes('work')),
+      'the run never used its scoped LilBot tools'
     )
     await call('chat.close', { chatId: opened.chatId })
     assert.equal(count("SELECT COUNT(*) AS n FROM system_changes WHERE tool = 'lilbot_bot_create'"), 0)
@@ -127,31 +127,30 @@ try {
   assert.deepEqual(await deliver('forged', 'none'), [401, 'Signature refused'])
   assert.deepEqual(await deliver('forged', 'wrong'), [401, 'Signature refused'])
   assert.equal(count('SELECT COUNT(*) AS n FROM webhook_events'), 1)
-  // While the run works, a call of the bot's that no session reported counts as the run's: LilBot refuses it itself.
-  await waitFor(runs, list => list[0]?.status === 'running')
-  const during: [string, object, string][] = [
-    ['lilbot_section_create', { name: 'During the run' }, 'A webhook run cannot use lilbot_section_create'],
-    ['lilbot_work_list', { mine: false }, 'reads only its own work items'],
-    ['lilbot_about', {}, 'A webhook run cannot use lilbot_about']
-  ]
-  for (const [name, args, refusal] of during) assert.ok(String((await answer(name, args)).refused).includes(refusal), `LilBot did not refuse ${name} during the run`)
+  // While the run works, probe its session-bound MCP endpoint directly: disallowed tools are absent and refused.
+  const [running] = await waitFor(runs, list => list[0]?.status === 'running')
+  const grantId = (db.query('SELECT id FROM session_grants WHERE owner_key = ? ORDER BY created_at DESC LIMIT 1').get(`webhook:${running.id}`) as { id: string } | null)?.id
+  assert.ok(grantId, 'running webhook run has no persisted session grant')
+  const assertRevoked = await probeScopedRun(port, token, bot.id, grantId)
   const [run] = await waitFor(runs, list => done(list[0]?.status ?? ''))
-  // Once the bot has had a webhook run, a call no session reported stays refused after the run too: it cannot be placed.
-  assert.ok(String((await answer('lilbot_section_create', { name: 'After the run' })).refused).includes('A webhook run cannot use'), 'an unplaced call passed after the run')
+  // Once the run ends, its session grant is revoked immediately.
+  await assertRevoked()
   const narrow = await checkRun(run, 'labeled')
   for (const names of Object.values(ENGINE_TOOLS)) assert.deepEqual(has(narrow, names), [], `a narrow run had ${names.join(', ')}`)
+  assert.deepEqual(fromServer(narrow, 'lilbot_system'), [], 'a narrow run had profile-wide lilbot_system tools')
   assert.deepEqual(fromServer(narrow, 'lilbot_t3'), [], 'a narrow run had T3 tools')
-  assert.ok(narrow.tools.includes('mcp__lilbot_system__lilbot_work'), 'a narrow run lacked the work board')
+  assert.ok(hasEditorToolset(narrow, 'lilbot'), 'a narrow run lacked its scoped LilBot server')
+  assert.ok(!hasEditorToolset(narrow, 't3'), 'a narrow run had a scoped T3 server')
   assert.ok(!narrow.toolsets.includes('web'), 'a narrow run had the web toolset')
   assert.deepEqual(narrow.fetched, [], 'a narrow run fetched a page')
   assert.ok(frames.some(({ frame }) => frame.event === 'webhooks.changed'))
   console.log(
-    `ok: a narrow run had no web tools, read its folder, finished its work item, asked Oscar, left its bot a message and was refused lilbot_bot_create, a computer, lilbot_about and every bot's items; toolsets ${narrow.toolsets.join(', ')}; ${narrow.tools.length} tools, beyond LilBot's own server: ${narrow.tools.filter(name => !name.startsWith('mcp__lilbot_system__')).join(', ')}; usage ${JSON.stringify(narrow.usage)}`
+    `ok: a narrow run had only its scoped LilBot server, read its folder, finished its work item, asked Oscar and left its bot a message; toolsets ${narrow.toolsets.join(', ')}; ${narrow.tools.length} built-in tools; usage ${JSON.stringify(narrow.usage)}`
   )
   const message = (db.query('SELECT message FROM webhook_runs WHERE id = ?').get(run.id) as { message: string | null }).message
   const after = await afterRun({ call, db, token, port, botId: bot.id, nativeId, frames }, { id: run.id, chatId: run.chatId, message })
   console.log(
-    `ok: after the run its session stayed narrow (skill write and computers refused by session), Oscar's answer reached the main conversation without resuming the run, the message started no turn, reached the bot with Oscar's next message and not the review queue; the main conversation's lilbot_section_create passed${after.latency === null ? '' : ` ${after.latency} ms after its start reached the browser`}`
+    `ok: after the run its session stayed narrow (skill write refused, grant revoked), Oscar's answer reached the main conversation without resuming the run, the message started no turn, reached the bot with Oscar's next message and not the review queue; the main conversation's lilbot_section_create passed${after.latency === null ? '' : ` ${after.latency} ms after its start reached the browser`}`
   )
   const firstItem = (await call('work.list', { botId: bot.id })).find(
     (item: { title: string; origin: { id: string } }) => item.title === 'Webhook check' && item.origin.id === run.id
@@ -166,7 +165,9 @@ try {
     widened.fetched.some(output => output.includes('Example Domain')),
     `a run given web did not fetch ${PAGE}: ${JSON.stringify(widened.fetched).slice(0, 300)}`
   )
-  assert.equal(fromServer(widened, 'lilbot_t3').length > 0, process.env.LILBOT_T3_ENABLED === '1', 'unexpected lilbot_t3 tools for T3 switch state')
+  assert.deepEqual(fromServer(widened, 'lilbot_system'), [], 'a widened run had profile-wide lilbot_system tools')
+  assert.deepEqual(fromServer(widened, 'lilbot_t3'), [], 'a widened run had profile-wide lilbot_t3 tools')
+  assert.equal(hasEditorToolset(widened, 't3'), process.env.LILBOT_T3_ENABLED === '1', 'unexpected scoped T3 server for T3 switch state')
   assert.deepEqual(has(widened, [...ENGINE_TOOLS.memory, ...ENGINE_TOOLS.engineDelegation]), [])
   assert.equal((await call('work.open', { itemId: firstItem.id })).status, 'done', "the widened run changed the first run's item")
   console.log(

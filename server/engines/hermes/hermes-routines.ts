@@ -1,9 +1,10 @@
 import type { ChatItem, TurnUsage } from '../../../shared/chat-schema'
 import { LilBotError } from '../../../shared/lilbot-error'
 import type { ChatOptions, RoutineOptions } from '../bot-engine'
-import { hermesToolsetsForRun } from './hermes-access'
+import type { McpConnection } from '../mcp-connection'
 import { DEFAULT_PROFILE } from './hermes-bot-mapping'
 import { itemsFromRows } from './hermes-chat-mapping'
+import { createLimitedSession, resumeLimitedSession } from './hermes-limited-session'
 import { saveFailed } from './hermes-memory-saves'
 import { ensureFullAccess } from './hermes-permissions'
 import { type HermesEvent, HermesSocket } from './hermes-socket'
@@ -34,9 +35,12 @@ async function resumeSession(
   chatId: string,
   socket: HermesSocket,
   connect: typeof HermesSocket.connect,
-  onEvent: (event: HermesEvent) => void
+  onEvent: (event: HermesEvent) => void,
+  sessionMcp?: readonly McpConnection[],
+  access?: RoutineOptions['access']
 ): Promise<{ socket: HermesSocket; session: any }> {
-  const resume = (s: HermesSocket) => s.request('session.resume', { session_id: chatId, source: 'tool', display_projection: true })
+  const resume = (s: HermesSocket) =>
+    sessionMcp ? resumeLimitedSession(s, chatId, sessionMcp, access, true) : s.request('session.resume', { session_id: chatId, source: 'tool', display_projection: true })
   try {
     return { socket, session: await resume(socket) }
   } catch (error) {
@@ -57,6 +61,9 @@ async function resumeSession(
 /** Hidden from main/history listings, but explicitly openable by its stored session id.
  * Repeating create and submit after a lost connection recovers their durable receipts. */
 export async function runRoutine(botId: string, prompt: string, options: RoutineOptions & ChatOptions, connect = HermesSocket.connect) {
+  if (options.access && !options.sessionMcp?.length) {
+    throw new LilBotError('session_mcp_unavailable', 'Limited sessions require a session-bound MCP connection.')
+  }
   const profile = botId === DEFAULT_PROFILE ? '' : botId
   let sessionId = ''
   const usage = new TurnUsageTracker()
@@ -77,11 +84,20 @@ export async function runRoutine(botId: string, prompt: string, options: Routine
     await ensureFullAccess(socket)
     let session: any
     if (options.chatId) {
-      const resumed = await resumeSession(profile, options.chatId, socket, connect, onEvent)
+      const resumed = await resumeSession(profile, options.chatId, socket, connect, onEvent, options.access ? options.sessionMcp : undefined, options.access)
       socket = resumed.socket
       session = resumed.session
+    } else if (options.access) {
+      session = await createLimitedSession(socket, {
+        requestId: `routine-${options.runId}`,
+        cwd: options.workspace,
+        access: options.access,
+        sessionMcp: options.sessionMcp!,
+        model: options.model,
+        reasoningEffort: options.reasoningEffort,
+        assertSessionMcpReady: options.assertSessionMcpReady
+      })
     } else {
-      const toolsets = hermesToolsetsForRun(options.access)
       session = await socket.request('session.create', {
         source: 'tool',
         hidden: true,
@@ -90,7 +106,6 @@ export async function runRoutine(botId: string, prompt: string, options: Routine
         client: { name: 'lilbot', version: '0.2.0' },
         cwd: options.workspace,
         cwd_explicit: true,
-        ...(toolsets ? { toolsets } : {}),
         ...(options.model ? { model: options.model.model, provider: options.model.provider } : {}),
         ...(options.reasoningEffort ? { reasoning: options.reasoningEffort } : {})
       })
@@ -112,7 +127,11 @@ export async function runRoutine(botId: string, prompt: string, options: Routine
     for (;;) {
       const receipt = await socket.request('prompt.receipt', { session_id: session.session_id, admission_id: submitted.admission_id })
       if (receipt.status === 'terminal' || receipt.status === 'unknown') {
-        const snapshot = await socket.request('session.resume', { session_id: session.stored_session_id, source: 'tool', display_projection: true })
+        const snapshot = await socket.request('session.resume', {
+          session_id: session.stored_session_id,
+          source: options.access ? 'acp' : 'tool',
+          display_projection: true
+        })
         const sessions = [session.stored_session_id, session.session_id, snapshot.stored_session_id].filter((id): id is string => typeof id === 'string')
         const items = itemsFromRows(snapshot.display_messages, at => saveFailed(profile, sessions, at))
         const last = items.filter(item => item.kind === 'assistant').at(-1)

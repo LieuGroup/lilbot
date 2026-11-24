@@ -2,6 +2,7 @@
 import type { ChatEvent, ChatItem, TurnUsage } from '../../../shared/chat-schema'
 import { LilBotError } from '../../../shared/lilbot-error'
 import type { ChatOptions, ConversationSource, EngineAttachment, OpenChat, RoutineOptions, TurnOrigin } from '../bot-engine'
+import type { McpConnection } from '../mcp-connection'
 import type { McpCallResult } from './scripted-mcp'
 import { awaitWithDisconnect } from './scripted-routines'
 
@@ -37,6 +38,8 @@ export interface ScriptedSession {
   seenInputIds: Set<string>
   controller: AbortController | null
   routineOptions?: RoutineOptions
+  sessionMcp?: McpConnection[]
+  discoveredTools?: Map<string, string[]>
   emit?: (event: ChatEvent) => void
 }
 

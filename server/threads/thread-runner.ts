@@ -23,7 +23,7 @@ export interface RunnerHost extends NarrowedHost {
   stopRun?(botId: string, chatId: string): Promise<boolean>
   activeRemoteThreads?(computerId: string): Iterable<string>
 }
-const TERMINAL = ['bot_not_found', 'unsafe_message', 'thread_limit', 'session_not_found']
+const TERMINAL = ['bot_not_found', 'unsafe_message', 'thread_limit', 'session_not_found', 'session_scope_violation']
 /** Kinds whose text is LilBot's own prompt, any bot text in it already checked and fenced. */
 const PREPARED = ['notice', 'oscar', 'point', 'round']
 
@@ -42,15 +42,9 @@ export class ThreadRunner {
     private groups?: GroupRounds
   ) {}
 
-  runningIn(threadId: string) {
-    return [...this.running.values()].filter(d => this.store.workThread(d) === threadId)
-  }
-  runningFor(threadId: string) {
-    return this.runningIn(threadId)[0]
-  }
-  lineOf(d: Delivery | undefined) {
-    return (d && this.lines.get(d.id)) ?? null
-  }
+  runningIn = (threadId: string) => [...this.running.values()].filter(d => this.store.workThread(d) === threadId)
+  runningFor = (threadId: string) => this.runningIn(threadId)[0]
+  lineOf = (d: Delivery | undefined) => (d && this.lines.get(d.id)) ?? null
   sawTool(chatId: string, line: string) {
     const d = [...this.running.values()].find(d => d.chatId === chatId)
     if (!d || this.lines.get(d.id) === line) return
@@ -122,7 +116,10 @@ export class ThreadRunner {
     const files = this.files.forMessage(d.id)
     const toWork = !isReply(d.kind)
     const prompt = deliveryPrompt(d, thread, sender, files, redirects, this.waits.foldedInto(d.id), PREPARED.includes(d.kind), toWork, this.host.narrowedAccess)
-    const workSession = toWork ? this.store.session(d.threadId, d.target) : undefined
+    const narrowedLocal = toWork && !!thread.capabilities && !thread.computer
+    const prepared = narrowedLocal ? this.host.prepareNarrowedSession?.(d.target, d.threadId, thread.capabilities!) : undefined
+    // Never resume an ungranted pre-deploy or revoked/expired narrowed session: resume only the active grant's canonical primaryChatId.
+    const workSession = narrowedLocal && prepared ? prepared.primaryChatId : toWork ? this.store.session(d.threadId, d.target) : undefined
     const internal = toWork || !!this.store.context(d.target, d.sourceChat)
     if (work && !group) this.store.update(work, t => t.status !== 'working' && Object.assign(t, { status: 'working', startedAt: Date.now(), endedAt: null, failure: undefined }))
     this.touched()
@@ -130,8 +127,10 @@ export class ThreadRunner {
       runId: `thread-${d.id}`,
       chatId: toWork ? workSession : d.sourceChat,
       ...workRunOptions(thread, toWork, workSession, this.host.narrowedAccess),
+      ...(prepared ? { sessionMcp: prepared.sessionMcp, assertSessionMcpReady: prepared.assertSessionMcpReady } : {}),
       onChat: id => {
         stillOn()
+        prepared?.onChat(id)
         this.store.attach(d, d.target, id, internal)
         d.chatId = id
       },

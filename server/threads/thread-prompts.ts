@@ -4,6 +4,7 @@ import type { BotThread } from '../../shared/thread-schema'
 import type { WebhookCapability } from '../../shared/webhook-schema'
 import type { WorkerDriverId } from '../../shared/worker-frame-schema'
 import type { RoutineOptions, RunAccessScope } from '../engines/bot-engine'
+import type { McpConnection } from '../engines/mcp-connection'
 import { fenced } from '../memory/memory-safety'
 import type { FileRow } from './thread-files'
 import { THREAD_LIMITS } from './thread-limits'
@@ -102,20 +103,29 @@ export type ThreadRunOptions = RoutineOptions & {
   engine?: WorkerDriverId
   capabilities?: WebhookCapability[]
 }
+interface PreparedNarrowedSession {
+  sessionMcp: McpConnection[]
+  assertSessionMcpReady: () => void
+  onChat: (chatId: string) => void
+  primaryChatId?: string
+}
 export interface NarrowedHost {
   sessionCapabilities?(botId: string, chatId: string): WebhookCapability[] | null
   hasNarrowed?(botId: string): boolean
   narrowedAccess?: NarrowedAccess
+  prepareNarrowedSession?(botId: string, threadId: string, capabilities: WebhookCapability[]): PreparedNarrowedSession
+  revokeThreadGrants?(threadId: string): void
 }
 
 /** Extra `runRoutine` options for a work turn: remote target, narrowed access scope/capabilities, plus model/effort on first start (and remote continuations). */
 export function workRunOptions(thread: BotThread, toWork: boolean, workSession?: string, narrowedAccess?: NarrowedAccess) {
   if (!toWork) return {}
   const access = thread.capabilities && narrowedAccess ? narrowedAccess(thread.capabilities) : undefined
+  const scope: RunAccessScope | undefined = access && typeof access.access === 'object' ? { kind: 'narrowed', capabilities: access.access.capabilities } : access?.access
   return {
     ...(thread.computer ? { computer: thread.computer, cwd: thread.cwd, threadId: thread.id, ...(thread.workerEngine ? { engine: thread.workerEngine } : {}) } : {}),
     ...(thread.capabilities ? { capabilities: thread.capabilities } : {}),
-    ...(!thread.computer && access ? { access: access.access } : {}),
+    ...(!thread.computer && scope ? { access: scope } : {}),
     ...(!workSession || thread.computer ? { ...(thread.model ? { model: thread.model } : {}), ...(thread.reasoningEffort ? { reasoningEffort: thread.reasoningEffort } : {}) } : {})
   }
 }

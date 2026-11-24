@@ -65,7 +65,7 @@ const methods: Record<string, Uses> = {
   'tools.show': { table: 'methods', sends: ['session_id'], reads: ['sections', 'total'] },
   'session.resume': {
     table: 'x-canonical-methods',
-    sends: ['session_id', 'source', 'display_projection', 'omit_messages'],
+    sends: ['session_id', 'source', 'display_projection', 'omit_messages', 'editor'],
     reads: ['session_id', 'stored_session_id', 'display_messages', 'messages', 'running', 'execution_generation', 'revision', 'info', 'prompts', 'open_requests']
   },
   'prompt.submit': {

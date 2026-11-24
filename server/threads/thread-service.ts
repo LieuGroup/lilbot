@@ -147,6 +147,7 @@ export class ThreadService {
       this.waits.settle(threadId, null)
       return next
     })()
+    this.host.revokeThreadGrants?.(threadId)
     const end = async () => {
       if (stopped.worker && running) this.touched(true)
       if (running?.chatId) await this.host.stopRun?.(running.target, running.chatId).catch(() => backgroundFailure('thread stop'))
@@ -186,14 +187,12 @@ export class ThreadService {
     return async () => {}
   }
 
-  /** LilBot's word to the delegating bot, in the conversation it handed the work from. */
   private tellDelegator(thread: BotThread, id: string, text: string) {
     const [delegator, receiver] = thread.participants
     const origin = this.store.origin(thread.id, receiver.id)
     if (origin) this.store.enqueue(id, thread.id, delegator.id, delegator.id, origin.sourceChat, noticePrompt(text), 'notice')
   }
-  /** Stops an exchange a member handed out from its session in a group that has ended, as that member. */
-  private stopHandedOut(threadId: string) {
+  private stopHandedOut = (threadId: string) => {
     const [by] = this.store.get(threadId).participants
     return this.cancel(threadId, { kind: 'bot', id: by.id, name: by.name })
   }

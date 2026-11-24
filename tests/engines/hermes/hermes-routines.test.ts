@@ -32,20 +32,21 @@ test('recovery reuses create/submit identities, uses full access, and reads a du
   expect(aliases).toEqual(['stored', 'live', 'stored', 'live'])
 })
 
-/** A connection that records every `session.create` call and completes immediately. */
 function recordingCreate() {
   const created: any[] = []
+  let lastToolsets: string[] = []
   const connect = async () =>
     ({
       request: async (method: string, params: any) => {
         if (method === 'config.get') return { value: 'off' }
         if (method === 'session.create') {
           created.push(params)
-          return { session_id: 'live', stored_session_id: 'stored' }
+          lastToolsets = Array.isArray(params.toolsets) ? [...params.toolsets.filter((t: string) => t !== 'no_mcp'), 'mcp-editor_lilbot_a1b2c3d4'] : []
+          return { session_id: 'live', stored_session_id: 'stored', revision: 1, execution_generation: 0 }
         }
-        if (method === 'prompt.submit') return { admission_id: 'receipt' }
-        if (method === 'prompt.receipt') return { status: 'terminal', outcome: 'completed' }
-        return { display_messages: [] }
+        if (method === 'session.info') return { enabled_toolsets: lastToolsets }
+        if (method === 'tools.show') return { sections: [], total: 0 }
+        return method === 'prompt.submit' ? { admission_id: 'receipt' } : method === 'prompt.receipt' ? { status: 'terminal', outcome: 'completed' } : { display_messages: [] }
       },
       close: () => {}
     }) as unknown as HermesSocket
@@ -160,21 +161,19 @@ test('a routine session is created with the bot’s reasoning effort, and withou
   const { created, connect } = recordingCreate()
   await runRoutine('native-id', 'task', { workspace: '/test', runId: 'one', reasoningEffort: 'xhigh', onChat: () => {} }, connect)
   await runRoutine('native-id', 'task', { workspace: '/test', runId: 'two', onChat: () => {} }, connect)
-  expect(created[0].reasoning).toBe('xhigh')
-  expect('reasoning' in created[1]).toBe(false)
+  expect([created[0].reasoning, 'reasoning' in created[1]]).toEqual(['xhigh', false])
 })
 
 test('a run asked for an access scope maps it to Hermes toolsets; without, the session has every toolset', async () => {
   const { created, connect } = recordingCreate()
-  await runRoutine('native-id', 'task', { workspace: '/test', runId: 'check', onChat: () => {}, access: 'check' }, connect)
-  await runRoutine('native-id', 'task', { workspace: '/test', runId: 'narrow', onChat: () => {}, access: { kind: 'webhook', capabilities: [] } }, connect)
-  await runRoutine('native-id', 'task', { workspace: '/test', runId: 'web', onChat: () => {}, access: { kind: 'webhook', capabilities: ['web'] } }, connect)
-  await runRoutine('native-id', 'task', { workspace: '/test', runId: 'wide', onChat: () => {} }, connect)
-  expect(created[0].toolsets).toEqual(['web', 'vision', 'terminal', 'file', 'skills', 'lilbot_system'])
-  expect(created[0].toolsets).not.toContain('memory')
-  expect(created[1].toolsets).toEqual(['lilbot_system'])
-  expect(created[2].toolsets).toEqual(['lilbot_system', 'web'])
-  expect('toolsets' in created[3]).toBe(false)
+  const sessionMcp = [{ name: 'lilbot', url: 'http://127.0.0.1:3370/engine/lilbot/session/g/mcp', bearerToken: 'tok', timeoutSeconds: 30, tools: [] }]
+  const run = (runId: string, extra: object) => runRoutine('native-id', 'task', { workspace: '/test', runId, onChat: () => {}, ...extra }, connect)
+  await run('check', { access: 'check', sessionMcp })
+  await run('narrow', { access: { kind: 'webhook', capabilities: [] }, sessionMcp })
+  await run('web', { access: { kind: 'webhook', capabilities: ['web'] }, sessionMcp })
+  await run('wide', {})
+  expect(created.map(c => c.toolsets)).toEqual([['web', 'vision', 'terminal', 'file', 'skills', 'no_mcp'], ['skills', 'no_mcp'], ['skills', 'no_mcp', 'web'], undefined])
+  expect(created[0].source).toBe('acp')
 })
 
 test('finished routine items carry per-turn usage and stopped mark on interrupted runs', async () => {

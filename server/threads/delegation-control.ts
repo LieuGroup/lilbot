@@ -2,6 +2,7 @@
  *  `ThreadService.cancel` Oscar's `threads.cancel` uses, recorded as stopped by the bot. */
 import { LilBotError } from '../../shared/lilbot-error'
 import { type BotThread, RedirectInput } from '../../shared/thread-schema'
+import type { WebhookCapability } from '../../shared/webhook-schema'
 import { memoryRefusal, refuseUnsafe } from '../memory/memory-safety'
 import type { DelegationHost } from './delegation-service'
 import { assertNarrowedAllowed, narrowedCaller, withinNarrowed } from './thread-accept'
@@ -35,15 +36,16 @@ export class DelegationControl {
     return threads
   }
 
-  private callerCapabilities(botId: string, raw: unknown, requestId?: string) {
+  private callerCapabilities(botId: string, raw: unknown, requestId?: string, ctx?: { capabilities?: WebhookCapability[] | null }) {
+    if (ctx && ctx.capabilities !== undefined) return Promise.resolve(ctx.capabilities)
     return narrowedCaller(botId, this.host, () =>
       this.host.callingDelegation ? this.host.callingDelegation(botId, raw) : requestId && this.callingChat ? this.callingChat(botId, requestId) : Promise.resolve(null)
     )
   }
 
-  async status(botId: string, pick: Pick, callArgs?: unknown) {
+  async status(botId: string, pick: Pick, callArgs?: unknown, ctx?: { capabilities?: WebhookCapability[] | null }) {
     await this.host.requireBot(botId)
-    const caps = await this.callerCapabilities(botId, callArgs ?? { action: 'status', ...pick })
+    const caps = await this.callerCapabilities(botId, callArgs ?? { action: 'status', ...pick }, undefined, ctx)
     const threads = this.mine(botId, pick)
     if (caps) {
       if (pick.exchangeIds || pick.batchId) for (const t of threads) assertNarrowedAllowed(caps, { existing: t })
@@ -72,19 +74,19 @@ export class DelegationControl {
     }
   }
 
-  async cancel(botId: string, exchangeId: string, callArgs?: unknown) {
+  async cancel(botId: string, exchangeId: string, callArgs?: unknown, ctx?: { capabilities?: WebhookCapability[] | null }) {
     const bot = await this.host.requireBot(botId)
     const [thread] = this.mine(botId, { exchangeIds: [exchangeId] })
-    assertNarrowedAllowed(await this.callerCapabilities(botId, callArgs ?? { action: 'cancel', exchangeId }), { existing: thread })
+    assertNarrowedAllowed(await this.callerCapabilities(botId, callArgs ?? { action: 'cancel', exchangeId }, undefined, ctx), { existing: thread })
     return this.summary(await this.threads.cancel(exchangeId, { kind: 'bot', id: bot.id, name: bot.name }))
   }
 
   /** A change of course: into the running turn at its next step when the engine can steer, else the receiver's next turn. */
-  async redirect(botId: string, raw: { requestId: string; exchangeId: string; message: string }, callArgs?: unknown) {
+  async redirect(botId: string, raw: { requestId: string; exchangeId: string; message: string }, callArgs?: unknown, ctx?: { capabilities?: WebhookCapability[] | null }) {
     const input = RedirectInput.parse(raw)
     const caller = await this.host.requireBot(botId)
     const [thread] = this.mine(botId, { exchangeIds: [input.exchangeId] })
-    assertNarrowedAllowed(await this.callerCapabilities(botId, callArgs ?? { action: 'redirect', ...raw }, input.requestId), { existing: thread })
+    assertNarrowedAllowed(await this.callerCapabilities(botId, callArgs ?? { action: 'redirect', ...raw }, input.requestId, ctx), { existing: thread })
     const prior = this.store.delivery(`${botId}:${input.requestId}`)
     if (prior) return { exchangeId: thread.id, applied: prior.status === 'steered' ? 'now' : 'queued' }
     if (thread.status !== 'waiting' && thread.status !== 'working')
@@ -110,9 +112,9 @@ export class DelegationControl {
   }
 
   /** Never holds the call open: each answer still arrives on its own, and the bot is told once all are in. */
-  async wait(botId: string, pick: Pick, callArgs?: unknown) {
+  async wait(botId: string, pick: Pick, callArgs?: unknown, ctx?: { capabilities?: WebhookCapability[] | null }) {
     await this.host.requireBot(botId)
-    const caps = await this.callerCapabilities(botId, callArgs ?? { action: 'wait', ...pick })
+    const caps = await this.callerCapabilities(botId, callArgs ?? { action: 'wait', ...pick }, undefined, ctx)
     const threads = this.mine(botId, pick)
     if (!threads.length) throw new LilBotError('thread_missing', 'Name the exchanges or the batch to wait for.')
     for (const t of threads) assertNarrowedAllowed(caps, { existing: t })

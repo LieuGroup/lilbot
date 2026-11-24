@@ -21,8 +21,10 @@ interface SystemMcpOptions {
   changes: SystemChanges
   /** What an engine that shows an MCP server's instructions tells the model about these tools. */
   instructions: string
-  /** Why the calling session may not make this call (a check session, `check-access.ts`; a webhook run, `run-access.ts`), or null. */
+  /** Why the calling session may not make this call (legacy pre-deploy cutover only), or null. */
   refusal: (botId: string, tool: string, args: unknown) => Promise<string | null>
+  /** When supplied and false for a bot, skips `refusal` completely and runs as an ordinary full-access session. */
+  hasLegacyUngrantedRun?: (botId: string) => boolean
 }
 
 const SERVER_INFO = { name: 'LilBot', version: '1.0.0' }
@@ -46,12 +48,15 @@ export function createSystemMcp(options: SystemMcpOptions) {
   async function call(caller: { id: string; name: string }, message: JsonRpc) {
     const tool = tools.get(message.params?.name)
     if (!tool) return toolError(message.id, `${String(message.params?.name)} is not a LilBot tool.`)
-    const refused = await options.refusal(caller.id, tool.name, message.params?.arguments)
-    if (refused) return refusedResult(message.id, refused)
+    const legacy = options.hasLegacyUngrantedRun ? options.hasLegacyUngrantedRun(caller.id) : true
+    if (legacy) {
+      const refused = await options.refusal(caller.id, tool.name, message.params?.arguments)
+      if (refused) return refusedResult(message.id, refused)
+    }
     try {
       const rawArgs = message.params?.arguments ?? {}
       const args = tool.input.parse(rawArgs) as Record<string, unknown>
-      const result = await tool.run(caller.id, args, rawArgs)
+      const result = await tool.run(caller.id, args, rawArgs, legacy ? undefined : { capabilities: null })
       if (!(typeof tool.readOnly === 'function' ? tool.readOnly(args) : tool.readOnly)) {
         const target = [(result as { id?: unknown } | undefined)?.id, args.botId, args.factId].find(value => typeof value === 'string') ?? ''
         const fields = Object.keys(args).filter(key => !['botId', 'factId', 'requestId'].includes(key))

@@ -75,6 +75,10 @@ export function seedThreadsAndWork(db: Database, oldId: string, otherId: string,
   db.query('INSERT INTO threads VALUES (?, ?)').run(groupId, JSON.stringify(groupThread))
   db.query('INSERT INTO thread_links VALUES (?, NULL, ?)').run('thr-sub', memberItem)
   db.query('INSERT INTO thread_chats VALUES (?, ?, ?)').run('tchat-1', oldId, 'thr-worker')
+  db.query(
+    'INSERT INTO session_grants(id, owner_key, bot_id, kind, scope_json, primary_chat_id, created_at, expires_at, revoked_at) VALUES (\'sg-1\', \'webhook:wr-1\', ?, \'webhook\', \'{"kind":"webhook","runId":"wr-1","capabilities":[]}\', \'chat-wr-1\', 1000, 9000, 2000)'
+  ).run(oldId)
+  db.query("INSERT INTO session_grant_chats(chat_id, grant_id, bot_id, created_at) VALUES ('chat-wr-1', 'sg-1', ?, 1000)").run(oldId)
   db.query("INSERT INTO thread_deliveries VALUES (?, 'thr-worker', ?, ?, 'chat-main-1', 'do work', 'request', 'tchat-1', NULL, 'done')").run(workerDeliveryId, oldId, oldId)
   db.query(
     "INSERT INTO remote_worker_runs VALUES (?, 'comp-1', ?, 'thr-worker', 'remote:thr-worker', 'sess-1', 'settled', '{\"status\":\"completed\",\"text\":\"done\",\"items\":[]}', 1000, 1001)"

@@ -2,10 +2,13 @@
 import { ZodError, z } from 'zod'
 import { ComputerCopy, ComputerRequestRef } from '../../shared/computer-schema'
 import { LilBotError } from '../../shared/lilbot-error'
-import { actionTool, type McpTool, readTool } from './mcp-tool'
+import { actionTool, type McpCallContext, type McpTool, readTool } from './mcp-tool'
 import type { SystemDeps } from './system-deps'
 
 const RETRY_NOTE = ' Reuse requestId only on retry; background queues even offline, else offline fails.'
+/** Keeps synchronous waits safely below Hermes's hardcoded 30 s `editor.mcp_servers` tool timeout. */
+export const SCOPED_COMPUTER_WAIT_MS = 20_000
+const waitCap = (ctx?: McpCallContext) => (ctx?.sessionBound ? SCOPED_COMPUTER_WAIT_MS : undefined)
 const fsError = (error: unknown) => error instanceof Error && /^E[A-Z]+$/.test(String((error as { code?: unknown }).code))
 
 async function runComputer<T>(step: () => T | Promise<T>): Promise<T> {
@@ -37,22 +40,28 @@ export function computerTools({ computers }: SystemDeps): McpTool[] {
         cwd: z.string().max(4096).optional(),
         timeoutMs: z.number().int().min(1).max(3_600_000).optional()
       }),
-      (caller, { computer, requestId, background, command, cwd, timeoutMs }) =>
+      (caller, { computer, requestId, background, command, cwd, timeoutMs }, _raw, ctx) =>
         runComputer(() =>
-          computers.submit(caller, {
-            computer,
-            requestId: requestId ?? crypto.randomUUID(),
-            background: background ?? false,
-            operation: { kind: 'exec', command, ...(cwd !== undefined ? { cwd } : {}), ...(timeoutMs !== undefined ? { timeoutMs } : {}) }
-          })
+          computers.submit(
+            caller,
+            {
+              computer,
+              requestId: requestId ?? crypto.randomUUID(),
+              background: background ?? false,
+              operation: { kind: 'exec', command, ...(cwd !== undefined ? { cwd } : {}), ...(timeoutMs !== undefined ? { timeoutMs } : {}) }
+            },
+            waitCap(ctx)
+          )
         )
     ),
     actionTool(
       'lilbot_computer_read_file',
       `Read a file on a computer (returns base64).${RETRY_NOTE}`,
       z.object({ ...CommonSubmit, path: z.string().min(1).max(4096) }),
-      (caller, { computer, requestId, background, path }) =>
-        runComputer(() => computers.submit(caller, { computer, requestId: requestId ?? crypto.randomUUID(), background: background ?? false, operation: { kind: 'read', path } }))
+      (caller, { computer, requestId, background, path }, _raw, ctx) =>
+        runComputer(() =>
+          computers.submit(caller, { computer, requestId: requestId ?? crypto.randomUUID(), background: background ?? false, operation: { kind: 'read', path } }, waitCap(ctx))
+        )
     ),
     actionTool(
       'lilbot_computer_write_file',
@@ -63,22 +72,28 @@ export function computerTools({ computers }: SystemDeps): McpTool[] {
         data: z.string().max(5_600_000),
         encoding: z.enum(['utf8', 'base64']).optional()
       }),
-      (caller, { computer, requestId, background, path, data, encoding }) =>
+      (caller, { computer, requestId, background, path, data, encoding }, _raw, ctx) =>
         runComputer(() =>
-          computers.submit(caller, {
-            computer,
-            requestId: requestId ?? crypto.randomUUID(),
-            background: background ?? false,
-            operation: { kind: 'write', path, data, ...(encoding !== undefined ? { encoding } : {}) }
-          })
+          computers.submit(
+            caller,
+            {
+              computer,
+              requestId: requestId ?? crypto.randomUUID(),
+              background: background ?? false,
+              operation: { kind: 'write', path, data, ...(encoding !== undefined ? { encoding } : {}) }
+            },
+            waitCap(ctx)
+          )
         )
     ),
     actionTool(
       'lilbot_computer_list_folder',
       `List a folder on a computer.${RETRY_NOTE}`,
       z.object({ ...CommonSubmit, path: z.string().min(1).max(4096) }),
-      (caller, { computer, requestId, background, path }) =>
-        runComputer(() => computers.submit(caller, { computer, requestId: requestId ?? crypto.randomUUID(), background: background ?? false, operation: { kind: 'list', path } }))
+      (caller, { computer, requestId, background, path }, _raw, ctx) =>
+        runComputer(() =>
+          computers.submit(caller, { computer, requestId: requestId ?? crypto.randomUUID(), background: background ?? false, operation: { kind: 'list', path } }, waitCap(ctx))
+        )
     ),
     readTool('lilbot_computer_request_read', 'Read status and output of a computer request. Does not wait.', ComputerRequestRef, (caller, input) =>
       runComputer(() => computers.read(caller, input))
@@ -90,7 +105,7 @@ export function computerTools({ computers }: SystemDeps): McpTool[] {
       'lilbot_computer_copy',
       'Copy a file (<=4 MiB) between a computer and workspace. workspacePath is relative; parent must exist. Reuse requestId on retry.',
       ComputerCopy,
-      (caller, input) => runComputer(() => computers.copy(caller, input))
+      (caller, input, _raw, ctx) => runComputer(() => computers.copy(caller, input, waitCap(ctx)))
     )
   ]
 }

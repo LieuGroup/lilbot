@@ -82,3 +82,18 @@ export const RUN_TRANSCRIPT_TABLES = `CREATE TABLE IF NOT EXISTS routine_run_tra
      status TEXT NOT NULL CHECK(status IN ('saved', 'missing')), items TEXT, saved_at INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS webhook_run_transcripts(run_id TEXT PRIMARY KEY REFERENCES webhook_runs(id) ON DELETE CASCADE,
      status TEXT NOT NULL CHECK(status IN ('saved', 'missing')), items TEXT, saved_at INTEGER NOT NULL);`
+
+/** Schema step 41, session-bound limited-session grants (checks, webhooks, narrowed hand-offs, memory reviews).
+ *  Each grant binds one opaque UUID, scope and canonical `primary_chat_id` to one limited run; bearer tokens are
+ *  derived deterministically from the engine token and never stored here. Revoked rows and `session_grant_chats`
+ *  remain as tombstones while the bot exists so settled limited chats stay identifiable. Repeatable. */
+export const SESSION_GRANT_TABLES = `CREATE TABLE IF NOT EXISTS session_grants(id TEXT PRIMARY KEY, owner_key TEXT NOT NULL, bot_id TEXT NOT NULL,
+     kind TEXT NOT NULL CHECK(kind IN ('check', 'webhook', 'narrowed', 'review')), scope_json TEXT NOT NULL,
+     primary_chat_id TEXT, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, discovered_at INTEGER,
+     discovered_servers TEXT NOT NULL DEFAULT '', revoked_at INTEGER);
+   CREATE UNIQUE INDEX IF NOT EXISTS session_grants_owner_active ON session_grants(owner_key) WHERE revoked_at IS NULL;
+   CREATE INDEX IF NOT EXISTS session_grants_bot_active ON session_grants(bot_id) WHERE revoked_at IS NULL;
+   CREATE INDEX IF NOT EXISTS session_grants_bot_all ON session_grants(bot_id);
+   CREATE TABLE IF NOT EXISTS session_grant_chats(chat_id TEXT PRIMARY KEY, grant_id TEXT NOT NULL REFERENCES session_grants(id),
+     bot_id TEXT NOT NULL, created_at INTEGER NOT NULL);
+   CREATE INDEX IF NOT EXISTS session_grant_chats_grant ON session_grant_chats(grant_id);`

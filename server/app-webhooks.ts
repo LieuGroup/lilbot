@@ -4,6 +4,7 @@ import type { Database } from 'bun:sqlite'
 import type { ActivityEvent } from '../shared/activity-schema'
 import type { EventFrame } from '../shared/protocol'
 import type { ActivityService } from './activity/activity-service'
+import type { AppSessionGrants } from './app-session-grants'
 import type { BotPrefsStore } from './bots/bot-prefs-store'
 import type { BotService } from './bots/bot-service'
 import type { BotStore } from './bots/bot-store'
@@ -57,30 +58,64 @@ interface WebhookDeps {
   origin: string | undefined
   t3Enabled?: boolean
   narrowed?: NarrowedSessions
+  isMainChat?: (botId: string, chatId: string) => boolean
+  sessionGrants?: AppSessionGrants
   observeRun: (event: ActivityEvent) => void
   publish: (frame: EventFrame) => void
   repeat: (label: string, ms: number, task: () => void) => void
 }
 
-export function createWebhooks({ webhookStore, messages, bots, rootOf, calls, token, origin, t3Enabled, narrowed, observeRun, publish, repeat }: WebhookDeps) {
-  const webhooks = new WebhookService(webhookStore, bots, token, origin, () => publish({ event: 'webhooks.changed' }), Date.now, Boolean(t3Enabled))
-  const callers = webhookCallers(webhookStore, rootOf, calls, narrowed)
+export function createWebhooks({
+  webhookStore,
+  messages,
+  bots,
+  rootOf,
+  calls,
+  token,
+  origin,
+  t3Enabled,
+  narrowed,
+  isMainChat,
+  sessionGrants,
+  observeRun,
+  publish,
+  repeat
+}: WebhookDeps) {
+  const webhooks = new WebhookService(
+    webhookStore,
+    bots,
+    token,
+    origin,
+    () => publish({ event: 'webhooks.changed' }),
+    Date.now,
+    Boolean(t3Enabled),
+    sessionGrants ? (run, caps) => sessionGrants.prepareWebhook(run, caps) : undefined
+  )
+  const callers = webhookCallers(webhookStore, rootOf, calls, narrowed, isMainChat)
   const scheduler = new RoutineScheduler(webhooks, observeRun)
   repeat('webhooks', 1000, () => scheduler.tick())
   repeat('webhook messages', 1000, () => messages.tick())
+  const sessionCaps = (botId: string, chatId: string | undefined) => {
+    const grantCaps = sessionGrants?.grantCapabilities(botId, chatId)
+    return grantCaps !== undefined ? grantCaps : callers.forChat(botId, chatId)
+  }
+  const needsLegacy = (botId: string) => (sessionGrants ? sessionGrants.hasLegacy(botId) : true)
   /** The refusals outside LilBot's own MCP server: memory, plug-in tools (by the session they name) and T3 Code. */
   const gates = {
     memoryLocked: (botId: string, chatId: string | undefined) => {
-      const allowed = callers.forChat(botId, chatId)
+      const allowed = sessionCaps(botId, chatId)
       return allowed === null || allowed.includes('memory') ? null : 'A webhook run cannot use memory or give files. Put what matters in your result.'
     },
-    sessionCapabilities: (botId: string, chatId: string | undefined) => callers.forChat(botId, chatId),
+    sessionCapabilities: sessionCaps,
     pluginRefusal: (botId: string, pathname: string, body: unknown, session: string | undefined) => {
       const call = pluginCall(pathname, body)
-      return call ? refusalFor(callers.forChat(botId, session), call.tool, call.groups) : null
+      return call ? refusalFor(sessionCaps(botId, session), call.tool, call.groups) : null
     },
-    t3Refusal: async (botId: string, tool: string, args: unknown) => refusalFor(await callers.forCall(botId, tool, args), tool, ['coding']),
-    serviceRefusal: (checks: Pick<CheckSessions, 'checking' | 'isCheck'>) => serviceSessionRefusal(callers, checks, calls)
+    t3Refusal: async (botId: string, tool: string, args: unknown) => (needsLegacy(botId) ? refusalFor(await callers.forCall(botId, tool, args), tool, ['coding']) : null),
+    serviceRefusal: (checks: Pick<CheckSessions, 'checking' | 'isCheck'>) => {
+      const legacy = serviceSessionRefusal(callers, checks, calls)
+      return async (botId: string, tool: string, args: unknown) => (needsLegacy(botId) ? legacy(botId, tool, args) : null)
+    }
   }
   return { webhooks, gates, webhookRuns: { callers, messages, callingChat: (botId: string, requestId: string) => calls.find(botId, 'lilbot_webhook_message', requestId) } }
 }

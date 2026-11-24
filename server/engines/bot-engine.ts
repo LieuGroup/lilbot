@@ -28,13 +28,16 @@ export interface TurnOrigin {
 }
 
 export interface ReviewOptions {
-  /** The model to run the review on; without it, the bot's own. */
   model?: BotModel
-  /** Called with every id the engine knows the review session by, before the review starts. */
+  workspace?: string
+  /** Session-private MCP servers the engine must expose as this review session's ONLY MCP servers. */
+  sessionMcp?: McpConnection[]
+  /** Fail-closed check called after session creation and before submitting the prompt. */
+  assertSessionMcpReady?: () => void
   onChat: (chatId: string) => void
 }
 
-export type RunAccessScope = 'check' | { kind: 'webhook'; capabilities: readonly WebhookCapability[] }
+export type RunAccessScope = 'check' | 'review' | { kind: 'webhook'; capabilities: readonly WebhookCapability[] } | { kind: 'narrowed'; capabilities: readonly WebhookCapability[] }
 export interface RoutineOptions {
   runId: string
   chatId?: string
@@ -44,13 +47,14 @@ export interface RoutineOptions {
   origin?: TurnOrigin
   /** LilBot access scope mapped inside each engine; absent means full access. */
   access?: RunAccessScope
-  /** The model a new session runs on (a same-bot check or worker); without it, the bot's own. */
+  /** Session-private MCP servers the engine must expose as this session's ONLY MCP servers (required whenever `access` is set). */
+  sessionMcp?: McpConnection[]
+  /** Fail-closed check called after session creation and before submitting the prompt. */
+  assertSessionMcpReady?: () => void
   model?: BotModel
-  /** The reasoning effort a new session starts with; absent inherits on the bot's own model and omits on another model. */
   reasoningEffort?: ReasoningEffort
 }
 
-/** Partial or full context report from an engine. */
 export interface ContextReport {
   used?: number
   window?: number | null
@@ -58,13 +62,9 @@ export interface ContextReport {
 
 export interface ChatOptions {
   workspace: string
-  /** Given to a session the engine creates; a resumed session keeps its own. */
   reasoningEffort?: ReasoningEffort
-  /** Effective reasoning effort reported by the engine (null: none). */
   onEffort?: (effort: string | null) => void
-  /** Context size and model window reported by the engine. */
   onContext?: (context: ContextReport) => void
-  /** Explicit history must not silently become a new conversation. */
   omitMessages?: boolean
   requireExisting?: boolean
 }

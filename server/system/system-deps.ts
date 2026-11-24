@@ -23,6 +23,7 @@ import type { WebhookMessages } from '../webhooks/webhook-messages'
 import type { WebhookService } from '../webhooks/webhook-service'
 import type { CheckSessions } from '../work/check-sessions'
 import type { WorkService } from '../work/work-service'
+import type { SessionGrants } from './session-grants'
 import type { SystemChanges } from './system-changes'
 
 /** What the note and `lilbot_about` read. Everything is synchronous so the note can be built whenever an engine applies a bot. */
@@ -51,7 +52,7 @@ export interface SystemDeps extends SystemFacts {
   routines: RoutineService
   goals: GoalService
   /** Gives a file to the bot's Library from the conversation the call came from (`giveFrom` in `app-work.ts`). */
-  giveFile: (botId: string, input: z.infer<typeof GiveFileInput>) => ReturnType<LibraryService['give']>
+  giveFile: (botId: string, input: z.infer<typeof GiveFileInput>, knownChatId?: string) => ReturnType<LibraryService['give']>
   webhooks: WebhookService
   /** The MCP services bots add (#187). */
   connections: McpConnections
@@ -61,6 +62,10 @@ export interface SystemDeps extends SystemFacts {
   /** Which calls come from webhook runs, the one message a run may send its bot, and which session made a call. */
   webhookRuns: { callers: WebhookCallers; messages: WebhookMessages; callingChat: (botId: string, requestId: string) => Promise<string | null> }
   changes: SystemChanges
+  /** Session-bound grants for limited sessions (checks, webhooks, narrowed hand-offs, reviews). */
+  grants?: SessionGrants
+  /** Authenticated T3 forwarder for session-bound `'coding'` grants. */
+  t3Forward?: (botId: string, request: Request) => Promise<Response>
   /** Whether a remote worker thread is permitted to read/save memory (narrowed threads without `memory` are refused). */
   workerAllowMemory?: (threadId: string) => boolean
   dataDir: string

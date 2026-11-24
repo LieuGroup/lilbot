@@ -9,7 +9,7 @@ import type { WorkService } from './work-service'
 
 /** Runs `prompt` as a new hidden session of the bot, on `model` when one is given (else the bot's own); `onChat` is told the
  *  session's ids before the prompt is submitted. */
-export type CheckRun = (botId: string, prompt: string, runId: string, onChat: (chatId: string) => void, model?: BotModel) => Promise<{ status: string }>
+export type CheckRun = (botId: string, prompt: string, runId: string, onChat: (chatId: string) => void, model?: BotModel, checkId?: string) => Promise<{ status: string }>
 
 export class WorkCheckRunner {
   private retries = new RetryQueue('work check')
@@ -36,7 +36,7 @@ export class WorkCheckRunner {
         check.id,
         async () => {
           this.activity(botId, check.id, true)
-          const result = await this.run(botId, prompt, `check-${check.id}`, chatId => this.work.checks.attach(check.id, chatId), check.model ?? undefined)
+          const result = await this.run(botId, prompt, `check-${check.id}`, chatId => this.work.checks.attach(check.id, chatId), check.model ?? undefined, check.id)
           if (this.work.checks.get(check.id)?.state === 'checking')
             console.warn(`[work-check] check ended without a verdict (${result.status}, ${check.sameBot ? 'same bot' : 'second bot'})`)
           this.work.checking.ended(check.id, `The check ended (${result.status}) without a verdict.`)

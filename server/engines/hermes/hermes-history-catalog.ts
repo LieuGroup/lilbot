@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { requireProfileEnvironment } from './hermes-environment'
 
 const statePath = (nativeId: string) => join(process.env.HERMES_HOME ?? join(homedir(), '.hermes'), ...(nativeId === 'default' ? [] : ['profiles', nativeId]), 'state.db')
-const UNLISTED = ['tool', 'cron', 'subagent', 'unknown', 'api_server', 'kanban']
+const UNLISTED = ['tool', 'acp', 'cron', 'subagent', 'unknown', 'api_server', 'kanban']
 
 export function historyCatalog(nativeId: string) {
   requireProfileEnvironment(nativeId)
