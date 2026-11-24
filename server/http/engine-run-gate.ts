@@ -46,7 +46,6 @@ export function pluginCall(pathname: string, _body?: unknown): { tool: string; g
 
 /** Which check-session refusal applies to an engine API route, or null when a check session may call it. */
 export function checkUse(pathname: string): CheckUse | null {
-  if (pathname === '/engine/history/search') return 'memory'
   if (pathname.startsWith('/engine/skills/')) return pathname.endsWith('/write') ? 'skills' : null
   if (pathname === '/engine/bots/create' || pathname === '/engine/threads/ask' || pathname === '/engine/library/give') return 'changes'
   if (pathname.startsWith('/engine/routines/')) return pathname === '/engine/routines/list' ? null : 'changes'

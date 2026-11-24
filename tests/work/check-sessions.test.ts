@@ -78,9 +78,10 @@ test('the engine API gives a check session an empty memory block and refuses its
     ['/engine/memory/write', { kind: 'profile', text: 'The report was checked' }],
     ['/engine/memory/forget', { id: 'abcd' }],
     ['/engine/history/search', { query: 'report' }]
-  ] as const)
-    expect(await post(path, { ...inCheck, ...body })).toEqual({ status: 422, body: { error: NO_MEMORY } })
-  expect((await post('/engine/history/search', { chatId: 'b-main', query: 'report' })).body.matches).toHaveLength(1)
+  ] as const) {
+    expect((await post(path, { ...inCheck, ...body })).status).toBe(410)
+    expect((await post(path, { botId: 'b', chatId: 'b-main', ...body })).status).toBe(410)
+  }
   expect(memory.recall('b', 'checked')).toEqual([])
   // A skill change names no session, so none is made while the bot checks.
   const skill = { name: 'notes', action: 'create', content: '---\nname: notes\ndescription: Notes\n---\nWrite notes.' }

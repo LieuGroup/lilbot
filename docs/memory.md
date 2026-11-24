@@ -14,9 +14,12 @@ corrected by Oscar. The short version is in `AGENTS.md` under "Memory"; Hermes a
   private; either can be overridden), visibility, de-duplication, recall by search, and `contextBlock`, what a bot sees
   before each turn (lasting facts, then its last 10 journal entries, within about 1,500 tokens; the rest by recall).
   A write tells the bot when it holds more lasting facts than it is shown, so it tidies.
-- The engine reads and writes memory through a plug-in (Hermes: Python, standard library only, holding no data) and
-  the engine API: `recall_memory` and `update_memory` (write or forget one fact, optional `expires`). New bots use
-  LilBot memory from their first session; an existing bot is connected from its Memory panel, from its next session.
+- Bots read, save and forget memory through LilBot's System MCP server (`lilbot_memory_recall`, `lilbot_memory_save`,
+  `lilbot_memory_forget`); the retired plug-in tool routes (`/engine/memory/{recall,write,forget}`) answer HTTP 410.
+  The Hermes memory plug-in (`lilbot-memory` v0.15.0, zero tools) supplies only the per-turn memory block
+  (`/engine/memory/context`), finished-turn hand-off (`/engine/memory/turn`), and pre-compress checkpoint hook
+  (`/engine/history/save`). New bots use LilBot memory from their first session; an existing bot is connected from its
+  Memory panel, from its next session.
 - Saving rules (in the plug-in's instructions): save only what is grounded in the conversation, never infer traits, a
   one-off request is not a standing preference, one fact goes in once, and never save secrets, what can be looked up,
   task progress or "tool X is broken". `memory-safety.ts` refuses facts carrying model instructions, secrets or
@@ -44,10 +47,13 @@ connected bots).
   `LILBOT_REVIEW=off`, `LILBOT_REVIEW_TURNS` and `LILBOT_REVIEW_QUIET_SECONDS` change that. Each tick drops queued
   turns of unknown or deleted bots (also below the threshold or with reviews off); owned bots with missing runtimes
   keep theirs. If the engine reports a missing bot its turns are discarded once; other failures retry after 10 minutes.
-- LilBot runs no model: `BotEngine.reviewMemory` runs a hidden session of the same bot with only its memory tools
-  (about 4,500 prompt tokens instead of 26,000), on `LILBOT_REVIEW_MODEL` (`provider::model`; otherwise the bot's own
-  model, which costs more). Its own session is never queued for review. The same setting picks the model of a same-bot
-  work check (see [work.md](work.md)).
+- LilBot runs no model: `BotEngine.reviewMemory` runs a hidden ACP session of the same bot bound exclusively to a
+  per-session `'review'` grant (`/engine/lilbot/session/<grantId>/mcp`) exposing only `lilbot_memory_recall`,
+  `lilbot_memory_save`, and `lilbot_memory_forget` with zero built-in tools (including no skills tools), `ignore_rules`,
+  and embedded memory rules + current facts, on `LILBOT_REVIEW_MODEL` (`provider::model`; otherwise the bot's own model,
+  which costs more). Its own session and continuations are persisted in `session_grant_chats`, never queued for review,
+  and locked out of skill writes. A pass fails closed if `tools/list` never arrived, any hard tool error occurred, or
+  every attempted write/save was refused. The same setting picks the model of a same-bot work check (see [work.md](work.md)).
 - A review may not bring back a fact the user removed and may not forget a fact the user wrote. What it saves is marked
   `via: review`. No approval step (Oscar's decision): facts apply at once, and the Memory panel shows where each came
   from and lets him pause, forget and restore.

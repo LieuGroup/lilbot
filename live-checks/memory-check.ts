@@ -1,57 +1,24 @@
 import { devScratch } from '../scripts/dev-env'
 import { deleteProfile } from './check-process'
 /** Live check of the memory system against the running Hermes, on a temporary bot that is deleted
- *  afterwards: `bun run check:memory`. It starts its own small LilBot memory endpoint with a
- *  throwaway database, connects the temporary bot to it, and checks that a fact told in one
- *  session is known in the next. It also prints how many tokens memory adds to a turn.
- *  Costs a few model calls. Never touches existing bots or the real database. */
+ *  afterwards: `bun run check:memory`. It starts its own small LilBot memory + System MCP + scoped review MCP
+ *  endpoint with a throwaway database, connects the temporary bot to it, checks that a fact told in one session
+ *  is known in the next, and proves the after-chat review runs on scoped MCP with zero skills tools. */
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { BotPrefsStore } from '../server/bots/bot-prefs-store'
-import { BotService } from '../server/bots/bot-service'
-import { BotStore } from '../server/bots/bot-store'
-import { Workspaces } from '../server/bots/workspaces'
-import { openDatabase } from '../server/database/database'
 import type { OpenChat } from '../server/engines/bot-engine'
-import { HermesEngine } from '../server/engines/hermes/hermes-engine'
 import { installMemory, MEMORY_ADAPTER_VERSION, removeMemory } from '../server/engines/hermes/hermes-memory-setup'
 import { HermesSocket } from '../server/engines/hermes/hermes-socket'
-import { createEngineApi, engineToken } from '../server/http/engine-api'
-import { MemoryReviewer } from '../server/memory/memory-reviewer'
-import { MemoryService } from '../server/memory/memory-service'
-import { MemoryStore } from '../server/memory/memory-store'
-import { ReviewQueue } from '../server/memory/review-queue'
 import type { ChatEvent } from '../shared/chat-schema'
+import { startMemoryCheckHarness } from './memory-check-server'
 
-const BOT_PREFIX = 'LilBot Memory Check'
-// A new name, so a new profile folder, on every run: the Hermes gateway keeps a plug-in's code
-// loaded per folder, and a reused folder would test the code of an earlier run.
-const BOT_NAME = `${BOT_PREFIX} ${Date.now().toString(36)}`
+const BOT_NAME = `LilBot Memory Check ${Date.now().toString(36)}`
 const PORT = Number(process.env.LILBOT_CHECK_PORT ?? 3379)
 const TURN_TIMEOUT_MS = 120_000
 
 const scratch = devScratch('lilbot-memory')
-const database = openDatabase(join(scratch, 'lilbot.db'))
-const memory = new MemoryService(new MemoryStore(database))
-const engine = new HermesEngine([])
-const queue = new ReviewQueue(database)
-// The review model: the same setting the server reads, with the measured default.
 const [reviewProvider, reviewModel] = (process.env.LILBOT_REVIEW_MODEL ?? 'cliproxyapi::anthropic/claude-sonnet-5-5').split('::')
-const bots = new BotService(engine, new BotStore(database), new BotPrefsStore(database), new Workspaces(join(scratch, 'workspaces')), memory)
-const reviewer = new MemoryReviewer(queue, bots, { enabled: true, turns: 10, quietMs: 120_000, minTurns: 3, model: { provider: reviewProvider, model: reviewModel } })
-const engineApi = createEngineApi(memory, engineToken(scratch), PORT, { botExists: id => new BotStore(database).exists(id), adapterVersion: MEMORY_ADAPTER_VERSION, reviewer })
-
-let memoryCalls = 0
-const adapterVersions = new Set<string>()
-const server = Bun.serve({
-  port: PORT,
-  hostname: '127.0.0.1',
-  fetch(request) {
-    memoryCalls++
-    adapterVersions.add(request.headers.get('x-lilbot-adapter-version') ?? 'none')
-    return engineApi(request, new URL(request.url).pathname)
-  }
-})
+const { database, store, memory, queue, bots, reviewer, server, memoryCalls, adapterVersions } = startMemoryCheckHarness(scratch, PORT, reviewProvider, reviewModel)
 
 let botId = ''
 let failures = 0
@@ -62,7 +29,6 @@ function check(label: string, ok: boolean, detail = '') {
 
 type Finished = Extract<ChatEvent, { type: 'turn.finished' }>
 
-/** Opens a new session, sends one message and waits for the turn to finish. */
 async function turnInNewSession(text: string): Promise<{ finished: Finished | null; tools: string[] }> {
   const tools: string[] = []
   let resolve: (event: Finished | null) => void = () => {}
@@ -80,7 +46,6 @@ async function turnInNewSession(text: string): Promise<{ finished: Finished | nu
   return { finished, tools }
 }
 
-/** The system prompt Hermes built for a fresh session of this bot, after one turn. */
 async function systemPromptOf(profile: string): Promise<string> {
   let finished: () => void = () => {}
   const done = new Promise<void>(resolve => {
@@ -105,6 +70,23 @@ async function systemPromptOf(profile: string): Promise<string> {
   }
 }
 
+async function inspectReviewSession(profile: string, chatId: string): Promise<{ toolsets: string[]; tools: string[] }> {
+  const socket = await HermesSocket.connect(
+    profile,
+    () => {},
+    () => {}
+  )
+  try {
+    const session = await socket.request('session.resume', { session_id: chatId, source: 'acp', display_projection: false, omit_messages: false })
+    const [info, shown] = await Promise.all([socket.request('session.info', { session_id: session.session_id }), socket.request('tools.show', { session_id: session.session_id })])
+    const toolsets = Array.isArray(info.enabled_toolsets) ? [...info.enabled_toolsets].sort() : []
+    const tools = ((shown.sections ?? []) as { tools: { name: string }[] }[]).flatMap(s => s.tools.map(t => t.name)).sort()
+    return { toolsets, tools }
+  } finally {
+    socket.close()
+  }
+}
+
 async function deleteBot(id: string) {
   const child = deleteProfile(id, 'pipe')
   const [stderr, code] = await Promise.all([new Response(child.stderr).text(), child.exited])
@@ -122,19 +104,16 @@ try {
   })
   botId = bot.id
 
-  // A cloned profile can inherit the live adapter. Disconnect it before the baseline's first turn.
-  await removeMemory(new BotStore(database).get(botId).engineBotId)
-
-  // Before: the bot with Hermes' own memory, as a baseline for token use.
+  await removeMemory(store.get(botId).engineBotId)
   const before = await turnInNewSession('Reply with exactly: OK')
   check('baseline turn without LilBot memory', before.finished?.status === 'completed', `${before.finished?.contextTokens ?? '?'} tokens sent`)
 
-  await installMemory(new BotStore(database).get(botId).engineBotId, { botId, url: `http://127.0.0.1:${PORT}`, tokenFile: join(scratch, 'engine-token') })
+  await installMemory(store.get(botId).engineBotId, { botId, url: `http://127.0.0.1:${PORT}`, tokenFile: join(scratch, 'engine-token') })
   check('memory connected to the bot', true)
 
   const empty = await turnInNewSession('Reply with exactly: OK')
   check('a turn with LilBot memory and no facts', empty.finished?.status === 'completed', `${empty.finished?.contextTokens ?? '?'} tokens sent`)
-  check('Hermes asked LilBot for the memory block', memoryCalls > 0, `${memoryCalls} calls`)
+  check('Hermes asked LilBot for the memory block', memoryCalls() > 0, `${memoryCalls()} calls`)
   check('the bot runs this version of the memory adapter', adapterVersions.size === 1 && adapterVersions.has(MEMORY_ADAPTER_VERSION), [...adapterVersions].join(', '))
 
   const told = await turnInNewSession(
@@ -158,17 +137,13 @@ try {
     /ultramarine/i.test(asked.finished?.text ?? ''),
     `replied "${asked.finished?.text.slice(0, 40)}", ${asked.finished?.contextTokens ?? '?'} tokens sent`
   )
-  check('it knew from the memory block, without searching', !asked.tools.includes('recall_memory'), asked.tools.join(', ') || 'no tools used')
+  check('it knew from the memory block, without searching', !asked.tools.some(t => t.endsWith('lilbot_memory_recall')), asked.tools.join(', ') || 'no tools used')
 
-  // The saving rules reach the bot. Read from the session's real system prompt: asking a bot to
-  // describe its own instructions is unreliable (it answered "my instructions don't cover that"
-  // while the rules were present).
-  const prompt = await systemPromptOf(new BotStore(database).get(botId).engineBotId)
-  check('the memory rules are in the bot’s instructions', prompt.includes('# Memory') && prompt.includes('over its budget'), `${prompt.length} characters`)
+  const prompt = await systemPromptOf(store.get(botId).engineBotId)
+  check('the memory rules are in the bot’s instructions', prompt.includes('# Memory') && prompt.includes('lilbot_memory_save'), `${prompt.length} characters`)
   check('Hermes’ own memory files are no longer in the prompt', !prompt.includes('USER PROFILE') && !/MEMORY \(your personal notes\)/.test(prompt))
   check('facts ride with the message, not in the cached instructions', !/ultramarine/i.test(prompt))
 
-  // A one-off request must not become a standing preference.
   const countBefore = memory.list(botId).length
   const oneOff = await turnInNewSession('For this one reply only, answer in capital letters: what is two plus two?')
   const added = memory.list(botId).slice(0, memory.list(botId).length - countBefore)
@@ -191,8 +166,6 @@ try {
     )
   }
 
-  // The after-chat review. Hermes hands LilBot each finished turn; a review then runs as a hidden
-  // session of the bot and saves what the chat itself did not.
   const waitFor = async (condition: () => boolean, ms: number) => {
     for (const end = Date.now() + ms; Date.now() < end && !condition(); ) await new Promise(resolve => setTimeout(resolve, 250))
     return condition()
@@ -200,7 +173,6 @@ try {
   const turnsOf = () => queue.pending().find(pending => pending.botId === botId)?.turns ?? 0
   check('Hermes handed the finished turns to LilBot', await waitFor(() => turnsOf() >= 3, 8000), `${turnsOf()} turns waiting`)
 
-  // A stretch the bot never saw as a chat, so anything saved from it can only come from the review.
   reviewer.record(
     botId,
     'earlier-chat',
@@ -212,6 +184,19 @@ try {
   const started = performance.now()
   const covered = await reviewer.review(botId)
   check('the review ran through Hermes on the review model', covered >= 3, `${covered} turns in ${((performance.now() - started) / 1000).toFixed(1)} s on ${reviewModel}`)
+
+  // Verify the review session grant persisted, revoked on settle, and had zero skills tools attached on Hermes.
+  const grantRow = database.query("SELECT primary_chat_id, revoked_at FROM session_grants WHERE bot_id = ? AND kind = 'review' ORDER BY created_at DESC LIMIT 1").get(botId) as {
+    primary_chat_id: string | null
+    revoked_at: number | null
+  } | null
+  check('review grant recorded canonical chat id and revoked on settle', Boolean(grantRow?.primary_chat_id && grantRow.revoked_at !== null), JSON.stringify(grantRow))
+  if (grantRow?.primary_chat_id) {
+    const revView = await inspectReviewSession(store.get(botId).engineBotId, grantRow.primary_chat_id)
+    const hasSkills = revView.toolsets.includes('skills') || revView.tools.some(t => ['skills_list', 'skill_view', 'skill_manage'].includes(t))
+    check('review session had zero skills tools on Hermes', !hasSkills, `toolsets=${revView.toolsets.join(',')} tools=${revView.tools.join(',')}`)
+  }
+
   const found = memory.list(botId).filter(fact => fact.via === 'review')
   for (const fact of found) console.log(`       [review ${fact.kind}/${fact.scope}] ${fact.text}`)
   check(
@@ -233,7 +218,7 @@ try {
 } finally {
   if (botId) {
     try {
-      await deleteBot(new BotStore(database).get(botId).engineBotId)
+      await deleteBot(store.get(botId).engineBotId)
       check('temporary bot deleted', true)
     } catch (error) {
       check('temporary bot deleted', false, `Cleanup failed in the development Hermes home. ${error instanceof Error ? error.message : ''}`)

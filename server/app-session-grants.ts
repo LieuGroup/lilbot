@@ -20,7 +20,8 @@ export interface AppServicesSettings {
 
 import type { SessionRoot } from './bots/hidden-chats'
 import type { McpConnection } from './engines/mcp-connection'
-import { type SessionGrant, SessionGrants } from './system/session-grants'
+import { assertReviewRunOk, ReviewOutcomeTracker } from './memory/review-run'
+import { SESSION_SYSTEM_NAME, type SessionGrant, SessionGrants } from './system/session-grants'
 import type { CheckUse } from './work/check-sessions'
 import { NO_CHANGES, NO_MEMORY, NO_SKILLS } from './work/check-sessions'
 
@@ -32,6 +33,10 @@ export interface PreparedSession {
   settle: () => void
 }
 
+export interface PreparedReviewSession extends PreparedSession {
+  assertPassOk: () => void
+}
+
 export function createSessionGrants(
   database: Database,
   token: string,
@@ -40,6 +45,7 @@ export function createSessionGrants(
   connections: () => (grant: SessionGrant) => McpConnection[]
 ) {
   const grants = new SessionGrants(database, token, rootOf, isMainChat)
+  const reviewTracker = new ReviewOutcomeTracker()
 
   const prepare = (grant: SessionGrant): PreparedSession => {
     const sessionMcp = connections()(grant)
@@ -55,6 +61,25 @@ export function createSessionGrants(
 
   return {
     grants,
+    reviewTracker,
+    prepareReview: (botId: string, runId: string, checkpoint = false): PreparedReviewSession => {
+      const grant = grants.ensure({ ownerKey: `review:${runId}`, botId, scope: { kind: 'review', runId, ...(checkpoint ? { checkpoint: true } : {}) } })
+      const base = prepare(grant)
+      reviewTracker.begin(grant.id, botId)
+      let finished = false
+      return {
+        ...base,
+        assertPassOk: () => {
+          finished = true
+          const listed = (grants.get(grant.id)?.discoveredServers ?? []).includes(SESSION_SYSTEM_NAME)
+          assertReviewRunOk(reviewTracker.finish(grant.id, botId, listed))
+        },
+        settle: () => {
+          if (!finished) reviewTracker.discard(grant.id)
+          base.settle()
+        }
+      }
+    },
     prepareCheck: (botId: string, checkId: string) => prepare(grants.ensure({ ownerKey: `check:${checkId}`, botId, scope: { kind: 'check', checkId } })),
     prepareWebhook: (run: WebhookRun, capabilities: WebhookCapability[]) =>
       prepare(grants.ensure({ ownerKey: `webhook:${run.id}`, botId: run.botId, scope: { kind: 'webhook', runId: run.id, capabilities } })),

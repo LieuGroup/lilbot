@@ -81,11 +81,12 @@ test('engine routes verify x-lilbot-session vs chatId, lock history search, requ
   expect((await post('/engine/threads/ask', { requestId: 'r1', to: 'b2', text: 'hi', chatId: 'webhook-chat' }, 'webhook-chat')).status).toBe(200)
   expect(asked).toEqual([{ caller: 'bot', chatId: 'webhook-chat' }])
   expect((await post('/engine/library/give', { path: 'a.txt', title: 'A', chatId: 'main' }, 'webhook-chat')).status).toBe(422)
-  expect((await post('/engine/memory/recall', { botId: 'bot', chatId: 'main', query: 'x' }, 'webhook-chat')).status).toBe(422)
+  expect((await post('/engine/memory/context', { botId: 'bot', chatId: 'main' }, 'webhook-chat')).status).toBe(422)
+  expect((await post('/engine/memory/recall', { botId: 'bot', chatId: 'main', query: 'x' }, 'webhook-chat')).status).toBe(410)
 
-  // history/search respects memoryLocked
-  expect((await post('/engine/history/search', { chatId: 'webhook-chat', query: 'secret' })).status).toBe(422)
-  expect((await post('/engine/history/search', { chatId: 'main', query: 'secret' })).status).toBe(200)
+  // Retired /engine/history/search returns 410 unconditionally for authorised callers
+  expect((await post('/engine/history/search', { chatId: 'webhook-chat', query: 'secret' })).status).toBe(410)
+  expect((await post('/engine/history/search', { chatId: 'main', query: 'secret' })).status).toBe(410)
 
   // legacy threads list/open filter out unrestricted and broader threads for narrowed sessions
   const listRes = await post('/engine/threads/list', {}, 'webhook-chat')

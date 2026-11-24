@@ -53,7 +53,42 @@ test('createAppServices excludes memory-review sessions from own-conversation ch
     const [bot] = services.store.list()
     const token = engineToken(join(dir, 'data'))
 
-    // Trigger a memory-review session through the real service wiring so reviewer.trackReview(reviewChatId) runs.
+    // Without tools/list discovery on the scoped review MCP endpoint, /engine/history/save fails closed (never 200).
+    const dropped = await services.engineApi(
+      new Request('http://127.0.0.1:3998/engine/history/save', {
+        method: 'POST',
+        headers: {
+          host: '127.0.0.1:3998',
+          authorization: `Bearer ${token}`,
+          'x-lilbot-bot-capability': botCapability(token, bot.id),
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({ chatId: 'main-chat-1', messages: [{ role: 'user', text: 'Remember cobalt lantern.' }] })
+      }),
+      '/engine/history/save'
+    )
+    expect(dropped.status).toBe(422)
+
+    // Wire fake engine's reviewMemory to perform real tools/list discovery against the scoped review MCP endpoint.
+    const origReview = fake.engine.reviewMemory.bind(fake.engine)
+    fake.engine.reviewMemory = async (nativeId, prompt, options) => {
+      const conn = options.sessionMcp?.[0]
+      if (conn) {
+        const res = await services.system.scoped!(
+          new Request(conn.url, {
+            method: 'POST',
+            headers: { host: '127.0.0.1:3998', authorization: `Bearer ${conn.bearerToken}`, 'content-type': 'application/json' },
+            body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })
+          }),
+          new URL(conn.url).pathname
+        )
+        expect(res.status).toBe(200)
+        options.assertSessionMcpReady?.()
+      }
+      return origReview(nativeId, prompt, options)
+    }
+
+    // Trigger a memory-review session through the real service wiring so the grant binds reviewChatId durably.
     const saveRes = await services.engineApi(
       new Request('http://127.0.0.1:3998/engine/history/save', {
         method: 'POST',

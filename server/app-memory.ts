@@ -3,7 +3,7 @@ import type { Database } from 'bun:sqlite'
 import type { BotService } from './bots/bot-service'
 import type { BotStore } from './bots/bot-store'
 import { MemoryCheckpointStore } from './memory/memory-checkpoint-store'
-import { MemoryReviewer, reviewSettingsFrom } from './memory/memory-reviewer'
+import { MemoryReviewer, type PrepareReview, reviewSettingsFrom } from './memory/memory-reviewer'
 import { MemoryService } from './memory/memory-service'
 import { MemoryStore } from './memory/memory-store'
 import { ReviewQueue } from './memory/review-queue'
@@ -23,8 +23,21 @@ export function createMemory(database: Database) {
       reviewQueue.forgetBot(botId)
       checkpointStore.forgetBot(botId)
     },
-    startReviewer: (bots: BotService, store: BotStore, repeat: (name: string, interval: number, run: () => unknown | Promise<unknown>) => unknown) => {
-      reviewer = new MemoryReviewer(reviewQueue, bots, settings, Date.now, id => store.exists(id))
+    startReviewer: (
+      bots: BotService,
+      store: BotStore,
+      repeat: (name: string, interval: number, run: () => unknown | Promise<unknown>) => unknown,
+      prepareReview?: PrepareReview
+    ) => {
+      reviewer = new MemoryReviewer(
+        reviewQueue,
+        bots,
+        settings,
+        Date.now,
+        id => store.exists(id),
+        prepareReview,
+        id => memory.contextBlock(id).text
+      )
       repeat('memory reviewer', 20_000, () => reviewer!.tick())
       return reviewer
     }

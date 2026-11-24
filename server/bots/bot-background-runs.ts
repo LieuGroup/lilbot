@@ -52,7 +52,10 @@ export class BackgroundRuns {
     return this.track(bot.id, async () => {
       try {
         await this.runtimes.use(bot)
-        return await this.runtimes.engineFor(bot).reviewMemory(bot.engineBotId, prompt, options)
+        return await this.runtimes.engineFor(bot).reviewMemory(bot.engineBotId, prompt, {
+          ...options,
+          workspace: options.workspace ?? (await this.workspaces.ensure(bot.id))
+        })
       } catch (error) {
         // The app still owns this bot. A lost runtime must not discard its waiting turns.
         if (error instanceof LilBotError && error.code === 'bot_not_found') throw new LilBotError('runtime_unavailable', 'This bot’s runtime is missing.')
