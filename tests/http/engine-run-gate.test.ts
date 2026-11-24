@@ -90,7 +90,7 @@ test('a plug-in call refused to its session answers 422 and retired /engine/comp
   const handle = createEngineApi(new MemoryService(new MemoryStore(openDatabase(':memory:'))), TOKEN, 3370, {
     bots: { listBots: async () => [{ id: 'bot' }] } as never,
     botExists: id => id === 'bot',
-    skills: { write: () => ++skillWrites } as never,
+    skills: { writeForBot: () => ++skillWrites } as never,
     pluginRefusal: async (_bot, pathname) => (pathname === '/engine/skills/write' ? 'A webhook run cannot use skill_manage.' : null)
   })
   const response = await handle(

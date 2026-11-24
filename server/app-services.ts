@@ -192,7 +192,7 @@ export function createAppServices(
   const routineScheduler = new RoutineScheduler(routines, observeRun)
   repeat('routines', 1000, () => routineScheduler.tick())
   const reviewer = mem.startReviewer(bots, store, repeat)
-  const apiCore = { history, bots, skills, routines, library, threads, reviewer, checkpointStore: mem.checkpointStore }
+  const apiCore = { history, bots, skills, routines, library, threads, reviewer, checkpointStore: mem.checkpointStore, changes: extra.changes }
   const apiHooks = { chatKind, adapterVersion: MEMORY_ADAPTER_VERSION, deploymentNotice: () => deployNotice(DATA_DIR), botExists: (id: string) => store.exists(id) }
   const engineApi = createEngineApi(memory, token, PORT, { ...apiCore, ...apiHooks, onMemoryChanged: memoryChanged, inCheck: checkSessions.refusal, ...gates })
   const base = { bots, store, skills, library, computers, remoteWorkers, devices, attachments, t3Grants, mcp, system, engineApi }

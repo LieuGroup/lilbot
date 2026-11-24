@@ -1,13 +1,14 @@
 import type { Database } from 'bun:sqlite'
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import type { z } from 'zod'
 import { LilBotError } from '../../shared/lilbot-error'
 import { type Skill, SkillName, type SkillWrite } from '../../shared/skills-schema'
-import { digest, files, metadata, safeText, treeDigest } from './skill-files'
-import { originOf } from './skill-origin'
+import { digest, files, hasExactFiles, isSymlink, metadata, pruneUnexpectedFiles, safeSkillFilePath, safeText, treeDigest, writeSkillFile } from './skill-files'
+import { isBuiltinSkillName, isReservedSkillName, originOf } from './skill-origin'
 
 export class SkillsService {
+  private engineSkill: (name: string) => boolean = () => false
   constructor(
     readonly root: string,
     private db: Database,
@@ -15,10 +16,15 @@ export class SkillsService {
   ) {
     mkdirSync(root, { recursive: true })
   }
+  /** Wired by `BotSkills` so bot-scoped writes reject every registered engine's own skills. */
+  setEngineSkillCheck(check: (name: string) => boolean) {
+    this.engineSkill = check
+  }
   private path(name: string) {
     SkillName.parse(name)
-    const path = join(this.root, name)
-    if (lstatSync(this.root).isSymbolicLink() || (existsSync(path) && lstatSync(path).isSymbolicLink())) throw new LilBotError('unsafe_skill', 'Skill symlinks are not supported.')
+    const root = resolve(this.root)
+    const path = join(root, name)
+    if (isSymlink(root) || isSymlink(path)) throw new LilBotError('unsafe_skill', 'Skill symlinks are not supported.')
     return path
   }
   list(botId: string): Skill[] {
@@ -85,17 +91,30 @@ export class SkillsService {
   write(input: z.infer<typeof SkillWrite>, author: string) {
     const target = this.path(input.name)
     if (input.action === 'create' && existsSync(target)) throw new LilBotError('skill_exists', 'This skill already exists.')
+    if (input.action !== 'create' && !existsSync(target)) throw new LilBotError('skill_not_found', 'That skill does not exist.')
     const data = input.action === 'create' ? {} : this.read(input.name)
     const file = input.action === 'write_file' ? (input.file_path ?? '') : 'SKILL.md'
-    if (!file || file.split('/').some(p => !p || p === '.' || p === '..' || p.startsWith('.')) || file.includes('\\'))
-      throw new LilBotError('unsafe_path', 'Use a relative skill file path.')
+    if (!safeSkillFilePath(file)) throw new LilBotError('unsafe_path', 'Use a relative skill file path.')
     if (input.action === 'patch') {
       if (!input.old_string || !data[file]?.includes(input.old_string) || data[file].split(input.old_string).length !== 2)
         throw new LilBotError('invalid_patch', 'Patch must match exactly once.')
       data[file] = data[file].replace(input.old_string, input.new_string ?? '')
     } else data[file] = input.content ?? ''
+    if (data[file].length > 200_000) throw new LilBotError('invalid_skill', 'Skill file exceeds the 200,000 character limit.')
     this.save(input.name, data, author)
     return { ok: true }
+  }
+  /** Bot-scoped skill write service: protects LilBot's built-in skills, reserved `lilbot-`/`lilbot_` names, and
+   *  every registered engine's own always-on/bundled skills; allows ordinary shared and imported skills. */
+  writeForBot(input: z.infer<typeof SkillWrite>, botId: string) {
+    this.path(input.name)
+    if (isReservedSkillName(input.name)) throw new LilBotError('skill_forbidden', "LilBot's built-in skills cannot be changed by a bot.")
+    if (this.engineSkill(input.name)) throw new LilBotError('skill_forbidden', 'Engine skills are managed by the owner.')
+    const existing = this.list(botId).find(skill => skill.name === input.name)
+    if (existing?.origin.kind === 'lilbot') throw new LilBotError('skill_forbidden', "LilBot's built-in skills cannot be changed by a bot.")
+    if (input.action === 'create' && existing) throw new LilBotError('skill_exists', 'This skill already exists.')
+    if (input.action !== 'create' && !existing) throw new LilBotError('skill_not_found', 'That skill does not exist.')
+    return this.write(input, botId)
   }
   private save(name: string, data: Record<string, string>, author: string) {
     const meta = metadata(data['SKILL.md'] ?? '')
@@ -104,13 +123,7 @@ export class SkillsService {
     const target = this.path(name)
     if (existsSync(target)) files(target) // Reject redirected descendants before any writes.
     mkdirSync(target, { recursive: true })
-    for (const [file, text] of Object.entries(data)) {
-      const path = join(target, file)
-      mkdirSync(dirname(path), { recursive: true })
-      const temp = `${path}.${crypto.randomUUID()}.tmp`
-      writeFileSync(temp, text)
-      renameSync(temp, path)
-    }
+    for (const [file, text] of Object.entries(data)) writeSkillFile(join(target, file), text)
     this.db
       .query(
         "INSERT INTO skills VALUES (?,?,?,?) ON CONFLICT(name) DO UPDATE SET description=excluded.description, author=CASE WHEN skills.author='lilbot' AND excluded.author<>'oscar' THEN 'lilbot' ELSE excluded.author END, updated_at=excluded.updated_at"
@@ -140,17 +153,23 @@ export class SkillsService {
     // A skill this import wrote belongs to the engine; an identical copy merged into one that already existed keeps its own origin.
     if (this.db.query("SELECT 1 FROM skills WHERE name=? AND author='imported'").get(name)) this.db.query('INSERT OR IGNORE INTO skill_origins VALUES (?,?)').run(name, engineId)
   }
-  /** Installs a skill LilBot itself ships, restoring it when the library copy differs. */
+  /** Installs a skill LilBot itself ships, restoring its exact shipped files and author when the library copy differs. */
   provide(name: string, data: Record<string, string>) {
-    if (existsSync(this.path(name)) && digest(this.read(name)) === digest(data)) return
+    const target = this.path(name)
+    const expected = new Set(Object.keys(data))
+    const row = this.db.query('SELECT author FROM skills WHERE name=?').get(name) as { author: string } | null
+    if (existsSync(target) && row?.author === 'lilbot' && hasExactFiles(target, expected) && digest(this.read(name)) === digest(data)) return
+    if (existsSync(target)) pruneUnexpectedFiles(target, expected)
     this.save(name, data, 'lilbot')
   }
-  /** Removes a built-in skill LilBot itself installed, leaving Oscar-authored, bot-authored, engine-imported, or untracked skills untouched. */
+  /** Removes a LilBot built-in skill (including a bot-created dormant built-in), leaving Oscar-authored, ordinary
+   *  bot-authored, engine-imported, or untracked skills untouched. */
   remove(name: string): boolean {
     const target = this.path(name)
     const row = this.db.query('SELECT author FROM skills WHERE name=?').get(name) as { author: string } | null
     const imported = Boolean(this.db.query('SELECT 1 FROM skill_origins WHERE name=?').get(name))
-    if (row?.author !== 'lilbot' || imported) return false
+    const botDormant = isBuiltinSkillName(name) && row !== null && row.author !== 'oscar'
+    if ((row?.author !== 'lilbot' && !botDormant) || imported) return false
     if (existsSync(target)) rmSync(target, { recursive: true, force: true })
     this.db.query('DELETE FROM skill_off WHERE name=?').run(name)
     this.db.query('DELETE FROM skills WHERE name=?').run(name)

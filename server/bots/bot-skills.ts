@@ -17,6 +17,7 @@ export class BotSkills {
     private changed: () => void
   ) {
     this.enginesRegistry = asEngineRegistry(engine)
+    this.library.setEngineSkillCheck(name => this.isEngineSkill(name))
   }
 
   async list(botId: string) {
@@ -33,6 +34,26 @@ export class BotSkills {
     await this.runtimes.state(bot)
     this.changed()
     return { ok: true as const }
+  }
+
+  /** Whether `name` is one of any registered engine's own skills (always-on or bundled). */
+  isEngineSkill(name: string): boolean {
+    for (const id of this.enginesRegistry.ids()) {
+      const engine = this.enginesRegistry.get(id)
+      if (!engine) continue
+      if (engine.alwaysOnSkills?.some(skill => skill.name === name)) return true
+      if (!engine.bundledSkills) continue
+      const bound = this.runtimes.bound(id)
+      const engineBotIds = bound.length > 0 ? bound.map(bot => bot.engineBotId) : ['default']
+      for (const engineBotId of engineBotIds) {
+        try {
+          if (engine.bundledSkills(engineBotId).includes(name)) return true
+        } catch {
+          // Profiles whose environment cannot be inspected on this host (for example 'default' in dev) are skipped.
+        }
+      }
+    }
+    return false
   }
 
   /** Every registered engine, then any other with a switch or imported skills. Bundled skills are counted over its available bots. */
