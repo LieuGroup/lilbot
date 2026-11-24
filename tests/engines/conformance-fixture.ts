@@ -20,7 +20,10 @@ export const HERMES_LIVE_PARITY = [
   'check:webhooks',
   'check:delegation',
   'check:worker',
+  'check:groups',
   'check:checks',
+  'check:goals',
+  'check:connections',
   'check:restart'
 ] as const
 
