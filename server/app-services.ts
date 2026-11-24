@@ -36,9 +36,10 @@ import { asEngineRegistry, type EngineRegistry } from './engines/engine-registry
 import { GoalStore } from './goals/goal-store'
 import { HistoryService } from './history/history-service'
 import { HistoryStore } from './history/history-store'
-import { createEngineApi, engineToken } from './http/engine-api'
+import { engineToken } from './http/engine-api'
 import { LibraryService } from './library/library-service'
 import { LibraryStore } from './library/library-store'
+import { checkpointConnectionFor } from './memory/memory-checkpoint-key'
 import { RoutineScheduler } from './routines/routine-scheduler'
 import { RoutineService, routineSettings } from './routines/routine-service'
 import { RoutineStore } from './routines/routine-store'
@@ -60,7 +61,7 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
   const workspaces = new Workspaces(WORKSPACES_DIR)
   const database = openDatabase(join(DATA_DIR, 'lilbot.db'))
   const activity = new ActivityService(new ActivityStore(database), botsChanged)
-  const mem = createMemory(database)
+  const mem = createMemory(database, { deploymentNotice: () => deployNotice(DATA_DIR) })
   const { memory } = mem
   const memoryChanged = () => publish({ event: 'memory.changed' })
   const token = engineToken(DATA_DIR)
@@ -116,10 +117,13 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
   const messages = webhookMessages(database, { store, prefs, history: history.store, activity, bots: () => bots }, publish)
   const codingSwitch = new CodingSwitchNotice(join(DATA_DIR, 'coding-switch.json'))
   const t3For = (botId: string) => (t3Enabled ? [t3Connection(`http://127.0.0.1:${PORT}`, token, botId, t3Grants.generation())] : [])
+  const memoryConnection = (botId: string) => checkpointConnectionFor(`http://127.0.0.1:${PORT}`, token, botId)
   const bots = new BotService(engines, store, prefs, workspaces, memory, {
     skills,
     history,
-    turnNotes: combineTurnNotes(messages, codingSwitch),
+    turnNotes: combineTurnNotes(messages, codingSwitch, mem.turnContext),
+    memoryContext: mem.turnContext,
+    conversationHooks: mem.conversationHooks(chatKind),
     cleanupBot: botId => {
       history.store.forget(botId)
       remoteWorkers.runner.stopForBot(botId)
@@ -128,7 +132,8 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
     },
     changed: botsChanged,
     memoryChanged,
-    memoryConnection: { url: `http://127.0.0.1:${PORT}`, tokenFile: join(DATA_DIR, 'engine-token') },
+    memoryConnection,
+    skillConnection: { url: `http://127.0.0.1:${PORT}`, tokenFile: join(DATA_DIR, 'engine-token') },
     connections: botId => [...t3For(botId), system.connection(botId), ...mcp.connections(botId)],
     onConnectionsChanged: botId => mcp.applyBot(botId),
     systemNote: systemNote(facts),
@@ -160,18 +165,17 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
   const { goals, boards } = createGoals({ goalStore: runs.goalStore, work, answers, threads, routines, activity, store, publish, repeat })
   const giveFile = giveFrom(library, calls, threadStore, routineStore, webhookStore, rootOf)
   const core = { ...facts, bots, activity, memory, memoryChanged, history, skills, delegation, work, goals, routines, giveFile, library }
-  const extra = {
-    webhooks,
-    webhookRuns,
-    connections: mcp.services,
-    calls,
-    checkSessions,
-    changes: new SystemChanges(database),
-    grants: sessionGrants.grants,
-    reviewTracker: sessionGrants.reviewTracker,
-    t3Forward: mcp.t3Bridge.forBot
-  }
-  const system = createSystemServer({ ...core, ...extra, engineToken: token, port: PORT, workerAllowMemory: id => threadStore.allowsWorkerMemory(id) })
+  const changes = new SystemChanges(database)
+  const sysExtra = { webhooks, webhookRuns, connections: mcp.services, calls, checkSessions, changes, grants: sessionGrants.grants, reviewTracker: sessionGrants.reviewTracker }
+  const system = createSystemServer({
+    ...core,
+    ...sysExtra,
+    t3Forward: mcp.t3Bridge.forBot,
+    engineToken: token,
+    port: PORT,
+    workerAllowMemory: id => threadStore.allowsWorkerMemory(id)
+  })
+  const routineScheduler = new RoutineScheduler(routines, observeRun)
   for (const [name, fn] of [
     ['threads', () => threads.tick()],
     ['work answers', () => answers.tick()],
@@ -179,18 +183,14 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
     ['routines', () => routineScheduler.tick()]
   ] as const)
     repeat(name, 1000, fn)
-  const routineScheduler = new RoutineScheduler(routines, observeRun)
   const reviewer = mem.startReviewer(bots, store, repeat, sessionGrants.prepareReview)
-  const apiCore = { history, bots, skills, routines, library, threads, reviewer, checkpointStore: mem.checkpointStore, changes: extra.changes }
-  const apiHooks = { chatKind, adapterVersion: MEMORY_ADAPTER_VERSION, deploymentNotice: () => deployNotice(DATA_DIR), botExists: botAlive }
-  const engineApi = createEngineApi(memory, token, PORT, {
-    ...apiCore,
-    ...apiHooks,
-    onMemoryChanged: memoryChanged,
+  const apiOpts = { history, bots, skills, routines, library, threads, reviewer, changes, chatKind, adapterVersion: MEMORY_ADAPTER_VERSION, botExists: botAlive }
+  const engineApi = mem.wireEngineApi(engines, token, PORT, {
+    ...apiOpts,
     inCheck: sessionGrants.inCheck(checkSessions),
     skillWriteLocked: sessionGrants.skillWriteLocked,
     ...gates
   })
-  const base = { bots, store, skills, library, computers, remoteWorkers, devices, attachments, t3Grants, mcp, system, engineApi }
+  const base = { bots, store, skills, library, computers, remoteWorkers, devices, attachments, t3Grants, mcp, system, engineApi, memoryConnection }
   return { ...base, activity, routines, threads, boards, webhooks, hiddenChat }
 }

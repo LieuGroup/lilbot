@@ -142,7 +142,7 @@ bun run bot:rekey -- --undo <backupDir> [--dry-run] [--yes] [--force]
   `history_items.id` and `message_origins.row_id` (`hermes:<engineBotId>:...`), global sentinel rows
   (`computer_bytes.bot_id = ''`, `work_levels.bot_id = ''`) and historical free text untouched.
 - **Disk and engine profile:** atomically renames `<workspaces>/<oldId>` (and `.archive/<oldId>` if present) to `<newId>`,
-  updates `lilbot-memory.json` (recomputing `creation_capability`), `lilbot-skills.json` and `lilbot-computers.json`,
+  updates `lilbot-memory.json` (recomputing `checkpoint_key`, or legacy `creation_capability` when present), `lilbot-skills.json` and `lilbot-computers.json`,
   and removes `lilbot-applied.json` so the next server start (`bun run deploy --maintenance start`) refreshes MCP bearer
   tokens automatically without disturbing untouched bots.
 - **Browser-side state:** per-bot tasks-dock preferences in `localStorage` (`lilbot.dock-dismissed.<botId>` and

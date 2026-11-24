@@ -5,8 +5,8 @@ import { Database } from 'bun:sqlite'
 import assert from 'node:assert/strict'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { botCapability } from '../server/bots/bot-capability'
 import { MEMORY_ADAPTER_VERSION } from '../server/engines/hermes/hermes-memory-setup'
+import { checkpointKeyFor } from '../server/memory/memory-checkpoint-key'
 import { HermesSocket } from '../server/engines/hermes/hermes-socket'
 import { observeChat } from './engine-observer'
 import { type RestartServer, waitFor } from './restart-server'
@@ -132,7 +132,7 @@ export async function checkpointBot(server: RestartServer, review: string) {
     const token = readFileSync(join(server.root, 'engine-token'), 'utf8').trim()
     const response = await fetch(`http://127.0.0.1:${server.port}/engine/history/save`, {
       method: 'POST',
-      headers: { authorization: `Bearer ${token}`, 'x-lilbot-bot-capability': botCapability(token, bot.id), 'content-type': 'application/json' },
+      headers: { authorization: `Bearer ${checkpointKeyFor(token, bot.id)}`, 'content-type': 'application/json' },
       body: JSON.stringify({ chatId: main.chatId, messages })
     })
     assert.equal(response.status, 200, `history/save failed: ${response.status}`)

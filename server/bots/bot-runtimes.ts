@@ -19,7 +19,7 @@ export class BotRuntimes {
     readonly store: BotStore,
     engine: BotEngine | EngineRegistry,
     private skills?: import('../skills/skills-service').SkillsService,
-    private connection?: import('../engines/bot-engine').MemoryConnection,
+    private connection?: import('../engines/bot-engine').SkillConnection,
     private connections?: (botId: string) => import('../engines/mcp-connection').McpConnection[],
     private options: RuntimeOptions = {}
   ) {

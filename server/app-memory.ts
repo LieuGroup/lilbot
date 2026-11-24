@@ -2,11 +2,16 @@
 import type { Database } from 'bun:sqlite'
 import type { BotService } from './bots/bot-service'
 import type { BotStore } from './bots/bot-store'
+import type { EngineRegistry } from './engines/engine-registry'
+import { createEngineApi, type EngineApiOptions } from './http/engine-api'
+import { createPreCompressCheckpoint } from './http/history-api'
 import { MemoryCheckpointStore } from './memory/memory-checkpoint-store'
 import { MemoryReviewer, type PrepareReview, reviewSettingsFrom } from './memory/memory-reviewer'
 import { MemoryService } from './memory/memory-service'
 import { MemoryStore } from './memory/memory-store'
+import { MemoryTurnContext, memoryRefreshTurnsFrom, withoutInjectedContext } from './memory/memory-turn-context'
 import { ReviewQueue } from './memory/review-queue'
+import { withoutWebhookNotes } from './webhooks/webhook-messages'
 
 const REFRESH_RETRY_MS: readonly number[] = [5_000, 15_000, 45_000, 120_000]
 
@@ -46,20 +51,42 @@ export function startMemoryPreparation(run: (onFailed: (id: string) => void) => 
   }
 }
 
-export function createMemory(database: Database) {
+export function createMemory(database: Database, options: { deploymentNotice?: () => string | undefined; refreshTurns?: number } = {}) {
   const settings = reviewSettingsFrom(process.env)
   const memory = new MemoryService(new MemoryStore(database))
+  const turnContext = new MemoryTurnContext(memory, {
+    refreshTurns: options.refreshTurns ?? memoryRefreshTurnsFrom(process.env),
+    deploymentNotice: options.deploymentNotice
+  })
   const reviewQueue = new ReviewQueue(database)
   const checkpointStore = new MemoryCheckpointStore(database)
   let reviewer: MemoryReviewer | undefined
   return {
     memory,
+    turnContext,
     checkpointStore,
     reviewModel: settings.model ?? null,
     isReview: (chat: string) => reviewer?.isReview(chat) ?? false,
+    conversationHooks: (chatKind: (botId: string, chatId: string) => 'conversation' | 'lilbot' | 'unknown') => ({
+      onTurnCompleted: (botId: string, chatId: string, userText: string, assistantText: string) => {
+        if ((chatKind(botId, chatId) ?? 'conversation') === 'conversation' && !(reviewer?.isReview(chatId) ?? false))
+          reviewer?.record(botId, chatId, withoutInjectedContext(withoutWebhookNotes(userText)).slice(0, 20_000), assistantText.slice(0, 20_000))
+      },
+      onCompacted: (botId: string, chatId: string) => turnContext.invalidateChat(botId, chatId)
+    }),
     forgetBot: (botId: string) => {
       reviewQueue.forgetBot(botId)
       checkpointStore.forgetBot(botId)
+      turnContext.forgetBot(botId)
+    },
+    wireEngineApi: (engines: EngineRegistry, token: string, port: number, opts: EngineApiOptions) => {
+      const full: EngineApiOptions = {
+        ...opts,
+        checkpointStore,
+        onCheckpointSaved: (botId, chatId) => turnContext.invalidateChat(botId, chatId)
+      }
+      engines.setPreCompressCheckpoint(createPreCompressCheckpoint(full, memory))
+      return createEngineApi(memory, token, port, full)
     },
     startReviewer: (
       bots: BotService,

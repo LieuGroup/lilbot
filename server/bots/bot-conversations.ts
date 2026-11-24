@@ -20,7 +20,10 @@ export function combineTurnNotes(...sources: (TurnNotes | undefined)[]): TurnNot
       const hits = sources.map(source => source?.pending(botId, chatId)).filter((hit): hit is { text: string; taken: () => void } => Boolean(hit))
       if (!hits.length) return null
       return {
-        text: hits.map(hit => hit.text).join('\n\n'),
+        text: hits
+          .map(hit => hit.text)
+          .filter(Boolean)
+          .join('\n\n'),
         taken: () => {
           for (const hit of hits) hit.taken()
         }
@@ -29,11 +32,18 @@ export function combineTurnNotes(...sources: (TurnNotes | undefined)[]): TurnNot
   }
 }
 
+export interface ConversationHooks {
+  onTurnCompleted?: (botId: string, chatId: string, userText: string, assistantText: string) => void
+  onCompacted?: (botId: string, chatId: string) => void
+}
+
 type OpenTurn = { running: boolean; sending: number }
 
 /** Main-session selection and the history journal share one chat lifecycle. */
 export class BotConversations {
   private active = new Map<string, Set<OpenTurn>>()
+  private lastUser = new Map<string, string>()
+  private recordedRows = new Set<string>()
   constructor(
     private runtimes: BotRuntimes,
     private prefs: BotPrefsStore,
@@ -41,8 +51,27 @@ export class BotConversations {
     private sessions: SessionSettings,
     private history?: HistoryService,
     private notes?: TurnNotes,
-    private readOnlyChat?: (botId: string, chatId: string) => boolean
+    private readOnlyChat?: (botId: string, chatId: string) => boolean,
+    private hooks?: ConversationHooks
   ) {}
+
+  private handleEvent(botId: string, chatId: string, event: ChatEvent) {
+    const key = `${botId}\n${chatId}`
+    if (event.type === 'user.message' && event.text.trim()) this.lastUser.set(key, event.text)
+    if (event.type !== 'turn.finished') return
+    if (event.compacted) this.hooks?.onCompacted?.(botId, chatId)
+    if (event.status !== 'completed' || !event.text.trim()) return
+    const rowKey = event.rowId ? `${key}\n${event.rowId}` : undefined
+    if (rowKey && this.recordedRows.has(rowKey)) return
+    const user = this.lastUser.get(key)
+    if (!user) return
+    this.lastUser.delete(key)
+    if (rowKey) {
+      this.recordedRows.add(rowKey)
+      if (this.recordedRows.size > 500) this.recordedRows.delete(this.recordedRows.values().next().value!)
+    }
+    this.hooks?.onTurnCompleted?.(botId, chatId, user, event.text)
+  }
 
   hasActiveTurn(botId: string): boolean {
     for (const turn of this.active.get(botId) ?? []) if (turn.running || turn.sending > 0) return true
@@ -67,6 +96,7 @@ export class BotConversations {
       if (id && useHistory) this.history?.record(botId, id, event)
       else if (!id) pending.push(event)
       if (id && isMain) this.sessions.noteContextFromEvent(botId, id, event)
+      if (id) this.handleEvent(botId, id, event)
       onEvent(event)
     }
     // What the engine says it sends belongs to the bot only while this is its main conversation.
@@ -118,8 +148,13 @@ export class BotConversations {
             ...(options?.origin?.device ? { origin: options.origin.device } : {})
           })
         }
+        if (!options?.hidden && text.trim()) this.lastUser.set(`${botId}\n${id}`, text)
         const note = !options?.hidden && id === this.prefs.mainChat(botId) ? this.notes?.pending(botId, id) : null
-        if (!note) return await send(text, options)
+        if (!note?.text) {
+          await send(text, options)
+          note?.taken()
+          return
+        }
         await send(text, { ...options, origin: { ...options?.origin, line: [options?.origin?.line, note.text].filter(Boolean).join('\n\n') } })
         note.taken()
       } finally {
@@ -152,5 +187,6 @@ export class BotConversations {
   observe(botId: string, chatId: string, event: ChatEvent, key: string) {
     this.history?.record(botId, chatId, event, key)
     this.sessions.noteContextFromEvent(botId, chatId, event)
+    this.handleEvent(botId, chatId, event)
   }
 }

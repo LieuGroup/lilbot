@@ -43,7 +43,7 @@ test('skill preparation uses only bound live bots and Setup reports saved off sw
     skills.write({ name: 'sample', action: 'create', content: '---\nname: sample\ndescription: sample workflow\n---\nUse it.' }, 'oscar')
     const bots = new BotService(engine, store, new BotPrefsStore(db), new Workspaces(join(root, 'workspaces')), new MemoryService(new MemoryStore(db)), {
       skills,
-      memoryConnection: { url: 'http://localhost:1', tokenFile: '/unused' }
+      skillConnection: { url: 'http://localhost:1', tokenFile: '/unused' }
     })
     await bots.prepareRuntimes()
     expect(configured).toEqual(['native-a'])

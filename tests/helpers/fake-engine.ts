@@ -136,7 +136,8 @@ export function fakeService(options?: Parameters<typeof fakeEngine>[0]) {
     },
     changed: () => changes++,
     memoryChanged: () => memoryChanges++,
-    memoryConnection: { url: 'http://127.0.0.1:3370', tokenFile: '/nowhere/engine-token' }
+    memoryConnection: botId => ({ url: 'http://127.0.0.1:3370', checkpointKey: `ckpt-${botId}`, botId }),
+    skillConnection: { url: 'http://127.0.0.1:3370', tokenFile: '/nowhere/engine-token' }
   })
   return { ...fake, activity, queue, database, service, store, prefs, memory, root, changes: () => changes, memoryChanges: () => memoryChanges }
 }

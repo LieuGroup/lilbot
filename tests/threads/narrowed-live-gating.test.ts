@@ -176,12 +176,10 @@ test('zero-webhook bot gates MCP only while a local narrowed turn is live, allow
   expect((await f.mcp(f.b2.id, 'lilbot_section_create', { name: 'AfterSettle' })).refused).toBeUndefined()
   expect(Date.now() - t0).toBeLessThan(1000)
   expect((await f.mcp(f.b2.id, 'lilbot_memory_save', { kind: 'profile', text: 'Lives in Adelaide.' })).refused).toBeUndefined()
-  expect(((await (await f.enginePost(f.b2.id, '/engine/memory/context', { botId: f.b2.id, chatId: 'b2-main' })).json()) as { text: string }).text).toContain('Adelaide')
-  expect(await (await f.enginePost(f.b2.id, '/engine/memory/context', { botId: f.b2.id, chatId: 'b2-unknown' })).json()).toEqual({ text: '', shown: 0, total: 0 })
+  expect((await f.enginePost(f.b2.id, '/engine/memory/context', { botId: f.b2.id, chatId: 'b2-main' })).status).toBe(410)
   const dNoMem = f.services.threads.store.accept(f.b1, f.b2, { requestId: 'nomem', text: 'x', chatId: 'wh-dm', capabilities: ['delegation'] })
   f.services.threads.store.attach(dNoMem, f.b2.id, 'b2-nomem', true)
   f.services.threads.store.setStatus(dNoMem.id, 'done')
-  expect(await (await f.enginePost(f.b2.id, '/engine/memory/context', { botId: f.b2.id, chatId: 'b2-nomem' })).json()).toEqual({ text: '', shown: 0, total: 0 })
   expect((await f.enginePost(f.b2.id, '/engine/memory/recall', { botId: f.b2.id, chatId: 'b2-main', query: 'x' })).status).toBe(410)
 
   // Resuming the settled exchange re-arms activeNarrowedCaps; remote workers never arm local MCP gating on zero-webhook b3.

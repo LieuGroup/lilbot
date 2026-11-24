@@ -116,9 +116,7 @@ These stay in the engine's folder because they hook the engine's own turn loop. 
 
 | Hook | Does | LilBot side |
 |---|---|---|
-| Memory block per turn | Supplies the facts a bot needs most, once per turn, fenced as recalled memory and not as user input; static rules go in the system prompt so caching holds | `/engine/memory/context` |
-| After-chat review hand-off | Sends each finished turn of a real conversation (not routines, threads, reviews or sub-agents), without blocking the turn | `/engine/memory/turn` |
-| Save-before-compress | Hands over every user and assistant message before the engine compresses, and lets the engine compress only once LilBot answers `saved` (or `skipped` for LilBot's own sessions); any other answer keeps the conversation as it is. Waits out a LilBot restart, and lets LilBot tell a turn that stopped for want of the save (`failure: memory_save`) from any other failed turn | `/engine/history/save` |
+| Save-before-compress | Hands over every user and assistant message before the engine compresses, and lets the engine compress only once LilBot answers `saved` (or `skipped` for LilBot's own sessions); any other answer keeps the conversation as it is. Engines that support in-process hooks call the handler registered via `BotEngine.setPreCompressCheckpoint`; engines without an RPC callback (Hermes) call `/engine/history/save` with a per-bot `memory-checkpoint` HMAC key. Waits out a LilBot restart, and lets LilBot tell a turn that stopped for want of the save (`failure: memory_save`) from any other failed turn | `setPreCompressCheckpoint` / `/engine/history/save` |
 
 Memory tools (`lilbot_memory_recall`, `lilbot_memory_save`, `lilbot_memory_forget`), conversation search
 (`lilbot_history_search`), computer tools (`lilbot_computers_list`, `lilbot_computer_*`), and the library's

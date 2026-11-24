@@ -55,7 +55,7 @@ test('the engine API gives a check session an empty memory block and refuses its
     ),
     bots: { listBots: async () => [{ id: 'b' }] } as unknown as BotService,
     botExists: id => id === 'b',
-    deploymentNotice: () => 'the last deploy failed',
+
     skills: { writeForBot: () => ({ written: true }) } as unknown as SkillsService,
     inCheck: sessions.refusal
   })
@@ -71,9 +71,9 @@ test('the engine API gives a check session an empty memory block and refuses its
     return { status: reply.status, body: (await reply.json()) as any }
   }
   const inCheck = { botId: 'b', chatId: 'check-continued' }
-  expect(await post('/engine/memory/context', inCheck)).toEqual({ status: 200, body: { text: '', shown: 0, total: 0 } })
-  expect((await post('/engine/memory/context', { botId: 'b', chatId: 'b-main' })).body.text).toContain('report by Friday')
   for (const [path, body] of [
+    ['/engine/memory/context', {}],
+    ['/engine/memory/turn', { user: 'u', assistant: 'a' }],
     ['/engine/memory/recall', { query: 'report' }],
     ['/engine/memory/write', { kind: 'profile', text: 'The report was checked' }],
     ['/engine/memory/forget', { id: 'abcd' }],

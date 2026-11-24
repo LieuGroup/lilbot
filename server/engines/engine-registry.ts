@@ -2,7 +2,7 @@
 import type { ActivityEvent } from '../../shared/activity-schema'
 import type { ChatEvent } from '../../shared/chat-schema'
 import { LilBotError } from '../../shared/lilbot-error'
-import type { ActivityCursor, BotEngine, MemoryConnection, RuntimeBinding } from './bot-engine'
+import type { ActivityCursor, BotEngine, MemoryConnection, PreCompressHandler, RuntimeBinding } from './bot-engine'
 
 export class EngineRegistry {
   private readonly byId = new Map<string, BotEngine>()
@@ -67,14 +67,22 @@ export class EngineRegistry {
     }
   }
 
-  async refreshMemory(bindingsFor: (engineId: string) => RuntimeBinding[], connection?: MemoryConnection, onFailed?: (engineBotId: string) => void): Promise<string[]> {
+  async refreshMemory(
+    bindingsFor: (engineId: string) => RuntimeBinding[],
+    connectionFor?: (botId: string) => MemoryConnection,
+    onFailed?: (engineBotId: string) => void
+  ): Promise<string[]> {
     const updated: string[] = []
     for (const engine of this.list()) {
       const id = engine.id || this.defaultId
       const bots = bindingsFor(id)
-      if (bots.length) updated.push(...(await engine.refreshMemory(bots, connection, onFailed)))
+      if (bots.length) updated.push(...(await engine.refreshMemory(bots, connectionFor, onFailed)))
     }
     return updated
+  }
+
+  setPreCompressCheckpoint(handler: PreCompressHandler) {
+    for (const engine of this.list()) engine.setPreCompressCheckpoint?.(handler)
   }
 
   watchActivity(

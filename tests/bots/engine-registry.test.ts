@@ -67,7 +67,8 @@ function multiEngineService(engines: EngineRegistry) {
     skills,
     history,
     changed: () => changes++,
-    memoryConnection: { url: 'http://127.0.0.1:3999', tokenFile: '/nowhere/engine-token' }
+    memoryConnection: botId => ({ url: 'http://127.0.0.1:3999', checkpointKey: `ckpt-${botId}`, botId }),
+    skillConnection: { url: 'http://127.0.0.1:3999', tokenFile: '/nowhere/engine-token' }
   })
   return { database, store, prefs, memory, skills, history, activity, service, changes: () => changes }
 }

@@ -1,8 +1,4 @@
 name: lilbot-memory
-version: 0.15.0
-description: "LilBot memory: facts kept in LilBot's own database, private to a bot or shared between the user's bots."
-hooks:
-  - on_turn_start
-  - sync_turn
-  - on_session_switch
-  - on_pre_compress
+version: 0.16.0
+description: Pre-compress memory checkpoint bridge to the LilBot server on this machine
+provides_memory: true

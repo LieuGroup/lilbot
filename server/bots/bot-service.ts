@@ -4,7 +4,7 @@ import type { Bot, BotCreateInput, BotDetail, BotPrefsInput, BotUpdateInput, Mod
 import type { ChatEvent } from '../../shared/chat-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import type { MemoryFact, MemoryWriteInput } from '../../shared/memory-schema'
-import type { ActivityCursor, BotEngine, MemoryConnection } from '../engines/bot-engine'
+import type { ActivityCursor, BotEngine, MemoryConnection, SkillConnection } from '../engines/bot-engine'
 import { asEngineRegistry, type EngineRegistry } from '../engines/engine-registry'
 import type { MemoryService } from '../memory/memory-service'
 import { BackgroundRuns } from './bot-background-runs'
@@ -21,15 +21,16 @@ import type { BotRecord, BotStore } from './bot-store'
 import type { Workspaces } from './workspaces'
 
 export interface BotServiceOptions {
-  /** Called whenever the bot list would look different to a client. */
   changed?: () => void
-  /** Called whenever a fact was saved or forgotten through the app. */
   memoryChanged?: () => void
   history?: import('../history/history-service').HistoryService
   turnNotes?: import('./bot-conversations').TurnNotes // what LilBot adds to Oscar's next message (a webhook run's message)
   skills?: import('../skills/skills-service').SkillsService
   cleanupBot?: (botId: string) => void
-  memoryConnection?: MemoryConnection
+  memoryConnection?: (botId: string) => MemoryConnection
+  skillConnection?: SkillConnection
+  memoryContext?: import('../memory/memory-turn-context').MemoryTurnContext
+  conversationHooks?: import('./bot-conversations').ConversationHooks
   /** LilBot-owned MCP connections given to every bot, by LilBot id. */
   connections?: (botId: string) => import('../engines/mcp-connection').McpConnection[]
   onConnectionsChanged?: (botId: string) => void
@@ -67,12 +68,12 @@ export class BotService {
     this.engines = asEngineRegistry(engine)
     this.history = options.history
     this.library = options.skills
-    this.runtimes = new BotRuntimes(store, this.engines, options.skills, options.memoryConnection, options.connections, options)
+    this.runtimes = new BotRuntimes(store, this.engines, options.skills, options.skillConnection, options.connections, options)
     this.changed = options.changed ?? (() => {})
     if (options.skills) this.skills = new BotSkills(options.skills, this.runtimes, this.engines, this.changed)
     this.sessions = new SessionSettings(this.engines, prefs, this.changed)
-    this.background = new BackgroundRuns(this.runtimes, workspaces, this.sessions)
-    this.conversations = new BotConversations(this.runtimes, prefs, workspaces, this.sessions, options.history, options.turnNotes, options.readOnlyChat)
+    this.background = new BackgroundRuns(this.runtimes, workspaces, this.sessions, options.memoryContext)
+    this.conversations = new BotConversations(this.runtimes, prefs, workspaces, this.sessions, options.history, options.turnNotes, options.readOnlyChat, options.conversationHooks)
     this.creation = new BotCreation(this, store)
     this.memoryChanged = options.memoryChanged ?? (() => {})
     this.deletion = new BotDeletion(
@@ -207,17 +208,15 @@ export class BotService {
     return fact
   }
 
-  forgetMemory(factId: string) {
+  forgetMemory = (factId: string) => {
     this.memory.forgetAsUser(factId)
     this.memoryChanged()
   }
-
-  restoreMemory(factId: string) {
+  restoreMemory = (factId: string) => {
     this.memory.restore(factId)
     this.memoryChanged()
   }
-
-  pauseMemory(factId: string, paused: boolean) {
+  pauseMemory = (factId: string, paused: boolean) => {
     this.memory.setPaused(factId, paused)
     this.memoryChanged()
   }

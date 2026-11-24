@@ -13,9 +13,11 @@ import { Workspaces } from '../server/bots/workspaces'
 import { openDatabase } from '../server/database/database'
 import { HermesEngine } from '../server/engines/hermes/hermes-engine'
 import { createEngineApi, engineToken } from '../server/http/engine-api'
+import { checkpointConnectionFor } from '../server/memory/memory-checkpoint-key'
 import { MemoryReviewer } from '../server/memory/memory-reviewer'
 import { MemoryService } from '../server/memory/memory-service'
 import { MemoryStore } from '../server/memory/memory-store'
+import { MemoryTurnContext } from '../server/memory/memory-turn-context'
 import { ReviewQueue } from '../server/memory/review-queue'
 import type { ChatEvent } from '../shared/chat-schema'
 
@@ -29,11 +31,20 @@ const engine = new HermesEngine([])
 const database = openDatabase(join(scratch, 'lilbot.db'))
 const memory = new MemoryService(new MemoryStore(database))
 const queue = new ReviewQueue(database)
+const token = engineToken(scratch)
+const turnContext = new MemoryTurnContext(memory)
+let reviewer: MemoryReviewer
 const bots = new BotService(engine, new BotStore(database), new BotPrefsStore(database), new Workspaces(join(scratch, 'workspaces')), memory, {
-  memoryConnection: { url: `http://127.0.0.1:${PORT}`, tokenFile: join(scratch, 'engine-token') }
+  memoryConnection: botId => checkpointConnectionFor(`http://127.0.0.1:${PORT}`, token, botId),
+  memoryContext: turnContext,
+  turnNotes: turnContext,
+  conversationHooks: {
+    onTurnCompleted: (id, chatId, user, assistant) => reviewer.record(id, chatId, user, assistant),
+    onCompacted: (id, chatId) => turnContext.invalidateChat(id, chatId)
+  }
 })
-const reviewer = new MemoryReviewer(queue, bots)
-const api = createEngineApi(memory, engineToken(scratch), PORT, { botExists: id => new BotStore(database).exists(id), reviewer })
+reviewer = new MemoryReviewer(queue, bots)
+const api = createEngineApi(memory, token, PORT, { botExists: id => new BotStore(database).exists(id), reviewer })
 const server = Bun.serve({
   hostname: '127.0.0.1',
   port: PORT,

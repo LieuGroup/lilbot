@@ -66,7 +66,7 @@ test('createAppServices wires narrowed threadStore, webhook callers, and workerA
     expect(services.threads.store.get(threadId).capabilities).toEqual(['delegation'])
     services.threads.store.attach(services.threads.store.delivery(`${b1.id}:a1`)!, b2.id, 'b2-narrow', true)
 
-    // narrowed threadStore wired into createWebhooks -> engineApi returns empty memory context for b2-narrow & 410 on retired recall.
+    // Retired /engine/memory/context and /engine/memory/recall answer 410 unconditionally.
     const memCtx = await services.engineApi(
       new Request('http://127.0.0.1:3999/engine/memory/context', {
         method: 'POST',
@@ -75,7 +75,7 @@ test('createAppServices wires narrowed threadStore, webhook callers, and workerA
       }),
       '/engine/memory/context'
     )
-    expect(await memCtx.json()).toEqual({ text: '', shown: 0, total: 0 })
+    expect(memCtx.status).toBe(410)
     const memRes = await services.engineApi(
       new Request('http://127.0.0.1:3999/engine/memory/recall', {
         method: 'POST',

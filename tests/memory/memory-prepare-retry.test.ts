@@ -63,10 +63,8 @@ exit 0
     )
     try {
       const home = join(root, 'profiles', 'owned')
-      const token = join(root, 'token')
-      writeFileSync(token, 'fixture-only')
       mkdirSync(join(home, 'plugins', 'lilbot-memory-v0-14-0'), { recursive: true })
-      writeFileSync(join(home, 'lilbot-memory.json'), JSON.stringify({ url: 'http://127.0.0.1:1', token_file: token, bot_id: 'bot-a' }))
+      writeFileSync(join(home, 'lilbot-memory.json'), JSON.stringify({ url: 'http://127.0.0.1:1', checkpoint_key: 'ckpt-bot-a', bot_id: 'bot-a' }))
       const child = Bun.spawn(['bun', script], { env: { ...process.env, HERMES_HOME: root, LILBOT_HERMES_BIN: hermes }, stdout: 'pipe', stderr: 'pipe' })
       const stderr = await new Response(child.stderr).text()
       expect(await child.exited, stderr).toBe(0)

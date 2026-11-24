@@ -2,11 +2,22 @@
 import type { BotModel, ModelProvider } from '../../../shared/bot-schema'
 import type { ChatEvent } from '../../../shared/chat-schema'
 import { LilBotError } from '../../../shared/lilbot-error'
-import type { BotEngine, ChatOptions, MemoryConnection, ReviewOptions, RoutineOptions, RuntimeIdentity, SessionChange, SkillSettings, ToolCallSeen } from '../bot-engine'
+import type {
+  BotEngine,
+  ChatOptions,
+  MemoryConnection,
+  PreCompressHandler,
+  ReviewOptions,
+  RoutineOptions,
+  RuntimeIdentity,
+  SessionChange,
+  SkillSettings,
+  ToolCallSeen
+} from '../bot-engine'
 import type { McpConnection } from '../mcp-connection'
 import { conversationSource, newSession, openScriptedChat, type ResumeOutcome, runScriptedTurn, type ScriptedSession, type ScriptedTurnHandler } from './scripted-chat'
-import { attachSessionMcp, callMcpServer } from './scripted-mcp'
-import { DEFAULT_SCRIPTED_MODELS, ScriptedRoutineLedger, type ScriptedRuntime } from './scripted-routines'
+import { attachSessionMcp, callMcpServer, findMcpConnection } from './scripted-mcp'
+import { DEFAULT_SCRIPTED_MODELS, runSessionPreCompress, ScriptedRoutineLedger, type ScriptedRuntime } from './scripted-routines'
 
 export interface ScriptedEngineOptions {
   id?: string
@@ -27,6 +38,7 @@ export class ScriptedEngine implements BotEngine {
   private botListeners = new Set<() => void>()
   private nextChat = 0
   private onTurn?: ScriptedTurnHandler
+  private preCompress?: PreCompressHandler
   private models: ModelProvider[]
   readonly mcpToolName: (server: string, tool: string) => string
   readonly routineCalls: { nativeId: string; prompt: string; options: RoutineOptions & ChatOptions }[] = []
@@ -46,7 +58,6 @@ export class ScriptedEngine implements BotEngine {
   dropSessions = () => this.sessions.clear()
   scriptResume = (chatId: string, outcomes: ResumeOutcome[]) => void this.resumeOutcomes.set(chatId, [...outcomes])
   loseReceipt = (runId: string) => this.ledger.loseReceipt(runId)
-  /** Simulates the LilBot server process crashing: drops client listeners and awaits while engine turns keep running. */
   disconnectClient() {
     this.client.abort()
     this.client = new AbortController()
@@ -100,18 +111,9 @@ export class ScriptedEngine implements BotEngine {
   }
   async openChat(engineBotId: string, chatId: string | null, options: ChatOptions, onEvent: (event: ChatEvent) => void) {
     this.requireRuntime(engineBotId)
-    return openScriptedChat(
-      this.sessions,
-      (n, w, h) => this.createSession(n, w, h),
-      (n, c, t, a, s) => this.callMcp(n, c, t, a, s),
-      () => this.onTurn,
-      engineBotId,
-      chatId,
-      options,
-      onEvent,
-      this.client.signal,
-      this.resumeOutcomes
-    )
+    const mk = (n: string, w: string, h: boolean) => this.createSession(n, w, h)
+    const mcp = (n: string, c: string, t: string, a?: Record<string, unknown>, s?: string) => this.callMcp(n, c, t, a, s)
+    return openScriptedChat(this.sessions, mk, mcp, () => this.onTurn, engineBotId, chatId, options, onEvent, this.client.signal, this.resumeOutcomes)
   }
   async connectMemory(engineBotId: string, connection: MemoryConnection) {
     const runtime = this.requireRuntime(engineBotId)
@@ -120,6 +122,12 @@ export class ScriptedEngine implements BotEngine {
     return { aboutUser: [], ownNotes: [] }
   }
   refreshMemory = async () => []
+  setPreCompressCheckpoint(handler: PreCompressHandler) {
+    this.preCompress = handler
+  }
+  triggerPreCompress(botId: string, chatId: string) {
+    return runSessionPreCompress(this.sessions.get(chatId), this.preCompress, botId, chatId)
+  }
   async reviewMemory(engineBotId: string, prompt: string, options: ReviewOptions) {
     this.requireRuntime(engineBotId)
     if (!options.sessionMcp?.length) throw new LilBotError('session_mcp_unavailable', 'Limited sessions require a session-bound MCP connection.')
@@ -146,26 +154,28 @@ export class ScriptedEngine implements BotEngine {
       this.onTurn
     )
   }
-  sessionDiscoveredTools(chatId: string): Map<string, string[]> | undefined {
-    return this.sessions.get(chatId)?.discoveredTools
-  }
-  onBotsChanged = (listener: () => void) => {
+  sessionDiscoveredTools = (chatId: string) => this.sessions.get(chatId)?.discoveredTools
+  onBotsChanged(listener: () => void) {
     this.botListeners.add(listener)
-    return () => void this.botListeners.delete(listener)
+    return () => {
+      this.botListeners.delete(listener)
+    }
   }
-  onToolCall = (listener: (call: ToolCallSeen) => void) => {
+  onToolCall(listener: (call: ToolCallSeen) => void) {
     this.toolListeners.add(listener)
-    return () => void this.toolListeners.delete(listener)
+    return () => {
+      this.toolListeners.delete(listener)
+    }
   }
   async stopRun(engineBotId: string, chatId: string) {
-    const session = this.sessions.get(chatId)
-    if (!session || session.nativeId !== engineBotId || !session.running) return false
-    session.controller?.abort()
+    const s = this.sessions.get(chatId)
+    if (!s || s.nativeId !== engineBotId || !s.running) return false
+    s.controller?.abort()
     return true
   }
   async steerRun(engineBotId: string, chatId: string) {
-    const session = this.sessions.get(chatId)
-    return session && session.nativeId === engineBotId && session.running ? ('steered' as const) : ('not_running' as const)
+    const s = this.sessions.get(chatId)
+    return s && s.nativeId === engineBotId && s.running ? ('steered' as const) : ('not_running' as const)
   }
   private createSession(nativeId: string, workspace: string, hidden: boolean): ScriptedSession {
     const chatId = `${this.id}-chat-${++this.nextChat}`
@@ -179,15 +189,10 @@ export class ScriptedEngine implements BotEngine {
     return runtime
   }
   private async callMcp(nativeId: string, chatId: string, tool: string, args: Record<string, unknown> = {}, server = 'lilbot_system') {
-    const session = this.sessions.get(chatId)
-    const conn = session?.sessionMcp
-      ? session.sessionMcp.find(c => c.name === server || (server === 'lilbot_system' && c.name === 'lilbot') || (server === 'lilbot_t3' && c.name === 't3'))
-      : this.requireRuntime(nativeId).connections.find(c => c.name === server)
-    if (!conn) return { ok: false, text: `Missing MCP connection: ${server}` }
-    const reportServer = session?.sessionMcp ? `editor_${conn.name}` : server
-    return callMcpServer(conn, tool, args, callId => {
-      const reported: ToolCallSeen = { engineBotId: nativeId, chatId, tool: this.mcpToolName(reportServer, tool), args, callId }
-      for (const listener of this.toolListeners) listener(reported)
+    const found = findMcpConnection(this.sessions.get(chatId)?.sessionMcp, this.requireRuntime(nativeId).connections, server)
+    if (!found) return { ok: false, text: `Missing MCP connection: ${server}` }
+    return callMcpServer(found.conn, tool, args, callId => {
+      for (const listener of this.toolListeners) listener({ engineBotId: nativeId, chatId, tool: this.mcpToolName(found.reportServer, tool), args, callId })
     })
   }
 }

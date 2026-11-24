@@ -31,20 +31,32 @@ test('capability selects author, rejects deleted credentials, and excludes persi
     for (const alias of ['stored', 'runtime']) store.attach(store.delivery('b1:one')!, other.id, alias, true)
     const reopened = new ThreadStore(f.database)
     const restarted = createEngineApi(f.memory, 'test', 3371, {
+      bots: f.service,
+      history: {} as never,
       botExists: () => true,
       chatKind: (_bot, chat) => (reopened.isInternal(chat) ? 'lilbot' : 'conversation'),
       reviewer
     })
-    for (const chatId of ['stored', 'runtime', 'main'])
-      await restarted(
-        new Request('http://localhost:3371/engine/memory/turn', {
+    for (const chatId of ['stored', 'runtime']) {
+      const skipped = await restarted(
+        new Request('http://localhost:3371/engine/history/save', {
           method: 'POST',
-          headers: { host: 'localhost:3371', authorization: 'Bearer test' },
-          body: JSON.stringify({ botId: other.id, chatId, user: 'hi', assistant: 'hello' })
+          headers: { host: 'localhost:3371', authorization: 'Bearer test', 'x-lilbot-bot-capability': botCapability('test', other.id) },
+          body: JSON.stringify({ chatId, messages: [{ role: 'user', text: 'hi' }] })
         }),
-        '/engine/memory/turn'
+        '/engine/history/save'
       )
-    expect(f.queue.take(other.id, 10).map(t => t.chatId)).toEqual(['main'])
+      expect(await skipped.json()).toEqual({ saved: false, skipped: true })
+    }
+    const mainSave = await restarted(
+      new Request('http://localhost:3371/engine/history/save', {
+        method: 'POST',
+        headers: { host: 'localhost:3371', authorization: 'Bearer test', 'x-lilbot-bot-capability': botCapability('test', other.id) },
+        body: JSON.stringify({ chatId: 'main', messages: [{ role: 'user', text: 'hi' }] })
+      }),
+      '/engine/history/save'
+    )
+    expect(await mainSave.json()).toEqual({ saved: true, passes: 1 })
     f.store.markDeleted(f.store.get('b1'), { files: 'delete', privateMemories: 'forget' })
     expect((await call('/engine/threads/ask', input)).status).toBe(403)
     expect((await threads.open(other.id, result.threadId)).messages[0].authorId).toBe('b1')

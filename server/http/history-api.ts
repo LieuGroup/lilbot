@@ -1,15 +1,26 @@
 import { z } from 'zod'
 import { LilBotError } from '../../shared/lilbot-error'
+import type { PreCompressEvidence, PreCompressHandler } from '../engines/bot-engine'
 import { MemoryCheckpoint } from '../memory/memory-checkpoint'
 import type { MemoryService } from '../memory/memory-service'
+import { withoutInjectedContext } from '../memory/memory-turn-context'
 import { withoutWebhookNotes } from '../webhooks/webhook-messages'
 import type { EngineApiOptions } from './engine-api'
 
-/** Every user and assistant message of the conversation Hermes is about to shorten, oldest first (adapter 0.13.0 on). */
+/** Every user and assistant message of the conversation the engine is about to shorten, oldest first. */
 const Save = z.object({ chatId: z.string().min(1).max(200), messages: z.array(z.object({ role: z.enum(['user', 'assistant']), text: z.string() })).max(200_000) })
 
-/** Pre-compress memory checkpoint. Caller identity has already been derived from the bot-bound capability, never from body.botId. */
-export function historyApi({ history, bots, reviewer, chatKind, checkpointStore }: EngineApiOptions, memory?: MemoryService) {
+export function createPreCompressCheckpoint(
+  {
+    history,
+    bots,
+    reviewer,
+    chatKind,
+    checkpointStore,
+    onCheckpointSaved
+  }: Pick<EngineApiOptions, 'history' | 'bots' | 'reviewer' | 'chatKind' | 'checkpointStore' | 'onCheckpointSaved'>,
+  memory?: MemoryService
+): PreCompressHandler {
   const checkpoint = new MemoryCheckpoint(
     (bot, prompt) => {
       if (reviewer) return reviewer.runPass(bot, prompt, true)
@@ -19,21 +30,30 @@ export function historyApi({ history, bots, reviewer, chatKind, checkpointStore 
     checkpointStore,
     memory ? bot => memory.contextBlock(bot).text : () => ''
   )
-  return async (bot: string, path: string, body: unknown) => {
+  return async (bot: string, chatId: string, messages: PreCompressEvidence[]) => {
     if (!history || !bots) throw new LilBotError('unavailable', 'History is unavailable.')
+    const kind = reviewer?.isReview(chatId) ? 'lilbot' : (chatKind?.(bot, chatId) ?? 'conversation')
+    // A session LilBot runs itself, a review included, carries outside or bot text: nothing in it is reviewed for memory.
+    if (kind === 'lilbot') return { saved: false, skipped: true }
+    // Never let a conversation be shortened unreviewed because its lineage cannot be read just now: the engine asks again.
+    if (kind === 'unknown') throw new LilBotError('lineage_unknown', 'LilBot cannot tell which conversation this is just now; try again.')
+    const passes = await checkpoint.save(
+      bot,
+      chatId,
+      messages.map(message => ({ ...message, text: withoutInjectedContext(withoutWebhookNotes(message.text)) }))
+    )
+    onCheckpointSaved?.(bot, chatId)
+    return { saved: true, passes }
+  }
+}
+
+/** Pre-compress memory checkpoint HTTP adapter. Caller identity is derived from the bot-bound credential, never body.botId. */
+export function historyApi(options: EngineApiOptions, memory?: MemoryService) {
+  const run = createPreCompressCheckpoint(options, memory)
+  return async (bot: string, path: string, body: unknown) => {
     if (path === 'save') {
       const input = Save.parse(body)
-      const kind = reviewer?.isReview(input.chatId) ? 'lilbot' : (chatKind?.(bot, input.chatId) ?? 'conversation')
-      // A session LilBot runs itself, a review included, carries outside or bot text: nothing in it is reviewed for memory.
-      if (kind === 'lilbot') return { saved: false, skipped: true }
-      // Never let a conversation be shortened unreviewed because its lineage cannot be read just now: the engine asks again.
-      if (kind === 'unknown') throw new LilBotError('lineage_unknown', 'LilBot cannot tell which conversation this is just now; try again.')
-      const passes = await checkpoint.save(
-        bot,
-        input.chatId,
-        input.messages.map(message => ({ ...message, text: withoutWebhookNotes(message.text) }))
-      )
-      return { saved: true, passes }
+      return run(bot, input.chatId, input.messages)
     }
     throw new LilBotError('unknown_method', 'Unknown history operation.')
   }

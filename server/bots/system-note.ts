@@ -27,6 +27,7 @@ export function buildNote({ bot, t3Enabled }: NoteFacts): string {
     t3Enabled
       ? 'Coding through T3 Code: check lilbot_status (area `t3`) or lilbot_about for current sign-in status.'
       : 'Coding: do small changes yourself, start a worker with lilbot_delegate (worker: true) for larger work, or hand project work to its developer bot (skill lilbot-coding, lilbot_guide topic `coding`).',
+    'Scheduled work: use lilbot_routine, never the engine’s own cron. Runs have full access and need no approvals.',
     'Work board: before any work beyond a reply, however small (changing a file, setting or message; handed over, scheduled or from outside), open an item with lilbot_work. Not for answering a question.',
     'Write its "done" definition before starting, add evidence read from the real result, then finish it (skill lilbot-work).',
     t3Enabled

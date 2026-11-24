@@ -6,7 +6,6 @@
     "server/bots/bot-service.ts": 312,
     "server/computers/computer-service.ts": 277,
     "server/computers/computer-store.ts": 219,
-    "server/engines/hermes/memory-adapter/__init__.py": 224,
     "tests/computers/adversarial.test.ts": 203,
     "tests/computers/computers.test.ts": 224
   }

@@ -10,12 +10,12 @@ describe('installMemory swap invariant: profile always points at an existing plu
     try {
       const log = join(root, 'calls.log')
       const hermes = writeFakeHermes(root, log)
-      const { home, token } = seedProfile(root)
+      const { home, checkpointKey } = seedProfile(root)
       const res = await runSnippet(
         root,
         hermes,
         `import { installMemory } from '${MODULE_DIR}/hermes-memory-setup'
-         await installMemory('owned', { url: 'http://127.0.0.1:1', tokenFile: '${token}', botId: 'bot-a' })`
+         await installMemory('owned', { url: 'http://127.0.0.1:1', checkpointKey: '${checkpointKey}', botId: 'bot-a' })`
       )
       expect(res.exitCode, res.stderr).toBe(0)
       expect(readFileSync(log, 'utf8').trim().split('\n')).toEqual([
@@ -49,12 +49,12 @@ describe('installMemory swap invariant: profile always points at an existing plu
       const root = mkdtempSync(join(tmpdir(), 'mem-swap-fail-'))
       try {
         const hermes = writeFakeHermes(root, join(root, 'calls.log'))
-        const { home, token } = seedProfile(root)
+        const { home, checkpointKey } = seedProfile(root)
         const failRes = await runSnippet(
           root,
           hermes,
           `import { installMemory } from '${MODULE_DIR}/hermes-memory-setup'
-           try { await installMemory('owned', { url: 'http://127.0.0.1:1', tokenFile: '${token}', botId: 'bot-a' }); process.exit(1) } catch { process.exit(0) }`,
+           try { await installMemory('owned', { url: 'http://127.0.0.1:1', checkpointKey: '${checkpointKey}', botId: 'bot-a' }); process.exit(1) } catch { process.exit(0) }`,
           c.env
         )
         expect(failRes.exitCode, failRes.stderr).toBe(0)
@@ -85,11 +85,11 @@ describe('installMemory swap invariant: profile always points at an existing plu
     const root1 = mkdtempSync(join(tmpdir(), 'mem-swap-race1-'))
     try {
       const hermes = writeFakeHermes(root1, join(root1, 'calls.log'))
-      const { home, token } = seedProfile(root1)
+      const { home, checkpointKey } = seedProfile(root1)
       const aPaused = join(root1, 'a-paused')
       const bDone = join(root1, 'b-done')
       const code = `import { installMemory } from '${MODULE_DIR}/hermes-memory-setup'
-        try { await installMemory('owned', { url: 'http://127.0.0.1:1', tokenFile: '${token}', botId: 'bot-a' }) } catch {}`
+        try { await installMemory('owned', { url: 'http://127.0.0.1:1', checkpointKey: '${checkpointKey}', botId: 'bot-a' }) } catch {}`
       const procA = runSnippet(root1, hermes, code, {
         SIGNAL_ON_KEY: 'memory.memory_enabled',
         SIGNAL_FILE: aPaused,
@@ -116,12 +116,12 @@ describe('installMemory swap invariant: profile always points at an existing plu
     const root2 = mkdtempSync(join(tmpdir(), 'mem-swap-race2-'))
     try {
       const hermes = writeFakeHermes(root2, join(root2, 'calls.log'))
-      const { home, token } = seedProfile(root2)
+      const { home, checkpointKey } = seedProfile(root2)
       const res = await runSnippet(
         root2,
         hermes,
         `import { installMemory } from '${MODULE_DIR}/hermes-memory-setup'
-         await installMemory('owned', { url: 'http://127.0.0.1:1', tokenFile: '${token}', botId: 'bot-a' })`,
+         await installMemory('owned', { url: 'http://127.0.0.1:1', checkpointKey: '${checkpointKey}', botId: 'bot-a' })`,
         { FLIP_AFTER_KEY: 'memory.provider', FLIP_TO_PROVIDER: OLD_NAME }
       )
       expect(res.exitCode, res.stderr).toBe(0)
