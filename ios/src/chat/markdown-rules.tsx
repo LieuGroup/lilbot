@@ -45,9 +45,9 @@ function createMarkdownStyle(theme: Palette) {
     thead: { backgroundColor: theme.muted },
     tbody: {},
     tr: { flexDirection: 'row' as const, borderBottomWidth: 1, borderColor: theme.hairline },
-    th: { flex: 0, width: TABLE_CELL_WIDTH, paddingHorizontal: 10, paddingVertical: 8, borderRightWidth: 1, borderColor: theme.hairline },
-    td: { flex: 0, width: TABLE_CELL_WIDTH, paddingHorizontal: 10, paddingVertical: 8, borderRightWidth: 1, borderColor: theme.hairline },
-    image: { width: '100%' as const, minWidth: 220, maxWidth: '100%' as const, aspectRatio: 16 / 10, borderRadius: 12, backgroundColor: theme.muted, marginTop: 0, marginBottom: 0 },
+    th: { flex: 0, width: TABLE_CELL_WIDTH, paddingHorizontal: 10, paddingVertical: 8, borderRightWidth: 1, borderColor: theme.hairline, color: theme.foreground, fontFamily: 'Inter_600SemiBold', fontSize: codeSize, lineHeight: codeLine },
+    td: { flex: 0, width: TABLE_CELL_WIDTH, paddingHorizontal: 10, paddingVertical: 8, borderRightWidth: 1, borderColor: theme.hairline, color: theme.foreground, fontFamily: 'Inter_400Regular', fontSize: codeSize, lineHeight: codeLine },
+    image: { flex: 0, width: '100%' as const, minWidth: 220, maxWidth: '100%' as const, aspectRatio: 16 / 10, borderRadius: 12, backgroundColor: theme.muted, marginTop: 0, marginBottom: 0 },
     link: { color: theme.primary, textDecorationLine: 'underline' as const },
     hr: { backgroundColor: theme.border, height: 1, marginVertical: 2 }
   }
@@ -60,8 +60,8 @@ function trimTrailingNewline(content: unknown): string {
 
 function renderCodeScroll(node: ASTNode, styles: Record<string, unknown>) {
   return (
-    <View key={node.key} style={styles.fence as object}>
-      <ScrollView horizontal showsHorizontalScrollIndicator nestedScrollEnabled>
+    <View key={node.key} style={styles._VIEW_SAFE_fence as object}>
+      <ScrollView horizontal showsHorizontalScrollIndicator nestedScrollEnabled style={{ flexGrow: 0, flexShrink: 0 }}>
         <Text selectable style={styles.code_block as object}>
           {trimTrailingNewline(node.content)}
         </Text>
@@ -74,9 +74,11 @@ export const markdownRules: RenderRules = {
   fence: (node, _children, _parent, styles) => renderCodeScroll(node, styles),
   code_block: (node, _children, _parent, styles) => renderCodeScroll(node, styles),
   table: (node: ASTNode, children: ReactNode, _parent, styles) => (
-    <ScrollView key={node.key} horizontal showsHorizontalScrollIndicator nestedScrollEnabled style={{ maxWidth: '100%' }}>
-      <View style={styles._VIEW_SAFE_table}>{children}</View>
-    </ScrollView>
+    <View key={node.key} style={{ maxWidth: '100%' }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator nestedScrollEnabled style={{ flexGrow: 0, flexShrink: 0 }} contentContainerStyle={{ alignItems: 'flex-start' }}>
+        <View style={styles._VIEW_SAFE_table}>{children}</View>
+      </ScrollView>
+    </View>
   ),
   image: (node: ASTNode, _children, _parent, styles, allowedImageHandlers: string[], defaultImageHandler: string | null) => {
     const src = typeof node.attributes?.src === 'string' ? node.attributes.src : ''

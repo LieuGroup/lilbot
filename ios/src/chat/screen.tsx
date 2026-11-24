@@ -11,6 +11,7 @@ import { resolveChatStatusLine } from '../chat/status'
 import { useChat } from '../chat/use-chat'
 import { useConnectionStore } from '../connection/store'
 import { BotAvatar } from '../ui/avatar'
+import { DYNAMIC_TYPE_CAPS } from '../ui/dynamic-type'
 import { MoreHorizontalIcon, NewChatIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
@@ -60,7 +61,7 @@ export function ChatScreen({ bot, hideHeader = false, headerLeading, showNewSess
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: theme.hairline }}>
           {headerLeading}
           <BotAvatar name={bot.name} avatar={bot.prefs.avatar} size={28} />
-          <AppText variant="title" numberOfLines={1} style={{ flex: 1 }}>
+          <AppText variant="title" numberOfLines={1} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.headerTitle} style={{ flex: 1 }}>
             {bot.name}
           </AppText>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>

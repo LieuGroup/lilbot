@@ -20,6 +20,7 @@ import { DuoStripAvatar } from '../../../duo/strip-avatar'
 import { useLiveSurface, useScreenReaderEnabled, useVerticalBarEdge } from '../../../duo/use-surface'
 import { buildDuoVerticalBarItems, duoVerticalHeaderOptions, resolveDuoStripScreen, shouldHideDuoChatHeader } from '../../../duo/vertical-bar'
 import { BotAvatar } from '../../../ui/avatar'
+import { DYNAMIC_TYPE_CAPS } from '../../../ui/dynamic-type'
 import { MoreHorizontalIcon } from '../../../ui/icon'
 import { AppText } from '../../../ui/text'
 import { useTheme } from '../../../ui/theme'
@@ -151,7 +152,7 @@ function ChatHeaderTitle({ bot }: { bot: Bot }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, maxWidth: 240 }}>
       <BotAvatar name={bot.name} avatar={bot.prefs.avatar} size={24} />
-      <AppText variant="title" numberOfLines={1} style={{ flexShrink: 1 }}>
+      <AppText variant="title" numberOfLines={1} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.headerTitle} style={{ flexShrink: 1 }}>
         {bot.name}
       </AppText>
     </View>

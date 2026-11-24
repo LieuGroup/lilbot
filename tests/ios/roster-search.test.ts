@@ -20,6 +20,7 @@ describe('iOS Roster search state wiring, section collapse, and 44 pt controls',
     const rosterSource = readFileSync(resolve(process.cwd(), 'ios/src/bots/roster.tsx'), 'utf8')
     const chromeSource = readFileSync(resolve(process.cwd(), 'ios/src/bots/roster-chrome.tsx'), 'utf8')
     const modelPillSource = readFileSync(resolve(process.cwd(), 'ios/src/bots/model-pill.tsx'), 'utf8')
+    const rowSource = readFileSync(resolve(process.cwd(), 'ios/src/bots/roster-row.tsx'), 'utf8')
 
     expect(shellSource).toContain('setSearch(openRosterSearch)')
     expect(shellSource).toContain('setSearch(closeRosterSearch)')
@@ -39,6 +40,8 @@ describe('iOS Roster search state wiring, section collapse, and 44 pt controls',
 
     expect(modelPillSource).toContain('hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}')
     expect(modelPillSource).toContain('maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.modelPill}')
+    expect(rowSource).toContain('maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowName}')
+    expect(rowSource).toContain('maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowPreview}')
   })
 
   test('collapsible user sections hide bots unless collapsed section contains the selected bot', () => {

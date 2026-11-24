@@ -111,6 +111,7 @@ export const RosterRow = memo(function RosterRow({ bot, selected, splitMode, spa
                 <AppText
                   numberOfLines={textLines}
                   ellipsizeMode="tail"
+                  maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowName}
                   style={{ ...MOBILE_SCALE.roster.rowName, flex: 1, minWidth: 0, fontFamily: 'Inter_600SemiBold' }}
                 >
                   {bot.name}
@@ -130,7 +131,13 @@ export const RosterRow = memo(function RosterRow({ bot, selected, splitMode, spa
                 <RowStatusMarks statusMark={display.statusMark} unread={display.unread} />
               </View>
               {display.inlineText ? (
-                <AppText color={previewColor} numberOfLines={textLines} ellipsizeMode="tail" style={{ ...MOBILE_SCALE.roster.rowPreview, fontFamily: 'Inter_400Regular' }}>
+                <AppText
+                  color={previewColor}
+                  numberOfLines={textLines}
+                  ellipsizeMode="tail"
+                  maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowPreview}
+                  style={{ ...MOBILE_SCALE.roster.rowPreview, fontFamily: 'Inter_400Regular' }}
+                >
                   {display.inlineText}
                 </AppText>
               ) : null}

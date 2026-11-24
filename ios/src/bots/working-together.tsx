@@ -5,7 +5,7 @@ import { Pressable, useWindowDimensions, View } from 'react-native'
 import type { Bot } from '../../../shared/bot-schema'
 import type { RunningGroup } from '../../../shared/client/bots/running-groups'
 import { BotAvatar } from '../ui/avatar'
-import { rosterRowTextLines, scaledRowAvatarSize } from '../ui/dynamic-type'
+import { DYNAMIC_TYPE_CAPS, rosterRowTextLines, scaledRowAvatarSize } from '../ui/dynamic-type'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { MOBILE_SCALE } from '../ui/tokens'
@@ -53,7 +53,7 @@ function GroupRow({ group, splitMode, onSelectBot }: { group: RunningGroup; spli
       <GroupAvatarCluster bots={group.bots} size={avatarSize} />
       <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <AppText numberOfLines={textLines} ellipsizeMode="tail" style={{ ...MOBILE_SCALE.roster.rowName, flex: 1, fontFamily: 'Inter_600SemiBold' }}>
+          <AppText numberOfLines={textLines} ellipsizeMode="tail" maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowName} style={{ ...MOBILE_SCALE.roster.rowName, flex: 1, fontFamily: 'Inter_600SemiBold' }}>
             {group.purpose}
           </AppText>
           <AppText variant="meta" color={theme.mutedForeground}>
@@ -61,7 +61,7 @@ function GroupRow({ group, splitMode, onSelectBot }: { group: RunningGroup; spli
           </AppText>
           <WorkingSpinner color={theme.primary} size={14} />
         </View>
-        <AppText color={theme.mutedForeground} numberOfLines={textLines} ellipsizeMode="tail" style={{ ...MOBILE_SCALE.roster.rowPreview, fontFamily: 'Inter_400Regular' }}>
+        <AppText color={theme.mutedForeground} numberOfLines={textLines} ellipsizeMode="tail" maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowPreview} style={{ ...MOBILE_SCALE.roster.rowPreview, fontFamily: 'Inter_400Regular' }}>
           Working together · {group.bots.length} bots
         </AppText>
       </View>
