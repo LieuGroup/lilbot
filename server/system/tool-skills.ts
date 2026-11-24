@@ -10,12 +10,14 @@ import { isReservedSkillName } from '../skills/skill-origin'
 import { actionTool, type McpTool, readTool } from './mcp-tool'
 import type { SystemDeps } from './system-deps'
 
+const LIMITED_SKILL_WRITE = 'Limited sessions cannot write, patch, or delete skills.'
+
 const SkillManageInput = SkillWrite.extend({
   action: z.enum(['create', 'edit', 'patch', 'write_file', 'set_enabled']),
   enabled: z.boolean().optional()
 })
 
-export function skillTools({ skills, bots }: SystemDeps): McpTool[] {
+export function skillTools({ skills, bots, grants }: SystemDeps): McpTool[] {
   return [
     readTool(
       'lilbot_skill_read',
@@ -39,7 +41,16 @@ export function skillTools({ skills, bots }: SystemDeps): McpTool[] {
       'lilbot_skill_manage',
       'Manage shared skills: create, edit, patch, or write_file on shared skills (not built-in or engine skills), or set_enabled (enabled) for your own switch on a shared skill.',
       SkillManageInput,
-      async (caller, input) => {
+      async (caller, input, _raw, ctx) => {
+        if (
+          ctx?.sessionBound ||
+          ctx?.checkId ||
+          ctx?.review ||
+          (ctx?.capabilities !== undefined && ctx.capabilities !== null) ||
+          (ctx?.chatId !== undefined && Boolean(grants && grants.forChat(caller, ctx.chatId) !== null))
+        ) {
+          throw new LilBotError('skill_forbidden', LIMITED_SKILL_WRITE)
+        }
         if (input.action === 'set_enabled') {
           if (typeof input.enabled !== 'boolean') throw new LilBotError('invalid_skill', 'Specify enabled as true or false.')
           const existing = skills.list(caller).find(skill => skill.name === input.name)
