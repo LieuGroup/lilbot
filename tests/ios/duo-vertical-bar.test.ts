@@ -122,14 +122,16 @@ describe('iPhone Duo native vertical side-strip table and availability guards', 
     expect(active.unstable_headerRightItems?.()).toEqual(items)
   })
 
-  test('DuoShell, CompactChatRoute, and ChatScreen wire avatar-in-strip, header removal, and clean empty state', () => {
+  test('DuoShell, CompactChatRoute, ChatScreen, and MessageList wire avatar-in-strip, header removal, and clean conversation chrome', () => {
     const shellSource = readFileSync(resolve(process.cwd(), 'ios/src/duo/shell.tsx'), 'utf8')
     const chatRouteSource = readFileSync(resolve(process.cwd(), 'ios/src/app/(tabs)/(bots)/chat.tsx'), 'utf8')
     const chatScreenSource = readFileSync(resolve(process.cwd(), 'ios/src/chat/screen.tsx'), 'utf8')
+    const messageListSource = readFileSync(resolve(process.cwd(), 'ios/src/chat/message-list.tsx'), 'utf8')
     expect(shellSource).toContain('shouldHideDuoChatHeader(')
     expect(shellSource).toContain('DuoStripAvatar')
     expect(chatRouteSource).toContain('shouldHideDuoChatHeader(')
     expect(chatRouteSource).toContain('DuoStripAvatar')
     expect(chatScreenSource).toContain("emptyHint={chat.ready ? '' : 'Opening the conversation…'}")
+    expect(messageListSource).not.toContain('ListFooterComponent')
   })
 })

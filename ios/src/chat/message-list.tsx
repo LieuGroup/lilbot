@@ -24,7 +24,6 @@ export function MessageList({ botId, botName, chat, emptyHint }: MessageListProp
   const restored = useRef(initialOffset.current <= 0)
   const setScrollOffset = useChatStore(state => state.setScrollOffset)
 
-  const activity = chat.running ? chat.activity : ''
   // An inverted list takes the newest row first.
   const rows: { key: string; item: MessageItem; queued: boolean }[] = [
     ...chat.items.filter((item): item is MessageItem => item.kind !== 'session').map((item, index) => ({ key: `item-${index}`, item, queued: false })),
@@ -61,13 +60,6 @@ export function MessageList({ botId, botName, chat, emptyHint }: MessageListProp
         emptyHint ? (
           <AppText variant="chat" color={theme.mutedForeground} style={{ textAlign: 'center' }}>
             {emptyHint}
-          </AppText>
-        ) : undefined
-      }
-      ListFooterComponent={
-        activity ? (
-          <AppText variant="preview" color={theme.mutedForeground}>
-            {activity}
           </AppText>
         ) : undefined
       }
