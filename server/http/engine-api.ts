@@ -21,7 +21,7 @@ import type { RoutineService } from '../routines/routine-service'
 import type { SystemChanges } from '../system/system-changes'
 import { withoutWebhookNotes } from '../webhooks/webhook-messages'
 import type { CheckUse } from '../work/check-sessions'
-import { bodyChatId, checkUse, verifiedSession } from './engine-run-gate'
+import { bodyChatId, checkUse, headerSession, verifiedSession } from './engine-run-gate'
 import { historyApi } from './history-api'
 import { forBot, memoryRoutes as routes } from './memory-protocol'
 import { routineApi } from './routine-api'
@@ -89,8 +89,9 @@ export function createEngineApi(memory: MemoryService, token: string, port: numb
         const caller = (await options.bots?.listBots())?.find(bot => matchesCapability(token, bot.id, capability))
         if (!caller || !options.bots || !options.botExists(caller.id)) return json(403, { error: 'Unknown bot credential.' })
         const body = await request.json()
-        const session = verifiedSession(request, bodyChatId(body))
-        if (pathname.startsWith('/engine/skills/') && pathname.endsWith('/write')) {
+        const isSkillWrite = pathname.startsWith('/engine/skills/') && pathname.endsWith('/write')
+        const session = isSkillWrite ? headerSession(request, bodyChatId(body)) : verifiedSession(request, bodyChatId(body))
+        if (isSkillWrite) {
           const locked = options.skillWriteLocked?.(caller.id, session)
           if (locked) return json(422, { error: locked })
         }

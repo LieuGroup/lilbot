@@ -93,7 +93,10 @@ describe('/engine/skills/write session-grant guard', () => {
     }
 
     // Ordinary main conversation can still write skills, even when lineage lookups would be unreadable.
+    // Body chatId without x-lilbot-session is ignored (fail closed), and mismatched header/body is refused.
     f.roots.set('main-b1', null)
+    expect((await f.call('/engine/skills/write', { ...SKILL_BODY, chatId: 'main-b1' })).status).toBe(422)
+    expect((await f.call('/engine/skills/write', { ...SKILL_BODY, chatId: 'main-b1' }, 'chat-hook')).status).toBe(422)
     expect((await f.call('/engine/skills/write', SKILL_BODY, 'main-b1')).status).toBe(200)
     expect(f.skills.offered('b1').some(s => s.name === 'injected-skill')).toBe(true)
     f.db.close()
