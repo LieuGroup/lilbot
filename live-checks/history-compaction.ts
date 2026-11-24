@@ -5,13 +5,16 @@ import type { RestartServer } from './restart-server'
 import { waitFor } from './restart-server'
 
 function passage(seed: number, chars = 90_000) {
-  const words = 'the river ran past an old mill while slow clouds drifted over quiet fields and a cart rolled along the stony road toward hills'.split(' ')
-  let state = seed * 100_003 + 17
+  const clauses = [
+    'On Monday morning the coastal train left the south station on schedule and crossed the wooden trestle above the tide flats.',
+    'The harbor master checked the tide table, adjusted the brass barometer on the wall, and noted clear skies over the bay.',
+    'Three carpenters spent the afternoon planing cedar planks for the boathouse awning while gulls circled near the jetty.',
+    'By four o clock the bakery on Elm Street had cooled the sourdough loaves and stacked paper bags beside the scale.',
+    'In the reading room upstairs, a quiet lamp lit the atlas opened to a map of small islands along the northern channel.',
+    'After sunset the ferry lantern blinked twice as passengers carried canvas satchels across the wet gravel parking lot.'
+  ]
   let out = ''
-  while (out.length < chars) {
-    state = (state * 48_271) % 2_147_483_647
-    out += `${words[state % words.length]} `
-  }
+  for (let i = 1; out.length < chars; i++) out += `Entry ${seed}-${i}: ${clauses[(i * 7 + seed * 3) % clauses.length]}\n`
   return out
 }
 

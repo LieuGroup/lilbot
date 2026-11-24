@@ -20,13 +20,16 @@ export const say = (line: string) => console.log(`ok: ${line}`)
 /** About 90,000 characters (some 28,000 tokens) of plain prose with no fact about anyone, different for every seed and run
  *  (so no prompt cache from an earlier run lowers the measured cost). */
 export function pasted(seed: number) {
-  const words = 'the river ran past an old mill while slow clouds drifted over quiet fields and a cart rolled along the stony road toward hills'.split(' ')
-  let state = seed * 100_003 + RUN
+  const clauses = [
+    'On Monday morning the coastal train left the south station on schedule and crossed the wooden trestle above the tide flats.',
+    'The harbor master checked the tide table, adjusted the brass barometer on the wall, and noted clear skies over the bay.',
+    'Three carpenters spent the afternoon planing cedar planks for the boathouse awning while gulls circled near the jetty.',
+    'By four o clock the bakery on Elm Street had cooled the sourdough loaves and stacked paper bags beside the scale.',
+    'In the reading room upstairs, a quiet lamp lit the atlas opened to a map of small islands along the northern channel.',
+    'After sunset the ferry lantern blinked twice as passengers carried canvas satchels across the wet gravel parking lot.'
+  ]
   let text = ''
-  while (text.length < 90_000) {
-    state = (state * 48_271) % 2_147_483_647
-    text += `${words[state % words.length]} `
-  }
+  for (let i = 1; text.length < 78_000; i++) text += `Entry ${RUN}-${seed}-${i}: ${clauses[(i * 7 + seed * 3) % clauses.length]}\n`
   return `Here is a long passage I am pasting so it stays in our conversation. Reply with just RECEIVED.\n\n${text}`
 }
 export const fact = (text: string) => `For future reference, ${text}. For this test, reply OK without saving it yet; the review before the conversation is shortened will save it.`
