@@ -36,7 +36,7 @@ export class BotCreation {
 
   private async run(caller: BotRecord, input: BotCreationInput, id: string) {
     if (!this.store.creationDone(id)) {
-      await this.service.createBot({ ...input, ...(caller.model ? { model: caller.model } : {}) }, id)
+      await this.service.createBot({ ...input, ...(caller.model ? { model: caller.model } : {}) }, id, caller.engineId)
       const chat = await this.service.openChat(id, undefined, () => {})
       // Submission IDs make an interrupted HTTP retry safe, including after a server restart.
       try {
