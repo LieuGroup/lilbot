@@ -1,6 +1,6 @@
 /** Unit tests for the mobile Liquid Glass token layer mapped onto LilBot's existing web palette. */
 import { describe, expect, test } from 'bun:test'
-import { GLASS_METRICS, glassFallbackBackground, palettes, radius, SURFACE_LAYER, type } from '../../ios/src/ui/tokens'
+import { GLASS_METRICS, glassFallbackBackground, MOBILE_SCALE, palettes, radius, SURFACE_LAYER, type } from '../../ios/src/ui/tokens'
 
 describe('iOS Liquid Glass tokens', () => {
   test('light and dark palettes preserve exact web token values and expose complete glass sub-tokens', () => {
@@ -49,5 +49,13 @@ describe('iOS Liquid Glass tokens', () => {
     expect(GLASS_METRICS.orbSize).toBe(44)
     expect(GLASS_METRICS.tasksPillHeight).toBe(32)
     expect(GLASS_METRICS.composerRestHeight).toBe(42)
+    expect(MOBILE_SCALE.roster.pinnedAvatarTwoUp).toBe(80)
+    expect(MOBILE_SCALE.roster.rowAvatar).toBe(46)
+    expect(MOBILE_SCALE.roster.rowMinHeight).toBe(76)
+    expect(MOBILE_SCALE.roster.rowName).toEqual({ fontSize: 17, lineHeight: 22 })
+    expect(MOBILE_SCALE.roster.rowPreview).toEqual({ fontSize: 15, lineHeight: 20 })
+    expect(MOBILE_SCALE.chat.message).toEqual({ fontSize: 17, lineHeight: 25 })
+    expect(MOBILE_SCALE.chat.composerMinHeight).toBe(52)
+    expect(MOBILE_SCALE.chat.composerRadius).toBe(26)
   })
 })

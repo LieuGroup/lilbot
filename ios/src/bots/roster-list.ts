@@ -1,4 +1,5 @@
-/** Virtualized Roster item flattening and connecting/loading/error notice logic (1:1 with web/src/bots/bot-sidebar.tsx). */
+/** Virtualized Round 4 Roster item flattening, section collapse rules, and status notices
+ *  (1:1 with web/src/bots/bot-sidebar.tsx). Zero React Native imports so unit tests run on Linux. */
 import type { Bot, Section } from '../../../shared/bot-schema'
 import { rosterGroups, searchBots } from '../../../shared/client/bots/roster-groups'
 import { type RunningGroup, runningGroups } from '../../../shared/client/bots/running-groups'
@@ -6,7 +7,7 @@ import { type RunningGroup, runningGroups } from '../../../shared/client/bots/ru
 export type RosterListItem =
   | { kind: 'tiles'; key: string; bots: Bot[] }
   | { kind: 'groups'; key: string; groups: RunningGroup[] }
-  | { kind: 'section-header'; key: string; name: string }
+  | { kind: 'section-header'; key: string; sectionId: string; name: string; open: boolean }
   | { kind: 'group-toggle'; key: string; groupId: 'unassigned' | 'hidden'; name: string; count: number; open: boolean; testID: string }
   | { kind: 'bot'; key: string; bot: Bot; isFirst: boolean; isLast: boolean; spacedTop: boolean }
   | { kind: 'notice'; key: string; text: string; tone: 'muted' | 'destructive' }
@@ -33,7 +34,7 @@ const pushBots = (out: RosterListItem[], list: Bot[], prefix: string, spacedTop 
   }
 }
 
-/** Flattens visible roster sections into virtualizable FlatList items with card-group start/end flags. */
+/** Flattens visible roster sections into virtualizable FlatList items. */
 export function buildRosterListItems(input: {
   bots: Bot[]
   sections: Section[]
@@ -44,6 +45,7 @@ export function buildRosterListItems(input: {
   selectedId: string | null
   unassignedOpen: boolean
   hiddenOpen: boolean
+  collapsedSections?: Readonly<Record<string, boolean>>
 }): RosterListItem[] {
   const out: RosterListItem[] = []
   if (input.query.trim().length > 0) {
@@ -65,9 +67,11 @@ export function buildRosterListItems(input: {
   else pushBots(out, groups.top, 'top')
   if (activeGroups.length > 0) out.push({ kind: 'groups', key: 'working-together', groups: activeGroups })
 
+  const collapsed = input.collapsedSections ?? {}
   for (const { section, bots } of groups.sections) {
-    out.push({ kind: 'section-header', key: `sec:${section.id}`, name: section.name })
-    pushBots(out, bots, `sec:${section.id}`)
+    const open = !collapsed[section.id] || bots.some(bot => bot.id === input.selectedId)
+    out.push({ kind: 'section-header', key: `sec:${section.id}`, sectionId: section.id, name: section.name, open })
+    if (open) pushBots(out, bots, `sec:${section.id}`)
   }
 
   const sectioned = groups.sections.length > 0
@@ -103,14 +107,14 @@ export function buildRosterListItems(input: {
   return out
 }
 
-/** First existing header item key that hosts inline header actions (Search on all layouts, plus New bot on split) at zero extra row height. */
+/** First existing header item key that hosts inline header actions (Search on phone/iPad, plus New bot on split) at zero extra row height. */
 export function firstRosterHeaderKey(items: readonly RosterListItem[]): string | null {
   const first = items.find(item => item.kind === 'section-header' || item.kind === 'group-toggle')
   return first ? first.key : null
 }
 
 /** Which inline actions to show at the right end of the first roster header line.
- *  Hides the Search icon whenever the search bar is already visible (pull-down or screen reader),
+ *  Hides the Search icon whenever the search bar is already open,
  *  and hides actions that live in iPhone Duo's native 84 pt vertical side strip. */
 export function rosterHeaderActionsVisibility(input: {
   hasHeader: boolean
@@ -126,66 +130,34 @@ export function rosterHeaderActionsVisibility(input: {
   }
 }
 
-export interface PullToSearchState {
-  /** Resting top contentOffset.y (e.g. -96 on iPad under the top tab capsule, 0 on iPhone). */
-  restTopY: number | null
-  /** contentOffset.y captured in onScrollBeginDrag while the user is actively dragging. */
-  dragStartY: number | null
-  /** True after the first drag since mount/layout reset so rubber-band bounce frames never overwrite restTopY. */
-  hasDragged: boolean
-  /** True during post-drag momentum deceleration. */
-  momentumActive: boolean
+/** Fallback top-right Search (+ New bot on non-Duo split) when no section/group header exists
+ *  on ordinary iPhone/iPad, so removing pull-to-search never strands a flat or 1-bot list without Search. */
+export function standaloneRosterHeaderActions(input: {
+  hasHeader: boolean
+  hasBots: boolean
+  splitMode: boolean
+  searchVisible: boolean
+  hideInlineSearch?: boolean
+  hideInlineNewBot?: boolean
+}): { showSearch: boolean; showNewBot: boolean } {
+  if (input.hasHeader || !input.hasBots || input.searchVisible) return { showSearch: false, showNewBot: false }
+  const showSearch = !input.hideInlineSearch
+  const showNewBot = showSearch && input.splitMode && !input.hideInlineNewBot
+  return { showSearch, showNewBot }
 }
 
-export const INITIAL_PULL_TO_SEARCH_STATE: PullToSearchState = {
-  restTopY: null,
-  dragStartY: null,
-  hasDragged: false,
-  momentumActive: false
+/** Pure search state transitions for the bot list:
+ *  - strip/inline toggle opens when closed, closes and clears query when open;
+ *  - close button (`X`) and leaving the list always close and clear query. */
+export interface RosterSearchState {
+  open: boolean
+  query: string
 }
 
-export function resetPullToSearchState(): PullToSearchState {
-  return { restTopY: null, dragStartY: null, hasDragged: false, momentumActive: false }
+export function toggleRosterSearch(state: RosterSearchState): RosterSearchState {
+  return state.open ? { open: false, query: '' } : { open: true, query: state.query }
 }
 
-/** Pull-down distance past the live resting top offset for pull-to-search.
- *  React Native Fabric sends `_scrollView.contentInset` (0 on iPad) instead of `adjustedContentInset` (96),
- *  so this learns `restTopY` from resting offsets (<= 0) and requires downward pull past BOTH `restTopY`
- *  and `dragStartY` — scrolling down from rest on iPad (-96 -> -95 -> +100) always returns 0. */
-export function pullToSearchOnScroll(
-  state: PullToSearchState,
-  input: { contentOffsetY: number; contentInsetTop?: number }
-): { state: PullToSearchState; pullDistance: number } {
-  const y = input.contentOffsetY
-  const insetRest = -(input.contentInsetTop ?? 0)
-  if (state.dragStartY === null) {
-    if (!state.hasDragged && !state.momentumActive && y <= 0) {
-      const nextRest = Math.min(state.restTopY ?? insetRest, insetRest, y)
-      return { state: nextRest === state.restTopY ? state : { ...state, restTopY: nextRest }, pullDistance: 0 }
-    }
-    return { state, pullDistance: 0 }
-  }
-  if (state.restTopY === null) return { state, pullDistance: 0 }
-  const effectiveRest = Math.min(state.restTopY, insetRest)
-  const pullDistance = Math.max(0, Math.min(effectiveRest - y, state.dragStartY - y))
-  return { state, pullDistance }
-}
-
-export function pullToSearchOnDragStart(state: PullToSearchState, contentOffsetY: number): PullToSearchState {
-  const restTopY = state.restTopY === null && contentOffsetY <= 0 ? contentOffsetY : state.restTopY
-  return { restTopY, dragStartY: contentOffsetY, hasDragged: true, momentumActive: false }
-}
-
-export function pullToSearchOnDragEnd(state: PullToSearchState): PullToSearchState {
-  return { ...state, dragStartY: null }
-}
-
-export function pullToSearchOnMomentumStart(state: PullToSearchState): PullToSearchState {
-  return { ...state, dragStartY: null, momentumActive: true }
-}
-
-export function pullToSearchOnMomentumEnd(state: PullToSearchState, contentOffsetY: number): PullToSearchState {
-  const restTopY =
-    contentOffsetY <= 0 ? (state.restTopY === null ? contentOffsetY : Math.min(state.restTopY, contentOffsetY)) : state.restTopY
-  return { restTopY, dragStartY: null, hasDragged: state.hasDragged, momentumActive: false }
+export function closeRosterSearch(): RosterSearchState {
+  return { open: false, query: '' }
 }

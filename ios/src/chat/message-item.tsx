@@ -1,13 +1,13 @@
-/** One transcript item: the user's bubble, the bot's reply (markdown), a tool trace line,
- *  a session divider or an error bubble. Mirrors the web app's chat-item. */
+/** One transcript item: user bubble, bot reply in a soft filled bubble (markdown), tool trace line,
+ *  session divider or error bubble, sized from MOBILE_SCALE.chat so Dynamic Type scales cleanly on top. */
 import { memo } from 'react'
 import { View } from 'react-native'
 import Markdown from 'react-native-markdown-display'
 import type { ChatItem as ChatItemData } from '../../../shared/chat-schema'
 import type { MessageItem } from '../../../shared/client/chat/chat-state'
-import { useTheme } from '../ui/theme'
 import { AppText } from '../ui/text'
-import { radius } from '../ui/tokens'
+import { useTheme } from '../ui/theme'
+import { MOBILE_SCALE, radius } from '../ui/tokens'
 
 type Failure = NonNullable<Extract<ChatItemData, { kind: 'error' }>['reason']>
 
@@ -21,6 +21,7 @@ export function failureLine(reason: Failure, botName: string | undefined): strin
 
 export const ChatItem = memo(function ChatItem({ item, botName, queued = false }: { item: MessageItem; botName: string; queued?: boolean }) {
   const theme = useTheme()
+  const chatScale = MOBILE_SCALE.chat
   switch (item.kind) {
     case 'user':
       return (
@@ -28,33 +29,51 @@ export const ChatItem = memo(function ChatItem({ item, botName, queued = false }
           {item.text ? (
             <View
               style={{
-                maxWidth: '85%',
+                maxWidth: '86%',
                 backgroundColor: queued ? theme.card : theme.secondary,
                 borderColor: queued ? theme.foreground : 'transparent',
                 borderWidth: queued ? 1 : 0,
                 borderStyle: queued ? 'dashed' : 'solid',
-                borderRadius: 18,
-                paddingHorizontal: 14,
-                paddingVertical: 8
+                borderRadius: chatScale.bubbleRadius,
+                paddingHorizontal: chatScale.bubblePaddingX,
+                paddingVertical: chatScale.bubblePaddingY
               }}
             >
-              <AppText variant="chat" style={{ color: queued ? theme.mutedForeground : theme.foreground }} selectable>
+              <AppText style={{ ...chatScale.message, color: queued ? theme.mutedForeground : theme.foreground }} selectable>
                 {item.text}
               </AppText>
             </View>
           ) : null}
-          {queued && <AppText variant="meta" color={theme.mutedForeground}>
-            Waiting for the bot to finish
-          </AppText>}
-          {item.attachments && item.attachments.length > 0 && <AppText variant="meta" color={theme.mutedForeground}>
-            {item.attachments.map(file => file.name).join(', ')}
-          </AppText>}
+          {queued && (
+            <AppText variant="meta" color={theme.mutedForeground}>
+              Waiting for the bot to finish
+            </AppText>
+          )}
+          {item.attachments && item.attachments.length > 0 && (
+            <AppText variant="meta" color={theme.mutedForeground}>
+              {item.attachments.map(file => file.name).join(', ')}
+            </AppText>
+          )}
         </View>
       )
     case 'assistant':
       return (
-        <View style={{ gap: 4 }}>
-          <Markdown style={markdownStyle(theme)}>{item.text}</Markdown>
+        <View style={{ alignItems: 'flex-start', gap: 4 }}>
+          <View
+            testID="assistant-bubble"
+            style={{
+              maxWidth: '94%',
+              backgroundColor: theme.card,
+              borderRadius: chatScale.bubbleRadius,
+              borderWidth: 1,
+              borderColor: theme.hairline,
+              paddingHorizontal: chatScale.bubblePaddingX,
+              paddingTop: chatScale.bubblePaddingY,
+              paddingBottom: Math.max(2, chatScale.bubblePaddingY - 10)
+            }}
+          >
+            <Markdown style={markdownStyle(theme)}>{item.text}</Markdown>
+          </View>
           {item.stopped && (
             <AppText variant="meta" color={theme.mutedForeground}>
               Stopped
@@ -80,8 +99,8 @@ export const ChatItem = memo(function ChatItem({ item, botName, queued = false }
 function ErrorBubble({ text }: { text: string }) {
   const theme = useTheme()
   return (
-    <View style={{ backgroundColor: theme.destructive, borderRadius: radius.lg, padding: 12 }}>
-      <AppText variant="chat" color="#ffffff">
+    <View style={{ backgroundColor: theme.destructive, borderRadius: radius.lg, padding: 14 }}>
+      <AppText style={MOBILE_SCALE.chat.message} color="#ffffff">
         {text}
       </AppText>
     </View>
@@ -94,7 +113,7 @@ function ToolTrace({ item }: { item: Extract<MessageItem, { kind: 'tool' }> }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 }}>
       <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: item.failed ? theme.destructive : item.running ? theme.primary : theme.mutedForeground }} />
-      <AppText variant="preview" color={item.running ? theme.foreground : theme.mutedForeground} numberOfLines={1}>
+      <AppText style={MOBILE_SCALE.chat.statusLine} color={item.running ? theme.foreground : theme.mutedForeground} numberOfLines={1}>
         {item.name}
         {item.detail ? `  ${item.detail}` : ''}
       </AppText>
@@ -103,15 +122,16 @@ function ToolTrace({ item }: { item: Extract<MessageItem, { kind: 'tool' }> }) {
 }
 
 function markdownStyle(theme: ReturnType<typeof useTheme>) {
-  const base = { color: theme.foreground, fontFamily: 'Inter_400Regular', fontSize: 15, lineHeight: 22 }
+  const { fontSize, lineHeight } = MOBILE_SCALE.chat.message
+  const base = { color: theme.foreground, fontFamily: 'Inter_400Regular', fontSize, lineHeight }
   return {
     body: { color: theme.foreground },
     paragraph: { marginTop: 0, marginBottom: 10, ...base },
     strong: { fontFamily: 'Inter_600SemiBold' },
     em: { fontStyle: 'italic' as const },
-    heading1: { ...base, fontFamily: 'Inter_600SemiBold', fontSize: 18, marginBottom: 8 },
-    heading2: { ...base, fontFamily: 'Inter_600SemiBold', fontSize: 17, marginBottom: 8 },
-    heading3: { ...base, fontFamily: 'Inter_600SemiBold', fontSize: 16, marginBottom: 6 },
+    heading1: { ...base, fontFamily: 'Inter_600SemiBold', fontSize: fontSize + 3, lineHeight: lineHeight + 3, marginBottom: 8 },
+    heading2: { ...base, fontFamily: 'Inter_600SemiBold', fontSize: fontSize + 2, lineHeight: lineHeight + 2, marginBottom: 8 },
+    heading3: { ...base, fontFamily: 'Inter_600SemiBold', fontSize: fontSize + 1, lineHeight: lineHeight + 1, marginBottom: 6 },
     bullet_list: { marginBottom: 10 },
     ordered_list: { marginBottom: 10 },
     list_item: { marginBottom: 4, ...base },

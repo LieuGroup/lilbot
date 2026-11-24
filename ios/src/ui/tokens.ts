@@ -94,7 +94,7 @@ export const palettes: Record<'light' | 'dark', Palette> = { light, dark }
 /** Strict two-layer material contract: floating chrome uses glass; content rows, cards and bubbles stay solid. */
 export const SURFACE_LAYER = { chrome: 'glass', content: 'solid' } as const
 
-/** The closed type scale: 12 meta, 13 previews, 14 names, 15 chat, 16 titles, plus 28 goal metric display. */
+/** The closed base type scale for chrome, menus, dialogs, and Settings. */
 export const type = {
   meta: { fontSize: 12, lineHeight: 16 },
   preview: { fontSize: 13, lineHeight: 18 },
@@ -105,6 +105,36 @@ export const type = {
 } as const
 
 export type TextVariant = keyof typeof type
+
+/** Named mobile reading and roster scale for ordinary iPhone, Folded Duo, Unfolded Duo, and iPad.
+ *  All text sizes keep React Native's default `allowFontScaling: true` so iOS Dynamic Type scales on top. */
+export const MOBILE_SCALE = {
+  roster: {
+    pinnedAvatarTwoUp: 80,
+    pinnedAvatarThreeUp: 64,
+    pinnedAvatarSplitTwoUp: 64,
+    pinnedAvatarSplitThreeUp: 52,
+    pinnedLabel: { fontSize: 15, lineHeight: 20 },
+    sectionHeader: { fontSize: 15, lineHeight: 20 },
+    rowAvatar: 46,
+    rowAvatarSplit: 40,
+    rowMinHeight: 76,
+    rowMinHeightSplit: 66,
+    rowName: { fontSize: 17, lineHeight: 22 },
+    rowPreview: { fontSize: 15, lineHeight: 20 }
+  },
+  chat: {
+    message: { fontSize: 17, lineHeight: 25 },
+    statusLine: { fontSize: 15, lineHeight: 20 },
+    bubbleRadius: 20,
+    bubblePaddingX: 16,
+    bubblePaddingY: 12,
+    composerMinHeight: 52,
+    composerRadius: 26,
+    composerInput: { fontSize: 17, lineHeight: 24 },
+    composerActionSize: 36
+  }
+} as const
 
 export const radius = { sm: 8, md: 10, lg: 12, xl: 17, pill: 9999 } as const
 

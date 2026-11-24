@@ -63,13 +63,6 @@ export function shouldDismissSheet(input: { dy: number; vy: number; scrollOffset
   return input.dy >= SHEET_GESTURE_THRESHOLDS.sheetDismissDy || input.vy >= SHEET_GESTURE_THRESHOLDS.sheetDismissVy
 }
 
-/** Pull-down search on Roster top, with always-visible fallback when screen reader / accessible search is active. */
-export const SEARCH_PULL_THRESHOLD_PT = 56
-
-export function shouldRevealSearch(input: { pullDistance: number; alwaysVisible: boolean }): boolean {
-  return input.alwaysVisible || input.pullDistance >= SEARCH_PULL_THRESHOLD_PT
-}
-
 export interface AccessibleActionSpec {
   name: string
   label: string

@@ -110,25 +110,17 @@ export function sameRosterBotDisplay(a: Bot, b: Bot): boolean {
   return true
 }
 
-/** Maps shared rowState(bot) into compact single-line Roster row presentation without suppressing simultaneous unread + status. */
+/** Maps shared rowState(bot) into two-line Roster row presentation (1:1 with web's RosterRow)
+ *  without suppressing simultaneous unread + status marks. */
 export function rosterRowDisplay(bot: Bot): RosterRowDisplay {
   const state = rowState(bot)
   const accessibilityLabel = [bot.name, bot.isPrimary ? 'Primary bot' : '', state.text, state.unread ? 'Unread' : ''].filter(Boolean).join(', ')
 
-  let inlineText = ''
   let inlineTone: InlineTextTone = 'muted'
-  if (state.tone === 'waiting') {
-    inlineText = state.text
-    inlineTone = 'foreground'
-  } else if (state.tone === 'failed') {
-    inlineText = state.text
+  if (state.tone === 'failed') {
     inlineTone = 'destructive'
-  } else if (state.tone === 'working' && state.text !== 'Working') {
-    inlineText = state.text
-    inlineTone = 'muted'
-  } else if (state.tone === 'idle' && state.text === 'Runtime unavailable') {
-    inlineText = state.text
-    inlineTone = 'muted'
+  } else if (state.unread || state.tone === 'waiting') {
+    inlineTone = 'foreground'
   }
 
   const statusMark: RowStatusMark = state.tone === 'working' || state.tone === 'failed' || state.tone === 'finished' ? state.tone : null
@@ -138,7 +130,7 @@ export function rosterRowDisplay(bot: Bot): RosterRowDisplay {
     unread: state.unread,
     boldName: state.unread,
     showPrimaryStar: bot.isPrimary,
-    inlineText,
+    inlineText: state.text,
     inlineTone,
     statusMark,
     accessibilityLabel

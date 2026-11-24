@@ -10,8 +10,7 @@ import {
   rowAccessibilityActions,
   sendAccessibilityActions,
   shouldDismissSheet,
-  shouldExpandPill,
-  shouldRevealSearch
+  shouldExpandPill
 } from '../../ios/src/ui/gestures/rules'
 
 describe('Round 4 custom gesture guards and fallbacks', () => {
@@ -56,11 +55,7 @@ describe('Round 4 custom gesture guards and fallbacks', () => {
     expect(shouldDismissSheet({ dy: 30, vy: 100, scrollOffsetY: 0 })).toBe(false)
   })
 
-  test('pull-down search and VoiceOver fallback actions cover every hidden button', () => {
-    expect(shouldRevealSearch({ pullDistance: 60, alwaysVisible: false })).toBe(true)
-    expect(shouldRevealSearch({ pullDistance: 0, alwaysVisible: true })).toBe(true)
-    expect(shouldRevealSearch({ pullDistance: 20, alwaysVisible: false })).toBe(false)
-
+  test('VoiceOver fallback actions cover every hidden swipe and long-press action', () => {
     expect(rowAccessibilityActions({ pinned: false, unread: true, hidden: false }).map(a => a.label)).toEqual(['Pin', 'Mark as read', 'Hide', 'Bot menu'])
     expect(rowAccessibilityActions({ pinned: true, unread: false, hidden: true }).map(a => a.label)).toEqual(['Unpin', 'Mark as unread', 'Show', 'Bot menu'])
     expect(sendAccessibilityActions()).toEqual([{ name: 'model-menu', label: 'Change model and reasoning effort' }])

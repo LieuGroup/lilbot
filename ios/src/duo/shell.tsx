@@ -3,7 +3,7 @@
  *  On iOS 27.1+ Duo, places Roster/Chat strip controls (and unfolded Chat's tappable bot avatar) in the 84 pt strip. */
 import { Stack, useFocusEffect, useIsFocused, useRouter } from 'expo-router'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Pressable, View } from 'react-native'
+import { Keyboard, Pressable, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { Bot } from '../../../shared/bot-schema'
 import { useBotMenuStore } from '../bots/menu-store'
@@ -47,21 +47,26 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
   const autoSelectOnce = useBotSelection(state => state.autoSelectOnce)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [inspectorOpen, setInspectorOpen] = useState(false)
-  const [searchToggleToken, setSearchToggleToken] = useState(0)
+  const [searchOpen, setSearchOpen] = useState(false)
 
   const selected = bots.find(bot => bot.id === selectedId) ?? null
   const selectedSlotRunning = useChatStore(state => (selected ? (state.slots[selected.id]?.view.running ?? false) : false))
   const selectedRunning = Boolean(selectedSlotRunning || selected?.activity?.status === 'working')
   const selectedUnread = Boolean(selected?.activity?.unread)
   const layout = computeShellLayout(surface, metrics, { inspectorOpen: inspectorOpen && !!renderInspector, sidebarOpen })
+  const showRoster = !layout.splitMode || layout.rosterWidth > 0
   const lastFocusedSplitMode = useRef(layout.splitMode)
   const pushPendingRef = useRef(false)
 
-  useFocusEffect(
-    useCallback(() => {
-      pushPendingRef.current = false
-    }, [])
-  )
+  const openSearch = useCallback(() => setSearchOpen(true), [])
+  const closeSearch = useCallback(() => {
+    Keyboard.dismiss()
+    setSearchOpen(false)
+  }, [])
+  const toggleSearch = useCallback(() => setSearchOpen(open => { if (open) Keyboard.dismiss(); return !open }), [])
+
+  useFocusEffect(useCallback(() => { pushPendingRef.current = false }, []))
+  useEffect(() => { if (!isFocused || !showRoster) closeSearch() }, [closeSearch, isFocused, showRoster])
 
   useEffect(() => {
     const activeId = autoSelectOnce(bots) ?? selectedId
@@ -92,6 +97,7 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
 
   const handleSelectBot = useCallback(
     (bot: Bot) => {
+      closeSearch()
       select(bot.id)
       const chatMounted = useBotSelection.getState().chatInstances > 0
       if (shouldPushOnBotSelect({ splitMode: layout.splitMode, chatMounted, pushPending: pushPendingRef.current })) {
@@ -99,7 +105,7 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
         router.push({ pathname: '/chat', params: { botId: bot.id } })
       }
     },
-    [layout.splitMode, router, select]
+    [closeSearch, layout.splitMode, router, select]
   )
 
   const handleToggleSidebar = useCallback(() => {
@@ -108,12 +114,10 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
     setInspectorOpen(next.inspectorOpen)
   }, [sidebarOpen, inspectorOpen])
 
-  const toggleSearch = useCallback(() => setSearchToggleToken(n => n + 1), [])
   const openSelectedMenu = useCallback(() => {
     if (selected) openMenu(selected.id)
   }, [openMenu, selected])
 
-  const showRoster = !layout.splitMode || layout.rosterWidth > 0
   const verticalBarActive = isDuoVerticalBarActive({ surface, verticalBarEdge })
   const hideDuoChatHeader = shouldHideDuoChatHeader({ surface, verticalBarEdge, hasBot: selected !== null })
   const stripScreen = resolveDuoStripScreen({ surface, chatFocused: false })
@@ -154,7 +158,7 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
       <Stack.Screen options={stackOptions} />
       <View style={{ flex: 1, flexDirection: 'row', backgroundColor: theme.background, paddingTop: useNativeStripHeader ? 0 : insets.top, paddingLeft: layout.horizontalPadding.left, paddingRight: layout.horizontalPadding.right }}>
         <View key="roster-pane" style={rosterStyle}>
-          <Roster bots={bots} sections={sections} loaded={loaded} connected={connected} error={error} selectedId={layout.splitMode ? (selected?.id ?? null) : null} compactCardSurface={layout.splitMode || layout.hasSideStrip} splitMode={layout.splitMode} hideInlineSearch={verticalBarActive} hideInlineNewBot={verticalBarActive && layout.splitMode} searchToggleToken={searchToggleToken} onSelect={handleSelectBot} />
+          <Roster bots={bots} sections={sections} loaded={loaded} connected={connected} error={error} selectedId={layout.splitMode ? (selected?.id ?? null) : null} splitMode={layout.splitMode} hideInlineSearch={verticalBarActive} hideInlineNewBot={verticalBarActive && layout.splitMode} searchOpen={searchOpen} onOpenSearch={openSearch} onCloseSearch={closeSearch} onSelect={handleSelectBot} />
         </View>
         {layout.splitMode && (
           <View key="chat-pane" style={{ flex: 1 }}>

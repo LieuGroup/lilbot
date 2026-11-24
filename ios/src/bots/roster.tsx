@@ -1,21 +1,19 @@
-/** Virtualized Round 4 Roster (FlatList): 3-up pinned tiles flush at the top, active groups ("Working together"),
- *  non-sticky user sections, collapsed Unassigned/Hidden groups, scroll-gated row swipes without parent scroll re-renders,
- *  pull-down / screen-reader Search bots, and zero-row-height inline Search (+ New bot on split) on the first header line. */
+/** Virtualized Round 4 Roster (FlatList): large round pinned avatars flush at the top, active groups,
+ *  collapsible user sections and Unassigned/Hidden groups, open two-line rows with scroll-gated swipes,
+ *  and button-triggered Search bots (Duo strip button or ordinary iPhone/iPad first-section icon; no pull gesture). */
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { FlatList, type ListRenderItemInfo, View } from 'react-native'
+import { FlatList, Keyboard, type ListRenderItemInfo, View } from 'react-native'
 import { useSharedValue } from 'react-native-reanimated'
 import type { Bot, Section } from '../../../shared/bot-schema'
-import { useScreenReaderEnabled } from '../duo/use-surface'
-import { shouldRevealSearch } from '../ui/gestures/rules'
+import { closeAllSwipeRows } from '../ui/gestures/swipe-row'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
-import { radius } from '../ui/tokens'
+import { MOBILE_SCALE, radius } from '../ui/tokens'
 import { useBotMenuStore } from './menu-store'
 import { CollapsedGroupHeader, RosterHeaderActions, RosterSearchBar, RosterSectionHeader, SplitNewBotFooter } from './roster-chrome'
-import { buildRosterListItems, firstRosterHeaderKey, type RosterListItem, rosterHeaderActionsVisibility } from './roster-list'
+import { buildRosterListItems, firstRosterHeaderKey, type RosterListItem, rosterHeaderActionsVisibility, standaloneRosterHeaderActions } from './roster-list'
 import { RosterRow } from './roster-row'
 import { RosterTiles } from './roster-tiles'
-import { usePullToSearch } from './use-pull-to-search'
 import { WorkingTogether } from './working-together'
 
 interface RosterProps {
@@ -25,11 +23,12 @@ interface RosterProps {
   connected: boolean
   error: string
   selectedId: string | null
-  compactCardSurface?: boolean
   splitMode?: boolean
   hideInlineSearch?: boolean
   hideInlineNewBot?: boolean
-  searchToggleToken?: number
+  searchOpen: boolean
+  onOpenSearch: () => void
+  onCloseSearch: () => void
   onSelect: (bot: Bot) => void
 }
 
@@ -40,24 +39,28 @@ export function Roster({
   connected,
   error,
   selectedId,
-  compactCardSurface = false,
   splitMode = false,
   hideInlineSearch = false,
   hideInlineNewBot = false,
-  searchToggleToken = 0,
+  searchOpen,
+  onOpenSearch,
+  onCloseSearch,
   onSelect
 }: RosterProps) {
   const theme = useTheme()
-  const screenReader = useScreenReaderEnabled()
   const openNewBot = useBotMenuStore(state => state.openNewBot)
   const actionError = useBotMenuStore(state => state.error)
   const setActionError = useBotMenuStore(state => state.setError)
 
   const scrollingVertically = useSharedValue(false)
-  const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [unassignedOpen, setUnassignedOpen] = useState(false)
   const [hiddenOpen, setHiddenOpen] = useState(false)
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
+
+  useEffect(() => {
+    if (!searchOpen) setQuery('')
+  }, [searchOpen])
 
   useEffect(() => {
     if (!actionError) return
@@ -65,85 +68,91 @@ export function Roster({
     return () => clearTimeout(timer)
   }, [actionError, setActionError])
 
-  const openSearch = useCallback(() => setSearchOpen(true), [])
-  const closeSearch = useCallback(() => {
+  const handleCloseSearch = useCallback(() => {
+    Keyboard.dismiss()
     setQuery('')
-    setSearchOpen(false)
-  }, [])
-
-  useEffect(() => {
-    if (searchToggleToken <= 0) return
-    setSearchOpen(open => {
-      if (open) setQuery('')
-      return !open
-    })
-  }, [searchToggleToken])
-
-  const pullHandlers = usePullToSearch({ searchOpen, onRevealSearch: openSearch, scrollingVertically })
+    onCloseSearch()
+  }, [onCloseSearch])
 
   const toggleGroup = useCallback((groupId: 'unassigned' | 'hidden') => {
     if (groupId === 'unassigned') setUnassignedOpen(open => !open)
     else setHiddenOpen(open => !open)
   }, [])
 
-  const showSearchBar = shouldRevealSearch({ pullDistance: 0, alwaysVisible: screenReader || searchOpen || query.length > 0 })
+  const toggleSection = useCallback((sectionId: string) => {
+    setCollapsedSections(prev => ({ ...prev, [sectionId]: !prev[sectionId] }))
+  }, [])
+
+  const handleScrollBegin = useCallback(() => {
+    scrollingVertically.value = true
+    closeAllSwipeRows()
+  }, [scrollingVertically])
+
+  const handleScrollEnd = useCallback(() => {
+    scrollingVertically.value = false
+  }, [scrollingVertically])
 
   const items = useMemo(
-    () => buildRosterListItems({ bots, sections, loaded, connected, error, query, selectedId, unassignedOpen, hiddenOpen }),
-    [bots, sections, loaded, connected, error, query, selectedId, unassignedOpen, hiddenOpen]
+    () => buildRosterListItems({ bots, sections, loaded, connected, error, query: searchOpen ? query : '', selectedId, unassignedOpen, hiddenOpen, collapsedSections }),
+    [bots, collapsedSections, connected, error, hiddenOpen, loaded, query, searchOpen, sections, selectedId, unassignedOpen]
   )
 
-  const firstHeaderKey = useMemo(() => (query.trim().length === 0 ? firstRosterHeaderKey(items) : null), [items, query])
+  const firstHeaderKey = useMemo(() => (query.trim().length === 0 || !searchOpen ? firstRosterHeaderKey(items) : null), [items, query, searchOpen])
   const headerActionState = rosterHeaderActionsVisibility({
     hasHeader: firstHeaderKey !== null,
     splitMode,
-    searchVisible: showSearchBar,
+    searchVisible: searchOpen,
+    hideInlineSearch,
+    hideInlineNewBot
+  })
+  const standaloneActions = standaloneRosterHeaderActions({
+    hasHeader: firstHeaderKey !== null,
+    hasBots: bots.length > 0,
+    splitMode,
+    searchVisible: searchOpen,
     hideInlineSearch,
     hideInlineNewBot
   })
 
   const renderItem = useCallback(
     ({ item }: ListRenderItemInfo<RosterListItem>) => {
-      if (item.kind === 'tiles') return <RosterTiles bots={item.bots} selectedId={selectedId} compactCardSurface={compactCardSurface} onSelect={onSelect} />
-      if (item.kind === 'groups') return <WorkingTogether groups={item.groups} compactCardSurface={compactCardSurface} onSelectBot={onSelect} />
+      if (item.kind === 'tiles') return <RosterTiles bots={item.bots} selectedId={selectedId} splitMode={splitMode} onSelect={onSelect} />
+      if (item.kind === 'groups') return <WorkingTogether groups={item.groups} splitMode={splitMode} onSelectBot={onSelect} />
       const headerActions =
         item.key === firstHeaderKey && (headerActionState.showSearch || headerActionState.showNewBot) ? (
-          <RosterHeaderActions showSearch={headerActionState.showSearch} showNewBot={headerActionState.showNewBot} onOpenSearch={openSearch} onNewBot={openNewBot} />
+          <RosterHeaderActions showSearch={headerActionState.showSearch} showNewBot={headerActionState.showNewBot} onOpenSearch={onOpenSearch} onNewBot={openNewBot} />
         ) : undefined
-      if (item.kind === 'section-header') return <RosterSectionHeader name={item.name} trailing={headerActions} />
+      if (item.kind === 'section-header') {
+        return <RosterSectionHeader sectionId={item.sectionId} name={item.name} open={item.open} onToggle={toggleSection} trailing={headerActions} />
+      }
       if (item.kind === 'group-toggle') {
         return <CollapsedGroupHeader testID={item.testID} groupId={item.groupId} name={item.name} count={item.count} open={item.open} onToggle={toggleGroup} trailing={headerActions} />
       }
       if (item.kind === 'notice') {
         return (
-          <AppText variant="preview" color={item.tone === 'destructive' ? theme.destructive : theme.mutedForeground} style={{ textAlign: 'center', paddingHorizontal: 16, paddingVertical: 32 }}>
+          <AppText style={{ ...MOBILE_SCALE.roster.rowPreview, textAlign: 'center', paddingHorizontal: 16, paddingVertical: 32 }} color={item.tone === 'destructive' ? theme.destructive : theme.mutedForeground}>
             {item.text}
           </AppText>
         )
       }
-      return (
-        <RosterRow
-          bot={item.bot}
-          selected={item.bot.id === selectedId}
-          compactCardSurface={compactCardSurface}
-          isFirst={item.isFirst}
-          isLast={item.isLast}
-          spacedTop={item.spacedTop}
-          scrollingVertically={scrollingVertically}
-          onSelect={onSelect}
-        />
-      )
+      return <RosterRow bot={item.bot} selected={item.bot.id === selectedId} splitMode={splitMode} spacedTop={item.spacedTop} scrollingVertically={scrollingVertically} onSelect={onSelect} />
     },
-    [compactCardSurface, firstHeaderKey, headerActionState.showNewBot, headerActionState.showSearch, onSelect, openNewBot, openSearch, scrollingVertically, selectedId, theme.destructive, theme.mutedForeground, toggleGroup]
+    [firstHeaderKey, headerActionState.showNewBot, headerActionState.showSearch, onOpenSearch, onSelect, openNewBot, scrollingVertically, selectedId, splitMode, theme.destructive, theme.mutedForeground, toggleGroup, toggleSection]
   )
 
   const bannerError = actionError || (bots.length > 0 && error ? error : '')
+  const showStandaloneBar = standaloneActions.showSearch || standaloneActions.showNewBot
   const header =
-    showSearchBar || bannerError ? (
+    searchOpen || showStandaloneBar || bannerError ? (
       <View>
-        {showSearchBar && <RosterSearchBar query={query} canClose={searchOpen && !screenReader} autoFocus={searchOpen && !screenReader} onChange={setQuery} onClose={closeSearch} />}
+        {searchOpen && <RosterSearchBar query={query} autoFocus onChange={setQuery} onClose={handleCloseSearch} />}
+        {showStandaloneBar && (
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 16, paddingTop: 10, paddingBottom: 4 }}>
+            <RosterHeaderActions showSearch={standaloneActions.showSearch} showNewBot={standaloneActions.showNewBot} onOpenSearch={onOpenSearch} onNewBot={openNewBot} />
+          </View>
+        )}
         {bannerError ? (
-          <View style={{ marginHorizontal: 12, marginTop: showSearchBar ? 0 : 8, marginBottom: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.md, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.destructive }}>
+          <View style={{ marginHorizontal: 16, marginTop: searchOpen || showStandaloneBar ? 0 : 8, marginBottom: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.md, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.destructive }}>
             <AppText variant="preview" color={theme.destructive}>
               {bannerError}
             </AppText>
@@ -152,7 +161,7 @@ export function Roster({
       </View>
     ) : undefined
 
-  const footer = splitMode && !hideInlineNewBot && loaded && query.trim().length === 0 && !firstHeaderKey ? <SplitNewBotFooter onPress={openNewBot} /> : undefined
+  const footer = splitMode && !hideInlineNewBot && loaded && (!searchOpen || query.trim().length === 0) && !firstHeaderKey && !standaloneActions.showNewBot ? <SplitNewBotFooter onPress={openNewBot} /> : undefined
 
   return (
     <FlatList
@@ -166,17 +175,14 @@ export function Roster({
       contentInsetAdjustmentBehavior="automatic"
       keyboardDismissMode="on-drag"
       keyboardShouldPersistTaps="handled"
-      scrollEventThrottle={32}
       initialNumToRender={20}
       maxToRenderPerBatch={16}
       windowSize={7}
-      onLayout={pullHandlers.onLayout}
-      onScroll={pullHandlers.onScroll}
-      onScrollBeginDrag={pullHandlers.onScrollBeginDrag}
-      onScrollEndDrag={pullHandlers.onScrollEndDrag}
-      onMomentumScrollBegin={pullHandlers.onMomentumScrollBegin}
-      onMomentumScrollEnd={pullHandlers.onMomentumScrollEnd}
-      contentContainerStyle={{ paddingBottom: 24 }}
+      onScrollBeginDrag={handleScrollBegin}
+      onScrollEndDrag={handleScrollEnd}
+      onMomentumScrollBegin={handleScrollBegin}
+      onMomentumScrollEnd={handleScrollEnd}
+      contentContainerStyle={{ paddingBottom: 28 }}
     />
   )
 }
