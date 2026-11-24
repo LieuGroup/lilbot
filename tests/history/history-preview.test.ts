@@ -135,9 +135,11 @@ describe('history preview formatting and safety', () => {
     expect(changed).toEqual([])
 
     store.session('b1', 's2', 500)
-    store.write('b1', 's2', [{ id: 'r6', at: 500, order: 0, item: { kind: 'assistant', text: 'Hidden from s2' } }])
-    expect(store.preview('b1')).toEqual({ from: 'bot', text: 'Hidden from s2', at: 500 })
+    store.event('b1', 's2', { type: 'turn.finished', status: 'completed', text: 'Hidden from s2' })
+    expect(store.preview('b1')).toEqual({ from: 'bot', text: 'Hidden from s2', at: expect.any(Number) })
     excludeSession(db, 'b1', 's2', 'test exclusion')
+    expect(db.query('SELECT COUNT(*) AS n FROM history_previews WHERE bot=? AND session=?').get('b1', 's2')).toEqual({ n: 0 })
+    expect(store.preview('b1')).toEqual({ from: 'user', text: 'First question', at: 100 })
     expect(new HistoryStore(db).preview('b1')).toEqual({ from: 'user', text: 'First question', at: 100 })
 
     const baseBot = {

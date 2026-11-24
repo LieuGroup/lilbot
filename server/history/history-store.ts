@@ -3,7 +3,7 @@ import type { ChatEvent, ChatItem } from '../../shared/chat-schema'
 import type { HistoryItem, HistoryPage, SessionReason } from '../../shared/history-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import { HistoryMetaStore } from './history-meta-store'
-import { eventWatermark, HistoryPreviewCache, recordWriteMark } from './history-preview'
+import { HistoryPreviewStore } from './history-preview'
 import { type HistorySearchMatch, searchHistory } from './history-search'
 import { pruneSupersededJournalRows } from './history-tail'
 
@@ -28,19 +28,16 @@ const notExcluded = (bot: string, session: string) => `NOT EXISTS (SELECT 1 FROM
 /** SQLite owns stable display rows and an event journal written before forwarding each live event. */
 export class HistoryStore {
   readonly meta: HistoryMetaStore
-  private previews: HistoryPreviewCache
+  private previews: HistoryPreviewStore
   constructor(
     readonly db: Database,
     onPreviewChanged?: (botId: string) => void
   ) {
     this.meta = new HistoryMetaStore(db)
-    this.previews = new HistoryPreviewCache(db, onPreviewChanged)
+    this.previews = new HistoryPreviewStore(db, onPreviewChanged)
   }
   preview = (bot: string) => this.previews.get(bot)
   previewsFor = (bots: readonly string[]) => this.previews.getMany(bots)
-  warmPreviewsAsync = (bots: readonly string[] | (() => readonly string[]), chunkSize?: number) => this.previews.warmAsync(bots, chunkSize)
-  stopPreviewWarm = () => this.previews.stopWarm()
-  eventWatermark = () => eventWatermark(this.db)
   excluded(bot: string, session: string) {
     return !!this.db.query('SELECT 1 FROM history_exclusions WHERE bot=? AND session=?').get(bot, session)
   }
@@ -55,9 +52,9 @@ export class HistoryStore {
   discovered(bot: string) {
     this.db.query('INSERT OR IGNORE INTO history_imports VALUES(?)').run(bot)
   }
-  writeUnchecked(bot: string, session: string, rows: HistoryRow[], cursor?: string | null, complete = false, eventMark?: number) {
+  writeUnchecked(bot: string, session: string, rows: HistoryRow[], cursor?: string | null, complete = false): boolean {
     // Checked under the write lock, so an exclusion committed meanwhile is never undone by a late page.
-    if (this.excluded(bot, session)) return
+    if (this.excluded(bot, session)) return false
     const enriched = this.meta.mergeRows(bot, session, rows)
     pruneSupersededJournalRows(this.db, bot, session, enriched)
     const insert = this.db.query(`INSERT INTO history_items(bot,session,id,at,position,item,text) VALUES(?,?,?,?,?,?,?)
@@ -67,19 +64,25 @@ export class HistoryStore {
       insert.run(bot, session, row.id, row.at, row.order, JSON.stringify(row.item), text)
     }
     if (cursor !== undefined) this.db.query('UPDATE history_sessions SET cursor=?,complete=? WHERE bot=? AND id=?').run(cursor, +complete, bot, session)
-    if (enriched.some(row => row.item.kind === 'user' || row.item.kind === 'assistant')) recordWriteMark(this.db, bot, session, eventMark)
-    this.previews.onWrite(bot, session, enriched)
+    return enriched.some(row => row.item.kind === 'user' || row.item.kind === 'assistant') ? this.previews.backfillIfMissing(bot) : false
   }
-  write(bot: string, session: string, rows: HistoryRow[], cursor?: string | null, complete = false, eventMark?: number) {
-    this.db.transaction(() => this.writeUnchecked(bot, session, rows, cursor, complete, eventMark)).immediate()
+  write(bot: string, session: string, rows: HistoryRow[], cursor?: string | null, complete = false) {
+    const changed = this.db.transaction(() => this.writeUnchecked(bot, session, rows, cursor, complete)).immediate()
+    this.previews.afterWriteCommit(bot, changed)
   }
   event(bot: string, session: string, event: ChatEvent, key: string = crypto.randomUUID()) {
     const now = Date.now()
-    const inserted = this.db
-      .query(`INSERT OR IGNORE INTO history_events(bot,session,at,event,key) SELECT ?1,?2,?3,?4,?5 WHERE ${notExcluded('?1', '?2')}`)
-      .run(bot, session, now, JSON.stringify(event), key)
-    if (inserted.changes > 0) this.previews.onEvent(bot, session, event, now)
-    if (event.type === 'turn.finished' && !this.excluded(bot, session)) this.meta.recordTurn(bot, session, event, now)
+    const res = this.db
+      .transaction(() => {
+        const inserted = this.db
+          .query(`INSERT OR IGNORE INTO history_events(bot,session,at,event,key) SELECT ?1,?2,?3,?4,?5 WHERE ${notExcluded('?1', '?2')}`)
+          .run(bot, session, now, JSON.stringify(event), key)
+        const out = inserted.changes > 0 ? this.previews.recordEvent(bot, session, event, now) : { changed: false }
+        if (event.type === 'turn.finished' && !this.excluded(bot, session)) this.meta.recordTurn(bot, session, event, now)
+        return out
+      })
+      .immediate()
+    this.previews.afterEventCommit(bot, res.changed, res.turnId)
   }
   progress(bot: string): HistoryPage['import'] {
     const p = this.db.query(`SELECT count(*) sessions,coalesce(sum(complete),0) completed FROM history_sessions s WHERE bot=? AND ${notExcluded('s.bot', 's.id')}`).get(bot) as {
@@ -186,7 +189,7 @@ export class HistoryStore {
   }
   forget(bot: string) {
     this.db.transaction(() => {
-      for (const table of ['history_items', 'history_sessions', 'history_events', 'history_imports', 'history_exclusions', 'history_preview_marks'])
+      for (const table of ['history_items', 'history_sessions', 'history_events', 'history_imports', 'history_exclusions', 'history_previews'])
         this.db.query(`DELETE FROM ${table} WHERE bot=?`).run(bot)
       this.meta.forget(bot)
     })()

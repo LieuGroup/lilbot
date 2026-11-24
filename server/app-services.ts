@@ -191,7 +191,6 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
     skillWriteLocked: sessionGrants.skillWriteLocked,
     ...gates
   })
-  const warmPreviews = () => history.store.warmPreviewsAsync(() => store.list().map(b => b.id))
   const base = { bots, store, skills, library, computers, remoteWorkers, devices, attachments, t3Grants, mcp, system, engineApi }
-  return { ...base, activity, routines, threads, boards, webhooks, hiddenChat, warmPreviews }
+  return { ...base, activity, routines, threads, boards, webhooks, hiddenChat }
 }

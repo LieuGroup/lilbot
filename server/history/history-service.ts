@@ -109,10 +109,10 @@ export class HistoryService {
             const changed = [...(dirty?.keys() ?? [])].find(id => pollable.some(s => s.id === id))
             const session = pollable.find(s => s.id === changed) ?? pollable.find(s => !s.complete) ?? pollable[value.turn++ % pollable.length]
             if (!session || !this.allowed(bot.id, session.id)) return
-            const [seenGen, readMark] = [dirty?.get(session.id), this.store.eventWatermark()]
+            const seenGen = dirty?.get(session.id)
             const page = await value.source.read(session.id, session.cursor)
             if (this.stale(bot.id, gen) || !this.allowed(bot.id, session.id)) return
-            this.store.write(bot.id, session.id, this.project(bot.id, session.id, page.rows), page.cursor, page.empty || !!session.complete, readMark)
+            this.store.write(bot.id, session.id, this.project(bot.id, session.id, page.rows), page.cursor, page.empty || !!session.complete)
             if (page.rows.length || !session.complete) this.changed(bot.id)
             if (page.empty && seenGen !== undefined && dirty?.get(session.id) === seenGen) dirty.delete(session.id)
           } catch {
@@ -171,10 +171,9 @@ export class HistoryService {
     this.store.session(bot.id, snapshot.chatId, Date.now())
     const sessions = this.store.sessions(bot.id)
     for (const session of sessions.slice(1)) this.store.divider(bot.id, session.id, session.at, session.id === snapshot.chatId ? reason : undefined)
-    const readMark = this.store.eventWatermark()
     const page = await source.source.read(snapshot.chatId, null, true)
     if (!this.allowed(bot.id, snapshot.chatId)) return
-    this.store.write(bot.id, snapshot.chatId, this.project(bot.id, snapshot.chatId, page.rows), undefined, false, readMark)
+    this.store.write(bot.id, snapshot.chatId, this.project(bot.id, snapshot.chatId, page.rows))
   }
   record(bot: string, session: string, event: ChatEvent, key?: string) {
     if (!this.allowed(bot, session) || this.store.excluded(bot, session)) return
@@ -190,9 +189,9 @@ export class HistoryService {
   search = (bot: string, query: string, limit = 20) => ({ matches: this.store.search(bot, query, limit, s => this.allowed(bot, s)), import: this.store.progress(bot) })
   close() {
     this.closed = true
-    this.store.stopPreviewWarm()
     for (const timer of [...this.catchUpTimers.values(), ...this.switchTimers]) clearTimeout(timer)
-    for (const c of [this.catchUpTimers, this.switchTimers]) c.clear()
+    this.catchUpTimers.clear()
+    this.switchTimers.clear()
     const sources = [...this.sources.values()]
     this.sources.clear()
     for (const value of sources) closeSourceQuietly(value.source)

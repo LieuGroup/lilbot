@@ -95,6 +95,7 @@ export class BotConversations {
       if (tracked.size === 0 && this.active.get(botId) === tracked) this.active.delete(botId)
       close()
     }
+    if (fresh || ((!chatId || chatId === main) && chat.snapshot.chatId !== main)) this.prefs.setMainChat(botId, chat.snapshot.chatId)
     if (useHistory) for (const e of pending) this.history?.record(botId, id, e)
     const send = chat.send
     chat.send = async (text, options) => {
@@ -127,7 +128,6 @@ export class BotConversations {
     }
     chat.snapshot.botId = botId
     if (chat.resumeRefused) console.warn(`[chat] conversation could not be resumed; started a new session (${chat.resumeRefused})`)
-    if (fresh || ((!chatId || chatId === main) && chat.snapshot.chatId !== main)) this.prefs.setMainChat(botId, chat.snapshot.chatId)
     isMain = chat.snapshot.chatId === this.prefs.mainChat(botId)
     if (isMain && reported !== undefined) this.sessions.noteEffective(botId, reported)
     if (isMain) {
