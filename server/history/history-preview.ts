@@ -55,10 +55,11 @@ function truncatePreview(text: string): string {
 /** Builds a safe single-line preview for a visible main-conversation item, or null when the item should be skipped. */
 export function previewFromItem(item: ChatItem, at: number): BotLastMessage | null {
   if (item.kind !== 'user' && item.kind !== 'assistant') return null
+  const raw = typeof item.text === 'string' ? item.text : ''
   const from = item.kind === 'user' ? 'user' : 'bot'
-  const hasMarker = ATTACHMENT_MARKER.test(item.text)
+  const hasMarker = ATTACHMENT_MARKER.test(raw)
   ATTACHMENT_MARKER.lastIndex = 0
-  const cleaned = item.text.replace(WEBHOOK_NOTE, '').replace(WEBHOOK_TAGS, '').replace(ATTACHED_JSON_BLOCK, '').replace(ATTACHMENT_MARKER, '').replace(ATTACHMENT_PATH, '')
+  const cleaned = raw.replace(WEBHOOK_NOTE, '').replace(WEBHOOK_TAGS, '').replace(ATTACHED_JSON_BLOCK, '').replace(ATTACHMENT_MARKER, '').replace(ATTACHMENT_PATH, '')
   if (hasSecret(cleaned)) return null
   const plain = stripMarkdown(cleaned)
   if (plain) {
@@ -73,8 +74,8 @@ export function previewFromItem(item: ChatItem, at: number): BotLastMessage | nu
 
 /** Builds a safe preview for a live event (`user.message` or non-empty `turn.finished`), or null otherwise. */
 export function previewFromEvent(event: ChatEvent, at: number): BotLastMessage | null {
-  if (event.type === 'user.message') return previewFromItem({ kind: 'user', text: event.text, attachments: event.attachments }, at)
-  if (event.type === 'turn.finished' && !event.failure && event.text.trim()) return previewFromItem({ kind: 'assistant', text: event.text }, at)
+  if (event.type === 'user.message') return previewFromItem({ kind: 'user', text: typeof event.text === 'string' ? event.text : '', attachments: event.attachments }, at)
+  if (event.type === 'turn.finished' && !event.failure && typeof event.text === 'string' && event.text.trim()) return previewFromItem({ kind: 'assistant', text: event.text }, at)
   return null
 }
 
