@@ -32,7 +32,7 @@ function sampleTools(calls: { tool: string; ctx?: McpCallContext; args: any }[])
     mkAct('lilbot_primary_set'),
     mkRead('lilbot_models_list'),
     mkRead('lilbot_skill_read'),
-    mkAct('lilbot_skill_write'),
+    mkAct('lilbot_skill_manage'),
     mkRead('lilbot_memory_list'),
     mkRead('lilbot_memory_recall'),
     mkAct('lilbot_memory_save'),

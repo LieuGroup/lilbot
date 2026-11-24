@@ -25,6 +25,7 @@ const EXPECTED_TOOLS = [
   'lilbot_memory_expiry',
   'lilbot_history_search',
   'lilbot_skill_read',
+  'lilbot_skill_manage',
   'lilbot_delete_defaults_get',
   'lilbot_delete_defaults_set',
   'lilbot_delegate',

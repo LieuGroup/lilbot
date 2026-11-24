@@ -125,11 +125,11 @@ carries the bot tools for memory, skills and `search_conversations`. Computer to
 `lilbot_computer_*`) and the library's `lilbot_give_file` are already on the system server, and command safety is
 enforced in `ComputerService.submit` for every engine.
 
-Skills are the one family that is not a plain move. Hermes keeps its own `skills_list`, `skill_view` and `skill_manage`
-and its prompt names them, and its `skill_manage` writes straight into the shared library; the Hermes plug-in overrides
-the three so every write goes through LilBot's checks and author record ([hermes-engine.md](hermes-engine.md#skills-plug-in-skills-adapter)).
-An engine without skill tools of its own would get a `lilbot_skills` tool on the system server, calling the same
-`SkillsService` that `/engine/skills/*` does; that is not built until such an engine exists.
+Skill reading (`lilbot_skill_read`) and skill management (`lilbot_skill_manage`) are on LilBot's System MCP server for
+every engine, calling the same `SkillsService` and `BotSkills` methods as the Skills screen. While Hermes still ships
+its own `skills_list`, `skill_view` and `skill_manage` (and its prompt names them), the Hermes `lilbot-skills-v1`
+plug-in remains installed to keep Hermes's native `skill_manage` from bypassing LilBot's checks and author record; both
+surfaces agree on the same `SkillsService` library ([hermes-engine.md](hermes-engine.md#skills-plug-in-skills-adapter)).
 
 ## 6. Safety
 

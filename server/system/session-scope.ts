@@ -9,6 +9,7 @@ const IN_CHECK = 'This session is a check: LilBot lets it read and give its verd
 export const REVIEW_TOOLS = ['lilbot_memory_recall', 'lilbot_memory_save', 'lilbot_memory_forget'] as const
 const REVIEW_SET = new Set<string>(REVIEW_TOOLS)
 const NARROWED_WEBHOOK_MSG = 'Only a webhook run sends its bot a message this way.'
+const LIMITED_SKILL_WRITE = 'Limited sessions cannot write, patch, or delete skills.'
 
 const toolReadOnly = (tool: McpTool, args: Record<string, unknown>) => (typeof tool.readOnly === 'function' ? tool.readOnly(args) : tool.readOnly)
 
@@ -45,6 +46,7 @@ export function scopedCallRefusal(
   t3Enabled = false
 ): string | null {
   const args = (rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs) ? rawArgs : {}) as Record<string, unknown>
+  if (tool.name === 'lilbot_skill_manage') return LIMITED_SKILL_WRITE
   switch (scope.kind) {
     case 'check': {
       const allowed = (toolReadOnly(tool, args) && !CHECK_REFUSED_READS.has(tool.name)) || (tool.name === 'lilbot_work' && args.verdict !== undefined)

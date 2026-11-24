@@ -22,6 +22,9 @@ test('a check session only reads and gives its verdict: every change, and readin
   expect((await f.call('b1', 'lilbot_memory_forget', { id: 'abcd1234' })).error).toContain(IN_CHECK)
   expect((await f.call('b1', 'lilbot_history_search', { query: 'report' })).error).toContain(IN_CHECK)
   expect((await f.call('b1', 'lilbot_skill_read')).data.skills).toEqual([])
+  expect((await f.call('b1', 'lilbot_skill_manage', { action: 'create', name: 'check-skill', content: '---\nname: check-skill\ndescription: Bad\n---\nNo.' })).error).toContain(
+    IN_CHECK
+  )
   expect((await f.call('b1', 'lilbot_give_file', { path: 'a.txt', title: 'A', requestId: 'r1' })).error).toContain(IN_CHECK)
   expect((await f.call('b1', 'lilbot_delegate', { requestId: 'r2', tasks: [{ to: 'b2', task: 'x' }] })).error).toContain(IN_CHECK)
   expect((await f.call('b1', 'lilbot_delegation', { action: 'status' })).data.exchanges).toEqual([])
