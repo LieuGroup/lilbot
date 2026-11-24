@@ -11,7 +11,7 @@ const CONN: McpConnection = {
   tools: ['lilbot_memory_recall', 'lilbot_memory_save', 'lilbot_memory_forget']
 }
 
-function makeConnect(opts: { enabledToolsets?: string[]; sections?: { name: string; tools: { name: string }[] }[]; completeStatus?: string; emitApproval?: boolean } = {}) {
+function makeConnect(opts: { enabledToolsets?: string[]; sections?: { name: string; tools: { name: string }[] }[] | null; completeStatus?: string; emitApproval?: boolean } = {}) {
   const calls: { method: string; params: any }[] = []
   let closed = false
   const connect: any = async (_profile: string, onEvent: (event: any) => void) => {
@@ -25,9 +25,7 @@ function makeConnect(opts: { enabledToolsets?: string[]; sections?: { name: stri
         if (method === 'session.create') return { session_id: 'live-1', stored_session_id: 'stored-1', revision: 1, execution_generation: 0 }
         if (method === 'session.info') return { enabled_toolsets: opts.enabledToolsets ?? ['context_engine', 'mcp-editor_lilbot_a1b2c3d4'] }
         if (method === 'tools.show') {
-          return {
-            sections: opts.sections ?? [{ name: 'mcp-editor_lilbot_a1b2c3d4', tools: [{ name: 'mcp__editor_lilbot_a1b2c3d4__lilbot_memory_save' }] }]
-          }
+          return opts.sections === null ? {} : { sections: opts.sections ?? [] }
         }
         if (method === 'prompt.submit') {
           if (opts.emitApproval) onEvent({ type: 'approval.prompt', payload: { prompt_id: 'p-1', execution_generation: 1 } })
@@ -94,6 +92,12 @@ describe('Hermes reviewMemory isolated session lifecycle', () => {
     })
     expect(withSkills.calls.some(c => c.method === 'prompt.submit')).toBe(false)
     expect(withSkills.isClosed()).toBe(true)
+
+    const malformed = makeConnect({ sections: null })
+    await expect(reviewMemory('bot-1', 'Review', { workspace: '/tmp/ws', sessionMcp: [CONN], onChat: () => {} }, malformed.connect)).rejects.toMatchObject({
+      code: 'session_scope_violation'
+    })
+    expect(malformed.calls.some(c => c.method === 'prompt.submit')).toBe(false)
 
     const failed = makeConnect({ completeStatus: 'error' })
     await expect(reviewMemory('bot-1', 'Review', { workspace: '/tmp/ws', sessionMcp: [CONN], onChat: () => {} }, failed.connect)).rejects.toMatchObject({ code: 'review_failed' })
