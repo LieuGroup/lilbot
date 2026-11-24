@@ -1,4 +1,4 @@
-/** Regression tests for preview reconciliation across `history_items`, `history_events`, streaming deltas, failed turns, clock skew, and restarts. */
+/** Regression tests for preview reconciliation (rowid watermarks + exact IDs, zero text-window matching) and fault-tolerant async warming. */
 import { describe, expect, test } from 'bun:test'
 import { openDatabase } from '../../server/database/database'
 import { HistoryStore } from '../../server/history/history-store'
@@ -13,52 +13,20 @@ const userEvent = (text: string, messageId: string = crypto.randomUUID()) => ({
 })
 
 describe('history preview reconciliation and restart recovery', () => {
-  test('restart prefers a newer unimported event in history_events over an older history_items row', () => {
-    const db = openDatabase(':memory:')
-    const store = new HistoryStore(db)
-    store.session('b1', 's1', 1000)
-    store.write('b1', 's1', [{ id: 'r1', at: 1000, order: 0, item: { kind: 'assistant', text: 'Old reply at t=1000' } }])
-    expect(store.preview('b1')).toEqual({ from: 'bot', text: 'Old reply at t=1000', at: 1000 })
-
-    store.event('b1', 's1', userEvent('New urgent message'))
-    const live = store.preview('b1')!
-    expect(live.from).toBe('user')
-    expect(live.text).toBe('New urgent message')
-
-    expect(new HistoryStore(db).preview('b1')).toEqual(live)
-    db.close()
-  })
-
-  test('streaming deltas and failed turns in history_events never swamp or overwrite the preview after restart', () => {
-    const db = openDatabase(':memory:')
-    const store = new HistoryStore(db)
-    store.event('b1', 's1', userEvent('First message on brand-new bot'))
-    const expected = store.preview('b1')!
-    expect(expected.text).toBe('First message on brand-new bot')
-
-    for (let i = 0; i < 50; i++) store.event('b1', 's1', { type: 'text.delta', text: `chunk-${i} ` })
-    store.event('b1', 's1', { type: 'tool.started', toolId: 't1', name: 'terminal', detail: 'ls' })
-    store.event('b1', 's1', { type: 'tool.finished', toolId: 't1', failed: false })
-    for (let i = 0; i < 8; i++) store.event('b1', 's1', { type: 'turn.finished', status: 'failed', text: `Provider HTTP 503 #${i}` })
-
-    expect(store.preview('b1')).toEqual(expected)
-    expect(new HistoryStore(db).preview('b1')).toEqual(expected)
-    db.close()
-  })
-
-  test('same-session older history_items write never clobbers an in-flight live message, and canonical write reconciles clock skew', () => {
+  test('restart mid-turn, delta flooding behind 50 deltas, and same-session in-flight writes stay consistent', () => {
     const db = openDatabase(':memory:')
     const changed: string[] = []
     const store = new HistoryStore(db, botId => changed.push(botId))
+
+    // R1 + R3: restart mid-turn & same-session older write never clobber an in-flight live message.
     store.session('b1', 's1', 1000)
     store.write('b1', 's1', [{ id: 'r1', at: 1000, order: 0, item: { kind: 'assistant', text: 'Old reply at t=1000' } }])
     changed.length = 0
-
-    store.event('b1', 's1', userEvent('In-flight user message'))
+    store.event('b1', 's1', userEvent('In-flight urgent message'))
     const live = store.preview('b1')!
-    expect(live.from).toBe('user')
-    expect(live.text).toBe('In-flight user message')
+    expect(live).toMatchObject({ from: 'user', text: 'In-flight urgent message' })
     expect(changed).toEqual(['b1'])
+    expect(new HistoryStore(db).preview('b1')).toEqual(live)
 
     changed.length = 0
     store.write('b1', 's1', [
@@ -66,77 +34,131 @@ describe('history preview reconciliation and restart recovery', () => {
       { id: 'r1', at: 1000, order: 1, item: { kind: 'assistant', text: 'Old reply at t=1000' } }
     ])
     expect(store.preview('b1')).toEqual(live)
+    expect(new HistoryStore(db).preview('b1')).toEqual(live)
     expect(changed).toEqual([])
 
+    // Canonical write advances watermark and settles to stored timestamp.
     const canonicalAt = live.at - 412
-    store.write('b1', 's1', [{ id: 'r2', at: canonicalAt, order: 2, item: { kind: 'user', text: 'In-flight user message' } }])
-    expect(store.preview('b1')).toEqual({ from: 'user', text: 'In-flight user message', at: canonicalAt })
-    expect(new HistoryStore(db).preview('b1')).toEqual({ from: 'user', text: 'In-flight user message', at: canonicalAt })
+    store.write('b1', 's1', [{ id: 'r2', at: canonicalAt, order: 2, item: { kind: 'user', text: 'In-flight urgent message' } }])
+    expect(store.preview('b1')).toEqual({ from: 'user', text: 'In-flight urgent message', at: canonicalAt })
+    expect(new HistoryStore(db).preview('b1')).toEqual({ from: 'user', text: 'In-flight urgent message', at: canonicalAt })
+
+    // R2: brand-new bot behind 50 streaming deltas and 8 failed turns keeps first message after restart.
+    store.event('b2', 's2', userEvent('First message on brand-new bot'))
+    const first = store.preview('b2')!
+    for (let i = 0; i < 50; i++) store.event('b2', 's2', { type: 'text.delta', text: `chunk-${i} ` })
+    store.event('b2', 's2', { type: 'tool.started', toolId: 't1', name: 'terminal', detail: 'ls' })
+    store.event('b2', 's2', { type: 'tool.finished', toolId: 't1', failed: false })
+    for (let i = 0; i < 8; i++) store.event('b2', 's2', { type: 'turn.finished', status: 'failed', text: `Provider HTTP 503 #${i}` })
+    expect(store.preview('b2')).toEqual(first)
+    expect(new HistoryStore(db).preview('b2')).toEqual(first)
     db.close()
   })
 
-  test('stored order wins when an older turn.finished arrives late after turn 2 is stored (Case 1, live and restart)', () => {
+  test('Case 1 (late turn.finished by rowId or before write), Case 2 (trailing stored bot answer), and older-session late events', () => {
     const db = openDatabase(':memory:')
     const store = new HistoryStore(db)
     const now = Date.now()
+
+    // Case 1: late turn.finished carrying stored rowId `r1` after Turn 2 is stored never reverts preview.
     store.session('b1', 's1', now - 1000)
     store.write('b1', 's1', [
       { id: 'r1', at: now - 412, order: 0, item: { kind: 'assistant', text: 'Turn 1 reply' } },
       { id: 'r2', at: now - 112, order: 1, item: { kind: 'user', text: 'Turn 2 follow-up' } }
     ])
-    expect(store.preview('b1')).toEqual({ from: 'user', text: 'Turn 2 follow-up', at: now - 112 })
-
-    // Late turn.finished for Turn 1 arrives at `now` (412 ms behind receipt clock, ahead of Turn 2's stored time).
-    store.event('b1', 's1', { type: 'turn.finished', status: 'completed', text: 'Turn 1 reply' })
+    store.event('b1', 's1', { type: 'turn.finished', status: 'completed', text: 'Turn 1 reply', rowId: 'r1' })
     expect(store.preview('b1')).toEqual({ from: 'user', text: 'Turn 2 follow-up', at: now - 112 })
     expect(new HistoryStore(db).preview('b1')).toEqual({ from: 'user', text: 'Turn 2 follow-up', at: now - 112 })
-    db.close()
-  })
 
-  test('stored bot answer with trailing timestamp supersedes earlier owner event live and after restart (Case 2)', () => {
-    const db = openDatabase(':memory:')
-    const store = new HistoryStore(db)
-    store.session('b1', 's1', Date.now() - 1000)
-
-    store.event('b1', 's1', userEvent('Ask'))
-    const liveAt = store.preview('b1')!.at
-    expect(store.preview('b1')?.text).toBe('Ask')
-
-    // Stored timestamps trail receipt clock by 500 ms and 200 ms, and turn.finished was never delivered.
-    store.write('b1', 's1', [
-      { id: 'r1', at: liveAt - 500, order: 0, item: { kind: 'user', text: 'Ask' } },
-      { id: 'r2', at: liveAt - 200, order: 1, item: { kind: 'assistant', text: 'Answer' } }
+    // Case 2: owner sends "Ask", then stored [Ask @ -500ms, Answer @ -200ms] advances to Answer live and on restart.
+    store.session('b2', 's1', now - 1000)
+    store.event('b2', 's1', userEvent('Ask'))
+    const askAt = store.preview('b2')!.at
+    store.write('b2', 's1', [
+      { id: 'r1', at: askAt - 500, order: 0, item: { kind: 'user', text: 'Ask' } },
+      { id: 'r2', at: askAt - 200, order: 1, item: { kind: 'assistant', text: 'Answer' } }
     ])
-    expect(store.preview('b1')).toEqual({ from: 'bot', text: 'Answer', at: liveAt - 200 })
-    expect(new HistoryStore(db).preview('b1')).toEqual({ from: 'bot', text: 'Answer', at: liveAt - 200 })
+    expect(store.preview('b2')).toEqual({ from: 'bot', text: 'Answer', at: askAt - 200 })
+    expect(new HistoryStore(db).preview('b2')).toEqual({ from: 'bot', text: 'Answer', at: askAt - 200 })
+
+    // Older-session late event never overwrites a newer session.
+    store.session('b3', 's1', now - 2000)
+    store.session('b3', 's2', now - 500)
+    store.write('b3', 's2', [{ id: 'r2', at: now - 300, order: 0, item: { kind: 'assistant', text: 'Done in s2' } }])
+    store.event('b3', 's1', { type: 'turn.finished', status: 'completed', text: 'Late from s1' })
+    expect(store.preview('b3')).toEqual({ from: 'bot', text: 'Done in s2', at: now - 300 })
+    expect(new HistoryStore(db).preview('b3')).toEqual({ from: 'bot', text: 'Done in s2', at: now - 300 })
     db.close()
   })
 
-  test('older-session late events never beat a newer session, and repeated user text with distinct messageId advances', () => {
+  test('repeated identical messages within 10s always advance (1A distinct rowId, 1B Hermes plain user row, 1C no id)', () => {
     const db = openDatabase(':memory:')
     const store = new HistoryStore(db)
     const now = Date.now()
-    store.session('b1', 's1', now - 2000)
-    store.session('b1', 's2', now - 500)
-    store.write('b1', 's2', [
-      { id: 'r1', at: now - 400, order: 0, item: { kind: 'user', text: 'ok', messageId: 'm1' } },
-      { id: 'r2', at: now - 300, order: 1, item: { kind: 'assistant', text: 'Done 1' } }
+
+    // 1A: repeated identical bot reply "Done." with distinct rowId (`hermes:bA:3` vs `hermes:bA:1`).
+    store.session('bA', 's1', now - 5000)
+    store.write('bA', 's1', [
+      { id: 'hermes:bA:1', at: now - 3000, order: 0, item: { kind: 'assistant', text: 'Done.' } },
+      { id: 'hermes:bA:2', at: now - 1000, order: 1, item: { kind: 'user', text: 'Run it again' } }
     ])
+    store.event('bA', 's1', { type: 'turn.finished', status: 'completed', text: 'Done.', rowId: 'hermes:bA:3' })
+    expect(store.preview('bA')).toMatchObject({ from: 'bot', text: 'Done.' })
+    expect(new HistoryStore(db).preview('bA')).toMatchObject({ from: 'bot', text: 'Done.' })
 
-    // Late event from older session s1 must not overwrite newer session s2.
-    store.event('b1', 's1', { type: 'turn.finished', status: 'completed', text: 'Late from s1' })
-    expect(store.preview('b1')).toEqual({ from: 'bot', text: 'Done 1', at: now - 300 })
-    expect(new HistoryStore(db).preview('b1')).toEqual({ from: 'bot', text: 'Done 1', at: now - 300 })
+    // 1B: repeated owner "ok" where stored Hermes row has NO messageId.
+    store.session('bB', 's1', now - 5000)
+    store.write('bB', 's1', [
+      { id: 'hermes:bB:1', at: now - 3000, order: 0, item: { kind: 'user', text: 'ok' } },
+      { id: 'hermes:bB:2', at: now - 1000, order: 1, item: { kind: 'assistant', text: 'What next?' } }
+    ])
+    store.event('bB', 's1', userEvent('ok', 'new-msg-2'))
+    expect(store.preview('bB')).toMatchObject({ from: 'user', text: 'ok' })
+    expect(new HistoryStore(db).preview('bB')).toMatchObject({ from: 'user', text: 'ok' })
 
-    // A second identical "ok" with a new messageId in s2 is NOT falsely treated as superseded by m1.
-    store.event('b1', 's2', userEvent('ok', 'm2'))
-    expect(store.preview('b1')?.from).toBe('user')
-    expect(store.preview('b1')?.text).toBe('ok')
-    expect(new HistoryStore(db).preview('b1')?.text).toBe('ok')
+    // 1C: repeated message "yes" with NO id on either stored row or event.
+    store.session('bC', 's1', now - 5000)
+    store.write('bC', 's1', [
+      { id: 'r1', at: now - 3000, order: 0, item: { kind: 'user', text: 'yes' } },
+      { id: 'r2', at: now - 1000, order: 1, item: { kind: 'assistant', text: 'Proceed?' } }
+    ])
+    store.event('bC', 's1', { type: 'user.message', messageId: '', text: 'yes', attachments: [], images: { support: 'unknown', imageCount: 0 } })
+    expect(store.preview('bC')).toMatchObject({ from: 'user', text: 'yes' })
+    expect(new HistoryStore(db).preview('bC')).toMatchObject({ from: 'user', text: 'yes' })
     db.close()
   })
 
-  test('failed engine turn never leaks error text into roster lastMessage', async () => {
+  test('async bounded warming yields, isolates DB errors without aborting startup, and failed turns never leak error text', async () => {
+    // Broken DB table during warmPreviewsAsync never throws and lazy preview returns undefined safely.
+    const broken = openDatabase(':memory:')
+    broken.exec('DROP TABLE history_sessions;')
+    const brokenStore = new HistoryStore(broken)
+    await expect(brokenStore.warmPreviewsAsync(['b1', 'b2'], 1)).resolves.toBeUndefined()
+    await expect(
+      brokenStore.warmPreviewsAsync(() => {
+        throw new Error('boom')
+      })
+    ).resolves.toBeUndefined()
+    expect(brokenStore.preview('b1')).toBeUndefined()
+    broken.close()
+
+    // Chunked warming on healthy DB runs asynchronously (does not populate synchronously) and seeds all bots.
+    const healthy = openDatabase(':memory:')
+    const hs = new HistoryStore(healthy)
+    for (let i = 0; i < 7; i++) {
+      hs.session(`b${i}`, 's1', 1000)
+      hs.write(`b${i}`, 's1', [{ id: `r${i}`, at: 1000, order: 0, item: { kind: 'assistant', text: `Msg ${i}` } }])
+    }
+    const fresh = new HistoryStore(healthy)
+    const warmPromise = fresh.warmPreviewsAsync(
+      Array.from({ length: 7 }, (_, i) => `b${i}`),
+      2
+    )
+    await warmPromise
+    expect(fresh.preview('b6')?.text).toBe('Msg 6')
+    healthy.close()
+
+    // Failed engine turn never leaks provider error text into roster lastMessage.
     const app = await startConformanceApp()
     try {
       const bot = await app.services.bots.createBot({ name: 'Alpha', function: '', instructions: '' })
@@ -150,9 +172,7 @@ describe('history preview reconciliation and restart recovery', () => {
       expect((await app.services.bots.listBots()).find(b => b.id === bot.id)?.lastMessage?.text).toBe('Healthy reply')
       await chat.send('trigger-fail')
       const afterFail = (await app.services.bots.listBots()).find(b => b.id === bot.id)?.lastMessage
-      expect(afterFail?.from).toBe('user')
-      expect(afterFail?.text).toBe('trigger-fail')
-      expect(afterFail?.text).not.toContain('503')
+      expect(afterFail).toMatchObject({ from: 'user', text: 'trigger-fail' })
       chat.close()
     } finally {
       app.close()

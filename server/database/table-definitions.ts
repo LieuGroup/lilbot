@@ -98,7 +98,16 @@ export const SESSION_GRANT_TABLES = `CREATE TABLE IF NOT EXISTS session_grants(i
      bot_id TEXT NOT NULL, created_at INTEGER NOT NULL);
    CREATE INDEX IF NOT EXISTS session_grant_chats_grant ON session_grant_chats(grant_id);`
 
-/** Schema step 42: partial index on `history_events` so per-bot preview reconciliation stays O(log N) regardless of streaming delta history length. Repeatable. */
+/** Schema step 42: partial index on `history_events` and per-session preview watermarks so preview reconciliation uses
+ *  SQLite rowid order and exact IDs in O(log N) regardless of streaming delta volume. Repeatable. */
 export const HISTORY_EVENTS_PREVIEW_INDEX = `CREATE INDEX IF NOT EXISTS history_events_preview
-   ON history_events(bot, at DESC)
-   WHERE json_extract(event, '$.type') IN ('user.message', 'turn.finished');`
+   ON history_events(bot)
+   WHERE json_extract(event, '$.type') IN ('user.message', 'turn.finished');
+   CREATE TABLE IF NOT EXISTS history_preview_marks(bot TEXT NOT NULL, session TEXT NOT NULL, event_rowid INTEGER NOT NULL, latest_id TEXT NOT NULL, PRIMARY KEY(bot, session));
+   INSERT OR IGNORE INTO history_preview_marks(bot, session, event_rowid, latest_id)
+   SELECT bot, session, COALESCE((SELECT MAX(rowid) FROM history_events), 0), id
+   FROM (
+     SELECT bot, session, id, ROW_NUMBER() OVER (PARTITION BY bot, session ORDER BY at DESC, position DESC, id DESC) AS rn
+     FROM history_items
+     WHERE json_extract(item, '$.kind') IN ('user', 'assistant')
+   ) WHERE rn = 1;`

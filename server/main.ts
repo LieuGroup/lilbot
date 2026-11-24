@@ -188,6 +188,7 @@ try {
 }
 startMemoryPreparation(prepareMemory)
 bots.resumeIncompleteDeletions()
+void services.warmPreviews()
 
 console.log(`LilBot listening on http://${server.hostname}:${server.port} (engines: ${engines.ids().join(', ')})`)
 

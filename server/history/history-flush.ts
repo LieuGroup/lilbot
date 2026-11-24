@@ -116,6 +116,7 @@ export async function flushBotHistory(
       const next = [...required.values()].find(s => dirty?.has(s.id)) ?? [...required.values()].find(s => !s.complete) ?? [...required.values()][0]
       pages++
       const seenGen = dirty?.get(next.id)
+      const readMark = deps.store.eventWatermark()
       const page = await raceDeadline(source.read(next.id, next.cursor), remaining)
       if (!deps.allowed(bot.id, next.id)) {
         required.delete(next.id)
@@ -123,7 +124,7 @@ export async function flushBotHistory(
       }
       const stalled = !page.empty && page.rows.length === 0 && page.cursor === next.cursor
       const done = page.empty || stalled
-      deps.store.write(bot.id, next.id, deps.project(bot.id, next.id, page.rows), page.cursor, done || !!next.complete)
+      deps.store.write(bot.id, next.id, deps.project(bot.id, next.id, page.rows), page.cursor, done || !!next.complete, readMark)
       imported += page.rows.length
       next.cursor = page.cursor
       if (done) {
@@ -175,11 +176,12 @@ export async function catchUpDirtySessions(
     if (!session) continue
     while (pages < maxPages && !stopped()) {
       const seenGen = dirty.get(sessionId)
+      const readMark = deps.store.eventWatermark()
       pages++
       const page = await value.source.read(sessionId, session.cursor)
       if (stopped() || !deps.allowed(botId, sessionId)) break
       const done = page.empty || (page.rows.length === 0 && page.cursor === session.cursor)
-      deps.store.write(botId, sessionId, deps.project(botId, sessionId, page.rows), page.cursor, done || !!session.complete)
+      deps.store.write(botId, sessionId, deps.project(botId, sessionId, page.rows), page.cursor, done || !!session.complete, readMark)
       session.cursor = page.cursor
       if (page.rows.length || !session.complete) deps.changed(botId)
       if (done) {
