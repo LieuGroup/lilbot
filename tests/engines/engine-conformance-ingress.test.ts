@@ -1,184 +1,195 @@
-/** Engine-agnostic conformance suite (Part 6b: bot-added MCP forwarding, BrowserSession JSON-RPC & webhookRoute HTTP ingress).
- *  Runs LilBot's real control plane over ScriptedEngine with zero engine plugins. */
+/** Engine-agnostic conformance suite (Part 6d: real private HTTP/WS listener, Access door JWT gate, and Public door webhook ingress).
+ *  Runs LilBot's real HTTP/WebSocket entry points over ScriptedEngine with zero engine plugins. */
 import { afterEach, describe, expect, test } from 'bun:test'
 import { createHmac } from 'node:crypto'
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import type { WebSocketHandler } from 'bun'
+import { startAccessDoor } from '../../server/http/access-door'
+import { appRoutes, type SocketData } from '../../server/http/app-routes'
 import { BrowserSession } from '../../server/http/browser-session'
+import { isTunnelRequest } from '../../server/http/listener-safety'
+import { startPublicDoor } from '../../server/http/public-door'
+import { allowedHosts } from '../../server/http/socket-guard'
 import { webhookRoute } from '../../server/http/webhook-route'
 import type { EventFrame, ResponseFrame } from '../../shared/protocol'
-import { startConformanceApp } from './conformance-fixture'
+import { token as accessJwt, fakeAccess } from '../http/access-fixture'
+import { startConformanceApp, waitFor } from './conformance-fixture'
 
 const cleanups: (() => void)[] = []
 afterEach(() => {
   while (cleanups.length) cleanups.pop()!()
 })
 
-async function waitFor(check: () => boolean | Promise<boolean>, timeoutMs = 4000) {
-  const deadline = Date.now() + timeoutMs
-  while (!(await check())) {
-    if (Date.now() > deadline) throw new Error('Timed out waiting for conformance condition.')
-    await Bun.sleep(25)
+function makeWsHandler(s: Awaited<ReturnType<typeof startConformanceApp>>['services']): WebSocketHandler<SocketData> {
+  return {
+    open(ws) {
+      const send = (f: ResponseFrame | EventFrame) => {
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(f))
+      }
+      const mcp = s.mcp.browser(() => s.t3Grants.status())
+      ws.data.session = new BrowserSession(
+        s.bots,
+        send,
+        s.activity,
+        s.routines,
+        s.library,
+        s.threads,
+        mcp,
+        s.computers,
+        undefined,
+        s.attachments,
+        undefined,
+        s.devices,
+        s.boards.work,
+        s.webhooks,
+        s.boards.goals
+      )
+    },
+    message: (ws, msg) => void ws.data.session?.handle(typeof msg === 'string' ? msg : msg.toString()),
+    close: ws => ws.data.session?.close()
   }
 }
 
-describe('engine conformance: MCP forwarding, BrowserSession & webhook HTTP ingress', () => {
-  test('bot-added MCP service forwards authenticated calls, blocks webhook runs, and allows main chat while webhook runs exist', async () => {
-    let upstreamCalls = 0
-    const upstream = Bun.serve({
-      hostname: '127.0.0.1',
-      port: 0,
-      async fetch(request) {
-        const msg = (await request.json()) as { id: number; method: string; params?: { name?: string; arguments?: { text?: string } } }
-        if (msg.method === 'initialize')
-          return Response.json({
-            jsonrpc: '2.0',
-            id: msg.id,
-            result: { protocolVersion: '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'demo', version: '1.0' } }
-          })
-        if (msg.method === 'tools/list')
-          return Response.json({
-            jsonrpc: '2.0',
-            id: msg.id,
-            result: { tools: [{ name: 'echo', description: 'Echo text', inputSchema: { type: 'object', properties: { text: { type: 'string' } } } }] }
-          })
-        if (msg.method === 'tools/call') {
-          upstreamCalls++
-          return Response.json({ jsonrpc: '2.0', id: msg.id, result: { content: [{ type: 'text', text: `echo:${msg.params?.arguments?.text ?? ''}` }] } })
-        }
-        return Response.json({ jsonrpc: '2.0', id: msg.id, result: {} })
-      }
+async function openWsClient(url: string) {
+  const frames: (ResponseFrame | EventFrame)[] = []
+  const pending = new Map<number, (frame: ResponseFrame) => void>()
+  const ws = new WebSocket(url)
+  await new Promise<void>((resolve, reject) => Object.assign(ws, { onopen: () => resolve(), onerror: reject }))
+  ws.onmessage = ev => {
+    const frame = JSON.parse(String(ev.data)) as ResponseFrame | EventFrame
+    frames.push(frame)
+    if ('id' in frame) {
+      pending.get(frame.id)?.(frame)
+      pending.delete(frame.id)
+    }
+  }
+  cleanups.push(() => ws.close())
+  let seq = 0
+  const rpc = async <T = any>(method: string, params: Record<string, unknown> = {}): Promise<T> => {
+    const id = ++seq
+    const reply = await new Promise<ResponseFrame>(resolve => {
+      pending.set(id, resolve)
+      ws.send(JSON.stringify({ id, method, params }))
     })
-    cleanups.push(() => upstream.stop(true))
+    expect(reply.ok).toBe(true)
+    return (reply as { ok: true; result: T }).result
+  }
+  return { frames, rpc }
+}
 
-    const app = await startConformanceApp({ mcpToolName: (server, tool) => `mcp__${server}__${tool}` })
-    cleanups.push(app.close)
-    const { engine, services } = app
-    const alpha = await services.bots.createBot({ name: 'Alpha', function: 'Caller', instructions: '' })
-    const nativeId = services.store.get(alpha.id).engineBotId
-
-    let addedId = ''
-    let echoReply = ''
-    let postHookEcho = ''
-    let webhookRefused = false
-    engine.setTurnHandler(async ctx => {
-      if (!ctx.hidden && ctx.input.text === 'add service') {
-        const res = await ctx.callMcp('lilbot_connection', { action: 'add', requestId: 'conn-1', name: 'demo', address: `http://127.0.0.1:${upstream.port}/mcp` })
-        addedId = String((res.data as { id?: string })?.id ?? '')
-        return 'added'
-      }
-      if (!ctx.hidden && ctx.input.text === 'call service') {
-        echoReply = (await ctx.callMcp('echo', { text: 'hello' }, 'lilbot_c_demo')).text
-        return 'called'
-      }
-      if (!ctx.hidden && ctx.input.text === 'call after hook') {
-        postHookEcho = (await ctx.callMcp('echo', { text: 'after-hook' }, 'lilbot_c_demo')).text
-        return 'called again'
-      }
-      if (ctx.hidden) {
-        webhookRefused = !(await ctx.callMcp('echo', { text: 'blocked' }, 'lilbot_c_demo')).ok
-        return 'hook done'
-      }
-      return 'ok'
-    })
-
-    const chat = await services.bots.openChat(alpha.id, undefined, () => {})
-    await chat.send('add service')
-    expect(addedId).toBeTruthy()
-    await services.bots.refreshConnections()
-    expect(engine.runtimeOf(nativeId)?.connections.some(c => c.name === 'lilbot_c_demo')).toBe(true)
-
-    await chat.send('call service')
-    expect(echoReply).toContain('echo:hello')
-    expect(upstreamCalls).toBe(1)
-
-    const hook = await services.webhooks.create(alpha.id, { requestId: 'wh-conn', description: 'Check gate', source: 'CI', createdBy: 'oscar' })
-    const live = services.webhooks.find(hook.address.split('/hook/').at(-1)!)!
-    services.webhooks.receive(live, new TextEncoder().encode('{"ok":true}'), new Headers({ 'content-type': 'application/json' }))
-    services.webhooks.store.claimDue(Date.now() + 10_000)
-    await services.webhooks.run(services.webhooks.store.pending()[0])
-    expect(webhookRefused).toBe(true)
-    expect(upstreamCalls).toBe(1)
-
-    await chat.send('call after hook')
-    chat.close()
-    expect(postHookEcho).toContain('echo:after-hook')
-    expect(upstreamCalls).toBe(2)
-  })
-
-  test('BrowserSession JSON-RPC and webhookRoute HTTP ingress drive ScriptedEngine end to end', async () => {
+describe('engine conformance: real HTTP/WS private listener, Access door & Public webhook door', () => {
+  test('private listener enforces host/origin/proxy guards, Access door enforces RS256 JWT, and WebSocket drives ScriptedEngine', async () => {
     const app = await startConformanceApp()
     cleanups.push(app.close)
     const { engine, services } = app
     engine.setTurnHandler(async ctx => {
       ctx.emitDelta('streamed ')
-      return ctx.hidden ? 'webhook handled over http' : 'streamed reply'
+      return 'streamed reply'
     })
 
-    const frames: (ResponseFrame | EventFrame)[] = []
-    const session = new BrowserSession(
-      services.bots,
-      frame => frames.push(frame),
-      services.activity,
-      services.routines,
-      services.library,
-      services.threads,
-      services.mcp.browser(() => services.t3Grants.status()),
-      services.computers,
-      undefined,
-      services.attachments,
-      undefined,
-      services.devices,
-      services.boards.work,
-      services.webhooks,
-      services.boards.goals
-    )
-    cleanups.push(() => session.close())
-    let seq = 0
-    const rpc = async <T = any>(method: string, params: Record<string, unknown> = {}): Promise<T> => {
-      const id = ++seq
-      await session.handle(JSON.stringify({ id, method, params }))
-      const reply = frames.find((f): f is ResponseFrame => 'id' in f && f.id === id)
-      expect(reply?.ok).toBe(true)
-      return (reply as { ok: true; result: T }).result
-    }
+    const websocket = makeWsHandler(services)
+    let routes!: ReturnType<typeof appRoutes>
+    const privateServer = Bun.serve<SocketData>({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch: (request, server) => (isTunnelRequest(request) ? new Response('Forbidden', { status: 403 }) : routes(request, server)),
+      websocket
+    })
+    cleanups.push(() => privateServer.stop(true))
+    routes = appRoutes(services.library, app.dir, allowedHosts(privateServer.port!, undefined), 'scripted', services.attachments, undefined, services.threads)
+    const base = `http://127.0.0.1:${privateServer.port}`
 
+    // Host, Origin, cross-site, and Cloudflare proxy-header refusals on private listener.
+    expect((await fetch(`${base}/ws`, { headers: { host: 'evil.example' } })).status).toBe(403)
+    expect((await fetch(`${base}/ws`, { headers: { origin: 'https://evil.example' } })).status).toBe(403)
+    expect((await fetch(`${base}/api/library/b/item`, { headers: { 'sec-fetch-site': 'cross-site' } })).status).toBe(403)
+    expect((await fetch(`${base}/api/health`, { headers: { 'cf-connecting-ip': '203.0.113.10' } })).status).toBe(403)
+    expect((await fetch(`${base}/ws`, { headers: { 'cf-ray': '1234-SYD' } })).status).toBe(403)
+    expect((await fetch(`${base}/api/health`, { headers: { 'cdn-loop': 'cloudflare; loops=1' } })).status).toBe(403)
+
+    // Access door enforces RS256 JWT, Host match, and refuses /engine* and /helper*.
+    const access = fakeAccess()
+    cleanups.push(() => access.server.stop(true))
+    const accHost = access.settings.host
+    const accRoutes = appRoutes(services.library, app.dir, new Set([accHost]), 'scripted', services.attachments, undefined, services.threads)
+    const accessServer = startAccessDoor(access.settings, accRoutes, websocket)
+    cleanups.push(() => accessServer.stop(true))
+    const accBase = `http://127.0.0.1:${accessServer.port}`
+    expect((await fetch(`${accBase}/api/health`, { headers: { host: accHost } })).status).toBe(403)
+    expect((await fetch(`${accBase}/api/health`, { headers: { host: accHost, 'cf-access-jwt-assertion': accessJwt({ email: 'other@example.com' }) } })).status).toBe(403)
+    expect((await fetch(`${accBase}/api/health`, { headers: { host: 'wrong.example', 'cf-access-jwt-assertion': accessJwt() } })).status).toBe(403)
+    expect((await fetch(`${accBase}/engine/lilbot/mcp`, { headers: { host: accHost, 'cf-access-jwt-assertion': accessJwt() } })).status).toBe(403)
+    expect((await fetch(`${accBase}/helper/register`, { method: 'POST', headers: { host: accHost, 'cf-access-jwt-assertion': accessJwt() } })).status).toBe(403)
+    expect((await fetch(`${accBase}/api/health`, { headers: { host: accHost, 'cf-access-jwt-assertion': accessJwt() } })).status).toBe(200)
+
+    // Real WebSocket BrowserSession round-trip over the private listener.
+    const { frames, rpc } = await openWsClient(`ws://127.0.0.1:${privateServer.port}/ws`)
     const created = await rpc<{ id: string }>('bots.create', { name: 'BrowserBot', function: 'Web test', instructions: '' })
     expect((await rpc<any[]>('bots.list')).some(b => b.id === created.id)).toBe(true)
     expect((await rpc<any[]>('models.list', { botId: created.id })).length).toBeGreaterThan(0)
-
     const opened = await rpc<{ chatId: string }>('chat.open', { botId: created.id })
-    await rpc('chat.send', { chatId: opened.chatId, text: 'hello via browser' })
+    await rpc('chat.send', { chatId: opened.chatId, text: 'hello via ws' })
     expect(frames.some(f => 'event' in f && f.event === 'chat' && f.chatId === opened.chatId && f.data.type === 'text.delta')).toBe(true)
     await waitFor(async () => (await rpc<{ items: any[] }>('chat.history', { botId: created.id })).items.length > 0)
     expect(Array.isArray(await rpc<any[]>('work.list', { botId: created.id }))).toBe(true)
     expect(Array.isArray(await rpc<any[]>('goals.list', { botId: created.id }))).toBe(true)
     expect(Array.isArray(await rpc<any[]>('threads.list', { botId: created.id }))).toBe(true)
+  })
 
-    const hook = await services.webhooks.create(created.id, {
+  test('public door enforces webhook signatures, documented status codes, and narrow capabilities on HTTP-triggered runs', async () => {
+    const app = await startConformanceApp()
+    cleanups.push(app.close)
+    const { engine, services } = app
+    const bot = await services.bots.createBot({ name: 'HookBot', function: 'Hooks', instructions: '' })
+    const chat = await services.bots.openChat(bot.id, undefined, () => {})
+    writeFileSync(join(chat.snapshot.workspace, 'note.txt'), 'narrow ok')
+    chat.close()
+
+    const door = startPublicDoor(services.computers, 0, { hooks: webhookRoute(services.webhooks) })
+    cleanups.push(() => door.stop(true))
+    const secret = 'top-secret-key-1234'
+    const hook = await services.webhooks.create(bot.id, {
       requestId: 'wh-http',
       description: 'Signed hook',
       source: 'GitHub',
       createdBy: 'oscar',
-      signing: { scheme: 'hmac-sha256', header: 'x-sig', secret: 'top-secret-key-1234' }
+      signing: { scheme: 'hmac-sha256', header: 'x-sig', secret }
     })
-    const token = hook.address.split('/hook/').at(-1)!
-    const route = webhookRoute(services.webhooks)
+    const url = `http://127.0.0.1:${door.port}/hook/${hook.address.split('/hook/').at(-1)!}`
     const body = JSON.stringify({ action: 'opened' })
-    expect(await route(new Request(`https://hooks.example.test/hook/${token}`, { method: 'POST', body }), token, '127.0.0.1')).toEqual([401, 'Signature refused'])
-    const sig = createHmac('sha256', 'top-secret-key-1234').update(body).digest('hex')
-    expect(
-      await route(
-        new Request(`https://hooks.example.test/hook/${token}`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-sig': `sha256=${sig}` }, body }),
-        token,
-        '127.0.0.1'
-      )
-    ).toEqual([202, 'Accepted'])
+    const sig = createHmac('sha256', secret).update(body).digest('hex')
+    const signed = { 'content-type': 'application/json', 'x-sig': `sha256=${sig}` }
 
+    expect((await fetch(`http://127.0.0.1:${door.port}/hook/${'a'.repeat(48)}`, { method: 'POST', body })).status).toBe(404)
+    expect((await fetch(`${url}?q=1`, { method: 'POST', body })).status).toBe(403)
+    expect((await fetch(url, { method: 'POST', headers: { origin: 'https://evil.example' }, body })).status).toBe(403)
+    expect((await fetch(url, { method: 'POST', body })).status).toBe(401)
+    expect((await fetch(url, { method: 'POST', headers: { 'x-sig': `sha256=${'0'.repeat(64)}` }, body })).status).toBe(401)
+    expect((await fetch(url, { method: 'POST', headers: signed, body: 'x'.repeat(260 * 1024) })).status).toBe(413)
+    await services.webhooks.pause(bot.id, hook.id, true)
+    expect((await fetch(url, { method: 'POST', headers: signed, body })).status).toBe(409)
+    await services.webhooks.pause(bot.id, hook.id, false)
+
+    const accepted = await fetch(url, { method: 'POST', headers: signed, body })
+    expect([accepted.status, await accepted.text()]).toEqual([202, 'Accepted'])
+    const dup = await fetch(url, { method: 'POST', headers: signed, body })
+    expect([dup.status, await dup.text()]).toEqual([202, 'Already received'])
+
+    let [readOk, memoryBlocked, botCreateBlocked] = [false, false, false]
+    engine.setTurnHandler(async ctx => {
+      readOk = (await ctx.callMcp('lilbot_workspace_read', { path: 'note.txt' })).ok
+      memoryBlocked = !(await ctx.callMcp('lilbot_memory_save', { kind: 'journal', scope: 'bot', text: 'nope' })).ok
+      botCreateBlocked = !(await ctx.callMcp('lilbot_bot_create', { requestId: 'bc-1', name: 'Bad', function: '', instructions: '' })).ok
+      return 'webhook handled over http'
+    })
     services.webhooks.store.claimDue(Date.now() + 10_000)
     const [due] = services.webhooks.store.pending()
     await services.webhooks.run(due)
-    const listed = await rpc<any[]>('webhooks.list', { botId: created.id })
-    expect(listed.some(w => w.id === hook.id)).toBe(true)
-    const runView = await rpc<{ items: any[] }>('webhooks.openRun', { botId: created.id, runId: due.id })
-    expect(runView.items.some(i => i.kind === 'assistant' && i.text.includes('webhook handled over http'))).toBe(true)
+    expect(engine.routineCalls.at(-1)?.options.access).toEqual({ kind: 'webhook', capabilities: [] })
+    expect([readOk, memoryBlocked, botCreateBlocked]).toEqual([true, true, true])
+    const runView = await services.webhooks.openRun(bot.id, due.id, () => {})
+    runView.close()
+    expect(runView.snapshot.items.some(i => i.kind === 'assistant' && i.text.includes('webhook handled over http'))).toBe(true)
   })
 })
