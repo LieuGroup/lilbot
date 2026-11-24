@@ -5,7 +5,7 @@ import { useFonts } from 'expo-font'
 import { Slot } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { useEffect } from 'react'
-import { View } from 'react-native'
+import { AppState, View } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context'
 import { useBotStore, watchRoster } from '../bots/store'
@@ -21,11 +21,21 @@ function AppGate() {
   const loaded = useConnectionStore(state => state.loaded)
   const connected = useConnectionStore(state => state.connected)
   const loadSettings = useConnectionStore(state => state.load)
+  const retryTokenRead = useConnectionStore(state => state.retryTokenRead)
   const loadBots = useBotStore(state => state.load)
 
   useEffect(() => {
     void loadSettings()
   }, [loadSettings])
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', nextState => {
+      if (nextState === 'active') void retryTokenRead()
+    })
+    return () => {
+      subscription.remove()
+    }
+  }, [retryTokenRead])
 
   // `settings` (not just the address) is a dependency: a new token replaces the socket too.
   useEffect(() => {

@@ -87,8 +87,7 @@ export function createConnections({
 }: ConnectionDeps) {
   const published = () => publish({ event: 'connections.changed' })
   const botIds = () => store.list().map(bot => bot.id)
-  const toolName = (server: string, tool: string, botId?: string) =>
-    (botId && store.exists(botId) ? engines.get(store.get(botId).engineId) : engines.defaultEngine)?.mcpToolName?.(server, tool) ?? `mcp__${server}__${tool}`
+  const toolName = (server: string, tool: string, botId?: string) => engines.mcpToolName(botId && store.exists(botId) ? store.get(botId).engineId : undefined, server, tool)
   // A sign-in from `bun run t3:sign-in`, an expiry or a revocation changes which tools bots should see.
   if (t3Enabled) watchT3SignIn(t3Grants, published, () => bots.refreshConnections())
   const [rows, credentials] = [new McpConnectionStore(database), new McpCredentials(join(dataDir, 'mcp-credentials.json'))]
