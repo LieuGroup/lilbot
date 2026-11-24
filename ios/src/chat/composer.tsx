@@ -5,7 +5,7 @@
  *    multiline input, `+` attach, compact model/effort pill, context meter pill, and Send/Stop.
  *  - Long-pressing Send (and its VoiceOver custom action) opens the model/effort picker (`R4-G4`). */
 import * as Haptics from 'expo-haptics'
-import { type ReactNode, useEffect, useState } from 'react'
+import { type ComponentRef, type ReactNode, useEffect, useRef, useState } from 'react'
 import { Keyboard, Platform, Pressable, TextInput, useWindowDimensions, View } from 'react-native'
 import type { Attachment } from '../../../shared/attachment-schema'
 import type { BotContext } from '../../../shared/bot-schema'
@@ -42,6 +42,7 @@ export function Composer({ botId, botName, context, ready, running, model, botto
   const text = useChatStore(state => state.slots[botId]?.draft ?? '')
   const setDraft = useChatStore(state => state.setDraft)
   const staged = useStagedAttachments(botId)
+  const inputRef = useRef<ComponentRef<typeof TextInput>>(null)
   const [focused, setFocused] = useState(false)
   const [keyboardOpen, setKeyboardOpen] = useState(false)
   const [attachSheetOpen, setAttachSheetOpen] = useState(false)
@@ -142,30 +143,33 @@ export function Composer({ botId, botName, context, ready, running, model, botto
         {expanded ? <ComposerAttachments staged={staged} /> : null}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: expanded ? 0 : 10 }}>
           {!expanded ? attachButton : null}
-          <TextInput
-            testID="composer-input"
-            value={text}
-            onChangeText={next => setDraft(botId, next)}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            placeholder={COMPOSER_REST_PLACEHOLDER}
-            placeholderTextColor={theme.mutedForeground}
-            multiline
-            editable={ready}
-            scrollEnabled={expanded}
-            onSubmitEditing={submit}
-            blurOnSubmit={false}
-            maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.composerInput}
-            style={{
-              flex: 1,
-              maxHeight: composerInputMaxHeight(fontScale),
-              paddingHorizontal: 0,
-              paddingVertical: 0,
-              fontFamily: 'Inter_400Regular',
-              ...chatScale.composerInput,
-              color: theme.foreground
-            }}
-          />
+          <View style={{ flex: 1, position: 'relative' }}>
+            <TextInput
+              ref={inputRef}
+              testID="composer-input"
+              value={text}
+              onChangeText={next => setDraft(botId, next)}
+              onFocus={() => setFocused(true)}
+              onBlur={() => setFocused(false)}
+              placeholder={COMPOSER_REST_PLACEHOLDER}
+              placeholderTextColor={theme.mutedForeground}
+              multiline
+              editable={ready}
+              scrollEnabled={expanded}
+              onSubmitEditing={submit}
+              blurOnSubmit={false}
+              maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.composerInput}
+              style={{
+                maxHeight: composerInputMaxHeight(fontScale),
+                paddingHorizontal: 0,
+                paddingVertical: 0,
+                fontFamily: 'Inter_400Regular',
+                ...chatScale.composerInput,
+                color: theme.foreground
+              }}
+            />
+            {!expanded && ready ? <Pressable accessible={false} onPress={() => inputRef.current?.focus()} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} /> : null}
+          </View>
           {!expanded ? actionButton : null}
         </View>
         {expanded ? (

@@ -57,6 +57,7 @@ describe('iOS MessageList row building, fold scroll guard, rich markdown, and co
     expect(listSource).toContain('backgroundColor: theme.card')
     expect(composerSource.match(/<TextInput\b/g)?.length).toBe(1)
     expect(composerSource).toContain('scrollEnabled={expanded}')
+    expect(composerSource).toContain('inputRef.current?.focus()')
     expect(composerSource).toContain('maxHeight: composerInputMaxHeight(fontScale)')
     expect(composerSource).toContain('maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.composerInput}')
     expect(composerSource).toContain('onLongPress={openModelFromLongPress}')
