@@ -22,14 +22,14 @@ test('a bot gives a file from its own folder; the item is its own, in the conver
   expect(f.changes.recent(1).map(({ tool, target, fields }) => ({ tool, target, fields }))).toEqual([{ tool: 'lilbot_give_file', target: data.id, fields: 'path, title' }])
 })
 
-test('a call no session reported starting is refused and gives nothing (#174); tool search wrapping the call is matched', async () => {
+test('a call no session reported starting is refused and gives nothing (#174); once reported it is matched', async () => {
   const f = await withFile()
   const args = { path: 'result.txt', title: 'Result', requestId: 'r1' }
   expect((await f.call('b1', 'lilbot_give_file', args, false)).error).toContain('Make the same call again')
   expect((await f.library.list({ botId: 'b1' })).total).toBe(0)
-  f.calls.saw('b1', 'b1-wrapped', 'tool_call', { name: 'lilbot_give_file', arguments: JSON.stringify(args) })
+  f.calls.saw('b1', 'b1-reported', 'lilbot_give_file', args)
   await f.call('b1', 'lilbot_give_file', args, false)
-  expect((await f.library.list({ botId: 'b1' })).items.map(item => [item.title, item.chatId])).toEqual([['Result', 'b1-wrapped']])
+  expect((await f.library.list({ botId: 'b1' })).items.map(item => [item.title, item.chatId])).toEqual([['Result', 'b1-reported']])
 })
 
 test('no argument names a chat, a routine run or another bot: the key and the call decide', async () => {

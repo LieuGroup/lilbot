@@ -51,21 +51,14 @@ test('the tool must match, and so must the bot; a start long before the call is 
   expect(await refusal(calls.find('b', 'lilbot_work', 'r9'))).toBe('session_unknown')
 })
 
-test('tool search wrappers are read, a batch entry by entry; other tools are not kept', async () => {
+test('non-LilBot tools are not kept, and argument keys are order-independent', async () => {
   const calls = new CallingChats(50)
   const since = Date.now()
-  calls.saw('b', 'wrapped', 'tool_call', { name: WORK, arguments: JSON.stringify({ requestId: 'r1', title: 'x' }) })
-  calls.saw('b', 'batch', 'tool_call', {
-    calls: [
-      { name: 'mcp__lilbot_system__lilbot_delegate', arguments: { requestId: 'r2' } },
-      { name: 'mcp__lilbot_system__lilbot_group', arguments: '{"requestId":"r3"}' }
-    ]
-  })
+  calls.saw('b', 'main', WORK, { requestId: 'r1', title: 'x' })
   calls.saw('b', 'shell', 'terminal', { requestId: 'r4', command: 'ls' })
-  expect(await calls.find('b', 'lilbot_work', 'r1')).toBe('wrapped')
-  expect([await calls.find('b', 'lilbot_delegate', 'r2'), await calls.find('b', 'lilbot_group', 'r3')]).toEqual(['batch', 'batch'])
+  expect(await calls.find('b', 'lilbot_work', 'r1')).toBe('main')
   expect(calls.starts('b', 'terminal', since)).toEqual([])
-  expect(calls.starts('b', 'lilbot_work', since)).toEqual([{ chatId: 'wrapped', args: argsKey({ title: 'x', requestId: 'r1' }), requestId: 'r1' }])
+  expect(calls.starts('b', 'lilbot_work', since)).toEqual([{ chatId: 'main', args: argsKey({ title: 'x', requestId: 'r1' }), requestId: 'r1' }])
   expect(argsKey({ b: [1, { d: 2, c: 3 }], a: null })).toBe(argsKey({ a: null, b: [1, { c: 3, d: 2 }] }))
 })
 
@@ -82,4 +75,27 @@ test('outside MCP service tools cannot spoof LilBot system or T3 tool starts (M4
   expect(calls.take('b', 't3_thread_launch', since, argsKey({ title: 'x' }), null)).toBeNull()
   expect(calls.take('b', 'mcp__lilbot_c_svc__echo', since, argsKey({ text: 'hi' }), null)).toBe('svc-chat')
   expect(calls.take('b', 'mcp__lilbot_c_other__echo', since, argsKey({ text: 'hi' }), null)).toBeNull()
+})
+
+test('per-bot engine tool names match system, T3 and service tools while refusing spoofs and other engines’ prefixes', async () => {
+  const calls = new CallingChats(50, (botId, server, tool) => (botId === 'bot-a' ? `a::${server}::${tool}` : `b/${server}/${tool}`))
+  const since = Date.now()
+  calls.saw('bot-a', 'a-chat', 'a::lilbot_system::lilbot_work', { requestId: 'ra' }, 'a1')
+  calls.saw('bot-b', 'b-chat', 'b/lilbot_system/lilbot_work', { requestId: 'rb' }, 'b1')
+  calls.saw('bot-a', 'a-t3', 'a::lilbot_t3::t3_thread_launch', { title: 'x' }, 'a2')
+  calls.saw('bot-a', 'a-svc', 'a::lilbot_c_svc::echo', { text: 'hi' }, 'a3')
+  // Spoofs and cross-engine prefixes must not match.
+  calls.saw('bot-a', 'evil-1', 'a::lilbot_c_evil::lilbot_work', { requestId: 'spoof-a' }, 's1')
+  calls.saw('bot-a', 'evil-2', 'mcp__lilbot_system__lilbot_work', { requestId: 'spoof-hermes' }, 's2')
+  calls.saw('bot-a', 'evil-3', 'b/lilbot_system/lilbot_work', { requestId: 'spoof-b' }, 's3')
+  calls.saw('bot-a', 'evil-4', 'a::lilbot_c_evil::t3_thread_launch', { title: 'evil' }, 's4')
+  expect(await calls.find('bot-a', 'lilbot_work', 'ra')).toBe('a-chat')
+  expect(await calls.find('bot-b', 'lilbot_work', 'rb')).toBe('b-chat')
+  expect(calls.take('bot-a', 't3_thread_launch', since, argsKey({ title: 'x' }), null)).toBe('a-t3')
+  expect(calls.take('bot-a', 'a::lilbot_c_svc::echo', since, argsKey({ text: 'hi' }), null)).toBe('a-svc')
+  expect(calls.take('bot-a', 'a::lilbot_c_other::echo', since, argsKey({ text: 'hi' }), null)).toBeNull()
+  expect(await refusal(calls.find('bot-a', 'lilbot_work', 'spoof-a'))).toBe('session_unknown')
+  expect(await refusal(calls.find('bot-a', 'lilbot_work', 'spoof-hermes'))).toBe('session_unknown')
+  expect(await refusal(calls.find('bot-a', 'lilbot_work', 'spoof-b'))).toBe('session_unknown')
+  expect(calls.take('bot-a', 't3_thread_launch', since, argsKey({ title: 'evil' }), null)).toBeNull()
 })

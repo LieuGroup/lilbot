@@ -105,7 +105,7 @@ describe('engine conformance: core bot lifecycle', () => {
     expect(workOk).toBe(true)
   })
 
-  test.failing('[Lane A P5 + PR 250] custom engine mcpToolName prefix matches CallingChats', async () => {
+  test('custom engine mcpToolName prefix matches CallingChats', async () => {
     const { engine, services, bot } = await boot({ mcpToolName: (server, tool) => `scripted::${server}::${tool}` })
     let workResult = { ok: false, text: '' }
     engine.setTurnHandler(async ctx => {
