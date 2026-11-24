@@ -102,47 +102,57 @@ test('a current adapter makes its bot fail-closed again once after an outside ed
   }
 })
 
-test('a current adapter upgrades legacy token_file settings to per-bot checkpoint_key and skips mismatched bot_id for connectAll', async () => {
+test('a current adapter upgrades legacy settings, strips leftover token_file/creation_capability even on matching keys, and skips mismatched bot_id', async () => {
   const root = mkdtempSync(join(tmpdir(), 'refresh-rekey-test-'))
   const script = join(root, 'check.ts')
   const modulePath = join(import.meta.dir, '../../../server/engines/hermes')
   writeFileSync(
     script,
-    `\n    import { refreshMemoryAdapters } from '${modulePath}/hermes-memory-setup'
+    `
+    import { refreshMemoryAdapters } from '${modulePath}/hermes-memory-setup'
     const current = (botId: string) => ({ url: 'http://127.0.0.1:4444', checkpointKey: 'key-' + botId, botId })
-    const first = await refreshMemoryAdapters([
+    const bots = [
       { id: 'new-bot-uuid', engineBotId: 'owned' },
+      { id: 'bot-a', engineBotId: 'prof-a' },
+      { id: 'bot-b', engineBotId: 'prof-b' },
       { id: 'rekeyed-bot-uuid', engineBotId: 'stale' }
-    ], current)
-    const second = await refreshMemoryAdapters([
-      { id: 'new-bot-uuid', engineBotId: 'owned' },
-      { id: 'rekeyed-bot-uuid', engineBotId: 'stale' }
-    ], current)
-    if (JSON.stringify(first) !== '["owned"]' || second.length !== 0) process.exit(1)
+    ]
+    const first = await refreshMemoryAdapters(bots, current)
+    const second = await refreshMemoryAdapters(bots, current)
+    if (JSON.stringify(first) !== '["owned","prof-a","prof-b"]' || second.length !== 0) process.exit(1)
   `
   )
   try {
     const version = /^version:\s*(\S+)/m.exec(readFileSync(join(modulePath, 'memory-adapter/plugin.yaml'), 'utf8'))![1]
     const provider = `lilbot-memory-v${version.replaceAll('.', '-')}`
     const currentConfig = `memory:\n  provider: ${provider}\nknown_plugin_toolsets:\n  acp:\n    - skills\ncompression:\n  checkpoint_required: true\n`
-    const owned = join(root, 'profiles', 'owned')
-    mkdirSync(join(owned, 'plugins', provider), { recursive: true })
-    writeFileSync(
-      join(owned, 'lilbot-memory.json'),
-      JSON.stringify({ url: 'http://127.0.0.1:9999', token_file: '/legacy/token', bot_id: 'new-bot-uuid', creation_capability: 'stale' })
-    )
-    writeFileSync(join(owned, 'config.yaml'), currentConfig)
-    const stale = join(root, 'profiles', 'stale')
-    mkdirSync(join(stale, 'plugins', provider), { recursive: true })
-    const mismatchedBefore = JSON.stringify({ url: 'http://127.0.0.1:9999', token_file: '/legacy/token', bot_id: 'old-id', creation_capability: 'stale' })
-    writeFileSync(join(stale, 'lilbot-memory.json'), mismatchedBefore)
-    writeFileSync(join(stale, 'config.yaml'), currentConfig)
+    const seed = (name: string, settings: Record<string, unknown>) => {
+      const dir = join(root, 'profiles', name)
+      mkdirSync(join(dir, 'plugins', provider), { recursive: true })
+      writeFileSync(join(dir, 'config.yaml'), currentConfig)
+      const text = JSON.stringify(settings)
+      writeFileSync(join(dir, 'lilbot-memory.json'), text)
+      return text
+    }
+    seed('owned', { url: 'http://127.0.0.1:9999', token_file: '/legacy/token', bot_id: 'new-bot-uuid', creation_capability: 'stale' })
+    seed('prof-a', { url: 'http://127.0.0.1:4444', bot_id: 'bot-a', checkpoint_key: 'key-bot-a', token_file: '/legacy/token' })
+    seed('prof-b', { url: 'http://127.0.0.1:4444', bot_id: 'bot-b', checkpoint_key: 'key-bot-b', creation_capability: 'leftover-cap' })
+    const mismatchedBefore = seed('stale', { url: 'http://127.0.0.1:9999', token_file: '/legacy/token', bot_id: 'old-id', creation_capability: 'stale' })
     const child = Bun.spawn(['bun', script], { env: { ...process.env, HERMES_HOME: root, LILBOT_HERMES_BIN: '/usr/bin/true' }, stdout: 'pipe', stderr: 'pipe' })
     const error = await new Response(child.stderr).text()
     expect(await child.exited, error).toBe(0)
-    const written = JSON.parse(readFileSync(join(owned, 'lilbot-memory.json'), 'utf8'))
-    expect(written).toEqual({ url: 'http://127.0.0.1:4444', bot_id: 'new-bot-uuid', checkpoint_key: 'key-new-bot-uuid' })
-    expect(readFileSync(join(stale, 'lilbot-memory.json'), 'utf8')).toBe(mismatchedBefore)
+    for (const [name, botId] of [
+      ['owned', 'new-bot-uuid'],
+      ['prof-a', 'bot-a'],
+      ['prof-b', 'bot-b']
+    ]) {
+      expect(JSON.parse(readFileSync(join(root, 'profiles', name, 'lilbot-memory.json'), 'utf8'))).toEqual({
+        url: 'http://127.0.0.1:4444',
+        bot_id: botId,
+        checkpoint_key: `key-${botId}`
+      })
+    }
+    expect(readFileSync(join(root, 'profiles/stale/lilbot-memory.json'), 'utf8')).toBe(mismatchedBefore)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

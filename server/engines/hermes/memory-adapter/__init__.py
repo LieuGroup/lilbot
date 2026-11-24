@@ -9,6 +9,7 @@ import json
 import logging
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,7 @@ VERSION = "0.16.0"
 DEFAULT_URL = "http://127.0.0.1:3370"
 SAVE_TIMEOUT_SECONDS = 600
 RETRY_SECONDS = 90
+AUTH_RETRY_SECONDS = 30
 SAVES_FILE = "lilbot-memory-saves.jsonl"
 SAVES_KEPT = 500
 
@@ -36,6 +38,10 @@ RETIRED_TOOLS = {
 def _text(content: Any) -> str:
     parts = content if isinstance(content, list) else [{"type": "text", "text": content if isinstance(content, str) else ""}]
     return "\n".join(str(p.get("text") or "") for p in parts if isinstance(p, dict) and p.get("type") in ("text", "input_text"))
+
+
+def _loopback(url: str) -> bool:
+    return urllib.parse.urlparse(url).hostname in ("127.0.0.1", "localhost", "::1")
 
 
 class LilBotMemoryProvider(MemoryProvider):
@@ -55,54 +61,95 @@ class LilBotMemoryProvider(MemoryProvider):
     def is_available(self) -> bool:
         return True
 
+    def _read_settings(self) -> dict[str, Any]:
+        if self._home is None:
+            return {}
+        try:
+            data = json.loads((self._home / SETTINGS_FILE).read_text())
+            return data if isinstance(data, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
     def initialize(self, session_id: str, **kwargs) -> None:
         home = Path(str(kwargs.get("hermes_home") or "")).expanduser()
         self._home = home
-        settings: dict[str, Any] = {}
-        try:
-            settings = json.loads((home / SETTINGS_FILE).read_text())
-        except (OSError, ValueError):
+        settings = self._read_settings()
+        if not settings:
             logger.info("lilbot-memory: no settings file in %s, using defaults", home)
         self._url = str(settings.get("url") or DEFAULT_URL).rstrip("/")
         self._checkpoint_key = str(settings.get("checkpoint_key") or "").strip()
         self._chat = str(session_id or "")
         self._primary = kwargs.get("agent_context", "primary") == "primary"
 
-    def _call(self, endpoint: str, body: dict[str, Any]) -> dict[str, Any]:
-        if not self._checkpoint_key:
-            return {"error": "Memory checkpoint key is not configured."}
-        request = urllib.request.Request(
-            f"{self._url}/engine/{endpoint}",
-            data=json.dumps({**({"chatId": self._chat} if self._chat else {}), **body}).encode(),
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self._checkpoint_key}",
-                "X-LilBot-Adapter-Version": VERSION,
-            },
-            method="POST",
-        )
+    def _post(self, url: str, headers: dict[str, str], body: dict[str, Any]) -> dict[str, Any]:
+        request = urllib.request.Request(url, data=json.dumps(body).encode(), headers=headers, method="POST")
         try:
             with urllib.request.urlopen(request, timeout=SAVE_TIMEOUT_SECONDS) as response:
                 return json.loads(response.read())
         except urllib.error.HTTPError as error:
             try:
-                return json.loads(error.read())
+                data = json.loads(error.read())
+                if isinstance(data, dict):
+                    return {**data, "status": error.code}
             except ValueError:
-                return {"error": f"LilBot answered {error.code}."}
+                pass
+            return {"error": f"LilBot answered {error.code}.", "status": error.code}
         except (OSError, ValueError) as error:
             logger.warning("lilbot-memory: LilBot is not reachable: %s", error)
             gone = isinstance(getattr(error, "reason", error), (ConnectionRefusedError, ConnectionResetError))
             return {"error": "Memory is not reachable right now.", "gone": gone}
 
+    def _call(self, endpoint: str, body: dict[str, Any]) -> dict[str, Any]:
+        if not self._checkpoint_key:
+            return {"error": "Memory checkpoint key is not configured.", "status": 403}
+        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self._checkpoint_key}", "X-LilBot-Adapter-Version": VERSION}
+        return self._post(f"{self._url}/engine/{endpoint}", headers, {**({"chatId": self._chat} if self._chat else {}), **body})
+
+    def _retry_auth(self, endpoint: str, body: dict[str, Any]) -> dict[str, Any] | None:
+        settings = self._read_settings()
+        url = str(settings.get("url") or self._url).rstrip("/")
+        new_key = str(settings.get("checkpoint_key") or "").strip()
+        if new_key and (new_key != self._checkpoint_key or url != self._url):
+            self._url, self._checkpoint_key = url, new_key
+            return self._call(endpoint, body)
+        token_file, capability = str(settings.get("token_file") or "").strip(), str(settings.get("creation_capability") or "").strip()
+        if new_key or not token_file or not capability or not _loopback(url):
+            return None
+        try:
+            token = Path(token_file).expanduser().read_text().strip()
+        except OSError:
+            return None
+        if not token:
+            return None
+        bot_id = str(settings.get("bot_id") or "").strip()
+        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}", "X-LilBot-Adapter-Version": VERSION, "X-LilBot-Bot-Capability": capability}
+        return self._post(f"{url}/engine/{endpoint}", headers, {**({"botId": bot_id} if bot_id else {}), **({"chatId": self._chat} if self._chat else {}), **body})
+
     def on_pre_compress(self, messages: list[dict[str, Any]]) -> str:
         if not self._primary:
             return ""
         evidence = [{"role": m["role"], "text": _text(m.get("content", m.get("text", "")))} for m in messages if m.get("role") in ("user", "assistant")]
-        deadline = time.monotonic() + RETRY_SECONDS
-        result = self._call("history/save", {"messages": evidence, "chatId": self._chat})
-        while result.get("gone") and time.monotonic() < deadline:
-            time.sleep(3)
-            result = self._call("history/save", {"messages": evidence, "chatId": self._chat})
+        body = {"messages": evidence, "chatId": self._chat}
+        deadline, auth_deadline = time.monotonic() + RETRY_SECONDS, None
+        result = self._call("history/save", body)
+        while time.monotonic() < deadline:
+            if result.get("gone"):
+                time.sleep(3)
+                result = self._call("history/save", body)
+                continue
+            if result.get("status") == 403 and self._home is not None:
+                retried = self._retry_auth("history/save", body)
+                if retried is not None:
+                    result = retried
+                    if result.get("gone"):
+                        continue
+                    if result.get("status") != 403:
+                        break
+                auth_deadline = min(deadline, time.monotonic() + AUTH_RETRY_SECONDS) if auth_deadline is None else auth_deadline
+                if time.monotonic() < auth_deadline:
+                    time.sleep(2)
+                    continue
+            break
         done = bool(result.get("saved") or result.get("skipped"))
         self._record_save(done)
         if done:

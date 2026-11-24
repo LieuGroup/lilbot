@@ -5,6 +5,7 @@ import type { HistoryService } from '../history/history-service'
 import type { BotPrefsStore } from './bot-prefs-store'
 import type { BotRuntimes } from './bot-runtimes'
 import type { SessionSettings } from './bot-session-settings'
+import { ConversationTurnTracker } from './conversation-turn-tracker'
 import type { Workspaces } from './workspaces'
 
 /** Model-only text LilBot gives a bot with Oscar's next message in its main conversation (a webhook run's message or
@@ -42,8 +43,7 @@ type OpenTurn = { running: boolean; sending: number }
 /** Main-session selection and the history journal share one chat lifecycle. */
 export class BotConversations {
   private active = new Map<string, Set<OpenTurn>>()
-  private lastUser = new Map<string, string>()
-  private recordedRows = new Set<string>()
+  private turns: ConversationTurnTracker
   constructor(
     private runtimes: BotRuntimes,
     private prefs: BotPrefsStore,
@@ -52,25 +52,9 @@ export class BotConversations {
     private history?: HistoryService,
     private notes?: TurnNotes,
     private readOnlyChat?: (botId: string, chatId: string) => boolean,
-    private hooks?: ConversationHooks
-  ) {}
-
-  private handleEvent(botId: string, chatId: string, event: ChatEvent) {
-    const key = `${botId}\n${chatId}`
-    if (event.type === 'user.message' && event.text.trim()) this.lastUser.set(key, event.text)
-    if (event.type !== 'turn.finished') return
-    if (event.compacted) this.hooks?.onCompacted?.(botId, chatId)
-    if (event.status !== 'completed' || !event.text.trim()) return
-    const rowKey = event.rowId ? `${key}\n${event.rowId}` : undefined
-    if (rowKey && this.recordedRows.has(rowKey)) return
-    const user = this.lastUser.get(key)
-    if (!user) return
-    this.lastUser.delete(key)
-    if (rowKey) {
-      this.recordedRows.add(rowKey)
-      if (this.recordedRows.size > 500) this.recordedRows.delete(this.recordedRows.values().next().value!)
-    }
-    this.hooks?.onTurnCompleted?.(botId, chatId, user, event.text)
+    hooks?: ConversationHooks
+  ) {
+    this.turns = new ConversationTurnTracker(history, hooks)
   }
 
   hasActiveTurn(botId: string): boolean {
@@ -93,10 +77,11 @@ export class BotConversations {
     const event = (event: ChatEvent) => {
       if (event.type === 'turn.started') turn.running = true
       else if (event.type === 'turn.finished' || event.type === 'error' || event.type === 'closed') turn.running = false
+      const replay = id ? this.turns.prepareEvent(botId, id, event) : false
       if (id && useHistory) this.history?.record(botId, id, event)
       else if (!id) pending.push(event)
       if (id && isMain) this.sessions.noteContextFromEvent(botId, id, event)
-      if (id) this.handleEvent(botId, id, event)
+      if (id) this.turns.onEvent(botId, id, event, replay)
       onEvent(event)
     }
     // What the engine says it sends belongs to the bot only while this is its main conversation.
@@ -148,15 +133,20 @@ export class BotConversations {
             ...(options?.origin?.device ? { origin: options.origin.device } : {})
           })
         }
-        if (!options?.hidden && text.trim()) this.lastUser.set(`${botId}\n${id}`, text)
+        const cancelTurn = !options?.hidden ? this.turns.enqueue(botId, id, text) : () => {}
         const note = !options?.hidden && id === this.prefs.mainChat(botId) ? this.notes?.pending(botId, id) : null
-        if (!note?.text) {
-          await send(text, options)
-          note?.taken()
-          return
+        try {
+          if (!note?.text) {
+            await send(text, options)
+            note?.taken()
+            return
+          }
+          await send(text, { ...options, origin: { ...options?.origin, line: [options?.origin?.line, note.text].filter(Boolean).join('\n\n') } })
+          note.taken()
+        } catch (error) {
+          cancelTurn()
+          throw error
         }
-        await send(text, { ...options, origin: { ...options?.origin, line: [options?.origin?.line, note.text].filter(Boolean).join('\n\n') } })
-        note.taken()
       } finally {
         turn.sending--
       }
@@ -185,8 +175,9 @@ export class BotConversations {
 
   /** Records a replayed event from background activity observation and updates main-chat context. */
   observe(botId: string, chatId: string, event: ChatEvent, key: string) {
+    const replay = this.turns.prepareEvent(botId, chatId, event, key)
     this.history?.record(botId, chatId, event, key)
     this.sessions.noteContextFromEvent(botId, chatId, event)
-    this.handleEvent(botId, chatId, event)
+    this.turns.onEvent(botId, chatId, event, replay)
   }
 }

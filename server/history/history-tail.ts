@@ -128,3 +128,37 @@ export function pruneSupersededJournalRows(db: Database, bot: string, session: s
     } catch {}
   }
 }
+
+/** Whether a `turn.finished` event (by event key or canonical row id) is already stored in history. */
+export function hasRecordedTurn(db: Database, bot: string, session: string, rowId?: string, key?: string): boolean {
+  if (key && db.query('SELECT 1 FROM history_events WHERE bot=? AND session=? AND key=? LIMIT 1').get(bot, session, key)) return true
+  if (!rowId) return false
+  if (db.query('SELECT 1 FROM history_items WHERE bot=? AND id=? LIMIT 1').get(bot, rowId)) return true
+  return !!db
+    .query(`SELECT 1 FROM history_events WHERE bot=? AND session=? AND json_extract(event,'$.type')='turn.finished' AND json_extract(event,'$.rowId')=? LIMIT 1`)
+    .get(bot, session, rowId)
+}
+
+/** Visible user messages stored in history that do not yet have a following `turn.finished` (oldest first), for mid-turn restart recovery. */
+export function unansweredStoredUsers(db: Database, bot: string, session: string): string[] {
+  const lastTurn = db
+    .query(
+      `SELECT COALESCE(MAX(first_id), 0) AS id FROM (SELECT MIN(rowid) AS first_id FROM history_events WHERE bot=? AND session=? AND json_extract(event,'$.type')='turn.finished' GROUP BY COALESCE(json_extract(event,'$.rowId'), CAST(rowid AS TEXT)))`
+    )
+    .get(bot, session) as { id: number }
+  const fromEvents = db
+    .query(
+      `SELECT json_extract(event,'$.text') AS text FROM history_events WHERE bot=? AND session=? AND rowid>? AND json_extract(event,'$.type')='user.message' ORDER BY rowid ASC`
+    )
+    .all(bot, session, lastTurn.id)
+    .map(row => (row as { text: string | null }).text ?? '')
+    .filter(text => text.trim().length > 0)
+  if (fromEvents.length) return fromEvents
+  if (lastTurn.id > 0) return []
+  const lastItem = db
+    .query(
+      `SELECT json_extract(item,'$.kind') AS kind, text FROM history_items WHERE bot=? AND session=? AND json_extract(item,'$.kind') IN ('user','assistant') ORDER BY at DESC, position DESC, rowid DESC LIMIT 1`
+    )
+    .get(bot, session) as { kind: string; text: string } | null
+  return lastItem?.kind === 'user' && lastItem.text.trim() ? [lastItem.text] : []
+}

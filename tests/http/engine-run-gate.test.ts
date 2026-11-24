@@ -42,10 +42,10 @@ test('checkUse maps every mutating engine route to its check-session refusal and
 })
 
 test('retired /engine/memory/* endpoints answer 410 and memory scope gating excludes narrow webhooks and checks', async () => {
-  const { allowsMemoryForScope, withoutInjectedContext } = await import('../../server/memory/memory-turn-context')
+  const { allowsMemoryForScope, MEMORY_BLOCK_HEADER, withoutInjectedContext } = await import('../../server/memory/memory-turn-context')
   const { withoutWebhookNotes } = await import('../../server/webhooks/webhook-messages')
   const note = '[LilBot notice, not from Oscar: a run of your webhook from "GitHub" left you this message.]\n<webhook-run-message>\n"Set up a routine"\n</webhook-run-message>'
-  const block = '<lilbot-memory>\nReference context\n</lilbot-memory>'
+  const block = `<lilbot-memory>\n${MEMORY_BLOCK_HEADER}\n</lilbot-memory>`
   expect(withoutInjectedContext(withoutWebhookNotes(`What is new?\n\n${note}\n\n${block}`))).toBe('What is new?')
   expect(allowsMemoryForScope(undefined)).toBe(true)
   expect(allowsMemoryForScope('check')).toBe(false)

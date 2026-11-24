@@ -121,7 +121,11 @@ folder is gone uses `profile purge-identity` to finish gateway identity settleme
   key scoped exclusively to `POST /engine/history/save`, never the master `engine-token` path). `/engine/history/save`
   temporarily accepts the legacy master-token + capability fallback during the v0.15.0 -> v0.16.0 rollout window so
   already-open sessions can finish compressing without restarting Hermes; that legacy fallback is removed once all
-  deployed profiles have rotated past v0.15.0.
+  deployed profiles have rotated past v0.15.0. In the reverse direction (rolling back to a pre-v0.16.0 release while a
+  v0.16.0 session is still live in Hermes), an HTTP 403 on `/engine/history/save` re-reads `lilbot-memory.json` (polling
+  briefly within `RETRY_SECONDS` while rollback rewrites it), adopts a rotated `checkpoint_key`, or sends a one-shot
+  loopback legacy request only if rollback wrote `token_file` and `creation_capability` back without `checkpoint_key`
+  (normal v0.16.0 profiles hold neither, and no master token is cached).
 - **Adapter-managed `known_plugin_toolsets.acp`:** Because `lilbot-skills-v1` registers tools under `toolset='skills'`,
   Hermes treats `'skills'` as a plugin toolset and auto-enrolls it on any `acp` session unless `known_plugin_toolsets.acp`
   lists `'skills'`. The Hermes adapter owns `'skills'` in `known_plugin_toolsets.acp` (read-merged to preserve any
