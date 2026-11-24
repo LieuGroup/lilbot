@@ -3,6 +3,11 @@
 import type { ConfigContext, ExpoConfig } from 'expo/config'
 import { withXcodeProject } from 'expo/config-plugins'
 
+/** Enables iOS 27.1+ `UIBarButtonItemAxisBehaviorVerticalPreferred` for Duo side-strip bar items.
+ *  Flip to `false` to omit the native file completely from prebuild; delete once `react-native-screens`
+ *  exposes `axisBehavior` natively. */
+export const ENABLE_DUO_VERTICAL_BAR_ITEMS = true
+
 const VARIANTS = {
   development: { name: 'LilBot Dev', bundleIdentifier: 'com.lilbot.app.dev', scheme: 'lilbot-dev' },
   preview: { name: 'LilBot Preview', bundleIdentifier: 'com.lilbot.app.preview', scheme: 'lilbot-preview' },
@@ -43,9 +48,10 @@ function withReleaseSigning(config: ExpoConfig, bundleId: string): ExpoConfig {
   })
 }
 
-export default ({ config }: ConfigContext): ExpoConfig => {
+export function buildAppConfig({ config }: ConfigContext, options: { enableDuoVerticalBar?: boolean } = {}): ExpoConfig {
   const variant = variantName()
   const chosen = VARIANTS[variant]
+  const enableDuoVerticalBar = options.enableDuoVerticalBar ?? ENABLE_DUO_VERTICAL_BAR_ITEMS
   const base: ExpoConfig = {
     ...config,
     name: chosen.name,
@@ -67,9 +73,12 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     plugins: [
       'expo-router',
       'expo-secure-store',
-      ['expo-splash-screen', { image: './assets/images/splash-icon.png', resizeMode: 'contain', backgroundColor: '#f6f6f4' }]
+      ['expo-splash-screen', { image: './assets/images/splash-icon.png', resizeMode: 'contain', backgroundColor: '#f6f6f4' }],
+      ...(enableDuoVerticalBar ? ['./plugins/with-duo-vertical-bar'] : [])
     ],
     experiments: { typedRoutes: true }
   }
   return withReleaseSigning(base, chosen.bundleIdentifier)
 }
+
+export default (context: ConfigContext): ExpoConfig => buildAppConfig(context)

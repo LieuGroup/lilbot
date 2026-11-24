@@ -44,6 +44,7 @@ IOS_PROVISIONING_PROFILE_NAME="<profile name>" bun run testflight -- --upload
 ## Rules
 
 - `ios/` and `android/` native directories are generated (Continuous Native Generation). Never create or edit them by hand — configure native behavior in `app.config.ts` and config plugins.
+- iPhone Duo 84 pt vertical side-strip controls use native `UIBarButtonItem`s configured from the single table `DUO_VERTICAL_BAR_TABLE` in `ios/src/duo/vertical-bar.ts` and gated by `useVerticalBarEdgeIOS()` (iOS 27.1+ only; ordinary iPhones, iPads, and iOS < 27.1 keep existing placements untouched). `ios/plugins/with-duo-vertical-bar.ts` (controlled by `ENABLE_DUO_VERTICAL_BAR_ITEMS` in `ios/app.config.ts`) sets `UIBarButtonItemAxisBehaviorVerticalPreferred` on `RNSBarButtonItem`s prefixed with `lilbot.duo.vertical.`; delete the plugin once `react-native-screens` exposes `axisBehavior` natively.
 - Use `bunx expo install <package>` for dependencies, never a plain package-manager add.
 - The app talks to the same LilBot server over its existing socket protocol (`shared/client/socket.ts`); no server changes for a client feature.
 - Never test against production or any live bot: point a dev build at a development server with temporary bots only (repo `AGENTS.md`, Safety).

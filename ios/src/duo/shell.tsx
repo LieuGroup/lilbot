@@ -3,8 +3,8 @@
  *    `/chat` as a second native Stack screen so UIKit runs its own left-edge swipe back and Assistive Access Back.
  *  - Split surfaces (Duo Unfolded Landscape, iPad): renders Roster and Chat side by side with inline sidebar toggle.
  *  - Syncs stack transitions only while focused so folding/unfolding or initial load on Settings never hijacks tabs. */
-import { useFocusEffect, useIsFocused, useRouter } from 'expo-router'
-import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import { Stack, useFocusEffect, useIsFocused, useRouter } from 'expo-router'
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { Bot } from '../../../shared/bot-schema'
@@ -17,7 +17,8 @@ import { useTheme } from '../ui/theme'
 import { computeShellLayout, nextSidebarState } from './layout'
 import { useBotSelection } from './selection'
 import { indexStackAction, shouldPushOnBotSelect } from './stack-sync'
-import { useLiveSurface } from './use-surface'
+import { useLiveSurface, useVerticalBarEdge } from './use-surface'
+import { buildDuoVerticalBarItems, duoVerticalHeaderOptions, isDuoVerticalBarActive, resolveDuoStripScreen, shouldShowInlineSidebarToggle } from './vertical-bar'
 
 export interface DuoShellProps {
   renderInspector?: (close: () => void) => ReactNode
@@ -29,6 +30,7 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
   const isFocused = useIsFocused()
   const insets = useSafeAreaInsets()
   const { surface, metrics } = useLiveSurface()
+  const verticalBarEdge = useVerticalBarEdge()
   const bots = useBotStore(state => state.bots)
   const sections = useBotStore(state => state.sections)
   const selectedId = useBotSelection(state => state.selectedId)
@@ -97,21 +99,30 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
   }, [sidebarOpen, inspectorOpen])
 
   const showRoster = !layout.splitMode || layout.rosterWidth > 0
-  const sidebarToggle = layout.showSidebarToggle ? (
+  const verticalBarActive = isDuoVerticalBarActive({ surface, verticalBarEdge })
+  const stripScreen = resolveDuoStripScreen({ surface, chatFocused: false })
+  const sidebarLabel = showRoster ? 'Hide bots sidebar' : 'Show bots sidebar'
+  const verticalBarItems = useMemo(
+    () =>
+      verticalBarActive && layout.showSidebarToggle
+        ? buildDuoVerticalBarItems({
+            screen: stripScreen,
+            actions: { 'sidebar-toggle': { label: sidebarLabel, onPress: handleToggleSidebar } },
+            tintColor: theme.foreground
+          })
+        : [],
+    [handleToggleSidebar, layout.showSidebarToggle, sidebarLabel, stripScreen, theme.foreground, verticalBarActive]
+  )
+  const useNativeStripHeader = verticalBarActive && verticalBarItems.length > 0
+  const stackOptions = useMemo(() => duoVerticalHeaderOptions(verticalBarItems, theme.foreground), [theme.foreground, verticalBarItems])
+  const sidebarToggle = shouldShowInlineSidebarToggle({ showSidebarToggle: layout.showSidebarToggle, verticalBarActive }) ? (
     <Pressable
       onPress={handleToggleSidebar}
       hitSlop={8}
       accessibilityRole="button"
-      accessibilityLabel={showRoster ? 'Hide bots sidebar' : 'Show bots sidebar'}
+      accessibilityLabel={sidebarLabel}
       testID="duo-sidebar-toggle"
-      style={({ pressed }) => ({
-        width: 28,
-        height: 28,
-        borderRadius: 14,
-        alignItems: 'center',
-        justifyContent: 'center',
-        opacity: pressed ? 0.65 : 1
-      })}
+      style={({ pressed }) => ({ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.65 : 1 })}
     >
       <SidebarToggleIcon color={theme.foreground} />
     </Pressable>
@@ -122,42 +133,45 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
     : { flex: 1 }
 
   return (
-    <View
-      style={{
-        flex: 1,
-        flexDirection: 'row',
-        backgroundColor: theme.background,
-        paddingTop: insets.top,
-        paddingLeft: layout.horizontalPadding.left,
-        paddingRight: layout.horizontalPadding.right
-      }}
-    >
-      <View key="roster-pane" style={rosterStyle}>
-        <Roster bots={bots} sections={sections} selectedId={layout.splitMode ? (selected?.id ?? null) : null} onSelect={handleSelectBot} />
-      </View>
-      {layout.splitMode && (
-        <View key="chat-pane" style={{ flex: 1 }}>
-          {selected ? <ChatScreen bot={selected} headerLeading={sidebarToggle} /> : <EmptyDetail />}
+    <>
+      <Stack.Screen options={stackOptions} />
+      <View
+        style={{
+          flex: 1,
+          flexDirection: 'row',
+          backgroundColor: theme.background,
+          paddingTop: useNativeStripHeader ? 0 : insets.top,
+          paddingLeft: layout.horizontalPadding.left,
+          paddingRight: layout.horizontalPadding.right
+        }}
+      >
+        <View key="roster-pane" style={rosterStyle}>
+          <Roster bots={bots} sections={sections} selectedId={layout.splitMode ? (selected?.id ?? null) : null} onSelect={handleSelectBot} />
         </View>
-      )}
-      {layout.splitMode && layout.inspectorWidth > 0 && renderInspector && (
-        <View key="inspector-pane" style={{ width: layout.inspectorWidth, borderLeftWidth: 1, borderLeftColor: theme.hairline }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 12, paddingTop: 8 }}>
-            <Pressable
-              onPress={() => setInspectorOpen(false)}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Close inspector"
-              testID="duo-inspector-close"
-              style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}
-            >
-              <CloseIcon color={theme.foreground} />
-            </Pressable>
+        {layout.splitMode && (
+          <View key="chat-pane" style={{ flex: 1 }}>
+            {selected ? <ChatScreen bot={selected} headerLeading={sidebarToggle} /> : <EmptyDetail />}
           </View>
-          {renderInspector(() => setInspectorOpen(false))}
-        </View>
-      )}
-    </View>
+        )}
+        {layout.splitMode && layout.inspectorWidth > 0 && renderInspector && (
+          <View key="inspector-pane" style={{ width: layout.inspectorWidth, borderLeftWidth: 1, borderLeftColor: theme.hairline }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 12, paddingTop: 8 }}>
+              <Pressable
+                onPress={() => setInspectorOpen(false)}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Close inspector"
+                testID="duo-inspector-close"
+                style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <CloseIcon color={theme.foreground} />
+              </Pressable>
+            </View>
+            {renderInspector(() => setInspectorOpen(false))}
+          </View>
+        )}
+      </View>
+    </>
   )
 }
 
