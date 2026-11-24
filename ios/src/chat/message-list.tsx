@@ -1,24 +1,25 @@
 /** The conversation: messages from the end (preserving scroll offset across fold/unfold),
- *  the bot's live status, and the composer (preserving unsent draft per bot and clearing bottom insets/keyboard). */
+ *  the bot's live status below the newest message, and the composer (preserving unsent draft per bot). */
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
-import { FlatList, Keyboard, type NativeScrollEvent, type NativeSyntheticEvent, Platform, Pressable, TextInput, View } from 'react-native'
+import { AccessibilityInfo, Animated, Easing, FlatList, Keyboard, type NativeScrollEvent, type NativeSyntheticEvent, Platform, Pressable, TextInput, View } from 'react-native'
 import type { ChatView, MessageItem } from '../../../shared/client/chat/chat-state'
-import { SendIcon } from '../ui/icon'
+import { SendIcon, SparklesIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { ChatItem } from './message-item'
+import type { ChatStatusLine } from './status'
 import { useChatStore } from './store'
 
 interface MessageListProps {
   botId: string
   botName: string
   chat: ChatView
-  emptyHint: string
+  statusLine?: ChatStatusLine | null
 }
 
-/** The transcript, newest at the bottom. Restores the bot's saved scrollOffset when remounted across fold/unfold. */
-export function MessageList({ botId, botName, chat, emptyHint }: MessageListProps) {
-  const theme = useTheme()
+/** The transcript, newest at the bottom. Restores the bot's saved scrollOffset when remounted across fold/unfold.
+ *  Because the list is inverted, ListHeaderComponent renders at the visual bottom right where the reply appears. */
+export function MessageList({ botId, botName, chat, statusLine = null }: MessageListProps) {
   const listRef = useRef<FlatList<{ key: string; item: MessageItem; queued: boolean }>>(null)
   const initialOffset = useRef(useChatStore.getState().slots[botId]?.scrollOffset ?? 0)
   const restored = useRef(initialOffset.current <= 0)
@@ -56,15 +57,63 @@ export function MessageList({ botId, botName, chat, emptyHint }: MessageListProp
       onScrollEndDrag={handleScroll}
       scrollEventThrottle={100}
       contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 20, gap: 18, flexGrow: 1, justifyContent: rows.length === 0 ? 'center' : 'flex-end' }}
-      ListEmptyComponent={
-        emptyHint ? (
-          <AppText variant="chat" color={theme.mutedForeground} style={{ textAlign: 'center' }}>
-            {emptyHint}
-          </AppText>
-        ) : undefined
-      }
+      ListHeaderComponent={statusLine ? <ConversationStatusRow status={statusLine} centered={rows.length === 0} /> : undefined}
       renderItem={({ item: row }) => <ChatItem item={row.item} botName={botName} queued={row.queued} />}
     />
+  )
+}
+
+function ConversationStatusRow({ status, centered }: { status: ChatStatusLine; centered: boolean }) {
+  const theme = useTheme()
+  const pulse = useRef(new Animated.Value(1)).current
+  const [reduceMotion, setReduceMotion] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    void AccessibilityInfo.isReduceMotionEnabled().then(enabled => {
+      if (active) setReduceMotion(enabled)
+    })
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion)
+    return () => {
+      active = false
+      sub.remove()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (status.tone !== 'running' || reduceMotion) {
+      pulse.setValue(1)
+      return
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 0.5, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true })
+      ])
+    )
+    loop.start()
+    return () => loop.stop()
+  }, [pulse, reduceMotion, status.tone])
+
+  return (
+    <Animated.View
+      testID="chat-status-line"
+      accessibilityRole="text"
+      accessibilityLiveRegion="polite"
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: centered ? 'center' : 'flex-start',
+        gap: 6,
+        minHeight: 20,
+        opacity: status.tone === 'running' ? pulse : 1
+      }}
+    >
+      {status.tone === 'running' && <SparklesIcon color={theme.mutedForeground} size={13} />}
+      <AppText variant="preview" color={theme.mutedForeground} numberOfLines={1}>
+        {status.text}
+      </AppText>
+    </Animated.View>
   )
 }
 

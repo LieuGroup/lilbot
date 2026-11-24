@@ -5,10 +5,6 @@ import type { SurfaceKind } from './layout'
 export const DUO_VERTICAL_ITEM_PREFIX = 'lilbot.duo.vertical.'
 export const DUO_AVATAR_TEST_ID = `${DUO_VERTICAL_ITEM_PREFIX}bot-avatar`
 
-/** Controls whether Duo chat shows a separate `•••` button beside the tappable bot avatar in the 84 pt strip.
- *  Flipped cleanly here while comparing avatar-only vs avatar + `•••` on iPhone Duo Simulator. */
-export const DUO_STRIP_INCLUDE_BOT_MENU = false
-
 export type VerticalBarEdge = 'leading' | 'trailing' | null
 export type VerticalBarActionId = 'bot-avatar' | 'sidebar-toggle' | 'bot-menu' | 'new-bot' | 'search-bots'
 export type VerticalBarPriority = 'high' | 'standard' | 'low'
@@ -127,10 +123,8 @@ export function buildDuoVerticalBarItems(input: {
   screen: DuoStripScreen | null
   actions: VerticalBarActionMap
   tintColor?: string
-  includeBotMenu?: boolean
 }): NativeVerticalBarHeaderItem[] {
   if (!input.screen) return []
-  const includeBotMenu = input.includeBotMenu ?? DUO_STRIP_INCLUDE_BOT_MENU
   const slots = DUO_VERTICAL_BAR_TABLE[input.screen]
   const items: NativeVerticalBarHeaderItem[] = []
   for (const slot of slots) {
@@ -144,7 +138,6 @@ export function buildDuoVerticalBarItems(input: {
       })
       continue
     }
-    if (slot.id === 'bot-menu' && !includeBotMenu) continue
     const handler = input.actions[slot.id]
     if (!handler) continue
     const label = handler.label?.trim() || slot.defaultLabel

@@ -4,6 +4,7 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { ReactElement } from 'react'
+import { resolveChatStatusLine } from '../../ios/src/chat/status'
 import {
   buildDuoVerticalBarItems,
   DUO_AVATAR_TEST_ID,
@@ -74,39 +75,52 @@ describe('iPhone Duo native vertical side-strip table and availability guards', 
     }
   })
 
-  test('buildDuoVerticalBarItems preserves table order, supports avatar-only vs avatar + more, and prefixes ids', () => {
+  test('buildDuoVerticalBarItems preserves table order with shipped avatar + more and prefixes ids', () => {
     const noop = () => {}
-    const avatarOnly = buildDuoVerticalBarItems({
+    const unfolded = buildDuoVerticalBarItems({
       screen: 'unfolded-split',
-      includeBotMenu: false,
       actions: {
         'search-bots': { onPress: noop },
         'bot-menu': { label: 'More for Chief', onPress: noop },
         'sidebar-toggle': { label: 'Hide bots sidebar', onPress: noop },
+        'new-bot': { onPress: noop },
         'bot-avatar': { element: fakeElement, hidesSharedBackground: false }
       },
       tintColor: '#111111'
     })
-    expect(avatarOnly.map(i => (i.type === 'custom' ? 'custom:bot-avatar' : i.identifier))).toEqual([
+    expect(unfolded.map(i => (i.type === 'custom' ? 'custom:bot-avatar' : i.identifier))).toEqual([
       'custom:bot-avatar',
       `${DUO_VERTICAL_ITEM_PREFIX}sidebar-toggle`,
+      `${DUO_VERTICAL_ITEM_PREFIX}bot-menu`,
+      `${DUO_VERTICAL_ITEM_PREFIX}new-bot`,
       `${DUO_VERTICAL_ITEM_PREFIX}search-bots`
     ])
-    expect(avatarOnly[0]).toEqual({ type: 'custom', element: fakeElement, hidesSharedBackground: false })
+    expect(unfolded[0]).toEqual({ type: 'custom', element: fakeElement, hidesSharedBackground: false })
 
-    const avatarPlusMore = buildDuoVerticalBarItems({
+    const folded = buildDuoVerticalBarItems({
       screen: 'folded-chat',
-      includeBotMenu: true,
       actions: {
         'bot-avatar': { element: fakeElement },
         'bot-menu': { label: '   ', onPress: noop }
       }
     })
-    expect(avatarPlusMore).toHaveLength(2)
-    expect(avatarPlusMore[0]?.type).toBe('custom')
-    expect(avatarPlusMore[1]).toMatchObject({ type: 'button', identifier: `${DUO_VERTICAL_ITEM_PREFIX}bot-menu`, label: 'Bot options' })
+    expect(folded).toHaveLength(2)
+    expect(folded[0]?.type).toBe('custom')
+    expect(folded[1]).toMatchObject({ type: 'button', identifier: `${DUO_VERTICAL_ITEM_PREFIX}bot-menu`, label: 'Bot options' })
     expect(buildDuoVerticalBarItems({ screen: null, actions: { 'sidebar-toggle': { onPress: noop } } })).toEqual([])
     expect(buildDuoVerticalBarItems({ screen: 'unfolded-portrait', actions: { 'sidebar-toggle': { onPress: noop } } })).toEqual([])
+  })
+
+  test('resolveChatStatusLine matches web wording for connection, opening, working, and idle states', () => {
+    expect(resolveChatStatusLine({ connected: false, ready: false, running: false, activity: '' })).toEqual({ text: 'Reconnecting...', tone: 'muted' })
+    expect(resolveChatStatusLine({ connected: false, ready: true, running: true, activity: 'Working...' })).toEqual({ text: 'Reconnecting...', tone: 'muted' })
+    expect(resolveChatStatusLine({ connected: true, ready: false, running: false, activity: '' })).toEqual({ text: 'Opening chat...', tone: 'muted' })
+    expect(resolveChatStatusLine({ connected: true, ready: true, running: true, activity: 'Working...' })).toEqual({ text: 'Working...', tone: 'running' })
+    expect(resolveChatStatusLine({ connected: true, ready: true, running: true, activity: 'Thinking...' })).toEqual({ text: 'Thinking...', tone: 'running' })
+    expect(resolveChatStatusLine({ connected: true, ready: true, running: true, activity: 'Using terminal...' })).toEqual({ text: 'Using terminal...', tone: 'running' })
+    expect(resolveChatStatusLine({ connected: true, ready: true, running: true, activity: '' })).toBeNull()
+    expect(resolveChatStatusLine({ connected: true, ready: true, running: false, activity: 'Working...' })).toBeNull()
+    expect(resolveChatStatusLine({ connected: true, ready: true, running: false, activity: '' })).toBeNull()
   })
 
   test('duoVerticalHeaderOptions hides header when inactive and returns transparent zero-title options when active', () => {
@@ -122,7 +136,7 @@ describe('iPhone Duo native vertical side-strip table and availability guards', 
     expect(active.unstable_headerRightItems?.()).toEqual(items)
   })
 
-  test('DuoShell, CompactChatRoute, ChatScreen, and MessageList wire avatar-in-strip, header removal, and clean conversation chrome', () => {
+  test('DuoShell, CompactChatRoute, ChatScreen, and MessageList wire avatar + more in strip, header removal, and bottom status line', () => {
     const shellSource = readFileSync(resolve(process.cwd(), 'ios/src/duo/shell.tsx'), 'utf8')
     const chatRouteSource = readFileSync(resolve(process.cwd(), 'ios/src/app/(tabs)/(bots)/chat.tsx'), 'utf8')
     const chatScreenSource = readFileSync(resolve(process.cwd(), 'ios/src/chat/screen.tsx'), 'utf8')
@@ -131,7 +145,9 @@ describe('iPhone Duo native vertical side-strip table and availability guards', 
     expect(shellSource).toContain('DuoStripAvatar')
     expect(chatRouteSource).toContain('shouldHideDuoChatHeader(')
     expect(chatRouteSource).toContain('DuoStripAvatar')
-    expect(chatScreenSource).toContain("emptyHint={chat.ready ? '' : 'Opening the conversation…'}")
+    expect(chatScreenSource).toContain('resolveChatStatusLine(')
+    expect(messageListSource).toContain('ListHeaderComponent=')
+    expect(messageListSource).toContain('testID="chat-status-line"')
     expect(messageListSource).not.toContain('ListFooterComponent')
   })
 })
