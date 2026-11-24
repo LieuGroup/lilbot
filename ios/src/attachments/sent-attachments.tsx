@@ -2,6 +2,7 @@
  *  viewer, file chips) and the text-only model ImageNote with "Change model" trigger. */
 import { useEffect, useState } from 'react'
 import { AccessibilityInfo, Image, Modal, Pressable, View } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { Attachment, ImageSupport } from '../../../shared/attachment-schema'
 import { formatBytes, imageNoteText, isImage } from '../../../shared/client/attachments/attachment-rules'
 import { serverAssetUrl, serverAuthHeaders } from '../connection/lilbot'
@@ -13,6 +14,7 @@ import { glassFallbackBackground } from '../ui/tokens'
 
 export function SentAttachments({ files }: { files: Attachment[] }) {
   const theme = useTheme()
+  const insets = useSafeAreaInsets()
   const [viewed, setViewed] = useState<{ uri: string; name: string } | null>(null)
   const [reduceTransparency, setReduceTransparency] = useState(false)
   const headers = serverAuthHeaders()
@@ -90,7 +92,17 @@ export function SentAttachments({ files }: { files: Attachment[] }) {
             hitSlop={8}
             accessibilityRole="button"
             accessibilityLabel="Close image"
-            style={{ position: 'absolute', top: 56, right: 20, width: 44, height: 44, borderRadius: 22, backgroundColor: theme.glass.scrimSolid, alignItems: 'center', justifyContent: 'center' }}
+            style={{
+              position: 'absolute',
+              top: Math.max(56, insets.top + 12),
+              right: Math.max(20, insets.right + 12),
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              backgroundColor: theme.glass.scrimSolid,
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
           >
             <CloseIcon color="#ffffff" size={20} />
           </Pressable>

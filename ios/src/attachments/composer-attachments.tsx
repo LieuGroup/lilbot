@@ -1,5 +1,6 @@
 /** Staged attachment tiles/chips and refusal notes inside the iOS composer, plus the Photo/File picker sheet. */
 import { ActivityIndicator, Image, Modal, Pressable, ScrollView, View } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { formatBytes, leftOutText, refusalText } from '../../../shared/client/attachments/attachment-rules'
 import { FileIcon, ImageIcon } from '../ui/chat-icons'
 import { CloseIcon } from '../ui/icon'
@@ -142,9 +143,10 @@ interface AttachSourceSheetProps {
 
 export function AttachSourceSheet({ visible, onClose, onPickPhotos, onPickFiles }: AttachSourceSheetProps) {
   const theme = useTheme()
+  const insets = useSafeAreaInsets()
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.32)', justifyContent: 'flex-end', padding: 16 }}>
+      <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.32)', justifyContent: 'flex-end', paddingTop: 16, paddingBottom: Math.max(16, insets.bottom + 8), paddingLeft: Math.max(16, insets.left + 8), paddingRight: Math.max(16, insets.right + 8) }}>
         <Pressable onPress={event => event.stopPropagation()} style={{ backgroundColor: theme.card, borderRadius: 18, borderWidth: 1, borderColor: theme.hairline, overflow: 'hidden' }}>
           <Pressable
             testID="attach-photo-library"

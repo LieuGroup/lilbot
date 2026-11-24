@@ -37,8 +37,9 @@ export function MessageList({ botId, botName, botAvatar, deviceId, chat, statusL
   const rowsRef = useRef(rows)
   rowsRef.current = rows
 
-  const scroll = useScrollRestore(botId, listRef, rowsRef, viewportWidth, statusLine?.tone === 'muted')
+  const scroll = useScrollRestore(botId, listRef, rowsRef, viewportWidth)
   const { loading: loadingOlder, load: loadOlder } = useOlderHistory(botId, scroll.nearOldest)
+  const visibleStatus = statusLine && (statusLine.tone === 'running' || rows.length === 0 || !scroll.showJumpDown) ? statusLine : null
 
   const renderItem = useCallback(
     ({ item: row }: ListRenderItemInfo<TranscriptRow>) => (
@@ -71,9 +72,9 @@ export function MessageList({ botId, botName, botAvatar, deviceId, chat, statusL
         keyboardDismissMode="interactive"
         scrollEventThrottle={64}
         contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: CONTENT_PADDING_VERTICAL, gap: ROW_GAP, flexGrow: 1, justifyContent: rows.length === 0 ? 'center' : 'flex-end' }}
-        ListHeaderComponent={statusLine ? <ConversationStatusRow status={statusLine} centered={rows.length === 0} /> : undefined}
+        ListHeaderComponent={visibleStatus ? <ConversationStatusRow status={visibleStatus} centered={rows.length === 0} /> : undefined}
         ListEmptyComponent={
-          !statusLine && emptyHint ? (
+          !visibleStatus && emptyHint ? (
             <AppText testID="chat-empty-hint" style={{ ...MOBILE_SCALE.chat.message, textAlign: 'center' }} color={theme.mutedForeground}>
               {emptyHint}
             </AppText>

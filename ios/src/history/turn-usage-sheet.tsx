@@ -4,6 +4,7 @@ import * as Clipboard from 'expo-clipboard'
 import * as Haptics from 'expo-haptics'
 import { useEffect, useRef, useState } from 'react'
 import { Modal, Pressable, View } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { TurnUsage } from '../../../shared/chat-schema'
 import { turnUsageView, type UsageBucketKey } from '../../../shared/client/history/usage-format'
 import { BarChartIcon, CopyIcon } from '../ui/chat-icons'
@@ -97,11 +98,22 @@ export function TurnActions({ text, usage, showUsage }: TurnActionsProps) {
 
 function TurnUsageSheet({ usage, onClose }: { usage?: TurnUsage; onClose: () => void }) {
   const theme = useTheme()
+  const insets = useSafeAreaInsets()
   const view = turnUsageView(usage)
 
   return (
     <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: theme.background, padding: 20, gap: 16 }}>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: theme.background,
+          paddingTop: 20,
+          paddingBottom: Math.max(20, insets.bottom + 12),
+          paddingLeft: Math.max(20, insets.left + 12),
+          paddingRight: Math.max(20, insets.right + 12),
+          gap: 16
+        }}
+      >
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <View style={{ gap: 2 }}>
             <AppText variant="title" color={theme.foreground}>

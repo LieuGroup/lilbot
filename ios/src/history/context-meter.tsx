@@ -2,6 +2,7 @@
  *  native pageSheet detail modal matching web's ContextPopover copy 1:1. */
 import { useState } from 'react'
 import { Keyboard, Modal, Pressable, View } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Svg, { Circle } from 'react-native-svg'
 import type { BotContext } from '../../../shared/bot-schema'
 import { contextDetailView, contextMeterView } from '../../../shared/client/history/usage-format'
@@ -20,6 +21,7 @@ interface ContextMeterProps {
 
 export function ContextMeter({ botName, context }: ContextMeterProps) {
   const theme = useTheme()
+  const insets = useSafeAreaInsets()
   const [open, setOpen] = useState(false)
   const pill = contextMeterView(context)
   const detail = contextDetailView(context)
@@ -72,7 +74,17 @@ export function ContextMeter({ botName, context }: ContextMeterProps) {
       </Pressable>
 
       <Modal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setOpen(false)}>
-        <View style={{ flex: 1, backgroundColor: theme.background, padding: 20, gap: 16 }}>
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: theme.background,
+            paddingTop: 20,
+            paddingBottom: Math.max(20, insets.bottom + 12),
+            paddingLeft: Math.max(20, insets.left + 12),
+            paddingRight: Math.max(20, insets.right + 12),
+            gap: 16
+          }}
+        >
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <AppText variant="title" color={theme.foreground}>
               Context

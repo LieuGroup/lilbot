@@ -10,8 +10,7 @@ export function useScrollRestore(
   botId: string,
   listRef: RefObject<FlatList<TranscriptRow> | null>,
   rowsRef: RefObject<TranscriptRow[]>,
-  viewportWidth: number,
-  statusPending: boolean
+  viewportWidth: number
 ) {
   const slot0 = useRef(useChatStore.getState().slots[botId]).current
   const initialOffset = useRef(slot0?.scrollOffset ?? 0)
@@ -19,15 +18,14 @@ export function useScrollRestore(
   const restore = useRef(createScrollRestoreController(initialOffset.current > 2 || initialAnchor.current !== null))
   const settleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const viewportHeight = useRef(0)
-  const lastHeight = useRef(0)
   const nearOldest = useRef(false)
   const setScrollOffset = useChatStore(state => state.setScrollOffset)
   const [showJumpDown, setShowJumpDown] = useState(shouldShowScrollToBottom(initialOffset.current))
 
   useEffect(() => () => clearTimeout(settleTimer.current), [])
 
-  const applyRestore = useCallback(
-    (contentHeight: number) => {
+  const handleContentSizeChange = useCallback(
+    (_w: number, contentHeight: number) => {
       if (!restore.current.isRestoring() || rowsRef.current.length === 0) return
       const plan = computeRestorePlan(rowsRef.current, getRowHeights(botId), initialAnchor.current, initialOffset.current, viewportWidth)
       if (plan.kind === 'none') return restore.current.markSettled()
@@ -39,24 +37,11 @@ export function useScrollRestore(
         listRef.current?.scrollToOffset({ offset: plan.offset, animated: false })
         if (Math.max(0, contentHeight - viewportHeight.current) < plan.offset) return
       }
-      if (statusPending) return
       clearTimeout(settleTimer.current)
       settleTimer.current = setTimeout(() => restore.current.markSettled(), 250)
     },
-    [botId, listRef, rowsRef, statusPending, viewportWidth]
+    [botId, listRef, rowsRef, viewportWidth]
   )
-
-  const handleContentSizeChange = useCallback(
-    (_w: number, contentHeight: number) => {
-      lastHeight.current = contentHeight
-      applyRestore(contentHeight)
-    },
-    [applyRestore]
-  )
-
-  useEffect(() => {
-    if (!statusPending && restore.current.isRestoring() && lastHeight.current > 0) applyRestore(lastHeight.current)
-  }, [applyRestore, statusPending])
 
   const handleScrollToIndexFailed = useCallback(
     (info: { index: number; averageItemLength: number }) => {
