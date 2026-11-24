@@ -1,8 +1,18 @@
 import { expect, test } from 'bun:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { botCapability } from '../../server/bots/bot-capability'
+import { BotPrefsStore } from '../../server/bots/bot-prefs-store'
 import { BotService } from '../../server/bots/bot-service'
+import { BotStore } from '../../server/bots/bot-store'
 import { Workspaces } from '../../server/bots/workspaces'
+import { openDatabase } from '../../server/database/database'
+import { EngineRegistry } from '../../server/engines/engine-registry'
+import { ScriptedEngine } from '../../server/engines/scripted/scripted-engine'
 import { createEngineApi } from '../../server/http/engine-api'
+import { MemoryService } from '../../server/memory/memory-service'
+import { MemoryStore } from '../../server/memory/memory-store'
 import { fakeService } from '../helpers/fake-engine'
 
 const input = { requestId: 'one', name: 'Engineer', function: 'Keeps TypeScript projects tidy.', instructions: 'Help Oscar maintain TypeScript projects.' }
@@ -138,5 +148,39 @@ test('unknown capability owners are refused, including a stale resolved roster e
     expect((await call('b1')).status).toBe(403)
   } finally {
     await import('node:fs/promises').then(fs => fs.rm(f.root, { recursive: true, force: true }))
+  }
+})
+
+test('a bot created by a bot on a non-default engine inherits its creator’s engine as well as its model', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'lilbot-bot-create-engines-'))
+  const database = openDatabase(join(root, 'lilbot.db'))
+  try {
+    const engineA = new ScriptedEngine({ id: 'engine-a', models: [{ provider: 'alpha', name: 'Alpha', models: ['alpha-1'], capabilities: [] }] })
+    const engineB = new ScriptedEngine({ id: 'engine-b', models: [{ provider: 'beta', name: 'Beta', models: ['beta-1'], capabilities: [] }] })
+    const registry = new EngineRegistry([engineA, engineB], 'engine-a')
+    const store = new BotStore(database)
+    const prefs = new BotPrefsStore(database)
+    const service = new BotService(registry, store, prefs, new Workspaces(join(root, 'workspaces')), new MemoryService(new MemoryStore(database)))
+    const betaModel = { provider: 'beta', model: 'beta-1' }
+    const creator = await service.createBot({ name: 'Beta Lead', function: '', instructions: '', model: betaModel }, 'creator-b', 'engine-b')
+    const plainCreator = await service.createBot({ name: 'Beta Plain', function: '', instructions: '' }, 'creator-b-plain', 'engine-b')
+
+    const child = await service.createFromBot(creator.id, { ...input, requestId: 'from-beta' })
+    const childRecord = store.get(child.id)
+    expect(childRecord.engineId).toBe('engine-b')
+    expect(childRecord.model).toEqual(betaModel)
+    expect(engineB.runtimeOf(childRecord.engineBotId)).toBeDefined()
+    expect(engineA.runtimeOf(childRecord.engineBotId)).toBeUndefined()
+    const mainChat = prefs.mainChat(child.id)
+    expect(mainChat).toBeTruthy()
+    expect(engineB.sessionOf(mainChat!)?.inputs[0]?.inputId).toBe(`greeting-${child.id}`)
+
+    // Even without an explicit model on the creator, the child inherits the creator's engine rather than the default engine.
+    const plainChild = await service.createFromBot(plainCreator.id, { ...input, requestId: 'from-beta-plain' })
+    expect(store.get(plainChild.id).engineId).toBe('engine-b')
+    expect(engineB.runtimeOf(store.get(plainChild.id).engineBotId)).toBeDefined()
+  } finally {
+    database.close()
+    rmSync(root, { recursive: true, force: true })
   }
 })
