@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { type BotActionsSocket, createBotActions } from '../../ios/src/bots/actions-core'
+import { useBotMenuStore } from '../../ios/src/bots/menu-store'
 import { buildRosterListItems, splitNewBotHeaderKey } from '../../ios/src/bots/roster-list'
 import { type BotRosterSocket, createBotStore } from '../../ios/src/bots/store-core'
 import { runningGroups } from '../../shared/client/bots/running-groups'
@@ -110,5 +113,31 @@ describe('Round 4 iOS Roster store guards, action error reporting, and 200-bot v
     const member = { ...bot('m1'), groups: [{ id: 'g1', purpose: 'Launch checklist', round: 2, roundCap: 6, leading: false }] }
     const leader = { ...bot('l1'), groups: [{ id: 'g1', purpose: 'Launch checklist', round: 2, roundCap: 6, leading: true }] }
     expect(runningGroups([member, leader])[0]?.bots.map(b => b.id)).toEqual(['l1', 'm1'])
+  })
+
+  test('closing bot overlays clears menu and dialogs when leaving Bots tab, and split + / Chat header controls meet hit-target & color rules', () => {
+    const menu = useBotMenuStore.getState()
+    menu.openMenu('bot-a')
+    expect(useBotMenuStore.getState().menuBotId).toBe('bot-a')
+    menu.closeBotOverlays()
+    expect(useBotMenuStore.getState().menuBotId).toBeNull()
+    expect(useBotMenuStore.getState().dialog).toBeNull()
+
+    menu.openDialog({ kind: 'delete', botId: 'bot-a' })
+    expect(useBotMenuStore.getState().dialog).toEqual({ kind: 'delete', botId: 'bot-a' })
+    menu.closeBotOverlays()
+    expect(useBotMenuStore.getState().dialog).toBeNull()
+
+    const layoutSource = readFileSync(resolve(process.cwd(), 'ios/src/app/(tabs)/_layout.tsx'), 'utf8')
+    expect(layoutSource).toContain('if (!botsTabActive) closeBotOverlays()')
+
+    const chromeSource = readFileSync(resolve(process.cwd(), 'ios/src/bots/roster-chrome.tsx'), 'utf8')
+    expect(chromeSource).toContain('hitSlop={{ top: 13, bottom: 13, left: 10, right: 10 }}')
+    expect(chromeSource).toContain('hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}')
+
+    const chatScreenSource = readFileSync(resolve(process.cwd(), 'ios/src/chat/screen.tsx'), 'utf8')
+    const compactChatSource = readFileSync(resolve(process.cwd(), 'ios/src/app/(tabs)/(bots)/chat.tsx'), 'utf8')
+    expect(chatScreenSource).toContain('<MoreHorizontalIcon color={theme.foreground} size={16} />')
+    expect(compactChatSource).toContain('<MoreHorizontalIcon color={theme.foreground} size={16} />')
   })
 })

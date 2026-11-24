@@ -68,7 +68,7 @@ export function ChatScreen({ bot, hideHeader = false, headerLeading }: ChatScree
               opacity: pressed ? 0.6 : 1
             })}
           >
-            <MoreHorizontalIcon color={theme.mutedForeground} size={16} />
+            <MoreHorizontalIcon color={theme.foreground} size={16} />
           </Pressable>
         </View>
       )}

@@ -19,6 +19,7 @@ interface BotMenuStore {
   closeMenu: () => void
   openDialog: (dialog: BotDialogState) => void
   closeDialog: () => void
+  closeBotOverlays: () => void
   setError: (message: string) => void
 }
 
@@ -33,5 +34,6 @@ export const useBotMenuStore = create<BotMenuStore>(set => ({
   closeMenu: () => set({ menuBotId: null }),
   openDialog: dialog => set({ menuBotId: null, dialog }),
   closeDialog: () => set({ dialog: null }),
+  closeBotOverlays: () => set({ menuBotId: null, dialog: null }),
   setError: error => set({ error })
 }))

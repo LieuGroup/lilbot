@@ -14,9 +14,10 @@ export const SplitNewBotFooter = memo(function SplitNewBotFooter({ onPress }: { 
       <Pressable
         testID="roster-new-bot-button"
         onPress={onPress}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         accessibilityRole="button"
         accessibilityLabel="New bot"
-        style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, opacity: pressed ? 0.6 : 1 })}
+        style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 44, paddingVertical: 6, opacity: pressed ? 0.6 : 1 })}
       >
         <PlusIcon color={theme.mutedForeground} size={14} />
         <AppText variant="meta" color={theme.mutedForeground} style={{ fontFamily: 'Inter_500Medium' }}>
@@ -33,7 +34,7 @@ export const SplitNewBotButton = memo(function SplitNewBotButton({ onPress }: { 
     <Pressable
       testID="roster-new-bot-button"
       onPress={onPress}
-      hitSlop={10}
+      hitSlop={{ top: 13, bottom: 13, left: 10, right: 10 }}
       accessibilityRole="button"
       accessibilityLabel="New bot"
       style={({ pressed }) => ({
