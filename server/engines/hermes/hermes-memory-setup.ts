@@ -14,6 +14,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { LegacyNotes, MemoryConnection, RuntimeBinding } from '../bot-engine'
 import { applied } from './hermes-applied'
+import { knownAcpPluginToolsets } from './hermes-skills'
 
 /** The name Hermes knows the provider by (plus a version). The data is not here: it is LilBot's. */
 const PLUGIN = 'lilbot-memory'
@@ -130,6 +131,7 @@ export async function installMemory(botId: string, connection: MemoryConnection)
   await configSet(botId, 'memory.memory_enabled', 'false')
   await configSet(botId, 'memory.user_profile_enabled', 'false')
   await configSet(botId, 'compression.checkpoint_required', 'true')
+  await configSet(botId, 'known_plugin_toolsets.acp', JSON.stringify(knownAcpPluginToolsets(home)))
 }
 
 export async function removeMemory(botId: string) {

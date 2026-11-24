@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'bun:test'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { hermesToolsetsForRun, limitedNeedsFileEdits } from '../../../server/engines/hermes/hermes-access'
 import { reviewMemory } from '../../../server/engines/hermes/hermes-memory-review'
+import { knownAcpPluginToolsets } from '../../../server/engines/hermes/hermes-skills'
 import type { McpConnection } from '../../../server/engines/mcp-connection'
 
 const CONN: McpConnection = {
@@ -43,6 +47,14 @@ describe('Hermes reviewMemory isolated session lifecycle', () => {
   test('review scope denies file edits, requests context_engine + no_mcp, and fails closed without sessionMcp', async () => {
     expect(limitedNeedsFileEdits('review')).toBe(false)
     expect(hermesToolsetsForRun('review')).toEqual(['context_engine', 'no_mcp'])
+    const dir = mkdtempSync(join(tmpdir(), 'known-acp-'))
+    try {
+      expect(knownAcpPluginToolsets(dir)).toEqual(['skills'])
+      writeFileSync(join(dir, 'config.yaml'), 'known_plugin_toolsets:\n  acp:\n    - custom_plugin\n    - skills\n')
+      expect(knownAcpPluginToolsets(dir)).toEqual(['custom_plugin', 'skills'])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
     await expect(reviewMemory('bot-1', 'Review', { onChat: () => {} })).rejects.toMatchObject({ code: 'session_mcp_unavailable' })
   })
 
