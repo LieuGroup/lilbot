@@ -2,18 +2,10 @@
 import { ExternalLinkIcon, FileTextIcon } from 'lucide-react'
 import { Fragment, useState } from 'react'
 import { Notice } from '@/ui/notice'
+import { safeHttpUrl } from '../../../shared/client/work/work-lines'
 import type { Evidence } from '../../../shared/work-schema'
 import { lilbot, messageOf } from '../app/lilbot-socket'
 import { itemTimestamp } from './work-lines'
-
-function safeHttpUrl(url: string): string | null {
-  try {
-    const parsed = new URL(url)
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.href : null
-  } catch {
-    return null
-  }
-}
 
 export function EvidenceCard({ botId, entries, now }: { botId: string; entries: Evidence[]; now: number }) {
   const [error, setError] = useState('')
