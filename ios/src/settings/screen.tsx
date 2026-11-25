@@ -8,7 +8,7 @@ import { RowDivider, SectionGroup } from '../ui/grouped-card'
 import { sheetScrollBottomPadding } from '../ui/keyboard-sheet'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
-import { KEYBOARD_SCROLL_PROPS, useKeyboardHeight } from '../ui/use-keyboard-height'
+import { useKeyboardHeight } from '../ui/use-keyboard-height'
 import { type SettingsSectionDefinition, visibleSettingsSections } from './sections'
 import { SETTINGS_SECTIONS } from './sections/index'
 import { ServerSettingsCard } from './server-section'
@@ -36,9 +36,10 @@ export function SettingsScreen({
       testID="settings-screen"
       style={{ flex: 1, backgroundColor: theme.background }}
       contentInsetAdjustmentBehavior="automatic"
+      keyboardDismissMode="on-drag"
+      keyboardShouldPersistTaps="handled"
       scrollIndicatorInsets={{ bottom: keyboardHeight }}
       contentContainerStyle={{ padding: 16, gap: 20, paddingBottom: sheetScrollBottomPadding(hasServer ? 116 : 40, keyboardHeight) }}
-      {...KEYBOARD_SCROLL_PROPS}
     >
       {!hasServer ? <AppText variant="title">Settings</AppText> : null}
 

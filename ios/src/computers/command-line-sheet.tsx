@@ -118,15 +118,7 @@ export function CommandLineSheet({ visible, onClose }: { visible: boolean; onClo
                         onPress={() => setSystem({ os: option.os, arch: option.arch })}
                         accessibilityRole="radio"
                         accessibilityState={{ selected }}
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          minHeight: 44,
-                          paddingHorizontal: 14,
-                          borderTopWidth: index > 0 ? 1 : 0,
-                          borderTopColor: theme.hairline
-                        }}
+                        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44, paddingHorizontal: 14, borderTopWidth: index > 0 ? 1 : 0, borderTopColor: theme.hairline }}
                       >
                         <AppText variant="name">{option.label}</AppText>
                         {selected ? <CheckIcon color={theme.foreground} size={16} /> : null}
