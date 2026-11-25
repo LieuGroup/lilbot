@@ -8,6 +8,12 @@ import { files } from '../skills/skill-files'
 import type { SkillsService } from '../skills/skills-service'
 import type { BotRecord } from './bot-store'
 
+export interface BotPromptSource {
+  enabled: boolean
+  write: (bot: BotRecord) => string
+  pathFor: (botId: string) => string
+}
+
 export interface RuntimeOptions {
   changed?: () => void
   retryDelays?: readonly number[]
@@ -15,6 +21,7 @@ export interface RuntimeOptions {
   prepareRetryMs?: number
   now?: () => number
   systemNote?: (bot: BotRecord) => string
+  prompt?: BotPromptSource
   onConnectionsChanged?: (botId: string) => void
 }
 
@@ -67,10 +74,43 @@ interface ToolSources {
   skills?: SkillsService
   connection?: SkillConnection
   connections?: (botId: string) => McpConnection[]
+  prompt?: BotPromptSource
   onConnectionsChanged?: (botId: string) => void
 }
 
-export async function prepareTools(engine: BotEngine, bot: BotRecord, { skills, connection, connections, onConnectionsChanged }: ToolSources) {
+export interface PromptRuntimeStatus {
+  promptActive?: boolean
+  promptFallback?: string
+}
+
+async function applyPromptFailSafe(engine: BotEngine, bot: BotRecord, prompt?: BotPromptSource): Promise<PromptRuntimeStatus> {
+  if (!prompt || !engine.configurePrompt) return {}
+  if (!prompt.enabled) {
+    try {
+      await engine.configurePrompt(bot.engineBotId, { enabled: false, botId: bot.id, promptFile: prompt.pathFor(bot.id) })
+    } catch {
+      console.error('[prompt] could not disable owned prompt on engine; continuing with current setup')
+    }
+    return { promptActive: false }
+  }
+  try {
+    const promptFile = prompt.write(bot)
+    const applied = await engine.configurePrompt(bot.engineBotId, { enabled: true, botId: bot.id, promptFile })
+    if (applied.active) return { promptActive: true }
+    const reason = applied.reason || 'engine prompt middleware inactive'
+    console.error('[prompt] owned prompt inactive; falling back to engine prompt')
+    return { promptActive: false, promptFallback: reason }
+  } catch {
+    console.error('[prompt] owned prompt setup failed; falling back to engine prompt')
+    return { promptActive: false, promptFallback: 'prompt setup failed' }
+  }
+}
+
+export async function prepareTools(
+  engine: BotEngine,
+  bot: BotRecord,
+  { skills, connection, connections, prompt, onConnectionsChanged }: ToolSources
+): Promise<PromptRuntimeStatus> {
   if (skills && connection) {
     // An engine whose switch is off is not imported from; the bot is marked only after an import, so switching on imports it.
     const includeEngineSkills = skills.engineIncluded(engine.id)
@@ -89,6 +129,7 @@ export async function prepareTools(engine: BotEngine, bot: BotRecord, { skills, 
   }
   const given = connections?.(bot.id)
   if (given?.length && (await engine.prepareConnections?.(bot.engineBotId, given))) onConnectionsChanged?.(bot.id)
+  return applyPromptFailSafe(engine, bot, prompt)
 }
 
 /** Gives each bot its connections again, for example after a connection or sign-in changed. */

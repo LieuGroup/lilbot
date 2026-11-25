@@ -56,17 +56,14 @@ export class BotRuntimes {
     })
     return this.importing
   }
-
   /** Every non-deleted bot whose engine is registered (optionally narrowed to one engine id). */
   bound = (engineId?: string) => this.store.list().filter(bot => (engineId ? bot.engineId === engineId : this.engines.has(bot.engineId)))
-
   /** A changed skills switch: each bound bot prepares its tools again, with the usual retries. */
   reapplySkills(engineId?: string): Promise<void> {
     const bots = this.bound(engineId)
     for (const bot of bots) this.readiness.invalidate(bot.id)
     return this.readiness.all(bots)
   }
-
   async use(bot: BotRecord): Promise<RuntimeState> {
     if (!this.engines.has(bot.engineId)) throw new LilBotError('runtime_unavailable', 'This bot’s engine is not available.')
     await this.readiness.ensure(bot)
@@ -120,9 +117,15 @@ export class BotRuntimes {
       if (retryPending && this.prepared.hasPending(bot.id)) await this.prepare(bot)
       const engine = this.engineFor(bot)
       const { skills, connection, connections } = this
-      await prepareTools(engine, bot, { skills, connection, connections, onConnectionsChanged: this.options.onConnectionsChanged })
+      const promptStatus = await prepareTools(engine, bot, {
+        skills,
+        connection,
+        connections,
+        prompt: this.options.prompt,
+        onConnectionsChanged: this.options.onConnectionsChanged
+      })
       const identity = this.options.systemNote ? { ...bot, instructions: withNote(bot.instructions, this.options.systemNote(bot)) } : bot
-      const state = await engine.applyIdentity(bot.engineBotId, identity)
+      const state = { ...(await engine.applyIdentity(bot.engineBotId, identity)), ...promptStatus }
       this.states.set(bot.id, state)
       return state
     } catch (error) {
@@ -181,7 +184,6 @@ export class BotRuntimes {
     await this.state(saved)
     return saved
   }
-
   async update({ botId, ...patch }: BotUpdateInput): Promise<void> {
     const previous = await this.require(botId)
     const bot = { ...previous, ...patch }

@@ -186,4 +186,13 @@ describe.skipIf(!installed)('Hermes wire contract', () => {
     expect(clarifyReq).toBeDefined()
     expect(['answers', 'outcome'].filter(k => !fields(clarifyReq.result?.schema).has(k))).toEqual([])
   })
+
+  test('Hermes plugin middleware contract (hermes.middleware.v1 / llm_request / register_middleware) remains declared', () => {
+    const root = join(CONTRACT, '../../../..')
+    const middlewarePy = readFileSync(join(root, 'hermes_cli/middleware.py'), 'utf8')
+    const contextPy = readFileSync(join(root, 'hermes_cli/plugins_context.py'), 'utf8')
+    expect(middlewarePy).toContain('MIDDLEWARE_SCHEMA_VERSION = "hermes.middleware.v1"')
+    expect(middlewarePy).toContain('LLM_REQUEST_MIDDLEWARE = "llm_request"')
+    expect(contextPy).toContain('def register_middleware(')
+  })
 })

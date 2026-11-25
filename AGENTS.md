@@ -50,6 +50,7 @@ server/            The LilBot server (runs on the leader).
   library/           Delivered workspace files, metadata, safe reads and folder listings.
   attachments/       Incoming chat files, streaming uploads and durable message associations.
   skills/            The shared skills library, per-bot switches and each engine's "Include this engine's skills" switch.
+  prompts/           LilBot's versioned base prompt, engine-neutral prompt assembler and private per-bot prompt store (`LILBOT_PROMPT_OWNERSHIP=1`, off by default).
   connections/       LilBot-owned connections: MCP services bots add (sign-in, tokens, forwarding route, applying changes),
                      legacy T3 Code bridge/sign-in/skill (off by default behind `LILBOT_T3_ENABLED=1`) and shared MCP helpers.
   system/            LilBot's own MCP server through which bots operate the app, and the note every bot gets about its system.
@@ -183,7 +184,7 @@ directories and files (0700/0600).
   (see Connections).
 - Put nothing new into Hermes plug-ins. A new bot-facing tool goes on LilBot's own MCP server (`server/system/`), with
   the same service function the screen uses, so a second engine gets it for free; the plug-ins keep only what MCP
-  cannot do.
+  cannot do (pre-compress save, native skill-write lock, and the dumb `lilbot-prompt-v1` `llm_request` pass-through that swaps the outbound system prompt with LilBot's assembled file).
 - Mapping onto Hermes: [docs/hermes-engine.md](docs/hermes-engine.md). Engine checklist:
   [docs/engine-contract.md](docs/engine-contract.md).
 

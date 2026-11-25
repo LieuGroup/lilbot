@@ -8,6 +8,7 @@ import { createConnections } from './app-connections'
 import { createGoals } from './app-goals'
 import { createMemory } from './app-memory'
 import { createNotifications } from './app-notifications'
+import { createPromptController } from './app-prompts'
 import { createRemoteWorkers, remoteWorkAnswers } from './app-remote-workers'
 import { type AppServicesSettings, createSessionGrants } from './app-session-grants'
 import { createThreads } from './app-threads'
@@ -102,11 +103,14 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
     publish({ event: 'chat', chatId, data: { type: 'user.message', ...message } })
   )
   const skills = new SkillsService(process.env.LILBOT_SKILLS_DIR ?? join(homedir(), 'lilbot', 'skills'), database, () => {
+    prompts.refreshAll()
     publish({ event: 'skills.changed' })
     botsChanged()
   })
   const t3Grants = new T3Grants(join(DATA_DIR, 't3-grant.json'), () => publish({ event: 'connections.changed' }))
   const facts = { store, workspaces, computers, t3: () => t3Grants.status(), t3Enabled, commit: COMMIT, dataDir: DATA_DIR }
+  const note = systemNote(facts)
+  const prompts = createPromptController({ dataDir: DATA_DIR, engines, workspaces, skills, store, systemNote: note, enabled: settings.PROMPT_OWNERSHIP })
   const history = new HistoryService(
     new HistoryStore(database, () => botsChanged()),
     engines,
@@ -123,9 +127,9 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
   const codingSwitch = new CodingSwitchNotice(join(DATA_DIR, 'coding-switch.json'))
   const t3For = (botId: string) => (t3Enabled ? [t3Connection(`http://127.0.0.1:${PORT}`, token, botId, t3Grants.generation())] : [])
   const memoryConnection = (botId: string) => checkpointConnectionFor(`http://127.0.0.1:${PORT}`, token, botId)
+  const botInit = { skills, history, changed: botsChanged, memoryChanged, memoryConnection, systemNote: note, prompt: prompts.source }
   const bots = new BotService(engines, store, prefs, workspaces, memory, {
-    skills,
-    history,
+    ...botInit,
     turnNotes: combineTurnNotes(messages, codingSwitch, mem.turnContext),
     memoryContext: mem.turnContext,
     conversationHooks: notif.conversationHooks(mem.conversationHooks(chatKind), hiddenChat),
@@ -133,15 +137,11 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
       history.store.forget(botId)
       remoteWorkers.runner.stopForBot(botId)
       sessionGrants.revokeForBot(botId)
-      for (const s of [devices, routineStore, webhookStore, computers, activity, mem, links, goals, mcp.services, codingSwitch, notif]) s.forgetBot(botId)
+      for (const s of [devices, routineStore, webhookStore, computers, activity, mem, links, goals, mcp.services, codingSwitch, notif, prompts]) s.forgetBot(botId)
     },
-    changed: botsChanged,
-    memoryChanged,
-    memoryConnection,
     skillConnection: { url: `http://127.0.0.1:${PORT}`, tokenFile: join(DATA_DIR, 'engine-token') },
     connections: botId => [...t3For(botId), system.connection(botId), ...mcp.connections(botId)],
     onConnectionsChanged: botId => mcp.applyBot(botId),
-    systemNote: systemNote(facts),
     busyReason: botBusyReason({ database, activity, routineStore, webhookStore }),
     readOnlyChat: (botId, chatId) => webhookRuns.callers.isKnownLimited(botId, chatId)
   })

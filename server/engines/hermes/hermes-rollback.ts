@@ -43,11 +43,15 @@ export const rollbackHook: EngineRollbackHook = {
     const run = (args: string[]) => context.runCommand([hermes, ...args], 30_000, { ...base, ...env })
     const result = { cleared: 0, failed: 0 }
     for (const profile of rollbackProfiles(context.profiles, env)) {
+      let touched = false
       try {
-        // The value is the last line: anything Hermes prints before it is not the setting.
-        if ((await run([...profile, 'config', 'get', 'compression.checkpoint_required'])).trim().split('\n').at(-1)?.trim().toLowerCase() !== 'true') continue
-        await run([...profile, 'config', 'set', 'compression.checkpoint_required', 'false'])
-        result.cleared++
+        for (const key of ['compression.checkpoint_required', 'plugins.entries.lilbot-prompt-v1.enabled']) {
+          // The value is the last line: anything Hermes prints before it is not the setting.
+          if ((await run([...profile, 'config', 'get', key])).trim().split('\n').at(-1)?.trim().toLowerCase() !== 'true') continue
+          await run([...profile, 'config', 'set', key, 'false'])
+          touched = true
+        }
+        if (touched) result.cleared++
       } catch {
         result.failed++
       }

@@ -15,6 +15,7 @@ export interface AppServicesSettings {
   ACCESS_HOST: string | undefined
   ACCESS_CALLBACK_ENABLED?: boolean
   T3_ENABLED?: boolean
+  PROMPT_OWNERSHIP?: boolean
   notificationSender?: NotificationSender
   publish: (frame: EventFrame) => void
   botsChanged: () => void

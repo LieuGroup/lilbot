@@ -119,7 +119,11 @@ export const BotSetup = z.object({
   instructions: z.string(),
   abilities: z.array(Ability),
   /** The bot reads and writes LilBot's memory (not the engine's own). */
-  memoryConnected: z.boolean()
+  memoryConnected: z.boolean(),
+  /** Present when LilBot-owned prompt setup fell back to the engine's default prompt. */
+  promptFallback: z.string().optional(),
+  /** True when the bot's own saved instructions still mention the engine's default identity. */
+  engineIdentityInInstructions: z.boolean().optional()
 })
 export type BotSetup = z.infer<typeof BotSetup>
 

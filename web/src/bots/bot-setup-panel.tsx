@@ -86,6 +86,9 @@ export function BotSetupPanel({ botId }: { botId: string }) {
             key={`${bot.id}:${bot.name}:${modelKey(bot.model)}:${bot.reasoningEffort}`}
             initial={{ name: bot.name, function: bot.function, instructions: bot.instructions, model: bot.model, reasoningEffort: bot.reasoningEffort }}
             sentEffort={bot.effectiveReasoningEffort}
+            instructionsNote={
+              bot.engineIdentityInInstructions ? 'These instructions mention the engine’s default identity, which some models reject. Edit and save to remove it.' : undefined
+            }
             context={<SetupContextCard botId={botId} fallback={bot.context} />}
             submitLabel="Save changes"
             onSubmit={async values => {
