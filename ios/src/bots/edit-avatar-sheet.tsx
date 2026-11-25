@@ -1,14 +1,16 @@
 /** Native pageSheet for editing a bot's name and avatar, mirroring `web/src/bots/edit-avatar-dialog.tsx`. */
 import { useState } from 'react'
-import { Modal, Pressable, ScrollView, TextInput, View } from 'react-native'
+import { Keyboard, Modal, Pressable, ScrollView, TextInput, View } from 'react-native'
 import type { Avatar } from '../../../shared/avatar'
 import type { Bot } from '../../../shared/bot-schema'
 import { messageOf } from '../../../shared/client/socket'
 import { BotAvatar } from '../ui/avatar'
 import { CloseIcon } from '../ui/icon'
+import { sheetScrollBottomPadding } from '../ui/keyboard-sheet'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { radius } from '../ui/tokens'
+import { KEYBOARD_SCROLL_PROPS, useKeyboardHeight } from '../ui/use-keyboard-height'
 import { saveNameAndAvatar } from './actions'
 import { AvatarPicker, randomAvatar } from './avatar-picker'
 import { useBotMenuStore } from './menu-store'
@@ -29,6 +31,7 @@ export function EditAvatarSheet() {
 
 function Editor({ bot, onClose }: { bot: Bot; onClose: () => void }) {
   const theme = useTheme()
+  const keyboardHeight = useKeyboardHeight()
   const [name, setName] = useState(bot.name)
   const [avatar, setAvatar] = useState<Avatar>(bot.prefs.avatar)
   const [saving, setSaving] = useState(false)
@@ -56,7 +59,11 @@ function Editor({ bot, onClose }: { bot: Bot; onClose: () => void }) {
         </Pressable>
       </View>
 
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 16, gap: 18, paddingBottom: 40 }}>
+      <ScrollView
+        {...KEYBOARD_SCROLL_PROPS}
+        scrollIndicatorInsets={{ bottom: keyboardHeight }}
+        contentContainerStyle={{ padding: 16, gap: 18, paddingBottom: sheetScrollBottomPadding(40, keyboardHeight) }}
+      >
         <View style={{ alignItems: 'center', gap: 12 }}>
           <BotAvatar name={name || bot.name} avatar={avatar} size={80} />
           <TextInput
@@ -65,6 +72,9 @@ function Editor({ bot, onClose }: { bot: Bot; onClose: () => void }) {
             onChangeText={setName}
             maxLength={60}
             editable={!saving}
+            returnKeyType="done"
+            submitBehavior="blurAndSubmit"
+            onSubmitEditing={() => Keyboard.dismiss()}
             style={{
               width: '100%',
               height: 44,

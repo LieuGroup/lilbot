@@ -24,21 +24,13 @@ export default function TabsLayout() {
   const theme = useTheme()
   const segments = useSegments()
   const { surface, metrics } = useLiveSurface()
-  const connected = useConnectionStore(state => state.connected)
   const chatFocused = useBotSelection(state => state.chatFocusCount > 0)
   const selectedId = useBotSelection(state => state.selectedId)
-  const chatReady = useChatStore(state => (selectedId ? (state.slots[selectedId]?.ready ?? false) : false))
   const openNewBot = useBotMenuStore(state => state.openNewBot)
   const closeBotOverlays = useBotMenuStore(state => state.closeBotOverlays)
   const layout = computeShellLayout(surface, metrics)
   const trigger = detachedTabTriggerSpec({ surface, chatFocused })
   const botsTabActive = isBotsTabSegments(segments)
-  const newSessionAllowed = canStartNewSession({
-    connected,
-    ready: chatReady,
-    botsTabActive,
-    selectedId
-  })
 
   useEffect(() => {
     if (!botsTabActive) closeBotOverlays()
@@ -47,7 +39,11 @@ export default function TabsLayout() {
   const handleDetachedPress = () => {
     if (!trigger) return
     if (trigger.action === 'new-session') {
-      if (newSessionAllowed && selectedId) startNewChat(selectedId)
+      const liveReady = selectedId ? (useChatStore.getState().slots[selectedId]?.ready ?? false) : false
+      const liveConnected = useConnectionStore.getState().connected
+      if (selectedId && canStartNewSession({ connected: liveConnected, ready: liveReady, botsTabActive, selectedId })) {
+        startNewChat(selectedId)
+      }
       return
     }
     openNewBot()

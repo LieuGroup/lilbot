@@ -59,6 +59,7 @@ export function useModelPicker(bot: Bot): { pill: ReactNode; menu: ReactNode; op
   }
 
   const selectModel = (model: BotModel) => {
+    Keyboard.dismiss()
     if (modelKey(model) === modelKey(bot.model)) {
       setVisible(false)
       return
@@ -67,6 +68,7 @@ export function useModelPicker(bot: Bot): { pill: ReactNode; menu: ReactNode; op
   }
 
   const selectEffort = (level: ReasoningEffort | null) => {
+    Keyboard.dismiss()
     if ((level ?? null) === (bot.reasoningEffort ?? null)) {
       setVisible(false)
       return

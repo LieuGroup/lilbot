@@ -20,11 +20,15 @@ export function useScrollRestore(
   const initialAnchor = useRef(slot0?.scrollAnchor ?? null)
   const restore = useRef(createScrollRestoreController(initialOffset.current > 2 || initialAnchor.current !== null))
   const settleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const pinTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const pinBottom = useRef(false)
   const reduceMotion = useRef(false)
   const viewportHeight = useRef(0)
   const nearOldest = useRef(false)
   const lastOffset = useRef(initialOffset.current)
   const prevNewestKey = useRef<string | undefined>(undefined)
+  const scrollToLatestSeq = useChatStore(state => state.slots[botId]?.scrollToLatestSeq ?? 0)
+  const prevScrollToLatest = useRef(scrollToLatestSeq)
   const setScrollOffset = useChatStore(state => state.setScrollOffset)
   const [showJumpDown, setShowJumpDown] = useState(shouldShowScrollToBottom(initialOffset.current))
 
@@ -40,15 +44,31 @@ export function useScrollRestore(
       active = false
       sub.remove()
       clearTimeout(settleTimer.current)
+      clearTimeout(pinTimer.current)
     }
   }, [])
+
+  useEffect(() => {
+    if (scrollToLatestSeq === prevScrollToLatest.current) return
+    prevScrollToLatest.current = scrollToLatestSeq
+    restore.current.onUserDrag()
+    pinBottom.current = true
+    listRef.current?.scrollToOffset({ offset: 0, animated: false })
+    lastOffset.current = 0
+    setShowJumpDown(false)
+    setScrollOffset(botId, 0, null)
+    clearTimeout(pinTimer.current)
+    pinTimer.current = setTimeout(() => {
+      pinBottom.current = false
+    }, 350)
+  }, [botId, listRef, scrollToLatestSeq, setScrollOffset])
 
   const newestKey = rowsRef.current[0]?.key
   useEffect(() => {
     const prev = prevNewestKey.current
     prevNewestKey.current = newestKey
     if (!prev || !newestKey || prev === newestKey || restore.current.isRestoring()) return
-    if (lastOffset.current > 80) return
+    if (lastOffset.current > 80 && !pinBottom.current) return
     listRef.current?.scrollToOffset({ offset: 0, animated: false })
     lastOffset.current = 0
     setShowJumpDown(false)
@@ -57,6 +77,13 @@ export function useScrollRestore(
 
   const handleContentSizeChange = useCallback(
     (_w: number, contentHeight: number) => {
+      if (pinBottom.current) {
+        listRef.current?.scrollToOffset({ offset: 0, animated: false })
+        lastOffset.current = 0
+        setShowJumpDown(false)
+        setScrollOffset(botId, 0, null)
+        return
+      }
       if (!restore.current.isRestoring() || rowsRef.current.length === 0) return
       const plan = computeRestorePlan(rowsRef.current, getRowHeights(botId), initialAnchor.current, initialOffset.current, viewportWidth)
       if (plan.kind === 'none') return restore.current.markSettled()
@@ -72,7 +99,7 @@ export function useScrollRestore(
       clearTimeout(settleTimer.current)
       settleTimer.current = setTimeout(() => restore.current.markSettled(), settleDelay)
     },
-    [botId, listRef, rowsRef, viewportWidth]
+    [botId, listRef, rowsRef, setScrollOffset, viewportWidth]
   )
 
   const handleScrollToIndexFailed = useCallback(
@@ -85,7 +112,11 @@ export function useScrollRestore(
     [listRef, rowsRef]
   )
 
-  const handleScrollBeginDrag = useCallback(() => restore.current.onUserDrag(), [])
+  const handleScrollBeginDrag = useCallback(() => {
+    pinBottom.current = false
+    clearTimeout(pinTimer.current)
+    restore.current.onUserDrag()
+  }, [])
 
   const handleScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {

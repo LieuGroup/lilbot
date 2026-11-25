@@ -11,6 +11,7 @@ import { Pressable, View } from 'react-native'
 import type { Bot } from '../../../../../shared/bot-schema'
 import { useBotMenuStore } from '../../../bots/menu-store'
 import { useBotStore } from '../../../bots/store'
+import { ChatNewSessionButton } from '../../../chat/chat-header-chrome'
 import { ChatScreen } from '../../../chat/screen'
 import { useChatStore } from '../../../chat/store'
 import { computeShellLayout } from '../../../duo/layout'
@@ -119,7 +120,7 @@ export default function CompactChatRoute() {
       headerShown: true,
       title: bot?.name ?? 'Chat',
       headerTitle: bot ? () => <ChatHeaderTitle bot={bot} /> : undefined,
-      headerRight: bot ? () => <ChatHeaderMenuButton bot={bot} /> : undefined,
+      headerRight: bot ? () => <ChatHeaderActions bot={bot} /> : undefined,
       gestureEnabled: true,
       headerBackVisible: backVisible,
       headerBackButtonDisplayMode: 'minimal' as const,
@@ -134,14 +135,7 @@ export default function CompactChatRoute() {
   return (
     <>
       <Stack.Screen options={screenOptions} />
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: theme.background,
-          paddingLeft: layout.horizontalPadding.left,
-          paddingRight: layout.horizontalPadding.right
-        }}
-      >
+      <View style={{ flex: 1, backgroundColor: theme.background, paddingLeft: layout.horizontalPadding.left, paddingRight: layout.horizontalPadding.right }}>
         {bot ? <ChatScreen bot={bot} hideHeader /> : null}
       </View>
     </>
@@ -152,14 +146,7 @@ function ChatHeaderTitle({ bot }: { bot: Bot }) {
   const theme = useTheme()
   const openMenu = useBotMenuStore(state => state.openMenu)
   return (
-    <Pressable
-      testID="chat-header-pill"
-      onPress={() => openMenu(bot.id)}
-      hitSlop={6}
-      accessibilityRole="button"
-      accessibilityLabel={`${bot.name}, open bot options`}
-      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 7, maxWidth: 240, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 9999, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.hairline, opacity: pressed ? 0.7 : 1 })}
-    >
+    <Pressable testID="chat-header-pill" onPress={() => openMenu(bot.id)} hitSlop={6} accessibilityRole="button" accessibilityLabel={`${bot.name}, open bot options`} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 7, maxWidth: 220, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 9999, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.hairline, opacity: pressed ? 0.7 : 1 })}>
       <BotAvatar name={bot.name} avatar={bot.prefs.avatar} size={22} />
       <AppText variant="title" numberOfLines={1} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.headerTitle} style={{ flexShrink: 1 }}>
         {bot.name}
@@ -169,26 +156,15 @@ function ChatHeaderTitle({ bot }: { bot: Bot }) {
   )
 }
 
-function ChatHeaderMenuButton({ bot }: { bot: Bot }) {
+function ChatHeaderActions({ bot }: { bot: Bot }) {
   const theme = useTheme()
   const openMenu = useBotMenuStore(state => state.openMenu)
   return (
-    <Pressable
-      testID="chat-bot-menu-button"
-      onPress={() => openMenu(bot.id)}
-      hitSlop={8}
-      accessibilityRole="button"
-      accessibilityLabel={`More for ${bot.name}`}
-      style={({ pressed }) => ({
-        width: 28,
-        height: 28,
-        borderRadius: 14,
-        alignItems: 'center',
-        justifyContent: 'center',
-        opacity: pressed ? 0.6 : 1
-      })}
-    >
-      <MoreHorizontalIcon color={theme.foreground} size={16} />
-    </Pressable>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      <ChatNewSessionButton botId={bot.id} />
+      <Pressable testID="chat-bot-menu-button" onPress={() => openMenu(bot.id)} hitSlop={8} accessibilityRole="button" accessibilityLabel={`More for ${bot.name}`} style={({ pressed }) => ({ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}>
+        <MoreHorizontalIcon color={theme.foreground} size={16} />
+      </Pressable>
+    </View>
   )
 }

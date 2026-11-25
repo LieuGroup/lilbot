@@ -20,9 +20,10 @@ sessions.setConnected(useConnectionStore.getState().connected)
 useConnectionStore.subscribe(state => sessions.setConnected(state.connected))
 
 /** Starts a new chat session for a bot from split-view chrome (e.g. unfolded Duo / iPad New chat orb). */
-export function startNewChat(botId: string) {
-  clearRowHeights(botId)
-  sessions.newChat(botId)
+export function startNewChat(botId: string): boolean {
+  const started = sessions.newChat(botId)
+  if (started) clearRowHeights(botId)
+  return started
 }
 
 export function useChat(botId: string) {
@@ -36,10 +37,7 @@ export function useChat(botId: string) {
 
   const send = useCallback((text: string, attachments: Attachment[] = []) => sessions.send(botId, text, attachments), [botId])
   const stop = useCallback(() => sessions.stop(botId), [botId])
-  const newChat = useCallback(() => {
-    clearRowHeights(botId)
-    sessions.newChat(botId)
-  }, [botId])
+  const newChat = useCallback(() => startNewChat(botId), [botId])
 
   return { ...slot, send, stop, newChat }
 }
