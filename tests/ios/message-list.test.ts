@@ -50,7 +50,7 @@ describe('iOS MessageList row building, fold scroll guard, rich markdown, and co
     const attachSheetSource = readFileSync(resolve(process.cwd(), 'ios/src/attachments/composer-attachments.tsx'), 'utf8')
     expect(restoreSource).toContain('if (!restore.current.canRecordScroll()) return')
     expect(listSource).toContain('onScrollBeginDrag={scroll.handleScrollBeginDrag}')
-    expect(listSource).toContain('maintainVisibleContentPosition={{ minIndexForVisible: 0 }}')
+    expect(listSource).toContain('maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 24 }}')
     expect(listSource).toContain('onEndReached={loadOlder}')
     expect(listSource).toContain('const renderItem = useCallback(')
     expect(listSource).toContain('renderItem={renderItem}')

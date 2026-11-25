@@ -59,7 +59,7 @@ export function MessageList({ botId, botName, botAvatar, deviceId, chat, statusL
         inverted
         data={rows}
         keyExtractor={row => row.key}
-        maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+        maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 24 }}
         onLayout={event => {
           scroll.viewportHeight.current = event.nativeEvent.layout.height
         }}
