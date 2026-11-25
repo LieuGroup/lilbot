@@ -75,6 +75,8 @@ export function seedThreadsAndWork(db: Database, oldId: string, otherId: string,
   db.query('INSERT INTO threads VALUES (?, ?)').run(groupId, JSON.stringify(groupThread))
   db.query('INSERT INTO thread_links VALUES (?, NULL, ?)').run('thr-sub', memberItem)
   db.query('INSERT INTO thread_chats VALUES (?, ?, ?)').run('tchat-1', oldId, 'thr-worker')
+  db.query('INSERT INTO notification_bot_prefs VALUES (?, 1, 1000)').run(oldId)
+  db.query("INSERT INTO notification_deliveries VALUES ('dev-1', 'work:needs_answer:wi-1:1', 'needs_answer', ?, 1000, 'sent')").run(oldId)
   db.query(
     'INSERT INTO session_grants(id, owner_key, bot_id, kind, scope_json, primary_chat_id, created_at, expires_at, revoked_at) VALUES (\'sg-1\', \'webhook:wr-1\', ?, \'webhook\', \'{"kind":"webhook","runId":"wr-1","capabilities":[]}\', \'chat-wr-1\', 1000, 9000, 2000)'
   ).run(oldId)
