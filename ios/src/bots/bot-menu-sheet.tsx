@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { Keyboard, Modal, Pressable, StyleSheet, View } from 'react-native'
 import { isUnread, primaryCandidates } from '../../../shared/client/bots/bot-menu-rules'
+import { useNotificationStore } from '../notifications/store'
 import { BotAvatar } from '../ui/avatar'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
@@ -23,6 +24,9 @@ export function BotMenuHost() {
   const pendingDialogRef = useRef<BotDialogState | null>(null)
 
   const menuBot = bots.find(bot => bot.id === menuBotId) ?? null
+  const mutedBotIds = useNotificationStore(state => state.settings?.mutedBotIds ?? [])
+  const setBotMuted = useNotificationStore(state => state.setBotMuted)
+  const menuBotMuted = menuBot ? mutedBotIds.includes(menuBot.id) : false
   const candidates = primaryCandidates(bots)
   const actions = menuBot ? rosterMenuActions(menuBot, candidates.length > 0) : []
 
@@ -112,6 +116,26 @@ export function BotMenuHost() {
                   </AppText>
                 </Pressable>
               ))}
+              <Pressable
+                testID="bot-menu-toggle-mute"
+                onPress={() => {
+                  dismissMenu()
+                  void setBotMuted(menuBot.id, !menuBotMuted)
+                }}
+                accessibilityRole="button"
+                style={({ pressed }) => ({
+                  minHeight: 48,
+                  paddingHorizontal: 16,
+                  justifyContent: 'center',
+                  borderTopWidth: 1,
+                  borderTopColor: theme.hairline,
+                  backgroundColor: pressed ? theme.muted : 'transparent'
+                })}
+              >
+                <AppText variant="chat" color={theme.foreground} style={{ fontFamily: 'Inter_500Medium' }}>
+                  {menuBotMuted ? 'Unmute notifications' : 'Mute notifications'}
+                </AppText>
+              </Pressable>
               <Pressable
                 onPress={dismissMenu}
                 accessibilityRole="button"

@@ -18,12 +18,14 @@ import { computeShellLayout } from '../../duo/layout'
 import { useBotSelection } from '../../duo/selection'
 import { isPushedDetailSegments, shouldHideNativeTabBar } from '../../duo/stack-sync'
 import { useLiveSurface } from '../../duo/use-surface'
+import { useNotificationsLifecycle } from '../../notifications/use-notifications'
 import { ThreadSheetHost } from '../../threads/thread-host'
 import { useTheme } from '../../ui/theme'
 import { workTabBadge } from '../../work/board-state'
 import { useNeedsYouCount } from '../../work/store'
 
 export default function TabsLayout() {
+  useNotificationsLifecycle()
   const theme = useTheme()
   const router = useRouter()
   const segments = useSegments()

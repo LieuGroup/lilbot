@@ -133,6 +133,7 @@ export class LilBotSocket {
 
   /** Told when a device was renamed or tied to a computer, here or in another tab. */
   onDevicesChanged = (listener: () => void) => this.onPush('devices.changed', () => listener())
+  onNotificationsChanged = (listener: () => void) => this.onPush('notifications.changed', () => listener())
 
   /** Told when an exchange between bots started, moved or ended. It names no bot, and comes with every tool call in one. */
   onThreadsChanged = (listener: () => void) => this.onPush('threads.changed', () => listener())
