@@ -6,7 +6,7 @@ import type { BotStore } from './bots/bot-store'
 import { GoalBoard } from './goals/goal-board'
 import { GoalRoutines } from './goals/goal-routines'
 import { GoalService } from './goals/goal-service'
-import type { GoalStore } from './goals/goal-store'
+import type { GoalStore, StoredGoal } from './goals/goal-store'
 import { type RoutineService, routineSettings } from './routines/routine-service'
 import type { WorkAnswers } from './work/work-answers'
 import { WorkBoard } from './work/work-board'
@@ -21,16 +21,18 @@ interface GoalDeps {
   activity: ActivityService
   store: BotStore
   publish: (frame: EventFrame) => void
+  onWaiting?: (goal: StoredGoal, event: number) => void
   repeat: (name: string, interval: number, run: () => unknown) => unknown
 }
 
-export function createGoals({ goalStore, work, answers, threads, routines, activity, store, publish, repeat }: GoalDeps) {
+export function createGoals({ goalStore, work, answers, threads, routines, activity, store, publish, onWaiting, repeat }: GoalDeps) {
   const board = new WorkBoard(work, answers, threads)
   const host = {
     waiting: (botId: string, goalId: string, key: string, on: boolean) => {
       if (store.exists(botId)) activity.observe({ botId, chatId: `goal:${goalId}`, key, status: on ? 'waiting' : 'finished' })
     },
     tell: (id: string, goal: { id: string; botId: string }, prompt: string) => answers.notify(id, goal.id, goal.botId, prompt),
+    onWaiting,
     changed: () => publish({ event: 'goals.changed' })
   }
   const goals = new GoalService(goalStore, work, host, routineSettings(process.env).minIntervalSeconds)

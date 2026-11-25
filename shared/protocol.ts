@@ -10,6 +10,7 @@ import { DeviceId, DeviceName } from './device-schema'
 import { type GoalResults, goalMethods } from './goal-schema'
 import { LibraryListInput, type LibraryPage, type WorkspaceEntry } from './library-schema'
 import { type MemoryFact, MemoryWriteInput } from './memory-schema'
+import { type NotificationResults, notificationMethods } from './notification-schema'
 import type { Routine } from './routine-schema'
 import { type WebhookResults, webhookMethods } from './webhook-schema'
 import { type WorkResults, workMethods } from './work-schema'
@@ -104,13 +105,14 @@ export const methods = {
     ),
   'chat.stop': z.object({ chatId }),
   'chat.close': z.object({ chatId }),
-  ...connectionMethods
+  ...connectionMethods,
+  ...notificationMethods
 } as const
 
 export type Method = keyof typeof methods
 export type Params<M extends Method> = z.input<(typeof methods)[M]>
 
-export interface Results extends WorkResults, GoalResults, WebhookResults, ConnectionResults {
+export interface Results extends WorkResults, GoalResults, WebhookResults, ConnectionResults, NotificationResults {
   'attachments.limits': { maxFileBytes: number; maxFilesPerMessage: number }
   'attachments.prepare': import('./attachment-schema').Attachment[]
   'attachments.status': import('./attachment-schema').Attachment[]
@@ -193,3 +195,4 @@ export type EventFrame =
   | { event: 'computers.changed' }
   /** A device was renamed or tied to a computer (here or in another tab): fetch `devices.current` again. */
   | { event: 'devices.changed' }
+  | { event: 'notifications.changed' }

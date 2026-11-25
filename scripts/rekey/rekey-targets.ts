@@ -65,7 +65,9 @@ export const PLAIN_TARGETS: readonly PlainTarget[] = [
   { table: 'mcp_connections', column: 'added_by' },
   { table: 'connection_sign_in_cards', column: 'bot_id' },
   { table: 'session_grants', column: 'bot_id' },
-  { table: 'session_grant_chats', column: 'bot_id' }
+  { table: 'session_grant_chats', column: 'bot_id' },
+  { table: 'notification_bot_prefs', column: 'bot_id' },
+  { table: 'notification_deliveries', column: 'bot_id' }
 ]
 
 export const waitHash = (botId: string, threadIdsJson: string) =>
@@ -172,29 +174,18 @@ export function buildIdMaps(db: Database, oldId: string, newId: string): IdMaps 
 /** Counts active/in-flight work touching `botId` (counts only, never text). Non-empty map must refuse re-keying. */
 export function inFlightCounts(db: Database, botId: string): Record<string, number> {
   const counts: Record<string, number> = {}
-  const add = (name: string, n: number) => {
-    if (n > 0) counts[name] = n
+  const check = (table: string, where: string, ...args: string[]) => {
+    if (!tableExists(db, table)) return
+    const n = db.query<{ n: number }, string[]>(`SELECT count(*) AS n FROM ${table} WHERE ${where}`).get(...args)!.n
+    if (n > 0) counts[table] = n
   }
-  if (tableExists(db, 'computer_requests'))
-    add('computer_requests', db.query<{ n: number }, [string]>("SELECT count(*) AS n FROM computer_requests WHERE bot_id = ? AND status IN ('pending','running')").get(botId)!.n)
-  if (tableExists(db, 'remote_worker_runs'))
-    add('remote_worker_runs', db.query<{ n: number }, [string]>("SELECT count(*) AS n FROM remote_worker_runs WHERE bot_id = ? AND status = 'running'").get(botId)!.n)
-  if (tableExists(db, 'routine_runs'))
-    add('routine_runs', db.query<{ n: number }, [string]>("SELECT count(*) AS n FROM routine_runs WHERE bot_id = ? AND status IN ('pending','running')").get(botId)!.n)
-  if (tableExists(db, 'webhook_runs'))
-    add('webhook_runs', db.query<{ n: number }, [string]>("SELECT count(*) AS n FROM webhook_runs WHERE bot_id = ? AND status IN ('pending','running')").get(botId)!.n)
-  if (tableExists(db, 'thread_deliveries'))
-    add(
-      'thread_deliveries',
-      db.query<{ n: number }, [string, string]>("SELECT count(*) AS n FROM thread_deliveries WHERE (sender = ? OR target = ?) AND status != 'done'").get(botId, botId)!.n
-    )
-  if (tableExists(db, 'work_answers'))
-    add('work_answers', db.query<{ n: number }, [string]>("SELECT count(*) AS n FROM work_answers WHERE bot_id = ? AND status IN ('pending','stopping')").get(botId)!.n)
-  if (tableExists(db, 'work_checks')) {
-    const q = "SELECT count(*) AS n FROM work_checks WHERE state = 'checking' AND (checker_id = ? OR item_id IN (SELECT id FROM work_items WHERE owner_id = ?))"
-    add('work_checks', db.query<{ n: number }, [string, string]>(q).get(botId, botId)!.n)
-  }
-  if (tableExists(db, 'session_grants'))
-    add('session_grants', db.query<{ n: number }, [string]>('SELECT count(*) AS n FROM session_grants WHERE bot_id = ? AND revoked_at IS NULL').get(botId)!.n)
+  check('computer_requests', "bot_id = ? AND status IN ('pending','running')", botId)
+  check('remote_worker_runs', "bot_id = ? AND status = 'running'", botId)
+  check('routine_runs', "bot_id = ? AND status IN ('pending','running')", botId)
+  check('webhook_runs', "bot_id = ? AND status IN ('pending','running')", botId)
+  check('thread_deliveries', "(sender = ? OR target = ?) AND status != 'done'", botId, botId)
+  check('work_answers', "bot_id = ? AND status IN ('pending','stopping')", botId)
+  check('work_checks', "state = 'checking' AND (checker_id = ? OR item_id IN (SELECT id FROM work_items WHERE owner_id = ?))", botId, botId)
+  check('session_grants', 'bot_id = ? AND revoked_at IS NULL', botId)
   return counts
 }

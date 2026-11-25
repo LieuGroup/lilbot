@@ -3,6 +3,7 @@
 import type { Database } from 'bun:sqlite'
 import type { EventFrame } from '../shared/protocol'
 import type { WebhookCapability, WebhookRun } from '../shared/webhook-schema'
+import type { NotificationSender } from './notifications/notification-sender'
 
 export interface AppServicesSettings {
   DATA_DIR: string
@@ -14,6 +15,7 @@ export interface AppServicesSettings {
   ACCESS_HOST: string | undefined
   ACCESS_CALLBACK_ENABLED?: boolean
   T3_ENABLED?: boolean
+  notificationSender?: NotificationSender
   publish: (frame: EventFrame) => void
   botsChanged: () => void
 }

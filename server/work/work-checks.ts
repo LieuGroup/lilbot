@@ -128,6 +128,7 @@ export class WorkChecks {
     }
     const number = log('status', next.status, next.question ?? null)
     this.store.update(item.id, change, at)
-    return { item: this.store.get(item.id)!, asked: next.status === 'needs_oscar' ? number : null, ended: item.status === 'needs_oscar' ? number : null }
+    const finished = next.status === 'done' || next.status === 'failed' ? number : null
+    return { item: this.store.get(item.id)!, asked: next.status === 'needs_oscar' ? number : null, ended: item.status === 'needs_oscar' ? number : null, finished }
   }
 }

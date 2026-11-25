@@ -30,12 +30,13 @@ interface WorkHost {
   /** A notice for the item's owner; `oscar` is his own words, the only part that goes on for a webhook run's item. */
   tell(id: string, item: StoredItem, prompt: string, oscar?: string): void
   onCheckSettled?(checkId: string): void
+  onStatus?(saved: Saved): void
   changed(): void
 }
 export type Actor = { by: 'bot' | 'oscar' | 'lilbot'; via: WorkOrigin | null }
 /** One report: a new definition, evidence and a move to another status, applied in that order. */
 export type Report = Pick<Partial<WorkInput>, 'done' | 'evidence' | 'requestId'> & { move?: Move; checkers?: Bot[]; checkModel?: BotModel | null }
-export type Saved = { item: StoredItem; asked: number | null; ended: number | null }
+export type Saved = { item: StoredItem; asked: number | null; ended: number | null; finished?: number | null }
 
 export class WorkService {
   readonly checks: WorkCheckStore
@@ -184,13 +185,16 @@ export class WorkService {
     const number = change.status ? log('status', change.status, change.question ?? change.result ?? change.dropReason ?? null) : null
     if (Object.keys(change).length || entries.length) this.store.update(item.id, change, at)
     const leaving = item.status === 'needs_oscar' && !!change.status && change.status !== 'needs_oscar'
-    return { item: this.store.get(item.id)!, asked: change.status === 'needs_oscar' ? number : null, ended: leaving ? number : null }
+    const finished = change.status === 'done' || change.status === 'failed' ? number : null
+    return { item: this.store.get(item.id)!, asked: change.status === 'needs_oscar' ? number : null, ended: leaving ? number : null, finished }
   }
 
   /** Once a report is saved: the bot's waiting state while an item needs Oscar, and the push to the board. */
-  after({ item, asked, ended }: Saved) {
+  after(saved: Saved) {
+    const { item, asked, ended } = saved
     if (asked !== null) this.host.waiting(item.ownerId, item.id, `ask-${asked}`, true)
     if (ended !== null) this.host.waiting(item.ownerId, item.id, `end-${ended}`, false)
+    this.host.onStatus?.(saved)
     this.host.changed()
   }
 }

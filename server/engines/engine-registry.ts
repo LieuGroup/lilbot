@@ -43,6 +43,12 @@ export class EngineRegistry {
     return this.byId.has(engineId) || !!this.fallback
   }
 
+  /** Whether the engine for `engineId` exposes an activity observer (`watchActivity`). */
+  observesActivity(engineId?: string): boolean {
+    const engine = engineId ? this.get(engineId) : this.defaultEngine
+    return typeof engine?.watchActivity === 'function'
+  }
+
   list(): BotEngine[] {
     return this.fallback ? [this.fallback] : [...this.byId.values()]
   }

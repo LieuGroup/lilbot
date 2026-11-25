@@ -12,16 +12,27 @@ export function computerHandlers(
   addThis: () => AddThisComputer,
   devices: () => DeviceService,
   helperUrl: () => string | undefined,
-  sessionId: string
+  sessionId: string,
+  onDevice?: (deviceId: string) => void
 ): Pick<Handlers, ComputerMethod> {
   return {
     'computers.list': async () => computers().list(),
     'computers.installCode': async ({ name }) => ({ ...computers().auth.code(name), helperUrl: helperUrl() }),
     'computers.remove': async ({ computer }) => computers().remove(computer),
     'computers.setMain': async ({ computer }) => devices().main.set(computer),
-    'devices.current': async ({ deviceId, name }) => devices().current(deviceId, name),
-    'devices.rename': async ({ deviceId, name }) => devices().rename(deviceId, name),
-    'devices.linkComputer': async ({ deviceId, computer }) => devices().linkComputer(deviceId, computer),
+    'devices.current': async ({ deviceId, name }) => {
+      const device = devices().current(deviceId, name)
+      onDevice?.(deviceId)
+      return device
+    },
+    'devices.rename': async ({ deviceId, name }) => {
+      onDevice?.(deviceId)
+      return devices().rename(deviceId, name)
+    },
+    'devices.linkComputer': async ({ deviceId, computer }) => {
+      onDevice?.(deviceId)
+      return devices().linkComputer(deviceId, computer)
+    },
     'computers.addThis.start': async ({ name, system, deviceId }) => addThis().start(name, system, deviceId, sessionId),
     'computers.addThis.status': async ({ attemptId }) => addThis().status(attemptId, sessionId),
     'computers.downloads': async () => addThis().downloadsInfo(),
