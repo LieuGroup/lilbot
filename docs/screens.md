@@ -83,7 +83,21 @@ in the dialog. Sentences are `bots/delete-copy.ts`.
 ## Settings (`settings/settings-dialog.tsx`, Paper "04 Settings")
 
 720×480 dialog with General, Bots, Memory and Computers on the left. Bots: "When a bot is deleted", the same two
-choices as the delete dialog, saved at once with `bots.deleteDefaults.set`. General and Memory are placeholders.
+choices as the delete dialog, saved at once with `bots.deleteDefaults.set`. General is a placeholder.
+
+## Memory (`web/src/memory/`, Paper "24 Memory: one place in Settings", lazy page of Settings)
+
+The only place memory is shown; bots have no Memory tab (an old `/bots/<id>/memory` address opens Activity). Data comes
+from `memory.listAll` (read-only, paged, owner session only); wording shared with the phone is in
+`shared/client/memory/memory-lines.ts`.
+
+- Header: "Memory", search, the ink "Add a fact" button and Close. Sub-pages swap the title for "‹ <name>".
+- "Shared with all your bots" (count): one-line facts, the first 5 then "Show N more"; paused ones are muted with
+  "Paused". Opening a fact shows its full text, "Learned by <bot> in a chat · <date>", who sees it, and Pause/Forget.
+- "Known by one bot only": one row per bot with its fact count; a row opens that bot's lasting facts and History.
+- "Removed facts" link opens the removed list with Restore. A notice with Connect shows only for bots not yet on
+  LilBot memory. Search groups matches under the same two headings. Empty: "Nothing remembered yet".
+- Add a fact: text, "Who knows it" All bots / One bot (with a bot picker), Cancel/Save. What you type always lasts.
 
 ## Computers (`web/src/computers/`, Paper "12 Computers" and "15 Devices and main computer", lazy page of Settings)
 

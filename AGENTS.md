@@ -68,7 +68,8 @@ web/src/           The web app.
   chat/              the conversation
   history/           the conversation's earlier parts, per-turn usage, context size meter and compaction line
   attachments/       files in the composer and in sent messages, the drop area
-  activity/, memory/ their details tabs
+  activity/          its details tab
+  memory/            the Settings > Memory page (shared facts, one-bot lists, removed, add a fact)
   library/           the Library tab, the bot's workspace folder view and the item viewer
   threads/           work between bots and workers: composer tasks dock, quiet conversation record, opened exchange/worker/group,
                      stop and answer dialogs, Activity "Workers" and "With other bots", roster "Working together"
@@ -114,8 +115,8 @@ Rules that keep it this way:
 
 Built: roster, create bot, Setup panel (toolsets and connectors read-only; skills with per-bot switch and reader, #137),
 chat with live tool rows, stop and new session, continuous main conversation per bot across devices, three-column shell
-(Activity, Library, Memory, Setup), bot menu, delete confirmation, Settings, chat attachments, LilBot memory with panel
-and after-chat review, system note and LilBot MCP tools, delegation, same-bot workers and temporary groups (#133) with
+(Activity, Library, Setup), bot menu, delete confirmation, Settings, chat attachments, LilBot memory with Settings > Memory
+page and after-chat review, system note and LilBot MCP tools, delegation, same-bot workers and temporary groups (#133) with
 screens (#65, #135, #136, Paper "22 Workers"), Routines screens (#53), Library screens (#54), Webhooks screens (#138),
 Work board, Check levels and Goals screens (#141, #142, #143), message cost & context size screens (#180), and backends
 for routines, webhooks, threads, library, skills, computers/devices, native coding (legacy T3 Code behind
