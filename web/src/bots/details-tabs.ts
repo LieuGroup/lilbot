@@ -4,7 +4,6 @@ import { useRouterState } from '@tanstack/react-router'
 export const DETAILS_TABS = [
   { id: 'activity', label: 'Activity' },
   { id: 'library', label: 'Library' },
-  { id: 'memory', label: 'Memory' },
   { id: 'setup', label: 'Setup' }
 ] as const
 export type DetailsTab = (typeof DETAILS_TABS)[number]['id']

@@ -9,7 +9,7 @@ import { type ConnectionResults, connectionMethods } from './connections-schema'
 import { DeviceId, DeviceName } from './device-schema'
 import { type GoalResults, goalMethods } from './goal-schema'
 import { LibraryListInput, type LibraryPage, type WorkspaceEntry } from './library-schema'
-import { type MemoryFact, MemoryWriteInput } from './memory-schema'
+import { MemoryBrowseInput, type MemoryBrowsePage, type MemoryFact, MemoryWriteInput } from './memory-schema'
 import { type NotificationResults, notificationMethods } from './notification-schema'
 import type { Routine } from './routine-schema'
 import { type WebhookResults, webhookMethods } from './webhook-schema'
@@ -76,6 +76,8 @@ export const methods = {
   'models.list': z.object({ botId: botId.optional(), engineId: z.string().min(1).optional() }),
   /** Everything the bot can see in memory, and whether the bot is connected to it. */
   'memory.list': z.object({ botId }),
+  /** Settings > Memory: all of memory across bots, a page at a time. Read-only; only the owner's browser can call it. */
+  'memory.listAll': MemoryBrowseInput,
   /** The user adds a fact from the app. */
   'memory.write': MemoryWriteInput,
   'memory.forget': z.object({ factId: z.string().min(1) }),
@@ -162,6 +164,7 @@ export interface Results extends WorkResults, GoalResults, WebhookResults, Conne
   'sections.delete': { ok: true }
   'models.list': ModelProvider[]
   'memory.list': { connected: boolean; botName?: string; facts: MemoryFact[]; forgotten: MemoryFact[] }
+  'memory.listAll': MemoryBrowsePage
   'memory.write': MemoryFact
   'memory.forget': { ok: true }
   'memory.restore': { ok: true }

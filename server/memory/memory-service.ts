@@ -2,7 +2,7 @@
  *  the start of a turn. An engine adapter (the Hermes memory provider) only calls these. */
 
 import { LilBotError } from '../../shared/lilbot-error'
-import { defaultScope, factText, type MemoryFact, type MemoryKind, type MemoryScope } from '../../shared/memory-schema'
+import { defaultScope, factText, type MemoryBrowseInput, type MemoryFact, type MemoryKind, type MemoryScope } from '../../shared/memory-schema'
 import { memoryRefusal } from './memory-safety'
 import type { MemoryStore } from './memory-store'
 
@@ -87,7 +87,8 @@ export class MemoryService {
       learnedAt: fact.learnedAt,
       paused: false,
       expiresAt: fact.expiresAt,
-      forgottenAt: null
+      forgottenAt: null,
+      forgottenBy: null
     }
   }
 
@@ -125,6 +126,14 @@ export class MemoryService {
    *  the most recently forgotten facts so they can be restored. */
   panel(botId: string): { facts: MemoryFact[]; forgotten: MemoryFact[] } {
     return { facts: this.store.kept(botId), forgotten: this.store.forgotten(botId, FORGOTTEN_SHOWN) }
+  }
+
+  /** For the app-wide Memory page: one page of a list, and how many facts each part of memory holds. */
+  browse({ query, cursor, ...input }: MemoryBrowseInput) {
+    const after = cursor === undefined ? undefined : /^(\d+)\.(\d+)$/.exec(cursor)
+    if (after === null) throw new LilBotError('invalid_params', 'That page of memory no longer exists.')
+    const page = this.store.page({ ...input, match: query ? matchQuery(query) : null, after: after && { at: Number(after[1]), position: Number(after[2]) } })
+    return { facts: page.facts, nextCursor: page.next ? `${page.next.at}.${page.next.position}` : null, ...this.store.counts() }
   }
 
   /** What a bot can see right now, newest first. */

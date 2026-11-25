@@ -222,6 +222,7 @@ export class BotService {
   }
 
   listMemory = (botId: string) => this.botMemory.list(botId)
+  browseMemory = (input: import('../../shared/memory-schema').MemoryBrowseInput) => this.botMemory.browse(input)
   connectMemory = (botId: string, options?: { keepOwnNotes: boolean }) => this.botMemory.connect(botId, options)
   connectAllMemory = (onFailed?: (botId: string) => void) => this.botMemory.connectAll(onFailed)
   async listModels(target?: string | { botId?: string; engineId?: string }): Promise<ModelProvider[]> {

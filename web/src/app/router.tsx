@@ -120,7 +120,7 @@ const rosterRoute = createRoute({ getParentRoute: () => rootRoute, path: '/bots'
 const newBotRoute = createRoute({ getParentRoute: () => rootRoute, path: '/bots/new', component: BotCreatePage })
 const botRoute = createRoute({ getParentRoute: () => rootRoute, path: '/bots/$botId', component: BotLayout, validateSearch: botSearch })
 const botChatRoute = createRoute({ getParentRoute: () => botRoute, path: '/', component: () => null })
-/** Activity, Library, Memory or Setup in the details panel. */
+/** Activity, Library or Setup in the details panel. */
 const botTabRoute = createRoute({ getParentRoute: () => botRoute, path: '$tab', component: BotDetailsPanel })
 
 /** Work board: Today's brief, All work, Goals, Checks, plus item and goal detail pages (Paper artboard 20). */

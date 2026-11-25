@@ -135,6 +135,7 @@ export class BrowserSession {
     'sections.delete': ({ sectionId }) => ok(() => this.bots.deleteSection(sectionId)),
     'models.list': params => this.bots.listModels(params),
     'memory.list': ({ botId }) => this.bots.listMemory(botId),
+    'memory.listAll': async input => this.bots.browseMemory(input),
     'memory.write': input => this.bots.writeMemory(input),
     'memory.forget': ({ factId }) => ok(() => this.bots.forgetMemory(factId)),
     'memory.restore': ({ factId }) => ok(() => this.bots.restoreMemory(factId)),
