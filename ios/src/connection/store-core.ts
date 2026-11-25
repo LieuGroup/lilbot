@@ -59,7 +59,7 @@ function parseSavedAddress(raw: string | null): string | null {
   }
 }
 
-export function createConnectionStore(deps: { plain: PlainStorage; secret: SecretStorage }) {
+export function createConnectionStore(deps: { plain: PlainStorage; secret: SecretStorage; onDisconnect?: () => void }) {
   return create<ConnectionState>((set, get) => ({
     settings: null,
     loaded: false,
@@ -141,6 +141,7 @@ export function createConnectionStore(deps: { plain: PlainStorage; secret: Secre
       }
     },
     disconnect: async () => {
+      deps.onDisconnect?.()
       try {
         await deps.plain.setItem(SETTINGS_KEY, '')
       } catch {

@@ -134,6 +134,19 @@ export const MOBILE_SCALE = {
     composerRadius: 26,
     composerInput: { fontSize: 18, lineHeight: 25 },
     composerActionSize: 36
+  },
+  details: {
+    sectionHeader: { fontSize: 15, lineHeight: 20 },
+    rowTitle: { fontSize: 17, lineHeight: 22 },
+    rowSubtitle: { fontSize: 15, lineHeight: 20 },
+    meta: { fontSize: 14, lineHeight: 19 },
+    input: { fontSize: 17, lineHeight: 24 },
+    button: { fontSize: 16, lineHeight: 21 },
+    body: { fontSize: 16, lineHeight: 23 },
+    code: { fontSize: 14, lineHeight: 20 },
+    tabLabel: { fontSize: 15, lineHeight: 20 },
+    botTitle: { fontSize: 20, lineHeight: 25 },
+    sheetTitle: { fontSize: 18, lineHeight: 24 }
   }
 } as const
 

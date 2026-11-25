@@ -1,8 +1,8 @@
 /** Bot Details > Setup tab (`R3-05`): primary bot action, identity/instructions/model form (`bots.get` + `bots.update`),
- *  workspace path, shared Skills section with per-bot switches, and read-only Toolsets/Connectors summary. */
+ *  context window card, workspace path, shared Skills section, and Toolsets/Connectors summary. */
 import { useEffect, useState } from 'react'
 import { Platform, Pressable, ScrollView, useWindowDimensions, View } from 'react-native'
-import type { Ability, Bot, BotDetail } from '../../../shared/bot-schema'
+import type { Bot, BotDetail } from '../../../shared/bot-schema'
 import { primaryCandidates } from '../../../shared/client/bots/bot-menu-rules'
 import { modelKey } from '../../../shared/client/bots/model-choice'
 import { messageOf } from '../../../shared/client/socket'
@@ -10,23 +10,22 @@ import { LilBotError } from '../../../shared/lilbot-error'
 import { ensureSocket } from '../connection/lilbot'
 import { useConnectionStore } from '../connection/store'
 import { SkillsSection } from '../skills/skills-section'
-import { RowDivider, SectionGroup } from '../ui/grouped-card'
+import { DYNAMIC_TYPE_CAPS } from '../ui/dynamic-type'
+import { SectionGroup } from '../ui/grouped-card'
 import { StarIcon } from '../ui/icon'
 import { sheetScrollBottomPadding } from '../ui/keyboard-sheet'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
+import { MOBILE_SCALE } from '../ui/tokens'
 import { KEYBOARD_SCROLL_PROPS, useKeyboardHeight } from '../ui/use-keyboard-height'
 import { makeBotPrimary } from './actions'
 import { useBotMenuStore } from './menu-store'
 import { useModelProviders } from './model-list'
 import { SetupForm } from './setup-form'
+import { AbilitiesCard, SetupContextCard } from './setup-summary-cards'
 import { useBotStore } from './store'
 
 const MONO_FONT = Platform.select({ ios: 'Menlo', default: 'monospace' })
-const ABILITY_KINDS: readonly { kind: Ability['kind']; label: string }[] = [
-  { kind: 'toolset', label: 'Toolsets' },
-  { kind: 'connector', label: 'Connectors' }
-]
 
 export function SetupTab({ bot, bottomPadding = 28 }: { bot: Bot; bottomPadding?: number }) {
   const theme = useTheme()
@@ -68,12 +67,12 @@ export function SetupTab({ bot, bottomPadding = 28 }: { bot: Bot; bottomPadding?
   return (
     <ScrollView testID="bot-details-setup" scrollIndicatorInsets={{ bottom: keyboardHeight }} contentContainerStyle={{ padding: 16, gap: 20, paddingBottom: sheetScrollBottomPadding(bottomPadding, keyboardHeight) }} {...KEYBOARD_SCROLL_PROPS}>
       {error ? (
-        <AppText variant="preview" color={theme.destructive}>
+        <AppText variant="preview" color={theme.destructive} style={MOBILE_SCALE.details.rowSubtitle}>
           {error}
         </AppText>
       ) : null}
       {!detail && !error ? (
-        <AppText variant="preview" color={theme.mutedForeground}>
+        <AppText variant="preview" color={theme.mutedForeground} style={MOBILE_SCALE.details.rowSubtitle}>
           Loading…
         </AppText>
       ) : null}
@@ -83,8 +82,8 @@ export function SetupTab({ bot, bottomPadding = 28 }: { bot: Bot; bottomPadding?
           <SectionGroup title="Primary bot">
             <View style={{ flexDirection: stackWide ? 'column' : 'row', alignItems: stackWide ? 'flex-start' : 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 12, gap: stackWide ? 10 : 12 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: stackWide ? 0 : 1, width: stackWide ? '100%' : undefined }}>
-                <StarIcon color={bot.isPrimary ? theme.foreground : theme.mutedForeground} size={15} />
-                <AppText variant="preview" color={bot.isPrimary ? theme.foreground : theme.mutedForeground} style={{ flex: 1 }}>
+                <StarIcon color={bot.isPrimary ? theme.foreground : theme.mutedForeground} size={16} />
+                <AppText variant="name" color={bot.isPrimary ? theme.foreground : theme.mutedForeground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowName} style={[MOBILE_SCALE.details.rowTitle, { flex: 1 }]}>
                   {bot.isPrimary ? 'Primary bot (opens first)' : 'Not the primary bot'}
                 </AppText>
               </View>
@@ -95,9 +94,9 @@ export function SetupTab({ bot, bottomPadding = 28 }: { bot: Bot; bottomPadding?
                   else void makeBotPrimary(bot.id)
                 }}
                 accessibilityRole="button"
-                style={({ pressed }) => ({ minHeight: 36, justifyContent: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: theme.border, opacity: bot.isPrimary && !canChangePrimary ? 0.45 : pressed ? 0.65 : 1 })}
+                style={({ pressed }) => ({ minHeight: 40, justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: theme.border, opacity: bot.isPrimary && !canChangePrimary ? 0.45 : pressed ? 0.65 : 1 })}
               >
-                <AppText variant="meta" numberOfLines={1} style={{ fontFamily: 'Inter_500Medium' }}>
+                <AppText variant="name" numberOfLines={1} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.control} style={MOBILE_SCALE.details.tabLabel}>
                   {bot.isPrimary ? 'Change' : 'Make primary'}
                 </AppText>
               </Pressable>
@@ -105,7 +104,7 @@ export function SetupTab({ bot, bottomPadding = 28 }: { bot: Bot; bottomPadding?
           </SectionGroup>
 
           {keptNotice ? (
-            <AppText variant="meta" color={theme.success} style={{ paddingHorizontal: 4 }}>
+            <AppText variant="preview" color={theme.success} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowPreview} style={[MOBILE_SCALE.details.rowSubtitle, { paddingHorizontal: 4 }]}>
               {keptNotice}
             </AppText>
           ) : null}
@@ -137,9 +136,11 @@ export function SetupTab({ bot, bottomPadding = 28 }: { bot: Bot; bottomPadding?
             }}
           />
 
+          <SetupContextCard context={bot.context ?? detail.context} />
+
           <SectionGroup title="Workspace" footer="This bot’s own folder. New sessions work here.">
             <View style={{ paddingHorizontal: 14, paddingVertical: 12 }}>
-              <AppText style={{ fontFamily: MONO_FONT, fontSize: 12, lineHeight: 18 }} selectable>
+              <AppText style={[MOBILE_SCALE.details.code, { fontFamily: MONO_FONT }]} selectable>
                 {detail.workspace}
               </AppText>
             </View>
@@ -151,37 +152,5 @@ export function SetupTab({ bot, bottomPadding = 28 }: { bot: Bot; bottomPadding?
         </>
       ) : null}
     </ScrollView>
-  )
-}
-
-function AbilitiesCard({ abilities }: { abilities: Ability[] }) {
-  const theme = useTheme()
-  const rows = ABILITY_KINDS.map(({ kind, label }) => {
-    const all = abilities.filter(a => a.kind === kind)
-    const enabled = all.filter(a => a.enabled)
-    return { kind, label, total: all.length, enabled }
-  }).filter(row => row.total > 0)
-
-  if (rows.length === 0) return null
-  return (
-    <SectionGroup title="Abilities">
-      {rows.map((row, index) => (
-        <View key={row.kind}>
-          {index > 0 ? <RowDivider /> : null}
-          <View style={{ paddingHorizontal: 14, paddingVertical: 12, gap: 4 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <AppText variant="name">{row.label}</AppText>
-              <AppText variant="meta" color={theme.mutedForeground}>
-                {row.enabled.length} of {row.total} on
-              </AppText>
-            </View>
-            <AppText variant="meta" color={theme.mutedForeground}>
-              {row.enabled.slice(0, 8).map(a => a.label).join(', ')}
-              {row.enabled.length > 8 ? `, and ${row.enabled.length - 8} more` : row.enabled.length === 0 ? 'None enabled' : ''}
-            </AppText>
-          </View>
-        </View>
-      ))}
-    </SectionGroup>
   )
 }

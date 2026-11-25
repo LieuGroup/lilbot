@@ -1,18 +1,23 @@
-/** Activity tab's Webhooks card (`R3-05`): hidden when empty; lists webhooks with source/last-event line and pause switch. */
+/** Activity tab's Webhooks card (`R3-05`): hidden when empty; lists webhooks with source/last-event line
+ *  and pause switch on `MOBILE_SCALE.details`. */
 import { Fragment, useState } from 'react'
-import { Pressable, Switch, View } from 'react-native'
+import { Pressable, Switch, useWindowDimensions, View } from 'react-native'
 import type { Webhook } from '../../../shared/webhook-schema'
 import { messageOf } from '../../../shared/client/socket'
 import { WorkingSpinner } from '../bots/status-marks'
+import { DYNAMIC_TYPE_CAPS, rosterRowTextLines } from '../ui/dynamic-type'
 import { RowDivider, SectionGroup } from '../ui/grouped-card'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
+import { MOBILE_SCALE } from '../ui/tokens'
 import { useWebhooks } from './use-webhooks'
 import { WebhookDetailSheet } from './webhook-detail-sheet'
 import { webhookLine } from './webhook-lines'
 
 export function WebhooksCard({ botId, botName, now }: { botId: string; botName: string; now: number }) {
   const theme = useTheme()
+  const { fontScale } = useWindowDimensions()
+  const rowLines = rosterRowTextLines(fontScale)
   const { webhooks, togglePaused, remove, copyAddress } = useWebhooks(botId)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [failure, setFailure] = useState('')
@@ -37,14 +42,26 @@ export function WebhooksCard({ botId, botName, now }: { botId: string; botName: 
                 <Pressable
                   onPress={() => setSelectedId(webhook.id)}
                   accessibilityRole="button"
-                  style={({ pressed }) => ({ flex: 1, minWidth: 0, paddingVertical: 11, paddingLeft: 14, gap: 2, opacity: pressed ? 0.65 : 1 })}
+                  style={({ pressed }) => ({ flex: 1, minWidth: 0, paddingVertical: 12, paddingLeft: 14, gap: 3, opacity: pressed ? 0.65 : 1 })}
                 >
-                  <AppText variant="preview" color={line.tone === 'paused' ? theme.mutedForeground : theme.foreground} style={{ fontFamily: 'Inter_500Medium' }} numberOfLines={1}>
+                  <AppText
+                    variant="name"
+                    color={line.tone === 'paused' ? theme.mutedForeground : theme.foreground}
+                    numberOfLines={rowLines}
+                    maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowName}
+                    style={MOBILE_SCALE.details.rowTitle}
+                  >
                     {webhook.description}
                   </AppText>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                    {line.tone === 'running' ? <WorkingSpinner color={theme.primary} size={12} /> : null}
-                    <AppText variant="meta" color={line.tone === 'failed' ? theme.destructive : theme.mutedForeground} numberOfLines={1} style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    {line.tone === 'running' ? <WorkingSpinner color={theme.primary} size={13} /> : null}
+                    <AppText
+                      variant="preview"
+                      color={line.tone === 'failed' ? theme.destructive : theme.mutedForeground}
+                      numberOfLines={rowLines}
+                      maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowPreview}
+                      style={[MOBILE_SCALE.details.rowSubtitle, { flex: 1 }]}
+                    >
                       {line.text}
                     </AppText>
                   </View>
@@ -62,11 +79,12 @@ export function WebhooksCard({ botId, botName, now }: { botId: string; botName: 
         })}
       </SectionGroup>
       {failure ? (
-        <AppText variant="meta" color={theme.destructive} style={{ paddingHorizontal: 4 }}>
+        <AppText variant="preview" color={theme.destructive} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowPreview} style={[MOBILE_SCALE.details.rowSubtitle, { paddingHorizontal: 4 }]}>
           {failure}
         </AppText>
       ) : null}
       <WebhookDetailSheet
+        botId={botId}
         webhook={selected}
         botName={botName}
         now={now}

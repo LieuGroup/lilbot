@@ -1,17 +1,20 @@
 /** Settings > Computers (`R3-07b`): `This device` (Name, Runs on, `deviceLine`), live `Computers` list
- *  (green online dot, 40% muted grey offline dot, `Main` badge, `Make main`, remove confirmation), and
- *  `Add a machine without a screen…`. Zero QR pairing and zero latency readouts. */
+ *  (with visible `Make main` and VoiceOver-reachable `Remove` buttons + action error banner), and
+ *  `Add a machine without a screen…`. */
 import { Fragment, useEffect, useState } from 'react'
 import { Alert, Pressable, ScrollView, useWindowDimensions, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { type ComputerRow, computerRows } from '../../../shared/client/computers/computer-rows'
 import { deviceLine } from '../../../shared/client/devices/device-line'
 import { useThisDevice } from '../devices/use-this-device'
-import { PillBadge, RowDivider, SectionGroup } from '../ui/grouped-card'
+import { DYNAMIC_TYPE_CAPS, rosterRowTextLines } from '../ui/dynamic-type'
+import { RowDivider, SectionGroup } from '../ui/grouped-card'
 import { ChevronRightIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
+import { MOBILE_SCALE } from '../ui/tokens'
 import { CommandLineSheet } from './command-line-sheet'
+import { ComputerRowCard } from './computer-row-card'
 import { RenameDeviceModal, RunsOnSheet } from './device-modals'
 import { useComputers } from './use-computers'
 
@@ -22,8 +25,9 @@ export function ComputersScreen() {
   const theme = useTheme()
   const { fontScale } = useWindowDimensions()
   const stackWide = fontScale >= 1.35
+  const rowLines = rosterRowTextLines(fontScale)
   const insets = useSafeAreaInsets()
-  const { computers, error, setMain, remove } = useComputers()
+  const { computers, error, busyId, setMain, remove } = useComputers()
   const thisDevice = useThisDevice()
   const [now, setNow] = useState(() => Date.now())
   const [renameOpen, setRenameOpen] = useState(false)
@@ -41,16 +45,27 @@ export function ComputersScreen() {
 
   const saveRename = async () => {
     const trimmed = nameDraft.trim()
+    if (!trimmed) return
     setRenameOpen(false)
-    if (trimmed && trimmed !== thisDevice.device?.name) await thisDevice.rename(trimmed)
+    if (trimmed !== thisDevice.device?.name) await thisDevice.rename(trimmed)
   }
 
   const confirmRemove = (row: ComputerRow) => {
-    if (row.isLeader) return
+    if (row.isLeader || busyId !== null) return
     Alert.alert(`Remove ${row.name}?`, 'Bots will no longer be able to use this computer until you add it again.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Remove', style: 'destructive', onPress: () => void remove(row.id) }
     ])
+  }
+
+  const deviceRowStyle = {
+    flexDirection: stackWide ? ('column' as const) : ('row' as const),
+    alignItems: stackWide ? ('flex-start' as const) : ('center' as const),
+    justifyContent: 'space-between' as const,
+    minHeight: 52,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: stackWide ? 4 : 12
   }
 
   return (
@@ -61,44 +76,33 @@ export function ComputersScreen() {
       contentContainerStyle={{ padding: 16, gap: 20, paddingBottom: Math.max(32, insets.bottom + 16) }}
     >
       <SectionGroup title="This device" footer={thisDevice.device ? deviceLine(thisDevice.device.resolves) : undefined}>
-        <Pressable
-          testID="this-device-name-row"
-          disabled={!thisDevice.device}
-          onPress={() => {
-            setNameDraft(thisDevice.device?.name ?? '')
-            setRenameOpen(true)
-          }}
-          accessibilityRole="button"
-          style={({ pressed }) => ({ flexDirection: stackWide ? 'column' : 'row', alignItems: stackWide ? 'flex-start' : 'center', justifyContent: 'space-between', minHeight: 46, paddingHorizontal: 14, paddingVertical: 10, gap: stackWide ? 4 : 12, opacity: pressed ? 0.65 : 1 })}
-        >
-          <AppText variant="name">Name</AppText>
+        <Pressable testID="this-device-name-row" disabled={!thisDevice.device} onPress={() => { setNameDraft(thisDevice.device?.name ?? ''); setRenameOpen(true) }} accessibilityRole="button" style={({ pressed }) => ({ ...deviceRowStyle, opacity: pressed ? 0.65 : 1 })}>
+          <AppText variant="name" maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowName} style={MOBILE_SCALE.details.rowTitle}>
+            Name
+          </AppText>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}>
-            <AppText variant="preview" color={theme.mutedForeground} numberOfLines={stackWide ? 2 : 1}>
+            <AppText variant="preview" color={theme.mutedForeground} numberOfLines={rowLines} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowPreview} style={MOBILE_SCALE.details.rowSubtitle}>
               {thisDevice.device?.name ?? 'Loading…'}
             </AppText>
-            <ChevronRightIcon color={theme.mutedForeground} size={14} />
+            <ChevronRightIcon color={theme.mutedForeground} size={15} />
           </View>
         </Pressable>
         <RowDivider />
-        <Pressable
-          testID="this-device-runs-on-row"
-          disabled={!thisDevice.device}
-          onPress={() => setRunsOnOpen(true)}
-          accessibilityRole="button"
-          style={({ pressed }) => ({ flexDirection: stackWide ? 'column' : 'row', alignItems: stackWide ? 'flex-start' : 'center', justifyContent: 'space-between', minHeight: 46, paddingHorizontal: 14, paddingVertical: 10, gap: stackWide ? 4 : 12, opacity: pressed ? 0.65 : 1 })}
-        >
-          <AppText variant="name">Runs on</AppText>
+        <Pressable testID="this-device-runs-on-row" disabled={!thisDevice.device} onPress={() => setRunsOnOpen(true)} accessibilityRole="button" style={({ pressed }) => ({ ...deviceRowStyle, opacity: pressed ? 0.65 : 1 })}>
+          <AppText variant="name" maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowName} style={MOBILE_SCALE.details.rowTitle}>
+            Runs on
+          </AppText>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}>
-            <AppText variant="preview" color={theme.mutedForeground} numberOfLines={stackWide ? 2 : 1}>
+            <AppText variant="preview" color={theme.mutedForeground} numberOfLines={rowLines} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowPreview} style={MOBILE_SCALE.details.rowSubtitle}>
               {linkedName}
             </AppText>
-            <ChevronRightIcon color={theme.mutedForeground} size={14} />
+            <ChevronRightIcon color={theme.mutedForeground} size={15} />
           </View>
         </Pressable>
       </SectionGroup>
 
       {thisDevice.error ? (
-        <AppText variant="meta" color={theme.destructive}>
+        <AppText variant="preview" color={theme.destructive} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowPreview} style={[MOBILE_SCALE.details.rowSubtitle, { paddingHorizontal: 4 }]}>
           {thisDevice.error}
         </AppText>
       ) : null}
@@ -106,7 +110,7 @@ export function ComputersScreen() {
       <SectionGroup title="Computers" footer={COMPUTERS_FOOTER}>
         {rows.length === 0 ? (
           <View style={{ paddingHorizontal: 14, paddingVertical: 14 }}>
-            <AppText variant="preview" color={error ? theme.destructive : theme.mutedForeground}>
+            <AppText variant="preview" color={error ? theme.destructive : theme.mutedForeground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowPreview} style={MOBILE_SCALE.details.rowSubtitle}>
               {error || 'Loading…'}
             </AppText>
           </View>
@@ -114,81 +118,32 @@ export function ComputersScreen() {
           rows.map((row, index) => (
             <Fragment key={row.id}>
               {index > 0 ? <RowDivider /> : null}
-              <Pressable onLongPress={() => confirmRemove(row)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12, minHeight: 54 }}>
-                <View
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 4,
-                    backgroundColor: row.status === 'online' ? theme.success : row.status === 'conflict' ? theme.destructive : theme.mutedForeground,
-                    opacity: row.status === 'offline' ? 0.4 : 1
-                  }}
-                />
-                <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <AppText variant="name" numberOfLines={1}>
-                      {row.name}
-                    </AppText>
-                    {row.main ? <PillBadge label="Main" /> : null}
-                  </View>
-                  <AppText variant="meta" color={row.status === 'conflict' ? theme.destructive : theme.mutedForeground} numberOfLines={2}>
-                    {row.line}
-                    {row.workerText ? ` · ${row.workerText}` : ''}
-                    {row.thisDevice ? ' · This device' : ''}
-                  </AppText>
-                </View>
-                {!row.main && row.status !== 'conflict' ? (
-                  <Pressable
-                    onPress={() => void setMain(row.id)}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Make ${row.name} main`}
-                    style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: 32, paddingHorizontal: 6, opacity: pressed ? 0.6 : 1 })}
-                  >
-                    <AppText variant="preview" color={theme.mutedForeground}>
-                      Make main
-                    </AppText>
-                    <ChevronRightIcon color={theme.mutedForeground} size={13} />
-                  </Pressable>
-                ) : null}
-              </Pressable>
+              <ComputerRowCard row={row} rowLines={rowLines} busy={busyId !== null} onSetMain={id => void setMain(id)} onRemove={confirmRemove} />
             </Fragment>
           ))
         )}
       </SectionGroup>
 
+      {rows.length > 0 && error ? (
+        <AppText testID="computers-action-error" variant="preview" color={theme.destructive} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowPreview} style={[MOBILE_SCALE.details.rowSubtitle, { paddingHorizontal: 4 }]}>
+          {error}
+        </AppText>
+      ) : null}
+
       <Pressable
         testID="add-machine-command-line"
         onPress={() => setCommandLineOpen(true)}
         accessibilityRole="button"
-        style={({ pressed }) => ({
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          minHeight: 48,
-          paddingHorizontal: 14,
-          borderRadius: 14,
-          backgroundColor: theme.card,
-          borderWidth: 1,
-          borderColor: theme.hairline,
-          opacity: pressed ? 0.65 : 1
-        })}
+        style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 54, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 14, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.hairline, opacity: pressed ? 0.65 : 1 })}
       >
-        <AppText variant="name">Add a machine without a screen…</AppText>
-        <ChevronRightIcon color={theme.mutedForeground} size={14} />
+        <AppText variant="name" numberOfLines={rowLines} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowName} style={[MOBILE_SCALE.details.rowTitle, { flex: 1 }]}>
+          Add a machine without a screen…
+        </AppText>
+        <ChevronRightIcon color={theme.mutedForeground} size={15} />
       </Pressable>
 
       <RenameDeviceModal visible={renameOpen} draft={nameDraft} onChangeDraft={setNameDraft} onCancel={() => setRenameOpen(false)} onSave={() => void saveRename()} />
-      <RunsOnSheet
-        visible={runsOnOpen}
-        computers={computers ?? []}
-        selectedId={thisDevice.device?.computerId ?? null}
-        onClose={() => setRunsOnOpen(false)}
-        onSelect={id => {
-          setRunsOnOpen(false)
-          void thisDevice.link(id)
-        }}
-      />
+      <RunsOnSheet visible={runsOnOpen} computers={computers ?? []} selectedId={thisDevice.device?.computerId ?? null} onClose={() => setRunsOnOpen(false)} onSelect={id => { setRunsOnOpen(false); void thisDevice.link(id) }} />
       <CommandLineSheet visible={commandLineOpen} onClose={() => setCommandLineOpen(false)} />
     </ScrollView>
   )

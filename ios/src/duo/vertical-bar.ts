@@ -8,7 +8,7 @@ export const DUO_AVATAR_TEST_ID = `${DUO_VERTICAL_ITEM_PREFIX}bot-avatar`
 export type VerticalBarEdge = 'leading' | 'trailing' | null
 export type VerticalBarActionId = 'bot-avatar' | 'sidebar-toggle' | 'bot-menu' | 'new-bot' | 'search-bots'
 export type VerticalBarPriority = 'high' | 'standard' | 'low'
-export type DuoStripScreen = 'folded-roster' | 'folded-chat' | 'unfolded-split' | 'unfolded-portrait'
+export type DuoStripScreen = 'folded-roster' | 'folded-chat' | 'folded-details' | 'unfolded-split' | 'unfolded-portrait'
 export type VerticalBarSFSymbol = 'sidebar.left' | 'ellipsis' | 'plus' | 'magnifyingglass'
 
 export type VerticalBarSlotSpec =
@@ -37,6 +37,7 @@ export const DUO_VERTICAL_BAR_TABLE: Record<DuoStripScreen, readonly VerticalBar
     { id: 'bot-avatar', kind: 'custom', priority: 'high', defaultLabel: 'Bot options' },
     { id: 'bot-menu', kind: 'button', sfSymbol: 'ellipsis', priority: 'high', defaultLabel: 'Bot options' }
   ],
+  'folded-details': [{ id: 'bot-menu', kind: 'button', sfSymbol: 'ellipsis', priority: 'high', defaultLabel: 'Bot options' }],
   'unfolded-split': [
     { id: 'bot-avatar', kind: 'custom', priority: 'high', defaultLabel: 'Bot options' },
     { id: 'sidebar-toggle', kind: 'button', sfSymbol: 'sidebar.left', priority: 'high', defaultLabel: 'Toggle bots sidebar' },

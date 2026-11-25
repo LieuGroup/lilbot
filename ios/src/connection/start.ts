@@ -2,8 +2,13 @@
  *  store so `connection/store` never imports `connection/lilbot` back (a require cycle). */
 import Constants from 'expo-constants'
 import { thisDeviceId } from '../devices/device'
-import { ensureSocket } from './lilbot'
+import { ensureSocket, stopSocket } from './lilbot'
 import { useConnectionStore } from './store'
+
+/** Stops any running socket immediately so disconnecting drops the old server session and token. */
+export function stopConnection() {
+  stopSocket()
+}
 
 /** This install's name as the server first sees it: the device's own name. */
 function deviceName(): string {

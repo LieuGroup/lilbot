@@ -1,23 +1,27 @@
 /** Read-only workspace browser pageSheet (`library.workspace`): breadcrumb path, folders first, files with byte size.
  *  Working files stay read-only here; only files explicitly handed over by the bot open in Library. */
 import { Fragment, useEffect, useState } from 'react'
-import { Modal, Pressable, ScrollView, View } from 'react-native'
+import { Modal, Pressable, ScrollView, useWindowDimensions, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { WorkspaceEntry } from '../../../shared/library-schema'
 import { messageOf } from '../../../shared/client/socket'
 import { ensureSocket } from '../connection/lilbot'
 import { useConnectionStore } from '../connection/store'
 import { FileTextIcon, FolderIcon } from '../ui/details-icons'
+import { DYNAMIC_TYPE_CAPS, rosterRowTextLines } from '../ui/dynamic-type'
 import { formatBytes } from '../ui/format-time'
 import { RowDivider } from '../ui/grouped-card'
 import { ChevronRightIcon, CloseIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
+import { MOBILE_SCALE } from '../ui/tokens'
 import { countLine, pathParts } from './library-lines'
 
 export function WorkspaceSheet({ botId, visible, onClose }: { botId: string; visible: boolean; onClose: () => void }) {
   const theme = useTheme()
   const insets = useSafeAreaInsets()
+  const { fontScale } = useWindowDimensions()
+  const rowLines = rosterRowTextLines(fontScale)
   const connected = useConnectionStore(state => state.connected)
   const [path, setPath] = useState('')
   const [entries, setEntries] = useState<WorkspaceEntry[] | null>(null)
@@ -53,8 +57,10 @@ export function WorkspaceSheet({ botId, visible, onClose }: { botId: string; vis
     <Modal visible={visible} presentationStyle="pageSheet" animationType="slide" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: theme.background, paddingTop: Math.max(16, insets.top) }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: theme.hairline }}>
-          <AppText variant="title">Workspace</AppText>
-          <Pressable onPress={onClose} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close" style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.muted }}>
+          <AppText variant="title" maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.headerTitle} style={MOBILE_SCALE.details.sheetTitle}>
+            Workspace
+          </AppText>
+          <Pressable onPress={onClose} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close" style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.muted }}>
             <CloseIcon color={theme.foreground} size={16} />
           </Pressable>
         </View>
@@ -63,17 +69,17 @@ export function WorkspaceSheet({ botId, visible, onClose }: { botId: string; vis
             {parts.map((part, index) => (
               <Fragment key={part.path || 'root'}>
                 {index > 0 ? (
-                  <AppText variant="preview" color={theme.mutedForeground}>
+                  <AppText variant="preview" color={theme.mutedForeground} style={MOBILE_SCALE.details.rowSubtitle}>
                     /
                   </AppText>
                 ) : null}
                 {index === parts.length - 1 ? (
-                  <AppText variant="preview" style={{ fontFamily: 'Inter_500Medium' }}>
+                  <AppText variant="name" maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowPreview} style={MOBILE_SCALE.details.rowSubtitle}>
                     {part.name}
                   </AppText>
                 ) : (
                   <Pressable onPress={() => setPath(part.path)} hitSlop={6} accessibilityRole="button">
-                    <AppText variant="preview" color={theme.mutedForeground}>
+                    <AppText variant="preview" color={theme.mutedForeground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowPreview} style={MOBILE_SCALE.details.rowSubtitle}>
                       {part.name}
                     </AppText>
                   </Pressable>
@@ -83,7 +89,7 @@ export function WorkspaceSheet({ botId, visible, onClose }: { botId: string; vis
           </View>
 
           {!entries ? (
-            <AppText variant="preview" color={error ? theme.destructive : theme.mutedForeground} style={{ paddingHorizontal: 4 }}>
+            <AppText variant="preview" color={error ? theme.destructive : theme.mutedForeground} style={[MOBILE_SCALE.details.rowSubtitle, { paddingHorizontal: 4 }]}>
               {error || 'Loading…'}
             </AppText>
           ) : (
@@ -97,21 +103,21 @@ export function WorkspaceSheet({ botId, visible, onClose }: { botId: string; vis
                         <Pressable
                           onPress={() => setPath(path ? `${path}/${entry.name}` : entry.name)}
                           accessibilityRole="button"
-                          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, minHeight: 46, opacity: pressed ? 0.65 : 1 })}
+                          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12, minHeight: 52, opacity: pressed ? 0.65 : 1 })}
                         >
-                          <FolderIcon color={theme.mutedForeground} size={16} />
-                          <AppText variant="preview" numberOfLines={1} style={{ flex: 1 }}>
+                          <FolderIcon color={theme.mutedForeground} size={17} />
+                          <AppText variant="name" numberOfLines={rowLines} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowName} style={[MOBILE_SCALE.details.rowTitle, { flex: 1 }]}>
                             {entry.name}
                           </AppText>
-                          <ChevronRightIcon color={theme.mutedForeground} size={14} />
+                          <ChevronRightIcon color={theme.mutedForeground} size={15} />
                         </Pressable>
                       ) : (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, minHeight: 44 }}>
-                          <FileTextIcon color={theme.mutedForeground} size={16} />
-                          <AppText variant="preview" numberOfLines={1} style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12, minHeight: 50 }}>
+                          <FileTextIcon color={theme.mutedForeground} size={17} />
+                          <AppText variant="name" numberOfLines={rowLines} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowName} style={[MOBILE_SCALE.details.rowTitle, { flex: 1 }]}>
                             {entry.name}
                           </AppText>
-                          <AppText variant="meta" color={theme.mutedForeground}>
+                          <AppText variant="preview" color={theme.mutedForeground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowTime} style={MOBILE_SCALE.details.meta}>
                             {formatBytes(entry.size)}
                           </AppText>
                         </View>
@@ -120,7 +126,7 @@ export function WorkspaceSheet({ botId, visible, onClose }: { botId: string; vis
                   ))}
                 </View>
               ) : null}
-              <AppText variant="meta" color={theme.mutedForeground} style={{ paddingHorizontal: 4 }}>
+              <AppText variant="preview" color={theme.mutedForeground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowPreview} style={[MOBILE_SCALE.details.rowSubtitle, { paddingHorizontal: 4 }]}>
                 {countLine(entries)}
               </AppText>
             </>

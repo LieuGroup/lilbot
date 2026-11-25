@@ -1,5 +1,6 @@
-/** Live webhooks hook (`webhooks.list` + `webhooks.changed`) with pause/resume, delete, and on-demand secret address copy. */
-import { useCallback, useEffect, useState } from 'react'
+/** Live webhooks hook (`webhooks.list` + `webhooks.changed`) with monotonic sequence guard, pause/resume,
+ *  delete, and clipboard-only secret address copy (never Share.share). */
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Webhook } from '../../../shared/webhook-schema'
 import { messageOf } from '../../../shared/client/socket'
 import { ensureSocket } from '../connection/lilbot'
@@ -10,19 +11,25 @@ export function useWebhooks(botId: string) {
   const connected = useConnectionStore(state => state.connected)
   const [webhooks, setWebhooks] = useState<Webhook[] | null>(null)
   const [error, setError] = useState('')
+  const loadSeqRef = useRef(0)
 
   const load = useCallback(async () => {
     const socket = ensureSocket()
     if (!socket || !connected) return
+    const seq = ++loadSeqRef.current
     try {
-      setWebhooks(await socket.call('webhooks.list', { botId }))
+      const next = await socket.call('webhooks.list', { botId })
+      if (seq !== loadSeqRef.current) return
+      setWebhooks(next)
       setError('')
     } catch (failure) {
+      if (seq !== loadSeqRef.current) return
       setError(messageOf(failure))
     }
   }, [botId, connected])
 
   useEffect(() => {
+    loadSeqRef.current += 1
     setWebhooks(null)
     void load()
     const socket = ensureSocket()
@@ -56,13 +63,13 @@ export function useWebhooks(botId: string) {
   )
 
   const copyAddress = useCallback(
-    async (id: string) => {
+    async (id: string): Promise<'copied'> => {
       const socket = ensureSocket()
       if (!socket) throw new Error('Not connected.')
       const { address } = await socket.call('webhooks.address', { botId, id })
       const outcome = await copyText(address)
-      if (outcome === 'failed') throw new Error('Could not copy')
-      return outcome
+      if (outcome !== 'copied') throw new Error('Could not copy')
+      return 'copied'
     },
     [botId]
   )

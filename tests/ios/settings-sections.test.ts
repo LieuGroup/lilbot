@@ -56,13 +56,14 @@ describe('extensible Settings section registry and Computers rules', () => {
     const settingsSrc = readFileSync(resolve(root, 'ios/src/settings/screen.tsx'), 'utf8')
     const generalSrc = readFileSync(resolve(root, 'ios/src/settings/sections/general-section.tsx'), 'utf8')
     const computersSrc = readFileSync(resolve(root, 'ios/src/computers/computers-screen.tsx'), 'utf8')
-    const combined = `${settingsSrc}\n${generalSrc}\n${computersSrc}`
+    const computersRowSrc = readFileSync(resolve(root, 'ios/src/computers/computer-row-card.tsx'), 'utf8')
+    const combined = `${settingsSrc}\n${generalSrc}\n${computersSrc}\n${computersRowSrc}`
 
     for (const forbidden of ['Default model', 'Compact density', 'Hide bars on scroll', 'Scan QR', '12ms']) {
       expect(combined).not.toContain(forbidden)
     }
-    expect(computersSrc).toContain("row.status === 'offline' ? 0.4 : 1")
-    expect(computersSrc).not.toContain("row.status === 'offline' ? theme.destructive")
+    expect(computersRowSrc).toContain("row.status === 'offline' ? 0.4 : 1")
+    expect(computersRowSrc).not.toContain("row.status === 'offline' ? theme.destructive")
   })
 
   test('shared Computers and Devices helpers format rows, device resolution, and install commands', () => {
@@ -140,11 +141,19 @@ describe('extensible Settings section registry and Computers rules', () => {
         secretMap.delete(k)
       }
     }
-    const store = createConnectionStore({ plain, secret })
+    let disconnectedCount = 0
+    const store = createConnectionStore({
+      plain,
+      secret,
+      onDisconnect: () => {
+        disconnectedCount += 1
+      }
+    })
     await store.getState().load()
     expect(store.getState().settings?.serverUrl).toBe('http://127.0.0.1:3370')
 
     await store.getState().disconnect()
+    expect(disconnectedCount).toBe(1)
     expect(store.getState().settings).toBeNull()
     expect(store.getState().connected).toBe(false)
     expect(secretMap.has(TOKEN_KEY)).toBe(false)

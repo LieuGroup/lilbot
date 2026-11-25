@@ -181,7 +181,7 @@ export function DuoShell({ inspectorOpen: inspectorOpenProp, onCloseInspector, r
         {layout.splitMode && (
           <View key="chat-pane" style={{ flex: 1 }}>
             {selected ? (
-              <ChatScreen bot={selected} hideHeader={hideDuoChatHeader} headerLeading={sidebarToggle} showNewSession={surface === 'pad'} dock={renderChatDock?.(selected)} renderToolItem={renderChatToolItem?.(selected)} />
+              <ChatScreen bot={selected} hideHeader={hideDuoChatHeader} headerLeading={sidebarToggle} showNewSession={surface === 'pad'} onOpenDetails={renderInspector ? toggleInspector : undefined} dock={renderChatDock?.(selected)} renderToolItem={renderChatToolItem?.(selected)} />
             ) : (
               <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                 <AppText variant="chat" color={theme.mutedForeground}>

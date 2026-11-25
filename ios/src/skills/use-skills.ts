@@ -1,5 +1,5 @@
-/** Live skills hook (`skills.list` + `skills.changed`) with per-bot switch (`skills.setEnabled`). */
-import { useCallback, useEffect, useState } from 'react'
+/** Live skills hook (`skills.list` + `skills.changed`) with monotonic sequence guard and per-bot switch. */
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Skill } from '../../../shared/skills-schema'
 import { messageOf } from '../../../shared/client/socket'
 import { ensureSocket } from '../connection/lilbot'
@@ -9,19 +9,25 @@ export function useSkills(botId: string) {
   const connected = useConnectionStore(state => state.connected)
   const [skills, setSkills] = useState<Skill[] | null>(null)
   const [error, setError] = useState('')
+  const loadSeqRef = useRef(0)
 
   const load = useCallback(async () => {
     const socket = ensureSocket()
     if (!socket || !connected) return
+    const seq = ++loadSeqRef.current
     try {
-      setSkills(await socket.call('skills.list', { botId }))
+      const next = await socket.call('skills.list', { botId })
+      if (seq !== loadSeqRef.current) return
+      setSkills(next)
       setError('')
     } catch (failure) {
+      if (seq !== loadSeqRef.current) return
       setError(messageOf(failure))
     }
   }, [botId, connected])
 
   useEffect(() => {
+    loadSeqRef.current += 1
     setSkills(null)
     void load()
     const socket = ensureSocket()

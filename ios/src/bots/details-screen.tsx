@@ -1,17 +1,19 @@
 /** Bot Details (`R3-05`, 3 tabs only: Activity, Library, Setup — Memory lives exclusively in Settings > Memory).
  *  Used both as the pushed `/bot-details` Stack screen on compact iPhone (`compact`, where the native nav bar
- *  holds the `[Avatar + Name]` pill) and as the right-hand inspector pane inside `DuoShell` on Unfolded Duo.
- *  Supports horizontal tab swipe with the leading 20 pt edge yielded to iOS native interactive Back. */
+ *  holds the `[Avatar + Name]` pill), on Folded Duo (`compact={false}` with one identity block and `< Back` + `•••`
+ *  in the 84 pt strip), and as the right-hand inspector pane inside `DuoShell` on Unfolded Duo / iPad. */
 import { useMemo, useRef, useState } from 'react'
-import { Pressable, View } from 'react-native'
+import { Pressable, useWindowDimensions, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { ActivityTab } from '../activity/activity-tab'
 import { LibraryTab } from '../library/library-tab'
 import { BotAvatar } from '../ui/avatar'
+import { DYNAMIC_TYPE_CAPS, rosterRowTextLines } from '../ui/dynamic-type'
 import { evaluateTabSwipe } from '../ui/gestures/rules'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
+import { MOBILE_SCALE } from '../ui/tokens'
 import { BOT_DETAILS_TABS, type BotDetailsTab, normalizeBotDetailsTab } from './details-tabs'
 import { SetupTab } from './setup-tab'
 import { useBotStore } from './store'
@@ -27,6 +29,8 @@ export function BotDetailsScreen({
 }) {
   const theme = useTheme()
   const insets = useSafeAreaInsets()
+  const { fontScale } = useWindowDimensions()
+  const rowLines = rosterRowTextLines(fontScale)
   const bot = useBotStore(state => state.bots.find(candidate => candidate.id === botId) ?? null)
   const [tab, setTab] = useState<BotDetailsTab>(() => normalizeBotDetailsTab(initialTab))
   const startXRef = useRef(0)
@@ -57,7 +61,7 @@ export function BotDetailsScreen({
   if (!bot) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.background, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-        <AppText variant="preview" color={theme.mutedForeground}>
+        <AppText style={MOBILE_SCALE.details.rowSubtitle} color={theme.mutedForeground}>
           Bot not found.
         </AppText>
       </View>
@@ -70,14 +74,14 @@ export function BotDetailsScreen({
     <View testID="bot-details-screen" style={{ flex: 1, backgroundColor: theme.background }}>
       <View style={{ paddingHorizontal: 16, paddingTop: compact ? 8 : 4, paddingBottom: 12, gap: 12, borderBottomWidth: 1, borderBottomColor: theme.hairline }}>
         {!compact ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <BotAvatar name={bot.name} avatar={bot.prefs.avatar} size={40} />
+          <View testID="bot-details-identity" style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <BotAvatar name={bot.name} avatar={bot.prefs.avatar} size={44} />
             <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-              <AppText variant="title" numberOfLines={1}>
+              <AppText variant="title" numberOfLines={rowLines} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowName} style={MOBILE_SCALE.details.botTitle}>
                 {bot.name}
               </AppText>
               {bot.function ? (
-                <AppText variant="meta" color={theme.mutedForeground} numberOfLines={2}>
+                <AppText variant="preview" color={theme.mutedForeground} numberOfLines={2} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowPreview} style={MOBILE_SCALE.details.rowSubtitle}>
                   {bot.function}
                 </AppText>
               ) : null}
@@ -97,9 +101,9 @@ export function BotDetailsScreen({
                 accessibilityState={{ selected: active }}
                 style={{
                   flex: 1,
-                  minHeight: 38,
+                  minHeight: 40,
                   paddingHorizontal: 6,
-                  paddingVertical: 6,
+                  paddingVertical: 7,
                   borderRadius: 8,
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -107,13 +111,13 @@ export function BotDetailsScreen({
                 }}
               >
                 <AppText
-                  variant="preview"
+                  variant="name"
                   numberOfLines={1}
                   adjustsFontSizeToFit
                   minimumFontScale={0.75}
-                  maxFontSizeMultiplier={1.25}
+                  maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.tabLabel}
                   color={active ? theme.background : theme.mutedForeground}
-                  style={{ fontFamily: active ? 'Inter_600SemiBold' : 'Inter_500Medium' }}
+                  style={[MOBILE_SCALE.details.tabLabel, { fontFamily: active ? 'Inter_600SemiBold' : 'Inter_500Medium' }]}
                 >
                   {entry.label}
                 </AppText>
