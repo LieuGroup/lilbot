@@ -55,6 +55,7 @@ function botsChanged() {
 }
 
 const T3_ENABLED = isT3Enabled(process.env)
+const apnsSender = createApnsSenderFromEnv(process.env)
 const engines = createDefaultEngines(process.env)
 const MEMORY_ADAPTER_VERSION = engines.defaultEngine.memoryAdapterVersion ?? 'none'
 const services = createAppServices(engines, {
@@ -68,7 +69,7 @@ const services = createAppServices(engines, {
   ACCESS_HOST: ACCESS?.host,
   ACCESS_CALLBACK_ENABLED: ACCESS?.callbackEnabled ?? false,
   T3_ENABLED,
-  notificationSender: createApnsSenderFromEnv(process.env) ?? undefined,
+  notificationSender: apnsSender ?? undefined,
   publish: frame => publish(EVERYONE, JSON.stringify(frame)),
   botsChanged
 })
@@ -188,3 +189,12 @@ console.log(`LilBot listening on http://${server.hostname}:${server.port} (engin
 
 // Off until the dedicated tunnel is provisioned. Never target the private app port.
 if (PUBLIC_ENABLED) startPublicDoor(computers, PUBLIC_PORT, { hooks: webhookRoute(webhooks), workers: services.remoteWorkers.runner.bridge })
+
+if (apnsSender) {
+  const shutdown = () => {
+    apnsSender.close()
+    process.exit(0)
+  }
+  process.once('SIGTERM', shutdown)
+  process.once('SIGINT', shutdown)
+}

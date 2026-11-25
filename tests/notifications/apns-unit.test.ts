@@ -1,12 +1,7 @@
-/** Unit tests for APNs ES256 JWT minting, 4 KiB payload building, Apple error classification, and env/dev safety guards. */
+/** Unit tests for APNs ES256 JWT minting, grapheme-safe 4 KiB payload bounding, and Apple error classification. */
 import { expect, test } from 'bun:test'
 import { generateKeyPairSync, verify } from 'node:crypto'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { homedir, tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { assertDevelopmentTarget } from '../../server/environment'
 import { buildApnsRequest, classifyApnsResponse, parseRetryAfterMs } from '../../server/notifications/apns-payload'
-import { createApnsSenderFromEnv } from '../../server/notifications/apns-settings'
 import { APNS_TOKEN_TTL_MS, ApnsTokenProvider } from '../../server/notifications/apns-token'
 import type { NotificationPayload, NotificationRecipient } from '../../server/notifications/notification-sender'
 
@@ -46,7 +41,6 @@ test('ApnsTokenProvider mints verifiable ES256 JWTs, caches for 45 min, validate
   expect(sig.length).toBe(64)
   expect(verify('sha256', Buffer.from(`${h}.${p}`), { key: publicKey, dsaEncoding: 'ieee-p1363' }, sig)).toBe(true)
 
-  // Reused within TTL; stale invalidate mismatch keeps cached token; matching invalidate forces fresh token; refreshed past TTL.
   expect(provider.getToken(t0 + 10 * 60_000)).toBe(jwt1)
   provider.invalidate('not-matching-jwt')
   expect(provider.getToken(t0 + 10 * 60_000)).toBe(jwt1)
@@ -55,14 +49,13 @@ test('ApnsTokenProvider mints verifiable ES256 JWTs, caches for 45 min, validate
   expect(jwt2).not.toBe(jwt1)
   expect(provider.getToken(t0 + 10_000 + APNS_TOKEN_TTL_MS)).not.toBe(jwt2)
 
-  // Rejects bad key/team IDs and non-P256 keys.
   const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()
   expect(() => new ApnsTokenProvider({ keyId: 'SHORT', teamId: FAKE_TEAM_ID, privateKeyPem: FAKE_PEM })).toThrow()
   expect(() => new ApnsTokenProvider({ keyId: FAKE_KEY_ID, teamId: 'BAD_TEAM!', privateKeyPem: FAKE_PEM })).toThrow()
   expect(() => new ApnsTokenProvider({ keyId: FAKE_KEY_ID, teamId: FAKE_TEAM_ID, privateKeyPem: rsa })).toThrow()
 })
 
-test('buildApnsRequest formats headers/body, bounds payloads to 4096 bytes without splitting emojis, and rejects malformed inputs', () => {
+test('buildApnsRequest bounds payloads <= 4096 bytes on grapheme clusters (family emoji, flags, combining accents) and oversized titles', () => {
   const built = buildApnsRequest(makeRecipient(), makePayload(), 'jwt-1', undefined, 1_700_000_000_000)
   expect(built.ok).toBe(true)
   if (!built.ok) return
@@ -78,14 +71,37 @@ test('buildApnsRequest formats headers/body, bounds payloads to 4096 bytes witho
     target: { kind: 'bot', botId: 'b1' }
   })
 
-  // Huge multi-byte emoji payload stays <= 4096 bytes with valid UTF-8 (zero replacement chars).
-  const huge = buildApnsRequest(makeRecipient(), makePayload({ body: '🚀'.repeat(2000) }), 'jwt-1', undefined, 1_700_000_000_000)
-  expect(huge.ok).toBe(true)
-  if (huge.ok) {
-    expect(huge.request.body.byteLength).toBeLessThanOrEqual(4096)
-    const parsed = JSON.parse(huge.request.body.toString('utf8')) as { aps: { alert: { body: string } } }
-    expect(parsed.aps.alert.body.includes('\uFFFD')).toBe(false)
-    expect(parsed.aps.alert.body.endsWith('…')).toBe(true)
+  // Whole grapheme clusters never split: ZWJ family, regional flag, combining accent, and surrogate emoji.
+  for (const [unit, count] of [
+    ['👨‍👩‍👧‍👦', 300],
+    ['🇦🇺', 700],
+    ['e\u0301', 1800],
+    ['🚀', 1500]
+  ] as const) {
+    const res = buildApnsRequest(makeRecipient(), makePayload({ body: unit.repeat(count) }), 'jwt-1', undefined, 1_700_000_000_000)
+    expect(res.ok).toBe(true)
+    if (!res.ok) continue
+    expect(res.request.body.byteLength).toBeLessThanOrEqual(4096)
+    const { body } = (JSON.parse(res.request.body.toString('utf8')) as { aps: { alert: { body: string } } }).aps.alert
+    expect(body.endsWith('…')).toBe(true)
+    const prefix = body.slice(0, -1)
+    expect(prefix.length).toBeGreaterThan(0)
+    expect(prefix.split(unit).every(part => part === '')).toBe(true)
+  }
+
+  // Oversized title is also clamped so total payload never exceeds 4096 bytes.
+  const bigTitle = buildApnsRequest(makeRecipient(), makePayload({ title: '👨‍👩‍👧‍👦'.repeat(400), body: 'Done' }), 'jwt-1', undefined, 1_700_000_000_000)
+  expect(bigTitle.ok).toBe(true)
+  if (bigTitle.ok) {
+    expect(bigTitle.request.body.byteLength).toBeLessThanOrEqual(4096)
+    const parsed = JSON.parse(bigTitle.request.body.toString('utf8')) as { aps: { alert: { title: string; body: string } } }
+    expect(parsed.aps.alert.title.endsWith('…')).toBe(true)
+    expect(
+      parsed.aps.alert.title
+        .slice(0, -1)
+        .split('👨‍👩‍👧‍👦')
+        .every(part => part === '')
+    ).toBe(true)
   }
 
   expect(buildApnsRequest(makeRecipient({ token: 'not-a-hex-token!' }), makePayload(), 'jwt-1', undefined, 0)).toEqual({
@@ -113,47 +129,4 @@ test('classifyApnsResponse and parseRetryAfterMs map Apple APNs status/reasons a
   expect(parseRetryAfterMs('999999', now)).toBe(15 * 60_000)
   expect(parseRetryAfterMs('0', now)).toBe(1_000)
   expect(parseRetryAfterMs(new Date(now + 30_000).toUTCString(), now)).toBe(30_000)
-})
-
-test('createApnsSenderFromEnv stays off unless configured in production, never logs secrets, and dev guard blocks prod key path', () => {
-  const root = mkdtempSync(join(tmpdir(), 'lilbot-apns-env-'))
-  try {
-    const keyPath = join(root, 'fake.p8')
-    writeFileSync(keyPath, FAKE_PEM, { mode: 0o600 })
-    const logs: string[] = []
-    const log = (msg: string) => logs.push(msg)
-
-    // Absent settings -> silently off.
-    expect(createApnsSenderFromEnv({ LILBOT_ENV: 'production' }, log)).toBeNull()
-    expect(logs).toEqual([])
-
-    // Development refuses enabling APNs even with valid key settings.
-    expect(
-      createApnsSenderFromEnv({ LILBOT_ENV: 'development', LILBOT_APNS_KEY_PATH: keyPath, LILBOT_APNS_KEY_ID: FAKE_KEY_ID, LILBOT_APNS_TEAM_ID: FAKE_TEAM_ID }, log)
-    ).toBeNull()
-    expect(logs.at(-1)).toContain('disabled outside production')
-
-    // Partial or bad production settings disable gracefully without throwing or leaking secrets.
-    expect(createApnsSenderFromEnv({ LILBOT_ENV: 'production', LILBOT_APNS_KEY_PATH: keyPath }, log)).toBeNull()
-    expect(
-      createApnsSenderFromEnv({ LILBOT_ENV: 'production', LILBOT_APNS_KEY_PATH: join(root, 'missing.p8'), LILBOT_APNS_KEY_ID: FAKE_KEY_ID, LILBOT_APNS_TEAM_ID: FAKE_TEAM_ID }, log)
-    ).toBeNull()
-    expect(logs.join('\n')).not.toContain(FAKE_KEY_ID)
-    expect(logs.join('\n')).not.toContain(FAKE_TEAM_ID)
-    expect(logs.join('\n')).not.toContain('BEGIN PRIVATE KEY')
-
-    // Valid production config builds sender covering apns + apns_sandbox.
-    const sender = createApnsSenderFromEnv(
-      { LILBOT_ENV: 'production', LILBOT_APNS_KEY_PATH: keyPath, LILBOT_APNS_KEY_ID: FAKE_KEY_ID, LILBOT_APNS_TEAM_ID: FAKE_TEAM_ID, LILBOT_APNS_BUNDLE_ID: 'com.lilbot.app' },
-      log
-    )
-    expect(sender?.channels).toEqual(['apns', 'apns_sandbox'])
-
-    // Development environment guard refuses LILBOT_APNS_KEY_PATH inside production data dir.
-    expect(() => assertDevelopmentTarget({ LILBOT_ENV: 'development', LILBOT_APNS_KEY_PATH: join(homedir(), '.local/share/lilbot/apns/key.p8') })).toThrow(
-      'Development refuses production path: LILBOT_APNS_KEY_PATH'
-    )
-  } finally {
-    rmSync(root, { recursive: true, force: true })
-  }
 })

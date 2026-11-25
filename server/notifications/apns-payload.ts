@@ -1,4 +1,4 @@
-/** Pure Apple APNs HTTP/2 request builder (4 KiB payload guard) and response classifier. */
+/** Pure Apple APNs HTTP/2 request builder (4 KiB grapheme-safe payload guard) and response classifier. */
 import type { OutgoingHttpHeaders } from 'node:http2'
 import type { NotificationPayload, NotificationRecipient, NotificationSendResult } from './notification-sender'
 
@@ -9,6 +9,7 @@ const MAX_COLLAPSE_BYTES = 64
 const EXPIRATION_TTL_SECONDS = 24 * 60 * 60
 const MIN_RETRY_AFTER_MS = 1_000
 const MAX_RETRY_AFTER_MS = 15 * 60_000
+const GRAPHEMES = new Intl.Segmenter('en', { granularity: 'grapheme' })
 
 const INVALID_TOKEN_REASONS = new Set(['BadDeviceToken', 'DeviceTokenNotForTopic', 'Unregistered'])
 const KEY_REJECTED_REASONS = new Set(['InvalidProviderToken', 'MissingProviderToken'])
@@ -29,37 +30,44 @@ export type ApnsClassification =
   | { kind: 'throttled'; reason: string; retryAfterMs: number | null }
   | { kind: 'failed'; reason: string }
 
-function serializeBoundedBody(payload: NotificationPayload): Buffer {
-  const make = (body: string) =>
-    Buffer.from(
-      JSON.stringify({
-        aps: {
-          alert: { title: payload.title, body },
-          sound: 'default',
-          'thread-id': payload.threadId
-        },
-        kind: payload.kind,
-        target: payload.target
-      }),
-      'utf8'
-    )
-  const initial = make(payload.body)
-  if (initial.byteLength <= MAX_APNS_PAYLOAD_BYTES) return initial
-  // Trim by Unicode code points so surrogate pairs are never split.
-  const chars = Array.from(payload.body)
-  let [lo, hi] = [0, chars.length]
-  let best = make('…')
+function clampGraphemes(raw: string, fits: (text: string) => boolean, fallback: string): string {
+  const units = Array.from(GRAPHEMES.segment(raw), part => part.segment)
+  let [lo, hi] = [0, units.length]
+  let best = fallback
   while (lo <= hi) {
     const mid = (lo + hi) >> 1
-    const candidate = make(mid === 0 ? '…' : `${chars.slice(0, mid).join('').trimEnd()}…`)
-    if (candidate.byteLength <= MAX_APNS_PAYLOAD_BYTES) {
-      best = candidate
+    const text = mid === units.length ? raw : mid === 0 ? fallback : `${units.slice(0, mid).join('').trimEnd()}…`
+    if (fits(text)) {
+      best = text
       lo = mid + 1
     } else {
       hi = mid - 1
     }
   }
   return best
+}
+
+function serializeBoundedBody(payload: NotificationPayload): Buffer {
+  const make = (title: string, body: string) =>
+    Buffer.from(
+      JSON.stringify({
+        aps: { alert: { title, body }, sound: 'default', 'thread-id': payload.threadId },
+        kind: payload.kind,
+        target: payload.target
+      }),
+      'utf8'
+    )
+  const initial = make(payload.title, payload.body)
+  if (initial.byteLength <= MAX_APNS_PAYLOAD_BYTES) return initial
+
+  let title = payload.title
+  if (make(title, '…').byteLength > MAX_APNS_PAYLOAD_BYTES) {
+    title = clampGraphemes(title, candidate => make(candidate, '…').byteLength <= MAX_APNS_PAYLOAD_BYTES, 'LilBot')
+    if (make(title, '…').byteLength > MAX_APNS_PAYLOAD_BYTES) title = 'LilBot'
+  }
+  const fallbackBody = make(title, '…').byteLength <= MAX_APNS_PAYLOAD_BYTES ? '…' : ''
+  const body = clampGraphemes(payload.body, candidate => make(title, candidate).byteLength <= MAX_APNS_PAYLOAD_BYTES, fallbackBody)
+  return make(title, body)
 }
 
 /** Builds an APNs HTTP/2 POST request or returns a terminal local refusal without opening a network stream. */

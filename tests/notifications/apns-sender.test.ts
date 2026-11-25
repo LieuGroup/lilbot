@@ -163,7 +163,7 @@ test('ApnsSender pauses rejected keys/topics once without retry storms, backs of
     prodBehavior = 'ok'
     expect(await sender.send(prodRec(), payload('u5'))).toEqual({ status: 'sent' })
 
-    // 5. GOAWAY reconnects cleanly on next push; hanging stream times out without leaking.
+    // 5. GOAWAY reconnects cleanly on next push; hanging stream times out; close() stops further sends cleanly (kills M14).
     prodBehavior = 'goaway'
     expect(await sender.send(prodRec(), payload('g1'))).toEqual({ status: 'sent' })
     await new Promise(resolve => setTimeout(resolve, 15))
@@ -171,6 +171,11 @@ test('ApnsSender pauses rejected keys/topics once without retry storms, backs of
     expect(await sender.send(prodRec(), payload('g2'))).toEqual({ status: 'sent' })
     prodBehavior = 'hang'
     expect(await sender.send(prodRec(), payload('h1'))).toEqual({ status: 'failed', reason: 'apns_timeout' })
+
+    const hitsBeforeClose = prod.hits.length
+    sender.close()
+    expect(await sender.send(prodRec(), payload('after-close'))).toEqual({ status: 'failed', reason: 'apns_closed' })
+    expect(prod.hits.length).toBe(hitsBeforeClose)
   } finally {
     sender.close()
     await Promise.all([prod.close(), sandbox.close()])

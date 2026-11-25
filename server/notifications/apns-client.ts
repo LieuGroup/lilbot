@@ -1,19 +1,23 @@
-/** Persistent outbound HTTP/2 session pool for Apple APNs channels with GOAWAY, idle-timeout, and error recovery. */
+/** Persistent outbound HTTP/2 session pool for Apple APNs channels with strict origin checks and GOAWAY/idle/error recovery. */
 import http2, { type ClientHttp2Session, type OutgoingHttpHeaders, type SecureClientSessionOptions } from 'node:http2'
 
 export type ApnsChannel = 'apns' | 'apns_sandbox'
 export type ApnsHttp2Reply = { status: number; body: string; retryAfter: string | string[] | number | undefined }
 
+const APPLE_APNS_ORIGINS = new Set(['https://api.push.apple.com', 'https://api.sandbox.push.apple.com'])
 const DEFAULT_TIMEOUT_MS = 10_000
 const IDLE_SESSION_MS = 5 * 60_000
 
-export function validateApnsOrigin(origin: string): string {
+/** Allows only Apple's two APNs hosts; loopback origins are permitted only outside production for local mock tests. */
+export function validateApnsOrigin(origin: string, production = process.env.LILBOT_ENV === 'production'): string {
   const url = new URL(origin)
-  const loopback = url.hostname === '127.0.0.1' || url.hostname === '::1' || url.hostname === '[::1]' || url.hostname === 'localhost'
-  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) {
-    throw new Error(`Invalid APNs endpoint origin: ${url.protocol}//${url.host}`)
+  if (url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
+    throw new Error('Invalid APNs endpoint origin')
   }
-  return url.origin
+  if (APPLE_APNS_ORIGINS.has(url.origin)) return url.origin
+  const loopback = url.hostname === '127.0.0.1' || url.hostname === '::1' || url.hostname === '[::1]' || url.hostname === 'localhost'
+  if (!production && loopback && (url.protocol === 'http:' || url.protocol === 'https:')) return url.origin
+  throw new Error(`Invalid APNs endpoint origin: ${url.protocol}//${url.host}`)
 }
 
 export class ApnsHttp2Pool {

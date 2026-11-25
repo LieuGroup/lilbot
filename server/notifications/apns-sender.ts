@@ -36,10 +36,14 @@ export class ApnsSender implements NotificationSender {
   private closed = false
 
   constructor(private readonly opts: ApnsSenderOptions) {
+    const production = process.env.LILBOT_ENV === 'production'
+    if (production && opts.connectOptions) {
+      throw new Error('APNs TLS connection overrides are refused in production')
+    }
     this.tokens = new ApnsTokenProvider(opts, opts.tokenTtlMs)
     const endpoints: Record<ApnsChannel, string> = {
-      apns: validateApnsOrigin(opts.endpoints?.apns ?? DEFAULT_ENDPOINTS.apns),
-      apns_sandbox: validateApnsOrigin(opts.endpoints?.apns_sandbox ?? DEFAULT_ENDPOINTS.apns_sandbox)
+      apns: validateApnsOrigin(opts.endpoints?.apns ?? DEFAULT_ENDPOINTS.apns, production),
+      apns_sandbox: validateApnsOrigin(opts.endpoints?.apns_sandbox ?? DEFAULT_ENDPOINTS.apns_sandbox, production)
     }
     this.pool = new ApnsHttp2Pool(endpoints, opts.requestTimeoutMs, opts.connectOptions)
     this.defaultBundleId = opts.defaultBundleId?.trim() || undefined
