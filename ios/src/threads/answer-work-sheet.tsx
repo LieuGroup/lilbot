@@ -20,7 +20,7 @@ export interface AnswerWorkSheetProps {
 
 export function AnswerWorkSheet({ work, title, onClose }: AnswerWorkSheetProps) {
   return (
-    <Modal visible={work !== null} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={work !== null} animationType="slide" presentationStyle="pageSheet" allowSwipeDismissal onRequestClose={onClose}>
       {work ? <AnswerWorkBody work={work} title={title} onClose={onClose} /> : null}
     </Modal>
   )

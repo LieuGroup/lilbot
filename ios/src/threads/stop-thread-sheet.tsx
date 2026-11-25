@@ -20,7 +20,7 @@ export interface StopThreadSheetProps {
 
 export function StopThreadSheet({ botId, thread, onClose }: StopThreadSheetProps) {
   return (
-    <Modal visible={thread !== null} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={thread !== null} animationType="slide" presentationStyle="pageSheet" allowSwipeDismissal onRequestClose={onClose}>
       {thread ? <StopThreadBody botId={botId} thread={thread} onClose={onClose} /> : null}
     </Modal>
   )
