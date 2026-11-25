@@ -4,6 +4,7 @@ import { memo } from 'react'
 import { Pressable, useWindowDimensions, View } from 'react-native'
 import type { Bot } from '../../../shared/bot-schema'
 import type { RunningGroup } from '../../../shared/client/bots/running-groups'
+import { openThreadView } from '../threads/store'
 import { BotAvatar } from '../ui/avatar'
 import { DYNAMIC_TYPE_CAPS, rosterRowTextLines, scaledRowAvatarSize } from '../ui/dynamic-type'
 import { AppText } from '../ui/text'
@@ -37,7 +38,11 @@ function GroupRow({ group, splitMode, onSelectBot }: { group: RunningGroup; spli
   return (
     <Pressable
       testID={`working-group-${group.id}`}
-      onPress={() => leader && onSelectBot(leader)}
+      onPress={() => {
+        if (!leader) return
+        onSelectBot(leader)
+        openThreadView(leader.id, group.id)
+      }}
       accessibilityRole="button"
       accessibilityLabel={`Working together: ${group.purpose}, Round ${group.round}, ${group.bots.length} bots`}
       style={({ pressed }) => ({

@@ -4,9 +4,9 @@
  *  Folded Duo Chat's strip orb to `square.and.pencil` (New session) while keeping `+` (New bot)
  *  on compact Rosters, hides the bottom bar in compact iPhone Chat, and pins minimizeBehavior on
  *  Duo Unfolded Portrait. */
-import { useSegments } from 'expo-router'
+import { useRouter, useSegments } from 'expo-router'
 import { NativeTabs } from 'expo-router/native-tabs'
-import { useEffect } from 'react'
+import { useCallback, useEffect } from 'react'
 import { BotMenuHost } from '../../bots/bot-menu-sheet'
 import { useBotMenuStore } from '../../bots/menu-store'
 import { NewBotSheet } from '../../bots/new-bot-sheet'
@@ -18,14 +18,17 @@ import { computeShellLayout } from '../../duo/layout'
 import { useBotSelection } from '../../duo/selection'
 import { shouldHideNativeTabBar } from '../../duo/stack-sync'
 import { useLiveSurface } from '../../duo/use-surface'
+import { ThreadSheetHost } from '../../threads/thread-host'
 import { useTheme } from '../../ui/theme'
 
 export default function TabsLayout() {
   const theme = useTheme()
+  const router = useRouter()
   const segments = useSegments()
   const { surface, metrics } = useLiveSurface()
   const chatFocused = useBotSelection(state => state.chatFocusCount > 0)
   const selectedId = useBotSelection(state => state.selectedId)
+  const selectBot = useBotSelection(state => state.select)
   const openNewBot = useBotMenuStore(state => state.openNewBot)
   const closeBotOverlays = useBotMenuStore(state => state.closeBotOverlays)
   const layout = computeShellLayout(surface, metrics)
@@ -48,6 +51,14 @@ export default function TabsLayout() {
     }
     openNewBot()
   }
+
+  const handleSteerBot = useCallback(
+    (botId: string) => {
+      selectBot(botId)
+      if (!layout.splitMode) router.navigate({ pathname: '/chat', params: { botId } })
+    },
+    [layout.splitMode, router, selectBot]
+  )
 
   return (
     <>
@@ -83,6 +94,7 @@ export default function TabsLayout() {
       </NativeTabs>
       <NewBotSheet />
       <BotMenuHost />
+      <ThreadSheetHost onSelectBot={handleSteerBot} />
     </>
   )
 }

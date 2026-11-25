@@ -10,10 +10,11 @@ import { useBotMenuStore } from '../bots/menu-store'
 import { Roster } from '../bots/roster'
 import { closeRosterSearch, INITIAL_ROSTER_SEARCH_STATE, openRosterSearch, type RosterSearchState, setRosterSearchQuery, toggleRosterSearch } from '../bots/roster-list'
 import { useBotStore } from '../bots/store'
+import type { RenderToolItem } from '../chat/message-item'
 import { ChatScreen } from '../chat/screen'
 import { useChatStore } from '../chat/store'
 import { useConnectionStore } from '../connection/store'
-import { CloseIcon, SidebarToggleIcon } from '../ui/icon'
+import { SidebarToggleIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { computeShellLayout, nextSidebarState } from './layout'
@@ -24,10 +25,14 @@ import { useLiveSurface, useVerticalBarEdge } from './use-surface'
 import { buildDuoVerticalBarItems, duoVerticalHeaderOptions, isDuoVerticalBarActive, resolveDuoStripScreen, shouldHideDuoChatHeader, shouldShowInlineSidebarToggle } from './vertical-bar'
 
 export interface DuoShellProps {
+  inspectorOpen?: boolean
+  onCloseInspector?: () => void
   renderInspector?: (close: () => void) => ReactNode
+  renderChatDock?: (bot: Bot) => ReactNode
+  renderChatToolItem?: (bot: Bot) => RenderToolItem
 }
 
-export function DuoShell({ renderInspector }: DuoShellProps) {
+export function DuoShell({ inspectorOpen: inspectorOpenProp, onCloseInspector, renderInspector, renderChatDock, renderChatToolItem }: DuoShellProps) {
   const theme = useTheme()
   const router = useRouter()
   const isFocused = useIsFocused()
@@ -54,7 +59,8 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
   const selectedSlotRunning = useChatStore(state => (selected ? (state.slots[selected.id]?.view.running ?? false) : false))
   const selectedRunning = Boolean(selectedSlotRunning || selected?.activity?.status === 'working')
   const selectedUnread = Boolean(selected?.activity?.unread)
-  const layout = computeShellLayout(surface, metrics, { inspectorOpen: inspectorOpen && !!renderInspector, sidebarOpen })
+  const inspectorActive = (inspectorOpenProp ?? inspectorOpen) && !!renderInspector
+  const layout = computeShellLayout(surface, metrics, { inspectorOpen: inspectorActive, sidebarOpen })
   const showRoster = !layout.splitMode || layout.rosterWidth > 0
   const lastFocusedSplitMode = useRef(layout.splitMode)
   const pushPendingRef = useRef(false)
@@ -113,11 +119,16 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
     [closeSearch, layout.splitMode, router, select]
   )
 
+  const closeInspector = useCallback(() => {
+    setInspectorOpen(false)
+    onCloseInspector?.()
+  }, [onCloseInspector])
+
   const handleToggleSidebar = useCallback(() => {
-    const next = nextSidebarState({ sidebarOpen, inspectorOpen })
+    const next = nextSidebarState({ sidebarOpen, inspectorOpen: inspectorActive })
     setSidebarOpen(next.sidebarOpen)
-    setInspectorOpen(next.inspectorOpen)
-  }, [sidebarOpen, inspectorOpen])
+    if (!next.inspectorOpen) closeInspector()
+  }, [closeInspector, inspectorActive, sidebarOpen])
 
   const openSelectedMenu = useCallback(() => {
     if (selected) openMenu(selected.id)
@@ -168,7 +179,7 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
         {layout.splitMode && (
           <View key="chat-pane" style={{ flex: 1 }}>
             {selected ? (
-              <ChatScreen bot={selected} hideHeader={hideDuoChatHeader} headerLeading={sidebarToggle} showNewSession={surface === 'pad'} />
+              <ChatScreen bot={selected} hideHeader={hideDuoChatHeader} headerLeading={sidebarToggle} showNewSession={surface === 'pad'} dock={renderChatDock?.(selected)} renderToolItem={renderChatToolItem?.(selected)} />
             ) : (
               <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                 <AppText variant="chat" color={theme.mutedForeground}>
@@ -180,12 +191,7 @@ export function DuoShell({ renderInspector }: DuoShellProps) {
         )}
         {layout.splitMode && layout.inspectorWidth > 0 && renderInspector && (
           <View key="inspector-pane" style={{ width: layout.inspectorWidth, borderLeftWidth: 1, borderLeftColor: theme.hairline }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 12, paddingTop: 8 }}>
-              <Pressable onPress={() => setInspectorOpen(false)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close inspector" testID="duo-inspector-close" style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}>
-                <CloseIcon color={theme.foreground} />
-              </Pressable>
-            </View>
-            {renderInspector(() => setInspectorOpen(false))}
+            {renderInspector(closeInspector)}
           </View>
         )}
       </View>

@@ -3,6 +3,8 @@
  *  loaded has no known start and shows no duration. Pure. */
 import type { Bot } from '../../../shared/bot-schema'
 
+export { formatElapsed } from '../../../shared/client/activity/elapsed'
+
 const stateKey = (bot: Bot | undefined) => {
   if (!bot) return ''
   if (bot.activity && bot.activity.status !== 'idle') {
@@ -26,12 +28,4 @@ export function activitySince(previous: Bot[], since: Record<string, number>, ne
     }
   }
   return result
-}
-
-/** "just now", "4 min", "2 h". */
-export function formatElapsed(ms: number): string {
-  const minutes = Math.floor(ms / 60_000)
-  if (minutes < 1) return 'just now'
-  if (minutes < 60) return `${minutes} min`
-  return `${Math.floor(minutes / 60)} h`
 }

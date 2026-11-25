@@ -1,69 +1,12 @@
-/** Worker-specific view copy and quiet inline chat record states (Paper "22 Workers" frames 1, 2, 4, 5, 6 and 7). Pure. */
-import type { BotModel, ReasoningEffort } from '../../../shared/bot-schema'
+/** Thin web re-export of shared worker-lines wording, bound to web's clock and date formatters. */
+import { inlineState as sharedInlineState, workerActivityRow as sharedWorkerActivityRow } from '../../../shared/client/threads/worker-lines'
 import type { BotThread } from '../../../shared/thread-schema'
 import type { WorkSummary } from '../../../shared/work-schema'
-import { clockTime } from '../history/history-labels'
-import { isTask, joined, type LineState, lineState, plural, running, shortDate, sides, taskTitle } from './thread-lines'
+import { clockTime, dayKey, dayLabel, sessionTime } from '../history/history-labels'
 
-/** True when a `needs_oscar` work item is waiting for Oscar's check (level 3 or escalated), rather than an answer. */
-export const isOpenOscarCheck = (work: WorkSummary | undefined) => work?.check?.by.kind === 'oscar' && work.check.state === 'checking'
+const WEB_DATE_LABELS = { dayKey, dayLabel, sessionTime }
 
-/** The compact right-hand outcome on a quiet inline chat record (Paper "22 Workers" frames 1, 2 and 4). */
-export function inlineState(thread: BotThread, waiting?: WorkSummary): LineState {
-  if (waiting?.status === 'needs_oscar' && thread.status !== 'cancelled') {
-    return { icon: 'waiting', text: isOpenOscarCheck(waiting) ? 'Waiting for your check' : 'Waiting for you', failed: false, stopped: false }
-  }
-  if (running(thread)) return { icon: null, text: `Started ${clockTime(thread.createdAt)}`, failed: false, stopped: false }
-  if (thread.status === 'cancelled') {
-    const stop = thread.stoppedBy
-    const text = stop ? (stop.kind === 'oscar' ? 'Stopped by you' : `Stopped by ${stop.name}`) : 'Stopped'
-    return { icon: null, text, failed: false, stopped: true }
-  }
-  if (thread.state === 'limited') return { icon: null, text: `Stopped at the ${thread.messages.length}-message limit`, failed: false, stopped: true }
-  if (thread.status === 'failed' || thread.state === 'failed') return { icon: null, text: 'Failed', failed: true, stopped: false }
-  if (!isTask(thread)) return { icon: null, text: `Answered · ${plural(thread.messages.length, 'message')}`, failed: false, stopped: false }
-  return { icon: 'finished', text: 'Finished', failed: false, stopped: false }
-}
+export { isOpenOscarCheck, workerFooter, workerSubtitle } from '../../../shared/client/threads/worker-lines'
 
-/** The opened worker's header subtitle: "<Bot>'s worker", adding remote computer and custom model/effort when set. */
-export function workerSubtitle(thread: BotThread, botModel?: BotModel | null, botEffort?: ReasoningEffort | null) {
-  const base = `${sides(thread).from.name}'s worker`
-  const where = thread.computer ? (thread.computerName ?? thread.computer) : null
-  const modelChanged = !!thread.model && (!botModel || thread.model.provider !== botModel.provider || thread.model.model !== botModel.model)
-  const effortChanged = !!thread.reasoningEffort && (modelChanged || botEffort === undefined || thread.reasoningEffort !== botEffort)
-  return joined(base, where, modelChanged && thread.model!.model, effortChanged && thread.reasoningEffort)
-}
-
-/** The opened worker's footer sentence (Paper "22 Workers" frames 5 and 6). */
-export function workerFooter(thread: BotThread) {
-  const name = sides(thread).from.name
-  if (running(thread)) return `You watch this worker. To steer it, tell ${name} in its chat.`
-  if (thread.status === 'cancelled') return `This worker stopped. Follow up with ${name} in its chat.`
-  if (thread.status === 'failed' || thread.state === 'failed') return `This worker failed. Follow up with ${name} in its chat.`
-  return `This worker finished. Follow up with ${name} in its chat.`
-}
-
-/** One row of the Activity tab's "Workers" card (Paper "22 Workers" frame 7). */
-export function workerActivityRow(thread: BotThread, now: number, waiting?: WorkSummary): { title: string; state: LineState } {
-  const title = taskTitle(thread)
-  const where = thread.computer ? (thread.computerName ?? thread.computer) : null
-  const withWhere = (state: LineState): LineState => (where ? { ...state, text: joined(where, state.text) } : state)
-  if (waiting?.status === 'needs_oscar' && thread.status !== 'cancelled') {
-    return {
-      title,
-      state: withWhere({ icon: 'waiting', text: isOpenOscarCheck(waiting) ? 'Waiting for your check' : joined('Waiting for you', waiting.question), failed: false, stopped: false })
-    }
-  }
-  if (running(thread)) return { title, state: withWhere(lineState(thread, sides(thread).from.id, now)) }
-  const when = shortDate(thread.endedAt ?? thread.createdAt, now)
-  if (thread.status === 'cancelled') {
-    const stop = thread.stoppedBy
-    const text = stop ? (stop.kind === 'oscar' ? 'Stopped by you' : `Stopped by ${stop.name}`) : 'Stopped'
-    return { title, state: withWhere({ icon: null, text: `${when} · ${text}`, failed: false, stopped: true }) }
-  }
-  if (thread.state === 'limited')
-    return { title, state: withWhere({ icon: null, text: `${when} · Stopped at the ${thread.messages.length}-message limit`, failed: false, stopped: true }) }
-  if (thread.status === 'failed' || thread.state === 'failed')
-    return { title, state: withWhere({ icon: 'failed', text: joined(when, 'Failed', thread.failure), failed: true, stopped: false }) }
-  return { title, state: withWhere({ icon: 'finished', text: when, failed: false, stopped: false }) }
-}
+export const inlineState = (thread: BotThread, waiting?: WorkSummary) => sharedInlineState(thread, clockTime, waiting)
+export const workerActivityRow = (thread: BotThread, now: number, waiting?: WorkSummary) => sharedWorkerActivityRow(thread, now, WEB_DATE_LABELS, waiting)
