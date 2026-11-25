@@ -78,8 +78,8 @@ export function TaskDockSlot({ botId }: TaskDockSlotProps) {
           <TaskDockPill pill={pill} wrap={wrapPill} onExpand={() => setDockCollapsed(botId, false)} onAnswer={setAnswering} />
         ) : (
           <GlassSurface style={{ borderRadius: radius.xl }}>
-            <View testID="tasks-dock-expanded" style={{ minHeight: 0 }}>
-              <SheetDismissGesture scrollOffsetY={scrollOffsetY} onDismiss={() => setDockCollapsed(botId, true)}>
+            <View testID="tasks-dock-expanded">
+              <SheetDismissGesture fill={false} scrollOffsetY={scrollOffsetY} onDismiss={() => setDockCollapsed(botId, true)}>
                 <Pressable
                   testID="tasks-dock-collapse"
                   onPress={() => setDockCollapsed(botId, true)}

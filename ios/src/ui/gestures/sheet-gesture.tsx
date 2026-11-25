@@ -36,12 +36,14 @@ export interface SheetDismissGestureProps {
   /** Current inner scroll offset; swipe-down dismiss is disabled while scrolled past y = 0 so it never steals scroll touches. */
   scrollOffsetY: number
   onDismiss: () => void
+  /** Fill parent height (default `true` for full-height pageSheets; pass `false` for auto-sized floating cards like the expanded dock). */
+  fill?: boolean
   children: ReactNode
 }
 
 /** Grab-handle wrapper for Expanded Dock and Opened Worker sheets: swipe down at y <= 0 dismisses without fighting scroll.
  *  Callers must also provide a visible dismiss control (such as "Steer in <bot>" or pane close) so nothing is gesture-only. */
-export function SheetDismissGesture({ scrollOffsetY, onDismiss, children }: SheetDismissGestureProps) {
+export function SheetDismissGesture({ scrollOffsetY, onDismiss, fill = true, children }: SheetDismissGestureProps) {
   const theme = useTheme()
   const pan = usePanGesture({
     enabled: scrollOffsetY <= 0,
@@ -56,7 +58,7 @@ export function SheetDismissGesture({ scrollOffsetY, onDismiss, children }: Shee
   return (
     <GestureDetector gesture={pan}>
       <View
-        style={{ flex: 1 }}
+        style={fill ? { flex: 1 } : undefined}
         onAccessibilityEscape={() => {
           onDismiss()
           return true
