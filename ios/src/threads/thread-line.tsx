@@ -120,8 +120,15 @@ function ThreadRow({ botId, thread, inWorkerBatch, framed }: { botId: string; th
   )
 }
 
-/** Seam callback for `ChatScreen`'s `renderToolItem` prop: swaps thread-linked tool rows for quiet `ThreadLine` records. */
+const toolRenderers = new Map<string, (item: Extract<MessageItem, { kind: 'tool' }>, fallback: ReactNode) => ReactNode>()
+
+/** Seam callback for `ChatScreen`'s `renderToolItem` prop: swaps thread-linked tool rows for quiet `ThreadLine` records.
+ *  Cached per `botId` so memoized `ChatItem` rows keep a stable prop reference across renders. */
 export function createThreadToolRenderer(botId: string) {
-  return (item: Extract<MessageItem, { kind: 'tool' }>, fallback: ReactNode): ReactNode =>
-    item.threadId ? <ThreadLine botId={botId} threadId={item.threadId} fallback={fallback} /> : fallback
+  let cached = toolRenderers.get(botId)
+  if (!cached) {
+    cached = (item, fallback) => (item.threadId ? <ThreadLine botId={botId} threadId={item.threadId} fallback={fallback} /> : fallback)
+    toolRenderers.set(botId, cached)
+  }
+  return cached
 }

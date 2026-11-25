@@ -7,6 +7,7 @@ import { fileCounts, isTask, running, sides, stopIndex, stripState, taskTitle } 
 import { isOpenOscarCheck, workerFooter, workerSubtitle } from '../../../shared/client/threads/worker-lines'
 import type { BotThread } from '../../../shared/thread-schema'
 import { useBotStore } from '../bots/store'
+import { useScreenReaderEnabled } from '../duo/use-surface'
 import { SheetDismissGesture } from '../ui/gestures/sheet-gesture'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
@@ -32,6 +33,7 @@ export interface ThreadViewProps {
 export function ThreadView({ botId, threadId, mode, onClose, onSelectBot }: ThreadViewProps) {
   const theme = useTheme()
   const insets = useSafeAreaInsets()
+  const screenReaderEnabled = useScreenReaderEnabled()
   const { thread, error } = useOpenedThread(botId, threadId)
   const waitingWork = useWaitingWork()
   const bots = useBotStore(state => state.bots)
@@ -95,7 +97,7 @@ export function ThreadView({ botId, threadId, mode, onClose, onSelectBot }: Thre
         subtitle={subtitle}
         leading={thread.worker ? <WorkerBadge size={22} /> : undefined}
         onStop={task && active ? () => setStopping(true) : undefined}
-        onClose={mode === 'pane' ? onClose : undefined}
+        onClose={mode === 'pane' || screenReaderEnabled ? onClose : undefined}
         paddingLeft={pad.paddingLeft}
         paddingRight={pad.paddingRight}
       />

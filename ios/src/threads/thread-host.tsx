@@ -10,24 +10,26 @@ import { ThreadView } from './thread-view'
 
 export interface ThreadHostProps {
   onSelectBot?: (botId: string) => void
+  onClose?: () => void
 }
 
-/** Mounts once in the compact Chat route or Tabs root so opening any thread on compact iPhone / Folded Duo slides up a sheet. */
-export function ThreadSheetHost({ onSelectBot }: ThreadHostProps) {
+/** Mounts once in the Tabs root so opening any thread on compact iPhone / Folded Duo slides up a native sheet. */
+export function ThreadSheetHost({ onSelectBot, onClose }: ThreadHostProps) {
   const active = useActiveThread()
   const { surface, metrics } = useLiveSurface()
   const select = useBotSelection(state => state.select)
   const layout = computeShellLayout(surface, metrics)
   const visible = active !== null && !layout.splitMode
+  const dismiss = onClose ?? closeThreadView
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={closeThreadView}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={dismiss}>
       {active && !layout.splitMode ? (
         <ThreadView
           botId={active.botId}
           threadId={active.threadId}
           mode="sheet"
-          onClose={closeThreadView}
+          onClose={dismiss}
           onSelectBot={botId => {
             if (onSelectBot) onSelectBot(botId)
             else select(botId)
@@ -39,7 +41,7 @@ export function ThreadSheetHost({ onSelectBot }: ThreadHostProps) {
 }
 
 /** Renders the opened exchange, worker, or group inside Unfolded Duo / iPad's right-hand inspector pane. */
-export function ThreadInspectorPane({ onSelectBot }: ThreadHostProps) {
+export function ThreadInspectorPane({ onSelectBot, onClose }: ThreadHostProps) {
   const active = useActiveThread()
   const select = useBotSelection(state => state.select)
   if (!active) return null
@@ -48,7 +50,7 @@ export function ThreadInspectorPane({ onSelectBot }: ThreadHostProps) {
       botId={active.botId}
       threadId={active.threadId}
       mode="pane"
-      onClose={closeThreadView}
+      onClose={onClose ?? closeThreadView}
       onSelectBot={botId => {
         if (onSelectBot) onSelectBot(botId)
         else select(botId)

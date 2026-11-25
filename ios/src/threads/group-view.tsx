@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { type GroupThread, groupSubtitle, isGroup, leaderOf, outcomeCard, pendingReplies, roundLabel, shortNames } from '../../../shared/client/threads/group-lines'
 import type { BotThread } from '../../../shared/thread-schema'
 import { WorkingSpinner } from '../bots/status-marks'
+import { useScreenReaderEnabled } from '../duo/use-surface'
 import { SheetDismissGesture } from '../ui/gestures/sheet-gesture'
 import { CheckIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
@@ -29,6 +30,7 @@ export interface GroupViewProps {
 export function GroupView({ botId, thread, mode, onClose, onSelectBot }: GroupViewProps) {
   const theme = useTheme()
   const insets = useSafeAreaInsets()
+  const screenReaderEnabled = useScreenReaderEnabled()
   const [tick, setTick] = useState(0)
   const [scrollOffsetY, setScrollOffsetY] = useState(0)
   const [stopping, setStopping] = useState(false)
@@ -55,7 +57,7 @@ export function GroupView({ botId, thread, mode, onClose, onSelectBot }: GroupVi
         subtitle={groupSubtitle(thread, now, THREAD_DATE_LABELS)}
         stopLabel="Stop group"
         onStop={!ended ? () => setStopping(true) : undefined}
-        onClose={mode === 'pane' ? onClose : undefined}
+        onClose={mode === 'pane' || screenReaderEnabled ? onClose : undefined}
         paddingLeft={pad.paddingLeft}
         paddingRight={pad.paddingRight}
       />

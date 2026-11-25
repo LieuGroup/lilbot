@@ -20,6 +20,8 @@ import { chatStackAction, shouldClearSelectionOnChatPop, shouldShowNativeBack } 
 import { DuoStripAvatar } from '../../../duo/strip-avatar'
 import { useLiveSurface, useScreenReaderEnabled, useVerticalBarEdge } from '../../../duo/use-surface'
 import { buildDuoVerticalBarItems, duoVerticalHeaderOptions, resolveDuoStripScreen, shouldHideDuoChatHeader } from '../../../duo/vertical-bar'
+import { TaskDockSlot } from '../../../threads/task-dock'
+import { createThreadToolRenderer } from '../../../threads/thread-line'
 import { BotAvatar } from '../../../ui/avatar'
 import { DYNAMIC_TYPE_CAPS } from '../../../ui/dynamic-type'
 import { ChevronRightIcon, MoreHorizontalIcon } from '../../../ui/icon'
@@ -89,6 +91,7 @@ export default function CompactChatRoute() {
   const openBotMenu = useCallback(() => {
     if (bot) openMenu(bot.id)
   }, [bot, openMenu])
+  const renderToolItem = useMemo(() => (bot ? createThreadToolRenderer(bot.id) : undefined), [bot])
 
   const backVisible = shouldShowNativeBack(surface, screenReaderEnabled)
   const hideDuoHeader = shouldHideDuoChatHeader({ surface, verticalBarEdge, hasBot: bot !== null })
@@ -136,7 +139,7 @@ export default function CompactChatRoute() {
     <>
       <Stack.Screen options={screenOptions} />
       <View style={{ flex: 1, backgroundColor: theme.background, paddingLeft: layout.horizontalPadding.left, paddingRight: layout.horizontalPadding.right }}>
-        {bot ? <ChatScreen bot={bot} hideHeader /> : null}
+        {bot ? <ChatScreen bot={bot} hideHeader dock={<TaskDockSlot botId={bot.id} />} renderToolItem={renderToolItem} /> : null}
       </View>
     </>
   )
