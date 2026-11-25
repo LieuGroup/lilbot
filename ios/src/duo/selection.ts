@@ -9,6 +9,7 @@ interface BotSelectionState {
   pendingInitialPush: boolean
   chatInstances: number
   chatFocusCount: number
+  workItemFocusCount: number
   select: (botId: string | null) => void
   clearIfSelected: (botId: string) => void
   clearPendingInitialPush: () => void
@@ -16,6 +17,8 @@ interface BotSelectionState {
   leaveChat: () => void
   focusChat: () => void
   blurChat: () => void
+  focusWorkItem: () => void
+  blurWorkItem: () => void
   autoSelectOnce: (bots: Bot[]) => string | null
 }
 
@@ -25,6 +28,7 @@ export const useBotSelection = create<BotSelectionState>((set, get) => ({
   pendingInitialPush: false,
   chatInstances: 0,
   chatFocusCount: 0,
+  workItemFocusCount: 0,
   select: botId => set({ selectedId: botId, pendingInitialPush: false }),
   clearIfSelected: botId => set(state => (state.selectedId === botId ? { selectedId: null } : state)),
   clearPendingInitialPush: () => set(state => (state.pendingInitialPush ? { pendingInitialPush: false } : state)),
@@ -32,6 +36,8 @@ export const useBotSelection = create<BotSelectionState>((set, get) => ({
   leaveChat: () => set(state => ({ chatInstances: Math.max(0, state.chatInstances - 1) })),
   focusChat: () => set(state => ({ chatFocusCount: state.chatFocusCount + 1 })),
   blurChat: () => set(state => ({ chatFocusCount: Math.max(0, state.chatFocusCount - 1) })),
+  focusWorkItem: () => set(state => ({ workItemFocusCount: state.workItemFocusCount + 1 })),
+  blurWorkItem: () => set(state => ({ workItemFocusCount: Math.max(0, state.workItemFocusCount - 1) })),
   autoSelectOnce: bots => {
     const state = get()
     if (state.didAutoSelect || bots.length === 0) return state.selectedId

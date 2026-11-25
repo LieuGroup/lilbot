@@ -6,57 +6,9 @@ import { clockTime, WORK_DATE_LABELS } from '../../ios/src/work/format-labels'
 import { createWorkStore, type WorkSocket } from '../../ios/src/work/store-core'
 import { groupByBot, groupByStatus, partitionEvidence } from '../../shared/client/work/work-groups'
 import { briefSubtitle, doneBreakdown, failedCheckItems, isOscarCheck, safeHttpUrl, workBadge, workLineStatus } from '../../shared/client/work/work-lines'
-import type { WorkCheck, WorkLevels } from '../../shared/work-check-schema'
-import type { WorkBrief, WorkItem, WorkSummary } from '../../shared/work-schema'
-
-const check = (over: Partial<WorkCheck> = {}): WorkCheck => ({
-  round: 1,
-  by: { kind: 'bot', id: 'b2', name: 'Beta' },
-  state: 'verified',
-  text: 'Checked ok',
-  note: null,
-  sameBot: false,
-  model: null,
-  at: 5_000,
-  settledAt: 6_000,
-  ...over
-})
-
-const summary = (over: Partial<WorkSummary> = {}): WorkSummary => ({
-  id: 'w1',
-  title: 'Ship update',
-  ownerId: 'b1',
-  ownerName: 'Alpha',
-  askedBy: { kind: 'oscar', id: null, name: 'Oscar' },
-  origin: { kind: 'conversation', id: 's1' },
-  parentId: null,
-  goalId: null,
-  kind: 'code',
-  checkLevel: 1,
-  defaultLevel: 1,
-  check: null,
-  status: 'working',
-  question: null,
-  evidenceCount: 0,
-  createdAt: 1_000,
-  updatedAt: 2_000,
-  startedAt: 1_500,
-  finishedAt: null,
-  ...over
-})
-
-const fullItem = (over: Partial<WorkItem> = {}): WorkItem => ({
-  ...summary(over),
-  done: 'Tests pass',
-  result: '',
-  dropReason: null,
-  evidence: [],
-  events: [],
-  checks: [],
-  children: [],
-  links: [],
-  ...over
-})
+import type { WorkLevels } from '../../shared/work-check-schema'
+import type { WorkBrief } from '../../shared/work-schema'
+import { makeWorkCheck as check, makeWorkItem as fullItem, makeWorkSummary as summary } from './work-fixtures'
 
 describe('shared/client/work rules', () => {
   test('groups status trees and bot sections while keeping parent-child hierarchy', () => {
@@ -89,10 +41,12 @@ describe('shared/client/work rules', () => {
     expect(part.byRound[1]?.map(e => e.id)).toEqual(['e2'])
   })
 
-  test('derives badges, done breakdown, failed checks, safe URLs, and chat work lines', () => {
+  test('derives badges (including unverified done), done breakdown, failed checks, safe URLs, and chat work lines', () => {
     const verified = summary({ id: 'd1', status: 'done', checkLevel: 2, check: check() })
     const selfChecked = summary({ id: 'd2', status: 'done', checkLevel: 1, evidenceCount: 1 })
     const notChecked = summary({ id: 'd3', status: 'done', checkLevel: 0 })
+    const unverifiedDone = summary({ id: 'd4', status: 'done', checkLevel: 2, check: null })
+    const failedCheckDone = summary({ id: 'd5', status: 'done', checkLevel: 2, check: check({ state: 'not_verified' }) })
     const oscarCheck = summary({
       id: 'n2',
       status: 'needs_oscar',
@@ -104,6 +58,8 @@ describe('shared/client/work rules', () => {
     expect(workBadge(verified)).toBe('verified')
     expect(workBadge(selfChecked)).toBe('self_checked')
     expect(workBadge(notChecked)).toBe('not_checked')
+    expect(workBadge(unverifiedDone)).toBe('not_verified')
+    expect(workBadge(failedCheckDone)).toBe('not_verified')
     expect(isOscarCheck(oscarCheck)).toBe(true)
     expect(doneBreakdown([verified, selfChecked, notChecked])).toEqual({ verified: 1, selfChecked: 1, notChecked: 1 })
     expect(failedCheckItems([failed], 5_000).map(i => i.id)).toEqual(['f1'])

@@ -1,5 +1,4 @@
-/** Quiet Work item row inside a bot's conversation (mirrors `web/src/work/work-line.tsx`):
- *  shows title, status summary, CheckBadge, and opens the Work item page on tap. */
+/** Quiet Work item row inside a bot's conversation (mirrors `web/src/work/work-line.tsx`) on MOBILE_SCALE.work. */
 import type { ReactNode } from 'react'
 import { Pressable, useWindowDimensions, View } from 'react-native'
 import { workLineStatus } from '../../../shared/client/work/work-lines'
@@ -7,7 +6,7 @@ import type { RenderToolItem } from '../chat/message-item'
 import { ChevronRightIcon, WorkTabIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
-import { radius } from '../ui/tokens'
+import { MOBILE_SCALE, radius } from '../ui/tokens'
 import { shouldStackWorkRow, WORK_TYPE_CAPS } from './board-state'
 import { CheckBadge } from './check-badge'
 import { useWorkItem } from './store'
@@ -39,24 +38,34 @@ export function WorkLine({ workItemId, onOpenItem, fallback = null }: WorkLinePr
         borderWidth: 1,
         borderColor: theme.hairline,
         backgroundColor: pressed ? theme.muted : theme.card,
-        paddingVertical: 10,
-        paddingLeft: 12,
-        paddingRight: 10
+        paddingVertical: 11,
+        paddingLeft: 14,
+        paddingRight: 12
       })}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: stack ? undefined : 1, minWidth: 0 }}>
-        <WorkTabIcon color={theme.mutedForeground} size={16} />
-        <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-          <AppText variant="preview" color={theme.foreground} numberOfLines={stack ? 2 : 1} maxFontSizeMultiplier={WORK_TYPE_CAPS.rowTitle} style={{ fontFamily: 'Inter_500Medium' }}>
+        <WorkTabIcon color={theme.mutedForeground} size={17} />
+        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+          <AppText
+            color={theme.foreground}
+            numberOfLines={stack ? 2 : 1}
+            maxFontSizeMultiplier={WORK_TYPE_CAPS.rowTitle}
+            style={[MOBILE_SCALE.work.rowTitle, { fontFamily: 'Inter_500Medium' }]}
+          >
             Work · {item.title}
           </AppText>
-          <AppText variant="meta" color={theme.mutedForeground} numberOfLines={stack ? 2 : 1} maxFontSizeMultiplier={WORK_TYPE_CAPS.rowMeta}>
+          <AppText
+            color={theme.mutedForeground}
+            numberOfLines={stack ? 2 : 1}
+            maxFontSizeMultiplier={WORK_TYPE_CAPS.rowMeta}
+            style={MOBILE_SCALE.work.rowMeta}
+          >
             {workLineStatus(item, item.children)}
           </AppText>
         </View>
       </View>
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: stack ? 'space-between' : 'flex-end', gap: 6, paddingLeft: stack ? 26 : 0 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: stack ? 'space-between' : 'flex-end', gap: 6, paddingLeft: stack ? 27 : 0 }}>
         <CheckBadge item={item} />
         <ChevronRightIcon color={theme.mutedForeground} size={14} />
       </View>

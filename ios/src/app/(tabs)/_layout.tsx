@@ -29,6 +29,7 @@ export default function TabsLayout() {
   const segments = useSegments()
   const { surface, metrics } = useLiveSurface()
   const chatFocused = useBotSelection(state => state.chatFocusCount > 0)
+  const workItemFocused = useBotSelection(state => state.workItemFocusCount > 0)
   const selectedId = useBotSelection(state => state.selectedId)
   const selectBot = useBotSelection(state => state.select)
   const openNewBot = useBotMenuStore(state => state.openNewBot)
@@ -66,7 +67,7 @@ export default function TabsLayout() {
   return (
     <>
       <NativeTabs
-        hidden={shouldHideNativeTabBar(surface, chatFocused)}
+        hidden={shouldHideNativeTabBar(surface, chatFocused || workItemFocused)}
         minimizeBehavior={layout.tabBarMinimizeBehavior}
         tintColor={theme.foreground}
         badgeBackgroundColor={theme.primary}

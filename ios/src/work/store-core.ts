@@ -10,7 +10,7 @@ import { EMPTY_WORK_STATE, type WorkSocket, type WorkStoreState } from './store-
 
 export type { WorkSocket, WorkStoreState }
 
-const ACTIVE_STATUSES: WorkStatus[] = ['open', 'working', 'checking', 'needs_oscar']
+export const ACTIVE_WORK_STATUSES: WorkStatus[] = ['open', 'working', 'checking', 'needs_oscar', 'failed']
 
 export function createWorkStore(getSocket: () => WorkSocket | null, options?: { pushCoalesceMs?: number }) {
   const coalesceMs = options?.pushCoalesceMs ?? 120
@@ -51,7 +51,7 @@ export function createWorkStore(getSocket: () => WorkSocket | null, options?: { 
   const loadBrief = () =>
     guarded(
       'brief',
-      s => Promise.all([s.call('work.brief', {}), s.call('work.list', { status: ACTIVE_STATUSES, limit: 200 })]),
+      s => Promise.all([s.call('work.brief', {}), s.call('work.list', { status: ACTIVE_WORK_STATUSES, limit: 200 })]),
       ([brief, active]) => store.setState({ brief, active, briefError: '' }),
       briefError => store.setState({ briefError })
     )
@@ -121,7 +121,11 @@ export function createWorkStore(getSocket: () => WorkSocket | null, options?: { 
   }
 
   const mutateItem = async (call: (socket: WorkSocket) => Promise<WorkItem>) => {
-    const item = saveItem(await call(requireSocket()))
+    const socket = requireSocket()
+    const gen = socketGen
+    const item = await call(socket)
+    if (gen !== socketGen) return item
+    saveItem(item)
     void refreshBadge()
     return item
   }
@@ -171,8 +175,10 @@ export function createWorkStore(getSocket: () => WorkSocket | null, options?: { 
     sendBackWorkItem: (itemId: string, reason: string) => mutateItem(s => s.call('work.sendBack', { itemId, reason })),
     dropWorkItem: (itemId: string, reason: string) => mutateItem(s => s.call('work.drop', { itemId, reason })),
     setWorkLevel: async (kind: WorkKind, level: number | null, botId?: string) => {
-      const levels = await requireSocket().call('work.levels.set', { kind, level, botId })
-      store.setState({ levels, levelsError: '' })
+      const socket = requireSocket()
+      const gen = socketGen
+      const levels = await socket.call('work.levels.set', { kind, level, botId })
+      if (gen === socketGen) store.setState({ levels, levelsError: '' })
       return levels
     },
     watchBadge: () => watchCount('badge', refreshBadge),

@@ -1,4 +1,4 @@
-/** Evidence entries on a work item page (mirrors `web/src/work/evidence-card.tsx`):
+/** Evidence entries on a work item page (mirrors `web/src/work/evidence-card.tsx`) on MOBILE_SCALE.work:
  *  command + output, safe http(s) link, sourced number, and read-only Library file pointer (inline Library viewer deferred). */
 import { Fragment, useState } from 'react'
 import { Linking, Pressable, ScrollView, View } from 'react-native'
@@ -6,7 +6,8 @@ import { itemTimestamp, safeHttpUrl } from '../../../shared/client/work/work-lin
 import type { Evidence } from '../../../shared/work-schema'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
-import { radius } from '../ui/tokens'
+import { MOBILE_SCALE, radius } from '../ui/tokens'
+import { WORK_TYPE_CAPS } from './board-state'
 import { WORK_DATE_LABELS } from './format-labels'
 import { ExternalLinkIcon, FileDocIcon } from './icons'
 
@@ -26,7 +27,7 @@ export function EvidenceCard({ entries, now }: { entries: Evidence[]; now: numbe
   return (
     <View style={{ gap: 6 }}>
       {error ? (
-        <AppText variant="preview" color={theme.destructive}>
+        <AppText color={theme.destructive} maxFontSizeMultiplier={WORK_TYPE_CAPS.rowMeta} style={MOBILE_SCALE.work.rowMeta}>
           {error}
         </AppText>
       ) : null}
@@ -34,8 +35,8 @@ export function EvidenceCard({ entries, now }: { entries: Evidence[]; now: numbe
         {entries.map((entry, index) => (
           <Fragment key={entry.id}>
             {index > 0 ? <View style={{ height: 1, backgroundColor: theme.hairline }} /> : null}
-            <View style={{ paddingHorizontal: 12, paddingVertical: 10, gap: 6 }}>
-              <AppText variant="preview" color={theme.foreground}>
+            <View style={{ paddingHorizontal: 14, paddingVertical: 12, gap: 6 }}>
+              <AppText color={theme.foreground} maxFontSizeMultiplier={WORK_TYPE_CAPS.body} style={MOBILE_SCALE.work.body}>
                 {entry.proves}
               </AppText>
               <PointerView entry={entry} now={now} onOpenUrl={href => void openUrl(href)} />
@@ -54,13 +55,13 @@ function PointerView({ entry, now, onOpenUrl }: { entry: Evidence; now: number; 
   switch (pointer.kind) {
     case 'library':
       return (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: radius.md, backgroundColor: theme.background, paddingHorizontal: 10, paddingVertical: 8 }}>
-          <FileDocIcon color={theme.mutedForeground} size={16} />
-          <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-            <AppText variant="preview" color={theme.foreground} numberOfLines={2} style={{ fontFamily: 'Inter_500Medium' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: radius.md, backgroundColor: theme.background, paddingHorizontal: 12, paddingVertical: 10 }}>
+          <FileDocIcon color={theme.mutedForeground} size={17} />
+          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+            <AppText color={theme.foreground} numberOfLines={2} maxFontSizeMultiplier={WORK_TYPE_CAPS.rowTitle} style={[MOBILE_SCALE.work.rowTitle, { fontFamily: 'Inter_500Medium' }]}>
               {pointer.title}
             </AppText>
-            <AppText variant="meta" color={theme.mutedForeground}>
+            <AppText color={theme.mutedForeground} maxFontSizeMultiplier={WORK_TYPE_CAPS.rowMeta} style={MOBILE_SCALE.work.rowMeta}>
               Library file · open on web
             </AppText>
           </View>
@@ -69,17 +70,12 @@ function PointerView({ entry, now, onOpenUrl }: { entry: Evidence; now: number; 
     case 'command':
       return (
         <View style={{ gap: 4 }}>
-          <ScrollView horizontal style={{ borderRadius: radius.md, backgroundColor: theme.background }} contentContainerStyle={{ paddingHorizontal: 10, paddingVertical: 8 }}>
-            <AppText
-              variant="meta"
-              color={theme.foreground}
-              selectable
-              style={{ fontFamily: 'Menlo', lineHeight: 18 }}
-            >
+          <ScrollView horizontal style={{ borderRadius: radius.md, backgroundColor: theme.background, flexGrow: 0, flexShrink: 0 }} contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 10 }}>
+            <AppText color={theme.foreground} selectable maxFontSizeMultiplier={WORK_TYPE_CAPS.rowMeta} style={[MOBILE_SCALE.work.code, { fontFamily: 'Menlo' }]}>
               {`$ ${pointer.command}${pointer.output ? `\n${pointer.output}` : ''}`}
             </AppText>
           </ScrollView>
-          <AppText variant="meta" color={theme.mutedForeground}>
+          <AppText color={theme.mutedForeground} maxFontSizeMultiplier={WORK_TYPE_CAPS.rowMeta} style={MOBILE_SCALE.work.rowMeta}>
             {itemTimestamp(entry.at, now, WORK_DATE_LABELS)}
           </AppText>
         </View>
@@ -88,7 +84,7 @@ function PointerView({ entry, now, onOpenUrl }: { entry: Evidence; now: number; 
       const href = safeHttpUrl(pointer.url)
       if (!href) {
         return (
-          <AppText variant="meta" color={theme.mutedForeground} selectable>
+          <AppText color={theme.mutedForeground} selectable maxFontSizeMultiplier={WORK_TYPE_CAPS.rowMeta} style={MOBILE_SCALE.work.rowMeta}>
             {pointer.url}
           </AppText>
         )
@@ -97,22 +93,27 @@ function PointerView({ entry, now, onOpenUrl }: { entry: Evidence; now: number; 
         <Pressable
           onPress={() => onOpenUrl(href)}
           accessibilityRole="link"
-          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 2, opacity: pressed ? 0.65 : 1 })}
+          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 36, paddingVertical: 4, opacity: pressed ? 0.65 : 1 })}
         >
-          <AppText variant="preview" color={theme.foreground} numberOfLines={2} style={{ flex: 1, fontFamily: 'Inter_500Medium', textDecorationLine: 'underline' }}>
+          <AppText
+            color={theme.foreground}
+            numberOfLines={2}
+            maxFontSizeMultiplier={WORK_TYPE_CAPS.rowTitle}
+            style={[MOBILE_SCALE.work.rowTitle, { flex: 1, fontFamily: 'Inter_500Medium', textDecorationLine: 'underline' }]}
+          >
             {pointer.url}
           </AppText>
-          <ExternalLinkIcon color={theme.mutedForeground} size={14} />
+          <ExternalLinkIcon color={theme.mutedForeground} size={15} />
         </Pressable>
       )
     }
     case 'number':
       return (
-        <View style={{ borderRadius: radius.md, backgroundColor: theme.background, paddingHorizontal: 10, paddingVertical: 8, gap: 2 }}>
-          <AppText variant="name" color={theme.foreground} style={{ fontFamily: 'Inter_600SemiBold' }}>
+        <View style={{ borderRadius: radius.md, backgroundColor: theme.background, paddingHorizontal: 12, paddingVertical: 10, gap: 2 }}>
+          <AppText color={theme.foreground} maxFontSizeMultiplier={WORK_TYPE_CAPS.cardTitle} style={[MOBILE_SCALE.work.cardTitle, { fontFamily: 'Inter_600SemiBold' }]}>
             {pointer.value}
           </AppText>
-          <AppText variant="meta" color={theme.mutedForeground}>
+          <AppText color={theme.mutedForeground} maxFontSizeMultiplier={WORK_TYPE_CAPS.rowMeta} style={MOBILE_SCALE.work.rowMeta}>
             Read from {pointer.source} · {itemTimestamp(pointer.readAt, now, WORK_DATE_LABELS)}
           </AppText>
         </View>

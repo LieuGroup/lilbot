@@ -1,70 +1,69 @@
-/** Confirmation pageSheet for dropping a work item with a required reason (mirrors `web/src/work/drop-work-dialog.tsx`).
- *  Uses shared `useKeyboardHeight` + `KEYBOARD_SCROLL_PROPS`, pins Cancel/Drop above keyboard, provides `Done`,
- *  and locks dismiss and duplicate submits while dropping. */
+/** Confirmation pageSheet for dropping a work item with a required reason (`MOBILE_SCALE.work`, landscape-safe).
+ *  Preserves typed draft with stale/reconnect notice if the item changes externally or mid-send, pins Cancel/Drop
+ *  above the keyboard (including compact landscape heights), provides `Done`, and locks dismiss/submit while busy. */
 import { type ComponentRef, useCallback, useEffect, useRef, useState } from 'react'
 import { Keyboard, Modal, Pressable, ScrollView, TextInput, useWindowDimensions, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { messageOf } from '../../../shared/client/socket'
-import { answerInputMaxHeight, type SheetWindowFrame, sheetKeyboardInset } from '../threads/sheet-keyboard'
+import { useConnectionStore } from '../connection/store'
+import { type SheetWindowFrame, sheetKeyboardInset } from '../threads/sheet-keyboard'
 import { CloseIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
-import { radius } from '../ui/tokens'
+import { MOBILE_SCALE, radius } from '../ui/tokens'
 import { KEYBOARD_SCROLL_PROPS, useKeyboardHeight } from '../ui/use-keyboard-height'
-import { WORK_TYPE_CAPS, workSheetPadding } from './board-state'
+import { isConnectionLostError, isDroppableItem, runSingleSubmit, staleItemNotice } from './action-state'
+import { dropSheetMetrics, WORK_TYPE_CAPS, workSheetPadding } from './board-state'
+import { useWorkItem } from './store'
+import { WorkNoticeBox } from './work-controls'
 
 export interface DropWorkSheetProps {
   visible: boolean
+  itemId: string
   title: string
   hasChildren: boolean
   onConfirm: (reason: string) => Promise<void>
   onClose: () => void
 }
 
-const ACTION_BTN = { minHeight: 44, borderRadius: radius.md, alignItems: 'center' as const, justifyContent: 'center' as const }
+const BTN = { minHeight: 44, borderRadius: radius.md, alignItems: 'center' as const, justifyContent: 'center' as const }
 
-export function DropWorkSheet({ visible, title, hasChildren, onConfirm, onClose }: DropWorkSheetProps) {
+export function DropWorkSheet({ visible, itemId, title, hasChildren, onConfirm, onClose }: DropWorkSheetProps) {
   const [busy, setBusy] = useState(false)
   const [showSeq, setShowSeq] = useState(0)
   const busyRef = useRef(false)
-  const setDropping = useCallback((next: boolean) => {
-    busyRef.current = next
-    setBusy(next)
-  }, [])
   const handleClose = useCallback(() => {
     if (!busyRef.current) onClose()
   }, [onClose])
 
   useEffect(() => {
-    if (!visible) setDropping(false)
-  }, [visible, setDropping])
+    if (visible) return
+    busyRef.current = false
+    setBusy(false)
+  }, [visible])
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" allowSwipeDismissal={!busy} onRequestClose={handleClose} onShow={() => setShowSeq(n => n + 1)}>
-      {visible ? <DropWorkSheetBody title={title} hasChildren={hasChildren} busy={busy} busyRef={busyRef} showSeq={showSeq} setDropping={setDropping} onConfirm={onConfirm} onClose={handleClose} /> : null}
+      {visible ? <DropWorkSheetBody itemId={itemId} title={title} hasChildren={hasChildren} busy={busy} busyRef={busyRef} showSeq={showSeq} setBusy={setBusy} onConfirm={onConfirm} onClose={handleClose} /> : null}
     </Modal>
   )
 }
 
-function DropWorkSheetBody(props: {
-  title: string
-  hasChildren: boolean
-  busy: boolean
-  busyRef: { current: boolean }
-  showSeq: number
-  setDropping: (next: boolean) => void
-  onConfirm: (reason: string) => Promise<void>
-  onClose: () => void
-}) {
-  const { title, hasChildren, busy, busyRef, showSeq, setDropping, onConfirm, onClose } = props
+type BodyProps = Omit<DropWorkSheetProps, 'visible'> & { busy: boolean; busyRef: { current: boolean }; showSeq: number; setBusy: (next: boolean) => void }
+
+function DropWorkSheetBody({ itemId, title, hasChildren, busy, busyRef, showSeq, setBusy, onConfirm, onClose }: BodyProps) {
   const theme = useTheme()
   const pad = workSheetPadding(useSafeAreaInsets())
-  const { height: windowHeight, fontScale } = useWindowDimensions()
+  const { height: windowHeight } = useWindowDimensions()
   const keyboardHeight = useKeyboardHeight(true)
+  const connected = useConnectionStore(s => s.connected)
+  const { item } = useWorkItem(itemId)
   const [sheetFrame, setSheetFrame] = useState<SheetWindowFrame | null>(null)
   const [scrollViewport, setScrollViewport] = useState(0)
   const [reason, setReason] = useState('')
   const [error, setError] = useState('')
+  const [lostOnDisconnect, setLostOnDisconnect] = useState(false)
+  const [reconnected, setReconnected] = useState(false)
   const rootRef = useRef<ComponentRef<typeof View>>(null)
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null)
 
@@ -81,13 +80,19 @@ function DropWorkSheetBody(props: {
       clearTimeout(t1)
       clearTimeout(t2)
     }
-  }, [showSeq, keyboardHeight, measureSheet])
+  }, [showSeq, keyboardHeight, windowHeight, measureSheet])
+
+  useEffect(() => {
+    if (lostOnDisconnect && connected) setReconnected(true)
+  }, [lostOnDisconnect, connected])
 
   const keyboardOverlap = sheetKeyboardInset(windowHeight, keyboardHeight, sheetFrame)
   const kbUp = keyboardOverlap > 0
   const sheetHeight = sheetFrame?.height && sheetFrame.height > 100 ? sheetFrame.height : windowHeight
-  const inputMaxHeight = answerInputMaxHeight({ viewportHeight: scrollViewport, sheetHeight, keyboardOverlap, fontScale, hasError: Boolean(error) })
-  const canDrop = !busy && reason.trim().length > 0
+  const metrics = dropSheetMetrics({ sheetHeight, keyboardOverlap, viewportHeight: scrollViewport })
+  const droppable = item ? isDroppableItem(item) : true
+  const notice = !busy ? staleItemNotice('drop', droppable, { afterReconnect: lostOnDisconnect && reconnected }) : null
+  const canDrop = !busy && droppable && reason.trim().length > 0
   const hPad = { paddingLeft: pad.paddingLeft, paddingRight: pad.paddingRight }
 
   const keepInputVisible = useCallback(() => {
@@ -95,37 +100,38 @@ function DropWorkSheetBody(props: {
   }, [kbUp])
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (kbUp) scrollRef.current?.scrollToEnd({ animated: false })
-      else scrollRef.current?.scrollTo({ y: 0, animated: false })
-    }, 30)
+    const timer = setTimeout(() => (kbUp ? scrollRef.current?.scrollToEnd({ animated: false }) : scrollRef.current?.scrollTo({ y: 0, animated: false })), 30)
     return () => clearTimeout(timer)
-  }, [kbUp, scrollViewport, error])
+  }, [kbUp, scrollViewport, error, notice])
 
-  const submit = async () => {
-    if (busyRef.current) return
-    const trimmed = reason.trim()
-    if (!trimmed) return
-    setDropping(true)
-    setError('')
-    try {
-      await onConfirm(trimmed)
-      setDropping(false)
-    } catch (failure) {
-      setDropping(false)
-      setError(messageOf(failure))
-    }
-  }
+  const submit = () =>
+    runSingleSubmit(busyRef, async () => {
+      const trimmed = reason.trim()
+      if (!trimmed || !droppable) return
+      setBusy(true)
+      setError('')
+      setLostOnDisconnect(false)
+      setReconnected(false)
+      try {
+        await onConfirm(trimmed)
+      } catch (failure) {
+        const msg = messageOf(failure)
+        if (isConnectionLostError(msg)) setLostOnDisconnect(true)
+        setError(msg)
+      } finally {
+        setBusy(false)
+      }
+    })
 
   return (
     <View ref={rootRef} onLayout={measureSheet} style={{ flex: 1, backgroundColor: theme.background }}>
-      <View style={{ ...hPad, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingVertical: kbUp ? 6 : 12, borderBottomWidth: 1, borderBottomColor: theme.hairline }}>
-        <AppText variant="title" numberOfLines={1} maxFontSizeMultiplier={WORK_TYPE_CAPS.headerTitle} style={{ flex: 1 }}>
+      <View style={{ ...hPad, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingVertical: metrics.compactLandscape ? 4 : kbUp ? 6 : 12, borderBottomWidth: 1, borderBottomColor: theme.hairline }}>
+        <AppText maxFontSizeMultiplier={WORK_TYPE_CAPS.headerTitle} numberOfLines={1} style={[MOBILE_SCALE.work.cardTitle, { flex: 1, fontFamily: 'Inter_600SemiBold' }]}>
           Drop this item?
         </AppText>
         {kbUp ? (
-          <Pressable testID="drop-keyboard-done" onPress={() => Keyboard.dismiss()} accessibilityRole="button" accessibilityLabel="Dismiss keyboard" style={({ pressed }) => ({ ...ACTION_BTN, paddingHorizontal: 10, opacity: pressed ? 0.65 : 1 })}>
-            <AppText variant="name" maxFontSizeMultiplier={WORK_TYPE_CAPS.actionButton} color={theme.foreground} style={{ fontFamily: 'Inter_600SemiBold' }}>
+          <Pressable testID="drop-keyboard-done" onPress={() => Keyboard.dismiss()} accessibilityRole="button" accessibilityLabel="Dismiss keyboard" style={({ pressed }) => ({ ...BTN, paddingHorizontal: 10, opacity: pressed ? 0.65 : 1 })}>
+            <AppText maxFontSizeMultiplier={WORK_TYPE_CAPS.actionButton} color={theme.foreground} style={[MOBILE_SCALE.work.button, { fontFamily: 'Inter_600SemiBold' }]}>
               Done
             </AppText>
           </Pressable>
@@ -135,17 +141,20 @@ function DropWorkSheetBody(props: {
         </Pressable>
       </View>
 
-      <ScrollView ref={scrollRef} testID="drop-work-scroll" style={{ flex: 1 }} alwaysBounceVertical {...KEYBOARD_SCROLL_PROPS} onLayout={event => setScrollViewport(Math.round(event.nativeEvent.layout.height))} onContentSizeChange={keepInputVisible} contentContainerStyle={{ ...hPad, paddingVertical: kbUp ? 8 : 16, gap: kbUp ? 8 : 14 }}>
-        <AppText variant="chat" color={theme.foreground} numberOfLines={kbUp ? 1 : 3} maxFontSizeMultiplier={1.6} style={{ fontFamily: 'Inter_500Medium' }}>
-          {title}
-        </AppText>
+      <ScrollView ref={scrollRef} testID="drop-work-scroll" style={{ flex: 1 }} alwaysBounceVertical {...KEYBOARD_SCROLL_PROPS} onLayout={e => setScrollViewport(Math.round(e.nativeEvent.layout.height))} onContentSizeChange={keepInputVisible} contentContainerStyle={{ ...hPad, paddingVertical: metrics.compactLandscape ? 6 : kbUp ? 8 : 16, gap: metrics.compactLandscape ? 6 : kbUp ? 8 : 14 }}>
+        {!metrics.compactLandscape ? (
+          <AppText color={theme.foreground} numberOfLines={kbUp ? 1 : 3} maxFontSizeMultiplier={WORK_TYPE_CAPS.rowTitle} style={[MOBILE_SCALE.work.rowTitle, { fontFamily: 'Inter_500Medium' }]}>
+            {title}
+          </AppText>
+        ) : null}
         {!kbUp ? (
-          <AppText variant="preview" color={theme.mutedForeground} maxFontSizeMultiplier={1.5}>
+          <AppText color={theme.mutedForeground} maxFontSizeMultiplier={WORK_TYPE_CAPS.body} style={MOBILE_SCALE.work.rowMeta}>
             {hasChildren
               ? 'This item and all of its open parts will be dropped and the bots told. The record stays readable.'
               : 'The bot will be told why this item was dropped. The record stays readable.'}
           </AppText>
         ) : null}
+        {notice ? <WorkNoticeBox testID="drop-work-stale-notice" message={notice} /> : null}
         <TextInput
           testID="drop-work-reason"
           value={reason}
@@ -159,38 +168,19 @@ function DropWorkSheetBody(props: {
           multiline
           scrollEnabled
           autoFocus
-          maxFontSizeMultiplier={1.6}
+          maxFontSizeMultiplier={WORK_TYPE_CAPS.input}
           textAlignVertical="top"
-          style={{
-            minHeight: kbUp ? 76 : 88,
-            maxHeight: inputMaxHeight,
-            borderRadius: radius.lg,
-            borderWidth: 1,
-            borderColor: theme.input,
-            backgroundColor: theme.card,
-            paddingHorizontal: 14,
-            paddingVertical: 8,
-            fontFamily: 'Inter_400Regular',
-            fontSize: 15,
-            lineHeight: 22,
-            color: theme.foreground
-          }}
+          style={{ minHeight: metrics.minInputHeight, maxHeight: metrics.maxInputHeight, borderRadius: radius.lg, borderWidth: 1, borderColor: theme.input, backgroundColor: theme.card, paddingHorizontal: 14, paddingVertical: metrics.compactLandscape ? 6 : 8, fontFamily: 'Inter_400Regular', fontSize: MOBILE_SCALE.work.input.fontSize, lineHeight: MOBILE_SCALE.work.input.lineHeight, color: theme.foreground }}
         />
-        {error ? (
-          <AppText testID="drop-work-error" variant="preview" color={theme.destructive} maxFontSizeMultiplier={1.35}>
-            {error}
-          </AppText>
-        ) : null}
+        {error ? <AppText testID="drop-work-error" color={theme.destructive} maxFontSizeMultiplier={WORK_TYPE_CAPS.rowMeta} style={MOBILE_SCALE.work.rowMeta}>{error}</AppText> : null}
       </ScrollView>
 
-      <View testID="drop-work-footer" style={{ ...hPad, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 10, paddingTop: 10, paddingBottom: kbUp ? keyboardOverlap + 10 : pad.paddingBottom, borderTopWidth: 1, borderTopColor: theme.hairline, backgroundColor: theme.background }}>
-        <Pressable testID="drop-work-cancel" onPress={onClose} disabled={busy} accessibilityRole="button" style={({ pressed }) => ({ ...ACTION_BTN, paddingHorizontal: 16, opacity: busy ? 0.45 : pressed ? 0.7 : 1 })}>
-          <AppText variant="name" maxFontSizeMultiplier={WORK_TYPE_CAPS.actionButton} color={theme.foreground}>
-            Cancel
-          </AppText>
+      <View testID="drop-work-footer" style={{ ...hPad, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 10, paddingTop: metrics.compactLandscape ? 6 : 10, paddingBottom: kbUp ? keyboardOverlap + (metrics.compactLandscape ? 6 : 10) : pad.paddingBottom, borderTopWidth: 1, borderTopColor: theme.hairline, backgroundColor: theme.background }}>
+        <Pressable testID="drop-work-cancel" onPress={onClose} disabled={busy} accessibilityRole="button" style={({ pressed }) => ({ ...BTN, paddingHorizontal: 16, opacity: busy ? 0.45 : pressed ? 0.7 : 1 })}>
+          <AppText maxFontSizeMultiplier={WORK_TYPE_CAPS.actionButton} color={theme.foreground} style={MOBILE_SCALE.work.button}>Cancel</AppText>
         </Pressable>
-        <Pressable testID="drop-work-confirm" onPress={() => void submit()} disabled={!canDrop} accessibilityRole="button" accessibilityState={{ disabled: !canDrop }} style={({ pressed }) => ({ ...ACTION_BTN, paddingHorizontal: 18, backgroundColor: theme.destructive, opacity: !canDrop ? 0.45 : pressed ? 0.8 : 1 })}>
-          <AppText variant="name" maxFontSizeMultiplier={WORK_TYPE_CAPS.actionButton} color="#FFFFFF" style={{ fontFamily: 'Inter_600SemiBold' }}>
+        <Pressable testID="drop-work-confirm" onPress={() => void submit()} disabled={!canDrop} accessibilityRole="button" accessibilityState={{ disabled: !canDrop }} style={({ pressed }) => ({ ...BTN, paddingHorizontal: 18, backgroundColor: theme.destructive, opacity: !canDrop ? 0.45 : pressed ? 0.8 : 1 })}>
+          <AppText maxFontSizeMultiplier={WORK_TYPE_CAPS.actionButton} color="#FFFFFF" style={[MOBILE_SCALE.work.button, { fontFamily: 'Inter_600SemiBold' }]}>
             {busy ? 'Dropping...' : 'Drop item'}
           </AppText>
         </Pressable>

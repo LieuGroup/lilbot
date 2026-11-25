@@ -1,11 +1,11 @@
-/** Reusable Duo-safe native `pageSheet` option picker for Work filters and Check level selection. */
+/** Reusable Duo-safe native `pageSheet` option picker for Work filters and Check level selection (`MOBILE_SCALE.work`). */
 import { useEffect } from 'react'
 import { Keyboard, Modal, Pressable, ScrollView, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { CheckIcon, CloseIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
-import { radius } from '../ui/tokens'
+import { MOBILE_SCALE, radius } from '../ui/tokens'
 import { WORK_TYPE_CAPS, workSheetPadding } from './board-state'
 
 export interface PickerOption {
@@ -37,8 +37,7 @@ export function OptionPickerSheet({ visible, title, selected, options, onSelect,
 
 function PickerBody({ title, selected, options, onSelect, onClose }: Omit<OptionPickerSheetProps, 'visible'>) {
   const theme = useTheme()
-  const insets = useSafeAreaInsets()
-  const pad = workSheetPadding(insets)
+  const pad = workSheetPadding(useSafeAreaInsets())
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.background }}>
@@ -50,12 +49,12 @@ function PickerBody({ title, selected, options, onSelect, onClose }: Omit<Option
           gap: 12,
           paddingLeft: pad.paddingLeft,
           paddingRight: pad.paddingRight,
-          paddingVertical: 14,
+          paddingVertical: 12,
           borderBottomWidth: 1,
           borderBottomColor: theme.hairline
         }}
       >
-        <AppText variant="title" numberOfLines={2} maxFontSizeMultiplier={WORK_TYPE_CAPS.headerTitle} style={{ flex: 1 }}>
+        <AppText numberOfLines={2} maxFontSizeMultiplier={WORK_TYPE_CAPS.headerTitle} style={[MOBILE_SCALE.work.cardTitle, { flex: 1, fontFamily: 'Inter_600SemiBold' }]}>
           {title}
         </AppText>
         <Pressable
@@ -69,7 +68,7 @@ function PickerBody({ title, selected, options, onSelect, onClose }: Omit<Option
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingLeft: pad.paddingLeft, paddingRight: pad.paddingRight, paddingTop: 14, paddingBottom: pad.paddingBottom, gap: 8 }}>
+      <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ paddingLeft: pad.paddingLeft, paddingRight: pad.paddingRight, paddingTop: 14, paddingBottom: pad.paddingBottom, gap: 8 }}>
         {options.map(option => {
           const isSelected = option.value === selected
           return (
@@ -83,7 +82,7 @@ function PickerBody({ title, selected, options, onSelect, onClose }: Omit<Option
                 accessibilityRole="button"
                 accessibilityState={{ selected: isSelected }}
                 style={({ pressed }) => ({
-                  minHeight: 46,
+                  minHeight: 48,
                   flexDirection: 'row',
                   alignItems: 'center',
                   justifyContent: 'space-between',
@@ -98,11 +97,11 @@ function PickerBody({ title, selected, options, onSelect, onClose }: Omit<Option
                 })}
               >
                 <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                  <AppText variant="chat" color={theme.foreground} style={isSelected ? { fontFamily: 'Inter_600SemiBold' } : undefined}>
+                  <AppText color={theme.foreground} maxFontSizeMultiplier={WORK_TYPE_CAPS.rowTitle} style={[MOBILE_SCALE.work.rowTitle, isSelected ? { fontFamily: 'Inter_600SemiBold' } : undefined]}>
                     {option.label}
                   </AppText>
                   {option.subtitle ? (
-                    <AppText variant="meta" color={theme.mutedForeground}>
+                    <AppText color={theme.mutedForeground} maxFontSizeMultiplier={WORK_TYPE_CAPS.rowMeta} style={MOBILE_SCALE.work.rowMeta}>
                       {option.subtitle}
                     </AppText>
                   ) : null}

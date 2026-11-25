@@ -1,4 +1,4 @@
-/** Pure Work board tab config, time-window math, badge formatting, and Duo-safe sheet layout helpers.
+/** Pure Work board tab config, time-window math, badge formatting, landscape keyboard metrics, and Duo-safe sheet layout helpers.
  *  Zero React Native runtime imports so every rule is unit-tested on Linux. */
 
 export type WorkBoardTab = 'today' | 'all' | 'checks'
@@ -32,12 +32,12 @@ export function workTabBadge(needsYouCount: number): string | undefined {
 
 /** Wraps card actions onto a stacked line at AX sizes (AX1-AX5) or narrow widths so controls never clip. */
 export function shouldStackWorkRow(fontScale: number, width?: number): boolean {
-  if (fontScale >= 1.6) return true
+  if (fontScale >= 1.5) return true
   if (width !== undefined && width > 0 && width < 280) return true
   return false
 }
 
-/** Safe-area padding for native `pageSheet` modals so Folded Duo's trailing rail and clock never overlap controls. */
+/** Safe-area padding for native `pageSheet` modals so Folded Duo's trailing rail and landscape cut-outs never overlap controls. */
 export function workSheetPadding(insets: { left: number; right: number; bottom: number }) {
   return {
     paddingLeft: Math.max(16, insets.left + 12),
@@ -46,11 +46,38 @@ export function workSheetPadding(insets: { left: number; right: number; bottom: 
   }
 }
 
+/** Bottom scroll clearance for Work lists and item pages: clears both the software keyboard (+ Done bar) and floating iPhone tab bar. */
+export function workScrollBottomPadding(options: { safeBottom: number; keyboardHeight: number; hasFloatingTabBar?: boolean }): number {
+  const base = Math.max(28, options.safeBottom + (options.hasFloatingTabBar ? 76 : 24))
+  if (options.keyboardHeight > 0) return Math.round(options.keyboardHeight + 76)
+  return base
+}
+
+/** Compact landscape height metrics for `DropWorkSheet` so Cancel/Drop and the input stay usable above a landscape keyboard. */
+export function dropSheetMetrics(input: { sheetHeight: number; keyboardOverlap: number; viewportHeight: number }) {
+  const kbUp = input.keyboardOverlap > 0
+  const compactLandscape = kbUp && input.sheetHeight > 0 && input.sheetHeight < 520
+  const minInputHeight = compactLandscape ? 44 : kbUp ? 68 : 88
+  const maxInputHeight = compactLandscape
+    ? Math.max(44, Math.min(84, input.viewportHeight > 0 ? input.viewportHeight - 16 : 64))
+    : kbUp
+      ? Math.max(68, Math.min(144, input.viewportHeight > 0 ? input.viewportHeight - 28 : 112))
+      : 200
+  return { compactLandscape, minInputHeight, maxInputHeight }
+}
+
+/** Dynamic Type caps for Work chrome, headers, rows, chips, and inputs so AX5 stays readable without filling the screen or breaking words. */
 export const WORK_TYPE_CAPS = {
-  tabLabel: 1.45,
-  actionButton: 1.5,
-  rowTitle: 1.85,
-  rowMeta: 1.65,
-  headerTitle: 1.45,
-  badge: 1.4
+  pageTitle: 1.35,
+  cardTitle: 1.45,
+  subtitle: 1.4,
+  sectionHeader: 1.4,
+  tabLabel: 1.35,
+  actionButton: 1.4,
+  rowTitle: 1.55,
+  rowMeta: 1.45,
+  headerTitle: 1.35,
+  badge: 1.35,
+  body: 1.65,
+  input: 1.5
 } as const
