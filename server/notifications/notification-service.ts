@@ -1,4 +1,4 @@
-/** Coordinates device registrations, preferences, presence suppression, quiet grouping, deduplication, and delivery. */
+/** Coordinates device registrations, preferences, expiring presence, quiet grouping, bounded queuing, deduplication, and delivery. */
 import type { Goal } from '../../shared/goal-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import type {
@@ -12,14 +12,19 @@ import type {
 import type { WorkSummary } from '../../shared/work-schema'
 import type { Deployment } from '../deploy/deploy-state'
 import { type DispatchOptions, type DispatchSummary, dispatchNotification } from './notification-dispatch'
-import { DEFAULT_LONG_WORK_MS, DEFAULT_REPLY_COOLDOWN_MS, DevicePresence, ReplyCooldown, shouldNotifyWorkDone, TurnAlertTracker } from './notification-rules'
+import { DEFAULT_PRESENCE_TTL_MS, DevicePresence } from './notification-presence'
+import { DeliveryQueue, type DeliveryQueueOptions } from './notification-queue'
+import { DEFAULT_LONG_WORK_MS, DEFAULT_REPLY_COOLDOWN_MS, ReplyCooldown, shouldNotifyWorkDone, TurnAlertTracker } from './notification-rules'
 import type { NotificationSender } from './notification-sender'
 import type { NotificationStore } from './notification-store'
 import type { NotificationEvent } from './notification-text'
 
 const DELIVERY_RETENTION_MS = 30 * 24 * 60 * 60_000
+const DEFAULT_MAX_DELIVERY_ROWS = 10_000
+const SKIP_DEDUPED: DispatchSummary = { sent: 0, suppressed: 0, deduped: 1, failed: 0 }
+const SKIP_SUPPRESSED: DispatchSummary = { sent: 0, suppressed: 1, deduped: 0, failed: 0 }
 
-export interface NotificationServiceOptions {
+export interface NotificationServiceOptions extends DeliveryQueueOptions {
   deviceExists: (deviceId: string) => boolean
   botName: (botId: string) => string
   botExists?: (botId: string) => boolean
@@ -27,15 +32,16 @@ export interface NotificationServiceOptions {
   now?: () => number
   longWorkMs?: number
   replyCooldownMs?: number
+  presenceTtlMs?: number
+  maxDeliveryRows?: number
 }
 
 export class NotificationService {
-  readonly presence = new DevicePresence()
+  readonly presence: DevicePresence
+  private queue: DeliveryQueue
   private turns = new TurnAlertTracker()
   private cooldown = new ReplyCooldown()
   private now: () => number
-  private longWorkMs: number
-  private replyCooldownMs: number
 
   constructor(
     private store: NotificationStore,
@@ -43,8 +49,8 @@ export class NotificationService {
     private opts: NotificationServiceOptions
   ) {
     this.now = opts.now ?? Date.now
-    this.longWorkMs = opts.longWorkMs ?? DEFAULT_LONG_WORK_MS
-    this.replyCooldownMs = opts.replyCooldownMs ?? DEFAULT_REPLY_COOLDOWN_MS
+    this.presence = new DevicePresence(this.now, opts.presenceTtlMs ?? DEFAULT_PRESENCE_TTL_MS)
+    this.queue = new DeliveryQueue(opts)
   }
 
   private requireDevice(deviceId: string) {
@@ -52,8 +58,12 @@ export class NotificationService {
   }
 
   private send(event: NotificationEvent, options?: DispatchOptions): Promise<DispatchSummary> {
-    const deps = { store: this.store, sender: this.sender, presence: this.presence, cooldown: this.cooldown, replyCooldownMs: this.replyCooldownMs, now: this.now() }
-    return dispatchNotification(deps, event, options)
+    const replyCooldownMs = this.opts.replyCooldownMs ?? DEFAULT_REPLY_COOLDOWN_MS
+    return dispatchNotification(
+      { store: this.store, sender: this.sender, queue: this.queue, presence: this.presence, cooldown: this.cooldown, replyCooldownMs, now: this.now() },
+      event,
+      options
+    )
   }
 
   register(deviceId: string, channel: NotificationChannel, token: string, bundleId = ''): NotificationEndpoint {
@@ -91,31 +101,41 @@ export class NotificationService {
   setPresence(connectionId: string, deviceId: string, foreground: boolean, botId?: string | null): { ok: true } {
     this.requireDevice(deviceId)
     this.presence.setPresence(connectionId, deviceId, foreground, botId)
-    if (foreground && botId) this.cooldown.clearBot(botId, deviceId)
+    if (foreground && botId) this.cooldown.clearBot(botId, deviceId, this.now())
     return { ok: true }
   }
 
   viewBot(connectionId: string, botId: string, deviceId?: string | null) {
     this.presence.viewBot(connectionId, botId, deviceId)
-    if (deviceId) this.cooldown.clearBot(botId, deviceId)
+    if (deviceId) this.cooldown.clearBot(botId, deviceId, this.now())
   }
 
-  markRead = (botId: string, deviceId?: string) => this.cooldown.clearBot(botId, deviceId)
+  markRead = (botId: string, deviceId?: string) => this.cooldown.clearBot(botId, deviceId, this.now())
   noteTurnStarted = (botId: string, chatId: string) => this.turns.turnStarted(botId, chatId)
 
-  notifyReply(input: { botId: string; chatId: string; text: string; at?: number; dedupeKey: string }): Promise<DispatchSummary> {
-    const suppressedDevices = this.turns.consumeReplySuppressed(input.botId, input.chatId)
-    const botName = this.opts.botName(input.botId)
+  notifyReply(input: { botId: string; chatId: string; text: string; at?: number; dedupeKey?: string; fingerprint?: string }): Promise<DispatchSummary> {
+    const turn = this.turns.finishTurn(input.botId, input.chatId, input.fingerprint)
+    if (turn.duplicate) return Promise.resolve({ ...SKIP_DEDUPED })
+    const dedupeKey = input.dedupeKey ?? `reply:${input.chatId}:turn:${turn.seq}:${input.fingerprint ?? ''}`
     return this.send(
-      { kind: 'reply', botId: input.botId, botName, chatId: input.chatId, text: input.text, at: input.at ?? this.now(), dedupeKey: input.dedupeKey },
-      { suppressedDevices }
+      { kind: 'reply', botId: input.botId, botName: this.opts.botName(input.botId), chatId: input.chatId, text: input.text, at: input.at ?? this.now(), dedupeKey },
+      { suppressedDevices: turn.suppressedDevices }
     )
   }
 
-  notifyTurnFailed(input: { botId: string; chatId: string; reason?: 'memory_save'; at?: number; dedupeKey: string }): Promise<DispatchSummary> {
-    this.turns.turnEnded(input.botId, input.chatId)
-    const botName = this.opts.botName(input.botId)
-    return this.send({ kind: 'turn_failed', botId: input.botId, botName, chatId: input.chatId, reason: input.reason, at: input.at ?? this.now(), dedupeKey: input.dedupeKey })
+  notifyTurnFailed(input: { botId: string; chatId: string; reason?: 'memory_save'; at?: number; dedupeKey?: string; fingerprint?: string }): Promise<DispatchSummary> {
+    const turn = this.turns.finishTurn(input.botId, input.chatId, input.fingerprint)
+    if (turn.duplicate) return Promise.resolve({ ...SKIP_DEDUPED })
+    const dedupeKey = input.dedupeKey ?? `turn_failed:${input.chatId}:turn:${turn.seq}:${input.fingerprint ?? ''}`
+    return this.send({
+      kind: 'turn_failed',
+      botId: input.botId,
+      botName: this.opts.botName(input.botId),
+      chatId: input.chatId,
+      reason: input.reason,
+      at: input.at ?? this.now(),
+      dedupeKey
+    })
   }
 
   notifyWorkNeedsAnswer(item: WorkSummary, eventSeq: number): Promise<DispatchSummary> {
@@ -133,64 +153,40 @@ export class NotificationService {
     })
   }
 
-  async notifyWorkFinished(item: WorkSummary & { chatId?: string | null }, eventSeq: number): Promise<DispatchSummary> {
-    if (!shouldNotifyWorkDone(item, this.longWorkMs)) return { sent: 0, suppressed: 1, deduped: 0, failed: 0 }
+  notifyWorkFinished(item: WorkSummary & { chatId?: string | null }, eventSeq: number): Promise<DispatchSummary> {
+    if (!shouldNotifyWorkDone(item, this.opts.longWorkMs ?? DEFAULT_LONG_WORK_MS)) return Promise.resolve({ ...SKIP_SUPPRESSED })
     const status = item.status === 'failed' ? 'failed' : 'done'
     const inConversation = item.origin.kind === 'conversation'
     const chatId = inConversation ? (item.chatId ?? item.origin.id) : null
     const botName = this.opts.botName(item.ownerId) || item.ownerName
-    const alertedDevices: string[] = []
-    const summary = await this.send(
-      {
-        kind: 'work_done',
-        botId: item.ownerId,
-        botName,
-        workItemId: item.id,
-        title: item.title,
-        status,
-        chatId,
-        at: item.finishedAt ?? item.updatedAt,
-        dedupeKey: `work:done:${item.id}:${eventSeq}`
-      },
-      { suppressWhenViewing: inConversation, onSent: deviceId => alertedDevices.push(deviceId) }
+    const dedupeKey = `work:done:${item.id}:${eventSeq}`
+    const onReserved = (ids: readonly string[]) => chatId && this.turns.recordWorkAlerted(item.ownerId, chatId, ids)
+    return this.send(
+      { kind: 'work_done', botId: item.ownerId, botName, workItemId: item.id, title: item.title, status, chatId, at: item.finishedAt ?? item.updatedAt, dedupeKey },
+      { suppressWhenViewing: inConversation, onReserved }
     )
-    if (chatId && alertedDevices.length) this.turns.recordWorkAlerted(item.ownerId, chatId, alertedDevices)
-    return summary
   }
 
   notifyGoalWaiting(goal: Goal, eventSeq: number): Promise<DispatchSummary> {
     const botName = this.opts.botName(goal.botId) || goal.botName
-    return this.send({
-      kind: 'needs_answer',
-      source: 'goal',
-      botId: goal.botId,
-      botName,
-      goalId: goal.id,
-      title: goal.text,
-      at: goal.updatedAt,
-      dedupeKey: `goal:needs_answer:${goal.id}:${eventSeq}`
-    })
+    const dedupeKey = `goal:needs_answer:${goal.id}:${eventSeq}`
+    return this.send({ kind: 'needs_answer', source: 'goal', botId: goal.botId, botName, goalId: goal.id, title: goal.text, at: goal.updatedAt, dedupeKey })
   }
 
   notifyDeployFailure(job: Pick<Deployment, 'id' | 'status' | 'startedAt' | 'finishedAt'>): Promise<DispatchSummary> {
-    if (job.status !== 'rolled-back' && job.status !== 'manual-recovery') return Promise.resolve({ sent: 0, suppressed: 1, deduped: 0, failed: 0 })
+    if (job.status !== 'rolled-back' && job.status !== 'manual-recovery') return Promise.resolve({ ...SKIP_SUPPRESSED })
     const parsed = Date.parse(job.finishedAt ?? job.startedAt)
-    return this.send({
-      kind: 'deploy_failed',
-      jobId: job.id,
-      status: job.status,
-      at: Number.isNaN(parsed) ? this.now() : parsed,
-      dedupeKey: `deploy:failed:${job.id}:${job.status}`
-    })
+    const dedupeKey = `deploy:failed:${job.id}:${job.status}`
+    return this.send({ kind: 'deploy_failed', jobId: job.id, status: job.status, at: Number.isNaN(parsed) ? this.now() : parsed, dedupeKey })
   }
 
   forgetBot(botId: string) {
     this.turns.forgetBot(botId)
-    this.cooldown.clearBot(botId)
+    this.cooldown.clearBot(botId, undefined, this.now())
     this.store.forgetBot(botId)
   }
 
-  prune() {
-    this.store.pruneDeliveries(this.now() - DELIVERY_RETENTION_MS)
+  prune(maxRows = this.opts.maxDeliveryRows ?? DEFAULT_MAX_DELIVERY_ROWS) {
+    this.store.pruneDeliveries(this.now() - DELIVERY_RETENTION_MS, maxRows)
   }
 }

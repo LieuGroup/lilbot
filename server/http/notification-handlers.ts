@@ -43,6 +43,7 @@ export function createSessionNotifications(getService: () => NotificationService
   return {
     handlers,
     bindDevice,
+    touch: () => getService()?.presence.touch(sessionId),
     onView: (botId: string) => {
       getService()?.viewBot(sessionId, botId, deviceId)
       return () => getService()?.presence.unviewBot(sessionId, botId)

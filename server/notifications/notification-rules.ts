@@ -1,4 +1,4 @@
-/** Pure decision rules for notifications: preferences, long-work filter, per-device foreground presence, per-turn dedupe, and reply cooldown. */
+/** Pure decision rules for notifications: preferences, long-work filter, per-turn dedupe, and reply cooldown. */
 import type { NotificationDevicePrefs, NotificationKind } from '../../shared/notification-schema'
 import type { WorkSummary } from '../../shared/work-schema'
 
@@ -35,82 +35,23 @@ export function shouldNotifyWorkDone(
   return end - start >= longWorkMs
 }
 
-interface ConnectionPresence {
-  deviceId: string | null
-  foreground: boolean
-  viewedBots: Map<string, number>
-  /** When set by `notifications.presence`, names the single bot on screen (or null on Roster/Settings), overriding cached open chats. */
-  explicitBot: string | null | undefined
-}
-
-/** Tracks which bot each connected device is actively viewing in the foreground. Another device never silences this one. */
-export class DevicePresence {
-  private connections = new Map<string, ConnectionPresence>()
-
-  private ensure(connectionId: string): ConnectionPresence {
-    let entry = this.connections.get(connectionId)
-    if (!entry) {
-      entry = { deviceId: null, foreground: true, viewedBots: new Map(), explicitBot: undefined }
-      this.connections.set(connectionId, entry)
-    }
-    return entry
-  }
-
-  bindDevice(connectionId: string, deviceId: string) {
-    this.ensure(connectionId).deviceId = deviceId
-  }
-
-  setPresence(connectionId: string, deviceId: string, foreground: boolean, botId?: string | null) {
-    const entry = this.ensure(connectionId)
-    entry.deviceId = deviceId
-    entry.foreground = foreground
-    if (botId !== undefined) entry.explicitBot = botId
-  }
-
-  viewBot(connectionId: string, botId: string, deviceId?: string | null) {
-    const entry = this.ensure(connectionId)
-    if (deviceId) entry.deviceId = deviceId
-    entry.viewedBots.set(botId, (entry.viewedBots.get(botId) ?? 0) + 1)
-  }
-
-  unviewBot(connectionId: string, botId: string) {
-    const viewed = this.connections.get(connectionId)?.viewedBots
-    if (!viewed) return
-    const next = (viewed.get(botId) ?? 1) - 1
-    if (next > 0) viewed.set(botId, next)
-    else viewed.delete(botId)
-  }
-
-  leave(connectionId: string) {
-    this.connections.delete(connectionId)
-  }
-
-  /** True only when `deviceId` itself has an active foreground connection currently showing `botId`. */
-  isViewingBot(deviceId: string, botId: string): boolean {
-    for (const entry of this.connections.values()) {
-      if (entry.deviceId !== deviceId || !entry.foreground) continue
-      if (entry.explicitBot !== undefined) {
-        if (entry.explicitBot === botId) return true
-      } else if ((entry.viewedBots.get(botId) ?? 0) > 0) {
-        return true
-      }
-    }
-    return false
-  }
-}
-
 interface TurnState {
   active: boolean
+  seq: number
+  finishedKey: string | null
   workAlertedDevices: Set<string>
 }
 
-/** Ensures a turn that already alerted a device for a finished work item does not also fire a duplicate reply alert. */
+/** Tracks per-turn state so long-work alerts suppress duplicate reply alerts and dual event paths never double-notify one turn. */
 export class TurnAlertTracker {
   private turns = new Map<string, TurnState>()
   private key = (botId: string, chatId: string) => `${botId}\n${chatId}`
 
   turnStarted(botId: string, chatId: string) {
-    this.turns.set(this.key(botId, chatId), { active: true, workAlertedDevices: new Set() })
+    const k = this.key(botId, chatId)
+    const current = this.turns.get(k)
+    if (current?.active) return
+    this.turns.set(k, { active: true, seq: (current?.seq ?? 0) + 1, finishedKey: null, workAlertedDevices: new Set() })
   }
 
   /** Marks devices alerted by `work_done` for the current turn, unless we already know that turn has ended. */
@@ -119,22 +60,22 @@ export class TurnAlertTracker {
     const k = this.key(botId, chatId)
     const current = this.turns.get(k)
     if (current && !current.active) return
-    const state = current ?? { active: true, workAlertedDevices: new Set<string>() }
+    const state = current ?? { active: true, seq: 1, finishedKey: null, workAlertedDevices: new Set<string>() }
     for (const id of deviceIds) state.workAlertedDevices.add(id)
     this.turns.set(k, state)
   }
 
-  /** Consumes and closes the turn's alert state, returning devices that already received a `work_done` alert in this turn. */
-  consumeReplySuppressed(botId: string, chatId: string): Set<string> {
+  /** Closes the current turn, flagging a duplicate `turn.finished` on an already-closed turn with the same fingerprint. */
+  finishTurn(botId: string, chatId: string, fingerprint?: string): { duplicate: boolean; suppressedDevices: Set<string>; seq: number } {
     const k = this.key(botId, chatId)
     const current = this.turns.get(k)
-    const suppressed = current ? new Set(current.workAlertedDevices) : new Set<string>()
-    this.turns.set(k, { active: false, workAlertedDevices: new Set() })
-    return suppressed
-  }
-
-  turnEnded(botId: string, chatId: string) {
-    this.turns.set(this.key(botId, chatId), { active: false, workAlertedDevices: new Set() })
+    if (current && !current.active && fingerprint && current.finishedKey === fingerprint) {
+      return { duplicate: true, suppressedDevices: new Set(), seq: current.seq }
+    }
+    const seq = current ? current.seq : 1
+    const suppressedDevices = current ? new Set(current.workAlertedDevices) : new Set<string>()
+    this.turns.set(k, { active: false, seq, finishedKey: fingerprint ?? null, workAlertedDevices: new Set() })
+    return { duplicate: false, suppressedDevices, seq }
   }
 
   forgetBot(botId: string) {
@@ -143,14 +84,19 @@ export class TurnAlertTracker {
   }
 }
 
-/** Per-(device, bot) quiet window for ordinary replies; urgent alerts bypass it and opening/reading the bot clears it. */
+/** Per-(device, bot) quiet window for ordinary replies; combines in-flight reservations with persisted delivery timestamps across restarts. */
 export class ReplyCooldown {
   private lastSent = new Map<string, number>()
+  private clearedAt = new Map<string, number>()
   private key = (deviceId: string, botId: string) => `${deviceId}\n${botId}`
 
-  inCooldown(deviceId: string, botId: string, now: number, cooldownMs = DEFAULT_REPLY_COOLDOWN_MS): boolean {
+  inCooldown(deviceId: string, botId: string, now: number, cooldownMs = DEFAULT_REPLY_COOLDOWN_MS, persistedLastAt?: number | null): boolean {
     if (cooldownMs <= 0) return false
-    const last = this.lastSent.get(this.key(deviceId, botId))
+    const k = this.key(deviceId, botId)
+    const mem = this.lastSent.get(k)
+    const cleared = this.clearedAt.get(k) ?? -Infinity
+    const persisted = persistedLastAt != null && persistedLastAt > cleared ? persistedLastAt : undefined
+    const last = mem !== undefined && persisted !== undefined ? Math.max(mem, persisted) : (mem ?? persisted)
     return last !== undefined && now - last < cooldownMs
   }
 
@@ -158,12 +104,25 @@ export class ReplyCooldown {
     this.lastSent.set(this.key(deviceId, botId), now)
   }
 
-  clearBot(botId: string, deviceId?: string) {
+  /** Releases a pre-send reservation if that exact send failed and no newer send replaced it. */
+  releaseReservation(deviceId: string, botId: string, reservedAt: number) {
+    const k = this.key(deviceId, botId)
+    if (this.lastSent.get(k) === reservedAt) this.lastSent.delete(k)
+  }
+
+  clearBot(botId: string, deviceId?: string, now = Date.now()) {
     if (deviceId) {
-      this.lastSent.delete(this.key(deviceId, botId))
+      const k = this.key(deviceId, botId)
+      this.lastSent.delete(k)
+      this.clearedAt.set(k, now)
       return
     }
     const suffix = `\n${botId}`
-    for (const k of this.lastSent.keys()) if (k.endsWith(suffix)) this.lastSent.delete(k)
+    for (const k of this.lastSent.keys()) {
+      if (k.endsWith(suffix)) {
+        this.lastSent.delete(k)
+        this.clearedAt.set(k, now)
+      }
+    }
   }
 }

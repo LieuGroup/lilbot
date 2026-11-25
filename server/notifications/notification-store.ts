@@ -1,5 +1,6 @@
-/** SQLite storage for push endpoints, per-device/per-bot preferences, and durable delivery deduplication. */
+/** SQLite storage for push endpoints, per-device/per-bot preferences, and durable hashed delivery deduplication. */
 import type { Database } from 'bun:sqlite'
+import { createHash } from 'node:crypto'
 import type {
   NotificationBotPrefs,
   NotificationChannel,
@@ -12,6 +13,15 @@ import type { NotificationRecipient } from './notification-sender'
 
 type EndpointRow = { device_id: string; channel: NotificationChannel; token: string; bundle_id: string; enabled: number; disabled_reason: string | null; updated_at: number }
 type PrefsRow = { device_id: string; enabled: number; show_preview: number; replies: number; needs_answer: number; turn_failed: number; work_done: number; deploy_failed: number }
+
+const DEFAULT_MAX_DELIVERY_ROWS = 10_000
+const ENDPOINT_COLS = 'device_id, channel, token, bundle_id, enabled, disabled_reason, updated_at'
+const PREFS_COLS = 'device_id, enabled, show_preview, replies, needs_answer, turn_failed, work_done, deploy_failed'
+
+/** Stores an opaque fixed-width digest in `notification_deliveries.dedupe_key` so bot/item IDs never leak into keys across re-key. */
+function hashedDedupeKey(rawKey: string): string {
+  return createHash('sha256').update(rawKey).digest('hex').slice(0, 40)
+}
 
 const endpointView = (r: EndpointRow): NotificationEndpoint => ({
   deviceId: r.device_id,
@@ -39,9 +49,6 @@ const prefsView = (r: PrefsRow): NotificationDevicePrefs => ({
   deployFailed: Boolean(r.deploy_failed)
 })
 
-const ENDPOINT_COLS = 'device_id, channel, token, bundle_id, enabled, disabled_reason, updated_at'
-const PREFS_COLS = 'device_id, enabled, show_preview, replies, needs_answer, turn_failed, work_done, deploy_failed'
-
 export class NotificationStore {
   constructor(private db: Database) {}
 
@@ -64,16 +71,16 @@ export class NotificationStore {
     return this.db.query('DELETE FROM notification_endpoints WHERE device_id = ?').run(deviceId).changes
   }
 
-  disableEndpoint(deviceId: string, channel: NotificationChannel, reason: string, now: number) {
-    this.db
-      .query('UPDATE notification_endpoints SET enabled = 0, disabled_reason = ?, updated_at = ? WHERE device_id = ? AND channel = ?')
-      .run(reason.slice(0, 200), now, deviceId, channel)
+  /** Deletes an endpoint outright on invalid-token responses so dead push tokens are never retained. */
+  removeEndpoint(deviceId: string, channel: NotificationChannel): number {
+    return this.db.query('DELETE FROM notification_endpoints WHERE device_id = ? AND channel = ?').run(deviceId, channel).changes
   }
 
   activeEndpoints(): NotificationRecipient[] {
     const rows = this.db
       .query(
-        `SELECT e.device_id, e.channel, e.token, e.bundle_id, e.enabled, e.disabled_reason, e.updated_at FROM notification_endpoints e INNER JOIN devices d ON d.id = e.device_id WHERE e.enabled = 1 ORDER BY e.updated_at DESC`
+        `SELECT e.device_id, e.channel, e.token, e.bundle_id, e.enabled, e.disabled_reason, e.updated_at
+         FROM notification_endpoints e INNER JOIN devices d ON d.id = e.device_id WHERE e.enabled = 1 ORDER BY e.updated_at DESC`
       )
       .all() as EndpointRow[]
     return rows.map(recipientView)
@@ -127,17 +134,25 @@ export class NotificationStore {
     return { botId, muted }
   }
 
+  /** Newest sent reply timestamp for `(deviceId, botId)`, backing restart-safe reply cooldown via `notification_deliveries_bot`. */
+  lastReplyAt(deviceId: string, botId: string): number | null {
+    const row = this.db
+      .query("SELECT MAX(at) AS at FROM notification_deliveries WHERE device_id = ? AND bot_id = ? AND kind = 'reply' AND status = 'sent'")
+      .get(deviceId, botId) as { at: number | null } | null
+    return row?.at ?? null
+  }
+
   /** Atomically claims a `(deviceId, dedupeKey)` slot so restarts and duplicate events never re-send. */
   claimDelivery(deviceId: string, dedupeKey: string, kind: NotificationKind, botId: string | null, at: number): boolean {
     return (
       this.db
         .query('INSERT OR IGNORE INTO notification_deliveries(device_id, dedupe_key, kind, bot_id, at, status) VALUES(?, ?, ?, ?, ?, ?)')
-        .run(deviceId, dedupeKey, kind, botId, at, 'pending').changes > 0
+        .run(deviceId, hashedDedupeKey(dedupeKey), kind, botId, at, 'pending').changes > 0
     )
   }
 
   markDelivery(deviceId: string, dedupeKey: string, status: 'sent' | 'invalid_token' | 'failed') {
-    this.db.query('UPDATE notification_deliveries SET status = ? WHERE device_id = ? AND dedupe_key = ?').run(status, deviceId, dedupeKey)
+    this.db.query('UPDATE notification_deliveries SET status = ? WHERE device_id = ? AND dedupe_key = ?').run(status, deviceId, hashedDedupeKey(dedupeKey))
   }
 
   forgetBot(botId: string) {
@@ -145,7 +160,13 @@ export class NotificationStore {
     this.db.query('DELETE FROM notification_deliveries WHERE bot_id = ?').run(botId)
   }
 
-  pruneDeliveries(beforeMs: number) {
+  /** Prunes aged deliveries, enforces a hard row cap, and cleans any orphaned endpoints whose device row is gone. */
+  pruneDeliveries(beforeMs: number, maxRows = DEFAULT_MAX_DELIVERY_ROWS) {
     this.db.query('DELETE FROM notification_deliveries WHERE at < ?').run(beforeMs)
+    if (maxRows >= 0) {
+      this.db.query('DELETE FROM notification_deliveries WHERE rowid IN (SELECT rowid FROM notification_deliveries ORDER BY at DESC, rowid DESC LIMIT -1 OFFSET ?)').run(maxRows)
+    }
+    this.db.query('DELETE FROM notification_endpoints WHERE device_id NOT IN (SELECT id FROM devices)').run()
+    this.db.query('DELETE FROM notification_device_prefs WHERE device_id NOT IN (SELECT id FROM devices)').run()
   }
 }

@@ -82,7 +82,6 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
   )
   repeat('computers', 1000, () => computers.tick())
   const devices = createDevices(database, computers, publish)
-  const notif = createNotifications({ database, devices, store, dataDir: DATA_DIR, publish, sender: settings.notificationSender })
   const [routineStore, libraryStore, webhookStore, checkStore, prefs] = [
     new RoutineStore(database),
     new LibraryStore(database),
@@ -90,6 +89,8 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
     new WorkCheckStore(database),
     new BotPrefsStore(database)
   ]
+  const notif = createNotifications({ database, devices, store, dataDir: DATA_DIR, isMainChat, publish, sender: settings.notificationSender })
+  repeat('notifications prune', 60 * 60_000, () => notif.prune())
   const sessionGrants = createSessionGrants(database, token, rootOf, isMainChat, () => system.sessionConnections)
   const ownChat = sessionGrants.ownChat({ routineStore, threadStore, webhookStore, checkStore, mem })
   const chatKind = chatKinds(rootOf, ownChat)
@@ -130,7 +131,7 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
       history.store.forget(botId)
       remoteWorkers.runner.stopForBot(botId)
       sessionGrants.revokeForBot(botId)
-      for (const s of [devices, routineStore, webhookStore, computers, activity, mem, links, goals, mcp.services, codingSwitch, notif.notifications]) s.forgetBot(botId)
+      for (const s of [devices, routineStore, webhookStore, computers, activity, mem, links, goals, mcp.services, codingSwitch, notif]) s.forgetBot(botId)
     },
     changed: botsChanged,
     memoryChanged,

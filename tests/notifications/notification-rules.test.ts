@@ -125,11 +125,24 @@ test('same phone viewing the bot in foreground suppresses replies, but another d
   await f.service.notifyReply({ botId: 'b2', chatId: 'chat-2', text: 'Viewing b2', dedupeKey: 'r-b2' })
   expect(f.sender.sent.map(x => x.payload.target)).toEqual([{ kind: 'bot', botId: 'b1' }])
 
-  // PHONE goes to background (socket still open) -> b2 now notifies immediately.
+  // PHONE goes to background while still remembering botId='b2' (kills M5) -> b2 notifies immediately.
   f.sender.clear()
-  f.service.setPresence('conn-phone', PHONE, false, null)
+  f.service.setPresence('conn-phone', PHONE, false, 'b2')
   await f.service.notifyReply({ botId: 'b2', chatId: 'chat-2', text: 'Backgrounded', dedupeKey: 'r-bg' })
   expect(f.sender.sent).toHaveLength(1)
+
+  // Foreground presence on PHONE also suppresses needs_answer for that bot, while PHONE2 still receives it.
+  f.sender.clear()
+  f.service.register(PHONE2, 'test', 'phone-token-2')
+  f.service.setPresence('conn-phone', PHONE, true, 'b1')
+  await f.service.notifyWorkNeedsAnswer(makeWork({ id: 'w-fg', status: 'needs_oscar', question: 'Confirm?' }), 7)
+  expect(f.sender.sent.map(x => x.recipient.deviceId)).toEqual([PHONE2])
+
+  // Presence expires automatically after TTL if the app dies without closing the socket.
+  f.sender.clear()
+  f.tick(125_000)
+  await f.service.notifyReply({ botId: 'b1', chatId: 'chat-1', text: 'After silent app death', dedupeKey: 'r-ttl' })
+  expect(f.sender.sent.map(x => x.recipient.deviceId).sort()).toEqual([PHONE, PHONE2])
 })
 
 test('reply cooldown groups rapid replies, resets on read/open, urgent alerts bypass it, and dedupe survives restarts', async () => {
@@ -148,15 +161,33 @@ test('reply cooldown groups rapid replies, resets on read/open, urgent alerts by
   await f.service.notifyReply({ botId: 'b1', chatId: 'chat-1', text: 'Three', dedupeKey: 'r-3' })
   expect(f.sender.sent).toHaveLength(3)
 
-  // Durable dedupe across a server restart (fresh NotificationService on the same SQLite DB).
+  // Durable dedupe and reply cooldown both survive a server restart on the same SQLite DB.
   const sender2 = new TestNotificationSender(['test'])
   const restarted = new NotificationService(new NotificationStore(f.db), sender2, {
     deviceExists: () => true,
     botName: () => 'Chief of Staff',
+    now: () => f.now() + 5_000
+  })
+  expect(await restarted.notifyReply({ botId: 'b1', chatId: 'chat-1', text: 'One', dedupeKey: 'r-1' })).toEqual({ sent: 0, suppressed: 1, deduped: 0, failed: 0 })
+  expect(await restarted.notifyReply({ botId: 'b1', chatId: 'chat-1', text: 'Too soon after restart', dedupeKey: 'r-4' })).toEqual({
+    sent: 0,
+    suppressed: 1,
+    deduped: 0,
+    failed: 0
+  })
+
+  const afterCooldown = new NotificationService(new NotificationStore(f.db), sender2, {
+    deviceExists: () => true,
+    botName: () => 'Chief of Staff',
     now: () => f.now() + 60_000
   })
-  expect(await restarted.notifyReply({ botId: 'b1', chatId: 'chat-1', text: 'One', dedupeKey: 'r-1' })).toEqual({ sent: 0, suppressed: 0, deduped: 1, failed: 0 })
-  await restarted.notifyDeployFailure({ id: 'dep-9', status: 'rolled-back', startedAt: '2026-11-25T00:00:00Z' })
-  expect(await restarted.notifyDeployFailure({ id: 'dep-9', status: 'rolled-back', startedAt: '2026-11-25T00:00:00Z' })).toEqual({ sent: 0, suppressed: 0, deduped: 1, failed: 0 })
+  expect(await afterCooldown.notifyReply({ botId: 'b1', chatId: 'chat-1', text: 'One', dedupeKey: 'r-1' })).toEqual({ sent: 0, suppressed: 0, deduped: 1, failed: 0 })
+  await afterCooldown.notifyDeployFailure({ id: 'dep-9', status: 'rolled-back', startedAt: '2026-11-25T00:00:00Z' })
+  expect(await afterCooldown.notifyDeployFailure({ id: 'dep-9', status: 'rolled-back', startedAt: '2026-11-25T00:00:00Z' })).toEqual({
+    sent: 0,
+    suppressed: 0,
+    deduped: 1,
+    failed: 0
+  })
   expect(sender2.sent).toHaveLength(1)
 })

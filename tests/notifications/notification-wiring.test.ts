@@ -38,6 +38,7 @@ test('WorkService and GoalService trigger needs_answer and work_done notificatio
     devices,
     store: fake.store,
     dataDir: fake.root,
+    isMainChat: (_botId, chatId) => chatId === 'b1-main',
     publish: () => {},
     sender
   })

@@ -170,6 +170,7 @@ export class BrowserSession {
     try {
       const frame = RequestFrame.parse(JSON.parse(raw))
       id = frame.id
+      this.sessionNotif.touch()
       const result = await this.run(frame.method, frame.params, task => after.push(task))
       this.sendFrame({ id, ok: true, result })
     } catch (error) {

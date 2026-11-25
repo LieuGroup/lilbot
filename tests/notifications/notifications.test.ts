@@ -31,7 +31,7 @@ function fixture(opts: { channels?: ('apns' | 'apns_sandbox' | 'test')[] } = {})
     devices.touch(id, name, clock)
     return id
   }
-  return { db, devices, store, sender, service, addDevice, tick: (ms: number) => (clock += ms), getChanges: () => changes }
+  return { db, devices, store, sender, service, addDevice, tick: (ms: number) => (clock += ms), now: () => clock, getChanges: () => changes }
 }
 
 const D1 = '11111111-1111-4111-8111-111111111111'
@@ -52,21 +52,30 @@ test('registration requires an existing device, hides raw tokens, deduplicates r
   expect(f.service.getSettings(D1).endpoints).toEqual([])
   expect(f.service.getSettings(D2).endpoints).toHaveLength(1)
 
-  // Invalid token response automatically disables the endpoint until re-registered.
+  // Invalid token response deletes the endpoint outright so raw push tokens are never retained.
   f.sender.setHandler(() => ({ status: 'invalid_token', reason: 'Unregistered' }))
   const failed = await f.service.notifyReply({ botId: 'b1', chatId: 'c1', text: 'hello', dedupeKey: 'r1' })
   expect(failed).toEqual({ sent: 0, suppressed: 0, deduped: 0, failed: 1 })
-  expect(f.service.getSettings(D2).endpoints[0]).toMatchObject({ enabled: false, disabledReason: 'Unregistered' })
+  expect(f.service.getSettings(D2).endpoints).toEqual([])
+  expect(f.db.query('SELECT COUNT(*) AS n FROM notification_endpoints WHERE device_id = ?').get(D2)).toEqual({ n: 0 })
 
   f.sender.clear()
   f.sender.setHandler(undefined)
   expect(await f.service.notifyReply({ botId: 'b1', chatId: 'c1', text: 'second', dedupeKey: 'r2' })).toEqual({ sent: 0, suppressed: 0, deduped: 0, failed: 0 })
 
-  // Re-registering refreshes and re-enables the endpoint; unregistering removes it.
+  // Re-registering restores the endpoint; stale device removal cascades and deletes orphan tokens.
   f.service.register(D2, 'test', 'fresh-token-9999', 'com.lilbot.app')
+  f.service.setDevicePrefs(D2, { showPreview: true })
   expect(f.service.getSettings(D2).endpoints[0]).toMatchObject({ enabled: true, disabledReason: null })
-  f.service.unregister(D2, 'test')
-  expect(f.service.getSettings(D2).endpoints).toEqual([])
+  f.tick(200 * 24 * 60 * 60_000)
+  f.devices.touch(D1, 'Phone 1 refreshed', f.now())
+  expect(f.devices.get(D2)).toBeUndefined()
+  expect(f.db.query('SELECT COUNT(*) AS n FROM notification_endpoints WHERE device_id = ?').get(D2)).toEqual({ n: 0 })
+  expect(f.db.query('SELECT COUNT(*) AS n FROM notification_device_prefs WHERE device_id = ?').get(D2)).toEqual({ n: 0 })
+
+  f.service.register(D1, 'test', 'd1-token-1234', 'com.lilbot.app')
+  f.service.unregister(D1, 'test')
+  expect(f.service.getSettings(D1).endpoints).toEqual([])
 })
 
 test('unconfigured channels are skipped cleanly without burning dedupe keys or failing', async () => {
