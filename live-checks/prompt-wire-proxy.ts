@@ -14,7 +14,9 @@ export interface CapturedRequest {
   systemText: string
   hasCacheControl: boolean
   toolCount: number
+  toolNames: string[]
   status: number
+  error?: string
   elapsedMs: number
 }
 
@@ -68,7 +70,11 @@ export function startWireCaptureProxy(upstreamBaseUrl: string) {
       const parsed = rawBody ? safeJson(new TextDecoder().decode(rawBody)) : null
       const headers = new Headers(request.headers)
       headers.delete('host')
-      const response = await fetch(target, { method: request.method, headers, body: rawBody })
+      const upstreamResponse = await fetch(target, { method: request.method, headers, body: rawBody })
+      const outHeaders = new Headers(upstreamResponse.headers)
+      for (const name of ['content-encoding', 'content-length', 'transfer-encoding']) outHeaders.delete(name)
+      const errorText = upstreamResponse.status >= 400 ? (await upstreamResponse.clone().text()).replace(/\s+/g, ' ').slice(0, 240) : undefined
+      const response = new Response(upstreamResponse.body, { status: upstreamResponse.status, statusText: upstreamResponse.statusText, headers: outHeaders })
       if (parsed && (url.pathname.includes('/messages') || url.pathname.includes('/chat/completions') || url.pathname.includes('/responses'))) {
         const extracted = extractSystem(parsed)
         records.push({
@@ -76,7 +82,9 @@ export function startWireCaptureProxy(upstreamBaseUrl: string) {
           model: typeof parsed.model === 'string' ? parsed.model : '',
           ...extracted,
           toolCount: Array.isArray(parsed.tools) ? parsed.tools.length : 0,
+          toolNames: Array.isArray(parsed.tools) ? parsed.tools.map(toolName) : [],
           status: response.status,
+          ...(errorText ? { error: errorText } : {}),
           elapsedMs: Date.now() - start
         })
       }
@@ -88,6 +96,11 @@ export function startWireCaptureProxy(upstreamBaseUrl: string) {
     records,
     stop: () => server.stop(true)
   }
+}
+
+function toolName(tool: unknown): string {
+  const t = tool as { name?: unknown; function?: { name?: unknown } }
+  return String(t?.name ?? t?.function?.name ?? '')
 }
 
 function safeJson(text: string): Record<string, unknown> | null {

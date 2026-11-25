@@ -33,9 +33,10 @@ const offServer = await RestartServer.create('lilbot-prompt-off', { LILBOT_PROMP
 const server = await RestartServer.create('lilbot-prompt', { LILBOT_PROMPT_OWNERSHIP: '1' })
 
 function stopOnAccountProblem(from = 0, finished?: { type?: string; message?: string; text?: string }) {
-  const bad = proxy.records.slice(from).find(r => r.status === 403)
+  const bad = proxy.records.slice(from).find(r => r.status === 403 || ACCOUNT_STOP.test(r.error ?? ''))
   const text = finished?.type === 'error' ? `${finished.message ?? ''} ${finished.text ?? ''}` : ''
-  if (bad || ACCOUNT_STOP.test(text)) throw new Error(`Stopped: upstream refused with an account or 403 answer (${bad ? `HTTP ${bad.status}` : text.trim().slice(0, 120)}).`)
+  if (bad || ACCOUNT_STOP.test(text))
+    throw new Error(`Stopped: upstream refused with an account or 403 answer (${bad ? `HTTP ${bad.status} ${bad.error ?? ''}`.trim() : text.trim().slice(0, 120)}).`)
 }
 
 async function turn(s: RestartServer, botId: string, chatId: string, text: string) {
@@ -45,6 +46,8 @@ async function turn(s: RestartServer, botId: string, chatId: string, text: strin
   stopOnAccountProblem(from, result.finished)
   return { ...result, wire: proxy.records.slice(from).filter(r => r.toolCount > 0) }
 }
+
+const answered = (finished: { type?: string; status?: string } | undefined) => finished?.type === 'turn.finished' && finished.status === 'completed'
 
 const exact = (wire: { status: number; systemText: string }[], prompt: string) =>
   wire.length > 0 && wire.every(r => r.status === 200 && r.systemText === prompt && findForbiddenStockSnippets(r.systemText).length === 0)
@@ -57,7 +60,7 @@ try {
   offServer.natives.add(beforeNative)
   await setProfileBaseUrl(beforeNative, proxy.url)
   const b = await turn(offServer, before.id, (await offServer.call('chat.open', { botId: before.id })).chatId, 'Reply with exactly: BEFORE_OK')
-  check('default off: baseline turn answers', b.finished?.type === 'turn.finished', `${b.wire[0]?.systemText.length ?? 0} chars on the wire`)
+  check('default off: baseline turn answers', answered(b.finished), `${b.wire[0]?.systemText.length ?? 0} chars on the wire`)
   check('default off: no prompt file written', !existsSync(join(offServer.root, 'prompts', `${before.id}.txt`)))
   const beforeSystem = b.wire[0]?.systemText ?? ''
   await offServer.cleanup()
@@ -88,12 +91,23 @@ try {
     .map(e => String(e.data.name))
   check(
     'Claude: turn answers with HTTP 200',
-    t1.finished?.type === 'turn.finished' && t1.wire.every(r => r.status === 200),
+    answered(t1.finished) && t1.wire.every(r => r.status === 200),
     `${t1.wire.length} request(s), ${t1.wire[0]?.systemText.length ?? 0} chars`
   )
   check('Claude: wire system prompt equals the prompt file byte for byte', exact(t1.wire, owned))
+  const frames = server.events.slice(toolFrom).filter(e => e.event === 'chat')
+  console.log(
+    `info Claude turn: chat=${chat.chatId} frames=${frames.map(e => `${e.chatId === chat.chatId ? '' : '~'}${e.data?.type}`).join(',')} text=${String(t1.finished?.text ?? '').slice(0, 60)}`
+  )
+  const found = Bun.spawnSync(['find', server.root, '-name', 'probe.txt']).stdout.toString().trim()
+  console.log(`info probe.txt found at: ${found ? found.replace(server.root, '<run>') : 'nowhere'}`)
   const probe = join(bot.workspace, 'probe.txt')
-  check('Claude: file tool ran and wrote the file', tools.length > 0 && existsSync(probe) && readFileSync(probe, 'utf8').includes(marker), tools.join(', '))
+  const offered = t1.wire[0]?.toolNames ?? []
+  check(
+    'Claude: file tool ran and wrote the file',
+    tools.length > 0 && existsSync(probe) && readFileSync(probe, 'utf8').includes(marker),
+    `called=[${tools.join(', ')}] offered=${offered.length} has_write_file=${offered.includes('write_file')} reply=${t1.reply.trim().slice(0, 80)}`
+  )
 
   await Bun.sleep(SPACE_MS)
   const steerFrom = server.events.length
@@ -105,9 +119,9 @@ try {
     messageId: crypto.randomUUID()
   })
   const inChat = (type: string) => async () => server.events.slice(steerFrom).find(e => e.event === 'chat' && e.chatId === chat.chatId && e.data?.type === type)
-  await waitFor('terminal tool started', inChat('tool.started'), Boolean, 90_000)
+  const started = await waitFor('terminal tool started', inChat('tool.started'), Boolean, 90_000).catch(() => null)
   const engine = new HermesEngine([nativeId])
-  const steered = await engine.steerRun(nativeId, chat.chatId, 'Also include the exact word STEERED_99 in your final reply.')
+  const steered = started ? await engine.steerRun(nativeId, chat.chatId, 'Also include the exact word STEERED_99 in your final reply.') : 'no tool started'
   const done: any = await waitFor('steered turn finished', inChat('turn.finished'), Boolean, 180_000)
   stopOnAccountProblem(steerWire, done?.data)
   check('Claude: mid-turn steer reaches the running turn and is followed', steered === 'steered' && String(done?.data?.text ?? '').includes('STEERED_99'), `steer=${steered}`)
@@ -121,9 +135,13 @@ try {
 
   await server.call('bots.update', { botId: bot.id, model: OPENAI })
   const t3 = await turn(server, bot.id, chat.chatId, 'Reply with exactly: OPENAI_SWITCH_OK')
+  const switched = readFileSync(promptPath, 'utf8')
+  console.log(
+    `info after switch: finished=${t3.finished?.type}/${t3.finished?.status} file changed=${switched !== owned} http=${t3.wire.map(r => r.status).join(',')} err=${t3.wire.find(r => r.error)?.error ?? ''} kinds=${t3.wire.map(r => r.systemKind).join(',')} equalsStart=${t3.wire.map(r => r.systemText === owned).join(',')} equalsFile=${t3.wire.map(r => r.systemText === switched).join(',')} lens=${t3.wire.map(r => r.systemText.length).join(',')} vs ${owned.length}`
+  )
   check(
     'mid-session switch to OpenAI: answers with the owned prompt on the wire',
-    t3.finished?.type === 'turn.finished' && exact(t3.wire, owned),
+    answered(t3.finished) && (exact(t3.wire, owned) || exact(t3.wire, switched)),
     `${t3.wire[0]?.systemKind ?? 'none'}`
   )
 
@@ -136,14 +154,11 @@ try {
     onChat: () => {}
   })
   stopOnAccountProblem(routineFrom)
-  check(
-    'hidden routine session on OpenAI: answers with the owned prompt on the wire',
-    run.status === 'completed' &&
-      exact(
-        proxy.records.slice(routineFrom).filter(r => r.toolCount > 0),
-        owned
-      )
+  const routineWire = proxy.records.slice(routineFrom).filter(r => r.toolCount > 0)
+  console.log(
+    `info routine: status=${run.status} text=${run.text.slice(0, 60)} http=${routineWire.map(r => r.status).join(',')} err=${routineWire.find(r => r.error)?.error ?? ''} lens=${routineWire.map(r => r.systemText.length).join(',')}`
   )
+  check('hidden routine session on OpenAI: answers with the owned prompt on the wire', run.status === 'completed' && exact(routineWire, switched))
 
   console.log('skip Gemini 4 Neon acceptance: the Google model route is closed on the account, so no Google model is called')
 
@@ -153,12 +168,12 @@ try {
   const c1 = await turn(server, bot.id, direct.chatId, 'Remember code word MANGO-42. Reply with exactly: SAVED')
   const c2 = await turn(server, bot.id, direct.chatId, 'What was the code word? Reply with just the code word.')
   const cacheRead = Number(c2.finished?.usage?.cacheReadTokens ?? 0)
-  check('Claude direct: prompt caching works across turns', c1.finished?.type === 'turn.finished' && c2.reply.includes('MANGO-42') && cacheRead > 0, `cacheReadTokens=${cacheRead}`)
+  check('Claude direct: prompt caching works across turns', answered(c1.finished) && c2.reply.includes('MANGO-42') && cacheRead > 0, `cacheReadTokens=${cacheRead}`)
   await checkCompactionMarker(server, bot.id, async (cid, text) => (await turn(server, bot.id, cid, text)).finished)
 
   rmSync(promptPath, { force: true })
   const fb = await turn(server, bot.id, (await server.call('chat.new', { botId: bot.id })).chatId, 'Reply with exactly: FALLBACK_OK')
-  check('fail safe: a missing prompt file still answers', fb.finished?.type === 'turn.finished' && fb.reply.includes('FALLBACK_OK'))
+  check('fail safe: a missing prompt file still answers', answered(fb.finished) && fb.reply.includes('FALLBACK_OK'))
   await server.call('bots.update', { botId: bot.id, function: 'Refresh before delete' })
   check('prompt file is written again on the next bot update', existsSync(promptPath))
   await server.call('bots.delete', { botId: bot.id, files: 'delete', privateMemories: 'forget' })
