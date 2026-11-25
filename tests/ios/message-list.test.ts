@@ -58,7 +58,7 @@ describe('iOS MessageList row building, fold scroll guard, rich markdown, and co
     expect(composerSource.match(/<TextInput\b/g)?.length).toBe(1)
     expect(composerSource).toContain('scrollEnabled={expanded}')
     expect(composerSource).toContain('inputRef.current?.focus()')
-    expect(composerSource).toContain('maxHeight: composerInputMaxHeight(fontScale)')
+    expect(composerSource).toContain('maxHeight: composerInputMaxHeight(fontScale, viewportHeight)')
     expect(composerSource).toContain('maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.composerInput}')
     expect(composerSource).toContain('onLongPress={openModelFromLongPress}')
     expect(composerSource).toMatch(/onPress=\{onStop\}[\s\S]{0,80}hitSlop=\{4\}[\s\S]{0,80}accessibilityRole="button"/)

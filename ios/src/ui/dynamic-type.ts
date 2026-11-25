@@ -42,8 +42,14 @@ export function scaledRowAvatarSize(baseSize: number, fontScale: number): number
   return Math.round(baseSize * factor)
 }
 
-/** Scales composer TextInput maxHeight with Dynamic Type so AX5 placeholders and typed lines do not clip. */
-export function composerInputMaxHeight(fontScale: number): number {
+/** Scales composer TextInput maxHeight with Dynamic Type so AX5 placeholders and typed lines do not clip,
+ *  while capping height on short landscape viewports (<= 500 pt, e.g. Folded Duo 466 pt or iPhone landscape)
+ *  so the composer and latest message both stay visible above the software keyboard. */
+export function composerInputMaxHeight(fontScale: number, viewportHeight?: number): number {
   const factor = Math.min(Math.max(fontScale, 1), 2.0)
-  return Math.round(132 * factor)
+  const base = Math.round(132 * factor)
+  if (viewportHeight !== undefined && viewportHeight > 0 && viewportHeight <= 500) {
+    return Math.min(base, Math.max(44, Math.round(viewportHeight * 0.14)))
+  }
+  return base
 }
