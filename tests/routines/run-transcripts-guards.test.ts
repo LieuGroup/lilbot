@@ -58,7 +58,7 @@ test('migration 40 upgrades from schema 39 and enforces FK cascade on both routi
     db.exec('DROP TABLE routine_run_transcripts; DROP TABLE webhook_run_transcripts; PRAGMA user_version = 39;')
     db.close()
     db = openDatabase(path)
-    expect(db.query('PRAGMA user_version').get()).toEqual({ user_version: 43 })
+    expect(db.query('PRAGMA user_version').get()).toEqual({ user_version: 44 })
 
     for (const b of ['b1', 'b2']) {
       db.query(`INSERT INTO bots (id, name, function, instructions, engine_id, engine_bot_id) VALUES (?, ?, '', '', 'test', ?)`).run(b, b, `n-${b}`)

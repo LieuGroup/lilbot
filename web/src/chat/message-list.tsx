@@ -5,6 +5,9 @@ import { MessageScroller, MessageScrollerButton, MessageScrollerContent, Message
 import { Trace, TraceIcon, TraceLine, TraceTitle } from '@/ui/trace'
 import type { Avatar } from '../../../shared/avatar'
 import type { ChatView } from '../../../shared/client/chat/chat-state'
+import type { MemoryCheckpointRefusal } from '../../../shared/memory-schema'
+import { lilbot } from '../app/lilbot-socket'
+import { useBotStore } from '../bots/bot-store'
 import { LoadingEarlier } from '../history/history-marks'
 import { useOlderHistory } from '../history/use-older-history'
 import { useHasWaitingGoal } from '../work/work-badge-store'
@@ -12,6 +15,56 @@ import { ChatItem } from './chat-item'
 import { MessageRows } from './message-rows'
 
 const GoalChatCards = lazy(() => import('../goals/goal-chat-cards'))
+const CheckpointRefusalCard = lazy(() => import('../memory/checkpoint-refusal-card'))
+
+function CheckpointRefusalSlot({ botId, chatId, sendSeq, onNewChat }: { botId: string; chatId: string; sendSeq: number; onNewChat: () => void }) {
+  const connected = useBotStore(state => state.connected)
+  const [pending, setPending] = useState<MemoryCheckpointRefusal | null>(null)
+  const [settled, setSettled] = useState<{ needsResend?: boolean } | null>(null)
+
+  useEffect(() => {
+    setSettled(null)
+  }, [botId, chatId, sendSeq])
+
+  useEffect(() => {
+    if (!connected || !chatId) {
+      setPending(null)
+      return
+    }
+    let cancelled = false
+    const load = () => {
+      void lilbot
+        .call('memory.checkpointPending', { botId, chatId })
+        .then(result => {
+          if (cancelled) return
+          setPending(result)
+          if (result) setSettled(null)
+        })
+        .catch(() => {})
+    }
+    load()
+    const stop = lilbot.onMemoryChanged(load)
+    return () => {
+      cancelled = true
+      stop()
+    }
+  }, [botId, chatId, connected])
+
+  if (!pending && !settled) return null
+  return (
+    <Suspense>
+      <CheckpointRefusalCard
+        pending={pending}
+        settled={settled}
+        onSettled={(choice, needsResend) => {
+          setPending(null)
+          if (choice === 'skip_piece') setSettled({ needsResend })
+        }}
+        onNewChat={onNewChat}
+      />
+    </Suspense>
+  )
+}
 
 function GoalCardsSlot({ botId }: { botId: string }) {
   const hasWaiting = useHasWaitingGoal(botId)
@@ -33,6 +86,8 @@ interface MessageListProps {
   avatar?: Avatar
   chat: ChatView
   emptyHint: string
+  sendSeq: number
+  onNewChat: () => void
 }
 
 /** Rows drawn when the list opens: more than a screenful. The earlier rows follow in a transition,
@@ -51,7 +106,7 @@ function useDrawFrom(first: number, count: number) {
 /** The Chat pattern. A conversation opens at its end. A message you send moves up and the reply
  *  grows below it; the list follows the reply only while you stay at the end, never while you
  *  read back. Scrolling up within a screen of the top loads the next earlier part. */
-export function MessageList({ botId, botName, avatar, chat, emptyHint }: MessageListProps) {
+export function MessageList({ botId, botName, avatar, chat, emptyHint, sendSeq, onNewChat }: MessageListProps) {
   const { items, queued, first } = chat
   const activity = chat.running ? chat.activity : ''
   const drawFrom = useDrawFrom(first, items.length)
@@ -107,6 +162,7 @@ export function MessageList({ botId, botName, avatar, chat, emptyHint }: Message
                 </TraceLine>
               </Trace>
             )}
+            <CheckpointRefusalSlot botId={botId} chatId={chat.chatId} sendSeq={sendSeq} onNewChat={onNewChat} />
             <GoalCardsSlot botId={botId} />
           </MessageScrollerContent>
         </MessageScrollerViewport>

@@ -62,11 +62,12 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
   const workspaces = new Workspaces(WORKSPACES_DIR)
   const database = openDatabase(join(DATA_DIR, 'lilbot.db'))
   const activity = new ActivityService(new ActivityStore(database), botsChanged)
-  const mem = createMemory(database, { deploymentNotice: () => deployNotice(DATA_DIR) })
-  const { memory } = mem
   const memoryChanged = () => publish({ event: 'memory.changed' })
   const token = engineToken(DATA_DIR)
   const store = new BotStore(database)
+  const changes = new SystemChanges(database)
+  const mem = createMemory(database, { deploymentNotice: () => deployNotice(DATA_DIR), publish })
+  const { memory } = mem
   const rootOf = sessionRoots(engines, store)
   const threadStore = new ThreadStore(database, rootOf)
   const botAlive = (id: string) => store.exists(id)
@@ -169,7 +170,6 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
   const { goals, boards } = createGoals({ goalStore: runs.goalStore, work, answers, threads, routines, activity, store, publish, onWaiting: notif.onGoalWaiting, repeat })
   const giveFile = giveFrom(library, calls, threadStore, routineStore, webhookStore, rootOf)
   const core = { ...facts, bots, activity, memory, memoryChanged, history, skills, delegation, work, goals, routines, giveFile, library }
-  const changes = new SystemChanges(database)
   const sysExtra = { webhooks, webhookRuns, connections: mcp.services, calls, checkSessions, changes, grants: sessionGrants.grants, reviewTracker: sessionGrants.reviewTracker }
   const system = createSystemServer({
     ...core,
@@ -188,13 +188,10 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
   ] as const)
     repeat(name, 1000, fn)
   const reviewer = mem.startReviewer(bots, store, repeat, sessionGrants.prepareReview)
-  const apiOpts = { history, bots, skills, routines, library, threads, reviewer, changes, chatKind, adapterVersion: MEMORY_ADAPTER_VERSION, botExists: botAlive }
-  const engineApi = mem.wireEngineApi(engines, token, PORT, {
-    ...apiOpts,
-    inCheck: sessionGrants.inCheck(checkSessions),
-    skillWriteLocked: sessionGrants.skillWriteLocked,
-    ...gates
-  })
+  const apiCore = { history, bots, skills, routines, library, threads, reviewer, changes, chatKind, adapterVersion: MEMORY_ADAPTER_VERSION, botExists: botAlive, store, rootOf }
+  const apiAccess = { mainChat: (id: string) => prefs.mainChat(id), isLimited: (b: string, c: string) => webhookRuns.callers.isKnownLimited(b, c) }
+  const apiChecks = { inCheck: sessionGrants.inCheck(checkSessions), skillWriteLocked: sessionGrants.skillWriteLocked, ...gates }
+  const { engineApi, checkpointChoices } = mem.wireEngineApi(engines, token, PORT, { ...apiCore, ...apiAccess, ...apiChecks })
   const base = { bots, store, skills, library, computers, remoteWorkers, devices, attachments, t3Grants, mcp, system, engineApi, memoryConnection }
-  return { ...base, activity, routines, threads, boards, webhooks, hiddenChat, notifications: notif.notifications }
+  return { ...base, checkpointChoices, activity, routines, threads, boards, webhooks, hiddenChat, notifications: notif.notifications }
 }

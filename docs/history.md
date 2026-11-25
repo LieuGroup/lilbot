@@ -87,3 +87,14 @@ LilBot never summarises. The short version is in `AGENTS.md` under "Conversation
   turn, so it skips compaction), then every turn stops the same way until the save can run. The session is kept and
   nothing is reset; once LilBot is back the message sent again is answered and the conversation shortens with the
   save. Measured in `check:checkpoint`.
+- **Repeated refusal splitting & owner choice (migration 44):** if the review model refuses a piece (`review_refused`
+  from `content_policy_blocked`; `provider_policy_blocked` is an account data-policy error and fails as `review_failed`), LilBot retries it once on the bot's own conversation
+  model. Transient failures never count as refusals. If both models refuse a multi-message pass, LilBot binary-splits
+  it along message boundaries (`MAX_SPLIT_DEPTH = 6`, `MAX_EXTRA_SPLIT_PASSES = 12` extra sub-passes / at most 24 extra
+  model calls per refused pass) and saves every non-refused message and every other pass immediately so only the
+  smallest refused unit (ideally one message) remains unsaved. Only after both models refuse that narrowed unit twice
+  (tracked by SHA-256 key and approximate non-text timing in `memory_checkpoint_refusals`, never text) does an eligible
+  owner main conversation show a card (`memory.checkpointPending` / `memory.checkpointChoose`) offering **Compact &
+  continue** (`skip_piece`, marking only that unit reviewed and automatically resuming a clean stopped turn) or **Start
+  a new session** (`new_session`, skipping nothing). Every choice is audited in `system_changes`
+  (`memory_checkpoint_choice`, key only), and limited or hidden sessions never get to choose.

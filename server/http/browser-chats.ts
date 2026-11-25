@@ -4,8 +4,10 @@ import type { EventFrame } from '../../shared/protocol'
 import type { ActivityService } from '../activity/activity-service'
 import type { AttachmentService } from '../attachments/attachment-service'
 import type { BotService } from '../bots/bot-service'
+import type { DeviceService } from '../devices/device-service'
 import type { OpenChat } from '../engines/bot-engine'
 import type { ThreadService } from '../threads/thread-service'
+import type { BrowserConnections } from './connection-handlers'
 import { threadLine } from './thread-events'
 
 export type AfterResponse = (task: () => void) => void
@@ -115,6 +117,27 @@ export class BrowserChats {
         row.item = this.attachments.mergeItem(botId, row.sessionId, row.item)
       }
     return page
+  }
+
+  async send(
+    input: { chatId: string; text: string; attachmentIds?: string[]; messageId?: string; deviceId?: string },
+    deps: { connections?: BrowserConnections; devices?: DeviceService; onDevice?: (id: string) => void }
+  ) {
+    if (input.deviceId) deps.onDevice?.(input.deviceId)
+    const chat = this.get(input.chatId)
+    await deps.connections?.ready(chat.snapshot.botId, input.chatId)
+    const origin = deps.devices?.origin(input.deviceId)
+    if (input.attachmentIds?.length) {
+      if (!this.attachments) throw new LilBotError('unavailable', 'Attachments are unavailable.')
+      return { ok: true as const, message: await this.attachments.send(chat, input.text, input.attachmentIds, input.messageId!, origin) }
+    }
+    if (deps.devices && origin) await deps.devices.send(chat, input.text, input.messageId ?? crypto.randomUUID(), origin)
+    else await chat.send(input.text)
+    return { ok: true as const }
+  }
+
+  find(chatId: string): OpenChat | undefined {
+    return this.chats.get(chatId)
   }
 
   get(chatId: string): OpenChat {

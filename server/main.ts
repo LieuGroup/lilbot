@@ -70,7 +70,7 @@ const services = createAppServices(engines, {
   publish: frame => publish(EVERYONE, JSON.stringify(frame)),
   botsChanged
 })
-const { bots, store, skills, hiddenChat, library, computers, devices, attachments, t3Grants, mcp, system, engineApi, activity, routines, threads, boards, webhooks } = services
+const { bots, store, library, computers, attachments, t3Grants, mcp, system, engineApi, activity, routines, threads, boards, webhooks } = services
 
 async function prepareMemory(onFailed: (id: string) => void) {
   await bots.prepareRuntimes()
@@ -83,7 +83,7 @@ async function prepareMemory(onFailed: (id: string) => void) {
 
 engines.onBotsChanged(botsChanged)
 bots.watchActivity(event => {
-  if (!hiddenChat(event.botId, event.chatId)) activity.observe(event)
+  if (!services.hiddenChat(event.botId, event.chatId)) activity.observe(event)
 }, activity.cursor)
 const DIST = join(import.meta.dir, '..', 'dist')
 const helperCfg = helperSettings(process.env, PORT, ACCESS?.host, computers.auth.serverKey.fingerprint)
@@ -98,7 +98,6 @@ const { websocket } = createBrowserWebSocket({
     new BrowserSession(
       bots,
       frame => {
-        // A send after the browser left is expected and harmless.
         if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(frame))
       },
       activity,
@@ -110,11 +109,12 @@ const { websocket } = createBrowserWebSocket({
       () => deployNotice(DATA_DIR),
       attachments,
       addThis,
-      devices,
+      services.devices,
       boards.work,
       webhooks,
       boards.goals,
-      services.notifications
+      services.notifications,
+      services.checkpointChoices
     )
 })
 
@@ -168,13 +168,13 @@ for (const [name, folder] of [
   ['lilbot-check', join(import.meta.dir, 'work', 'check-skill')]
 ]) {
   try {
-    skills.provide(name, files(folder))
+    services.skills.provide(name, files(folder))
   } catch (error) {
     console.error(`[skills] could not install the ${name} skill:`, error instanceof Error ? error.message : error)
   }
 }
 try {
-  mcp.onCodingSkillsReady(skills.remove(T3_ENABLED ? 'lilbot-coding' : 't3-coding'))
+  mcp.onCodingSkillsReady(services.skills.remove(T3_ENABLED ? 'lilbot-coding' : 't3-coding'))
 } catch (error) {
   console.error('[skills] could not remove inactive coding skill:', error instanceof Error ? error.message : error)
   mcp.onCodingSkillsReady(false)

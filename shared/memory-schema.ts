@@ -1,5 +1,6 @@
 /** Memory in LilBot's own terms. A fact is one short statement a bot (or the user) saved. */
 import { z } from 'zod'
+import { DeviceId } from './device-schema'
 
 /** `profile`: lasting facts, about the user or about how to do the work. `journal`: dated history. */
 export const MemoryKind = z.enum(['profile', 'journal'])
@@ -73,7 +74,31 @@ export interface MemoryBrowsePage {
   notConnected: { botId: string; name: string }[]
 }
 
+export const CheckpointChoice = z.enum(['skip_piece', 'new_session'])
+export type CheckpointChoice = z.infer<typeof CheckpointChoice>
+
+/** Waiting pre-compress memory-save refusal card shown to Oscar in an eligible owner conversation after both the
+ *  review model and the bot's own model refused the same narrowed part twice. Never carries conversation text. */
+export const MemoryCheckpointRefusal = z.object({
+  botId: z.string(),
+  chatId: z.string(),
+  pieceKey: z.string(),
+  refusalCount: z.number().int().min(2),
+  /** True when binary splitting narrowed the refused part to one single message. */
+  singleMessage: z.boolean(),
+  /** Approximate epoch ms of the refused part from LilBot's stored history, or null when unavailable. */
+  pieceAt: z.number().nullable(),
+  /** Roughly how many messages back from the end of the conversation the refused part sits, or null when unknown. */
+  messagesBack: z.number().int().min(1).nullable(),
+  /** Whether LilBot tried two different models (review model + bot's own model). */
+  usedTwoModels: z.boolean(),
+  firstRefusedAt: z.number(),
+  lastRefusedAt: z.number()
+})
+export type MemoryCheckpointRefusal = z.infer<typeof MemoryCheckpointRefusal>
+
 const botId = z.string().min(1)
+const chatId = z.string().min(1)
 const factId = z.string().min(1)
 /** The browser's memory methods; `protocol.ts` spreads them into `methods`. */
 export const memoryMethods = {
@@ -89,7 +114,9 @@ export const memoryMethods = {
   /** Switches a fact off (kept, not shown to bots) or back on. */
   'memory.pause': z.object({ factId, paused: z.boolean() }),
   /** Connects a bot to LilBot's memory and brings over the notes its engine kept. */
-  'memory.connect': z.object({ botId })
+  'memory.connect': z.object({ botId }),
+  'memory.checkpointPending': z.object({ botId, chatId: chatId.optional() }),
+  'memory.checkpointChoose': z.object({ botId, chatId, pieceKey: z.string().min(1).max(128), choice: CheckpointChoice, deviceId: DeviceId.optional() })
 }
 
 export interface MemoryResults {
@@ -100,4 +127,6 @@ export interface MemoryResults {
   'memory.restore': { ok: true }
   'memory.pause': { ok: true }
   'memory.connect': { imported: number }
+  'memory.checkpointPending': MemoryCheckpointRefusal | null
+  'memory.checkpointChoose': { ok: true; choice: CheckpointChoice; resumed: boolean; needsResend?: boolean }
 }

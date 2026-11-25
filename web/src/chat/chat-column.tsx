@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { PanelRightIcon, SquarePenIcon } from 'lucide-react'
+import { useState } from 'react'
 import { Button } from '@/ui/button'
 import { ComposerNote } from '@/ui/composer-note'
 import { iconButton } from '@/ui/icon-button'
@@ -22,6 +23,11 @@ export function ChatColumn({ botId }: { botId: string }) {
   const connected = useBotStore(state => state.connected)
   const tab = useDetailsTab()
   const { chat, ready, error, send, stop, newChat } = useChat(botId)
+  const [sendSeq, setSendSeq] = useState(0)
+  const sendMessage: typeof send = (text, files) => {
+    setSendSeq(n => n + 1)
+    return send(text, files)
+  }
   const staged = useStagedAttachments(botId)
   const modelNote = useModelPicker(state => (state.note?.botId === botId ? state.note : null))
   const drop = useFileDrop(files => void staged.add(files), ready)
@@ -66,7 +72,16 @@ export function ChatColumn({ botId }: { botId: string }) {
       />
       {/* A new scroller per bot, so each opens at its latest message; a new session stays in it. */}
       <div className="relative flex min-h-0 flex-1 flex-col">
-        <MessageList key={chat.load > 0 ? botId : `${botId}:opening`} botId={botId} botName={name} avatar={bot?.prefs.avatar} chat={chat} emptyHint={hint} />
+        <MessageList
+          key={chat.load > 0 ? botId : `${botId}:opening`}
+          botId={botId}
+          botName={name}
+          avatar={bot?.prefs.avatar}
+          chat={chat}
+          emptyHint={hint}
+          sendSeq={sendSeq}
+          onNewChat={newChat}
+        />
         {drop.dragging && <DropOverlay limits={staged.limits} />}
       </div>
       <Composer
@@ -85,7 +100,7 @@ export function ChatColumn({ botId }: { botId: string }) {
             </ComposerNote>
           )
         }
-        onSend={send}
+        onSend={sendMessage}
         onStop={stop}
       />
     </div>

@@ -112,6 +112,7 @@ export class BotService {
     })
   }
   deleteBot = (input: BotDeleteInput) => this.deletion.delete(input)
+  hasActiveTurn = (botId: string) => this.conversations.hasActiveTurn(botId)
   deleteDefaults = () => this.runtimes.store.deleteDefaults()
   setDeleteDefaults = (input: BotDeleteDefaults) => this.runtimes.store.setDeleteDefaults(input)
 

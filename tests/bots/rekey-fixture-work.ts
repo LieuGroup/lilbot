@@ -182,4 +182,7 @@ export function seedThreadsAndWork(db: Database, oldId: string, otherId: string,
   db.query(
     "INSERT INTO connection_sign_in_cards VALUES ('card-1', 'conn-1', ?, 'chat-main-1', 'demo', 'https://demo.test', 'demo.test', 'waiting', NULL, NULL, 1000, 2000, NULL)"
   ).run(oldId)
+  db.query(
+    "INSERT INTO memory_checkpoint_refusals (bot_id, chat_id, piece_key, piece_keys, refusal_count, state, first_refused_at, last_refused_at) VALUES (?, 'c1', 'pk1', '[\"pk1\"]', 2, 'waiting', 1000, 2000)"
+  ).run(oldId)
 }

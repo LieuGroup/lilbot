@@ -17,18 +17,20 @@ export function createPreCompressCheckpoint(
     reviewer,
     chatKind,
     checkpointStore,
+    checkpointRefusals,
     onCheckpointSaved
-  }: Pick<EngineApiOptions, 'history' | 'bots' | 'reviewer' | 'chatKind' | 'checkpointStore' | 'onCheckpointSaved'>,
+  }: Pick<EngineApiOptions, 'history' | 'bots' | 'reviewer' | 'chatKind' | 'checkpointStore' | 'checkpointRefusals' | 'onCheckpointSaved'>,
   memory?: MemoryService
 ): PreCompressHandler {
   const checkpoint = new MemoryCheckpoint(
-    (bot, prompt) => {
-      if (reviewer) return reviewer.runPass(bot, prompt, true)
+    (bot, prompt, options) => {
+      if (reviewer) return reviewer.runPass(bot, prompt, true, options)
       if (!bots) return Promise.reject(new LilBotError('unavailable', 'History is unavailable.'))
       return bots.reviewMemory(bot, prompt, { onChat: () => {} })
     },
     checkpointStore,
-    memory ? bot => memory.contextBlock(bot).text : () => ''
+    memory ? bot => memory.contextBlock(bot).text : () => '',
+    checkpointRefusals
   )
   return async (bot: string, chatId: string, messages: PreCompressEvidence[]) => {
     if (!history || !bots) throw new LilBotError('unavailable', 'History is unavailable.')
