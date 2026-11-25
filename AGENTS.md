@@ -166,7 +166,7 @@ Staff, profile `default`) is Oscar's live bot.
 Never print, log or commit, and never put in a bot's instructions or memory: the Hermes attach ticket, anything under
 `~/.hermes` that holds credentials, `<data>/engine-token`, `t3-grant.json`, `computer-server-key.pem`,
 `~/.cloudflared/cert.pem`, the tunnel credentials, the Access drop-in, Oscar's email, webhook addresses and webhook
-signing secrets, and `<data>/mcp-credentials.json` (the MCP services' tokens and client secrets). The database holds
+signing secrets, `<data>/apns/*.p8` (the Apple Push signing key), and `<data>/mcp-credentials.json` (the MCP services' tokens and client secrets). The database holds
 signing secrets (an address is computed from the engine token and a nonce, never stored), so copies of data use private
 directories and files (0700/0600).
 

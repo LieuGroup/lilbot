@@ -22,6 +22,7 @@ import { createBrowserWebSocket } from './http/browser-ws'
 import { startPublicDoor } from './http/public-door'
 import { allowedHosts } from './http/socket-guard'
 import { webhookRoute } from './http/webhook-route'
+import { createApnsSenderFromEnv } from './notifications/apns-settings'
 import { files } from './skills/skill-files'
 import { SESSION_MCP_PREFIX } from './system/session-grants'
 import { SYSTEM_PATH } from './system/system-connection'
@@ -54,6 +55,7 @@ function botsChanged() {
 }
 
 const T3_ENABLED = isT3Enabled(process.env)
+const apnsSender = createApnsSenderFromEnv(process.env)
 const engines = createDefaultEngines(process.env)
 const MEMORY_ADAPTER_VERSION = engines.defaultEngine.memoryAdapterVersion ?? 'none'
 const services = createAppServices(engines, {
@@ -67,6 +69,7 @@ const services = createAppServices(engines, {
   ACCESS_HOST: ACCESS?.host,
   ACCESS_CALLBACK_ENABLED: ACCESS?.callbackEnabled ?? false,
   T3_ENABLED,
+  notificationSender: apnsSender ?? undefined,
   publish: frame => publish(EVERYONE, JSON.stringify(frame)),
   botsChanged
 })
@@ -186,3 +189,12 @@ console.log(`LilBot listening on http://${server.hostname}:${server.port} (engin
 
 // Off until the dedicated tunnel is provisioned. Never target the private app port.
 if (PUBLIC_ENABLED) startPublicDoor(computers, PUBLIC_PORT, { hooks: webhookRoute(webhooks), workers: services.remoteWorkers.runner.bridge })
+
+if (apnsSender) {
+  const shutdown = () => {
+    apnsSender.close()
+    process.exit(0)
+  }
+  process.once('SIGTERM', shutdown)
+  process.once('SIGINT', shutdown)
+}

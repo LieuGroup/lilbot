@@ -55,6 +55,7 @@ export function assertDevelopmentTarget(env: Env, rules: readonly EngineEnvironm
   }
   const protectedEntries: [string, string][] = [
     ['LILBOT_DATA_DIR', join(homedir(), '.local/share/lilbot')],
+    ['LILBOT_APNS_KEY_PATH', join(homedir(), '.local/share/lilbot')],
     ['LILBOT_WORKSPACES_DIR', join(homedir(), 'lilbot/workspaces')],
     ['LILBOT_SKILLS_DIR', join(homedir(), 'lilbot/skills')],
     ...validated.protectedEntries
