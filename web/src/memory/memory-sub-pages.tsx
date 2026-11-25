@@ -51,7 +51,15 @@ export function RemovedFacts({ context: base }: { context: ListContext }) {
       ) : (
         <FactGroup>
           {facts.map(fact => (
-            <RemovedRow key={fact.id} fact={fact} botName={nameOf(context, fact.botId)} busy={context.busy} onRestore={() => context.actions.restore(fact)} />
+            <RemovedRow
+              key={fact.id}
+              fact={fact}
+              botName={nameOf(context, fact.botId)}
+              open={context.openId === fact.id}
+              busy={context.busy}
+              onToggle={() => context.toggle(fact)}
+              onRestore={() => context.actions.restore(fact)}
+            />
           ))}
         </FactGroup>
       )}

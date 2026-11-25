@@ -24,7 +24,7 @@ export const nameOf = (context: ListContext, botId: string) => context.names.get
 
 function Badge({ context, botId, size }: { context: ListContext; botId: string; size: number }) {
   const bot = context.bots.find(candidate => candidate.id === botId)
-  if (!bot) return <span aria-hidden="true" style={{ width: size, height: size }} className="flex-none rounded-md bg-foreground/10" />
+  if (!bot) return <span aria-hidden="true" style={{ width: size, height: size }} className="flex-none" />
   return <BotBadge name={bot.name} avatar={bot.prefs.avatar} size={size} />
 }
 
@@ -86,7 +86,10 @@ export function BotList({ context, owners, onOpen }: { context: ListContext; own
             className="flex h-9 w-full items-center gap-2.5 pr-3 pl-3.5 text-left outline-none hover:bg-foreground/4 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset"
           >
             <Badge context={context} botId={owner.botId} size={20} />
-            <span className="min-w-0 flex-1 truncate text-[13px]/[18px] font-medium">{owner.name}</span>
+            <span className="min-w-0 flex-1 truncate text-[13px]/[18px] font-medium">
+              {owner.name}
+              {owner.deleted && <span className="ml-1.5 text-xs font-normal text-muted-foreground">Deleted</span>}
+            </span>
             <span className="text-xs text-muted-foreground">{factCount(owner.facts)}</span>
             <ChevronRightIcon className="size-3.5 text-muted-foreground" />
           </button>

@@ -122,7 +122,7 @@ export class MemoryService {
     if (!this.store.setExpiry(factId, expiresAt)) throw new LilBotError('fact_not_found', 'That fact is not in memory.')
   }
 
-  /** For the app's Memory panel: everything kept (paused and expired included), newest first, and
+  /** For one bot (the delete dialog's count and `lilbot_memory_list`): everything kept (paused and expired included), newest first, and
    *  the most recently forgotten facts so they can be restored. */
   panel(botId: string): { facts: MemoryFact[]; forgotten: MemoryFact[] } {
     return { facts: this.store.kept(botId), forgotten: this.store.forgotten(botId, FORGOTTEN_SHOWN) }

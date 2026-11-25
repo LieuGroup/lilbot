@@ -1,4 +1,4 @@
-/** Memory tools: what Oscar does in a bot's Memory panel, plus bot-scoped recall and reversible forget of the calling
+/** Memory tools: what Oscar does in Settings > Memory, plus bot-scoped recall and reversible forget of the calling
  *  bot's own visible memory (own private facts and shared facts; never another bot's private facts). */
 import { z } from 'zod'
 import { LilBotError } from '../../shared/lilbot-error'
@@ -38,7 +38,7 @@ export function memoryTools({ bots, memory, memoryChanged }: SystemDeps): McpToo
   return [
     readTool(
       'lilbot_memory_list',
-      "A bot's memory as the Memory panel shows it: kept facts (paused and expiring ones included) and recently forgotten ones. Defaults to you.",
+      "A bot's memory as Settings > Memory shows it: kept facts (paused and expiring ones included) and recently forgotten ones. Defaults to you.",
       z.object(target),
       async (caller, { botId }) => {
         const panel = await bots.listMemory(botId ?? caller)

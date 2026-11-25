@@ -53,7 +53,7 @@ test('a fact is only reachable through the panel of the bot it is named for', as
   // Bot one cannot name another bot's private fact in its own panel, not even by its full id.
   expect((await f.call('b1', 'lilbot_memory_pause', { factId: secret.id, paused: true })).error).toContain('No fact')
   expect(f.memory.panel(other.id).facts.find(fact => fact.id === secret.id)?.paused).toBe(false)
-  // Naming the other bot is what Oscar does on its Memory panel; shared facts show in both panels.
+  // Naming the other bot is what Oscar does in Settings > Memory; shared facts show for both bots.
   await f.call('b1', 'lilbot_memory_pause', { botId: other.id, factId: secret.id.slice(0, 8), paused: true })
   expect(f.memory.panel(other.id).facts.find(fact => fact.id === secret.id)?.paused).toBe(true)
   const own = (await f.call('b1', 'lilbot_memory_list')).data.facts.map((row: any) => row.id)

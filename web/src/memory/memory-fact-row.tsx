@@ -74,15 +74,34 @@ export function FactRow({ fact, now, open, botName, lead, busy, actions, onToggl
   )
 }
 
-/** A removed fact: its text, who removed it and when, and Restore. */
-export function RemovedRow({ fact, botName, busy, onRestore }: { fact: MemoryFact; botName: string; busy: boolean; onRestore: () => void }) {
+/** A removed fact: its text (the whole of it once opened), who removed it and when, and Restore. */
+export function RemovedRow({
+  fact,
+  botName,
+  open,
+  busy,
+  onToggle,
+  onRestore
+}: {
+  fact: MemoryFact
+  botName: string
+  open: boolean
+  busy: boolean
+  onToggle: () => void
+  onRestore: () => void
+}) {
   return (
-    <li className="flex items-center gap-3 py-2 pr-2.5 pl-3.5">
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-[13px]/[18px]">{fact.text}</span>
+    <li className="flex items-start gap-3 py-2 pr-2.5 pl-3.5">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={onToggle}
+        className="flex min-w-0 flex-1 flex-col rounded-sm text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      >
+        <span className={`text-[13px]/[18px] ${open ? 'break-words' : 'truncate'}`}>{fact.text}</span>
         <span className="text-xs text-muted-foreground">{removedLine(fact, botName)}</span>
-      </div>
-      <Button variant="outline" size="sm" className="h-7 bg-card text-[13px]" disabled={busy} onClick={onRestore}>
+      </button>
+      <Button variant="outline" size="sm" className="h-7 flex-none bg-card text-[13px]" disabled={busy} onClick={onRestore}>
         Restore
       </Button>
     </li>

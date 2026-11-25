@@ -73,9 +73,25 @@ describe('memory.listAll', () => {
     expect(() => service.browseMemory(MemoryBrowseInput.parse({ view: 'kept', cursor: 'nope' }))).toThrow('no longer exists')
   })
 
-  test('is a browser method only and caps a page at 200 facts', () => {
+  test('pages facts learned at the same moment one by one, by their position', () => {
+    const fake = seeded()
+    fake.database.query('UPDATE memory_facts SET learned_at = ?').run(Date.UTC(2026, 10, 2))
+    const seen: string[] = []
+    let cursor: string | undefined
+    do {
+      const page = fake.service.browseMemory(MemoryBrowseInput.parse({ view: 'kept', limit: 1, cursor }))
+      seen.push(...texts(page.facts))
+      cursor = page.nextCursor ?? undefined
+    } while (cursor && seen.length < 10)
+    expect(seen).toHaveLength(5)
+    expect(new Set(seen).size).toBe(5)
+  })
+
+  test('is a browser method only and caps a page at 200 facts and a search at 200 characters', () => {
     expect('memory.listAll' in methods).toBe(true)
     expect(() => MemoryBrowseInput.parse({ view: 'kept', limit: 201 })).toThrow()
+    expect(MemoryBrowseInput.parse({ view: 'kept', query: 'a'.repeat(200) }).query).toHaveLength(200)
+    expect(() => MemoryBrowseInput.parse({ view: 'kept', query: 'a'.repeat(201) })).toThrow()
   })
 })
 
