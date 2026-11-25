@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { Webhook, WebhookRun } from '../../../shared/webhook-schema'
 import { messageOf } from '../../../shared/client/socket'
 import { DetailFactRow, RunListSection } from '../routines/run-list-section'
-import { type OpenRunTarget, RunTranscriptSheet } from '../routines/run-transcript-sheet'
+import { type OpenRunTarget, RunTranscriptView } from '../routines/run-transcript-sheet'
 import { TrashIcon } from '../ui/details-icons'
 import { DYNAMIC_TYPE_CAPS } from '../ui/dynamic-type'
 import { sessionTime } from '../ui/format-time'
@@ -128,67 +128,72 @@ export function WebhookDetailSheet({
       : null
 
   return (
-    <Modal visible={webhook !== null} presentationStyle="pageSheet" animationType="slide" onRequestClose={onClose}>
+    <Modal visible={webhook !== null} presentationStyle="pageSheet" animationType="slide" onRequestClose={() => (openRun ? setOpenRun(null) : onClose())}>
       <View style={{ flex: 1, backgroundColor: theme.background, paddingTop: Math.max(16, insets.top) }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: theme.hairline }}>
-          <AppText variant="title" maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.headerTitle} style={MOBILE_SCALE.details.sheetTitle}>
-            Webhook
-          </AppText>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            {webhook ? (
-              <Pressable disabled={deleting} onPress={confirmDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete webhook" accessibilityState={{ disabled: deleting }} style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.muted, opacity: deleting ? 0.45 : 1 }}>
-                <TrashIcon color={theme.destructive} size={16} />
-              </Pressable>
-            ) : null}
-            <Pressable onPress={onClose} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close" style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.muted }}>
-              <CloseIcon color={theme.foreground} size={16} />
-            </Pressable>
-          </View>
-        </View>
-        {webhook ? (
-          <ScrollView contentContainerStyle={{ padding: 16, gap: 18, paddingBottom: Math.max(32, insets.bottom + 16) }}>
-            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingHorizontal: 2 }}>
-              <AppText variant="name" color={webhook.paused ? theme.mutedForeground : theme.foreground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowName} style={[MOBILE_SCALE.details.rowTitle, { flex: 1 }]}>
-                {webhook.description}
+        {transcriptTarget ? (
+          <RunTranscriptView target={transcriptTarget} onBack={() => setOpenRun(null)} onClose={onClose} />
+        ) : (
+          <>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: theme.hairline }}>
+              <AppText variant="title" maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.headerTitle} style={MOBILE_SCALE.details.sheetTitle}>
+                Webhook
               </AppText>
-              <Switch
-                value={!webhook.paused}
-                onValueChange={on => {
-                  setError('')
-                  void onTogglePaused(webhook, !on).catch(failure => setError(messageOf(failure)))
-                }}
-                trackColor={{ false: theme.muted, true: theme.foreground }}
-                thumbColor={theme.card}
-                accessibilityLabel={webhook.paused ? 'Resume this webhook' : 'Pause this webhook'}
-              />
-            </View>
-            {error ? (
-              <AppText variant="preview" color={theme.destructive} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowPreview} style={MOBILE_SCALE.details.rowSubtitle}>
-                {error}
-              </AppText>
-            ) : null}
-            <SectionGroup title="Details" footer="Events that arrive close together are handled in one run. The address is a secret: anyone who has it can wake this bot.">
-              <DetailFactRow label="From" value={webhook.source} />
-              <RowDivider />
-              <DetailFactRow label="Last event" value={webhook.lastEventAt === null ? 'No events yet' : sessionTime(webhook.lastEventAt, now)} />
-              <RowDivider />
-              <DetailFactRow label="Created" value={createdWebhookText(webhook, botName)} />
-              <RowDivider />
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 10 }}>
-                <AppText variant="preview" color={theme.mutedForeground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowPreview} style={MOBILE_SCALE.details.rowSubtitle}>
-                  Address
-                </AppText>
-                <Pressable disabled={copying} onPress={handleCopy} accessibilityRole="button" accessibilityLabel="Copy webhook address" accessibilityState={{ disabled: copying }} style={({ pressed }) => ({ minHeight: 38, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8, borderWidth: 1, borderColor: theme.border, justifyContent: 'center', opacity: copying ? 0.5 : pressed ? 0.65 : 1 })}>
-                  <AppText variant="name" maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.control} style={MOBILE_SCALE.details.tabLabel}>
-                    {copyLabel}
-                  </AppText>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                {webhook ? (
+                  <Pressable disabled={deleting} onPress={confirmDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete webhook" accessibilityState={{ disabled: deleting }} style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.muted, opacity: deleting ? 0.45 : 1 }}>
+                    <TrashIcon color={theme.destructive} size={16} />
+                  </Pressable>
+                ) : null}
+                <Pressable onPress={onClose} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close" style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.muted }}>
+                  <CloseIcon color={theme.foreground} size={16} />
                 </Pressable>
               </View>
-            </SectionGroup>
-            <RunListSection resetKey={webhook.id} runs={webhook.runs} titleOf={run => webhookRunTitle(run, now)} onOpen={setOpenRun} />
-          </ScrollView>
-        ) : null}
-        <RunTranscriptSheet target={transcriptTarget} onClose={() => setOpenRun(null)} />
+            </View>
+            {webhook ? (
+              <ScrollView contentContainerStyle={{ padding: 16, gap: 18, paddingBottom: Math.max(32, insets.bottom + 16) }}>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingHorizontal: 2 }}>
+                  <AppText variant="name" color={webhook.paused ? theme.mutedForeground : theme.foreground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowName} style={[MOBILE_SCALE.details.rowTitle, { flex: 1 }]}>
+                    {webhook.description}
+                  </AppText>
+                  <Switch
+                    value={!webhook.paused}
+                    onValueChange={on => {
+                      setError('')
+                      void onTogglePaused(webhook, !on).catch(failure => setError(messageOf(failure)))
+                    }}
+                    trackColor={{ false: theme.muted, true: theme.foreground }}
+                    thumbColor={theme.card}
+                    accessibilityLabel={webhook.paused ? 'Resume this webhook' : 'Pause this webhook'}
+                  />
+                </View>
+                {error ? (
+                  <AppText variant="preview" color={theme.destructive} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowPreview} style={MOBILE_SCALE.details.rowSubtitle}>
+                    {error}
+                  </AppText>
+                ) : null}
+                <SectionGroup title="Details" footer="Events that arrive close together are handled in one run. The address is a secret: anyone who has it can wake this bot.">
+                  <DetailFactRow label="From" value={webhook.source} />
+                  <RowDivider />
+                  <DetailFactRow label="Last event" value={webhook.lastEventAt === null ? 'No events yet' : sessionTime(webhook.lastEventAt, now)} />
+                  <RowDivider />
+                  <DetailFactRow label="Created" value={createdWebhookText(webhook, botName)} />
+                  <RowDivider />
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 10 }}>
+                    <AppText variant="preview" color={theme.mutedForeground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowPreview} style={MOBILE_SCALE.details.rowSubtitle}>
+                      Address
+                    </AppText>
+                    <Pressable disabled={copying} onPress={handleCopy} accessibilityRole="button" accessibilityLabel="Copy webhook address" accessibilityState={{ disabled: copying }} style={({ pressed }) => ({ minHeight: 38, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8, borderWidth: 1, borderColor: theme.border, justifyContent: 'center', opacity: copying ? 0.5 : pressed ? 0.65 : 1 })}>
+                      <AppText variant="name" maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.control} style={MOBILE_SCALE.details.tabLabel}>
+                        {copyLabel}
+                      </AppText>
+                    </Pressable>
+                  </View>
+                </SectionGroup>
+                <RunListSection resetKey={webhook.id} runs={webhook.runs} titleOf={run => webhookRunTitle(run, now)} onOpen={setOpenRun} />
+              </ScrollView>
+            ) : null}
+          </>
+        )}
       </View>
     </Modal>
   )

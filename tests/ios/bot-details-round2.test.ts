@@ -177,6 +177,7 @@ describe('PR 302 Round 2 fixes (scale, Duo strip, safety, ErrorBoundary, AX5, ke
     expect(transcriptSrc).toContain('routines.openRun')
     expect(transcriptSrc).toContain('webhooks.openRun')
     expect(transcriptSrc).toContain("'chat.close'")
+    expect(transcriptSrc).not.toContain('<Modal')
 
     const detailsSrc = read('ios/src/bots/details-screen.tsx')
     expect(detailsSrc).toContain('usePanGesture')
