@@ -3,6 +3,7 @@ import { expect, test } from 'bun:test'
 import { createNotifications } from '../../server/app-notifications'
 import { openDatabase } from '../../server/database/database'
 import { DeviceStore } from '../../server/devices/device-store'
+import { HistoryStore } from '../../server/history/history-store'
 import { TestNotificationSender } from '../../server/notifications/notification-sender'
 import { NotificationService } from '../../server/notifications/notification-service'
 import { NotificationStore } from '../../server/notifications/notification-store'
@@ -11,6 +12,7 @@ import { fakeService } from '../helpers/fake-engine'
 import { until } from '../helpers/until'
 
 const D1 = '44444444-4444-4444-8444-444444444444'
+const D2 = '55555555-5555-4555-8555-555555555555'
 
 function workFixture(overrides: Partial<WorkSummary & { chatId?: string | null }> = {}): WorkSummary & { chatId?: string | null } {
   return {
@@ -99,6 +101,22 @@ test('slow sender reserves turn suppression and cooldown before await, enforces 
   // Prune enforces row cap cleanly.
   service.prune(3)
   expect(db.query('SELECT COUNT(*) AS n FROM notification_deliveries').get()).toEqual({ n: 3 })
+
+  // Failed work_done releases turn suppression only for failed devices so the turn's reply still notifies them.
+  devices.touch(D2, 'Phone 2', clock)
+  service.register(D2, 'test', 'tok-async-5678', 'com.lilbot.app')
+  clock += 60_000
+  sender.clear()
+  let failD2 = true
+  sender.setHandler(recipient => (failD2 && recipient.deviceId === D2 ? { status: 'failed', reason: 'sender_error' } : { status: 'sent' }))
+  service.noteTurnStarted('b1', 'chat-rollback')
+  const wf = await service.notifyWorkFinished(workFixture({ id: 'w-rollback', chatId: 'chat-rollback', origin: { kind: 'conversation', id: 'chat-rollback' } }), 9)
+  expect(wf).toEqual({ sent: 1, suppressed: 0, deduped: 0, failed: 1 })
+  failD2 = false
+  sender.clear()
+  const replyAfterFail = await service.notifyReply({ botId: 'b1', chatId: 'chat-rollback', text: 'Done!', dedupeKey: 'r-rollback' })
+  expect(replyAfterFail).toEqual({ sent: 1, suppressed: 1, deduped: 0, failed: 0 })
+  expect(sender.sent.map(item => item.recipient.deviceId)).toEqual([D2])
 })
 
 test('startup and hot-path hooks catch sync/async errors, restrict to main session, dedupe dual-path no-rowId failures, and ignore hidden/stopped turns', async () => {
@@ -129,10 +147,15 @@ test('startup and hot-path hooks catch sync/async errors, restrict to main sessi
   await new Promise(resolve => setTimeout(resolve, 20))
   expect(sender.sent).toHaveLength(0)
 
-  // P1E: missing rowId across openChat (key=undefined) and watchActivity (key='epoch1:42') notifies exactly once.
+  // P1E: missing rowId across openChat (UUID history_events row) and watchActivity (epoch1:42 row) notifies exactly once.
+  const history = new HistoryStore(fake.database)
+  const failedTurn = { type: 'turn.finished' as const, status: 'failed' as const, text: '' }
+  history.event('b1', 'chat-new', { type: 'turn.started' })
   hooks.onTurnStarted?.('b1', 'chat-new')
-  hooks.onTurnFinished?.('b1', 'chat-new', { type: 'turn.finished', status: 'failed', text: '' }, undefined)
-  hooks.onTurnFinished?.('b1', 'chat-new', { type: 'turn.finished', status: 'failed', text: '' }, 'epoch1:42')
+  history.event('b1', 'chat-new', failedTurn)
+  hooks.onTurnFinished?.('b1', 'chat-new', failedTurn, undefined)
+  history.event('b1', 'chat-new', failedTurn, 'epoch1:42')
+  hooks.onTurnFinished?.('b1', 'chat-new', failedTurn, 'epoch1:42')
   await until(() => sender.sent.length === 1)
   await new Promise(resolve => setTimeout(resolve, 20))
   expect(sender.sent).toHaveLength(1)

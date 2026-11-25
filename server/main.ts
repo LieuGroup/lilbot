@@ -6,7 +6,6 @@ import { checkPublicPort, isTunnelRequest, plainServerError } from './http/liste
 
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import type { WebSocketHandler } from 'bun'
 import { AddThisComputer } from './computers/add-this-computer'
 import { HelperDownloads, helperSettings, privateDownloadOrigin } from './computers/helper-downloads'
 import { CALLBACK_PATH } from './connections/mcp-callback'
@@ -19,6 +18,7 @@ import { startAccessDoor } from './http/access-door'
 import { accessSettings } from './http/access-settings'
 import { appRoutes, type SocketData } from './http/app-routes'
 import { BrowserSession } from './http/browser-session'
+import { createBrowserWebSocket } from './http/browser-ws'
 import { startPublicDoor } from './http/public-door'
 import { allowedHosts } from './http/socket-guard'
 import { webhookRoute } from './http/webhook-route'
@@ -92,10 +92,10 @@ const addThis = new AddThisComputer(computers, downloads)
 
 const ALLOWED_HOSTS = allowedHosts(PORT, process.env.LILBOT_ALLOWED_HOSTS)
 
-const websocket: WebSocketHandler<SocketData> = {
-  open(socket) {
-    socket.subscribe(EVERYONE)
-    socket.data.session = new BrowserSession(
+const { websocket } = createBrowserWebSocket({
+  topic: EVERYONE,
+  createSession: socket =>
+    new BrowserSession(
       bots,
       frame => {
         // A send after the browser left is expected and harmless.
@@ -116,14 +116,7 @@ const websocket: WebSocketHandler<SocketData> = {
       boards.goals,
       services.notifications
     )
-  },
-  message(socket, message) {
-    void socket.data.session?.handle(typeof message === 'string' ? message : message.toString())
-  },
-  close(socket) {
-    socket.data.session?.close()
-  }
-}
+})
 
 const browserRoutes = appRoutes(library, DIST, ALLOWED_HOSTS, engines.defaultId, attachments, downloads, threads)
 const server = Bun.serve<SocketData>({

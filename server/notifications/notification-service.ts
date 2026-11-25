@@ -21,7 +21,6 @@ import type { NotificationEvent } from './notification-text'
 
 const DELIVERY_RETENTION_MS = 30 * 24 * 60 * 60_000
 const DEFAULT_MAX_DELIVERY_ROWS = 10_000
-const SKIP_DEDUPED: DispatchSummary = { sent: 0, suppressed: 0, deduped: 1, failed: 0 }
 const SKIP_SUPPRESSED: DispatchSummary = { sent: 0, suppressed: 1, deduped: 0, failed: 0 }
 
 export interface NotificationServiceOptions extends DeliveryQueueOptions {
@@ -113,20 +112,24 @@ export class NotificationService {
   markRead = (botId: string, deviceId?: string) => this.cooldown.clearBot(botId, deviceId, this.now())
   noteTurnStarted = (botId: string, chatId: string) => this.turns.turnStarted(botId, chatId)
 
-  notifyReply(input: { botId: string; chatId: string; text: string; at?: number; dedupeKey?: string; fingerprint?: string }): Promise<DispatchSummary> {
-    const turn = this.turns.finishTurn(input.botId, input.chatId, input.fingerprint)
-    if (turn.duplicate) return Promise.resolve({ ...SKIP_DEDUPED })
-    const dedupeKey = input.dedupeKey ?? `reply:${input.chatId}:turn:${turn.seq}:${input.fingerprint ?? ''}`
+  notifyReply(input: { botId: string; chatId: string; text: string; at?: number; dedupeKey: string }): Promise<DispatchSummary> {
+    const suppressedDevices = this.turns.finishTurn(input.botId, input.chatId)
     return this.send(
-      { kind: 'reply', botId: input.botId, botName: this.opts.botName(input.botId), chatId: input.chatId, text: input.text, at: input.at ?? this.now(), dedupeKey },
-      { suppressedDevices: turn.suppressedDevices }
+      {
+        kind: 'reply',
+        botId: input.botId,
+        botName: this.opts.botName(input.botId),
+        chatId: input.chatId,
+        text: input.text,
+        at: input.at ?? this.now(),
+        dedupeKey: input.dedupeKey
+      },
+      { suppressedDevices }
     )
   }
 
-  notifyTurnFailed(input: { botId: string; chatId: string; reason?: 'memory_save'; at?: number; dedupeKey?: string; fingerprint?: string }): Promise<DispatchSummary> {
-    const turn = this.turns.finishTurn(input.botId, input.chatId, input.fingerprint)
-    if (turn.duplicate) return Promise.resolve({ ...SKIP_DEDUPED })
-    const dedupeKey = input.dedupeKey ?? `turn_failed:${input.chatId}:turn:${turn.seq}:${input.fingerprint ?? ''}`
+  notifyTurnFailed(input: { botId: string; chatId: string; reason?: 'memory_save'; at?: number; dedupeKey: string }): Promise<DispatchSummary> {
+    this.turns.finishTurn(input.botId, input.chatId)
     return this.send({
       kind: 'turn_failed',
       botId: input.botId,
@@ -134,7 +137,7 @@ export class NotificationService {
       chatId: input.chatId,
       reason: input.reason,
       at: input.at ?? this.now(),
-      dedupeKey
+      dedupeKey: input.dedupeKey
     })
   }
 
@@ -160,10 +163,13 @@ export class NotificationService {
     const chatId = inConversation ? (item.chatId ?? item.origin.id) : null
     const botName = this.opts.botName(item.ownerId) || item.ownerName
     const dedupeKey = `work:done:${item.id}:${eventSeq}`
-    const onReserved = (ids: readonly string[]) => chatId && this.turns.recordWorkAlerted(item.ownerId, chatId, ids)
     return this.send(
       { kind: 'work_done', botId: item.ownerId, botName, workItemId: item.id, title: item.title, status, chatId, at: item.finishedAt ?? item.updatedAt, dedupeKey },
-      { suppressWhenViewing: inConversation, onReserved }
+      {
+        suppressWhenViewing: inConversation,
+        onReserved: ids => chatId && this.turns.recordWorkAlerted(item.ownerId, chatId, ids),
+        onFailed: deviceId => chatId && this.turns.releaseWorkAlerted(item.ownerId, chatId, deviceId)
+      }
     )
   }
 

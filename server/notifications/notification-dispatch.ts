@@ -28,6 +28,8 @@ export interface DispatchOptions {
   suppressWhenViewing?: boolean
   /** Invoked synchronously with every device that reserved a delivery slot, before awaiting the sender. */
   onReserved?: (deviceIds: readonly string[]) => void
+  /** Invoked when a reserved delivery does not settle as `sent`, so callers can roll back pre-send reservations. */
+  onFailed?: (deviceId: string) => void
 }
 
 interface ReservedDelivery {
@@ -88,8 +90,9 @@ export async function dispatchNotification(deps: DispatchDeps, event: Notificati
       } catch {
         console.error('[notifications] failed to record delivery outcome')
       }
-      if (result.status !== 'sent' && event.kind === 'reply' && botId) {
-        cooldown.releaseReservation(recipient.deviceId, botId, now)
+      if (result.status !== 'sent') {
+        if (event.kind === 'reply' && botId) cooldown.releaseReservation(recipient.deviceId, botId, now)
+        options.onFailed?.(recipient.deviceId)
       }
       return result.status
     })

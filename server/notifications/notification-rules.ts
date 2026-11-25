@@ -1,4 +1,4 @@
-/** Pure decision rules for notifications: preferences, long-work filter, per-turn dedupe, and reply cooldown. */
+/** Pure decision rules for notifications: preferences, long-work filter, same-turn work suppression, and reply cooldown. */
 import type { NotificationDevicePrefs, NotificationKind } from '../../shared/notification-schema'
 import type { WorkSummary } from '../../shared/work-schema'
 
@@ -37,21 +37,18 @@ export function shouldNotifyWorkDone(
 
 interface TurnState {
   active: boolean
-  seq: number
-  finishedKey: string | null
   workAlertedDevices: Set<string>
 }
 
-/** Tracks per-turn state so long-work alerts suppress duplicate reply alerts and dual event paths never double-notify one turn. */
+/** Tracks per-turn `work_done` alerts so a reply for the same turn does not double-notify devices already alerted. */
 export class TurnAlertTracker {
   private turns = new Map<string, TurnState>()
   private key = (botId: string, chatId: string) => `${botId}\n${chatId}`
 
   turnStarted(botId: string, chatId: string) {
     const k = this.key(botId, chatId)
-    const current = this.turns.get(k)
-    if (current?.active) return
-    this.turns.set(k, { active: true, seq: (current?.seq ?? 0) + 1, finishedKey: null, workAlertedDevices: new Set() })
+    if (this.turns.get(k)?.active) return
+    this.turns.set(k, { active: true, workAlertedDevices: new Set() })
   }
 
   /** Marks devices alerted by `work_done` for the current turn, unless we already know that turn has ended. */
@@ -60,22 +57,24 @@ export class TurnAlertTracker {
     const k = this.key(botId, chatId)
     const current = this.turns.get(k)
     if (current && !current.active) return
-    const state = current ?? { active: true, seq: 1, finishedKey: null, workAlertedDevices: new Set<string>() }
+    const state = current ?? { active: true, workAlertedDevices: new Set<string>() }
     for (const id of deviceIds) state.workAlertedDevices.add(id)
     this.turns.set(k, state)
   }
 
-  /** Closes the current turn, flagging a duplicate `turn.finished` on an already-closed turn with the same fingerprint. */
-  finishTurn(botId: string, chatId: string, fingerprint?: string): { duplicate: boolean; suppressedDevices: Set<string>; seq: number } {
+  /** Releases a device's suppression reservation when its `work_done` push fails so the turn's reply can still notify. */
+  releaseWorkAlerted(botId: string, chatId: string, deviceId: string) {
+    const current = this.turns.get(this.key(botId, chatId))
+    if (current?.active) current.workAlertedDevices.delete(deviceId)
+  }
+
+  /** Closes the current turn and returns the devices already notified by `work_done` during it. */
+  finishTurn(botId: string, chatId: string): Set<string> {
     const k = this.key(botId, chatId)
     const current = this.turns.get(k)
-    if (current && !current.active && fingerprint && current.finishedKey === fingerprint) {
-      return { duplicate: true, suppressedDevices: new Set(), seq: current.seq }
-    }
-    const seq = current ? current.seq : 1
-    const suppressedDevices = current ? new Set(current.workAlertedDevices) : new Set<string>()
-    this.turns.set(k, { active: false, seq, finishedKey: fingerprint ?? null, workAlertedDevices: new Set() })
-    return { duplicate: false, suppressedDevices, seq }
+    const suppressed = current ? new Set(current.workAlertedDevices) : new Set<string>()
+    this.turns.set(k, { active: false, workAlertedDevices: new Set() })
+    return suppressed
   }
 
   forgetBot(botId: string) {

@@ -162,3 +162,34 @@ export function unansweredStoredUsers(db: Database, bot: string, session: string
     .get(bot, session) as { kind: string; text: string } | null
   return lastItem?.kind === 'user' && lastItem.text.trim() ? [lastItem.text] : []
 }
+
+/** Durable SQLite `rowid` of the first `turn.finished` row for the newest no-`rowId` turn, pairing live and observer paths in FIFO order. */
+export function storedTurnRowId(db: Database, bot: string, session: string): number | null {
+  const rows = db
+    .query(
+      `SELECT rowid, key, json_extract(event,'$.type') AS type, json_extract(event,'$.status') AS status, json_extract(event,'$.failure') AS failure
+       FROM history_events
+       WHERE bot=? AND session=? AND (json_extract(event,'$.type')='user.message' OR (json_extract(event,'$.type')='turn.finished' AND json_extract(event,'$.rowId') IS NULL))
+       ORDER BY rowid ASC`
+    )
+    .all(bot, session) as { rowid: number; key: string; type: string; status: string | null; failure: string | null }[]
+  const [live, observer] = [new Map<string, number[]>(), new Map<string, number[]>()]
+  let lastTurnRowId: number | null = null
+  for (const row of rows) {
+    if (row.type === 'user.message') {
+      observer.clear()
+      continue
+    }
+    const sig = `${row.status ?? ''}:${row.failure ?? ''}`
+    const [mine, other] = row.key.includes(':') ? [observer, live] : [live, observer]
+    const matched = other.get(sig)?.shift()
+    if (matched !== undefined) lastTurnRowId = matched
+    else {
+      const queue = mine.get(sig) ?? []
+      queue.push(row.rowid)
+      mine.set(sig, queue)
+      lastTurnRowId = row.rowid
+    }
+  }
+  return lastTurnRowId
+}

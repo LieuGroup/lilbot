@@ -1,13 +1,13 @@
 /** Wires LilBot's engine-neutral notification service to conversation turns, work items, goals, and deploy notices.
  *  Every hook and startup step is guarded so a broken notification store or sender never crashes boot or hot paths. */
 import type { Database } from 'bun:sqlite'
-import { createHash } from 'node:crypto'
 import type { EventFrame } from '../shared/protocol'
 import type { ConversationHooks } from './bots/bot-conversations'
 import type { BotStore } from './bots/bot-store'
 import { deployNoticeJob } from './deploy/deploy-notice'
 import type { DeviceService } from './devices/device-service'
 import type { StoredGoal } from './goals/goal-store'
+import { storedTurnRowId } from './history/history-tail'
 import { type NotificationSender, routeSenders } from './notifications/notification-sender'
 import { NotificationService } from './notifications/notification-service'
 import { NotificationStore } from './notifications/notification-store'
@@ -39,9 +39,15 @@ const fire = (label: string, run: () => Promise<unknown>) => {
   }
 }
 
-function turnFingerprint(status: string, failure: string | undefined, text: string): string {
-  const digest = createHash('sha256').update(text.slice(0, 1000)).digest('hex').slice(0, 16)
-  return `${status}:${failure ?? ''}:${digest}`
+/** Derives a durable, restart-stable turn key: canonical `rowId` when present, else the stored `history_events` rowid
+ *  that pairs both `openChat` and `watchActivity` deliveries of the same turn across restarts. */
+function durableTurnKey(database: Database, botId: string, chatId: string, rowId?: string, key?: string): string {
+  if (rowId) return `row:${rowId}`
+  try {
+    const stored = storedTurnRowId(database, botId, chatId)
+    if (stored !== null) return `he:${stored}`
+  } catch {}
+  return key ? `evt:${key}` : `live:${crypto.randomUUID()}`
 }
 
 export function createNotifications({ database, devices, store, dataDir, isMainChat, publish, sender }: AppNotificationsDeps) {
@@ -71,14 +77,11 @@ export function createNotifications({ database, devices, store, dataDir, isMainC
       base.onTurnFinished?.(botId, chatId, event, key)
       safe('turn finished', () => {
         if (!store.exists(botId) || !isMainChat(botId, chatId) || hiddenChat(botId, chatId)) return
-        const fingerprint = turnFingerprint(event.status, event.failure, event.text)
-        const keyPart = event.rowId ? `row:${event.rowId}` : key ? `evt:${key}` : undefined
+        const turnKey = durableTurnKey(database, botId, chatId, event.rowId, key)
         if (event.status === 'completed' && event.text.trim()) {
-          const dedupeKey = keyPart ? `reply:${chatId}:${keyPart}` : undefined
-          fire('reply', () => notifications.notifyReply({ botId, chatId, text: event.text, dedupeKey, fingerprint }))
+          fire('reply', () => notifications.notifyReply({ botId, chatId, text: event.text, dedupeKey: `reply:${chatId}:${turnKey}` }))
         } else if (event.status === 'failed') {
-          const dedupeKey = keyPart ? `turn_failed:${chatId}:${keyPart}` : undefined
-          fire('turn failed', () => notifications.notifyTurnFailed({ botId, chatId, reason: event.failure, dedupeKey, fingerprint }))
+          fire('turn failed', () => notifications.notifyTurnFailed({ botId, chatId, reason: event.failure, dedupeKey: `turn_failed:${chatId}:${turnKey}` }))
         }
       })
     }

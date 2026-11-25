@@ -182,6 +182,7 @@ export class BrowserSession {
     for (const task of after) task()
   }
 
+  touch = () => this.sessionNotif.touch()
   close() {
     this.chats.close()
     this.sessionNotif.close()
