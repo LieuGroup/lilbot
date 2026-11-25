@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { execFileSync } from 'node:child_process'
-import { type CheckpointRefusalSocket, type CheckpointRefusalState, createCheckpointRefusalController } from '../../ios/src/memory/checkpoint-refusal-controller'
+import { type CheckpointRefusalSocket, createCheckpointRefusalController } from '../../ios/src/memory/checkpoint-refusal-controller'
 import type { CheckpointChoice, MemoryCheckpointRefusal } from '../../shared/memory-schema'
 
 const flush = () => new Promise<void>(resolve => setTimeout(resolve, 0))
@@ -18,38 +18,33 @@ const samplePending: MemoryCheckpointRefusal = {
   lastRefusedAt: Date.UTC(2026, 10, 25, 3, 42, 0)
 }
 
+type ChooseResult = { ok: true; choice: CheckpointChoice; resumed: boolean; needsResend?: boolean }
+
 function makeFakeSocket(initial: MemoryCheckpointRefusal | null) {
   let pending = initial
-  let chooseImpl: (params: { choice: CheckpointChoice }) => Promise<{ ok: true; choice: CheckpointChoice; resumed: boolean; needsResend?: boolean }> = async ({ choice }) => ({
-    ok: true,
-    choice,
-    resumed: choice === 'skip_piece'
-  })
+  let chooseImpl: (params: { choice: CheckpointChoice }) => Promise<ChooseResult> = async ({ choice }) => ({ ok: true, choice, resumed: choice === 'skip_piece' })
   const listeners = new Set<() => void>()
   const calls: { method: string; params: unknown }[] = []
-
   const socket: CheckpointRefusalSocket = {
     async call(method: string, params: unknown) {
       calls.push({ method, params })
-      if (method === 'memory.checkpointPending') return pending
-      return chooseImpl(params as { choice: CheckpointChoice })
+      return method === 'memory.checkpointPending' ? pending : chooseImpl(params as { choice: CheckpointChoice })
     },
     onMemoryChanged(listener) {
       listeners.add(listener)
       return () => listeners.delete(listener)
     }
   } as CheckpointRefusalSocket
-
   return {
     socket,
     calls,
-    setPending(next: MemoryCheckpointRefusal | null) {
+    setPending: (next: MemoryCheckpointRefusal | null) => {
       pending = next
     },
-    setChoose(impl: typeof chooseImpl) {
+    setChoose: (impl: typeof chooseImpl) => {
       chooseImpl = impl
     },
-    emitMemoryChanged() {
+    emitMemoryChanged: () => {
       for (const listener of listeners) listener()
     },
     listenerCount: () => listeners.size
@@ -59,11 +54,10 @@ function makeFakeSocket(initial: MemoryCheckpointRefusal | null) {
 describe('iOS pre-compress memory-save refusal controller', () => {
   test('loads pending refusal on sync and dismisses cross-device when memory.changed clears it', async () => {
     const fake = makeFakeSocket(samplePending)
-    const states: CheckpointRefusalState[] = []
     let newChats = 0
     const ctrl = createCheckpointRefusalController({
       getSocket: () => fake.socket,
-      onState: next => states.push(next),
+      onState: () => {},
       onNewChat: () => {
         newChats += 1
       }
@@ -87,7 +81,7 @@ describe('iOS pre-compress memory-save refusal controller', () => {
 
   test('Compact & continue sets settled notice (auto-resume vs needsResend), guards double-tap, and clears on send', async () => {
     const fake = makeFakeSocket(samplePending)
-    const deferred: { resolve: ((value: { ok: true; choice: CheckpointChoice; resumed: boolean; needsResend?: boolean }) => void) | null } = { resolve: null }
+    const deferred: { resolve: ((value: ChooseResult) => void) | null } = { resolve: null }
     fake.setChoose(
       () =>
         new Promise(resolve => {
@@ -176,7 +170,6 @@ import { createElement } from 'react'
 import * as ReactJsxRuntime from 'react/jsx-runtime'
 import * as ReactJsxDevRuntime from 'react/jsx-dev-runtime'
 import { renderToStaticMarkup } from 'react-dom/server'
-
 mock.module('react', () => React)
 const iosReactDir = resolve(process.cwd(), 'ios/node_modules/react')
 if (existsSync(iosReactDir)) {
@@ -185,15 +178,9 @@ if (existsSync(iosReactDir)) {
   mock.module(resolve(iosReactDir, 'jsx-dev-runtime.js'), () => ReactJsxDevRuntime)
 }
 const host = tag => ({ children, testID }) => createElement(tag, testID ? { 'data-testid': testID } : undefined, children)
-mock.module('react-native', () => ({
-  Pressable: host('rn-pressable'),
-  Text: host('rn-text'),
-  View: host('rn-view'),
-  useColorScheme: () => 'light'
-}))
+mock.module('react-native', () => ({ Pressable: host('rn-pressable'), Text: host('rn-text'), View: host('rn-view'), useColorScheme: () => 'light' }))
 mock.module('expo-secure-store', () => ({ getItemAsync: async () => null, setItemAsync: async () => {}, deleteItemAsync: async () => {} }))
 mock.module('@react-native-async-storage/async-storage', () => ({ default: { getItem: async () => null, setItem: async () => {}, removeItem: async () => {} } }))
-
 const { CheckpointRefusalCard } = await import(resolve(process.cwd(), 'ios/src/memory/checkpoint-refusal-card.tsx'))
 const pending = { botId: 'bot-1', chatId: 'chat-1', pieceKey: 'k1', refusalCount: 2, singleMessage: true, pieceAt: null, messagesBack: 41, usedTwoModels: true, firstRefusedAt: 1, lastRefusedAt: 2 }
 const card = renderToStaticMarkup(createElement(CheckpointRefusalCard, { pending, settled: null, busy: null, error: '', onChoose: () => {} }))
