@@ -1,17 +1,17 @@
-/** Unit tests for pageSheet keyboard overlap math, bounded answer input height, single-send locks,
- *  store hook dependencies, answered-elsewhere notices, and 44 pt touch targets. */
+/** Unit tests for pageSheet keyboard inset math, bounded answer input height, single-send locks,
+ *  shared keyboard helper reuse, store hook dependencies, answered-elsewhere notices, and 44 pt touch targets. */
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { answerInputMaxHeight, sheetKeyboardOverlap } from '../../ios/src/threads/sheet-keyboard'
+import { answerInputMaxHeight, sheetKeyboardInset } from '../../ios/src/threads/sheet-keyboard'
 
-describe('pageSheet keyboard overlap and bounded answer input geometry', () => {
-  test('computes exact overlap on Folded Duo, iPhone, centered iPad pageSheet, and mid-slide fallback', () => {
-    expect(sheetKeyboardOverlap(678, null)).toBe(0)
-    expect(sheetKeyboardOverlap(678, { height: 318, screenY: 360 }, { y: 24, height: 654 })).toBe(318)
-    expect(sheetKeyboardOverlap(678, { height: 318, screenY: 360 }, { y: 678, height: 654 })).toBe(318)
-    expect(sheetKeyboardOverlap(1024, { height: 324, screenY: 700 }, { y: 140, height: 744 })).toBe(184)
-    expect(sheetKeyboardOverlap(1024, { height: 324, screenY: 920 }, { y: 140, height: 744 })).toBe(0)
+describe('pageSheet keyboard inset and bounded answer input geometry', () => {
+  test('computes exact inset on Folded Duo, iPhone, centered iPad pageSheet, and mid-slide fallback', () => {
+    expect(sheetKeyboardInset(678, 0)).toBe(0)
+    expect(sheetKeyboardInset(678, 318, { y: 24, height: 654 })).toBe(318)
+    expect(sheetKeyboardInset(678, 318, { y: 678, height: 654 })).toBe(318)
+    expect(sheetKeyboardInset(1024, 324, { y: 140, height: 744 })).toBe(184)
+    expect(sheetKeyboardInset(1024, 100, { y: 140, height: 744 })).toBe(0)
   })
 
   test('bounds multiline input height on Folded Duo at default and AX5 so pinned footer stays visible', () => {
@@ -27,7 +27,7 @@ describe('pageSheet keyboard overlap and bounded answer input geometry', () => {
 })
 
 describe('PR #303 sheet single-send, keyboard, store hook, and 44 pt touch target contracts', () => {
-  test('enforces pinned footer, keyboard dismissal, single-send locks, store hook deps, and 44 pt hit targets', () => {
+  test('uses shared ui/use-keyboard-height, pins footer, enforces single-send locks, store hook deps, and 44 pt hit targets', () => {
     const read = (p: string) => readFileSync(resolve(process.cwd(), p), 'utf8')
     const answerSrc = read('ios/src/threads/answer-work-sheet.tsx')
     const stopSrc = read('ios/src/threads/stop-thread-sheet.tsx')
@@ -36,9 +36,11 @@ describe('PR #303 sheet single-send, keyboard, store hook, and 44 pt touch targe
     const pillSrc = read('ios/src/threads/task-dock-pill.tsx')
     const lineSrc = read('ios/src/threads/thread-line.tsx')
 
+    expect(answerSrc).toContain("from '../ui/use-keyboard-height'")
+    expect(answerSrc).toContain('useKeyboardHeight(true)')
+    expect(answerSrc).toContain('{...KEYBOARD_SCROLL_PROPS}')
     expect(answerSrc).toContain('allowSwipeDismissal={!busy}')
     expect(answerSrc).toContain('if (busyRef.current) return')
-    expect(answerSrc).toContain('keyboardDismissMode="on-drag"')
     expect(answerSrc).toContain('testID="answer-keyboard-done"')
     expect(answerSrc).toContain('testID="answer-work-stale-notice"')
     expect(answerSrc.indexOf('</ScrollView>')).toBeLessThan(answerSrc.indexOf('testID="answer-work-footer"'))

@@ -1,7 +1,8 @@
 /** Native pageSheet for answering a worker or delegated task's `needs_oscar` question directly from the dock or view.
- *  Pins Cancel/Send above the software keyboard, bounds multiline input height, guards single-send, and notices external answers. */
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Keyboard, Modal, Pressable, ScrollView, TextInput, View } from 'react-native'
+ *  Uses shared `useKeyboardHeight` + `KEYBOARD_SCROLL_PROPS`, pins Cancel/Send above the keyboard, bounds multiline
+ *  input height, guards single-send, and notices external answers without wiping the draft. */
+import { type ComponentRef, useCallback, useEffect, useRef, useState } from 'react'
+import { Keyboard, Modal, Pressable, ScrollView, TextInput, useWindowDimensions, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { messageOf } from '../../../shared/client/socket'
 import type { WorkSummary } from '../../../shared/work-schema'
@@ -9,10 +10,10 @@ import { CloseIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { MOBILE_SCALE, radius } from '../ui/tokens'
+import { KEYBOARD_SCROLL_PROPS, useKeyboardHeight } from '../ui/use-keyboard-height'
 import { duoSafeSheetPadding, THREAD_TYPE_CAPS } from './dock-pill'
-import { answerInputMaxHeight } from './sheet-keyboard'
+import { answerInputMaxHeight, type SheetWindowFrame, sheetKeyboardInset } from './sheet-keyboard'
 import { answerWork, useWaitingWork, useWorkLoaded } from './store'
-import { useSheetKeyboard } from './use-sheet-keyboard'
 
 export interface AnswerWorkSheetProps {
   work: WorkSummary | null
@@ -58,12 +59,28 @@ const ACTION_BTN = { minHeight: 44, borderRadius: radius.md, alignItems: 'center
 function AnswerWorkBody({ work, title, busy, busyRef, showSeq, setSending, onClose }: BodyProps) {
   const theme = useTheme()
   const pad = duoSafeSheetPadding(useSafeAreaInsets())
+  const { height: windowHeight, fontScale } = useWindowDimensions()
+  const keyboardHeight = useKeyboardHeight(true)
   const waitingWork = useWaitingWork()
   const workLoaded = useWorkLoaded()
-  const { rootRef, measureSheet, keyboardOverlap, sheetHeight, fontScale } = useSheetKeyboard(showSeq)
+  const [sheetFrame, setSheetFrame] = useState<SheetWindowFrame | null>(null)
   const [answer, setAnswer] = useState('')
   const [error, setError] = useState('')
+  const rootRef = useRef<ComponentRef<typeof View>>(null)
 
+  const measureSheet = useCallback(() => {
+    rootRef.current?.measureInWindow((_x: number, y: number, _w: number, height: number) => {
+      if (height > 0) setSheetFrame(prev => (prev && Math.abs(prev.y - y) < 1 && Math.abs(prev.height - height) < 1 ? prev : { y, height }))
+    })
+  }, [])
+
+  useEffect(() => {
+    const timer = setTimeout(measureSheet, 80)
+    return () => clearTimeout(timer)
+  }, [showSeq, keyboardHeight, measureSheet])
+
+  const keyboardOverlap = sheetKeyboardInset(windowHeight, keyboardHeight, sheetFrame)
+  const sheetHeight = sheetFrame?.height && sheetFrame.height > 100 ? sheetFrame.height : windowHeight
   const inputMaxHeight = answerInputMaxHeight({ sheetHeight, keyboardOverlap, fontScale })
   const answeredElsewhere = workLoaded && !busy && !Object.values(waitingWork).some(item => item.id === work.id)
   const canSubmit = !busy && answer.trim().length > 0
@@ -103,7 +120,7 @@ function AnswerWorkBody({ work, title, busy, busyRef, showSeq, setSending, onClo
         </Pressable>
       </View>
 
-      <ScrollView testID="answer-work-scroll" style={{ flex: 1 }} alwaysBounceVertical keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled" contentContainerStyle={{ ...hPad, paddingVertical: 14, gap: 12 }}>
+      <ScrollView testID="answer-work-scroll" style={{ flex: 1 }} alwaysBounceVertical {...KEYBOARD_SCROLL_PROPS} contentContainerStyle={{ ...hPad, paddingVertical: 14, gap: 12 }}>
         {answeredElsewhere ? (
           <View testID="answer-work-stale-notice" style={{ borderRadius: radius.md, borderWidth: 1, borderColor: theme.hairline, backgroundColor: theme.card, paddingHorizontal: 12, paddingVertical: 10 }}>
             <AppText variant="preview" color={theme.mutedForeground} maxFontSizeMultiplier={1.5}>
