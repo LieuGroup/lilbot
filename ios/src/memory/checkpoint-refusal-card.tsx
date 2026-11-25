@@ -10,9 +10,10 @@ import {
   checkpointSettledText
 } from '../../../shared/client/memory/checkpoint-refusal-copy'
 import type { CheckpointChoice, MemoryCheckpointRefusal } from '../../../shared/memory-schema'
+import { DYNAMIC_TYPE_CAPS } from '../ui/dynamic-type'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
-import { radius } from '../ui/tokens'
+import { MOBILE_SCALE, radius } from '../ui/tokens'
 import { type SettledCheckpointChoice, useCheckpointRefusal } from './use-checkpoint-refusal'
 
 export interface CheckpointRefusalCardProps {
@@ -34,16 +35,16 @@ export function CheckpointRefusalCard({ pending, settled, busy, error, onChoose 
         accessibilityRole="text"
         accessibilityLiveRegion="polite"
         style={{
-          marginTop: 8,
+          marginTop: 10,
           borderRadius: radius.md,
           borderWidth: 1,
           borderColor: theme.hairline,
           backgroundColor: theme.card,
-          paddingHorizontal: 12,
-          paddingVertical: 10
+          paddingHorizontal: 14,
+          paddingVertical: 12
         }}
       >
-        <AppText variant="preview" color={theme.mutedForeground}>
+        <AppText variant="preview" color={theme.mutedForeground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowPreview} style={MOBILE_SCALE.chat.statusLine}>
           {checkpointSettledText(settled.needsResend)}
         </AppText>
       </View>
@@ -58,36 +59,36 @@ export function CheckpointRefusalCard({ pending, settled, busy, error, onChoose 
       testID="checkpoint-refusal-card"
       accessibilityLabel={title}
       style={{
-        marginTop: 8,
+        marginTop: 10,
         borderRadius: radius.lg,
         borderWidth: 1,
         borderColor: theme.border,
         backgroundColor: theme.card,
-        paddingHorizontal: 14,
-        paddingVertical: 12,
-        gap: 10
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+        gap: 12
       }}
     >
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', columnGap: 8, rowGap: 4 }}>
-        <AppText variant="meta" style={{ fontFamily: 'Inter_600SemiBold', flexShrink: 1 }}>
+        <AppText variant="name" maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowName} style={[MOBILE_SCALE.roster.rowName, { fontFamily: 'Inter_600SemiBold', flexShrink: 1 }]}>
           {title}
         </AppText>
-        <AppText variant="meta" color={theme.mutedForeground}>
+        <AppText variant="preview" color={theme.mutedForeground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.sectionHeader} style={MOBILE_SCALE.chat.statusLine}>
           {CHECKPOINT_CARD_STATUS}
         </AppText>
       </View>
 
-      <AppText variant="preview" color={theme.foreground}>
+      <AppText variant="preview" color={theme.foreground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowPreview} style={MOBILE_SCALE.roster.rowPreview}>
         {checkpointRefusalBody(pending)}
       </AppText>
 
       {error ? (
-        <AppText testID="checkpoint-refusal-error" variant="meta" color={theme.destructive}>
+        <AppText testID="checkpoint-refusal-error" variant="preview" color={theme.destructive} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowPreview} style={MOBILE_SCALE.chat.statusLine}>
           {error}
         </AppText>
       ) : null}
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
         <Pressable
           testID="checkpoint-keep-going"
           disabled={disabled}
@@ -95,9 +96,9 @@ export function CheckpointRefusalCard({ pending, settled, busy, error, onChoose 
           accessibilityRole="button"
           accessibilityState={{ disabled }}
           style={({ pressed }) => ({
-            minHeight: 44,
-            paddingHorizontal: 14,
-            paddingVertical: 10,
+            minHeight: 46,
+            paddingHorizontal: 16,
+            paddingVertical: 11,
             borderRadius: radius.md,
             backgroundColor: theme.foreground,
             justifyContent: 'center',
@@ -105,7 +106,7 @@ export function CheckpointRefusalCard({ pending, settled, busy, error, onChoose 
             opacity: disabled ? 0.5 : pressed ? 0.78 : 1
           })}
         >
-          <AppText variant="name" color={theme.background}>
+          <AppText variant="name" color={theme.background} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.modelPill} style={MOBILE_SCALE.roster.rowName}>
             {busy === 'skip_piece' ? 'Compacting…' : CHECKPOINT_KEEP_GOING_LABEL}
           </AppText>
         </Pressable>
@@ -117,9 +118,9 @@ export function CheckpointRefusalCard({ pending, settled, busy, error, onChoose 
           accessibilityRole="button"
           accessibilityState={{ disabled }}
           style={({ pressed }) => ({
-            minHeight: 44,
-            paddingHorizontal: 14,
-            paddingVertical: 10,
+            minHeight: 46,
+            paddingHorizontal: 16,
+            paddingVertical: 11,
             borderRadius: radius.md,
             borderWidth: 1,
             borderColor: theme.border,
@@ -129,7 +130,7 @@ export function CheckpointRefusalCard({ pending, settled, busy, error, onChoose 
             opacity: disabled ? 0.5 : pressed ? 0.72 : 1
           })}
         >
-          <AppText variant="name" color={theme.foreground}>
+          <AppText variant="name" color={theme.foreground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.modelPill} style={MOBILE_SCALE.roster.rowName}>
             {busy === 'new_session' ? 'Starting…' : CHECKPOINT_NEW_SESSION_LABEL}
           </AppText>
         </Pressable>
