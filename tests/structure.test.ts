@@ -161,3 +161,23 @@ test('connections work for every engine and sit below the bots: no HTTP, bots, s
     ...crossings('server/bots', 'server/connections')
   ]).toEqual([])
 })
+
+test('notifications are engine-neutral and sit below HTTP and bots: no HTTP, bots, system, engines, work, goals, threads, routines or devices; nothing below imports them', () => {
+  expect([
+    ...crossings('server/notifications', 'server/http'),
+    ...crossings('server/notifications', 'server/bots'),
+    ...crossings('server/notifications', 'server/system'),
+    ...crossings('server/notifications', 'server/engines'),
+    ...crossings('server/notifications', 'server/work'),
+    ...crossings('server/notifications', 'server/goals'),
+    ...crossings('server/notifications', 'server/threads'),
+    ...crossings('server/notifications', 'server/routines'),
+    ...crossings('server/notifications', 'server/devices'),
+    ...crossings('server/bots', 'server/notifications'),
+    ...crossings('server/work', 'server/notifications'),
+    ...crossings('server/goals', 'server/notifications'),
+    ...crossings('server/devices', 'server/notifications'),
+    ...crossings('server/history', 'server/notifications'),
+    ...crossings('server/memory', 'server/notifications')
+  ]).toEqual([])
+})

@@ -34,7 +34,9 @@ export function combineTurnNotes(...sources: (TurnNotes | undefined)[]): TurnNot
 }
 
 export interface ConversationHooks {
+  onTurnStarted?: (botId: string, chatId: string) => void
   onTurnCompleted?: (botId: string, chatId: string, userText: string, assistantText: string) => void
+  onTurnFinished?: (botId: string, chatId: string, event: Extract<ChatEvent, { type: 'turn.finished' }>, key?: string) => void
   onCompacted?: (botId: string, chatId: string) => void
 }
 
@@ -178,6 +180,6 @@ export class BotConversations {
     const replay = this.turns.prepareEvent(botId, chatId, event, key)
     this.history?.record(botId, chatId, event, key)
     this.sessions.noteContextFromEvent(botId, chatId, event)
-    this.turns.onEvent(botId, chatId, event, replay)
+    this.turns.onEvent(botId, chatId, event, replay, key)
   }
 }

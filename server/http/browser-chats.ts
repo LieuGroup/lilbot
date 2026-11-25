@@ -22,7 +22,8 @@ export class BrowserChats {
     private activity?: ActivityService,
     private threads?: ThreadService,
     private attachments?: AttachmentService,
-    private onRead?: () => void
+    private onRead?: () => void,
+    private onView?: (botId: string) => () => void
   ) {}
 
   closeChat(chatId: string) {
@@ -70,7 +71,14 @@ export class BrowserChats {
     this.chats.get(chatId)?.close()
     this.chats.set(chatId, chat)
     this.views.get(chatId)?.()
-    if (this.activity) this.views.set(chatId, this.activity.view(chat.snapshot.botId))
+    const stopActivity = this.activity?.view(chat.snapshot.botId)
+    const stopNotify = this.onView?.(chat.snapshot.botId)
+    if (stopActivity || stopNotify) {
+      this.views.set(chatId, () => {
+        stopActivity?.()
+        stopNotify?.()
+      })
+    }
     afterResponse(() => {
       responded = true
       for (const data of early) forward(data)

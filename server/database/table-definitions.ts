@@ -101,3 +101,18 @@ export const SESSION_GRANT_TABLES = `CREATE TABLE IF NOT EXISTS session_grants(i
 /** Schema step 42: one small preview row per bot, written in the same transaction as qualifying live events
  *  and backfilled once from `history_items` for bots without a row. Repeatable. */
 export const HISTORY_PREVIEW_TABLE = `CREATE TABLE IF NOT EXISTS history_previews(bot TEXT PRIMARY KEY, who TEXT NOT NULL CHECK(who IN ('user', 'bot')), text TEXT NOT NULL, at INTEGER NOT NULL, session TEXT NOT NULL, last_turn_id TEXT);`
+
+/** Schema step 43: notifications — per-device push endpoints, per-device/per-bot preferences, and durable delivery
+ *  deduplication. Tokens stay in this table (never returned to browsers or bots). Repeatable. */
+export const NOTIFICATION_TABLES = `CREATE TABLE IF NOT EXISTS notification_endpoints(device_id TEXT NOT NULL, channel TEXT NOT NULL CHECK(channel IN ('apns', 'apns_sandbox', 'test')),
+     token TEXT NOT NULL, bundle_id TEXT NOT NULL DEFAULT '', enabled INTEGER NOT NULL DEFAULT 1, disabled_reason TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+     PRIMARY KEY(device_id, channel));
+   CREATE INDEX IF NOT EXISTS notification_endpoints_active ON notification_endpoints(enabled) WHERE enabled = 1;
+   CREATE TABLE IF NOT EXISTS notification_device_prefs(device_id TEXT PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 1, show_preview INTEGER NOT NULL DEFAULT 0,
+     replies INTEGER NOT NULL DEFAULT 1, needs_answer INTEGER NOT NULL DEFAULT 1, turn_failed INTEGER NOT NULL DEFAULT 1, work_done INTEGER NOT NULL DEFAULT 1,
+     deploy_failed INTEGER NOT NULL DEFAULT 1, updated_at INTEGER NOT NULL);
+   CREATE TABLE IF NOT EXISTS notification_bot_prefs(bot_id TEXT PRIMARY KEY, muted INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL);
+   CREATE TABLE IF NOT EXISTS notification_deliveries(device_id TEXT NOT NULL, dedupe_key TEXT NOT NULL, kind TEXT NOT NULL, bot_id TEXT, at INTEGER NOT NULL, status TEXT NOT NULL,
+     PRIMARY KEY(device_id, dedupe_key));
+   CREATE INDEX IF NOT EXISTS notification_deliveries_bot ON notification_deliveries(device_id, bot_id, kind, at);
+   CREATE INDEX IF NOT EXISTS notification_deliveries_at ON notification_deliveries(at);`

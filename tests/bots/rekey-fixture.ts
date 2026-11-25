@@ -70,6 +70,8 @@ export function createRekeyFixture(root: string) {
   db.query('INSERT INTO bot_creations VALUES (?)').run(OLD_ID)
   db.query('INSERT INTO bot_context VALUES (?, ?, 500, 100000)').run(OLD_ID, 'chat-main-1')
   db.query('INSERT INTO bot_activity VALUES (?, 1)').run(OLD_ID)
+  db.query('INSERT INTO notification_bot_prefs VALUES (?, 1, 1000)').run(OLD_ID)
+  db.query("INSERT INTO notification_deliveries VALUES ('dev-1', 'work:needs_answer:wi-1:1', 'needs_answer', ?, 1000, 'sent')").run(OLD_ID)
 
   const memberItem = memberItemId(GROUP_ID, OLD_ID)
   const activity = new ActivityStore(db)

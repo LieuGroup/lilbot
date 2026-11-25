@@ -65,7 +65,9 @@ export const PLAIN_TARGETS: readonly PlainTarget[] = [
   { table: 'mcp_connections', column: 'added_by' },
   { table: 'connection_sign_in_cards', column: 'bot_id' },
   { table: 'session_grants', column: 'bot_id' },
-  { table: 'session_grant_chats', column: 'bot_id' }
+  { table: 'session_grant_chats', column: 'bot_id' },
+  { table: 'notification_bot_prefs', column: 'bot_id' },
+  { table: 'notification_deliveries', column: 'bot_id' }
 ]
 
 export const waitHash = (botId: string, threadIdsJson: string) =>

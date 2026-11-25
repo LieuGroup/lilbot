@@ -15,6 +15,7 @@ interface GoalHost {
   waiting(botId: string, goalId: string, key: string, on: boolean): void
   /** A notice for the goal's bot, delivered once as a hidden turn in its main conversation (`id` keeps it once). */
   tell(id: string, goal: Goal, prompt: string): void
+  onWaiting?(goal: StoredGoal, event: number): void
   changed(): void
 }
 
@@ -185,7 +186,10 @@ export class GoalService {
 
   /** Once a change is saved: the bot waits for Oscar while a proposal does, and the push to the screens. */
   settle(waited: boolean, goal: StoredGoal, event: number) {
-    if (!waited && goal.waitsForOscar) this.host.waiting(goal.botId, goal.id, `ask-${event}`, true)
+    if (!waited && goal.waitsForOscar) {
+      this.host.waiting(goal.botId, goal.id, `ask-${event}`, true)
+      this.host.onWaiting?.(goal, event)
+    }
     if (waited && !goal.waitsForOscar) this.host.waiting(goal.botId, goal.id, `end-${event}`, false)
     this.host.changed()
   }

@@ -153,7 +153,7 @@ test('full re-key covers every table and all 6 composite shapes, passes schema-w
  *  and guarantees every re-keyed table has >= 1 row in createRekeyFixture so scanEveryTableColumn never skips it silently. */
 test('schema-wide guard: every migration table and bot-keyed column is classified for re-key and populated in the fixture', () => {
   const BOT_FREE_TABLES = new Set(
-    'bot_delete_defaults bot_imports computer_attempt_devices computer_attempts computer_codes computer_nonces computer_payloads computers devices engine_skills goal_events main_computer routine_chats routine_run_transcripts sections skill_origins webhook_chats webhook_events webhook_run_transcripts'.split(
+    'bot_delete_defaults bot_imports computer_attempt_devices computer_attempts computer_codes computer_nonces computer_payloads computers devices engine_skills goal_events main_computer notification_device_prefs notification_endpoints routine_chats routine_run_transcripts sections skill_origins webhook_chats webhook_events webhook_run_transcripts'.split(
       ' '
     )
   )

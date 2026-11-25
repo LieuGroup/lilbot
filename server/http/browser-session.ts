@@ -10,6 +10,7 @@ import type { AddThisComputer } from '../computers/add-this-computer'
 import type { DeviceService } from '../devices/device-service'
 import type { GoalBoard } from '../goals/goal-board'
 import type { LibraryService } from '../library/library-service'
+import type { NotificationService } from '../notifications/notification-service'
 import type { RoutineService } from '../routines/routine-service'
 import type { WebhookService } from '../webhooks/webhook-service'
 import type { WorkBoard } from '../work/work-board'
@@ -17,10 +18,15 @@ import { boardHandlers } from './board-handlers'
 import { type AfterResponse, BrowserChats } from './browser-chats'
 import { computerHandlers } from './computer-handlers'
 import { type BrowserConnections, connectionHandlers } from './connection-handlers'
+import { createSessionNotifications } from './notification-handlers'
 
 function requireService<T>(service: T | undefined, message: string): T {
   if (!service) throw new LilBotError('unavailable', message)
   return service
+}
+const ok = async (run: () => void) => {
+  run()
+  return { ok: true as const }
 }
 
 /** One handler per protocol method, with that method's checked params and its result type. A
@@ -30,6 +36,7 @@ export type Handlers = { [M in Method]: (params: z.output<(typeof methods)[M]>, 
 export class BrowserSession {
   private chats: BrowserChats
   private sessionId = crypto.randomUUID()
+  private sessionNotif = createSessionNotifications(() => this.notifications, this.sessionId)
 
   constructor(
     private bots: BotService,
@@ -47,9 +54,10 @@ export class BrowserSession {
     private devices?: DeviceService,
     private work?: WorkBoard,
     private webhooks?: WebhookService,
-    private goals?: GoalBoard
+    private goals?: GoalBoard,
+    private notifications?: NotificationService
   ) {
-    this.chats = new BrowserChats(bots, sendFrame, activity, threads, attachments, () => this.connections?.reconcile?.())
+    this.chats = new BrowserChats(bots, sendFrame, activity, threads, attachments, () => this.connections?.reconcile?.(), this.sessionNotif.onView)
   }
 
   private skills = () => requireService(this.bots.skills, 'Skills are unavailable.')
@@ -74,8 +82,10 @@ export class BrowserSession {
       () => requireService(this.addThis, 'Computers unavailable.'),
       () => requireService(this.devices, 'Devices are unavailable.'),
       () => this.addThis?.helperUrl,
-      this.sessionId
+      this.sessionId,
+      this.sessionNotif.bindDevice
     ),
+    ...this.sessionNotif.handlers,
     'skills.list': ({ botId }) => this.skills().list(botId),
     'skills.read': ({ botId, name }) => this.skills().read(botId, name),
     'skills.setEnabled': ({ botId, name, enabled }) => this.skills().setEnabled(botId, name, enabled),
@@ -110,7 +120,10 @@ export class BrowserSession {
         ...roster.get(bot.id)
       }))
     },
-    'activity.setUnread': ({ botId, unread }) => setUnread(this.bots, this.activity, botId, unread),
+    'activity.setUnread': async ({ botId, unread }) => {
+      if (!unread) this.sessionNotif.markRead(botId)
+      return setUnread(this.bots, this.activity, botId, unread)
+    },
     'bots.get': ({ botId }) => this.bots.getBot(botId),
     'bots.create': input => this.bots.createBot(input),
     'bots.update': input => this.bots.updateBot(input),
@@ -119,30 +132,19 @@ export class BrowserSession {
     'sections.list': async () => this.bots.listSections(),
     'sections.create': async ({ name }) => this.bots.createSection(name),
     'sections.rename': async ({ sectionId, name }) => this.bots.renameSection(sectionId, name),
-    'sections.delete': async ({ sectionId }) => {
-      this.bots.deleteSection(sectionId)
-      return { ok: true }
-    },
+    'sections.delete': ({ sectionId }) => ok(() => this.bots.deleteSection(sectionId)),
     'models.list': params => this.bots.listModels(params),
     'memory.list': ({ botId }) => this.bots.listMemory(botId),
     'memory.write': input => this.bots.writeMemory(input),
-    'memory.forget': async ({ factId }) => {
-      this.bots.forgetMemory(factId)
-      return { ok: true }
-    },
-    'memory.restore': async ({ factId }) => {
-      this.bots.restoreMemory(factId)
-      return { ok: true }
-    },
-    'memory.pause': async ({ factId, paused }) => {
-      this.bots.pauseMemory(factId, paused)
-      return { ok: true }
-    },
+    'memory.forget': ({ factId }) => ok(() => this.bots.forgetMemory(factId)),
+    'memory.restore': ({ factId }) => ok(() => this.bots.restoreMemory(factId)),
+    'memory.pause': ({ factId, paused }) => ok(() => this.bots.pauseMemory(factId, paused)),
     'memory.connect': ({ botId }) => this.bots.connectMemory(botId),
     'chat.history': async ({ botId, cursor, limit }) => this.chats.history(botId, cursor, limit),
     'chat.open': ({ botId, chatId }, afterResponse) => this.chats.track(afterResponse, onEvent => this.bots.openChat(botId, chatId, onEvent)),
     'chat.new': ({ botId }, afterResponse) => this.chats.track(afterResponse, onEvent => this.bots.newChat(botId, onEvent)),
     'chat.send': async ({ chatId, text, attachmentIds, messageId, deviceId }) => {
+      if (deviceId) this.sessionNotif.bindDevice(deviceId)
       const chat = this.chats.get(chatId)
       await this.connections?.ready(chat.snapshot.botId, chatId)
       const origin = this.devices?.origin(deviceId)
@@ -181,6 +183,7 @@ export class BrowserSession {
 
   close() {
     this.chats.close()
+    this.sessionNotif.close()
   }
 
   private run(name: string, params: unknown, afterResponse: AfterResponse): Promise<unknown> {

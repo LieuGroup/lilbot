@@ -7,6 +7,7 @@ import { botBusyReason } from './app-bot-busy'
 import { createConnections } from './app-connections'
 import { createGoals } from './app-goals'
 import { createMemory } from './app-memory'
+import { createNotifications } from './app-notifications'
 import { createRemoteWorkers, remoteWorkAnswers } from './app-remote-workers'
 import { type AppServicesSettings, createSessionGrants } from './app-session-grants'
 import { createThreads } from './app-threads'
@@ -81,6 +82,7 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
   )
   repeat('computers', 1000, () => computers.tick())
   const devices = createDevices(database, computers, publish)
+  const notif = createNotifications({ database, devices, store, dataDir: DATA_DIR, publish, sender: settings.notificationSender })
   const [routineStore, libraryStore, webhookStore, checkStore, prefs] = [
     new RoutineStore(database),
     new LibraryStore(database),
@@ -123,12 +125,12 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
     history,
     turnNotes: combineTurnNotes(messages, codingSwitch, mem.turnContext),
     memoryContext: mem.turnContext,
-    conversationHooks: mem.conversationHooks(chatKind),
+    conversationHooks: notif.conversationHooks(mem.conversationHooks(chatKind), hiddenChat),
     cleanupBot: botId => {
       history.store.forget(botId)
       remoteWorkers.runner.stopForBot(botId)
       sessionGrants.revokeForBot(botId)
-      for (const s of [devices, routineStore, webhookStore, computers, activity, mem, links, goals, mcp.services, codingSwitch]) s.forgetBot(botId)
+      for (const s of [devices, routineStore, webhookStore, computers, activity, mem, links, goals, mcp.services, codingSwitch, notif.notifications]) s.forgetBot(botId)
     },
     changed: botsChanged,
     memoryChanged,
@@ -152,7 +154,7 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
     stopByChat: (botId, chatId) => remoteWorkers.runner.stopByChat(botId, chatId)
   }))
   const workDeps = { database, engine: engines, store, prefs, bots, ...runs, libraryStore, workspaces, activity, history: history.store, calls, publish, remoteWork, sessionGrants }
-  const { work, links, answers, checks, checkSessions } = createWork(workDeps)
+  const { work, links, answers, checks, checkSessions } = createWork({ ...workDeps, onStatus: notif.onWorkStatus })
   const redirectUri = ACCESS_HOST ? `https://${ACCESS_HOST}${CALLBACK_PATH}` : undefined
   const connBase = { database, dataDir: DATA_DIR, port: PORT, engineToken: token, redirectUri, callbackEnabled: settings.ACCESS_CALLBACK_ENABLED ?? false, t3Enabled }
   const connBots = { engines, store, prefs, bots, activity, history: history.store, hiddenChat, calls, codingSwitch, t3Grants }
@@ -162,7 +164,7 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
   const threadCore = { engine: engines, store, prefs, bots, workspaces, history, activity, threadStore, calls, work: links, callers: webhookRuns.callers, sessionGrants, t3Enabled }
   const { threads, delegation } = createThreads({ ...threadCore, memory, library, root: WORKSPACES_DIR, rootOf, remoteWorkers, publish, botsChanged, memoryChanged })
   const routines = new RoutineService(routineStore, bots, () => publish({ event: 'routines.changed' }), routineSettings(process.env))
-  const { goals, boards } = createGoals({ goalStore: runs.goalStore, work, answers, threads, routines, activity, store, publish, repeat })
+  const { goals, boards } = createGoals({ goalStore: runs.goalStore, work, answers, threads, routines, activity, store, publish, onWaiting: notif.onGoalWaiting, repeat })
   const giveFile = giveFrom(library, calls, threadStore, routineStore, webhookStore, rootOf)
   const core = { ...facts, bots, activity, memory, memoryChanged, history, skills, delegation, work, goals, routines, giveFile, library }
   const changes = new SystemChanges(database)
@@ -192,5 +194,5 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
     ...gates
   })
   const base = { bots, store, skills, library, computers, remoteWorkers, devices, attachments, t3Grants, mcp, system, engineApi, memoryConnection }
-  return { ...base, activity, routines, threads, boards, webhooks, hiddenChat }
+  return { ...base, activity, routines, threads, boards, webhooks, hiddenChat, notifications: notif.notifications }
 }

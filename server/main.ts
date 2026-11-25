@@ -113,7 +113,8 @@ const websocket: WebSocketHandler<SocketData> = {
       devices,
       boards.work,
       webhooks,
-      boards.goals
+      boards.goals,
+      services.notifications
     )
   },
   message(socket, message) {

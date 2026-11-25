@@ -24,7 +24,8 @@ export class ConversationTurnTracker {
   }
 
   /** Queues a visible user send in FIFO order; returns a cancel callback used if the engine rejects the send. */
-  enqueue(botId: string, chatId: string, text: string): () => void {
+  enqueue(botId: string, chatId: string, text: string, startTurn = true): () => void {
+    if (startTurn) this.hooks?.onTurnStarted?.(botId, chatId)
     if (!text.trim()) return () => {}
     const key = this.key(botId, chatId)
     const entry: PendingEntry = { text }
@@ -61,10 +62,14 @@ export class ConversationTurnTracker {
     return false
   }
 
-  onEvent(botId: string, chatId: string, event: ChatEvent, replay = false) {
+  onEvent(botId: string, chatId: string, event: ChatEvent, replay = false, key?: string) {
     const chatKey = this.key(botId, chatId)
+    if (event.type === 'turn.started') {
+      if (!replay) this.hooks?.onTurnStarted?.(botId, chatId)
+      return
+    }
     if (event.type === 'user.message' && event.text.trim()) {
-      this.enqueue(botId, chatId, event.text)
+      this.enqueue(botId, chatId, event.text, false)
       return
     }
     if (event.type !== 'turn.finished') return
@@ -79,6 +84,7 @@ export class ConversationTurnTracker {
     const user = queue?.shift()?.text
     if (queue && !queue.length) this.pending.delete(chatKey)
     if (rowKey) this.rememberRow(rowKey)
+    this.hooks?.onTurnFinished?.(botId, chatId, event, key)
     if (event.status !== 'completed' || !event.text.trim() || !user) return
     this.hooks?.onTurnCompleted?.(botId, chatId, user, event.text)
   }

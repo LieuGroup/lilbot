@@ -55,6 +55,7 @@ server/            The LilBot server (runs on the leader).
   system/            LilBot's own MCP server through which bots operate the app, and the note every bot gets about its system.
   computers/         Computer identities, key registration and durable command requests.
   devices/           Devices (one per browser or app install), what "my computer" means from each, and where each message came from.
+  notifications/     Per-device push registrations, per-device/per-bot settings, deduplication, quiet grouping and pluggable senders.
   database/          LilBot's own SQLite file and its schema steps.
   deploy/            Verified restart, database copies, rollback watchdog and notices.
   engines/           Whatever actually runs the bots.

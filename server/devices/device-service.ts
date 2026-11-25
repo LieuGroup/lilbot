@@ -32,6 +32,10 @@ export class DeviceService {
     return this.view(this.store.touch(deviceId, name, this.now()))
   }
 
+  exists(deviceId: string): boolean {
+    return Boolean(this.store.get(deviceId))
+  }
+
   rename(deviceId: string, name: string): Device {
     if (!this.store.rename(deviceId, name)) throw this.unknown()
     this.changed()

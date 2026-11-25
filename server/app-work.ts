@@ -1,5 +1,4 @@
-/** Builds the work board's service and its checks and connects them to the bots, exchanges, routine runs, activity, history
- *  and browsers; Oscar's side (`WorkBoard`) is built after the exchanges, which it stops and answers through. */
+/** Builds the work board's service and checks and wires them to bots, exchanges, runs, activity, history and browsers. */
 import type { Database } from 'bun:sqlite'
 import type { z } from 'zod'
 import type { BotModel } from '../shared/bot-schema'
@@ -32,7 +31,7 @@ import { WorkAnswers } from './work/work-answers'
 import { differentModel } from './work/work-check-rules'
 import { WorkCheckRunner } from './work/work-check-runner'
 import { WorkLinks } from './work/work-links'
-import { type SessionOrigin, WorkService } from './work/work-service'
+import { type Saved, type SessionOrigin, WorkService } from './work/work-service'
 import { type StoredItem, WorkStore } from './work/work-store'
 
 interface WorkDeps {
@@ -54,11 +53,11 @@ interface WorkDeps {
   /** `LILBOT_REVIEW_MODEL`: what a same-bot check runs on when it differs from the bot's own. */
   reviewModel: BotModel | null
   publish: (frame: EventFrame) => void
+  onStatus?: (saved: Saved) => void
   remoteWork?: { deliver: (threadId: string, runId: string, prompt: string) => boolean; stop: (botId: string, chatId: string) => Promise<unknown> }
   sessionGrants?: AppSessionGrants
 }
 
-/** The line in a conversation that links to the item opened there. */
 const workLine = (item: StoredItem): Extract<ChatItem, { kind: 'tool' }> => ({
   kind: 'tool',
   toolId: `work:${item.id}`,
@@ -160,6 +159,7 @@ export function createWork(deps: WorkDeps) {
     },
     tell: (id, item, prompt, oscar) => answers.queue(id, item, prompt, false, oscar),
     onCheckSettled: checkId => sessionGrants?.revokeCheck(checkId),
+    onStatus: deps.onStatus,
     changed: () => publish({ event: 'work.changed' })
   })
   /** The session a bot's answer or notice goes to: the one it came from (never a synthetic `remote:` id), else its main conversation. */
