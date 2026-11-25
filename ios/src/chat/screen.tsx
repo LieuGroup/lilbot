@@ -43,7 +43,14 @@ export function ChatScreen({ bot, hideHeader = false, headerLeading, showNewSess
   const openMenu = useBotMenuStore(state => state.openMenu)
   const chat = useChat(bot.id)
   const modelPicker = useModelPicker(bot)
-  const send = useCallback((text: string, attachments: Attachment[]) => void chat.send(text, attachments), [chat])
+  const [sendSeq, setSendSeq] = useState(0)
+  const send = useCallback(
+    (text: string, attachments: Attachment[]) => {
+      setSendSeq(seq => seq + 1)
+      void chat.send(text, attachments)
+    },
+    [chat]
+  )
   const newSessionAllowed = canStartNewSession({ connected, ready: chat.ready, botsTabActive: true, selectedId: bot.id })
   const [deviceId, setDeviceId] = useState('')
 
@@ -145,6 +152,8 @@ export function ChatScreen({ bot, hideHeader = false, headerLeading, showNewSess
             chat={chat.view}
             statusLine={statusLine}
             emptyHint={`Send a message to start with ${bot.name}.`}
+            sendSeq={sendSeq}
+            onNewChat={chat.newChat}
             onChangeModel={modelPicker.open}
             renderToolItem={renderToolItem}
           />
