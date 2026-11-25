@@ -130,9 +130,8 @@ export function DuoShell({ inspectorOpen: inspectorOpenProp, onCloseInspector, r
     if (!next.inspectorOpen) closeInspector()
   }, [closeInspector, inspectorActive, sidebarOpen])
 
-  const openSelectedMenu = useCallback(() => {
-    if (selected) openMenu(selected.id)
-  }, [openMenu, selected])
+  const toggleInspector = useCallback(() => setInspectorOpen(open => !open), [])
+  const openSelectedMenu = useCallback(() => { if (selected) openMenu(selected.id) }, [openMenu, selected])
 
   const verticalBarActive = isDuoVerticalBarActive({ surface, verticalBarEdge })
   const hideDuoChatHeader = shouldHideDuoChatHeader({ surface, verticalBarEdge, hasBot: selected !== null })
@@ -145,7 +144,10 @@ export function DuoShell({ inspectorOpen: inspectorOpenProp, onCloseInspector, r
       actions: {
         ...(layout.splitMode && selected
           ? {
-              'bot-avatar': { element: <DuoStripAvatar bot={selected} running={selectedRunning} unread={selectedUnread} onPress={openSelectedMenu} />, hidesSharedBackground: false },
+              'bot-avatar': {
+                element: <DuoStripAvatar bot={selected} running={selectedRunning} unread={selectedUnread} onPress={renderInspector ? toggleInspector : openSelectedMenu} />,
+                hidesSharedBackground: false
+              },
               'bot-menu': { label: `More for ${selected.name}`, onPress: openSelectedMenu }
             }
           : {}),
@@ -155,7 +157,7 @@ export function DuoShell({ inspectorOpen: inspectorOpenProp, onCloseInspector, r
       },
       tintColor: theme.foreground
     })
-  }, [handleToggleSidebar, layout.showSidebarToggle, layout.splitMode, openNewBot, openSelectedMenu, selected, selectedRunning, selectedUnread, showRoster, sidebarLabel, stripScreen, theme.foreground, toggleSearch, verticalBarActive])
+  }, [handleToggleSidebar, layout.showSidebarToggle, layout.splitMode, openNewBot, openSelectedMenu, renderInspector, selected, selectedRunning, selectedUnread, showRoster, sidebarLabel, stripScreen, theme.foreground, toggleInspector, toggleSearch, verticalBarActive])
 
   const useNativeStripHeader = verticalBarActive && verticalBarItems.length > 0
   const stackOptions = useMemo(() => duoVerticalHeaderOptions(verticalBarItems, theme.foreground), [theme.foreground, verticalBarItems])

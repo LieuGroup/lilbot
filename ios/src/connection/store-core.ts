@@ -44,6 +44,7 @@ export interface ConnectionState {
   load: () => Promise<void>
   retryTokenRead: () => Promise<void>
   save: (settings: ServerSettings, options?: SaveConnectionOptions) => Promise<void>
+  disconnect: () => Promise<void>
   setConnected: (connected: boolean) => void
   setDevice: (device: Device) => void
 }
@@ -138,6 +139,19 @@ export function createConnectionStore(deps: { plain: PlainStorage; secret: Secre
         })
         throw new Error(CONNECTION_STORE_MESSAGES.saveTokenFailed)
       }
+    },
+    disconnect: async () => {
+      try {
+        await deps.plain.setItem(SETTINGS_KEY, '')
+      } catch {
+        // Best-effort clear on disconnect.
+      }
+      try {
+        await deps.secret.deleteItem(TOKEN_KEY)
+      } catch {
+        // Best-effort Keychain delete on disconnect.
+      }
+      set({ settings: null, connected: false, device: null, tokenNotice: '', tokenReadFailed: false })
     },
     setConnected: connected => set({ connected }),
     setDevice: device => set({ device })

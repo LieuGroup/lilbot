@@ -2,6 +2,7 @@
  *  never overwrite newer server state. Zero React Native/Expo imports so unit tests run directly on Linux. */
 import { create } from 'zustand'
 import type { Bot, Section } from '../../../shared/bot-schema'
+import { activitySince } from '../../../shared/client/activity/activity-since'
 import { messageOf } from '../../../shared/client/socket'
 
 export interface BotRosterSocket {
@@ -13,6 +14,7 @@ export interface BotRosterSocket {
 export interface BotStore {
   bots: Bot[]
   sections: Section[]
+  since: Record<string, number>
   loaded: boolean
   error: string
   load: () => Promise<void>
@@ -24,6 +26,7 @@ export function createBotStore(getSocket: () => BotRosterSocket | null) {
   return create<BotStore>((set, get) => ({
     bots: [],
     sections: [],
+    since: {},
     loaded: false,
     error: '',
     load: async () => {
@@ -33,15 +36,17 @@ export function createBotStore(getSocket: () => BotRosterSocket | null) {
       try {
         const [bots, sections] = await Promise.all([socket.call('bots.list', {}), socket.call('sections.list', {})])
         if (seq !== loadSeq) return
-        set({ bots, sections, loaded: true, error: '' })
+        const prev = get()
+        set({ bots, sections, since: activitySince(prev.bots, prev.since, bots, Date.now()), loaded: true, error: '' })
       } catch (error) {
         if (seq !== loadSeq) return
         set({ error: messageOf(error) })
       }
     },
     upsert: bot => {
-      const bots = get().bots
-      set({ bots: bots.some(existing => existing.id === bot.id) ? bots.map(existing => (existing.id === bot.id ? bot : existing)) : [...bots, bot] })
+      const prev = get()
+      const bots = prev.bots.some(existing => existing.id === bot.id) ? prev.bots.map(existing => (existing.id === bot.id ? bot : existing)) : [...prev.bots, bot]
+      set({ bots, since: activitySince(prev.bots, prev.since, bots, Date.now()) })
     }
   }))
 }

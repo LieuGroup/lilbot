@@ -1,5 +1,13 @@
 import { describe, expect, test } from 'bun:test'
-import { chatStackAction, indexStackAction, shouldClearSelectionOnChatPop, shouldHideNativeTabBar, shouldPushOnBotSelect, shouldShowNativeBack } from '../../ios/src/duo/stack-sync'
+import {
+  chatStackAction,
+  indexStackAction,
+  isPushedDetailSegments,
+  shouldClearSelectionOnChatPop,
+  shouldHideNativeTabBar,
+  shouldPushOnBotSelect,
+  shouldShowNativeBack
+} from '../../ios/src/duo/stack-sync'
 
 describe('native compact Stack <-> unfolded split synchronization', () => {
   test('pushes compact /chat on initial compact auto-select and on fold with an open bot while focused', () => {
@@ -151,7 +159,7 @@ describe('native compact Stack <-> unfolded split synchronization', () => {
     expect(shouldShowNativeBack('duo-unfolded-landscape', false)).toBe(true)
   })
 
-  test('hides bottom NativeTabs bar while focused in compact Chat on phone and Duo Unfolded Portrait, keeping Folded Duo rail visible', () => {
+  test('hides bottom NativeTabs bar while focused in compact Chat or pushed detail screens on phone and Duo Unfolded Portrait, keeping Folded Duo rail visible', () => {
     expect(shouldHideNativeTabBar('phone', true)).toBe(true)
     expect(shouldHideNativeTabBar('phone', false)).toBe(false)
     expect(shouldHideNativeTabBar('duo-unfolded-portrait', true)).toBe(true)
@@ -159,5 +167,9 @@ describe('native compact Stack <-> unfolded split synchronization', () => {
     expect(shouldHideNativeTabBar('duo-folded', true)).toBe(false)
     expect(shouldHideNativeTabBar('duo-unfolded-landscape', true)).toBe(false)
     expect(shouldHideNativeTabBar('pad', true)).toBe(false)
+    expect(isPushedDetailSegments(['(tabs)', '(bots)', 'bot-details'])).toBe(true)
+    expect(isPushedDetailSegments(['(tabs)', '(settings)', '[section]'])).toBe(true)
+    expect(isPushedDetailSegments(['(tabs)', '(bots)'])).toBe(false)
+    expect(isPushedDetailSegments(['(tabs)', '(settings)'])).toBe(false)
   })
 })

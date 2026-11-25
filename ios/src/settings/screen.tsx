@@ -1,148 +1,71 @@
-/** Settings: the server address and Access token this install talks to, plus connection state.
- *  The token is Oscar's Cloudflare Access JWT, kept in the Keychain; the app sends it on every request. */
-import { useEffect, useState } from 'react'
-import { Keyboard, Pressable, ScrollView, TextInput, View } from 'react-native'
-import { serverUrlError } from '../connection/lilbot'
+/** Settings (`R3-07a`): Server connection card plus registered sections from `sections/index.ts`.
+ *  Feature sections (Computers, future Notifications/Memory, General Delete defaults) live in
+ *  `settings/sections/` so sibling threads register without editing this file. */
+import { Fragment } from 'react'
+import { Pressable, ScrollView } from 'react-native'
 import { useConnectionStore } from '../connection/store'
+import { RowDivider, SectionGroup } from '../ui/grouped-card'
 import { sheetScrollBottomPadding } from '../ui/keyboard-sheet'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
-import { radius } from '../ui/tokens'
-import { useKeyboardHeight } from '../ui/use-keyboard-height'
+import { KEYBOARD_SCROLL_PROPS, useKeyboardHeight } from '../ui/use-keyboard-height'
+import { type SettingsSectionDefinition, visibleSettingsSections } from './sections'
+import { SETTINGS_SECTIONS } from './sections/index'
+import { ServerSettingsCard } from './server-section'
 
-export function SettingsScreen({ onDone }: { onDone?: () => void }) {
+export function SettingsScreen({
+  onDone,
+  onNavigateSection,
+  sections = SETTINGS_SECTIONS
+}: {
+  onDone?: () => void
+  onNavigateSection?: (routeName: string) => void
+  sections?: readonly SettingsSectionDefinition[]
+}) {
   const theme = useTheme()
   const keyboardHeight = useKeyboardHeight()
   const settings = useConnectionStore(state => state.settings)
   const connected = useConnectionStore(state => state.connected)
-  const device = useConnectionStore(state => state.device)
-  const tokenNotice = useConnectionStore(state => state.tokenNotice)
-  const save = useConnectionStore(state => state.save)
-  const [serverUrl, setServerUrl] = useState(settings?.serverUrl ?? '')
-  const [accessToken, setAccessToken] = useState(settings?.accessToken ?? '')
-  const [tokenEdited, setTokenEdited] = useState(false)
-  const [error, setError] = useState('')
-  const [saving, setSaving] = useState(false)
-
-  useEffect(() => {
-    if (!tokenEdited) setAccessToken(settings?.accessToken ?? '')
-  }, [settings?.accessToken, tokenEdited])
-
-  const submit = async () => {
-    const invalid = serverUrlError(serverUrl)
-    if (invalid) {
-      setError(invalid)
-      return
-    }
-    setSaving(true)
-    setError('')
-    try {
-      await save({ serverUrl: serverUrl.trim(), accessToken: accessToken.trim() }, { clearToken: tokenEdited })
-      setTokenEdited(false)
-      onDone?.()
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not save the settings.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const field = {
-    backgroundColor: theme.card,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: theme.input,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontFamily: 'Inter_400Regular',
-    fontSize: 15,
-    color: theme.foreground
-  } as const
+  const hasServer = Boolean(settings?.serverUrl)
+  const navSections = visibleSettingsSections(sections, { hasServer, group: 'navigation' })
+  const inlineSections = visibleSettingsSections(sections, { hasServer, group: 'inline' })
+  const navigate = (routeName: string) => onNavigateSection?.(routeName)
 
   return (
     <ScrollView
+      testID="settings-screen"
       style={{ flex: 1, backgroundColor: theme.background }}
       contentInsetAdjustmentBehavior="automatic"
-      keyboardDismissMode="on-drag"
-      keyboardShouldPersistTaps="handled"
       scrollIndicatorInsets={{ bottom: keyboardHeight }}
-      contentContainerStyle={{ padding: 20, gap: 16, paddingBottom: sheetScrollBottomPadding(24, keyboardHeight) }}
+      contentContainerStyle={{ padding: 16, gap: 20, paddingBottom: sheetScrollBottomPadding(hasServer ? 116 : 40, keyboardHeight) }}
+      {...KEYBOARD_SCROLL_PROPS}
     >
-      <AppText variant="title">Settings</AppText>
+      {!hasServer ? <AppText variant="title">Settings</AppText> : null}
 
-      <View style={{ gap: 6 }}>
-        <AppText variant="meta" color={theme.mutedForeground}>
-          Server address
-        </AppText>
-        <TextInput
-          value={serverUrl}
-          onChangeText={setServerUrl}
-          placeholder="https://lilbot.example.com"
-          placeholderTextColor={theme.mutedForeground}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="url"
-          returnKeyType="done"
-          submitBehavior="blurAndSubmit"
-          onSubmitEditing={() => Keyboard.dismiss()}
-          textContentType="none"
-          style={field}
-        />
-      </View>
+      <ServerSettingsCard onDone={onDone} />
 
-      <View style={{ gap: 6 }}>
-        <AppText variant="meta" color={theme.mutedForeground}>
-          Access token (optional)
-        </AppText>
-        <TextInput
-          testID="access-token-input"
-          value={accessToken}
-          onChangeText={value => {
-            setTokenEdited(true)
-            setAccessToken(value)
-          }}
-          placeholder="Optional on a private network"
-          placeholderTextColor={theme.mutedForeground}
-          autoCapitalize="none"
-          autoCorrect={false}
-          secureTextEntry
-          returnKeyType="done"
-          submitBehavior="blurAndSubmit"
-          onSubmitEditing={() => Keyboard.dismiss()}
-          textContentType="none"
-          style={field}
-        />
-        <AppText variant="meta" color={theme.mutedForeground}>
-          Sign-in through the public address is not supported from the iPhone app yet.
-        </AppText>
-      </View>
-
-      <Pressable onPress={() => void submit()} disabled={saving || !serverUrl.trim()} style={{ backgroundColor: serverUrl.trim() ? theme.foreground : theme.muted, borderRadius: radius.md, paddingVertical: 12, alignItems: 'center' }}>
-        <AppText variant="name" color={serverUrl.trim() ? theme.background : theme.mutedForeground}>
-          {saving ? 'Saving…' : 'Save and connect'}
-        </AppText>
-      </Pressable>
-
-      {error || tokenNotice ? (
-        <AppText variant="meta" color={theme.destructive}>
-          {error || tokenNotice}
-        </AppText>
+      {navSections.length > 0 ? (
+        <SectionGroup title="LilBot">
+          {navSections.map((section, index) => (
+            <Fragment key={section.id}>
+              {index > 0 ? <RowDivider /> : null}
+              <section.Component navigate={navigate} connected={connected} />
+            </Fragment>
+          ))}
+        </SectionGroup>
       ) : null}
 
-      <View style={{ gap: 6, marginTop: 12 }}>
-        <AppText variant="meta" color={theme.mutedForeground}>
-          {connected ? 'Connected' : 'Not connected'}
-          {device ? ` · this device: ${device.name}` : ''}
-        </AppText>
-      </View>
+      {inlineSections.map(section => (
+        <section.Component key={section.id} navigate={navigate} connected={connected} />
+      ))}
 
-      {settings && onDone && (
-        <Pressable onPress={onDone} style={{ marginTop: 8 }}>
+      {hasServer && onDone ? (
+        <Pressable onPress={onDone} style={{ paddingVertical: 8 }}>
           <AppText variant="name" color={theme.foreground}>
             Back
           </AppText>
         </Pressable>
-      )}
+      ) : null}
     </ScrollView>
   )
 }

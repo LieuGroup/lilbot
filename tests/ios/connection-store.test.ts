@@ -183,11 +183,13 @@ describe('iOS connection store keychain resilience and Settings rules', () => {
 
   test('Settings screen and AppGate wire foreground token retry, untouched-token guard, keyboard taps, and ink buttons', () => {
     const screenSrc = readFileSync(resolve(process.cwd(), 'ios/src/settings/screen.tsx'), 'utf8')
+    const serverSrc = readFileSync(resolve(process.cwd(), 'ios/src/settings/server-section.tsx'), 'utf8')
     const layoutSrc = readFileSync(resolve(process.cwd(), 'ios/src/app/_layout.tsx'), 'utf8')
     expect(screenSrc).toContain('keyboardShouldPersistTaps="handled"')
-    expect(screenSrc).toContain('clearToken: tokenEdited')
-    expect(screenSrc).toContain('theme.foreground')
+    expect(serverSrc).toContain('clearToken: tokenEdited')
+    expect(serverSrc).toContain('theme.foreground')
     expect(screenSrc).not.toContain('theme.primary')
+    expect(serverSrc).not.toContain('theme.primary')
     expect(layoutSrc).toContain("AppState.addEventListener('change'")
     expect(layoutSrc).toContain('retryTokenRead')
   })

@@ -16,7 +16,7 @@ import { startNewChat } from '../../chat/use-chat'
 import { useConnectionStore } from '../../connection/store'
 import { computeShellLayout } from '../../duo/layout'
 import { useBotSelection } from '../../duo/selection'
-import { shouldHideNativeTabBar } from '../../duo/stack-sync'
+import { isPushedDetailSegments, shouldHideNativeTabBar } from '../../duo/stack-sync'
 import { useLiveSurface } from '../../duo/use-surface'
 import { ThreadSheetHost } from '../../threads/thread-host'
 import { useTheme } from '../../ui/theme'
@@ -63,7 +63,7 @@ export default function TabsLayout() {
   return (
     <>
       <NativeTabs
-        hidden={shouldHideNativeTabBar(surface, chatFocused)}
+        hidden={shouldHideNativeTabBar(surface, chatFocused || isPushedDetailSegments(segments))}
         minimizeBehavior={layout.tabBarMinimizeBehavior}
         tintColor={theme.foreground}
         iconColor={{ default: theme.mutedForeground, selected: theme.foreground }}
@@ -72,7 +72,7 @@ export default function TabsLayout() {
           <NativeTabs.Trigger.Icon sf={{ default: 'bubble.left.and.bubble.right', selected: 'bubble.left.and.bubble.right.fill' }} />
           <NativeTabs.Trigger.Label>Bots</NativeTabs.Trigger.Label>
         </NativeTabs.Trigger>
-        <NativeTabs.Trigger name="settings">
+        <NativeTabs.Trigger name="(settings)">
           <NativeTabs.Trigger.Icon sf={{ default: 'gearshape', selected: 'gearshape.fill' }} />
           <NativeTabs.Trigger.Label>Settings</NativeTabs.Trigger.Label>
         </NativeTabs.Trigger>
