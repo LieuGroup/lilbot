@@ -1,23 +1,25 @@
 import '../scripts/dev-env'
-/** Live wire-capture check for OSC-112 prompt ownership (`bun run check:prompt`).
- *  Runs on isolated dev Hermes (`dev-` temporary bots only, deleted in `finally`), proving:
- *  1. Default-off baseline creates no prompt file; enabled writes private `0o600` file keyed by `botId`.
- *  2. Antigravity Argon: tool use (`write_file`), mid-turn steering (`session.steer`), HTTP 200, exact wire match.
- *  3. Antigravity Gemini 4 Neon: hidden session completes HTTP 200 with exact owned prompt and zero stock text.
- *  4. Mid-session switch to Anthropic Claude, direct prompt caching (`cacheReadTokens > 0`), real compaction.
- *  5. Fail-safe fallback on missing prompt file, and prompt file removal on bot deletion. */
+/** Live wire-capture check for OSC-112 prompt ownership (`bun run check:prompt`), on isolated dev Hermes with
+ *  temporary `dev-` bots only (deleted in `finally`). Models: Anthropic and OpenAI only, calls spaced 10 s apart.
+ *  1. Default off: a baseline turn writes no prompt file. On: a private `0o600` file keyed by bot id.
+ *  2. Claude: a real file tool call and a mid-turn steer, with the wire system prompt equal to LilBot's file byte for byte.
+ *  3. Mid-session switch to OpenAI, then a hidden routine session on OpenAI: same byte-for-byte wire check.
+ *  4. Direct Claude prompt caching (`cacheReadTokens > 0`) and a real compaction with the owned prompt active.
+ *  5. A missing prompt file falls back and still answers; deleting the bot removes its prompt file.
+ *  Gemini 4 Neon acceptance is skipped: the Google model route is closed on the account. Any 403 or account message
+ *  stops the check at once. */
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { HermesEngine } from '../server/engines/hermes/hermes-engine'
 import { checkCompactionMarker } from './history-compaction'
-import { findForbiddenStockSnippets, nativeProfileOf, readDevUpstreamBaseUrl, sendPromptTurn as sendTurn, setProfileBaseUrl, startWireCaptureProxy } from './prompt-wire-proxy'
+import { findForbiddenStockSnippets, nativeProfileOf, readDevUpstreamBaseUrl, sendPromptTurn, setProfileBaseUrl, startWireCaptureProxy } from './prompt-wire-proxy'
 import { RestartServer, waitFor } from './restart-server'
 
-const SPACE_MS = 5_000
-const ARGON = { provider: 'cliproxyapi', model: 'agy-gemini-4-argon' }
-const NEON = { provider: 'cliproxyapi', model: 'gemini-4-neon' }
+const SPACE_MS = 10_000
 const CLAUDE = { provider: 'cliproxyapi', model: 'anthropic/claude-sonnet-5-5' }
+const OPENAI = { provider: 'cliproxyapi', model: 'openai/gpt-6.1-terra' }
 const INSTRUCTIONS = 'You are a concise verification assistant. Follow the user exactly.'
+const ACCOUNT_STOP = /\b403\b|disabled in this account|violation of terms|unknown provider/i
 
 let failures = 0
 function check(label: string, ok: boolean, detail = '') {
@@ -30,154 +32,140 @@ const proxy = startWireCaptureProxy(upstream)
 const offServer = await RestartServer.create('lilbot-prompt-off', { LILBOT_PROMPT_OWNERSHIP: '0' })
 const server = await RestartServer.create('lilbot-prompt', { LILBOT_PROMPT_OWNERSHIP: '1' })
 
+function stopOnAccountProblem(from = 0, finished?: { type?: string; message?: string; text?: string }) {
+  const bad = proxy.records.slice(from).find(r => r.status === 403)
+  const text = finished?.type === 'error' ? `${finished.message ?? ''} ${finished.text ?? ''}` : ''
+  if (bad || ACCOUNT_STOP.test(text)) throw new Error(`Stopped: upstream refused with an account or 403 answer (${bad ? `HTTP ${bad.status}` : text.trim().slice(0, 120)}).`)
+}
+
+async function turn(s: RestartServer, botId: string, chatId: string, text: string) {
+  await Bun.sleep(SPACE_MS)
+  const from = proxy.records.length
+  const result = await sendPromptTurn(s, botId, chatId, text)
+  stopOnAccountProblem(from, result.finished)
+  return { ...result, wire: proxy.records.slice(from).filter(r => r.toolCount > 0) }
+}
+
+const exact = (wire: { status: number; systemText: string }[], prompt: string) =>
+  wire.length > 0 && wire.every(r => r.status === 200 && r.systemText === prompt && findForbiddenStockSnippets(r.systemText).length === 0)
+
 try {
-  // 0. Baseline (default off): no prompt file written; capture baseline wire prompt size.
   await offServer.start()
   await offServer.connect()
-  const beforeBot = await offServer.call('bots.create', { name: `PromptBefore ${Date.now().toString(36)}`, function: 'Before probe', instructions: INSTRUCTIONS, model: CLAUDE })
-  const beforeNative = nativeProfileOf(offServer.root, beforeBot.id)
+  const before = await offServer.call('bots.create', { name: `PromptBefore ${Date.now().toString(36)}`, function: 'Before probe', instructions: INSTRUCTIONS, model: CLAUDE })
+  const beforeNative = nativeProfileOf(offServer.root, before.id)
   offServer.natives.add(beforeNative)
   await setProfileBaseUrl(beforeNative, proxy.url)
-  const beforeChat = await offServer.call('chat.open', { botId: beforeBot.id })
-  const beforeRes = await sendTurn(offServer, beforeBot.id, beforeChat.chatId, 'Reply with exactly: BEFORE_OK')
-  const beforeWire = proxy.records.find(r => r.toolCount > 0)
-  check('before (default off): baseline turn completes', beforeRes.finished?.type === 'turn.finished', `${beforeWire?.systemText.length ?? 0} chars`)
-  check('before (default off): no owned prompt file created', !existsSync(join(offServer.root, 'prompts', `${beforeBot.id}.txt`)))
+  const b = await turn(offServer, before.id, (await offServer.call('chat.open', { botId: before.id })).chatId, 'Reply with exactly: BEFORE_OK')
+  check('default off: baseline turn answers', b.finished?.type === 'turn.finished', `${b.wire[0]?.systemText.length ?? 0} chars on the wire`)
+  check('default off: no prompt file written', !existsSync(join(offServer.root, 'prompts', `${before.id}.txt`)))
+  const beforeSystem = b.wire[0]?.systemText ?? ''
   await offServer.cleanup()
 
-  // 1. Owned prompt enabled on Antigravity Argon: tool use + mid-turn steering + wire byte parity.
-  proxy.records.length = 0
   await server.start()
   await server.connect()
-  const bot = await server.call('bots.create', { name: `PromptOwned ${Date.now().toString(36)}`, function: 'Prompt ownership probe', instructions: INSTRUCTIONS, model: ARGON })
+  const bot = await server.call('bots.create', { name: `PromptOwned ${Date.now().toString(36)}`, function: 'Prompt ownership probe', instructions: INSTRUCTIONS, model: CLAUDE })
   const nativeId = nativeProfileOf(server.root, bot.id)
   server.natives.add(nativeId)
   const promptPath = join(server.root, 'prompts', `${bot.id}.txt`)
-  check('owned prompt file exists with private 0o600 mode', existsSync(promptPath) && (statSync(promptPath).mode & 0o777) === 0o600)
-  const ownedPrompt = readFileSync(promptPath, 'utf8')
-  const hasLayers =
-    ownedPrompt.includes('<lilbot-base-prompt version="1">') &&
-    ownedPrompt.includes('<lilbot-runtime-tuning>') &&
-    ownedPrompt.includes('<lilbot-system-note>') &&
-    ownedPrompt.includes(`<lilbot-bot-instructions>\n${INSTRUCTIONS}\n</lilbot-bot-instructions>`)
-  check('owned prompt has versioned base, runtime tuning, system note, and distinct instructions', hasLayers)
-  check('owned prompt file has zero stock engine strings', findForbiddenStockSnippets(ownedPrompt).length === 0)
+  check('prompt file exists with private 0o600 mode', existsSync(promptPath) && (statSync(promptPath).mode & 0o777) === 0o600)
+  const owned = readFileSync(promptPath, 'utf8')
+  const layers = ['<lilbot-base-prompt version="1">', '<lilbot-runtime-tuning>', '<lilbot-system-note>', `<lilbot-bot-instructions>\n${INSTRUCTIONS}\n</lilbot-bot-instructions>`]
+  check(
+    'prompt file holds base, engine tuning, system note and the bot instructions as separate parts',
+    layers.every(part => owned.includes(part))
+  )
+  check('prompt file holds no stock engine text', findForbiddenStockSnippets(owned).length === 0)
 
   await setProfileBaseUrl(nativeId, proxy.url)
   const chat = await server.call('chat.open', { botId: bot.id })
   const marker = `ok-${Date.now().toString(36)}`
-  const t1 = await sendTurn(server, bot.id, chat.chatId, `Use write_file to write "${marker}" to probe.txt in your workspace, then reply with exactly: TOOL_OK`)
-  const agy1 = proxy.records.filter(r => r.toolCount > 0 && r.model.includes('argon'))
-  const probeFile = join(server.root, 'workspaces', bot.id, 'probe.txt')
+  const toolFrom = server.events.length
+  const t1 = await turn(server, bot.id, chat.chatId, `Use your write_file tool to write "${marker}" to probe.txt in your working directory, then reply with exactly: TOOL_OK`)
+  const tools = server.events
+    .slice(toolFrom)
+    .filter(e => e.event === 'chat' && e.chatId === chat.chatId && e.data?.type === 'tool.started')
+    .map(e => String(e.data.name))
   check(
-    'Antigravity Argon Turn 1: HTTP 200 and completed',
-    t1.finished?.type === 'turn.finished' && agy1.length > 0 && agy1.every(r => r.status === 200),
-    `${agy1.length} req(s), ${agy1[0]?.systemText.length ?? 0} chars`
+    'Claude: turn answers with HTTP 200',
+    t1.finished?.type === 'turn.finished' && t1.wire.every(r => r.status === 200),
+    `${t1.wire.length} request(s), ${t1.wire[0]?.systemText.length ?? 0} chars`
   )
-  check(
-    'Antigravity Argon Turn 1: wire system matches LilBot prompt verbatim with zero stock text',
-    agy1.length > 0 && agy1.every(r => r.systemText === ownedPrompt && findForbiddenStockSnippets(r.systemText).length === 0)
-  )
-  check('Antigravity Argon Turn 1: workspace file tool executed', existsSync(probeFile) && readFileSync(probeFile, 'utf8').includes(marker))
+  check('Claude: wire system prompt equals the prompt file byte for byte', exact(t1.wire, owned))
+  const probe = join(bot.workspace, 'probe.txt')
+  check('Claude: file tool ran and wrote the file', tools.length > 0 && existsSync(probe) && readFileSync(probe, 'utf8').includes(marker), tools.join(', '))
 
-  // 2. Mid-turn steering on Antigravity while a terminal tool runs.
   await Bun.sleep(SPACE_MS)
-  const beforeSteer = proxy.records.length
-  const steerIdx = server.events.length
-  await server.call('chat.send', { botId: bot.id, chatId: chat.chatId, text: 'Run `sleep 4 && echo DONE` with terminal, then reply DONE.', messageId: crypto.randomUUID() })
-  await waitFor(
-    'terminal tool started',
-    async () => server.events.slice(steerIdx).find(e => e.event === 'chat' && e.chatId === chat.chatId && e.data?.type === 'tool.started'),
-    Boolean,
-    60_000
-  )
-  const directEngine = new HermesEngine([nativeId])
-  const steered = await directEngine.steerRun(nativeId, chat.chatId, 'Also include the exact word STEERED_99 in your final reply.')
-  const steerDone: any = await waitFor(
-    'steered turn finished',
-    async () => server.events.slice(steerIdx).find(e => e.event === 'chat' && e.chatId === chat.chatId && (e.data?.type === 'turn.finished' || e.data?.type === 'error')),
-    Boolean,
-    120_000
-  )
-  const steerReply = server.events
-    .slice(steerIdx)
-    .filter(e => e.event === 'chat' && e.chatId === chat.chatId && e.data?.type === 'text.delta')
-    .map(e => String(e.data.text ?? ''))
-    .join('')
-  const agy2 = proxy.records.slice(beforeSteer).filter(r => r.toolCount > 0)
+  const steerFrom = server.events.length
+  const steerWire = proxy.records.length
+  await server.call('chat.send', {
+    botId: bot.id,
+    chatId: chat.chatId,
+    text: 'Run `sleep 8 && echo DONE` with your terminal tool, then reply DONE.',
+    messageId: crypto.randomUUID()
+  })
+  const inChat = (type: string) => async () => server.events.slice(steerFrom).find(e => e.event === 'chat' && e.chatId === chat.chatId && e.data?.type === type)
+  await waitFor('terminal tool started', inChat('tool.started'), Boolean, 90_000)
+  const engine = new HermesEngine([nativeId])
+  const steered = await engine.steerRun(nativeId, chat.chatId, 'Also include the exact word STEERED_99 in your final reply.')
+  const done: any = await waitFor('steered turn finished', inChat('turn.finished'), Boolean, 180_000)
+  stopOnAccountProblem(steerWire, done?.data)
+  check('Claude: mid-turn steer reaches the running turn and is followed', steered === 'steered' && String(done?.data?.text ?? '').includes('STEERED_99'), `steer=${steered}`)
   check(
-    'Antigravity Turn 2 (mid-turn steer): steered, HTTP 200, cache-stable prompt, token honored',
-    steered === 'steered' &&
-      steerDone?.data?.type === 'turn.finished' &&
-      steerReply.includes('STEERED_99') &&
-      agy2.length > 0 &&
-      agy2.every(r => r.status === 200 && r.systemText === ownedPrompt),
-    `steered=${steered}`
+    'Claude: steered turn keeps the same wire system prompt',
+    exact(
+      proxy.records.slice(steerWire).filter(r => r.toolCount > 0),
+      owned
+    )
   )
 
-  // 3. Gemini 4 Neon (Antigravity) hidden session wire verification.
+  await server.call('bots.update', { botId: bot.id, model: OPENAI })
+  const t3 = await turn(server, bot.id, chat.chatId, 'Reply with exactly: OPENAI_SWITCH_OK')
+  check(
+    'mid-session switch to OpenAI: answers with the owned prompt on the wire',
+    t3.finished?.type === 'turn.finished' && exact(t3.wire, owned),
+    `${t3.wire[0]?.systemKind ?? 'none'}`
+  )
+
   await Bun.sleep(SPACE_MS)
-  const beforeNeon = proxy.records.length
-  const neonRun = await directEngine.runRoutine(nativeId, 'Reply with exactly: NEON_OK', {
-    runId: `prompt-neon-${Date.now().toString(36)}`,
-    workspace: join(server.root, 'workspaces', bot.id),
-    model: NEON,
+  const routineFrom = proxy.records.length
+  const run = await engine.runRoutine(nativeId, 'Reply with exactly: ROUTINE_OK', {
+    runId: `prompt-${Date.now().toString(36)}`,
+    workspace: bot.workspace,
+    model: OPENAI,
     onChat: () => {}
   })
-  const neonWire = proxy.records.slice(beforeNeon).filter(r => r.toolCount > 0 && r.model.includes('neon'))
+  stopOnAccountProblem(routineFrom)
   check(
-    'Gemini 4 Neon (Antigravity) hidden session: HTTP 200, exact owned prompt, zero stock text',
-    neonRun.status === 'completed' &&
-      neonWire.length > 0 &&
-      neonWire.every(r => r.status === 200 && r.systemText === ownedPrompt && findForbiddenStockSnippets(r.systemText).length === 0),
-    `${neonWire.length} req(s), reply=${neonRun.text.trim().slice(0, 40)}`
-  )
-
-  // 4. Mid-session switch to Anthropic Claude + direct prompt caching + real compaction.
-  await server.call('bots.update', { botId: bot.id, model: CLAUDE })
-  const beforeSwitch = proxy.records.length
-  const t3 = await sendTurn(server, bot.id, chat.chatId, 'Reply with exactly: CLAUDE_SWITCH_OK')
-  const claudeWire = proxy.records.slice(beforeSwitch).filter(r => r.toolCount > 0)
-  check(
-    'Mid-session switch to Claude: HTTP 200 with exact owned prompt and zero stock text',
-    t3.finished?.type === 'turn.finished' &&
-      claudeWire.length > 0 &&
-      claudeWire.every(r => r.status === 200 && r.systemText === ownedPrompt && findForbiddenStockSnippets(r.systemText).length === 0)
-  )
-
-  await setProfileBaseUrl(nativeId, upstream)
-  const directChat = await server.call('chat.new', { botId: bot.id })
-  const c1 = await sendTurn(server, bot.id, directChat.chatId, 'Remember code word MANGO-42. Reply with exactly: SAVED')
-  const c2 = await sendTurn(server, bot.id, directChat.chatId, 'What was the code word? Reply with just the code word.')
-  const cacheRead = Number(c2.finished?.usage?.cacheReadTokens ?? 0)
-  check(
-    'Direct Claude Turn 1 + Turn 2: prompt caching active (cacheReadTokens > 0)',
-    c1.finished?.type === 'turn.finished' && c2.finished?.type === 'turn.finished' && c2.reply.includes('MANGO-42') && cacheRead > 0,
-    `cacheReadTokens=${cacheRead}`
-  )
-  await checkCompactionMarker(server, bot.id, async (cid, text) => (await sendTurn(server, bot.id, cid, text)).finished)
-  check('Real Hermes compaction succeeds with owned prompt active', true)
-
-  // 5. Fail-safe fallback on missing prompt file + bot deletion cleanup.
-  rmSync(promptPath, { force: true })
-  const fbChat = await server.call('chat.new', { botId: bot.id })
-  const fb = await sendTurn(server, bot.id, fbChat.chatId, 'Reply with exactly: FALLBACK_OK')
-  check('Fail-safe: missing prompt file still completes chat via fallback', fb.finished?.type === 'turn.finished' && fb.reply.includes('FALLBACK_OK'))
-  await server.call('bots.update', { botId: bot.id, function: 'Refresh before delete' })
-  check('prompt file restored on bot update', existsSync(promptPath))
-  await server.call('bots.delete', { botId: bot.id, files: 'delete', privateMemories: 'forget' })
-  check('bot deletion removes private prompt file', !existsSync(promptPath))
-
-  if (process.env.LILBOT_PROMPT_CAPTURE_OUT) {
-    writeFileSync(
-      process.env.LILBOT_PROMPT_CAPTURE_OUT,
-      JSON.stringify(
-        { beforeChars: beforeWire?.systemText.length ?? 0, afterChars: ownedPrompt.length, beforeSystem: beforeWire?.systemText ?? '', afterSystem: ownedPrompt },
-        null,
-        2
+    'hidden routine session on OpenAI: answers with the owned prompt on the wire',
+    run.status === 'completed' &&
+      exact(
+        proxy.records.slice(routineFrom).filter(r => r.toolCount > 0),
+        owned
       )
-    )
-  }
+  )
+
+  console.log('skip Gemini 4 Neon acceptance: the Google model route is closed on the account, so no Google model is called')
+
+  await server.call('bots.update', { botId: bot.id, model: CLAUDE })
+  await setProfileBaseUrl(nativeId, upstream)
+  const direct = await server.call('chat.new', { botId: bot.id })
+  const c1 = await turn(server, bot.id, direct.chatId, 'Remember code word MANGO-42. Reply with exactly: SAVED')
+  const c2 = await turn(server, bot.id, direct.chatId, 'What was the code word? Reply with just the code word.')
+  const cacheRead = Number(c2.finished?.usage?.cacheReadTokens ?? 0)
+  check('Claude direct: prompt caching works across turns', c1.finished?.type === 'turn.finished' && c2.reply.includes('MANGO-42') && cacheRead > 0, `cacheReadTokens=${cacheRead}`)
+  await checkCompactionMarker(server, bot.id, async (cid, text) => (await turn(server, bot.id, cid, text)).finished)
+
+  rmSync(promptPath, { force: true })
+  const fb = await turn(server, bot.id, (await server.call('chat.new', { botId: bot.id })).chatId, 'Reply with exactly: FALLBACK_OK')
+  check('fail safe: a missing prompt file still answers', fb.finished?.type === 'turn.finished' && fb.reply.includes('FALLBACK_OK'))
+  await server.call('bots.update', { botId: bot.id, function: 'Refresh before delete' })
+  check('prompt file is written again on the next bot update', existsSync(promptPath))
+  await server.call('bots.delete', { botId: bot.id, files: 'delete', privateMemories: 'forget' })
+  check('deleting the bot removes its prompt file', !existsSync(promptPath))
+
+  const out = process.env.LILBOT_PROMPT_CAPTURE_OUT
+  if (out) writeFileSync(out, JSON.stringify({ beforeChars: beforeSystem.length, afterChars: owned.length, beforeSystem, afterSystem: owned }, null, 2), { mode: 0o600 })
 } finally {
   proxy.stop()
   await offServer.cleanup().catch(() => {})
