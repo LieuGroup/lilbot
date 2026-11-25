@@ -115,7 +115,7 @@ export function SentAttachments({ files }: { files: Attachment[] }) {
   )
 }
 
-export function ImageNote({ images, onChangeModel }: { images: ImageSupport | undefined; onChangeModel: () => void }) {
+export function ImageNote({ images, onChangeModel }: { images: ImageSupport | undefined; onChangeModel?: () => void }) {
   const theme = useTheme()
   const text = imageNoteText(images)
   if (!text) return null
@@ -128,11 +128,13 @@ export function ImageNote({ images, onChangeModel }: { images: ImageSupport | un
         <AppText variant="preview" color={theme.foreground}>
           {text}
         </AppText>
-        <Pressable onPress={onChangeModel} hitSlop={8} accessibilityRole="button">
-          <AppText variant="preview" color={theme.foreground} style={{ fontFamily: 'Inter_600SemiBold', textDecorationLine: 'underline' }}>
-            Change model
-          </AppText>
-        </Pressable>
+        {onChangeModel ? (
+          <Pressable onPress={onChangeModel} hitSlop={8} accessibilityRole="button">
+            <AppText variant="preview" color={theme.foreground} style={{ fontFamily: 'Inter_600SemiBold', textDecorationLine: 'underline' }}>
+              Change model
+            </AppText>
+          </Pressable>
+        ) : null}
       </View>
     </View>
   )

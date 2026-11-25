@@ -17,6 +17,7 @@ import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { MOBILE_SCALE } from '../ui/tokens'
 import { Composer } from './composer'
+import type { RenderToolItem } from './message-item'
 import { MessageList } from './message-list'
 import { resolveChatStatusLine } from './status'
 import { useChat } from './use-chat'
@@ -29,9 +30,13 @@ export interface ChatScreenProps {
   headerLeading?: ReactNode
   /** Show a separate New session button beside `•••` on split surfaces without a side strip (iPad). */
   showNewSession?: boolean
+  /** Optional dock rendered directly above the composer inside the keyboard-avoiding container. */
+  dock?: ReactNode
+  /** Optional renderer for tool items, receiving the default tool row as fallback. */
+  renderToolItem?: RenderToolItem
 }
 
-export function ChatScreen({ bot, hideHeader = false, headerLeading, showNewSession = false }: ChatScreenProps) {
+export function ChatScreen({ bot, hideHeader = false, headerLeading, showNewSession = false, dock, renderToolItem }: ChatScreenProps) {
   const theme = useTheme()
   const insets = useSafeAreaInsets()
   const connected = useConnectionStore(state => state.connected)
@@ -141,7 +146,9 @@ export function ChatScreen({ bot, hideHeader = false, headerLeading, showNewSess
             statusLine={statusLine}
             emptyHint={`Send a message to start with ${bot.name}.`}
             onChangeModel={modelPicker.open}
+            renderToolItem={renderToolItem}
           />
+          {dock}
           <Composer
             botId={bot.id}
             botName={bot.name}

@@ -11,6 +11,7 @@ import { SparklesIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { MOBILE_SCALE } from '../ui/tokens'
+import type { RenderToolItem } from './message-item'
 import { buildTranscriptRows, type TranscriptRow } from './message-rows'
 import { CONTENT_PADDING_VERTICAL, ROW_GAP } from './scroll-restore'
 import type { ChatStatusLine } from './status'
@@ -26,9 +27,10 @@ export interface MessageListProps {
   statusLine?: ChatStatusLine | null
   emptyHint?: string
   onChangeModel: () => void
+  renderToolItem?: RenderToolItem
 }
 
-export function MessageList({ botId, botName, botAvatar, deviceId, chat, statusLine = null, emptyHint, onChangeModel }: MessageListProps) {
+export function MessageList({ botId, botName, botAvatar, deviceId, chat, statusLine = null, emptyHint, onChangeModel, renderToolItem }: MessageListProps) {
   const theme = useTheme()
   const isDark = useColorScheme() === 'dark'
   const { width: viewportWidth } = useWindowDimensions()
@@ -43,9 +45,9 @@ export function MessageList({ botId, botName, botAvatar, deviceId, chat, statusL
 
   const renderItem = useCallback(
     ({ item: row }: ListRenderItemInfo<TranscriptRow>) => (
-      <TranscriptRowItem row={row} botId={botId} botName={botName} botAvatar={botAvatar} deviceId={deviceId} onChangeModel={onChangeModel} />
+      <TranscriptRowItem row={row} botId={botId} botName={botName} botAvatar={botAvatar} deviceId={deviceId} onChangeModel={onChangeModel} renderToolItem={renderToolItem} />
     ),
-    [botAvatar, botId, botName, deviceId, onChangeModel]
+    [botAvatar, botId, botName, deviceId, onChangeModel, renderToolItem]
   )
 
   return (

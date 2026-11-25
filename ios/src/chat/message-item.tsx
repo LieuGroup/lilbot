@@ -1,7 +1,7 @@
 /** One transcript item: user bubble (with sent attachments, ImageNote, and device origin),
  *  soft filled assistant bubble (markdown + per-turn Copy & Usage actions), quiet tool trace line,
  *  compaction divider, omitted line, or error bubble, sized from MOBILE_SCALE.chat. */
-import { memo } from 'react'
+import { memo, type ReactNode } from 'react'
 import { ActivityIndicator, Platform, View } from 'react-native'
 import Markdown from 'react-native-markdown-display'
 import type { ChatItem as ChatItemData } from '../../../shared/chat-schema'
@@ -28,17 +28,21 @@ export function failureLine(reason: Failure, botName: string | undefined): strin
   }
 }
 
-interface ChatItemProps {
+export type ToolMessageItem = Extract<MessageItem, { kind: 'tool' }>
+export type RenderToolItem = (item: ToolMessageItem, fallback: ReactNode) => ReactNode
+
+export interface ChatItemProps {
   item: MessageItem
   botName: string
-  deviceId: string
+  deviceId?: string
   queued?: boolean
   inTurn?: boolean
   beforeTool?: boolean
-  onChangeModel: () => void
+  onChangeModel?: () => void
+  renderToolItem?: RenderToolItem
 }
 
-export const ChatItem = memo(function ChatItem({ item, botName, deviceId, queued = false, inTurn = false, beforeTool = false, onChangeModel }: ChatItemProps) {
+export const ChatItem = memo(function ChatItem({ item, botName, deviceId, queued = false, inTurn = false, beforeTool = false, onChangeModel, renderToolItem }: ChatItemProps) {
   const theme = useTheme()
   const chatScale = MOBILE_SCALE.chat
   switch (item.kind) {
@@ -106,8 +110,10 @@ export const ChatItem = memo(function ChatItem({ item, botName, deviceId, queued
           {!item.streaming && !inTurn ? <TurnActions text={item.text} usage={item.usage} showUsage={!beforeTool || item.usage !== undefined} /> : null}
         </View>
       )
-    case 'tool':
-      return <ToolTrace item={item} />
+    case 'tool': {
+      const fallback = <ToolTrace item={item} />
+      return renderToolItem ? renderToolItem(item, fallback) : fallback
+    }
     case 'compaction':
       return <CompactionLine item={item} />
     case 'connection.sign_in':
