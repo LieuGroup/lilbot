@@ -2,10 +2,11 @@
  *  transitions between compact Stack and unfolded split reuse one open chat subscription. */
 import type { Attachment, AttachmentMessage } from '../../../shared/attachment-schema'
 import type { ChatEvent, ChatSnapshot } from '../../../shared/chat-schema'
-import { applyChatEvent, chatFromHistory, chatFromSnapshot, type UserItem, withError, withNewSession } from '../../../shared/client/chat/chat-state'
+import { applyChatEvent, chatFromHistory, type UserItem, withError } from '../../../shared/client/chat/chat-state'
 import { withSentMessage, withUserMessage } from '../../../shared/client/chat/user-messages'
 import { messageOf } from '../../../shared/client/socket'
 import type { HistoryPage } from '../../../shared/history-schema'
+import { canTriggerNewSession, slotWithNewSessionStart, slotWithOpenedSnapshot } from './new-session'
 import type { ChatSlot } from './store'
 
 export interface ChatSessionSocket {
@@ -102,7 +103,7 @@ export class ChatSessionManager {
     if (closeRemote && activeChatId && socket?.connected) void socket.call('chat.close', { chatId: activeChatId }).catch(() => {})
   }
 
-  private open(botId: string, entry: Entry, startNew: boolean) {
+  private open(botId: string, entry: Entry, startNew: boolean, startedAt = Date.now()) {
     const socket = this.deps.getSocket()
     if (!socket || !this.connected) return this.deps.updateSlot(botId, cur => ({ ...cur, ready: false }))
     this.teardown(entry, startNew)
@@ -131,7 +132,7 @@ export class ChatSessionManager {
         }
         entry.opening = false
         entry.chatId = snapshot.chatId
-        this.deps.updateSlot(botId, cur => ({ ...cur, view: chatFromSnapshot(snapshot, cur.view), ready: true, error: '' }))
+        this.deps.updateSlot(botId, cur => slotWithOpenedSnapshot(cur, snapshot, startNew, startedAt))
         entry.stopListening = socket.onChat(snapshot.chatId, event => {
           if (entry.epoch !== epoch) return
           this.deps.updateSlot(botId, cur => ({ ...cur, view: applyChatEvent(cur.view, event), ready: event.type === 'closed' ? false : cur.ready }))
@@ -182,11 +183,14 @@ export class ChatSessionManager {
     }
   }
 
-  newChat(botId: string) {
+  newChat(botId: string): boolean {
     const entry = this.entries.get(botId)
-    if (!entry || !this.connected || !entry.chatId || !this.deps.getSlot(botId).ready) return
-    this.deps.updateSlot(botId, cur => ({ ...cur, view: withNewSession(cur.view), ready: false }))
-    this.open(botId, entry, true)
+    const slot = this.deps.getSlot(botId)
+    if (!entry || !canTriggerNewSession({ connected: this.connected, ready: slot.ready, opening: entry.opening, chatId: entry.chatId })) return false
+    const now = Date.now()
+    this.deps.updateSlot(botId, cur => slotWithNewSessionStart(cur, now))
+    this.open(botId, entry, true, now)
+    return true
   }
 
   activeChatId(botId: string): string {

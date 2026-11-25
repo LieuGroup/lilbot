@@ -6,9 +6,11 @@ import { AppState, FlatList, type ListRenderItemInfo, View } from 'react-native'
 import { useSharedValue } from 'react-native-reanimated'
 import type { Bot, Section } from '../../../shared/bot-schema'
 import { closeAllSwipeRows } from '../ui/gestures/swipe-row'
+import { sheetScrollBottomPadding } from '../ui/keyboard-sheet'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { MOBILE_SCALE, radius } from '../ui/tokens'
+import { KEYBOARD_SCROLL_PROPS, useKeyboardHeight } from '../ui/use-keyboard-height'
 import { useBotMenuStore } from './menu-store'
 import { CollapsedGroupHeader, RosterHeaderActions, RosterSearchBar, RosterSectionHeader, SplitNewBotFooter } from './roster-chrome'
 import { buildRosterListItems, firstRosterHeaderKey, type RosterListItem, rosterHeaderActionsVisibility, standaloneRosterHeaderActions } from './roster-list'
@@ -54,6 +56,7 @@ export function Roster({
 }: RosterProps) {
   const theme = useTheme()
   const openNewBot = useBotMenuStore(state => state.openNewBot)
+  const keyboardHeight = useKeyboardHeight(searchOpen)
   const actionError = useBotMenuStore(state => state.error)
   const setActionError = useBotMenuStore(state => state.setError)
 
@@ -179,8 +182,8 @@ export function Roster({
       ListFooterComponent={footer}
       style={{ flex: 1, backgroundColor: theme.background }}
       contentInsetAdjustmentBehavior="automatic"
-      keyboardDismissMode="on-drag"
-      keyboardShouldPersistTaps="handled"
+      {...KEYBOARD_SCROLL_PROPS}
+      scrollIndicatorInsets={{ bottom: keyboardHeight }}
       initialNumToRender={20}
       maxToRenderPerBatch={16}
       windowSize={7}
@@ -188,7 +191,7 @@ export function Roster({
       onScrollEndDrag={handleScrollEnd}
       onMomentumScrollBegin={handleScrollBegin}
       onMomentumScrollEnd={handleScrollEnd}
-      contentContainerStyle={{ paddingBottom: 28 }}
+      contentContainerStyle={{ paddingBottom: sheetScrollBottomPadding(28, keyboardHeight) }}
     />
   )
 }

@@ -161,9 +161,9 @@ function ConversationStatusRow({ status, centered }: { status: ChatStatusLine; c
       testID="chat-status-line"
       accessibilityRole="text"
       accessibilityLiveRegion="polite"
-      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: centered ? 'center' : 'flex-start', gap: 6, maxWidth: '100%', paddingHorizontal: 4, paddingTop: centered ? 0 : 4, opacity: pulse }}
+      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: centered ? 'center' : 'flex-start', gap: 6, maxWidth: '100%', paddingHorizontal: 4, paddingTop: centered ? 0 : 4, opacity: status.tone === 'running' ? pulse : 1 }}
     >
-      <SparklesIcon color={theme.mutedForeground} size={14} />
+      {status.tone === 'running' ? <SparklesIcon color={theme.mutedForeground} size={14} /> : null}
       <AppText color={theme.mutedForeground} numberOfLines={1} style={{ ...MOBILE_SCALE.chat.statusLine, flexShrink: 1 }}>
         {status.text}
       </AppText>

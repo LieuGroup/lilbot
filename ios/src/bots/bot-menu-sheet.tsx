@@ -1,6 +1,6 @@
 /** Long-press / VoiceOver Bot menu sheet and dialog host, mirroring `web/src/bots/bot-menu.tsx` 1:1. */
-import { useCallback, useRef } from 'react'
-import { Modal, Pressable, StyleSheet, View } from 'react-native'
+import { useCallback, useEffect, useRef } from 'react'
+import { Keyboard, Modal, Pressable, StyleSheet, View } from 'react-native'
 import { isUnread, primaryCandidates } from '../../../shared/client/bots/bot-menu-rules'
 import { BotAvatar } from '../ui/avatar'
 import { AppText } from '../ui/text'
@@ -25,6 +25,10 @@ export function BotMenuHost() {
   const menuBot = bots.find(bot => bot.id === menuBotId) ?? null
   const candidates = primaryCandidates(bots)
   const actions = menuBot ? rosterMenuActions(menuBot, candidates.length > 0) : []
+
+  useEffect(() => {
+    if (menuBot) Keyboard.dismiss()
+  }, [menuBot])
 
   const dismissMenu = useCallback(() => {
     pendingDialogRef.current = null

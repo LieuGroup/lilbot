@@ -1,13 +1,15 @@
 /** Native pageSheet for moving a bot to a section, creating a new section, and changing the primary bot (1:1 with web). */
 import { useState } from 'react'
-import { Modal, Pressable, ScrollView, TextInput, View } from 'react-native'
+import { Keyboard, Modal, Pressable, ScrollView, TextInput, View } from 'react-native'
 import type { Bot } from '../../../shared/bot-schema'
 import { BOT_MENU_LABELS, primaryCandidates } from '../../../shared/client/bots/bot-menu-rules'
 import { messageOf } from '../../../shared/client/socket'
 import { CheckIcon, CloseIcon, PlusIcon } from '../ui/icon'
+import { sheetScrollBottomPadding } from '../ui/keyboard-sheet'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { radius } from '../ui/tokens'
+import { KEYBOARD_SCROLL_PROPS, useKeyboardHeight } from '../ui/use-keyboard-height'
 import { makeBotPrimary, moveToNewSection, setBotPrefs } from './actions'
 import { useBotMenuStore } from './menu-store'
 import { useBotStore } from './store'
@@ -81,6 +83,7 @@ function MoveSectionView({ bot, onClose }: { bot: Bot; onClose: () => void }) {
 
 function NewSectionView({ bot, onClose }: { bot: Bot; onClose: () => void }) {
   const theme = useTheme()
+  const keyboardHeight = useKeyboardHeight()
   const [name, setName] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -101,14 +104,29 @@ function NewSectionView({ bot, onClose }: { bot: Bot; onClose: () => void }) {
   return (
     <View style={{ flex: 1, backgroundColor: theme.background }}>
       <SheetHeader title="New section" onClose={onClose} />
-      <View style={{ padding: 16, gap: 14 }}>
-        <TextInput value={name} onChangeText={setName} maxLength={40} autoFocus placeholder="Section name" placeholderTextColor={theme.mutedForeground} style={{ height: 44, borderRadius: radius.md, borderWidth: 1, borderColor: theme.input, backgroundColor: theme.card, paddingHorizontal: 12, fontFamily: 'Inter_400Regular', fontSize: 15, color: theme.foreground }} />
+      <ScrollView
+        {...KEYBOARD_SCROLL_PROPS}
+        scrollIndicatorInsets={{ bottom: keyboardHeight }}
+        contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: sheetScrollBottomPadding(24, keyboardHeight) }}
+      >
+        <TextInput
+          value={name}
+          onChangeText={setName}
+          maxLength={40}
+          autoFocus
+          returnKeyType="done"
+          submitBehavior="blurAndSubmit"
+          onSubmitEditing={() => void submit()}
+          placeholder="Section name"
+          placeholderTextColor={theme.mutedForeground}
+          style={{ height: 44, borderRadius: radius.md, borderWidth: 1, borderColor: theme.input, backgroundColor: theme.card, paddingHorizontal: 12, fontFamily: 'Inter_400Regular', fontSize: 15, color: theme.foreground }}
+        />
         <AppText variant="meta" color={theme.mutedForeground}>{bot.name} moves into it.</AppText>
         {error ? <AppText variant="preview" color={theme.destructive}>{error}</AppText> : null}
         <Pressable disabled={saving || !name.trim()} onPress={() => void submit()} accessibilityRole="button" style={{ height: 44, borderRadius: radius.md, backgroundColor: theme.foreground, opacity: saving || !name.trim() ? 0.45 : 1, alignItems: 'center', justifyContent: 'center' }}>
           <AppText variant="name" color={theme.background} style={{ fontFamily: 'Inter_600SemiBold' }}>{saving ? 'Creating...' : 'Create'}</AppText>
         </Pressable>
-      </View>
+      </ScrollView>
     </View>
   )
 }

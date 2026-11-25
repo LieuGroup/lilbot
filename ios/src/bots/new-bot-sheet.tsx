@@ -2,7 +2,7 @@
 import * as Crypto from 'expo-crypto'
 import { useRouter } from 'expo-router'
 import { useEffect, useState } from 'react'
-import { Modal, Pressable, ScrollView, TextInput, View } from 'react-native'
+import { Keyboard, Modal, Pressable, ScrollView, TextInput, View } from 'react-native'
 import { type Avatar, defaultAvatar } from '../../../shared/avatar'
 import type { BotModel } from '../../../shared/bot-schema'
 import { modelFromKey, modelGroups, modelKey } from '../../../shared/client/bots/model-choice'
@@ -12,9 +12,11 @@ import { useBotSelection } from '../duo/selection'
 import { useLiveSurface } from '../duo/use-surface'
 import { BotAvatar } from '../ui/avatar'
 import { CheckIcon, CloseIcon } from '../ui/icon'
+import { sheetScrollBottomPadding } from '../ui/keyboard-sheet'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { radius } from '../ui/tokens'
+import { KEYBOARD_SCROLL_PROPS, useKeyboardHeight } from '../ui/use-keyboard-height'
 import { createBot } from './actions'
 import { AvatarPicker, randomAvatar } from './avatar-picker'
 import { useConnectionStore } from '../connection/store'
@@ -33,6 +35,7 @@ export function NewBotSheet() {
 
 function NewBotForm({ onClose }: { onClose: () => void }) {
   const theme = useTheme()
+  const keyboardHeight = useKeyboardHeight()
   const router = useRouter()
   const connected = useConnectionStore(state => state.connected)
   const providers = useModelProviders(connected)
@@ -92,7 +95,11 @@ function NewBotForm({ onClose }: { onClose: () => void }) {
         </Pressable>
       </View>
 
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 16, gap: 18, paddingBottom: 40 }}>
+      <ScrollView
+        {...KEYBOARD_SCROLL_PROPS}
+        scrollIndicatorInsets={{ bottom: keyboardHeight }}
+        contentContainerStyle={{ padding: 16, gap: 18, paddingBottom: sheetScrollBottomPadding(40, keyboardHeight) }}
+      >
         <View style={{ alignItems: 'center', gap: 10 }}>
           <BotAvatar name={name || 'New bot'} avatar={avatar} size={64} />
           <Pressable onPress={() => setAvatar(randomAvatar())} accessibilityRole="button" style={{ paddingVertical: 4, paddingHorizontal: 10 }}>
@@ -106,7 +113,7 @@ function NewBotForm({ onClose }: { onClose: () => void }) {
           <AppText variant="meta" color={theme.mutedForeground}>
             Name
           </AppText>
-          <TextInput testID="new-bot-name" value={name} onChangeText={setName} maxLength={60} placeholder="Researcher" placeholderTextColor={theme.mutedForeground} style={inputStyle} />
+          <TextInput testID="new-bot-name" value={name} onChangeText={setName} maxLength={60} returnKeyType="done" submitBehavior="blurAndSubmit" onSubmitEditing={() => Keyboard.dismiss()} placeholder="Researcher" placeholderTextColor={theme.mutedForeground} style={inputStyle} />
         </View>
 
         <AvatarPicker value={avatar} onChange={setAvatar} disabled={saving} />
@@ -136,7 +143,10 @@ function NewBotForm({ onClose }: { onClose: () => void }) {
             Model
           </AppText>
           <Pressable
-            onPress={() => setPickingModel(open => !open)}
+            onPress={() => {
+              Keyboard.dismiss()
+              setPickingModel(open => !open)
+            }}
             accessibilityRole="button"
             style={[inputStyle, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
           >

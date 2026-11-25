@@ -1,15 +1,18 @@
 /** Settings: the server address and Access token this install talks to, plus connection state.
  *  The token is Oscar's Cloudflare Access JWT, kept in the Keychain; the app sends it on every request. */
 import { useEffect, useState } from 'react'
-import { Pressable, ScrollView, TextInput, View } from 'react-native'
+import { Keyboard, Pressable, ScrollView, TextInput, View } from 'react-native'
 import { serverUrlError } from '../connection/lilbot'
 import { useConnectionStore } from '../connection/store'
-import { useTheme } from '../ui/theme'
+import { sheetScrollBottomPadding } from '../ui/keyboard-sheet'
 import { AppText } from '../ui/text'
+import { useTheme } from '../ui/theme'
 import { radius } from '../ui/tokens'
+import { useKeyboardHeight } from '../ui/use-keyboard-height'
 
 export function SettingsScreen({ onDone }: { onDone?: () => void }) {
   const theme = useTheme()
+  const keyboardHeight = useKeyboardHeight()
   const settings = useConnectionStore(state => state.settings)
   const connected = useConnectionStore(state => state.connected)
   const device = useConnectionStore(state => state.device)
@@ -57,14 +60,34 @@ export function SettingsScreen({ onDone }: { onDone?: () => void }) {
   } as const
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: theme.background }} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, gap: 16 }}>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: theme.background }}
+      contentInsetAdjustmentBehavior="automatic"
+      keyboardDismissMode="on-drag"
+      keyboardShouldPersistTaps="handled"
+      scrollIndicatorInsets={{ bottom: keyboardHeight }}
+      contentContainerStyle={{ padding: 20, gap: 16, paddingBottom: sheetScrollBottomPadding(24, keyboardHeight) }}
+    >
       <AppText variant="title">Settings</AppText>
 
       <View style={{ gap: 6 }}>
         <AppText variant="meta" color={theme.mutedForeground}>
           Server address
         </AppText>
-        <TextInput value={serverUrl} onChangeText={setServerUrl} placeholder="https://lilbot.example.com" placeholderTextColor={theme.mutedForeground} autoCapitalize="none" autoCorrect={false} keyboardType="url" textContentType="none" style={field} />
+        <TextInput
+          value={serverUrl}
+          onChangeText={setServerUrl}
+          placeholder="https://lilbot.example.com"
+          placeholderTextColor={theme.mutedForeground}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+          returnKeyType="done"
+          submitBehavior="blurAndSubmit"
+          onSubmitEditing={() => Keyboard.dismiss()}
+          textContentType="none"
+          style={field}
+        />
       </View>
 
       <View style={{ gap: 6 }}>
@@ -83,6 +106,9 @@ export function SettingsScreen({ onDone }: { onDone?: () => void }) {
           autoCapitalize="none"
           autoCorrect={false}
           secureTextEntry
+          returnKeyType="done"
+          submitBehavior="blurAndSubmit"
+          onSubmitEditing={() => Keyboard.dismiss()}
           textContentType="none"
           style={field}
         />

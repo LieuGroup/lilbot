@@ -103,6 +103,9 @@ export const RosterSearchBar = memo(function RosterSearchBar({
           value={query}
           onChangeText={onChange}
           autoFocus={autoFocus}
+          returnKeyType="search"
+          submitBehavior="blurAndSubmit"
+          onSubmitEditing={() => Keyboard.dismiss()}
           placeholder="Search bots"
           placeholderTextColor={theme.mutedForeground}
           autoCorrect={false}

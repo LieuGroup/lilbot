@@ -15,9 +15,11 @@ export interface ChatSlot {
   scrollOffset: number
   /** Exact anchored row key + offset within that row for deep-history and fold/unfold restore. */
   scrollAnchor: ScrollAnchor | null
+  /** Incremented whenever the view must jump to the newest row (e.g. starting a new session). */
+  scrollToLatestSeq: number
 }
 
-export const emptySlot: ChatSlot = { view: emptyChat, ready: false, error: '', draft: '', scrollOffset: 0, scrollAnchor: null }
+export const emptySlot: ChatSlot = { view: emptyChat, ready: false, error: '', draft: '', scrollOffset: 0, scrollAnchor: null, scrollToLatestSeq: 0 }
 
 // Non-reactive per-bot measured row heights (capped to bound memory) so FlatList `onLayout` never triggers re-renders.
 export const MAX_MEASURED_HEIGHTS = 500

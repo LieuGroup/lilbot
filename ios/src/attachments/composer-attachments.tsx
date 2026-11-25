@@ -1,6 +1,6 @@
 /** Staged attachment tiles/chips and refusal notes inside the iOS composer, plus the Photo/File picker sheet. */
 import { useCallback, useEffect, useRef } from 'react'
-import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native'
+import { ActivityIndicator, Image, Keyboard, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { formatBytes, leftOutText, refusalText } from '../../../shared/client/attachments/attachment-rules'
 import { FileIcon, ImageIcon } from '../ui/chat-icons'
@@ -129,7 +129,10 @@ export function AttachSourceSheet({ visible, onClose, onPickPhotos, onPickFiles 
   }, [])
 
   useEffect(() => {
-    if (visible) return
+    if (visible) {
+      Keyboard.dismiss()
+      return
+    }
     const fallback = setTimeout(runPending, 350)
     return () => clearTimeout(fallback)
   }, [runPending, visible])
