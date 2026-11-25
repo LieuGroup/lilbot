@@ -80,16 +80,12 @@ describe('createWorkStore resilience: closed socket, reconnect, bursts, server s
   test('makes zero RPCs on a closed socket, writes no errors, and reloads once on reconnect', async () => {
     const fake = makeFakeSocket(false, async method => {
       if (method === 'work.brief') return { since: 0, needsOscar: [makeSummary('w1')], failed: [], done: { count: 0, items: [] } } satisfies WorkBrief
-      if (method === 'work.list') return [makeSummary('w1')]
       if (method === 'work.open') return makeItem('w1')
       if (method === 'work.levels.get') return { kinds: [] } satisfies WorkLevels
-      return makeItem('w1')
+      return [makeSummary('w1')]
     })
-
     const mgr = createWorkStore(() => fake.socket, { pushCoalesceMs: 15 })
-    const stopBadge = mgr.watchBadge()
-    const stopBrief = mgr.watchBrief()
-    const stopItem = mgr.watchItem('w1')
+    const offs = [mgr.watchBadge(), mgr.watchBrief(), mgr.watchItem('w1')]
     await Bun.sleep(20)
     expect(fake.calls).toHaveLength(0)
     expect(mgr.useStore.getState().briefError).toBe('')
@@ -101,10 +97,7 @@ describe('createWorkStore resilience: closed socket, reconnect, bursts, server s
     expect(fake.calls.filter(c => c.method === 'work.open')).toHaveLength(1)
     expect(mgr.useStore.getState().badgeCount).toBe(1)
     expect(mgr.useStore.getState().items.w1?.id).toBe('w1')
-
-    stopBadge()
-    stopBrief()
-    stopItem()
+    for (const off of offs) off()
   })
 
   test('coalesces push bursts and cancels pending timers on disconnect', async () => {
@@ -132,34 +125,26 @@ describe('createWorkStore resilience: closed socket, reconnect, bursts, server s
     const s1 = makeFakeSocket(true, async (method, params) => {
       if (method === 'work.open' && params.itemId === 'w1') {
         callIdx++
-        if (callIdx === 1) {
-          return new Promise<WorkItem>(resolve => {
-            resolveSlow = resolve
-          })
-        }
-        return makeItem('w1', 'Fresh title')
+        return callIdx === 1
+          ? new Promise<WorkItem>(r => {
+              resolveSlow = r
+            })
+          : makeItem('w1', 'Fresh title')
       }
       return [makeSummary('w1')]
     })
-    const s2 = makeFakeSocket(true, async method => {
-      if (method === 'work.open') return makeItem('w1', 'Server 2 title')
-      return []
-    })
-
+    const s2 = makeFakeSocket(true, async method => (method === 'work.open' ? makeItem('w1', 'Server 2 title') : []))
     let active: WorkSocket = s1.socket
     const mgr = createWorkStore(() => active, { pushCoalesceMs: 10 })
-    const stopBadge = mgr.watchBadge()
-    const stopItem = mgr.watchItem('w1')
+    const offs = [mgr.watchBadge(), mgr.watchItem('w1')]
     await Bun.sleep(10)
 
-    // Second faster loadItem resolves before first slow one
     await mgr.loadItem('w1')
     expect(mgr.useStore.getState().items.w1?.title).toBe('Fresh title')
     resolveSlow(makeItem('w1', 'Stale title'))
     await Bun.sleep(10)
     expect(mgr.useStore.getState().items.w1?.title).toBe('Fresh title')
 
-    // Server switch resets prior state and detaches s1 listeners
     active = s2.socket
     mgr.syncSocket()
     expect(s1.workListeners.size).toBe(0)
@@ -167,9 +152,7 @@ describe('createWorkStore resilience: closed socket, reconnect, bursts, server s
     await Bun.sleep(15)
     expect(mgr.useStore.getState().badgeCount).toBe(0)
     expect(mgr.useStore.getState().items.w1?.title).toBe('Server 2 title')
-
-    stopBadge()
-    stopItem()
+    for (const off of offs) off()
   })
 })
 
@@ -189,7 +172,6 @@ describe('PR 2 keyboard, single-submit, native badge, and route wiring contracts
 
     expect(storeSrc).not.toContain('state.connected')
     expect(storeSrc).toContain('manager.syncSocket()')
-
     expect(dropSrc).toContain("from '../ui/use-keyboard-height'")
     expect(dropSrc).toContain('useKeyboardHeight(true)')
     expect(dropSrc).toContain('{...KEYBOARD_SCROLL_PROPS}')
@@ -198,7 +180,6 @@ describe('PR 2 keyboard, single-submit, native badge, and route wiring contracts
     expect(dropSrc).toContain('if (busyRef.current) return')
     expect(dropSrc).toContain('testID="drop-keyboard-done"')
     expect(dropSrc.indexOf('</ScrollView>')).toBeLessThan(dropSrc.indexOf('testID="drop-work-footer"'))
-
     expect(addSrc).toContain('allowSwipeDismissal={!busy}')
     expect(addSrc).toContain('Keyboard.dismiss()')
     expect(todaySrc).toContain('{...KEYBOARD_SCROLL_PROPS}')
@@ -208,7 +189,6 @@ describe('PR 2 keyboard, single-submit, native badge, and route wiring contracts
     expect(actionsSrc).toContain('busyRef.current')
     expect(actionsSrc).toContain('sendingRef.current')
     expect(needsSrc).toContain('sendingRef.current')
-
     expect(tabsSrc).toContain('<NativeTabs.Trigger name="(work)">')
     expect(tabsSrc).toContain('NativeTabs.Trigger.Badge')
     expect(tabsSrc).toContain('workTabBadge(useNeedsYouCount())')
