@@ -6,6 +6,15 @@ export interface SheetWindowFrame {
   height: number
 }
 
+export interface AnswerInputLayoutInput {
+  viewportHeight?: number
+  sheetHeight: number
+  keyboardOverlap: number
+  fontScale: number
+  hasError?: boolean
+  hasNotice?: boolean
+}
+
 /** Converts window-level `keyboardHeight` (from `useKeyboardHeight`) into the exact bottom overlap inside
  *  a Modal pageSheet: identical to `keyboardHeight` on bottom-anchored iPhone / Folded Duo sheets, and
  *  trims any gap below centered iPad pageSheets once `measureInWindow` settles. */
@@ -26,13 +35,15 @@ export function sheetKeyboardInset(windowHeight: number, keyboardHeight: number,
   return Math.max(0, kb - gapBelowSheet)
 }
 
-/** Caps multiline answer TextInput height so a 10-line answer scrolls inside the input while keeping
- *  the question and pinned Cancel / Send answer footer visible above the software keyboard. */
-export function answerInputMaxHeight(input: { sheetHeight: number; keyboardOverlap: number; fontScale: number }): number {
-  const available = Math.max(0, input.sheetHeight - input.keyboardOverlap)
+/** Caps multiline answer TextInput height to the measured ScrollView viewport so a 10-line answer scrolls
+ *  inside the input while its bottom border, active line, caret, and any error stay visible above the pinned footer. */
+export function answerInputMaxHeight(input: AnswerInputLayoutInput): number {
+  const fallbackViewport = Math.max(0, input.sheetHeight - input.keyboardOverlap - (input.fontScale >= 1.5 ? 132 : 118))
+  const viewport = input.viewportHeight && input.viewportHeight > 0 ? input.viewportHeight : fallbackViewport
   if (input.keyboardOverlap > 0) {
-    const reserve = input.fontScale >= 1.5 ? 216 : 196
-    return Math.max(84, Math.min(148, Math.round(available - reserve)))
+    const errorReserve = input.hasError ? (input.fontScale >= 1.5 ? 78 : 60) : 24
+    const noticeReserve = input.hasNotice ? (input.fontScale >= 1.5 ? 46 : 36) : 0
+    return Math.max(76, Math.min(144, Math.round(viewport - errorReserve - noticeReserve)))
   }
-  return Math.max(120, Math.min(220, Math.round(available * 0.35)))
+  return Math.max(120, Math.min(220, Math.round(viewport * 0.45)))
 }

@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { fileCounts, isTask, running, sides, stopIndex, stripState, taskTitle } from '../../../shared/client/threads/thread-lines'
 import { isOpenOscarCheck, workerFooter, workerSubtitle } from '../../../shared/client/threads/worker-lines'
 import type { BotThread } from '../../../shared/thread-schema'
+import type { WorkSummary } from '../../../shared/work-schema'
 import { useBotStore } from '../bots/store'
 import { useScreenReaderEnabled } from '../duo/use-surface'
 import { SheetDismissGesture } from '../ui/gestures/sheet-gesture'
@@ -39,8 +40,13 @@ export function ThreadView({ botId, threadId, mode, onClose, onSelectBot }: Thre
   const bots = useBotStore(state => state.bots)
   const [tick, setTick] = useState(0)
   const [scrollOffsetY, setScrollOffsetY] = useState(0)
-  const [answering, setAnswering] = useState(false)
-  const [stopping, setStopping] = useState(false)
+  const [answering, setAnswering] = useState<{ work: WorkSummary; title: string } | null>(null)
+  const [stopping, setStopping] = useState<BotThread | null>(null)
+
+  useEffect(() => {
+    setAnswering(null)
+    setStopping(null)
+  }, [threadId])
 
   const active = thread ? running(thread) : false
   useEffect(() => {
@@ -96,7 +102,7 @@ export function ThreadView({ botId, threadId, mode, onClose, onSelectBot }: Thre
         title={title}
         subtitle={subtitle}
         leading={thread.worker ? <WorkerBadge size={22} /> : undefined}
-        onStop={task && active ? () => setStopping(true) : undefined}
+        onStop={task && active ? () => setStopping(thread) : undefined}
         onClose={mode === 'pane' || screenReaderEnabled ? onClose : undefined}
         paddingLeft={pad.paddingLeft}
         paddingRight={pad.paddingRight}
@@ -115,7 +121,7 @@ export function ThreadView({ botId, threadId, mode, onClose, onSelectBot }: Thre
           {canAnswer ? (
             <Pressable
               testID="thread-view-answer"
-              onPress={() => setAnswering(true)}
+              onPress={() => waiting && setAnswering({ work: waiting, title: thread.worker ? `Worker · ${title}` : `${to.name} · ${title}` })}
               hitSlop={8}
               accessibilityRole="button"
               accessibilityLabel={`Answer ${title}`}
@@ -159,8 +165,8 @@ export function ThreadView({ botId, threadId, mode, onClose, onSelectBot }: Thre
         paddingBottom={pad.paddingBottom}
       />
 
-      <AnswerWorkSheet work={answering && canAnswer && waiting ? waiting : null} title={thread.worker ? `Worker · ${title}` : `${to.name} · ${title}`} onClose={() => setAnswering(false)} />
-      <StopThreadSheet botId={botId} thread={stopping ? thread : null} onClose={() => setStopping(false)} />
+      <AnswerWorkSheet work={answering?.work ?? null} title={answering?.title ?? ''} onClose={() => setAnswering(null)} />
+      <StopThreadSheet botId={botId} thread={stopping} onClose={() => setStopping(null)} />
     </View>
   )
 

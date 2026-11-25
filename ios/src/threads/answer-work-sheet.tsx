@@ -1,6 +1,6 @@
 /** Native pageSheet for answering a worker or delegated task's `needs_oscar` question directly from the dock or view.
- *  Uses shared `useKeyboardHeight` + `KEYBOARD_SCROLL_PROPS`, pins Cancel/Send above the keyboard, bounds multiline
- *  input height, guards single-send, and notices external answers without wiping the draft. */
+ *  Uses shared `useKeyboardHeight` + `KEYBOARD_SCROLL_PROPS`, pins Cancel/Send above the keyboard, sizes the multiline
+ *  input to the measured viewport, keeps the active caret scrolled into view, guards single-send, and notices external answers. */
 import { type ComponentRef, useCallback, useEffect, useRef, useState } from 'react'
 import { Keyboard, Modal, Pressable, ScrollView, TextInput, useWindowDimensions, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -20,6 +20,8 @@ export interface AnswerWorkSheetProps {
   title: string
   onClose: () => void
 }
+
+const ACTION_BTN = { minHeight: 44, borderRadius: radius.md, alignItems: 'center' as const, justifyContent: 'center' as const }
 
 export function AnswerWorkSheet({ work, title, onClose }: AnswerWorkSheetProps) {
   const [busy, setBusy] = useState(false)
@@ -44,19 +46,8 @@ export function AnswerWorkSheet({ work, title, onClose }: AnswerWorkSheetProps) 
   )
 }
 
-interface BodyProps {
-  work: WorkSummary
-  title: string
-  busy: boolean
-  busyRef: { current: boolean }
-  showSeq: number
-  setSending: (next: boolean) => void
-  onClose: () => void
-}
-
-const ACTION_BTN = { minHeight: 44, borderRadius: radius.md, alignItems: 'center' as const, justifyContent: 'center' as const }
-
-function AnswerWorkBody({ work, title, busy, busyRef, showSeq, setSending, onClose }: BodyProps) {
+function AnswerWorkBody(props: { work: WorkSummary; title: string; busy: boolean; busyRef: { current: boolean }; showSeq: number; setSending: (next: boolean) => void; onClose: () => void }) {
+  const { work, title, busy, busyRef, showSeq, setSending, onClose } = props
   const theme = useTheme()
   const pad = duoSafeSheetPadding(useSafeAreaInsets())
   const { height: windowHeight, fontScale } = useWindowDimensions()
@@ -64,9 +55,11 @@ function AnswerWorkBody({ work, title, busy, busyRef, showSeq, setSending, onClo
   const waitingWork = useWaitingWork()
   const workLoaded = useWorkLoaded()
   const [sheetFrame, setSheetFrame] = useState<SheetWindowFrame | null>(null)
+  const [scrollViewport, setScrollViewport] = useState(0)
   const [answer, setAnswer] = useState('')
   const [error, setError] = useState('')
   const rootRef = useRef<ComponentRef<typeof View>>(null)
+  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null)
 
   const measureSheet = useCallback(() => {
     rootRef.current?.measureInWindow((_x: number, y: number, _w: number, height: number) => {
@@ -80,11 +73,24 @@ function AnswerWorkBody({ work, title, busy, busyRef, showSeq, setSending, onClo
   }, [showSeq, keyboardHeight, measureSheet])
 
   const keyboardOverlap = sheetKeyboardInset(windowHeight, keyboardHeight, sheetFrame)
+  const kbUp = keyboardOverlap > 0
   const sheetHeight = sheetFrame?.height && sheetFrame.height > 100 ? sheetFrame.height : windowHeight
-  const inputMaxHeight = answerInputMaxHeight({ sheetHeight, keyboardOverlap, fontScale })
   const answeredElsewhere = workLoaded && !busy && !Object.values(waitingWork).some(item => item.id === work.id)
+  const inputMaxHeight = answerInputMaxHeight({ viewportHeight: scrollViewport, sheetHeight, keyboardOverlap, fontScale, hasError: Boolean(error), hasNotice: answeredElsewhere })
   const canSubmit = !busy && answer.trim().length > 0
   const hPad = { paddingLeft: pad.paddingLeft, paddingRight: pad.paddingRight }
+
+  const keepInputVisible = useCallback(() => {
+    if (kbUp) scrollRef.current?.scrollToEnd({ animated: false })
+  }, [kbUp])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (kbUp) scrollRef.current?.scrollToEnd({ animated: false })
+      else scrollRef.current?.scrollTo({ y: 0, animated: false })
+    }, 30)
+    return () => clearTimeout(timer)
+  }, [kbUp, scrollViewport, answeredElsewhere, error])
 
   const submit = async () => {
     if (busyRef.current) return
@@ -104,11 +110,11 @@ function AnswerWorkBody({ work, title, busy, busyRef, showSeq, setSending, onClo
 
   return (
     <View ref={rootRef} onLayout={measureSheet} style={{ flex: 1, backgroundColor: theme.background }}>
-      <View style={{ ...hPad, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: theme.hairline }}>
-        <AppText variant="title" numberOfLines={2} maxFontSizeMultiplier={THREAD_TYPE_CAPS.headerTitle} style={{ flex: 1 }}>
+      <View style={{ ...hPad, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingVertical: kbUp ? 6 : 10, borderBottomWidth: 1, borderBottomColor: theme.hairline }}>
+        <AppText variant="title" numberOfLines={kbUp ? 1 : 2} maxFontSizeMultiplier={THREAD_TYPE_CAPS.headerTitle} style={{ flex: 1 }}>
           {title}
         </AppText>
-        {keyboardOverlap > 0 ? (
+        {kbUp ? (
           <Pressable testID="answer-keyboard-done" onPress={() => Keyboard.dismiss()} accessibilityRole="button" accessibilityLabel="Dismiss keyboard" style={({ pressed }) => ({ ...ACTION_BTN, paddingHorizontal: 10, opacity: pressed ? 0.65 : 1 })}>
             <AppText variant="name" maxFontSizeMultiplier={THREAD_TYPE_CAPS.actionButton} color={theme.foreground} style={{ fontFamily: 'Inter_600SemiBold' }}>
               Done
@@ -120,21 +126,23 @@ function AnswerWorkBody({ work, title, busy, busyRef, showSeq, setSending, onClo
         </Pressable>
       </View>
 
-      <ScrollView testID="answer-work-scroll" style={{ flex: 1 }} alwaysBounceVertical {...KEYBOARD_SCROLL_PROPS} contentContainerStyle={{ ...hPad, paddingVertical: 14, gap: 12 }}>
+      <ScrollView ref={scrollRef} testID="answer-work-scroll" style={{ flex: 1 }} alwaysBounceVertical {...KEYBOARD_SCROLL_PROPS} onLayout={event => setScrollViewport(Math.round(event.nativeEvent.layout.height))} onContentSizeChange={keepInputVisible} contentContainerStyle={{ ...hPad, paddingVertical: kbUp ? 8 : 14, gap: kbUp ? 8 : 12 }}>
+        <AppText testID="answer-work-question" style={MOBILE_SCALE.chat.message} color={theme.foreground} numberOfLines={kbUp ? 1 : undefined} maxFontSizeMultiplier={1.6}>
+          {work.question || 'This task is waiting for your answer.'}
+        </AppText>
         {answeredElsewhere ? (
-          <View testID="answer-work-stale-notice" style={{ borderRadius: radius.md, borderWidth: 1, borderColor: theme.hairline, backgroundColor: theme.card, paddingHorizontal: 12, paddingVertical: 10 }}>
-            <AppText variant="preview" color={theme.mutedForeground} maxFontSizeMultiplier={1.5}>
+          <View testID="answer-work-stale-notice" style={{ borderRadius: radius.md, borderWidth: 1, borderColor: theme.hairline, backgroundColor: theme.card, paddingHorizontal: 10, paddingVertical: kbUp ? 6 : 10 }}>
+            <AppText variant="preview" color={theme.mutedForeground} maxFontSizeMultiplier={1.35}>
               Already answered on another device. Your draft is still here if you want to copy it.
             </AppText>
           </View>
         ) : null}
-        <AppText style={MOBILE_SCALE.chat.message} color={theme.foreground} maxFontSizeMultiplier={1.6}>
-          {work.question || 'This task is waiting for your answer.'}
-        </AppText>
         <TextInput
           testID="answer-work-input"
           value={answer}
           onChangeText={setAnswer}
+          onFocus={keepInputVisible}
+          onContentSizeChange={keepInputVisible}
           placeholder="Write your answer..."
           placeholderTextColor={theme.mutedForeground}
           accessibilityLabel="Your answer"
@@ -145,14 +153,14 @@ function AnswerWorkBody({ work, title, busy, busyRef, showSeq, setSending, onClo
           maxFontSizeMultiplier={1.6}
           textAlignVertical="top"
           style={{
-            minHeight: 84,
+            minHeight: kbUp ? 76 : 84,
             maxHeight: inputMaxHeight,
             borderRadius: radius.lg,
             borderWidth: 1,
             borderColor: theme.input,
             backgroundColor: theme.card,
             paddingHorizontal: 14,
-            paddingVertical: 10,
+            paddingVertical: 8,
             fontFamily: 'Inter_400Regular',
             fontSize: MOBILE_SCALE.chat.composerInput.fontSize,
             lineHeight: MOBILE_SCALE.chat.composerInput.lineHeight,
@@ -160,13 +168,13 @@ function AnswerWorkBody({ work, title, busy, busyRef, showSeq, setSending, onClo
           }}
         />
         {error ? (
-          <AppText testID="answer-work-error" variant="preview" color={theme.destructive} maxFontSizeMultiplier={1.5}>
+          <AppText testID="answer-work-error" variant="preview" color={theme.destructive} maxFontSizeMultiplier={1.35}>
             {error}
           </AppText>
         ) : null}
       </ScrollView>
 
-      <View testID="answer-work-footer" style={{ ...hPad, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 10, paddingTop: 10, paddingBottom: keyboardOverlap > 0 ? keyboardOverlap + 10 : pad.paddingBottom, borderTopWidth: 1, borderTopColor: theme.hairline, backgroundColor: theme.background }}>
+      <View testID="answer-work-footer" style={{ ...hPad, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 10, paddingTop: 10, paddingBottom: kbUp ? keyboardOverlap + 10 : pad.paddingBottom, borderTopWidth: 1, borderTopColor: theme.hairline, backgroundColor: theme.background }}>
         <Pressable testID="answer-work-cancel" onPress={onClose} disabled={busy} accessibilityRole="button" style={({ pressed }) => ({ ...ACTION_BTN, paddingHorizontal: 16, opacity: busy ? 0.45 : pressed ? 0.7 : 1 })}>
           <AppText variant="name" maxFontSizeMultiplier={THREAD_TYPE_CAPS.actionButton} color={theme.foreground}>
             Cancel
