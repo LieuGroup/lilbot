@@ -131,6 +131,7 @@ test('startup and hot-path hooks catch sync/async errors, restrict to main sessi
     store: fake.store,
     dataDir: fake.root,
     isMainChat: (_botId, chatId) => chatId === mainChat,
+    observesActivity: () => true,
     publish: () => {},
     sender
   })

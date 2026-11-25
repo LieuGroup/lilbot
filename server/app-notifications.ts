@@ -7,7 +7,6 @@ import type { BotStore } from './bots/bot-store'
 import { deployNoticeJob } from './deploy/deploy-notice'
 import type { DeviceService } from './devices/device-service'
 import type { StoredGoal } from './goals/goal-store'
-import { storedTurnRowId } from './history/history-tail'
 import { type NotificationSender, routeSenders } from './notifications/notification-sender'
 import { NotificationService } from './notifications/notification-service'
 import { NotificationStore } from './notifications/notification-store'
@@ -19,6 +18,7 @@ interface AppNotificationsDeps {
   store: BotStore
   dataDir: string
   isMainChat: (botId: string, chatId: string) => boolean
+  observesActivity?: (botId: string) => boolean
   publish: (frame: EventFrame) => void
   sender?: NotificationSender
 }
@@ -39,18 +39,25 @@ const fire = (label: string, run: () => Promise<unknown>) => {
   }
 }
 
-/** Derives a durable, restart-stable turn key: canonical `rowId` when present, else the stored `history_events` rowid
- *  that pairs both `openChat` and `watchActivity` deliveries of the same turn across restarts. */
-function durableTurnKey(database: Database, botId: string, chatId: string, rowId?: string, key?: string): string {
+/** Single-path durable turn identity:
+ *  - When `rowId` is present, both `openChat` and `watchActivity` agree on `row:${rowId}`.
+ *  - When `rowId` is absent and the bot's engine observes activity, only the observer path (`key`) notifies (`evt:${key}`);
+ *    `openChat` (`key === undefined`) is ignored so streams never need pairing.
+ *  - When `rowId` is absent and the engine has no observer, `openChat` is the sole path and keys on its stored `history_events` rowid. */
+function resolveTurnKey(database: Database, botId: string, chatId: string, observes: boolean, rowId?: string, key?: string): string | null {
   if (rowId) return `row:${rowId}`
+  if (observes) return key ? `evt:${key}` : null
+  if (key) return `evt:${key}`
   try {
-    const stored = storedTurnRowId(database, botId, chatId)
-    if (stored !== null) return `he:${stored}`
+    const row = database.query(`SELECT MAX(rowid) AS id FROM history_events WHERE bot=? AND session=? AND json_extract(event,'$.type')='turn.finished'`).get(botId, chatId) as {
+      id: number | null
+    } | null
+    if (row?.id != null) return `he:${row.id}`
   } catch {}
-  return key ? `evt:${key}` : `live:${crypto.randomUUID()}`
+  return `live:${crypto.randomUUID()}`
 }
 
-export function createNotifications({ database, devices, store, dataDir, isMainChat, publish, sender }: AppNotificationsDeps) {
+export function createNotifications({ database, devices, store, dataDir, isMainChat, observesActivity = () => false, publish, sender }: AppNotificationsDeps) {
   const notifications = new NotificationService(new NotificationStore(database), sender ?? routeSenders([]), {
     deviceExists: id => devices.exists(id),
     botName: id => (store.exists(id) ? store.get(id).name : 'LilBot'),
@@ -77,7 +84,8 @@ export function createNotifications({ database, devices, store, dataDir, isMainC
       base.onTurnFinished?.(botId, chatId, event, key)
       safe('turn finished', () => {
         if (!store.exists(botId) || !isMainChat(botId, chatId) || hiddenChat(botId, chatId)) return
-        const turnKey = durableTurnKey(database, botId, chatId, event.rowId, key)
+        const turnKey = resolveTurnKey(database, botId, chatId, observesActivity(botId), event.rowId, key)
+        if (!turnKey) return
         if (event.status === 'completed' && event.text.trim()) {
           fire('reply', () => notifications.notifyReply({ botId, chatId, text: event.text, dedupeKey: `reply:${chatId}:${turnKey}` }))
         } else if (event.status === 'failed') {

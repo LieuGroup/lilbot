@@ -89,7 +89,8 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
     new WorkCheckStore(database),
     new BotPrefsStore(database)
   ]
-  const notif = createNotifications({ database, devices, store, dataDir: DATA_DIR, isMainChat, publish, sender: settings.notificationSender })
+  const observesActivity = (botId: string) => engines.observesActivity(store.engineId(botId))
+  const notif = createNotifications({ database, devices, store, dataDir: DATA_DIR, isMainChat, observesActivity, publish, sender: settings.notificationSender })
   repeat('notifications prune', 60 * 60_000, () => notif.prune())
   const sessionGrants = createSessionGrants(database, token, rootOf, isMainChat, () => system.sessionConnections)
   const ownChat = sessionGrants.ownChat({ routineStore, threadStore, webhookStore, checkStore, mem })
