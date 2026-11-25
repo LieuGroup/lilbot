@@ -82,6 +82,7 @@ export function buildAppConfig(
       'expo-router',
       'expo-secure-store',
       ['expo-splash-screen', { image: './assets/images/splash-icon.png', resizeMode: 'contain', backgroundColor: '#f6f6f4' }],
+      ['expo-image-picker', { photosPermission: 'Allow LilBot to attach photos you pick to a conversation.', cameraPermission: false, microphonePermission: false }],
       ...(enableScrollMinimize ? ['./plugins/with-tab-scroll-minimize'] : []),
       ...(enableDuoVerticalBar ? ['./plugins/with-duo-vertical-bar'] : [])
     ],

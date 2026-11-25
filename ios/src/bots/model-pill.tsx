@@ -1,32 +1,41 @@
-/** The bot's model and reasoning effort in the composer. It stays usable while the bot works; the
- *  menu saves at once through bots.update and the roster store. */
-import { type ReactNode, useState } from 'react'
+/** The bot's model and reasoning effort in the composer. Keeps the effort suffix ("· High")
+ *  visible even when a long model name shortens on narrow Folded Duo widths, and exposes `open()`
+ *  so long-press Send and text-only ImageNote reuse the same picker modal. */
+import { type ReactNode, useCallback, useState } from 'react'
 import { ActivityIndicator, Keyboard, Pressable } from 'react-native'
 import type { Bot, BotModel, ReasoningEffort } from '../../../shared/bot-schema'
-import { LilBotError } from '../../../shared/lilbot-error'
+import { modelKey, modelPillView, type PickerChange } from '../../../shared/client/bots/model-choice'
 import { messageOf } from '../../../shared/client/socket'
+import { LilBotError } from '../../../shared/lilbot-error'
 import { ensureSocket } from '../connection/lilbot'
 import { useConnectionStore } from '../connection/store'
-import { useTheme } from '../ui/theme'
 import { DYNAMIC_TYPE_CAPS } from '../ui/dynamic-type'
-import { AppText } from '../ui/text'
 import { ChevronDownIcon, InfoIcon } from '../ui/icon'
-import { useBotStore } from './store'
-import { modelKey, modelPillView, type PickerChange } from '../../../shared/client/bots/model-choice'
+import { AppText } from '../ui/text'
+import { useTheme } from '../ui/theme'
 import { useModelProviders } from './model-list'
 import { ModelMenu } from './model-menu'
+import { modelPillSegments } from './model-pill-format'
+import { useBotStore } from './store'
 
-/** Returns the pill for the composer row and the menu for the screen root, so the overlay is not trapped in the composer. */
-export function useModelPicker(bot: Bot): { pill: ReactNode; menu: ReactNode } {
+/** Returns the pill for the composer toolbar, the modal menu for the screen root, and `open()`. */
+export function useModelPicker(bot: Bot): { pill: ReactNode; menu: ReactNode; open: () => void } {
   const theme = useTheme()
   const connected = useConnectionStore(state => state.connected)
   const providers = useModelProviders(connected)
-  const [open, setOpen] = useState(false)
+  const [visible, setVisible] = useState(false)
   const [saving, setSaving] = useState<PickerChange | null>(null)
   const [note, setNote] = useState<{ message: string; tone: 'error' | 'info' } | null>(null)
   const view = modelPillView(bot, providers, saving)
-  const label = view.effort ? `${view.label} · ${view.effort}` : view.label
+  const segments = modelPillSegments(view)
   const ink = view.missing ? theme.destructive : theme.mutedForeground
+
+  const open = useCallback(() => {
+    if (!connected || saving) return
+    Keyboard.dismiss()
+    setNote(null)
+    setVisible(true)
+  }, [connected, saving])
 
   const save = async (change: PickerChange, what: 'model' | 'reasoning effort') => {
     const socket = ensureSocket()
@@ -36,7 +45,7 @@ export function useModelPicker(bot: Bot): { pill: ReactNode; menu: ReactNode } {
     try {
       const detail = await socket.call('bots.update', { botId: bot.id, ...change })
       useBotStore.getState().upsert(detail)
-      setOpen(false)
+      setVisible(false)
     } catch (failure) {
       if (failure instanceof LilBotError && failure.code === 'confirm_required') {
         setNote({ message: failure.message, tone: 'info' })
@@ -51,7 +60,7 @@ export function useModelPicker(bot: Bot): { pill: ReactNode; menu: ReactNode } {
 
   const selectModel = (model: BotModel) => {
     if (modelKey(model) === modelKey(bot.model)) {
-      setOpen(false)
+      setVisible(false)
       return
     }
     void save({ model }, 'model')
@@ -59,7 +68,7 @@ export function useModelPicker(bot: Bot): { pill: ReactNode; menu: ReactNode } {
 
   const selectEffort = (level: ReasoningEffort | null) => {
     if ((level ?? null) === (bot.reasoningEffort ?? null)) {
-      setOpen(false)
+      setVisible(false)
       return
     }
     void save({ reasoningEffort: level }, 'reasoning effort')
@@ -68,25 +77,38 @@ export function useModelPicker(bot: Bot): { pill: ReactNode; menu: ReactNode } {
   const pill = (
     <Pressable
       testID="model-pill"
-      accessibilityLabel={`Model: ${label}${view.differs ? ', the engine sends another level' : ''}`}
+      accessibilityLabel={segments.accessibilityLabel}
       accessibilityRole="button"
       disabled={!connected || !!saving}
-      onPress={() => {
-        Keyboard.dismiss()
-        setNote(null)
-        setOpen(true)
-      }}
+      onPress={open}
       hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
-      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 28, maxWidth: '100%', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 14, flexShrink: 1, opacity: pressed ? 0.7 : 1 })}
+      style={({ pressed }) => ({
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 3,
+        minHeight: 30,
+        maxWidth: '100%',
+        paddingHorizontal: 9,
+        paddingVertical: 5,
+        borderRadius: 9999,
+        backgroundColor: theme.muted,
+        flexShrink: 1,
+        opacity: pressed ? 0.7 : 1
+      })}
     >
       {saving ? <ActivityIndicator size="small" color={ink} /> : null}
       <AppText variant="preview" numberOfLines={1} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.modelPill} color={ink} style={{ flexShrink: 1 }}>
-        {label}
+        {segments.model}
       </AppText>
+      {segments.effortSuffix ? (
+        <AppText variant="preview" numberOfLines={1} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.modelPill} color={ink} style={{ flexShrink: 0 }}>
+          {segments.effortSuffix}
+        </AppText>
+      ) : null}
       {view.differs && <InfoIcon color={theme.primary} />}
-      <ChevronDownIcon color={ink} />
+      <ChevronDownIcon color={ink} size={13} />
     </Pressable>
   )
-  const menu = <ModelMenu visible={open} bot={bot} providers={providers} saving={saving} note={note} onSelectModel={selectModel} onSelectEffort={selectEffort} onClose={() => setOpen(false)} />
-  return { pill, menu }
+  const menu = <ModelMenu visible={visible} bot={bot} providers={providers} saving={saving} note={note} onSelectModel={selectModel} onSelectEffort={selectEffort} onClose={() => setVisible(false)} />
+  return { pill, menu, open }
 }

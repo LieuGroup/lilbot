@@ -1,7 +1,10 @@
 /** The app's connection to the LilBot server: the shared client over this install's socket,
  *  configured with the server address and the Access token Oscar pastes in once. */
-import { LilBotSocket, type ClientSocket } from '../../../shared/client/socket'
+import { type ClientSocket, LilBotSocket } from '../../../shared/client/socket'
+import { authHeadersForUrl, httpOrigin, resolveServerAssetUrl, socketUrl } from './asset-url'
 import { useConnectionStore } from './store'
+
+export { httpOrigin, socketUrl }
 
 /** Plain HTTP is only for a server on this Mac (the UI tests' fake server); anywhere else the
  *  Access token would travel unencrypted, so it is refused. */
@@ -12,11 +15,15 @@ export function serverUrlError(url: string): string | null {
   return null
 }
 
-/** "https://lilbot.example.com" or a bare host becomes the `/ws` address of that server. */
-export function socketUrl(base: string): string {
-  const trimmed = base.trim().replace(/\/+$/, '')
-  const http = /^https?:\/\//.test(trimmed) ? trimmed : `https://${trimmed}`
-  return `${http.replace(/^http/, 'ws')}/ws`
+/** Resolves a server-relative path (or same-origin absolute URL) against the configured server address. */
+export function serverAssetUrl(path: string): string | null {
+  return resolveServerAssetUrl(path, useConnectionStore.getState().settings?.serverUrl)
+}
+
+/** Auth headers for HTTP uploads and authenticated attachment image loads — strictly scoped to the configured server origin. */
+export function serverAuthHeadersFor(targetUrl: string | null | undefined): Record<string, string> {
+  const settings = useConnectionStore.getState().settings
+  return authHeadersForUrl(targetUrl, settings?.serverUrl, settings?.accessToken)
 }
 
 let socket: LilBotSocket | null = null

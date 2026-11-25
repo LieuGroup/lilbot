@@ -1,6 +1,7 @@
 /** Cached per-theme markdown styles and narrow-bubble render rules for assistant replies:
- *  horizontal-scroll monospace code blocks, themed horizontal-scroll tables, bounded clipped images,
- *  and uniform vertical gap spacing so bottom bubble padding never collapses regardless of final block. */
+ *  horizontal-scroll monospace code blocks (padding inside ScrollView so clipped lines run flush
+ *  to the rounded border), themed horizontal-scroll tables, bounded clipped images, and uniform
+ *  vertical gap spacing so bottom bubble padding never collapses regardless of final block. */
 import type { ReactNode } from 'react'
 import { Image, Platform, ScrollView, Text, View } from 'react-native'
 import type { ASTNode, RenderRules } from 'react-native-markdown-display'
@@ -8,6 +9,7 @@ import { MOBILE_SCALE, type Palette } from '../ui/tokens'
 
 const MONOSPACE_FONT = Platform.select({ ios: 'Menlo', default: 'monospace' })
 const TABLE_CELL_WIDTH = 112
+export const CODE_BLOCK_PADDING = { paddingHorizontal: 12, paddingVertical: 12 } as const
 
 const styleCache = new WeakMap<Palette, ReturnType<typeof createMarkdownStyle>>()
 
@@ -35,11 +37,13 @@ function createMarkdownStyle(theme: Palette) {
     bullet_list: { marginTop: 0, marginBottom: 0, gap: 4 },
     ordered_list: { marginTop: 0, marginBottom: 0, gap: 4 },
     list_item: { marginTop: 0, marginBottom: 0, ...base },
-    bullet_list_icon: { ...base, marginLeft: 4, marginRight: 8 },
-    ordered_list_icon: { ...base, marginLeft: 4, marginRight: 8 },
+    bullet_list_icon: { ...base, flexShrink: 0, marginLeft: 4, marginRight: 8 },
+    bullet_list_content: { flex: undefined, flexGrow: 0, flexShrink: 1, flexBasis: 'auto' },
+    ordered_list_icon: { ...base, flexShrink: 0, marginLeft: 4, marginRight: 8 },
+    ordered_list_content: { flex: undefined, flexGrow: 0, flexShrink: 1, flexBasis: 'auto' },
     code_inline: { color: theme.foreground, fontFamily: MONOSPACE_FONT, fontSize: fontSize - 2, lineHeight, backgroundColor: theme.muted, borderWidth: 0, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 },
     code_block: { color: theme.foreground, fontFamily: MONOSPACE_FONT, fontSize: codeSize, lineHeight: codeLine, backgroundColor: 'transparent', borderWidth: 0, padding: 0, marginTop: 0, marginBottom: 0 },
-    fence: { backgroundColor: theme.muted, borderWidth: 1, borderColor: theme.hairline, borderRadius: 10, padding: 12, marginTop: 0, marginBottom: 0 },
+    fence: { backgroundColor: theme.muted, borderWidth: 1, borderColor: theme.hairline, borderRadius: 10, overflow: 'hidden' as const, padding: 0, marginTop: 0, marginBottom: 0 },
     blockquote: { backgroundColor: 'transparent', borderLeftWidth: 3, borderColor: theme.border, paddingLeft: 10, paddingVertical: 2, marginLeft: 0, marginTop: 0, marginBottom: 0 },
     table: { borderWidth: 1, borderColor: theme.border, borderRadius: 8, overflow: 'hidden' as const, marginTop: 0, marginBottom: 0 },
     thead: { backgroundColor: theme.muted },
@@ -61,7 +65,7 @@ function trimTrailingNewline(content: unknown): string {
 function renderCodeScroll(node: ASTNode, styles: Record<string, unknown>) {
   return (
     <View key={node.key} style={styles._VIEW_SAFE_fence as object}>
-      <ScrollView horizontal showsHorizontalScrollIndicator nestedScrollEnabled style={{ flexGrow: 0, flexShrink: 0 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator nestedScrollEnabled style={{ flexGrow: 0, flexShrink: 0 }} contentContainerStyle={CODE_BLOCK_PADDING}>
         <Text selectable style={styles.code_block as object}>
           {trimTrailingNewline(node.content)}
         </Text>

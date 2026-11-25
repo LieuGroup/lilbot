@@ -6,7 +6,7 @@ import { ensureSocket } from '../connection/lilbot'
 import { useConnectionStore } from '../connection/store'
 import { newMessageId, thisDeviceId } from '../devices/device'
 import { ChatSessionManager, type ChatSessionSocket } from './session-manager'
-import { emptySlot, updateChat, useChatStore } from './store'
+import { clearRowHeights, emptySlot, updateChat, useChatStore } from './store'
 
 const sessions = new ChatSessionManager({
   getSocket: () => ensureSocket() as ChatSessionSocket | null,
@@ -21,6 +21,7 @@ useConnectionStore.subscribe(state => sessions.setConnected(state.connected))
 
 /** Starts a new chat session for a bot from split-view chrome (e.g. unfolded Duo / iPad New chat orb). */
 export function startNewChat(botId: string) {
+  clearRowHeights(botId)
   sessions.newChat(botId)
 }
 
@@ -35,7 +36,10 @@ export function useChat(botId: string) {
 
   const send = useCallback((text: string, attachments: Attachment[] = []) => sessions.send(botId, text, attachments), [botId])
   const stop = useCallback(() => sessions.stop(botId), [botId])
-  const newChat = useCallback(() => sessions.newChat(botId), [botId])
+  const newChat = useCallback(() => {
+    clearRowHeights(botId)
+    sessions.newChat(botId)
+  }, [botId])
 
   return { ...slot, send, stop, newChat }
 }
