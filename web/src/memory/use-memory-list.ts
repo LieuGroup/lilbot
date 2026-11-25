@@ -14,6 +14,7 @@ export function useMemoryList(request: Request) {
   const [facts, setFacts] = useState<MemoryFact[]>([])
   const [error, setError] = useState('')
   const shown = useRef(0)
+  const loadingMore = useRef(false)
   const key = JSON.stringify(request)
 
   const load = useCallback(async () => {
@@ -42,7 +43,8 @@ export function useMemoryList(request: Request) {
   }, [connected, load])
 
   const more = async () => {
-    if (!page?.nextCursor) return
+    if (!page?.nextCursor || loadingMore.current) return
+    loadingMore.current = true
     try {
       const next = await lilbot.call('memory.listAll', { ...(JSON.parse(key) as Request), cursor: page.nextCursor, limit: 50 })
       setFacts(previous => {
@@ -52,6 +54,8 @@ export function useMemoryList(request: Request) {
       setPage(next)
     } catch (failure) {
       setError(messageOf(failure))
+    } finally {
+      loadingMore.current = false
     }
   }
 
