@@ -2,9 +2,9 @@
  *  Used both as the pushed `/bot-details` Stack screen on compact iPhone (`compact`, where the native nav bar
  *  holds the `[Avatar + Name]` pill), on Folded Duo (`compact={false}` with one identity block and `< Back` + `•••`
  *  in the 84 pt strip), and as the right-hand inspector pane inside `DuoShell` on Unfolded Duo / iPad. */
-import { useMemo, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { Pressable, useWindowDimensions, View } from 'react-native'
-import { Gesture, GestureDetector } from 'react-native-gesture-handler'
+import { GestureDetector, usePanGesture } from 'react-native-gesture-handler'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { ActivityTab } from '../activity/activity-tab'
 import { LibraryTab } from '../library/library-tab'
@@ -36,27 +36,25 @@ export function BotDetailsScreen({
   const startXRef = useRef(0)
   const activeIndex = BOT_DETAILS_TABS.findIndex(entry => entry.id === tab)
 
-  const swipeGesture = useMemo(
-    () =>
-      Gesture.Pan()
-        .runOnJS(true)
-        .activeOffsetX([-24, 24])
-        .failOffsetY([-12, 12])
-        .onBegin(event => {
-          startXRef.current = event.absoluteX
-        })
-        .onEnd(event => {
-          const nextIndex = evaluateTabSwipe({
-            startX: startXRef.current,
-            dx: event.translationX,
-            dy: event.translationY,
-            activeIndex,
-            count: BOT_DETAILS_TABS.length
-          })
-          if (nextIndex !== activeIndex) setTab(BOT_DETAILS_TABS[nextIndex].id)
-        }),
-    [activeIndex]
-  )
+  const swipeGesture = usePanGesture({
+    disableReanimated: true,
+    runOnJS: true,
+    activeOffsetX: [-24, 24],
+    failOffsetY: [-12, 12],
+    onBegin: event => {
+      startXRef.current = event.absoluteX
+    },
+    onDeactivate: event => {
+      const nextIndex = evaluateTabSwipe({
+        startX: startXRef.current,
+        dx: event.translationX,
+        dy: event.translationY,
+        activeIndex,
+        count: BOT_DETAILS_TABS.length
+      })
+      if (nextIndex !== activeIndex) setTab(BOT_DETAILS_TABS[nextIndex].id)
+    }
+  })
 
   if (!bot) {
     return (
