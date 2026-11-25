@@ -19,10 +19,24 @@ export function useScrollRestore(
   const settleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const viewportHeight = useRef(0)
   const nearOldest = useRef(false)
+  const lastOffset = useRef(initialOffset.current)
+  const prevNewestKey = useRef<string | undefined>(undefined)
   const setScrollOffset = useChatStore(state => state.setScrollOffset)
   const [showJumpDown, setShowJumpDown] = useState(shouldShowScrollToBottom(initialOffset.current))
 
   useEffect(() => () => clearTimeout(settleTimer.current), [])
+
+  const newestKey = rowsRef.current[0]?.key
+  useEffect(() => {
+    const prev = prevNewestKey.current
+    prevNewestKey.current = newestKey
+    if (!prev || !newestKey || prev === newestKey || restore.current.isRestoring()) return
+    if (lastOffset.current > 80) return
+    listRef.current?.scrollToOffset({ offset: 0, animated: false })
+    lastOffset.current = 0
+    setShowJumpDown(false)
+    setScrollOffset(botId, 0, null)
+  }, [botId, listRef, newestKey, setScrollOffset])
 
   const handleContentSizeChange = useCallback(
     (_w: number, contentHeight: number) => {
@@ -59,6 +73,7 @@ export function useScrollRestore(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent
       const y = Math.max(0, contentOffset.y)
+      lastOffset.current = y
       nearOldest.current = contentSize.height - (y + layoutMeasurement.height) < 160
       setShowJumpDown(shouldShowScrollToBottom(y))
       if (!restore.current.canRecordScroll()) return
@@ -70,6 +85,7 @@ export function useScrollRestore(
   const jumpToBottom = useCallback(() => {
     restore.current.onUserDrag()
     listRef.current?.scrollToOffset({ offset: 0, animated: true })
+    lastOffset.current = 0
     setShowJumpDown(false)
     setScrollOffset(botId, 0, null)
   }, [botId, listRef, setScrollOffset])
