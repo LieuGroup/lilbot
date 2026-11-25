@@ -89,6 +89,7 @@ function ThreadRow({ botId, thread, inWorkerBatch, framed }: { botId: string; th
         flexDirection: wrap ? 'column' : 'row',
         alignItems: wrap ? 'stretch' : 'center',
         gap: wrap ? 4 : 8,
+        minHeight: 44,
         paddingVertical: 9,
         paddingHorizontal: 11,
         borderRadius: framed ? radius.md : 0,

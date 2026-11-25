@@ -34,7 +34,7 @@ export function TaskDockPill({ pill, wrap, onExpand, onAnswer }: TaskDockPillPro
         }}
       >
         <View style={{ flex: wrap ? undefined : 1, minWidth: 0 }}>
-          <PillExpandGesture accessibilityLabel={pill.accessibilityLabel} onExpand={onExpand}>
+          <PillExpandGesture accessibilityLabel={pill.accessibilityLabel} hitSlop={{ top: 8, bottom: 8, left: 6, right: 4 }} onExpand={onExpand}>
             <View testID="tasks-dock-pill-expand" style={{ flexDirection: 'row', alignItems: 'center', gap: 7, minHeight: 28 }}>
               <ThreadStatusIcon tone={pill.icon} size={13} />
               <AppText

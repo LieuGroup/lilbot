@@ -90,8 +90,9 @@ export function TaskDockSlot({ botId }: TaskDockSlotProps) {
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     gap: 8,
+                    minHeight: 44,
                     paddingHorizontal: 12,
-                    paddingBottom: 8,
+                    paddingVertical: 8,
                     borderBottomWidth: 1,
                     borderBottomColor: theme.hairline,
                     opacity: pressed ? 0.7 : 1

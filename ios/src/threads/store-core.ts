@@ -3,123 +3,32 @@
 import { create } from 'zustand'
 import { messageOf } from '../../../shared/client/socket'
 import { COLLAPSED_PREFIX, DISMISSED_PREFIX, EMPTY_DISMISSED, parseDismissed, pruneDismissed, selectWaitingWork } from '../../../shared/client/threads/waiting-work'
-import type { BotThread } from '../../../shared/thread-schema'
-import type { WorkSummary } from '../../../shared/work-schema'
+import { type DockStorageAdapter, EMPTY_THREAD_STATE, type ThreadSocket, type ThreadStoreOptions, type ThreadStoreState } from './store-types'
 
-export interface ThreadSocket {
-  connected: boolean
-  call(method: 'threads.list', params: { botId: string }): Promise<BotThread[]>
-  call(method: 'threads.open', params: { botId: string; threadId: string }): Promise<BotThread>
-  call(method: 'threads.cancel', params: { botId: string; threadId: string }): Promise<unknown>
-  call(method: 'work.list', params: { status: ['needs_oscar']; limit: number }): Promise<WorkSummary[]>
-  call(method: 'work.answer', params: { itemId: string; answer: string }): Promise<unknown>
-  onThreadsChanged(listener: () => void): () => void
-  onWorkChanged(listener: () => void): () => void
-  onConnection(listener: (connected: boolean) => void): () => void
-}
-
-export interface DockStorageAdapter {
-  getItem(key: string): Promise<string | null>
-  setItem(key: string, value: string): Promise<void>
-}
-
-export interface ThreadStoreState {
-  byBot: Record<string, BotThread[]>
-  opened: Record<string, BotThread>
-  errors: Record<string, string>
-  openErrors: Record<string, string>
-  waitingWork: Record<string, WorkSummary>
-  dismissedByBot: Record<string, Record<string, number>>
-  /** Per-bot dock collapse state; defaults to `true` (32 pt floating glass pill) on mobile per Round 4 spec. */
-  dockCollapsed: Record<string, boolean>
-  activeView: { botId: string; threadId: string } | null
-}
+export type { DockStorageAdapter, ThreadSocket, ThreadStoreOptions, ThreadStoreState } from './store-types'
 
 const openKey = (botId: string, threadId: string) => `${botId}:${threadId}`
 
-export function createThreadStore(getSocket: () => ThreadSocket | null, storage?: DockStorageAdapter) {
-  const store = create<ThreadStoreState>(() => ({
-    byBot: {},
-    opened: {},
-    errors: {},
-    openErrors: {},
-    waitingWork: {},
-    dismissedByBot: {},
-    dockCollapsed: {},
-    activeView: null
-  }))
-
+export function createThreadStore(getSocket: () => ThreadSocket | null, storage?: DockStorageAdapter, options?: ThreadStoreOptions) {
+  const threadsMs = options?.threadsDebounceMs ?? 500
+  const workMs = options?.workDebounceMs ?? 300
+  const store = create<ThreadStoreState>(() => ({ ...EMPTY_THREAD_STATE }))
   const watching = new Map<string, number>()
   const hydratedBots = new Set<string>()
+  const botSeq = new Map<string, number>()
+  const openSeq = new Map<string, number>()
+  let workSeq = 0
+  let socketGen = 0
   let socketBound: ThreadSocket | null = null
   let unsubs: (() => void)[] = []
   let threadsTimer: ReturnType<typeof setTimeout> | undefined
   let workTimer: ReturnType<typeof setTimeout> | undefined
 
-  async function loadBot(botId: string) {
-    const socket = getSocket()
-    if (!socket) return
-    try {
-      const list = await socket.call('threads.list', { botId })
-      store.setState(s => ({ byBot: { ...s.byBot, [botId]: list }, errors: { ...s.errors, [botId]: '' } }))
-    } catch (error) {
-      store.setState(s => ({ errors: { ...s.errors, [botId]: messageOf(error) } }))
-    }
-  }
-
-  async function loadOpen(botId: string, threadId: string) {
-    const socket = getSocket()
-    const key = openKey(botId, threadId)
-    if (!socket) return
-    try {
-      const thread = await socket.call('threads.open', { botId, threadId })
-      store.setState(s => ({ opened: { ...s.opened, [key]: thread }, openErrors: { ...s.openErrors, [key]: '' } }))
-    } catch (error) {
-      store.setState(s => ({ openErrors: { ...s.openErrors, [key]: messageOf(error) } }))
-    }
-  }
-
-  async function loadWaitingWork() {
-    const socket = getSocket()
-    if (!socket) return
-    try {
-      const items = await socket.call('work.list', { status: ['needs_oscar'], limit: 200 })
-      store.setState({ waitingWork: selectWaitingWork(items) })
-    } catch {
-      // Exchanges and workers stay usable if work board is unavailable on a minimal server.
-    }
-  }
-
-  async function hydrateBotPrefs(botId: string) {
-    if (!storage || hydratedBots.has(botId)) return
-    hydratedBots.add(botId)
-    try {
-      const [collapsedRaw, dismissedRaw] = await Promise.all([storage.getItem(`${COLLAPSED_PREFIX}${botId}`), storage.getItem(`${DISMISSED_PREFIX}${botId}`)])
-      store.setState(s => ({
-        dockCollapsed: botId in s.dockCollapsed ? s.dockCollapsed : { ...s.dockCollapsed, [botId]: collapsedRaw === null ? true : collapsedRaw === 'collapsed' },
-        dismissedByBot: botId in s.dismissedByBot ? s.dismissedByBot : { ...s.dismissedByBot, [botId]: parseDismissed(dismissedRaw) }
-      }))
-    } catch {
-      // Keep default in-memory state if storage fails.
-    }
-  }
-
-  const reloadThreadsSoon = () => {
-    if (threadsTimer) return
-    threadsTimer = setTimeout(() => {
-      threadsTimer = undefined
-      for (const botId of watching.keys()) void loadBot(botId)
-      const active = store.getState().activeView
-      if (active) void loadOpen(active.botId, active.threadId)
-    }, 500)
-  }
-
-  const reloadWorkSoon = () => {
-    if (workTimer) return
-    workTimer = setTimeout(() => {
-      workTimer = undefined
-      if (watching.size > 0 || store.getState().activeView) void loadWaitingWork()
-    }, 300)
+  const clearTimers = () => {
+    if (threadsTimer) clearTimeout(threadsTimer)
+    if (workTimer) clearTimeout(workTimer)
+    threadsTimer = undefined
+    workTimer = undefined
   }
 
   const bindSocket = () => {
@@ -127,10 +36,103 @@ export function createThreadStore(getSocket: () => ThreadSocket | null, storage?
     if (socket === socketBound) return
     for (const off of unsubs) off()
     unsubs = []
+    clearTimers()
+    socketGen += 1
+    botSeq.clear()
+    openSeq.clear()
+    workSeq = 0
+    if (socketBound !== null) {
+      hydratedBots.clear()
+      store.setState({ ...EMPTY_THREAD_STATE })
+    }
     socketBound = socket
     if (!socket) return
-    const onReconnect = (connected: boolean) => connected && (reloadThreadsSoon(), reloadWorkSoon())
-    unsubs.push(socket.onThreadsChanged(reloadThreadsSoon), socket.onWorkChanged(reloadWorkSoon), socket.onConnection(onReconnect))
+    const onConn = (connected: boolean) => (connected ? (reloadThreadsSoon(), reloadWorkSoon()) : clearTimers())
+    unsubs.push(socket.onThreadsChanged(reloadThreadsSoon), socket.onWorkChanged(reloadWorkSoon), socket.onConnection(onConn))
+  }
+
+  async function loadBot(botId: string) {
+    bindSocket()
+    const socket = socketBound
+    if (!socket?.connected) return
+    const gen = socketGen
+    const seq = (botSeq.get(botId) ?? 0) + 1
+    botSeq.set(botId, seq)
+    try {
+      const list = await socket.call('threads.list', { botId })
+      if (gen !== socketGen || botSeq.get(botId) !== seq) return
+      store.setState(s => ({ byBot: { ...s.byBot, [botId]: list }, errors: { ...s.errors, [botId]: '' } }))
+    } catch (error) {
+      if (gen !== socketGen || botSeq.get(botId) !== seq || !socket.connected) return
+      store.setState(s => ({ errors: { ...s.errors, [botId]: messageOf(error) } }))
+    }
+  }
+
+  async function loadOpen(botId: string, threadId: string) {
+    bindSocket()
+    const socket = socketBound
+    const key = openKey(botId, threadId)
+    if (!socket?.connected) return
+    const gen = socketGen
+    const seq = (openSeq.get(key) ?? 0) + 1
+    openSeq.set(key, seq)
+    try {
+      const thread = await socket.call('threads.open', { botId, threadId })
+      if (gen !== socketGen || openSeq.get(key) !== seq) return
+      store.setState(s => ({ opened: { ...s.opened, [key]: thread }, openErrors: { ...s.openErrors, [key]: '' } }))
+    } catch (error) {
+      if (gen !== socketGen || openSeq.get(key) !== seq || !socket.connected) return
+      store.setState(s => ({ openErrors: { ...s.openErrors, [key]: messageOf(error) } }))
+    }
+  }
+
+  async function loadWaitingWork() {
+    bindSocket()
+    const socket = socketBound
+    if (!socket?.connected) return
+    const gen = socketGen
+    const seq = ++workSeq
+    try {
+      const items = await socket.call('work.list', { status: ['needs_oscar'], limit: 200 })
+      if (gen !== socketGen || workSeq !== seq) return
+      store.setState({ waitingWork: selectWaitingWork(items), workLoaded: true })
+    } catch {
+      // Exchanges and workers stay usable if work board is unavailable on a minimal server.
+    }
+  }
+
+  async function hydrateBotPrefs(botId: string) {
+    if (!storage || hydratedBots.has(botId)) return
+    const gen = socketGen
+    hydratedBots.add(botId)
+    try {
+      const [collapsedRaw, dismissedRaw] = await Promise.all([storage.getItem(`${COLLAPSED_PREFIX}${botId}`), storage.getItem(`${DISMISSED_PREFIX}${botId}`)])
+      if (gen !== socketGen) return
+      store.setState(s => ({
+        dockCollapsed: botId in s.dockCollapsed ? s.dockCollapsed : { ...s.dockCollapsed, [botId]: collapsedRaw === null ? true : collapsedRaw === 'collapsed' },
+        dismissedByBot: botId in s.dismissedByBot ? s.dismissedByBot : { ...s.dismissedByBot, [botId]: parseDismissed(dismissedRaw) }
+      }))
+    } catch {}
+  }
+
+  function reloadThreadsSoon() {
+    if (threadsTimer || !socketBound?.connected) return
+    threadsTimer = setTimeout(() => {
+      threadsTimer = undefined
+      if (!socketBound?.connected) return
+      for (const botId of watching.keys()) void loadBot(botId)
+      const active = store.getState().activeView
+      if (active) void loadOpen(active.botId, active.threadId)
+    }, threadsMs)
+  }
+
+  function reloadWorkSoon() {
+    if (workTimer || !socketBound?.connected) return
+    workTimer = setTimeout(() => {
+      workTimer = undefined
+      if (!socketBound?.connected) return
+      if (watching.size > 0 || store.getState().activeView) void loadWaitingWork()
+    }, workMs)
   }
 
   const watchBot = (botId: string) => {
@@ -172,16 +174,18 @@ export function createThreadStore(getSocket: () => ThreadSocket | null, storage?
   }
 
   async function stopThread(botId: string, threadId: string) {
-    const socket = getSocket()
-    if (!socket) throw new Error('Not connected to LilBot.')
+    bindSocket()
+    const socket = socketBound
+    if (!socket?.connected) throw new Error('Not connected to LilBot.')
     await socket.call('threads.cancel', { botId, threadId })
     await Promise.all([loadBot(botId), loadWaitingWork(), store.getState().activeView?.threadId === threadId ? loadOpen(botId, threadId) : Promise.resolve()])
     reloadThreadsSoon()
   }
 
   async function answerWork(itemId: string, answer: string) {
-    const socket = getSocket()
-    if (!socket) throw new Error('Not connected to LilBot.')
+    bindSocket()
+    const socket = socketBound
+    if (!socket?.connected) throw new Error('Not connected to LilBot.')
     await socket.call('work.answer', { itemId, answer })
     await loadWaitingWork()
     for (const botId of watching.keys()) void loadBot(botId)
@@ -189,5 +193,5 @@ export function createThreadStore(getSocket: () => ThreadSocket | null, storage?
     if (active) void loadOpen(active.botId, active.threadId)
   }
 
-  return { useStore: store, openKey, watchBot, loadBot, loadOpen, loadWaitingWork, openView, closeView, setDockCollapsed, dismissDockItem, stopThread, answerWork }
+  return { useStore: store, openKey, syncSocket: bindSocket, watchBot, loadBot, loadOpen, loadWaitingWork, openView, closeView, setDockCollapsed, dismissDockItem, stopThread, answerWork }
 }

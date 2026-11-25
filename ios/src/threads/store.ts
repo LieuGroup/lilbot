@@ -8,6 +8,10 @@ import { createThreadStore, type ThreadSocket } from './store-core'
 
 const manager = createThreadStore(() => ensureSocket() as ThreadSocket | null, AsyncStorage)
 
+useConnectionStore.subscribe((state, prev) => {
+  if (state.settings !== prev.settings) manager.syncSocket()
+})
+
 export const useThreadStore = manager.useStore
 export const openThreadView = manager.openView
 export const closeThreadView = manager.closeView
@@ -16,22 +20,21 @@ export const dismissDockItem = manager.dismissDockItem
 export const stopThread = manager.stopThread
 export const answerWork = manager.answerWork
 
-/** Watches and returns a bot's exchanges, workers and groups (`undefined` until first read). Rebinds if server settings change. */
+/** Watches and returns a bot's exchanges, workers and groups (`undefined` until first read). Rebinds when server settings change. */
 export function useThreads(botId: string) {
-  const connected = useConnectionStore(state => state.connected)
   const settings = useConnectionStore(state => state.settings)
-  useEffect(() => manager.watchBot(botId), [botId, connected, settings])
+  useEffect(() => manager.watchBot(botId), [botId, settings])
   return useThreadStore(state => state.byBot[botId])
 }
 
 /** Opens and watches one exchange, worker or group transcript, returning cached summary fallback while loading. */
 export function useOpenedThread(botId: string, threadId: string) {
-  const connected = useConnectionStore(state => state.connected)
+  const settings = useConnectionStore(state => state.settings)
   const threads = useThreads(botId)
   const key = manager.openKey(botId, threadId)
   useEffect(() => {
     void manager.loadOpen(botId, threadId)
-  }, [botId, threadId, connected])
+  }, [botId, threadId, settings])
   const detailed = useThreadStore(state => state.opened[key])
   const error = useThreadStore(state => state.openErrors[key] ?? '')
   const fallback = threads?.find(candidate => candidate.id === threadId)
@@ -40,6 +43,10 @@ export function useOpenedThread(botId: string, threadId: string) {
 
 export function useWaitingWork() {
   return useThreadStore(state => state.waitingWork)
+}
+
+export function useWorkLoaded() {
+  return useThreadStore(state => state.workLoaded)
 }
 
 /** Collapsed by default on mobile (32 pt floating glass pill per Round 4 spec). */

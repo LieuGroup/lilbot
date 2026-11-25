@@ -1,5 +1,6 @@
-/** Native pageSheet confirmation for stopping a running exchange, worker, or temporary group (shared copy with web). */
-import { useState } from 'react'
+/** Native pageSheet confirmation for stopping a running exchange, worker, or temporary group (shared copy with web).
+ *  Locks dismiss and duplicate submits while stopping so in-flight calls run at most once and errors survive. */
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Modal, Pressable, ScrollView, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { messageOf } from '../../../shared/client/socket'
@@ -19,31 +20,54 @@ export interface StopThreadSheetProps {
 }
 
 export function StopThreadSheet({ botId, thread, onClose }: StopThreadSheetProps) {
+  const [busy, setBusy] = useState(false)
+  const busyRef = useRef(false)
+  const setStopping = useCallback((next: boolean) => {
+    busyRef.current = next
+    setBusy(next)
+  }, [])
+  const handleClose = useCallback(() => {
+    if (!busyRef.current) onClose()
+  }, [onClose])
+
+  useEffect(() => {
+    if (thread === null) setStopping(false)
+  }, [thread, setStopping])
+
   return (
-    <Modal visible={thread !== null} animationType="slide" presentationStyle="pageSheet" allowSwipeDismissal onRequestClose={onClose}>
-      {thread ? <StopThreadBody botId={botId} thread={thread} onClose={onClose} /> : null}
+    <Modal visible={thread !== null} animationType="slide" presentationStyle="pageSheet" allowSwipeDismissal={!busy} onRequestClose={handleClose}>
+      {thread ? <StopThreadBody key={thread.id} botId={botId} thread={thread} busy={busy} busyRef={busyRef} setStopping={setStopping} onClose={handleClose} /> : null}
     </Modal>
   )
 }
 
-function StopThreadBody({ botId, thread, onClose }: { botId: string; thread: BotThread; onClose: () => void }) {
+interface StopThreadBodyProps {
+  botId: string
+  thread: BotThread
+  busy: boolean
+  busyRef: { current: boolean }
+  setStopping: (next: boolean) => void
+  onClose: () => void
+}
+
+function StopThreadBody({ botId, thread, busy, busyRef, setStopping, onClose }: StopThreadBodyProps) {
   const theme = useTheme()
   const insets = useSafeAreaInsets()
   const pad = duoSafeSheetPadding(insets)
   const copy = stopThreadCopy(thread)
-  const [stopping, setStopping] = useState(false)
   const [error, setError] = useState('')
 
   const confirm = async () => {
-    if (stopping) return
+    if (busyRef.current) return
     setStopping(true)
     setError('')
     try {
       await stopThread(botId, thread.id)
+      setStopping(false)
       onClose()
     } catch (failure) {
-      setError(messageOf(failure))
       setStopping(false)
+      setError(messageOf(failure))
     }
   }
 
@@ -68,25 +92,17 @@ function StopThreadBody({ botId, thread, onClose }: { botId: string; thread: Bot
         <Pressable
           testID="stop-sheet-close"
           onPress={onClose}
-          disabled={stopping}
+          disabled={busy}
           hitSlop={8}
           accessibilityRole="button"
           accessibilityLabel="Close"
-          style={({ pressed }) => ({ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', opacity: stopping ? 0.4 : pressed ? 0.65 : 1 })}
+          style={({ pressed }) => ({ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', opacity: busy ? 0.4 : pressed ? 0.65 : 1 })}
         >
           <CloseIcon color={theme.foreground} size={16} />
         </Pressable>
       </View>
 
-      <ScrollView
-        contentContainerStyle={{
-          paddingLeft: pad.paddingLeft,
-          paddingRight: pad.paddingRight,
-          paddingTop: 16,
-          paddingBottom: pad.paddingBottom,
-          gap: 14
-        }}
-      >
+      <ScrollView contentContainerStyle={{ paddingLeft: pad.paddingLeft, paddingRight: pad.paddingRight, paddingTop: 16, paddingBottom: pad.paddingBottom, gap: 14 }}>
         {copy.subject ? (
           <AppText variant="chat" color={theme.foreground} maxFontSizeMultiplier={1.6} style={{ fontFamily: 'Inter_500Medium' }}>
             {copy.subject}
@@ -96,7 +112,7 @@ function StopThreadBody({ botId, thread, onClose }: { botId: string; thread: Bot
           {copy.description}
         </AppText>
         {error ? (
-          <AppText variant="preview" color={theme.destructive}>
+          <AppText testID="stop-thread-error" variant="preview" color={theme.destructive} maxFontSizeMultiplier={1.5}>
             {error}
           </AppText>
         ) : null}
@@ -104,16 +120,9 @@ function StopThreadBody({ botId, thread, onClose }: { botId: string; thread: Bot
           <Pressable
             testID="stop-thread-keep"
             onPress={onClose}
-            disabled={stopping}
+            disabled={busy}
             accessibilityRole="button"
-            style={({ pressed }) => ({
-              minHeight: 44,
-              paddingHorizontal: 16,
-              borderRadius: radius.md,
-              alignItems: 'center',
-              justifyContent: 'center',
-              opacity: stopping ? 0.45 : pressed ? 0.7 : 1
-            })}
+            style={({ pressed }) => ({ minHeight: 44, paddingHorizontal: 16, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', opacity: busy ? 0.45 : pressed ? 0.7 : 1 })}
           >
             <AppText variant="name" maxFontSizeMultiplier={THREAD_TYPE_CAPS.actionButton} color={theme.foreground}>
               Keep going
@@ -122,9 +131,9 @@ function StopThreadBody({ botId, thread, onClose }: { botId: string; thread: Bot
           <Pressable
             testID="stop-thread-confirm"
             onPress={() => void confirm()}
-            disabled={stopping}
+            disabled={busy}
             accessibilityRole="button"
-            accessibilityState={{ disabled: stopping }}
+            accessibilityState={{ disabled: busy }}
             style={({ pressed }) => ({
               minHeight: 44,
               paddingHorizontal: 18,
@@ -132,11 +141,11 @@ function StopThreadBody({ botId, thread, onClose }: { botId: string; thread: Bot
               backgroundColor: theme.destructive,
               alignItems: 'center',
               justifyContent: 'center',
-              opacity: stopping ? 0.55 : pressed ? 0.8 : 1
+              opacity: busy ? 0.55 : pressed ? 0.8 : 1
             })}
           >
             <AppText variant="name" maxFontSizeMultiplier={THREAD_TYPE_CAPS.actionButton} color="#ffffff" style={{ fontFamily: 'Inter_600SemiBold' }}>
-              {stopping ? 'Stopping...' : copy.confirmLabel}
+              {busy ? 'Stopping...' : copy.confirmLabel}
             </AppText>
           </Pressable>
         </View>
