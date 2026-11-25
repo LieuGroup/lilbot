@@ -22,6 +22,7 @@ import { createBrowserWebSocket } from './http/browser-ws'
 import { startPublicDoor } from './http/public-door'
 import { allowedHosts } from './http/socket-guard'
 import { webhookRoute } from './http/webhook-route'
+import { createApnsSenderFromEnv } from './notifications/apns-settings'
 import { files } from './skills/skill-files'
 import { SESSION_MCP_PREFIX } from './system/session-grants'
 import { SYSTEM_PATH } from './system/system-connection'
@@ -67,6 +68,7 @@ const services = createAppServices(engines, {
   ACCESS_HOST: ACCESS?.host,
   ACCESS_CALLBACK_ENABLED: ACCESS?.callbackEnabled ?? false,
   T3_ENABLED,
+  notificationSender: createApnsSenderFromEnv(process.env) ?? undefined,
   publish: frame => publish(EVERYONE, JSON.stringify(frame)),
   botsChanged
 })
