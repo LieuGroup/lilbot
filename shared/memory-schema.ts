@@ -72,3 +72,32 @@ export interface MemoryBrowsePage {
   /** Live bots still on their engine's own notes, which can be connected to LilBot's memory. */
   notConnected: { botId: string; name: string }[]
 }
+
+const botId = z.string().min(1)
+const factId = z.string().min(1)
+/** The browser's memory methods; `protocol.ts` spreads them into `methods`. */
+export const memoryMethods = {
+  /** Everything the bot can see in memory, and whether the bot is connected to it. */
+  'memory.list': z.object({ botId }),
+  /** Settings > Memory: all of memory across bots, a page at a time. Read-only; only the owner's browser can call it. */
+  'memory.listAll': MemoryBrowseInput,
+  /** The user adds a fact from the app. */
+  'memory.write': MemoryWriteInput,
+  'memory.forget': z.object({ factId }),
+  /** Brings a forgotten fact back. */
+  'memory.restore': z.object({ factId }),
+  /** Switches a fact off (kept, not shown to bots) or back on. */
+  'memory.pause': z.object({ factId, paused: z.boolean() }),
+  /** Connects a bot to LilBot's memory and brings over the notes its engine kept. */
+  'memory.connect': z.object({ botId })
+}
+
+export interface MemoryResults {
+  'memory.list': { connected: boolean; botName?: string; facts: MemoryFact[]; forgotten: MemoryFact[] }
+  'memory.listAll': MemoryBrowsePage
+  'memory.write': MemoryFact
+  'memory.forget': { ok: true }
+  'memory.restore': { ok: true }
+  'memory.pause': { ok: true }
+  'memory.connect': { imported: number }
+}
