@@ -35,13 +35,14 @@ export function MessageList({ botId, botName, botAvatar, deviceId, chat, statusL
   const isDark = useColorScheme() === 'dark'
   const { width: viewportWidth } = useWindowDimensions()
   const listRef = useRef<FlatList<TranscriptRow>>(null)
-  const rows = useMemo(() => buildTranscriptRows(chat, botName), [botName, chat])
+  const fallbackNowRef = useRef(Date.now())
+  const rows = useMemo(() => buildTranscriptRows(chat, botName, fallbackNowRef.current), [botName, chat])
   const rowsRef = useRef(rows)
   rowsRef.current = rows
 
   const scroll = useScrollRestore(botId, listRef, rowsRef, viewportWidth)
   const { loading: loadingOlder, load: loadOlder } = useOlderHistory(botId, scroll.nearOldest)
-  const visibleStatus = statusLine && (statusLine.tone === 'running' || rows.length === 0 || !scroll.showJumpDown) ? statusLine : null
+  const visibleStatus = statusLine && (statusLine.tone === 'running' || rows.length === 0) ? statusLine : null
 
   const renderItem = useCallback(
     ({ item: row }: ListRenderItemInfo<TranscriptRow>) => (
@@ -72,6 +73,8 @@ export function MessageList({ botId, botName, botAvatar, deviceId, chat, statusL
         onEndReachedThreshold={0.25}
         onScrollToIndexFailed={scroll.handleScrollToIndexFailed}
         keyboardDismissMode="interactive"
+        windowSize={9}
+        maxToRenderPerBatch={10}
         scrollEventThrottle={64}
         contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: CONTENT_PADDING_VERTICAL, gap: ROW_GAP, flexGrow: 1, justifyContent: rows.length === 0 ? 'center' : 'flex-end' }}
         ListHeaderComponent={visibleStatus ? <ConversationStatusRow status={visibleStatus} centered={rows.length === 0} /> : undefined}

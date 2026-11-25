@@ -1,10 +1,13 @@
 /** Multi-pass scroll restore hook for the inverted transcript FlatList, handling same-width exact
- *  pixel anchoring, fold/unfold index anchoring, and pending status headers cleanly. */
+ *  pixel anchoring, fold/unfold index anchoring, bounded settle when content shrinks, and Reduce Motion. */
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
-import type { FlatList, NativeScrollEvent, NativeSyntheticEvent } from 'react-native'
+import { AccessibilityInfo, type FlatList, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native'
 import type { TranscriptRow } from './message-rows'
 import { computeRestorePlan, createScrollRestoreController, findScrollAnchor, ROW_GAP, shouldShowScrollToBottom } from './scroll-restore'
 import { getRowHeights, useChatStore } from './store'
+
+export const SETTLE_REACHED_MS = 250
+export const SETTLE_SHORT_CONTENT_MS = 450
 
 export function useScrollRestore(
   botId: string,
@@ -17,6 +20,7 @@ export function useScrollRestore(
   const initialAnchor = useRef(slot0?.scrollAnchor ?? null)
   const restore = useRef(createScrollRestoreController(initialOffset.current > 2 || initialAnchor.current !== null))
   const settleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const reduceMotion = useRef(false)
   const viewportHeight = useRef(0)
   const nearOldest = useRef(false)
   const lastOffset = useRef(initialOffset.current)
@@ -24,7 +28,20 @@ export function useScrollRestore(
   const setScrollOffset = useChatStore(state => state.setScrollOffset)
   const [showJumpDown, setShowJumpDown] = useState(shouldShowScrollToBottom(initialOffset.current))
 
-  useEffect(() => () => clearTimeout(settleTimer.current), [])
+  useEffect(() => {
+    let active = true
+    void AccessibilityInfo.isReduceMotionEnabled().then(enabled => {
+      if (active) reduceMotion.current = enabled
+    })
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', enabled => {
+      reduceMotion.current = enabled
+    })
+    return () => {
+      active = false
+      sub.remove()
+      clearTimeout(settleTimer.current)
+    }
+  }, [])
 
   const newestKey = rowsRef.current[0]?.key
   useEffect(() => {
@@ -43,16 +60,17 @@ export function useScrollRestore(
       if (!restore.current.isRestoring() || rowsRef.current.length === 0) return
       const plan = computeRestorePlan(rowsRef.current, getRowHeights(botId), initialAnchor.current, initialOffset.current, viewportWidth)
       if (plan.kind === 'none') return restore.current.markSettled()
+      let settleDelay = SETTLE_REACHED_MS
       if (plan.kind === 'index') {
         if (!restore.current.onContentSize(contentHeight, plan.index, true)) return
         listRef.current?.scrollToIndex({ index: plan.index, viewPosition: 0, animated: false })
       } else {
         if (!restore.current.onContentSize(contentHeight, plan.offset, plan.exact, viewportHeight.current)) return
         listRef.current?.scrollToOffset({ offset: plan.offset, animated: false })
-        if (Math.max(0, contentHeight - viewportHeight.current) < plan.offset) return
+        if (Math.max(0, contentHeight - viewportHeight.current) < plan.offset) settleDelay = SETTLE_SHORT_CONTENT_MS
       }
       clearTimeout(settleTimer.current)
-      settleTimer.current = setTimeout(() => restore.current.markSettled(), 250)
+      settleTimer.current = setTimeout(() => restore.current.markSettled(), settleDelay)
     },
     [botId, listRef, rowsRef, viewportWidth]
   )
@@ -84,7 +102,7 @@ export function useScrollRestore(
 
   const jumpToBottom = useCallback(() => {
     restore.current.onUserDrag()
-    listRef.current?.scrollToOffset({ offset: 0, animated: true })
+    listRef.current?.scrollToOffset({ offset: 0, animated: !reduceMotion.current })
     lastOffset.current = 0
     setShowJumpDown(false)
     setScrollOffset(botId, 0, null)

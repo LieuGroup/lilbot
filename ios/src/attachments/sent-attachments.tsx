@@ -1,11 +1,11 @@
 /** Sent message attachments above a user bubble (120x150 image tiles with authenticated full-screen
- *  viewer, file chips) and the text-only model ImageNote with "Change model" trigger. */
+ *  viewer clearing Duo safe areas with tap-outside close, file chips) and the text-only model ImageNote. */
 import { useEffect, useState } from 'react'
-import { AccessibilityInfo, Image, Modal, Pressable, View } from 'react-native'
+import { AccessibilityInfo, Image, Modal, Pressable, StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { Attachment, ImageSupport } from '../../../shared/attachment-schema'
 import { formatBytes, imageNoteText, isImage } from '../../../shared/client/attachments/attachment-rules'
-import { serverAssetUrl, serverAuthHeaders } from '../connection/lilbot'
+import { serverAssetUrl, serverAuthHeadersFor } from '../connection/lilbot'
 import { FileIcon } from '../ui/chat-icons'
 import { CloseIcon, InfoIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
@@ -17,7 +17,6 @@ export function SentAttachments({ files }: { files: Attachment[] }) {
   const insets = useSafeAreaInsets()
   const [viewed, setViewed] = useState<{ uri: string; name: string } | null>(null)
   const [reduceTransparency, setReduceTransparency] = useState(false)
-  const headers = serverAuthHeaders()
   const images = files.filter(isImage)
   const others = files.filter(file => !isImage(file))
 
@@ -49,7 +48,7 @@ export function SentAttachments({ files }: { files: Attachment[] }) {
                 accessibilityLabel={`Open ${file.name}`}
                 style={{ width: 120, height: 150, borderRadius: 14, overflow: 'hidden', backgroundColor: theme.muted, borderWidth: 1, borderColor: theme.hairline }}
               >
-                <Image source={{ uri, headers }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                <Image source={{ uri, headers: serverAuthHeadersFor(uri) }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
               </Pressable>
             )
           })}
@@ -87,8 +86,24 @@ export function SentAttachments({ files }: { files: Attachment[] }) {
         </View>
       ))}
       <Modal visible={viewed !== null} transparent animationType="fade" onRequestClose={() => setViewed(null)}>
-        <View style={{ flex: 1, backgroundColor: glassFallbackBackground(theme, { reduceTransparency, scrim: true }), justifyContent: 'center', alignItems: 'center', padding: 16 }}>
-          {viewed ? <Image source={{ uri: viewed.uri, headers }} style={{ width: '100%', height: '80%' }} resizeMode="contain" /> : null}
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: glassFallbackBackground(theme, { reduceTransparency, scrim: true }),
+            justifyContent: 'center',
+            alignItems: 'center',
+            paddingTop: Math.max(16, insets.top),
+            paddingBottom: Math.max(16, insets.bottom),
+            paddingLeft: Math.max(16, insets.left),
+            paddingRight: Math.max(16, insets.right)
+          }}
+        >
+          <Pressable testID="image-viewer-backdrop" accessible={false} onPress={() => setViewed(null)} style={StyleSheet.absoluteFill} />
+          {viewed ? (
+            <View pointerEvents="none" style={{ width: '100%', height: '80%' }}>
+              <Image source={{ uri: viewed.uri, headers: serverAuthHeadersFor(viewed.uri) }} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
+            </View>
+          ) : null}
           <Pressable
             testID="image-viewer-close"
             onPress={() => setViewed(null)}
@@ -120,16 +135,16 @@ export function ImageNote({ images, onChangeModel }: { images: ImageSupport | un
   const text = imageNoteText(images)
   if (!text) return null
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, maxWidth: '86%', borderRadius: 10, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.hairline, paddingHorizontal: 12, paddingVertical: 10 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, maxWidth: '86%', borderRadius: 10, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.hairline, paddingHorizontal: 12, paddingTop: 10, paddingBottom: onChangeModel ? 2 : 10 }}>
       <View style={{ marginTop: 2 }}>
         <InfoIcon color={theme.mutedForeground} size={14} />
       </View>
-      <View style={{ flex: 1, gap: 4 }}>
+      <View style={{ flex: 1 }}>
         <AppText variant="preview" color={theme.foreground}>
           {text}
         </AppText>
         {onChangeModel ? (
-          <Pressable onPress={onChangeModel} hitSlop={8} accessibilityRole="button">
+          <Pressable onPress={onChangeModel} accessibilityRole="button" style={{ minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' }}>
             <AppText variant="preview" color={theme.foreground} style={{ fontFamily: 'Inter_600SemiBold', textDecorationLine: 'underline' }}>
               Change model
             </AppText>

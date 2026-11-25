@@ -70,3 +70,19 @@ export function buildTranscriptRows(view: Pick<ChatView, 'items' | 'queued' | 'f
 
   return chronological.reverse()
 }
+
+/** Value-compares two TranscriptRows so streaming `text.delta` re-renders only the active row. */
+export function sameTranscriptRow(a: TranscriptRow, b: TranscriptRow): boolean {
+  if (a === b) return true
+  if (a.kind !== b.kind || a.key !== b.key) return false
+  if (a.kind === 'message' && b.kind === 'message') {
+    return a.item === b.item && a.queued === b.queued && a.inTurn === b.inTurn && a.beforeTool === b.beforeTool
+  }
+  if (a.kind === 'session' && b.kind === 'session') {
+    return a.at === b.at && a.reason === b.reason && a.botName === b.botName
+  }
+  if ((a.kind === 'date' && b.kind === 'date') || (a.kind === 'start' && b.kind === 'start')) {
+    return a.at === b.at
+  }
+  return false
+}

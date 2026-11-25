@@ -12,11 +12,9 @@ import type { StagedAttachments, StagedFile } from './use-staged-attachments'
 const isWaiting = (file: StagedFile) => file.state === 'preparing' || file.state === 'uploading'
 
 export function ComposerAttachments({ staged }: { staged: StagedAttachments }) {
-  const theme = useTheme()
   const kept = staged.files.filter(file => file.state !== 'refused')
   const refused = staged.files.filter(file => file.state === 'refused')
-  if (kept.length === 0 && refused.length === 0 && staged.leftOut === 0) return null
-
+  if (kept.length === 0 && refused.length === 0 && staged.leftOut === 0 && !staged.pickerError) return null
   return (
     <View style={{ gap: 8, marginBottom: 8 }}>
       {kept.length > 0 ? (
@@ -25,45 +23,30 @@ export function ComposerAttachments({ staged }: { staged: StagedAttachments }) {
         </ScrollView>
       ) : null}
       {refused.map(file => (
-        <View
-          key={file.key}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12, borderWidth: 1, borderColor: theme.destructive, backgroundColor: theme.background, paddingHorizontal: 10, paddingVertical: 8 }}
-        >
-          <View style={{ flex: 1, gap: 1 }}>
-            <AppText variant="preview" numberOfLines={1} color={theme.foreground} style={{ fontFamily: 'Inter_500Medium' }}>
-              {file.name}
-            </AppText>
-            <AppText variant="meta" color={theme.destructive}>
-              {refusalText({ size: file.size, reason: file.reason }, staged.limits)}
-            </AppText>
-          </View>
-          <Pressable onPress={() => staged.remove(file.key)} hitSlop={10} accessibilityRole="button" accessibilityLabel={`Remove ${file.name}`}>
-            <CloseIcon color={theme.mutedForeground} size={15} />
-          </Pressable>
-        </View>
+        <ErrorBanner key={file.key} title={file.name} message={refusalText({ size: file.size, reason: file.reason }, staged.limits)} dismissLabel={`Remove ${file.name}`} onDismiss={() => staged.remove(file.key)} />
       ))}
-      {staged.leftOut > 0 && staged.limits ? (
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 8,
-            borderRadius: 12,
-            borderWidth: 1,
-            borderColor: theme.destructive,
-            backgroundColor: theme.background,
-            paddingHorizontal: 10,
-            paddingVertical: 8
-          }}
-        >
-          <AppText variant="preview" color={theme.destructive} style={{ flex: 1 }}>
-            {leftOutText(staged.leftOut, staged.limits)}
-          </AppText>
-          <Pressable onPress={staged.dismissLeftOut} hitSlop={10} accessibilityRole="button" accessibilityLabel="Dismiss">
-            <CloseIcon color={theme.mutedForeground} size={15} />
-          </Pressable>
-        </View>
-      ) : null}
+      {staged.leftOut > 0 && staged.limits ? <ErrorBanner message={leftOutText(staged.leftOut, staged.limits)} dismissLabel="Dismiss" onDismiss={staged.dismissLeftOut} /> : null}
+      {staged.pickerError ? <ErrorBanner message={staged.pickerError} dismissLabel="Dismiss" onDismiss={staged.dismissError} /> : null}
+    </View>
+  )
+}
+
+function ErrorBanner({ title, message, dismissLabel, onDismiss }: { title?: string; message: string; dismissLabel: string; onDismiss: () => void }) {
+  const theme = useTheme()
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 12, borderWidth: 1, borderColor: theme.destructive, backgroundColor: theme.background, paddingLeft: 10, paddingRight: 2, paddingVertical: 4 }}>
+      <View style={{ flex: 1, gap: 1, paddingVertical: 4 }}>
+        {title ? <AppText variant="preview" numberOfLines={1} color={theme.foreground} style={{ fontFamily: 'Inter_500Medium' }}>{title}</AppText> : null}
+        <AppText variant="meta" color={theme.destructive}>{message}</AppText>
+      </View>
+      <Pressable
+        onPress={onDismiss}
+        accessibilityRole="button"
+        accessibilityLabel={dismissLabel}
+        style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
+      >
+        <CloseIcon color={theme.mutedForeground} size={15} />
+      </Pressable>
     </View>
   )
 }
@@ -108,17 +91,7 @@ function RemoveBadge({ name, onPress }: { name: string; onPress: () => void }) {
       hitSlop={12}
       accessibilityRole="button"
       accessibilityLabel={`Remove ${name}`}
-      style={{
-        position: 'absolute',
-        top: -5,
-        right: -5,
-        width: 20,
-        height: 20,
-        borderRadius: 10,
-        backgroundColor: theme.foreground,
-        alignItems: 'center',
-        justifyContent: 'center'
-      }}
+      style={{ position: 'absolute', top: -5, right: -5, width: 20, height: 20, borderRadius: 10, backgroundColor: theme.foreground, alignItems: 'center', justifyContent: 'center' }}
     >
       <CloseIcon color={theme.card} size={11} />
     </Pressable>
@@ -137,6 +110,9 @@ export function AttachSourceSheet({ visible, onClose, onPickPhotos, onPickFiles 
   const insets = useSafeAreaInsets()
   const pending = useRef<'photos' | 'files' | null>(null)
   const launchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const callbacks = useRef({ onPickPhotos, onPickFiles })
+  callbacks.current = { onPickPhotos, onPickFiles }
+
   const choose = (action: 'photos' | 'files') => {
     pending.current = action
     onClose()
@@ -147,10 +123,10 @@ export function AttachSourceSheet({ visible, onClose, onPickPhotos, onPickFiles 
     pending.current = null
     clearTimeout(launchTimer.current)
     launchTimer.current = setTimeout(() => {
-      if (action === 'photos') onPickPhotos()
-      else onPickFiles()
+      if (action === 'photos') callbacks.current.onPickPhotos()
+      else callbacks.current.onPickFiles()
     }, 60)
-  }, [onPickFiles, onPickPhotos])
+  }, [])
 
   useEffect(() => {
     if (visible) return

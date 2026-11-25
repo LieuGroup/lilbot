@@ -1,14 +1,15 @@
 /** Round 4 Conversation Composer:
  *  - Resting (unfocused, empty draft, no staged files): compact 1-row pill (`+`, `Message`, `Send`/`Stop`),
  *    keeping model & context pills hidden while reading.
- *  - Expanded (focused, non-empty, holding attachments, or VoiceOver): 2-row card with staged attachments,
+ *  - Expanded (focused, non-empty, holding attachments/errors, or VoiceOver): 2-row card with staged attachments,
  *    multiline input, `+` attach, compact model/effort pill, context meter pill, and Send/Stop.
  *  - Long-pressing Send (and its VoiceOver custom action) opens the model/effort picker (`R4-G4`). */
 import * as Haptics from 'expo-haptics'
-import { type ComponentRef, type ReactNode, useEffect, useRef, useState } from 'react'
+import { type ComponentRef, type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { Keyboard, Platform, Pressable, TextInput, useWindowDimensions, View } from 'react-native'
 import type { Attachment } from '../../../shared/attachment-schema'
 import type { BotContext } from '../../../shared/bot-schema'
+import { messageOf } from '../../../shared/client/socket'
 import { pickDocuments, pickPhotos } from '../attachments/attachment-upload'
 import { AttachSourceSheet, ComposerAttachments } from '../attachments/composer-attachments'
 import { useStagedAttachments } from '../attachments/use-staged-attachments'
@@ -34,6 +35,8 @@ export interface ComposerProps {
   onOpenModelPicker: () => void
 }
 
+const AX_FOCUS_OVERLAY_MIN_SCALE = 1.35
+
 export function Composer({ botId, botName, context, ready, running, model, bottomInset = 0, onSend, onStop, onOpenModelPicker }: ComposerProps) {
   const theme = useTheme()
   const { fontScale } = useWindowDimensions()
@@ -56,7 +59,8 @@ export function Composer({ botId, botName, context, ready, running, model, botto
     }
   }, [])
 
-  const expanded = isComposerExpanded({ focused, draft: text, stagedCount: staged.files.length + (staged.leftOut > 0 ? 1 : 0), screenReaderEnabled })
+  const stagedTotal = staged.files.length + (staged.leftOut > 0 ? 1 : 0) + (staged.pickerError ? 1 : 0)
+  const expanded = isComposerExpanded({ focused, draft: text, stagedCount: stagedTotal, screenReaderEnabled })
   const action = composerActionState({ ready, running, draft: text, readyAttachments: staged.ready.length, uploadingAttachments: staged.busy })
   const paddingBottom = keyboardOpen ? 12 : Math.max(12, bottomInset)
   const btnSize = chatScale.composerActionSize
@@ -68,6 +72,9 @@ export function Composer({ botId, botName, context, ready, running, model, botto
     staged.clear()
   }
 
+  const handlePickPhotos = useCallback(() => void pickPhotos().then(staged.add).catch(failure => staged.reportError(messageOf(failure))), [staged.add, staged.reportError])
+  const handlePickFiles = useCallback(() => void pickDocuments().then(staged.add).catch(failure => staged.reportError(messageOf(failure))), [staged.add, staged.reportError])
+
   const openModelFromLongPress = () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {})
     onOpenModelPicker()
@@ -76,10 +83,7 @@ export function Composer({ botId, botName, context, ready, running, model, botto
   const attachButton = (
     <Pressable
       testID="composer-attach-button"
-      onPress={() => {
-        Keyboard.dismiss()
-        setAttachSheetOpen(true)
-      }}
+      onPress={() => { Keyboard.dismiss(); setAttachSheetOpen(true) }}
       disabled={!ready}
       hitSlop={6}
       accessibilityRole="button"
@@ -123,23 +127,22 @@ export function Composer({ botId, botName, context, ready, running, model, botto
     </Pressable>
   )
 
+  const pillStyle = {
+    width: '100%' as const,
+    maxWidth: 680,
+    minHeight: chatScale.composerMinHeight,
+    backgroundColor: theme.card,
+    borderRadius: expanded ? 24 : chatScale.composerRadius,
+    borderWidth: 1,
+    borderColor: theme.border,
+    paddingTop: expanded ? 12 : 9,
+    paddingHorizontal: expanded ? 14 : 10,
+    paddingBottom: expanded ? 10 : 9
+  }
+
   return (
     <View style={{ alignItems: 'center', paddingHorizontal: 14, paddingTop: 4, paddingBottom }}>
-      <View
-        testID={expanded ? 'composer-expanded' : 'composer-resting'}
-        style={{
-          width: '100%',
-          maxWidth: 680,
-          minHeight: chatScale.composerMinHeight,
-          backgroundColor: theme.card,
-          borderRadius: expanded ? 24 : chatScale.composerRadius,
-          borderWidth: 1,
-          borderColor: theme.border,
-          paddingTop: expanded ? 12 : 9,
-          paddingHorizontal: expanded ? 14 : 10,
-          paddingBottom: expanded ? 10 : 9
-        }}
-      >
+      <View testID={expanded ? 'composer-expanded' : 'composer-resting'} style={pillStyle}>
         {expanded ? <ComposerAttachments staged={staged} /> : null}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: expanded ? 0 : 10 }}>
           {!expanded ? attachButton : null}
@@ -159,16 +162,11 @@ export function Composer({ botId, botName, context, ready, running, model, botto
               onSubmitEditing={submit}
               blurOnSubmit={false}
               maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.composerInput}
-              style={{
-                maxHeight: composerInputMaxHeight(fontScale),
-                paddingHorizontal: 0,
-                paddingVertical: 0,
-                fontFamily: 'Inter_400Regular',
-                ...chatScale.composerInput,
-                color: theme.foreground
-              }}
+              style={{ maxHeight: composerInputMaxHeight(fontScale), paddingHorizontal: 0, paddingVertical: 0, fontFamily: 'Inter_400Regular', ...chatScale.composerInput, color: theme.foreground }}
             />
-            {!expanded && ready ? <Pressable accessible={false} onPress={() => inputRef.current?.focus()} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} /> : null}
+            {!expanded && ready && fontScale >= AX_FOCUS_OVERLAY_MIN_SCALE ? (
+              <Pressable accessible={false} onPress={() => inputRef.current?.focus()} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} />
+            ) : null}
           </View>
           {!expanded ? actionButton : null}
         </View>
@@ -183,12 +181,7 @@ export function Composer({ botId, botName, context, ready, running, model, botto
           </View>
         ) : null}
       </View>
-      <AttachSourceSheet
-        visible={attachSheetOpen}
-        onClose={() => setAttachSheetOpen(false)}
-        onPickPhotos={() => void pickPhotos().then(staged.add)}
-        onPickFiles={() => void pickDocuments().then(staged.add)}
-      />
+      <AttachSourceSheet visible={attachSheetOpen} onClose={() => setAttachSheetOpen(false)} onPickPhotos={handlePickPhotos} onPickFiles={handlePickFiles} />
     </View>
   )
 }

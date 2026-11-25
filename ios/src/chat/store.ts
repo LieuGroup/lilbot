@@ -19,21 +19,36 @@ export interface ChatSlot {
 
 export const emptySlot: ChatSlot = { view: emptyChat, ready: false, error: '', draft: '', scrollOffset: 0, scrollAnchor: null }
 
-// Non-reactive per-bot measured row heights so FlatList item `onLayout` updates never trigger re-renders.
-const measuredHeights = new Map<string, Record<string, number>>()
+// Non-reactive per-bot measured row heights (capped to bound memory) so FlatList `onLayout` never triggers re-renders.
+export const MAX_MEASURED_HEIGHTS = 500
+const measuredHeights = new Map<string, Map<string, number>>()
 
 export function recordRowHeight(botId: string, key: string, height: number) {
   if (!Number.isFinite(height) || height <= 0) return
   let map = measuredHeights.get(botId)
   if (!map) {
-    map = {}
+    map = new Map<string, number>()
     measuredHeights.set(botId, map)
   }
-  if (Math.abs((map[key] ?? -1) - height) >= 0.01) map[key] = height
+  const existing = map.get(key)
+  if (existing !== undefined && Math.abs(existing - height) < 0.01) return
+  if (existing !== undefined) map.delete(key)
+  map.set(key, height)
+  while (map.size > MAX_MEASURED_HEIGHTS) {
+    const oldest = map.keys().next().value
+    if (oldest === undefined) break
+    map.delete(oldest)
+  }
+}
+
+export function clearRowHeights(botId: string) {
+  measuredHeights.delete(botId)
 }
 
 export function getRowHeights(botId: string): Readonly<Record<string, number>> {
-  return measuredHeights.get(botId) ?? {}
+  const map = measuredHeights.get(botId)
+  if (!map) return {}
+  return Object.fromEntries(map)
 }
 
 interface ChatStore {
