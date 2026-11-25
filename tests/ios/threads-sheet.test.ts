@@ -9,10 +9,15 @@ describe('pageSheet keyboard inset and bounded answer input geometry', () => {
   test('computes exact inset on Folded Duo, stacked pageSheets, centered iPad, and mid-slide fallback', () => {
     expect(sheetKeyboardInset(678, 0)).toBe(0)
     expect(sheetKeyboardInset(678, 318, { y: 24, height: 654 })).toBe(318)
+    // Nested pageSheet shortened by ~10 pt inside its Modal window: stays bottom-anchored, never trims kb
+    expect(sheetKeyboardInset(678, 296, { y: 10, height: 658 })).toBe(296)
+    expect(sheetKeyboardInset(874, 336, { y: 54, height: 810 })).toBe(336)
+    // Nested pageSheet overhanging window bottom: adds the overhang to kb
     expect(sheetKeyboardInset(678, 296, { y: 21, height: 668 })).toBe(307)
     expect(sheetKeyboardInset(874, 336, { y: 64, height: 820 })).toBe(346)
     expect(sheetKeyboardInset(678, 318, { y: 400, height: 654 })).toBe(318)
     expect(sheetKeyboardInset(678, 318, { y: 678, height: 654 })).toBe(318)
+    // Centered iPad pageSheet with real top & bottom gaps >= 40 pt trims the bottom gap
     expect(sheetKeyboardInset(1024, 324, { y: 140, height: 744 })).toBe(184)
     expect(sheetKeyboardInset(1024, 100, { y: 140, height: 744 })).toBe(0)
   })

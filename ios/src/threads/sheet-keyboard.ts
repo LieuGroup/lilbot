@@ -16,8 +16,9 @@ export interface AnswerInputLayoutInput {
 }
 
 /** Converts window-level `keyboardHeight` (from `useKeyboardHeight`) into the exact bottom overlap inside
- *  a Modal pageSheet: keeps single bottom-anchored sheets exact, adds stacked-pageSheet bottom overhang
- *  when a second sheet opens ~10 pt lower on top of another sheet, and trims gaps below centered iPad sheets. */
+ *  a Modal pageSheet: keeps single and stacked bottom-anchored phone/Duo sheets exact (never subtracting a
+ *  small apparent gap when UIKit shortens a nested sheet's height), adds any positive bottom overhang, and
+ *  trims real bottom gaps only on centered iPad pageSheets (`y >= 40` and bottom gap `>= 40`). */
 export function sheetKeyboardInset(windowHeight: number, keyboardHeight: number, sheetFrame?: SheetWindowFrame | null): number {
   const kb = Math.max(0, Math.round(keyboardHeight))
   if (kb === 0) return 0
@@ -33,7 +34,10 @@ export function sheetKeyboardInset(windowHeight: number, keyboardHeight: number,
     sheetFrame.y < windowHeight * 0.5 &&
     sheetBottom <= windowHeight + 48
   if (!validFrame) return kb
-  return Math.max(0, Math.round(kb + (sheetBottom - windowHeight)))
+  if (sheetBottom > windowHeight) return Math.max(0, Math.round(kb + (sheetBottom - windowHeight)))
+  const gapBelowSheet = Math.round(windowHeight - sheetBottom)
+  if (sheetFrame.y >= 40 && gapBelowSheet >= 40) return Math.max(0, kb - gapBelowSheet)
+  return kb
 }
 
 /** Caps multiline answer TextInput height to the measured ScrollView viewport so a 10-line answer scrolls
