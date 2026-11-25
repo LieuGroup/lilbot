@@ -1,6 +1,6 @@
 /** "Today" tab on the Work board (`MOBILE_SCALE.work`, mirrors `web/src/work/work-today-page.tsx`):
  *  date heading, brief subtitle, `Needs you` (with draft preservation + keyboard scroll & Done bar), failed checks, and Done. */
-import { type ComponentRef, Fragment, useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { Pressable, ScrollView, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { briefSubtitle, checkSummaryLine, doneBreakdown, failedCheckItems, todayHeading } from '../../../shared/client/work/work-lines'
@@ -15,6 +15,7 @@ import { WORK_TYPE_CAPS, workScrollBottomPadding } from './board-state'
 import { CheckBadge } from './check-badge'
 import { NeedsYouWorkCard } from './needs-you-card'
 import { useWorkBrief } from './store'
+import { type RevealTarget, useRevealAboveKeyboard } from './use-reveal-above-keyboard'
 import { WorkAvatar } from './work-avatar'
 import { WorkKeyboardDoneBar } from './work-controls'
 
@@ -26,9 +27,8 @@ export function WorkTodayPage({ onOpenItem, hasFloatingTabBar = false }: { onOpe
   const [doneOpen, setDoneOpen] = useState(false)
   const [preserved, setPreserved] = useState<Record<string, PreservedTodayDraft>>({})
   const [tick, setTick] = useState(0)
-  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null)
-  const cardOffsets = useRef<Record<string, number>>({})
-  const sectionOffset = useRef(0)
+  const { scrollRef, onScroll, reveal } = useRevealAboveKeyboard(keyboardHeight)
+  const cards = useRef<Record<string, RevealTarget | null>>({})
 
   useEffect(() => {
     const handle = setInterval(() => setTick(n => n + 1), 30_000)
@@ -56,10 +56,6 @@ export function WorkTodayPage({ onOpenItem, hasFloatingTabBar = false }: { onOpe
     })
   }, [])
 
-  const scrollCardIntoView = useCallback((itemId: string) => {
-    setTimeout(() => scrollRef.current?.scrollTo({ y: Math.max(0, sectionOffset.current + (cardOffsets.current[itemId] ?? 0) - 16), animated: true }), 80)
-  }, [])
-
   const now = tick >= 0 ? Date.now() : Date.now()
 
   if (!brief) {
@@ -81,7 +77,7 @@ export function WorkTodayPage({ onOpenItem, hasFloatingTabBar = false }: { onOpe
 
   return (
     <View style={{ flex: 1 }}>
-      <ScrollView ref={scrollRef} testID="work-today-page" contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" keyboardDismissMode="none" scrollIndicatorInsets={{ bottom: keyboardHeight }} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: bottomPad, gap: 18 }}>
+      <ScrollView ref={scrollRef} testID="work-today-page" onScroll={onScroll} scrollEventThrottle={32} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" keyboardDismissMode="none" scrollIndicatorInsets={{ bottom: keyboardHeight }} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: bottomPad, gap: 18 }}>
         {error ? <AppText color={theme.destructive} maxFontSizeMultiplier={WORK_TYPE_CAPS.rowMeta} style={MOBILE_SCALE.work.rowMeta}>{error}</AppText> : null}
 
         <View style={{ gap: 4 }}>
@@ -94,11 +90,11 @@ export function WorkTodayPage({ onOpenItem, hasFloatingTabBar = false }: { onOpe
         </View>
 
         {needsRows.length > 0 ? (
-          <View style={{ gap: 8 }} onLayout={e => { sectionOffset.current = e.nativeEvent.layout.y }}>
+          <View style={{ gap: 8 }}>
             <AppText color={theme.mutedForeground} maxFontSizeMultiplier={WORK_TYPE_CAPS.sectionHeader} style={[MOBILE_SCALE.work.sectionHeader, { fontFamily: 'Inter_500Medium' }]}>Needs you</AppText>
             {needsRows.map(entry => (
-              <View key={entry.item.id} onLayout={e => { cardOffsets.current[entry.item.id] = e.nativeEvent.layout.y }}>
-                <NeedsYouWorkCard item={entry.item} now={now} live={entry.live} lostOnDisconnect={entry.lostOnDisconnect} onOpenItem={onOpenItem} onDraftChange={handleDraftChange} onDismissStale={handleDismissStale} onInputFocus={() => scrollCardIntoView(entry.item.id)} />
+              <View key={entry.item.id} ref={node => { cards.current[entry.item.id] = node }}>
+                <NeedsYouWorkCard item={entry.item} now={now} live={entry.live} lostOnDisconnect={entry.lostOnDisconnect} onOpenItem={onOpenItem} onDraftChange={handleDraftChange} onDismissStale={handleDismissStale} onInputFocus={() => reveal(cards.current[entry.item.id] ?? null)} />
               </View>
             ))}
           </View>

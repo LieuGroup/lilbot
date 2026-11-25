@@ -53,6 +53,16 @@ export function workScrollBottomPadding(options: { safeBottom: number; keyboardH
   return base
 }
 
+/** Height of `WorkKeyboardDoneBar` (44 pt button, 4 pt padding each side, hairline). */
+export const WORK_DONE_BAR_HEIGHT = 53
+
+/** Scroll offset that lifts a focused card's bottom (its input and buttons) just above the Done bar, or null when it already shows.
+ *  Coordinates are window points; in iPhone landscape the strip above the keyboard is shorter than the card, so the bottom wins. */
+export function revealScrollTarget(input: { offset: number; targetY: number; targetHeight: number; visibleBottom: number }): number | null {
+  const overflow = input.targetY + input.targetHeight + 8 - input.visibleBottom
+  return overflow > 0 ? Math.round(input.offset + overflow) : null
+}
+
 /** Compact landscape height metrics for `DropWorkSheet` so Cancel/Drop and the input stay usable above a landscape keyboard. */
 export function dropSheetMetrics(input: { sheetHeight: number; keyboardOverlap: number; viewportHeight: number }) {
   const kbUp = input.keyboardOverlap > 0

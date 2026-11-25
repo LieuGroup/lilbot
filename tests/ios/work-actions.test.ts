@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { shouldHideNativeTabBar } from '../../ios/src/duo/stack-sync'
 import { isConnectionLostError, isDroppableItem, mergeTodayNeedsItems, resolveWorkItemActionState, runSingleSubmit, staleItemNotice } from '../../ios/src/work/action-state'
-import { dropSheetMetrics, WORK_TYPE_CAPS, workScrollBottomPadding } from '../../ios/src/work/board-state'
+import { dropSheetMetrics, revealScrollTarget, WORK_DONE_BAR_HEIGHT, WORK_TYPE_CAPS, workScrollBottomPadding } from '../../ios/src/work/board-state'
 import { makeWorkItem, makeWorkSummary } from './work-fixtures'
 
 describe('Work single-submit guard, stale draft preservation, and reconnect wording', () => {
@@ -89,6 +89,9 @@ describe('Work single-submit guard, stale draft preservation, and reconnect word
     expect(workScrollBottomPadding({ safeBottom: 34, keyboardHeight: 0, hasFloatingTabBar: true })).toBe(110)
     expect(workScrollBottomPadding({ safeBottom: 34, keyboardHeight: 0, hasFloatingTabBar: false })).toBe(58)
     expect(workScrollBottomPadding({ safeBottom: 0, keyboardHeight: 210, hasFloatingTabBar: true })).toBe(286)
+    const landscapeVisibleBottom = 402 - 177 - WORK_DONE_BAR_HEIGHT
+    expect(revealScrollTarget({ offset: 120, targetY: 90, targetHeight: 190, visibleBottom: landscapeVisibleBottom })).toBe(236)
+    expect(revealScrollTarget({ offset: 120, targetY: 40, targetHeight: 100, visibleBottom: landscapeVisibleBottom })).toBeNull()
     expect(WORK_TYPE_CAPS.pageTitle).toBeLessThanOrEqual(1.4)
     expect(shouldHideNativeTabBar('phone', true)).toBe(true)
     expect(shouldHideNativeTabBar('duo-folded', true)).toBe(false)
@@ -118,6 +121,8 @@ describe('PR #309 Round 2 route, keyboard, scale, and single-modal invariants', 
     expect(controls).toContain('MOBILE_SCALE.work.input')
     expect(controls).not.toContain('fontSize: 15')
     expect(today).toContain('WorkKeyboardDoneBar')
+    expect(today).toContain('useRevealAboveKeyboard(keyboardHeight)')
+    expect(itemPage).toContain('useRevealAboveKeyboard(keyboardHeight)')
     expect(today).toContain('contentInsetAdjustmentBehavior="automatic"')
     expect(itemPage).toContain('WorkKeyboardDoneBar')
     expect(itemPage).toContain('contentInsetAdjustmentBehavior="automatic"')

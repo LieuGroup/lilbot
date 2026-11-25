@@ -1,7 +1,7 @@
 /** Full Work item detail view (`MOBILE_SCALE.work`, mirrors `web/src/work/work-item-page.tsx`).
  *  Drop state can be controlled by the route so Duo places `Drop…` in the 84 pt vertical side strip with zero chrome buttons in content.
  *  At AX sizes on ordinary iPhone/split, `Drop…` stacks cleanly below the title so words never break mid-word. */
-import { type ComponentRef, useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Pressable, ScrollView, useWindowDimensions, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { partitionEvidence } from '../../../shared/client/work/work-groups'
@@ -20,6 +20,7 @@ import { WorkKeyboardDoneBar } from './work-controls'
 import { WorkItemBanner } from './work-item-banner'
 import { WorkCheckCard, WorkFooterLinks } from './work-item-sections'
 import { WorkRow } from './work-row'
+import { type RevealTarget, useRevealAboveKeyboard } from './use-reveal-above-keyboard'
 
 export interface WorkItemPageProps {
   itemId: string
@@ -39,17 +40,15 @@ export function WorkItemPage({ itemId, showDropButton = true, dropOpen, onDropOp
   const { item, error } = useWorkItem(itemId)
   const [localDropOpen, setLocalDropOpen] = useState(false)
   const [tick, setTick] = useState(0)
-  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null)
-  const bannerY = useRef(0)
+  const { scrollRef, onScroll, reveal } = useRevealAboveKeyboard(keyboardHeight)
+  const banner = useRef<RevealTarget>(null)
 
   useEffect(() => {
     const handle = setInterval(() => setTick(n => n + 1), 30_000)
     return () => clearInterval(handle)
   }, [])
 
-  const scrollBannerIntoView = useCallback(() => {
-    setTimeout(() => scrollRef.current?.scrollTo({ y: Math.max(0, bannerY.current - 12), animated: true }), 80)
-  }, [])
+  const revealBanner = useCallback(() => reveal(banner.current), [reveal])
 
   const now = tick >= 0 ? Date.now() : Date.now()
   const dropping = dropOpen ?? localDropOpen
@@ -73,7 +72,7 @@ export function WorkItemPage({ itemId, showDropButton = true, dropOpen, onDropOp
 
   return (
     <View testID={`work-item-page-${item.id}`} style={{ flex: 1, backgroundColor: theme.background }}>
-      <ScrollView ref={scrollRef} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" keyboardDismissMode="none" scrollIndicatorInsets={{ bottom: keyboardHeight }} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: bottomPad, gap: 16 }}>
+      <ScrollView ref={scrollRef} onScroll={onScroll} scrollEventThrottle={32} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" keyboardDismissMode="none" scrollIndicatorInsets={{ bottom: keyboardHeight }} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: bottomPad, gap: 16 }}>
         <View style={{ flexDirection: stackHeader ? 'column' : 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: stackHeader ? 10 : 12 }}>
           <View style={{ flex: stackHeader ? undefined : 1, width: stackHeader ? '100%' : undefined, minWidth: 0, gap: 4 }}>
             <AppText color={theme.foreground} maxFontSizeMultiplier={WORK_TYPE_CAPS.pageTitle} style={[MOBILE_SCALE.work.pageTitle, { fontFamily: 'Inter_600SemiBold' }]}>
@@ -94,8 +93,8 @@ export function WorkItemPage({ itemId, showDropButton = true, dropOpen, onDropOp
 
         {error ? <AppText color={theme.destructive} maxFontSizeMultiplier={WORK_TYPE_CAPS.rowMeta} style={MOBILE_SCALE.work.rowMeta}>{error}</AppText> : null}
 
-        <View onLayout={e => { bannerY.current = e.nativeEvent.layout.y }}>
-          <WorkItemBanner item={item} now={now} onInputFocus={scrollBannerIntoView} />
+        <View ref={banner}>
+          <WorkItemBanner item={item} now={now} onInputFocus={revealBanner} />
         </View>
 
         <View style={{ gap: 4 }}>
