@@ -6,7 +6,7 @@ import '../scripts/dev-env'
  *  3. Mid-session switch to OpenAI, then a hidden routine session on OpenAI: same byte-for-byte wire check.
  *  4. Direct Claude prompt caching (`cacheReadTokens > 0`) and a real compaction with the owned prompt active.
  *  5. A missing prompt file falls back and still answers; deleting the bot removes its prompt file.
- *  Gemini 4 Neon acceptance is skipped: the Google model route is closed on the account. Any 403 or account message
+ *  The OpenAI model must be listed in the dev Hermes model catalogue. Gemini 4 Neon acceptance is skipped: the Google model route is closed on the account. Any 403 or account message
  *  stops the check at once. */
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -17,7 +17,7 @@ import { RestartServer, waitFor } from './restart-server'
 
 const SPACE_MS = 10_000
 const CLAUDE = { provider: 'cliproxyapi', model: 'anthropic/claude-sonnet-5-5' }
-const OPENAI = { provider: 'cliproxyapi', model: 'openai/gpt-6.1-terra' }
+const OPENAI = { provider: 'cliproxyapi', model: 'gpt-5.6-luna' }
 const INSTRUCTIONS = 'You are a concise verification assistant. Follow the user exactly.'
 const ACCOUNT_STOP = /\b403\b|disabled in this account|violation of terms|unknown provider/i
 
