@@ -29,7 +29,8 @@ const factFrom = (row: FactRow): MemoryFact => ({
   learnedAt: row.learned_at,
   paused: row.paused === 1,
   expiresAt: row.expires_at,
-  forgottenAt: row.forgotten_at
+  forgottenAt: row.forgotten_at,
+  forgottenBy: row.forgotten_by
 })
 
 /** Facts that belong to a bot's memory at all: its own, and everything shared. */
@@ -127,6 +128,44 @@ export class MemoryStore {
       )
       .all({ botId, now, match, kind: options.kind ?? null, limit: options.limit })
       .map(factFrom)
+  }
+
+  /** One page for the app: newest first, or most recently removed first, after the position a previous page ended on. */
+  page(input: { view: 'kept' | 'shared' | 'bot' | 'removed'; botId?: string; match: string | null; after?: { at: number; position: number }; limit: number }) {
+    const at = input.view === 'removed' ? 'forgotten_at' : 'learned_at'
+    const params: Record<string, string | number> = { limit: input.limit + 1 }
+    const where = [input.view === 'removed' ? 'forgotten_at IS NOT NULL' : 'forgotten_at IS NULL']
+    if (input.view === 'shared') where.push(`scope = 'shared'`)
+    if (input.view === 'bot') {
+      where.push(`scope = 'bot' AND bot_id = $botId`)
+      params.botId = input.botId ?? ''
+    }
+    if (input.match) {
+      where.push('rowid IN (SELECT rowid FROM memory_search WHERE memory_search MATCH $match)')
+      params.match = input.match
+    }
+    if (input.after) {
+      where.push(`(${at} < $at OR (${at} = $at AND rowid < $position))`)
+      Object.assign(params, { at: input.after.at, position: input.after.position })
+    }
+    const rows = this.db
+      .query<FactRow & { position: number }, Record<string, string | number>>(
+        `SELECT rowid AS position, * FROM memory_facts WHERE ${where.join(' AND ')} ORDER BY ${at} DESC, rowid DESC LIMIT $limit`
+      )
+      .all(params)
+    const facts = rows.slice(0, input.limit)
+    const last = facts.at(-1)
+    const next = rows.length > input.limit && last ? { at: (input.view === 'removed' ? last.forgotten_at : last.learned_at) ?? 0, position: last.position } : null
+    return { facts: facts.map(factFrom), next }
+  }
+
+  /** Kept shared facts, removed facts, and each bot's own kept facts. */
+  counts(): { shared: number; removed: number; bots: { botId: string; facts: number }[] } {
+    const count = (where: string) => this.db.query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM memory_facts WHERE ${where}`).get()?.n ?? 0
+    const bots = this.db
+      .query<{ botId: string; facts: number }, []>(`SELECT bot_id AS botId, COUNT(*) AS facts FROM memory_facts WHERE forgotten_at IS NULL AND scope = 'bot' GROUP BY bot_id`)
+      .all()
+    return { shared: count(`forgotten_at IS NULL AND scope = 'shared'`), removed: count('forgotten_at IS NOT NULL'), bots }
   }
 
   markForgotten(factId: string, at: number, by: 'bot' | 'user'): boolean {

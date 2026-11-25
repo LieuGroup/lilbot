@@ -26,7 +26,9 @@ export const MemoryFact = z.object({
   paused: z.boolean(),
   /** After this moment the fact is no longer shown to bots. */
   expiresAt: z.number().nullable(),
-  forgottenAt: z.number().nullable()
+  forgottenAt: z.number().nullable(),
+  /** Who removed it: the user in the app, or a bot. */
+  forgottenBy: z.enum(['bot', 'user']).nullable()
 })
 export type MemoryFact = z.infer<typeof MemoryFact>
 
@@ -37,3 +39,65 @@ export const defaultScope = (kind: MemoryKind): MemoryScope => (kind === 'profil
 
 export const MemoryWriteInput = z.object({ botId: z.string().min(1), kind: MemoryKind, scope: MemoryScope.optional(), text: factText })
 export type MemoryWriteInput = z.infer<typeof MemoryWriteInput>
+
+/** The app-wide Memory page reads one list at a time: every kept fact, the shared ones, one bot's own, or the removed ones.
+ *  `query` narrows by words; pages run newest first (removed: most recently removed first). */
+export const MemoryBrowseInput = z
+  .object({
+    view: z.enum(['kept', 'shared', 'bot', 'removed']),
+    botId: z.string().min(1).optional(),
+    query: z.string().trim().max(200).optional(),
+    cursor: z.string().max(64).optional(),
+    limit: z.number().int().min(1).max(200).default(50)
+  })
+  .refine(input => input.view !== 'bot' || !!input.botId, 'Name the bot whose facts to list.')
+export type MemoryBrowseInput = z.output<typeof MemoryBrowseInput>
+
+/** A bot named on the Memory page: `facts` counts the kept facts only it knows; a deleted bot keeps its name. */
+export interface MemoryBot {
+  botId: string
+  name: string
+  deleted: boolean
+  facts: number
+}
+
+export interface MemoryBrowsePage {
+  facts: MemoryFact[]
+  nextCursor: string | null
+  /** Kept facts every bot sees, and facts removed from memory. */
+  shared: number
+  removed: number
+  /** Every bot that knows facts of its own, or learned a fact on this page. */
+  bots: MemoryBot[]
+  /** Live bots still on their engine's own notes, which can be connected to LilBot's memory. */
+  notConnected: { botId: string; name: string }[]
+}
+
+const botId = z.string().min(1)
+const factId = z.string().min(1)
+/** The browser's memory methods; `protocol.ts` spreads them into `methods`. */
+export const memoryMethods = {
+  /** Everything the bot can see in memory, and whether the bot is connected to it. */
+  'memory.list': z.object({ botId }),
+  /** Settings > Memory: all of memory across bots, a page at a time. Read-only; only the owner's browser can call it. */
+  'memory.listAll': MemoryBrowseInput,
+  /** The user adds a fact from the app. */
+  'memory.write': MemoryWriteInput,
+  'memory.forget': z.object({ factId }),
+  /** Brings a forgotten fact back. */
+  'memory.restore': z.object({ factId }),
+  /** Switches a fact off (kept, not shown to bots) or back on. */
+  'memory.pause': z.object({ factId, paused: z.boolean() }),
+  /** Connects a bot to LilBot's memory and brings over the notes its engine kept. */
+  'memory.connect': z.object({ botId })
+}
+
+export interface MemoryResults {
+  'memory.list': { connected: boolean; botName?: string; facts: MemoryFact[]; forgotten: MemoryFact[] }
+  'memory.listAll': MemoryBrowsePage
+  'memory.write': MemoryFact
+  'memory.forget': { ok: true }
+  'memory.restore': { ok: true }
+  'memory.pause': { ok: true }
+  'memory.connect': { imported: number }
+}

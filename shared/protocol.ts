@@ -9,7 +9,7 @@ import { type ConnectionResults, connectionMethods } from './connections-schema'
 import { DeviceId, DeviceName } from './device-schema'
 import { type GoalResults, goalMethods } from './goal-schema'
 import { LibraryListInput, type LibraryPage, type WorkspaceEntry } from './library-schema'
-import { type MemoryFact, MemoryWriteInput } from './memory-schema'
+import { type MemoryResults, memoryMethods } from './memory-schema'
 import { type NotificationResults, notificationMethods } from './notification-schema'
 import type { Routine } from './routine-schema'
 import { type WebhookResults, webhookMethods } from './webhook-schema'
@@ -20,6 +20,7 @@ const chatId = z.string().min(1)
 /** Each method's params schema (checked on the server) and result type (trusted by the browser). */
 export const methods = {
   ...webhookMethods,
+  ...memoryMethods,
   'attachments.limits': z.object({}),
   'attachments.prepare': z.object({ botId, files: z.array(AttachmentFile).max(100) }),
   'attachments.status': z.object({ botId, ids: z.array(z.string().uuid()).max(100) }),
@@ -74,17 +75,6 @@ export const methods = {
   'sections.rename': z.object({ sectionId: z.string().min(1), name: sectionName }),
   'sections.delete': z.object({ sectionId: z.string().min(1) }),
   'models.list': z.object({ botId: botId.optional(), engineId: z.string().min(1).optional() }),
-  /** Everything the bot can see in memory, and whether the bot is connected to it. */
-  'memory.list': z.object({ botId }),
-  /** The user adds a fact from the app. */
-  'memory.write': MemoryWriteInput,
-  'memory.forget': z.object({ factId: z.string().min(1) }),
-  /** Brings a forgotten fact back. */
-  'memory.restore': z.object({ factId: z.string().min(1) }),
-  /** Switches a fact off (kept, not shown to bots) or back on. */
-  'memory.pause': z.object({ factId: z.string().min(1), paused: z.boolean() }),
-  /** Connects a bot to LilBot's memory and brings over the notes its engine kept. */
-  'memory.connect': z.object({ botId }),
   /** Without `chatId`: the bot's main conversation, the same one on every device. */
   'chat.history': z.object({ botId, cursor: z.string().max(2000).optional(), limit: z.number().int().min(1).max(100).default(100) }),
   'chat.open': z.object({ botId, chatId: chatId.optional() }),
@@ -112,7 +102,7 @@ export const methods = {
 export type Method = keyof typeof methods
 export type Params<M extends Method> = z.input<(typeof methods)[M]>
 
-export interface Results extends WorkResults, GoalResults, WebhookResults, ConnectionResults, NotificationResults {
+export interface Results extends WorkResults, GoalResults, WebhookResults, ConnectionResults, NotificationResults, MemoryResults {
   'attachments.limits': { maxFileBytes: number; maxFilesPerMessage: number }
   'attachments.prepare': import('./attachment-schema').Attachment[]
   'attachments.status': import('./attachment-schema').Attachment[]
@@ -161,12 +151,6 @@ export interface Results extends WorkResults, GoalResults, WebhookResults, Conne
   'sections.rename': Section
   'sections.delete': { ok: true }
   'models.list': ModelProvider[]
-  'memory.list': { connected: boolean; botName?: string; facts: MemoryFact[]; forgotten: MemoryFact[] }
-  'memory.write': MemoryFact
-  'memory.forget': { ok: true }
-  'memory.restore': { ok: true }
-  'memory.pause': { ok: true }
-  'memory.connect': { imported: number }
   'chat.history': import('./history-schema').HistoryPage
   'chat.open': ChatSnapshot
   'chat.new': ChatSnapshot

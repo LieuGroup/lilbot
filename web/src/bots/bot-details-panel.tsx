@@ -14,7 +14,6 @@ type TabContent = LazyExoticComponent<ComponentType<{ botId: string }>>
 const tabContent: Record<DetailsTab, TabContent> = {
   activity: lazy(() => import('../activity/activity-tab').then(module => ({ default: module.ActivityTab }))),
   library: lazy(() => import('../library/library-tab').then(module => ({ default: module.LibraryTab }))),
-  memory: lazy(() => import('../memory/memory-panel').then(module => ({ default: module.MemoryPanel }))),
   setup: lazy(() => import('./bot-setup-panel').then(module => ({ default: module.BotSetupPanel })))
 }
 // One routine replaces the whole panel (avatar and tabs too) while it is open (`?routine=` on the Activity tab).

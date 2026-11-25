@@ -224,7 +224,7 @@ below are this implementation's.
   fresh prefix, not two. Kept files are recorded in `thread_files` in the end transaction under `<group id>:kept` (with
   the hash), so the same download route serves them; passed files are served from the group folder, then the archive.
 - **Journal facts** are written in the end transaction, `kind: journal`, `scope: bot`, `author: bot`, `via: chat`, with
-  the member's group session as the source chat (memory has no `via` for LilBot itself; the Memory panel shows it as
+  the member's group session as the source chat (memory has no `via` for LilBot itself; Settings > Memory shows it as
   learned in a chat). The longest of three versions that memory accepts is saved; a refusal never blocks the end.
 - **Work after the end** (`settle`) is marked done in `thread_groups.settled` and retried from the tick (30 seconds
   after a failure) until the folder is archived.

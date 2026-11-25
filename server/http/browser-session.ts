@@ -18,6 +18,7 @@ import { boardHandlers } from './board-handlers'
 import { type AfterResponse, BrowserChats } from './browser-chats'
 import { computerHandlers } from './computer-handlers'
 import { type BrowserConnections, connectionHandlers } from './connection-handlers'
+import { memoryHandlers } from './memory-handlers'
 import { createSessionNotifications } from './notification-handlers'
 
 function requireService<T>(service: T | undefined, message: string): T {
@@ -134,12 +135,7 @@ export class BrowserSession {
     'sections.rename': async ({ sectionId, name }) => this.bots.renameSection(sectionId, name),
     'sections.delete': ({ sectionId }) => ok(() => this.bots.deleteSection(sectionId)),
     'models.list': params => this.bots.listModels(params),
-    'memory.list': ({ botId }) => this.bots.listMemory(botId),
-    'memory.write': input => this.bots.writeMemory(input),
-    'memory.forget': ({ factId }) => ok(() => this.bots.forgetMemory(factId)),
-    'memory.restore': ({ factId }) => ok(() => this.bots.restoreMemory(factId)),
-    'memory.pause': ({ factId, paused }) => ok(() => this.bots.pauseMemory(factId, paused)),
-    'memory.connect': ({ botId }) => this.bots.connectMemory(botId),
+    ...memoryHandlers(() => this.bots),
     'chat.history': async ({ botId, cursor, limit }) => this.chats.history(botId, cursor, limit),
     'chat.open': ({ botId, chatId }, afterResponse) => this.chats.track(afterResponse, onEvent => this.bots.openChat(botId, chatId, onEvent)),
     'chat.new': ({ botId }, afterResponse) => this.chats.track(afterResponse, onEvent => this.bots.newChat(botId, onEvent)),

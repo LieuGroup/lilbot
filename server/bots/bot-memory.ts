@@ -1,5 +1,6 @@
 /** Memory setup belongs to the bot service, with stable ids on the app side of the binding. */
 import { LilBotError } from '../../shared/lilbot-error'
+import type { MemoryBrowseInput, MemoryBrowsePage } from '../../shared/memory-schema'
 import { backgroundFailure } from '../background'
 import type { MemoryConnection } from '../engines/bot-engine'
 import type { MemoryService } from '../memory/memory-service'
@@ -19,6 +20,21 @@ export class BotMemory {
     const bot = await this.runtimes.require(botId)
     const state = this.runtimes.snapshot(bot)
     return { connected: state?.memoryConnected ?? false, botName: bot.name, ...this.memory.panel(botId) }
+  }
+
+  /** The app-wide Memory page: one page of facts, with every bot it names (deleted bots keep their name). */
+  browse(input: MemoryBrowseInput): MemoryBrowsePage {
+    const { bots: owners, ...page } = this.memory.browse(input)
+    const live = this.runtimes.store.list()
+    const own = new Map(owners.map(owner => [owner.botId, owner.facts]))
+    const named = new Set([...own.keys(), ...page.facts.map(fact => fact.botId)])
+    const bots = [...named].map(botId => {
+      const bot = live.find(candidate => candidate.id === botId)
+      const name = bot?.name ?? this.runtimes.store.deleted(botId)?.bot.name ?? 'A removed bot'
+      return { botId, name, deleted: !bot, facts: own.get(botId) ?? 0 }
+    })
+    const notConnected = this.connectionFor ? live.filter(bot => this.runtimes.snapshot(bot)?.memoryConnected === false).map(bot => ({ botId: bot.id, name: bot.name })) : []
+    return { ...page, bots, notConnected }
   }
 
   async connectNew(botId: string) {

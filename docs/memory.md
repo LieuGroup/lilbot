@@ -22,7 +22,7 @@ corrected by Oscar. The short version is in `AGENTS.md` under "Memory"; Hermes a
   turns for review directly. The Hermes memory plug-in (`lilbot-memory` v0.16.0, zero tools) supplies only the
   fail-closed pre-compress checkpoint bridge (`/engine/history/save`) authenticated with a per-bot `memory-checkpoint`
   HMAC key (never the master `engine-token`). New bots use LilBot memory from their first session; an existing bot is
-  connected from its Memory panel, from its next session.
+  connected from Settings > Memory, from its next session.
 - Saving rules (in the plug-in's instructions): save only what is grounded in the conversation, never infer traits, a
   one-off request is not a standing preference, one fact goes in once, and never save secrets, what can be looked up,
   task progress or "tool X is broken". `memory-safety.ts` refuses facts carrying model instructions, secrets or
@@ -58,7 +58,7 @@ connected bots).
   and locked out of skill writes. A pass fails closed if `tools/list` never arrived, any hard tool error occurred, or
   every attempted write/save was refused. The same setting picks the model of a same-bot work check (see [work.md](work.md)).
 - A review may not bring back a fact the user removed and may not forget a fact the user wrote. What it saves is marked
-  `via: review`. No approval step (Oscar's decision): facts apply at once, and the Memory panel shows where each came
+  `via: review`. No approval step (Oscar's decision): facts apply at once, and Settings > Memory shows where each came
   from and lets him pause, forget and restore.
 - `check:memory` reads the bot's real system prompt for the rules; asking a bot to describe its own instructions is
   unreliable.
