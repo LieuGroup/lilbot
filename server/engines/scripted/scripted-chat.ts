@@ -1,4 +1,5 @@
 /** Session state, streaming turn execution, OpenChat handle, and history source for the scripted engine. */
+import type { BotModel } from '../../../shared/bot-schema'
 import type { ChatEvent, ChatItem, TurnUsage } from '../../../shared/chat-schema'
 import { LilBotError } from '../../../shared/lilbot-error'
 import type { ChatOptions, ConversationSource, EngineAttachment, OpenChat, RoutineOptions, TurnOrigin } from '../bot-engine'
@@ -15,6 +16,7 @@ export interface ScriptedInput {
   attachments?: EngineAttachment[]
   hidden?: boolean
   inputId?: string
+  model?: BotModel
 }
 
 interface ScriptedRow {
@@ -75,7 +77,7 @@ export async function runScriptedTurn(
   input: ScriptedInput,
   callMcp: ScriptedTurnContext['callMcp'],
   handler: ScriptedTurnHandler | undefined
-): Promise<{ status: 'completed' | 'stopped' | 'failed'; text: string }> {
+): Promise<{ status: 'completed' | 'stopped' | 'failed'; text: string; errorCode?: string }> {
   session.inputs.push(input)
   if (!input.hidden) appendRow(session, { kind: 'user', text: input.text, messageId: input.inputId })
   const controller = new AbortController()
@@ -117,9 +119,10 @@ export async function runScriptedTurn(
     const stopped = controller.signal.aborted
     const text = stopped ? streamed : error instanceof Error ? error.message : 'Scripted turn failed'
     const status = stopped ? 'stopped' : 'failed'
+    const errorCode = !stopped && error instanceof LilBotError ? error.code : undefined
     const rowId = appendRow(session, { kind: 'assistant', text, ...(stopped ? { stopped: true } : {}) })
     session.emit?.({ type: 'turn.finished', status, text, rowId })
-    return { status, text }
+    return { status, text, ...(errorCode ? { errorCode } : {}) }
   } finally {
     session.running = false
     if (session.controller === controller) session.controller = null
@@ -141,24 +144,16 @@ export function openScriptedChat(
   const tryResume = (): ScriptedSession | 'not_found' => {
     const scripted = chatId ? resumeOutcomes?.get(chatId)?.shift() : undefined
     if (scripted instanceof Error) throw scripted
-    if (scripted === 'not_found') return 'not_found'
-    return (chatId && sessions.get(chatId)) || 'not_found'
+    return scripted === 'not_found' ? 'not_found' : (chatId && sessions.get(chatId)) || 'not_found'
   }
   let session: ScriptedSession | undefined
   let resumeRefused: string | undefined
   if (chatId) {
-    const first = tryResume()
-    if (first === 'not_found') {
-      const second = tryResume()
-      if (second === 'not_found') {
-        if (options.requireExisting) throw new LilBotError('chat_not_found', 'That conversation no longer exists.')
-        resumeRefused = 'session_not_found'
-      } else {
-        session = second
-      }
-    } else {
-      session = first
-    }
+    const found = tryResume()
+    const resolved = found === 'not_found' ? tryResume() : found
+    if (resolved !== 'not_found') session = resolved
+    else if (options.requireExisting) throw new LilBotError('chat_not_found', 'That conversation no longer exists.')
+    else resumeRefused = 'session_not_found'
   }
   if (!session) session = create(engineBotId, options.workspace, false)
   session.emit = onEvent

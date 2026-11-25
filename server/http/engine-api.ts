@@ -58,6 +58,7 @@ export interface EngineApiOptions {
   adapterVersion?: string
   reviewer?: MemoryReviewer
   checkpointStore?: CheckpointStore
+  checkpointRefusals?: import('../memory/memory-checkpoint').CheckpointRefusalPolicy
   onCheckpointSaved?: (botId: string, chatId: string) => void
   chatKind?: import('../bots/hidden-chats').ChatKind
   inCheck?: (botId: string, chatId: string | undefined, use: CheckUse) => string | null

@@ -191,8 +191,7 @@ export function scanEveryTableColumn(db: Database, needle: string, allow: (table
     for (const row of db.query<Record<string, unknown>, []>(`SELECT * FROM "${name}"`).all()) {
       for (const col of cols) {
         const val = row[col]
-        if (typeof val !== 'string' || !val.includes(needle)) continue
-        if (!allow(name, col, val)) leaks.push(`${name}.${col}=${val.slice(0, 120)}`)
+        if (typeof val === 'string' && val.includes(needle) && !allow(name, col, val)) leaks.push(`${name}.${col}=${val.slice(0, 120)}`)
       }
     }
   }

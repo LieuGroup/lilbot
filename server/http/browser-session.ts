@@ -3,6 +3,7 @@ import type { z } from 'zod'
 import { LilBotError } from '../../shared/lilbot-error'
 import { type EventFrame, type Method, methods, RequestFrame, type ResponseFrame, type Results } from '../../shared/protocol'
 import type { ActivityService } from '../activity/activity-service'
+import type { CheckpointChoices } from '../app-memory'
 import { type AttachmentService, attachmentLimits } from '../attachments/attachment-service'
 import type { BotService } from '../bots/bot-service'
 import { setUnread } from '../bots/bot-unread'
@@ -56,12 +57,19 @@ export class BrowserSession {
     private work?: WorkBoard,
     private webhooks?: WebhookService,
     private goals?: GoalBoard,
-    private notifications?: NotificationService
+    private notifications?: NotificationService,
+    private checkpointChoices?: CheckpointChoices
   ) {
     this.chats = new BrowserChats(bots, sendFrame, activity, threads, attachments, () => this.connections?.reconcile?.(), this.sessionNotif.onView)
   }
 
   private skills = () => requireService(this.bots.skills, 'Skills are unavailable.')
+  private routinesSvc = () => requireService(this.routines, 'Routines are unavailable.')
+  private webhooksSvc = () => requireService(this.webhooks, 'Webhooks are unavailable.')
+  private memoryDeps = () => {
+    const { checkpointChoices: choices, bots, chats, attachments, devices, connections } = this
+    return { choices, bots, chats, attachments, devices, connections }
+  }
 
   private handlers: Handlers = {
     'attachments.limits': async () => attachmentLimits,
@@ -92,20 +100,18 @@ export class BrowserSession {
     'skills.setEnabled': ({ botId, name, enabled }) => this.skills().setEnabled(botId, name, enabled),
     'skills.engines': async () => this.skills().engines(),
     'skills.setEngine': async ({ engineId, included }) => this.skills().setEngine(engineId, included),
-    'routines.list': ({ botId }) => requireService(this.routines, 'Routines are unavailable.').list(botId),
-    'routines.pause': ({ botId, id }) => requireService(this.routines, 'Routines are unavailable.').pause(botId, id, true),
-    'routines.resume': ({ botId, id }) => requireService(this.routines, 'Routines are unavailable.').pause(botId, id, false),
-    'routines.delete': ({ botId, id }) => requireService(this.routines, 'Routines are unavailable.').delete(botId, id),
-    'routines.openRun': ({ botId, runId }, afterResponse) =>
-      this.chats.track(afterResponse, onEvent => requireService(this.routines, 'Routines are unavailable.').openRun(botId, runId, onEvent)),
-    'webhooks.list': ({ botId }) => requireService(this.webhooks, 'Webhooks are unavailable.').list(botId),
-    'webhooks.pause': ({ botId, id }) => requireService(this.webhooks, 'Webhooks are unavailable.').pause(botId, id, true),
-    'webhooks.resume': ({ botId, id }) => requireService(this.webhooks, 'Webhooks are unavailable.').pause(botId, id, false),
-    'webhooks.delete': ({ botId, id }) => requireService(this.webhooks, 'Webhooks are unavailable.').delete(botId, id),
-    'webhooks.address': ({ botId, id }) => requireService(this.webhooks, 'Webhooks are unavailable.').currentAddress(botId, id),
-    'webhooks.setCapabilities': ({ botId, id, capabilities }) => requireService(this.webhooks, 'Webhooks are unavailable.').setCapabilities(botId, id, capabilities),
-    'webhooks.openRun': ({ botId, runId }, afterResponse) =>
-      this.chats.track(afterResponse, onEvent => requireService(this.webhooks, 'Webhooks are unavailable.').openRun(botId, runId, onEvent)),
+    'routines.list': ({ botId }) => this.routinesSvc().list(botId),
+    'routines.pause': ({ botId, id }) => this.routinesSvc().pause(botId, id, true),
+    'routines.resume': ({ botId, id }) => this.routinesSvc().pause(botId, id, false),
+    'routines.delete': ({ botId, id }) => this.routinesSvc().delete(botId, id),
+    'routines.openRun': ({ botId, runId }, afterResponse) => this.chats.track(afterResponse, onEvent => this.routinesSvc().openRun(botId, runId, onEvent)),
+    'webhooks.list': ({ botId }) => this.webhooksSvc().list(botId),
+    'webhooks.pause': ({ botId, id }) => this.webhooksSvc().pause(botId, id, true),
+    'webhooks.resume': ({ botId, id }) => this.webhooksSvc().pause(botId, id, false),
+    'webhooks.delete': ({ botId, id }) => this.webhooksSvc().delete(botId, id),
+    'webhooks.address': ({ botId, id }) => this.webhooksSvc().currentAddress(botId, id),
+    'webhooks.setCapabilities': ({ botId, id, capabilities }) => this.webhooksSvc().setCapabilities(botId, id, capabilities),
+    'webhooks.openRun': ({ botId, runId }, afterResponse) => this.chats.track(afterResponse, onEvent => this.webhooksSvc().openRun(botId, runId, onEvent)),
     'library.list': input => requireService(this.library, 'Library is unavailable.').list(input),
     'library.workspace': ({ botId, path }) => requireService(this.library, 'Library is unavailable.').workspace(botId, path),
     'library.content': async ({ botId, itemId }) => requireService(this.library, 'Library is unavailable.').contentUrl(botId, itemId),
@@ -135,29 +141,20 @@ export class BrowserSession {
     'sections.rename': async ({ sectionId, name }) => this.bots.renameSection(sectionId, name),
     'sections.delete': ({ sectionId }) => ok(() => this.bots.deleteSection(sectionId)),
     'models.list': params => this.bots.listModels(params),
-    ...memoryHandlers(() => this.bots),
+    ...memoryHandlers(this.memoryDeps),
     'chat.history': async ({ botId, cursor, limit }) => this.chats.history(botId, cursor, limit),
     'chat.open': ({ botId, chatId }, afterResponse) => this.chats.track(afterResponse, onEvent => this.bots.openChat(botId, chatId, onEvent)),
-    'chat.new': ({ botId }, afterResponse) => this.chats.track(afterResponse, onEvent => this.bots.newChat(botId, onEvent)),
-    'chat.send': async ({ chatId, text, attachmentIds, messageId, deviceId }) => {
-      if (deviceId) this.sessionNotif.bindDevice(deviceId)
-      const chat = this.chats.get(chatId)
-      await this.connections?.ready(chat.snapshot.botId, chatId)
-      const origin = this.devices?.origin(deviceId)
-      if (attachmentIds?.length)
-        return { ok: true, message: await requireService(this.attachments, 'Attachments are unavailable.').send(chat, text, attachmentIds, messageId!, origin) }
-      if (this.devices && origin) await this.devices.send(chat, text, messageId ?? crypto.randomUUID(), origin)
-      else await chat.send(text)
-      return { ok: true }
+    'chat.new': async ({ botId }, afterResponse) => {
+      const snapshot = await this.chats.track(afterResponse, onEvent => this.bots.newChat(botId, onEvent))
+      this.checkpointChoices?.onNewSession(botId)
+      return snapshot
     },
+    'chat.send': input => this.chats.send(input, { connections: this.connections, devices: this.devices, onDevice: id => this.sessionNotif.bindDevice(id) }),
     'chat.stop': async ({ chatId }) => {
       await this.chats.get(chatId).stop()
       return { ok: true }
     },
-    'chat.close': async ({ chatId }) => {
-      this.chats.closeChat(chatId)
-      return { ok: true }
-    }
+    'chat.close': ({ chatId }) => ok(() => this.chats.closeChat(chatId))
   }
 
   async handle(raw: string) {

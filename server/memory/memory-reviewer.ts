@@ -126,11 +126,11 @@ export class MemoryReviewer {
   }
 
   /** Runs one isolated review or pre-compress checkpoint pass under a fresh session-bound grant and verifies pass outcomes. */
-  async runPass(botId: string, prompt: string, checkpoint = false): Promise<void> {
+  async runPass(botId: string, prompt: string, checkpoint = false, options?: { useBotModel?: boolean }): Promise<void> {
     const lease = this.prepareReview?.(botId, crypto.randomUUID(), checkpoint)
     try {
       await this.runner.reviewMemory(botId, prompt, {
-        model: this.settings.model,
+        model: options?.useBotModel ? undefined : this.settings.model,
         sessionMcp: lease?.sessionMcp,
         assertSessionMcpReady: lease?.assertSessionMcpReady,
         onChat: chatId => {

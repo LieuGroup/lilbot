@@ -122,12 +122,10 @@ export class ScriptedEngine implements BotEngine {
     return { aboutUser: [], ownNotes: [] }
   }
   refreshMemory = async () => []
-  setPreCompressCheckpoint(handler: PreCompressHandler) {
+  setPreCompressCheckpoint = (handler: PreCompressHandler) => {
     this.preCompress = handler
   }
-  triggerPreCompress(botId: string, chatId: string) {
-    return runSessionPreCompress(this.sessions.get(chatId), this.preCompress, botId, chatId)
-  }
+  triggerPreCompress = (botId: string, chatId: string) => runSessionPreCompress(this.sessions.get(chatId), this.preCompress, botId, chatId)
   async reviewMemory(engineBotId: string, prompt: string, options: ReviewOptions) {
     this.requireRuntime(engineBotId)
     if (!options.sessionMcp?.length) throw new LilBotError('session_mcp_unavailable', 'Limited sessions require a session-bound MCP connection.')
@@ -135,8 +133,15 @@ export class ScriptedEngine implements BotEngine {
     await attachSessionMcp(session, options.sessionMcp, true, options.assertSessionMcpReady)
     options.onChat(session.chatId)
     if (!this.onTurn) return
-    const result = await runScriptedTurn(session, { text: prompt, hidden: true }, (t, a, s) => this.callMcp(engineBotId, session.chatId, t, a, s), this.onTurn)
-    if (result.status !== 'completed') throw new LilBotError('review_failed', `The memory review did not finish (${result.status}).`)
+    const result = await runScriptedTurn(
+      session,
+      { text: prompt, hidden: true, model: options.model },
+      (t, a, s) => this.callMcp(engineBotId, session.chatId, t, a, s),
+      this.onTurn
+    )
+    if (result.status === 'completed') return
+    if (result.errorCode === 'review_refused') throw new LilBotError('review_refused', result.text || 'The model refused to review this part of the conversation.')
+    throw new LilBotError('review_failed', `The memory review did not finish (${result.status}).`)
   }
   async runRoutine(engineBotId: string, prompt: string, options: RoutineOptions & ChatOptions) {
     this.requireRuntime(engineBotId)
@@ -157,15 +162,11 @@ export class ScriptedEngine implements BotEngine {
   sessionDiscoveredTools = (chatId: string) => this.sessions.get(chatId)?.discoveredTools
   onBotsChanged(listener: () => void) {
     this.botListeners.add(listener)
-    return () => {
-      this.botListeners.delete(listener)
-    }
+    return () => void this.botListeners.delete(listener)
   }
   onToolCall(listener: (call: ToolCallSeen) => void) {
     this.toolListeners.add(listener)
-    return () => {
-      this.toolListeners.delete(listener)
-    }
+    return () => void this.toolListeners.delete(listener)
   }
   async stopRun(engineBotId: string, chatId: string) {
     const s = this.sessions.get(chatId)

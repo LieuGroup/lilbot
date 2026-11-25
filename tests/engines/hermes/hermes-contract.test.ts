@@ -106,7 +106,7 @@ const events: Record<string, string[]> = {
   'message.delta': ['text'],
   'tool.start': ['tool_id', 'name', 'context', 'args'],
   'tool.complete': ['tool_id', 'result'],
-  'message.complete': ['status', 'text', 'error', 'usage', 'persisted_turn'],
+  'message.complete': ['status', 'text', 'error', 'error_surface', 'failure_reason', 'usage', 'persisted_turn'],
   'session.title': ['title'],
   'session.info': ['model', 'provider', 'reasoning_effort', 'reasoning_effort_wire', 'usage'],
   'session.usage': [

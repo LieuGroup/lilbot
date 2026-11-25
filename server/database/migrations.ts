@@ -194,5 +194,6 @@ export const migrations: string[] = [
   tables.RUN_TRANSCRIPT_TABLES,
   tables.SESSION_GRANT_TABLES,
   tables.HISTORY_PREVIEW_TABLE,
-  tables.NOTIFICATION_TABLES
+  tables.NOTIFICATION_TABLES,
+  tables.MEMORY_CHECKPOINT_REFUSAL_TABLES
 ]
