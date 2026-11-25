@@ -1,9 +1,11 @@
 /** Loopback HTTP capture proxy for `live-checks/prompt-check.ts`.
  *  Forwards dev CLIProxyAPI requests verbatim while recording the outbound system prompt,
  *  cache_control presence, tool count, and HTTP status without logging keys or upstream URLs. */
+import { Database } from 'bun:sqlite'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { devPort } from '../scripts/dev-paths'
+import { type RestartServer, waitFor } from './restart-server'
 
 export interface CapturedRequest {
   path: string
@@ -108,4 +110,30 @@ export async function setProfileBaseUrl(profileId: string, baseUrl: string) {
   })
   const [stderr, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited])
   if (code !== 0) throw new Error(`hermes config set base_url failed (${code}): ${stderr.trim().slice(0, 200)}`)
+}
+
+export function nativeProfileOf(root: string, botId: string): string {
+  const db = new Database(join(root, 'lilbot.db'), { readonly: true })
+  try {
+    return (db.query('SELECT engine_bot_id FROM bots WHERE id = ?').get(botId) as { engine_bot_id: string }).engine_bot_id
+  } finally {
+    db.close()
+  }
+}
+
+export async function sendPromptTurn(server: RestartServer, botId: string, chatId: string, text: string) {
+  const startIdx = server.events.length
+  await server.call('chat.send', { botId, chatId, text, messageId: crypto.randomUUID() })
+  const finished: any = await waitFor(
+    `turn finished (${text.slice(0, 24)})`,
+    async () => server.events.slice(startIdx).find(e => e.event === 'chat' && e.chatId === chatId && (e.data?.type === 'turn.finished' || e.data?.type === 'error')),
+    Boolean,
+    120_000
+  )
+  const reply = server.events
+    .slice(startIdx)
+    .filter(e => e.event === 'chat' && e.chatId === chatId && e.data?.type === 'text.delta')
+    .map(e => String(e.data.text ?? ''))
+    .join('')
+  return { finished: finished?.data, reply }
 }
