@@ -63,7 +63,7 @@ describe('iOS MessageList row building, fold scroll guard, rich markdown, and co
     expect(composerSource).toContain('onLongPress={openModelFromLongPress}')
     expect(composerSource).toMatch(/onPress=\{onStop\}[\s\S]{0,80}hitSlop=\{4\}[\s\S]{0,80}accessibilityRole="button"/)
     expect(composerSource).toMatch(/onPress=\{submit\}[\s\S]{0,140}hitSlop=\{4\}/)
-    expect(attachSheetSource).toContain('onDismiss={handleDismiss}')
+    expect(attachSheetSource).toContain('onDismiss={runPending}')
     expect(attachSheetSource).toContain('accessible={false}')
   })
 
