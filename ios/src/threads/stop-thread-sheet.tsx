@@ -88,11 +88,11 @@ function StopThreadBody({ botId, thread, onClose }: { botId: string; thread: Bot
         }}
       >
         {copy.subject ? (
-          <AppText variant="chat" color={theme.foreground} style={{ fontFamily: 'Inter_500Medium' }}>
+          <AppText variant="chat" color={theme.foreground} maxFontSizeMultiplier={1.6} style={{ fontFamily: 'Inter_500Medium' }}>
             {copy.subject}
           </AppText>
         ) : null}
-        <AppText variant="chat" color={theme.mutedForeground}>
+        <AppText variant="chat" color={theme.mutedForeground} maxFontSizeMultiplier={1.6}>
           {copy.description}
         </AppText>
         {error ? (

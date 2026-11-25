@@ -131,6 +131,7 @@ export function TaskDockSlot({ botId }: TaskDockSlotProps) {
                         <View
                           style={{
                             flexDirection: 'row',
+                            flexWrap: 'wrap',
                             alignItems: 'center',
                             justifyContent: 'space-between',
                             gap: 8,
@@ -140,10 +141,16 @@ export function TaskDockSlot({ botId }: TaskDockSlotProps) {
                             borderBottomColor: theme.hairline
                           }}
                         >
-                          <AppText variant="meta" color={theme.mutedForeground} numberOfLines={1} style={{ flexShrink: 1, fontFamily: 'Inter_500Medium' }}>
+                          <AppText
+                            variant="meta"
+                            color={theme.mutedForeground}
+                            numberOfLines={1}
+                            maxFontSizeMultiplier={THREAD_TYPE_CAPS.badge}
+                            style={{ flexShrink: 1, fontFamily: 'Inter_500Medium' }}
+                          >
                             {entry.title}
                           </AppText>
-                          <AppText variant="meta" color={theme.mutedForeground}>
+                          <AppText variant="meta" color={theme.mutedForeground} maxFontSizeMultiplier={THREAD_TYPE_CAPS.badge}>
                             {entry.progress}
                           </AppText>
                         </View>

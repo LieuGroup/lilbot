@@ -52,10 +52,10 @@ export function ThreadLine({ botId, threadId, fallback }: ThreadLineProps) {
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingHorizontal: 12, paddingVertical: 8 }}>
-        <AppText variant="meta" color={theme.mutedForeground} numberOfLines={1} style={{ flexShrink: 1 }}>
+        <AppText variant="meta" color={theme.mutedForeground} numberOfLines={1} maxFontSizeMultiplier={THREAD_TYPE_CAPS.badge} style={{ flexShrink: 1 }}>
           {summary.title}
         </AppText>
-        <AppText variant="meta" color={theme.mutedForeground}>
+        <AppText variant="meta" color={theme.mutedForeground} maxFontSizeMultiplier={THREAD_TYPE_CAPS.badge}>
           {summary.progress}
         </AppText>
       </View>

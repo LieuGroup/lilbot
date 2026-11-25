@@ -90,7 +90,7 @@ function AnswerWorkBody({ work, title, onClose }: { work: WorkSummary; title: st
           gap: 14
         }}
       >
-        <AppText style={MOBILE_SCALE.chat.message} color={theme.foreground}>
+        <AppText style={MOBILE_SCALE.chat.message} color={theme.foreground} maxFontSizeMultiplier={1.6}>
           {work.question || 'This task is waiting for your answer.'}
         </AppText>
         <TextInput
@@ -103,9 +103,10 @@ function AnswerWorkBody({ work, title, onClose }: { work: WorkSummary; title: st
           editable={!sending}
           multiline
           autoFocus
+          maxFontSizeMultiplier={1.6}
           textAlignVertical="top"
           style={{
-            minHeight: 112,
+            minHeight: 88,
             borderRadius: radius.lg,
             borderWidth: 1,
             borderColor: theme.input,
