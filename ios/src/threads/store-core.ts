@@ -100,11 +100,11 @@ export function createThreadStore(getSocket: () => ThreadSocket | null, storage?
         dismissedByBot: botId in s.dismissedByBot ? s.dismissedByBot : { ...s.dismissedByBot, [botId]: parseDismissed(dismissedRaw) }
       }))
     } catch {
-      // Keep default in-memory state if local persistence is unavailable.
+      // Keep default in-memory state if storage fails.
     }
   }
 
-  function reloadThreadsSoon() {
+  const reloadThreadsSoon = () => {
     if (threadsTimer) return
     threadsTimer = setTimeout(() => {
       threadsTimer = undefined
@@ -114,7 +114,7 @@ export function createThreadStore(getSocket: () => ThreadSocket | null, storage?
     }, 500)
   }
 
-  function reloadWorkSoon() {
+  const reloadWorkSoon = () => {
     if (workTimer) return
     workTimer = setTimeout(() => {
       workTimer = undefined
@@ -122,25 +122,18 @@ export function createThreadStore(getSocket: () => ThreadSocket | null, storage?
     }, 300)
   }
 
-  function bindSocket() {
+  const bindSocket = () => {
     const socket = getSocket()
     if (socket === socketBound) return
     for (const off of unsubs) off()
     unsubs = []
     socketBound = socket
     if (!socket) return
-    unsubs.push(
-      socket.onThreadsChanged(reloadThreadsSoon),
-      socket.onWorkChanged(reloadWorkSoon),
-      socket.onConnection(connected => {
-        if (!connected) return
-        reloadThreadsSoon()
-        reloadWorkSoon()
-      })
-    )
+    const onReconnect = (connected: boolean) => connected && (reloadThreadsSoon(), reloadWorkSoon())
+    unsubs.push(socket.onThreadsChanged(reloadThreadsSoon), socket.onWorkChanged(reloadWorkSoon), socket.onConnection(onReconnect))
   }
 
-  function watchBot(botId: string) {
+  const watchBot = (botId: string) => {
     bindSocket()
     const firstGlobal = watching.size === 0
     const nextCount = (watching.get(botId) ?? 0) + 1
@@ -155,23 +148,21 @@ export function createThreadStore(getSocket: () => ThreadSocket | null, storage?
     }
   }
 
-  function openView(botId: string, threadId: string) {
+  const openView = (botId: string, threadId: string) => {
     bindSocket()
     store.setState({ activeView: { botId, threadId } })
     void loadOpen(botId, threadId)
     void loadWaitingWork()
   }
 
-  function closeView() {
-    store.setState({ activeView: null })
-  }
+  const closeView = () => store.setState({ activeView: null })
 
-  function setDockCollapsed(botId: string, collapsed: boolean) {
+  const setDockCollapsed = (botId: string, collapsed: boolean) => {
     store.setState(s => ({ dockCollapsed: { ...s.dockCollapsed, [botId]: collapsed } }))
     void storage?.setItem(`${COLLAPSED_PREFIX}${botId}`, collapsed ? 'collapsed' : 'expanded').catch(() => {})
   }
 
-  function dismissDockItem(botId: string, threadId: string, stamp: number) {
+  const dismissDockItem = (botId: string, threadId: string, stamp: number) => {
     let pruned: Record<string, number> = EMPTY_DISMISSED
     store.setState(s => {
       pruned = pruneDismissed({ ...(s.dismissedByBot[botId] ?? EMPTY_DISMISSED), [threadId]: stamp })

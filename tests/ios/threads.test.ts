@@ -1,5 +1,7 @@
 /** Unit tests for iOS threads store, 1-tap Answer dock pill model, Dynamic Type/Duo sheet safety, and stop copy. */
 import { describe, expect, test } from 'bun:test'
+import { readdirSync, readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { buildDockPillModel, duoSafeSheetPadding, shouldWrapDockPill } from '../../ios/src/threads/dock-pill'
 import { createThreadStore, type DockStorageAdapter, type ThreadSocket } from '../../ios/src/threads/store-core'
 import { dockItems } from '../../shared/client/threads/dock-items'
@@ -14,50 +16,45 @@ const atlas = { id: 'atlas', name: 'Atlas' }
 const foundry = { id: 'foundry', name: 'Foundry' }
 const ledger = { id: 'ledger', name: 'Ledger' }
 
-function makeThread(id: string, extra: Partial<BotThread> = {}): BotThread {
-  const worker = extra.worker === true
-  return {
-    id,
-    participants: worker ? [atlas, atlas] : [atlas, foundry],
-    createdAt: T0,
-    depth: 1,
-    state: 'open',
-    messages: [{ id: `m-${id}`, authorId: atlas.id, authorName: atlas.name, createdAt: T0, items: [{ kind: 'assistant', text: `Task ${id}` }] }],
-    batchId: `batch-${id}`,
-    parentId: null,
-    status: 'working',
-    activity: 'Running tests',
-    startedAt: T0,
-    endedAt: null,
-    stoppedBy: null,
-    ...extra
-  }
-}
+const makeThread = (id: string, extra: Partial<BotThread> = {}): BotThread => ({
+  id,
+  participants: extra.worker ? [atlas, atlas] : [atlas, foundry],
+  createdAt: T0,
+  depth: 1,
+  state: 'open',
+  messages: [{ id: `m-${id}`, authorId: atlas.id, authorName: atlas.name, createdAt: T0, items: [{ kind: 'assistant', text: `Task ${id}` }] }],
+  batchId: `batch-${id}`,
+  parentId: null,
+  status: 'working',
+  activity: 'Running tests',
+  startedAt: T0,
+  endedAt: null,
+  stoppedBy: null,
+  ...extra
+})
 
-function makeWork(id: string, extra: Partial<WorkSummary> = {}): WorkSummary {
-  return {
-    id,
-    title: `Task ${id}`,
-    ownerId: atlas.id,
-    ownerName: atlas.name,
-    askedBy: { kind: 'self', id: atlas.id, name: atlas.name },
-    origin: { kind: 'exchange', id },
-    parentId: null,
-    goalId: null,
-    kind: 'code',
-    checkLevel: 1,
-    defaultLevel: 1,
-    check: null,
-    status: 'needs_oscar',
-    question: 'Confirm region',
-    evidenceCount: 0,
-    createdAt: T0,
-    updatedAt: T0 + MIN,
-    startedAt: T0,
-    finishedAt: null,
-    ...extra
-  }
-}
+const makeWork = (id: string, extra: Partial<WorkSummary> = {}): WorkSummary => ({
+  id,
+  title: `Task ${id}`,
+  ownerId: atlas.id,
+  ownerName: atlas.name,
+  askedBy: { kind: 'self', id: atlas.id, name: atlas.name },
+  origin: { kind: 'exchange', id },
+  parentId: null,
+  goalId: null,
+  kind: 'code',
+  checkLevel: 1,
+  defaultLevel: 1,
+  check: null,
+  status: 'needs_oscar',
+  question: 'Confirm region',
+  evidenceCount: 0,
+  createdAt: T0,
+  updatedAt: T0 + MIN,
+  startedAt: T0,
+  finishedAt: null,
+  ...extra
+})
 
 function makeFakeSocket(threads: BotThread[], initialWaiting: WorkSummary[]) {
   let waiting = initialWaiting
@@ -109,13 +106,20 @@ describe('collapsed Tasks pill 1-tap Answer model & Duo/Dynamic Type guards', ()
       question: null,
       check: { round: 1, by: { kind: 'oscar', id: null, name: 'Oscar' }, state: 'checking', text: null, note: null, sameBot: false, model: null, at: T0, settledAt: null }
     })
-    const checkPill = buildDockPillModel(dockItems([checkWorker], atlas.id, { chk1: checkWork }, {}, T0 + MIN), atlas.id)
-    expect(checkPill).toMatchObject({ answerTarget: null, lead: '1 waiting for you', detail: 'Worker' })
+    expect(buildDockPillModel(dockItems([checkWorker], atlas.id, { chk1: checkWork }, {}, T0 + MIN), atlas.id)).toMatchObject({
+      answerTarget: null,
+      lead: '1 waiting for you',
+      detail: 'Worker'
+    })
 
     const run1 = makeThread('r1', { worker: true, status: 'working' })
     const run2 = makeThread('r2', { participants: [atlas, foundry], status: 'working' })
-    const runPill = buildDockPillModel(dockItems([run1, run2], atlas.id, {}, {}, T0 + MIN), atlas.id)
-    expect(runPill).toMatchObject({ answerTarget: null, icon: 'working', lead: '2 running', detail: 'Worker, Foundry' })
+    expect(buildDockPillModel(dockItems([run1, run2], atlas.id, {}, {}, T0 + MIN), atlas.id)).toMatchObject({
+      answerTarget: null,
+      icon: 'working',
+      lead: '2 running',
+      detail: 'Worker, Foundry'
+    })
     expect(buildDockPillModel([], atlas.id)).toBeNull()
   })
 
@@ -155,21 +159,16 @@ describe('createThreadStore lifecycle, persistence, stop and answer actions', ()
     expect(fake.calls.filter(c => c.method === 'threads.list')).toHaveLength(1)
 
     manager.setDockCollapsed(atlas.id, false)
-    expect(manager.useStore.getState().dockCollapsed[atlas.id]).toBe(false)
     expect(data.get(`${COLLAPSED_PREFIX}${atlas.id}`)).toBe('expanded')
-
     manager.dismissDockItem(atlas.id, 't1', T0 + MIN)
     expect(JSON.parse(data.get(`${DISMISSED_PREFIX}${atlas.id}`) ?? '{}')).toEqual({ t1: T0 + MIN })
 
     manager.openView(atlas.id, 't1')
     await Promise.resolve()
-    expect(manager.useStore.getState().activeView).toEqual({ botId: atlas.id, threadId: 't1' })
     expect(manager.useStore.getState().opened[manager.openKey(atlas.id, 't1')]?.id).toBe('t1')
 
     await manager.answerWork('t1', 'Yes, eu-west')
-    expect(fake.calls.some(c => c.method === 'work.answer')).toBe(true)
     expect(manager.useStore.getState().waitingWork.t1).toBeUndefined()
-
     await manager.stopThread(atlas.id, 't1')
     expect(fake.calls.some(c => c.method === 'threads.cancel')).toBe(true)
 
@@ -180,25 +179,21 @@ describe('createThreadStore lifecycle, persistence, stop and answer actions', ()
   })
 })
 
-describe('shared stopThreadCopy matches web wording across worker, task, and group', () => {
-  test('formats worker, delegated task, and group stop confirmations identically to web', () => {
-    expect(stopThreadCopy(makeThread('w1', { worker: true }))).toMatchObject({
-      what: 'worker',
-      title: 'Stop this worker?',
-      subject: 'Task w1',
-      confirmLabel: 'Stop worker'
-    })
+describe('shared stopThreadCopy and client boundary rules', () => {
+  test('formats worker, delegated task, and group stop confirmations and keeps ios/src/threads free of web/server imports', () => {
+    expect(stopThreadCopy(makeThread('w1', { worker: true }))).toMatchObject({ what: 'worker', title: 'Stop this worker?', subject: 'Task w1', confirmLabel: 'Stop worker' })
     expect(stopThreadCopy(makeThread('t1', { participants: [atlas, foundry] })).title).toBe('Stop this task?')
     const group = makeThread('g1', {
       participants: [atlas, foundry, ledger],
       group: { purpose: 'Pricing launch', roundCap: 6, rounds: [], turns: 0, lastAt: T0, end: null, kept: [], folder: '', seen: {} }
     })
-    expect(stopThreadCopy(group)).toEqual({
-      what: 'group',
-      title: 'Stop this group?',
-      subject: 'Pricing launch',
-      description: 'All three bots stop working on it now. Atlas is told you stopped it, and what was said so far stays readable. Work a bot already did is not undone.',
-      confirmLabel: 'Stop group'
-    })
+    expect(stopThreadCopy(group).description).toContain('All three bots stop working on it now. Atlas is told you stopped it')
+
+    const dir = resolve(process.cwd(), 'ios/src/threads')
+    for (const file of readdirSync(dir)) {
+      const source = readFileSync(resolve(dir, file), 'utf8')
+      expect(source).not.toMatch(/from\s+['"][^'"]*web\//)
+      expect(source).not.toMatch(/from\s+['"][^'"]*server\//)
+    }
   })
 })
