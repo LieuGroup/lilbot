@@ -56,9 +56,7 @@ export function DuoShell({ inspectorOpen: inspectorOpenProp, onCloseInspector, r
   const [search, setSearch] = useState<RosterSearchState>(INITIAL_ROSTER_SEARCH_STATE)
 
   const selected = bots.find(bot => bot.id === selectedId) ?? null
-  const selectedSlotRunning = useChatStore(state => (selected ? (state.slots[selected.id]?.view.running ?? false) : false))
-  const selectedRunning = Boolean(selectedSlotRunning || selected?.activity?.status === 'working')
-  const selectedUnread = Boolean(selected?.activity?.unread)
+  const selectedRunning = Boolean(useChatStore(state => (selected ? (state.slots[selected.id]?.view.running ?? false) : false)) || selected?.activity?.status === 'working')
   const inspectorActive = (inspectorOpenProp ?? inspectorOpen) && !!renderInspector
   const layout = computeShellLayout(surface, metrics, { inspectorOpen: inspectorActive, sidebarOpen })
   const showRoster = !layout.splitMode || layout.rosterWidth > 0
@@ -145,7 +143,7 @@ export function DuoShell({ inspectorOpen: inspectorOpenProp, onCloseInspector, r
         ...(layout.splitMode && selected
           ? {
               'bot-avatar': {
-                element: <DuoStripAvatar bot={selected} running={selectedRunning} unread={selectedUnread} onPress={renderInspector ? toggleInspector : openSelectedMenu} />,
+                element: <DuoStripAvatar bot={selected} running={selectedRunning} unread={Boolean(selected.activity?.unread)} onPress={renderInspector ? toggleInspector : openSelectedMenu} />,
                 hidesSharedBackground: false
               },
               'bot-menu': { label: `More for ${selected.name}`, onPress: openSelectedMenu }
@@ -157,7 +155,7 @@ export function DuoShell({ inspectorOpen: inspectorOpenProp, onCloseInspector, r
       },
       tintColor: theme.foreground
     })
-  }, [handleToggleSidebar, layout.showSidebarToggle, layout.splitMode, openNewBot, openSelectedMenu, renderInspector, selected, selectedRunning, selectedUnread, showRoster, sidebarLabel, stripScreen, theme.foreground, toggleInspector, toggleSearch, verticalBarActive])
+  }, [handleToggleSidebar, layout.showSidebarToggle, layout.splitMode, openNewBot, openSelectedMenu, renderInspector, selected, selectedRunning, showRoster, sidebarLabel, stripScreen, theme.foreground, toggleInspector, toggleSearch, verticalBarActive])
 
   const useNativeStripHeader = verticalBarActive && verticalBarItems.length > 0
   const stackOptions = useMemo(() => duoVerticalHeaderOptions(verticalBarItems, theme.foreground), [theme.foreground, verticalBarItems])
@@ -167,15 +165,11 @@ export function DuoShell({ inspectorOpen: inspectorOpenProp, onCloseInspector, r
     </Pressable>
   ) : undefined
 
-  const rosterStyle = layout.splitMode
-    ? { width: layout.rosterWidth, display: (showRoster ? 'flex' : 'none') as 'flex' | 'none', borderRightWidth: 1, borderRightColor: theme.hairline }
-    : { flex: 1 }
-
   return (
     <>
       <Stack.Screen options={stackOptions} />
       <View style={{ flex: 1, flexDirection: 'row', backgroundColor: theme.background, paddingTop: useNativeStripHeader ? 0 : insets.top, paddingLeft: layout.horizontalPadding.left, paddingRight: layout.horizontalPadding.right }}>
-        <View key="roster-pane" style={rosterStyle}>
+        <View key="roster-pane" style={layout.splitMode ? { width: layout.rosterWidth, display: showRoster ? 'flex' : 'none', borderRightWidth: 1, borderRightColor: theme.hairline } : { flex: 1 }}>
           <Roster bots={bots} sections={sections} loaded={loaded} connected={connected} error={error} selectedId={layout.splitMode ? (selected?.id ?? null) : null} splitMode={layout.splitMode} hideInlineSearch={verticalBarActive} hideInlineNewBot={verticalBarActive && layout.splitMode} searchOpen={search.open} searchQuery={search.query} onChangeSearchQuery={changeSearchQuery} onOpenSearch={openSearch} onCloseSearch={closeSearch} onSelect={handleSelectBot} />
         </View>
         {layout.splitMode && (
