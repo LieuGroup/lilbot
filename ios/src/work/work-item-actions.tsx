@@ -1,6 +1,6 @@
 /** Interactive "Needs you" banners on an item's page: Oscar's Level 3 check (Pass / Send back) and question answer. */
-import { useState } from 'react'
-import { useWindowDimensions, View } from 'react-native'
+import { useRef, useState } from 'react'
+import { Keyboard, useWindowDimensions, View } from 'react-native'
 import { messageOf } from '../../../shared/client/socket'
 import type { WorkItem } from '../../../shared/work-schema'
 import { AppText } from '../ui/text'
@@ -17,33 +17,40 @@ export function OscarCheckBanner({ item }: { item: WorkItem }) {
   const [sendingBack, setSendingBack] = useState(false)
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
+  const busyRef = useRef(false)
   const [error, setError] = useState('')
 
   const pass = async () => {
-    if (busy) return
+    if (busyRef.current) return
+    busyRef.current = true
     setBusy(true)
     setError('')
     try {
       await passWorkItem(item.id)
+      Keyboard.dismiss()
     } catch (failure) {
       setError(messageOf(failure))
     } finally {
+      busyRef.current = false
       setBusy(false)
     }
   }
 
   const sendBack = async () => {
     const trimmed = reason.trim()
-    if (!trimmed || busy) return
+    if (!trimmed || busyRef.current) return
+    busyRef.current = true
     setBusy(true)
     setError('')
     try {
       await sendBackWorkItem(item.id, trimmed)
+      Keyboard.dismiss()
       setSendingBack(false)
       setReason('')
     } catch (failure) {
       setError(messageOf(failure))
     } finally {
+      busyRef.current = false
       setBusy(false)
     }
   }
@@ -81,6 +88,7 @@ export function OscarCheckBanner({ item }: { item: WorkItem }) {
             editable={!busy}
             autoFocus
             returnKeyType="send"
+            submitBehavior="blurAndSubmit"
             onSubmitEditing={() => void sendBack()}
           />
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -105,20 +113,24 @@ export function QuestionBanner({ item }: { item: WorkItem }) {
   const stack = shouldStackWorkRow(fontScale)
   const [answer, setAnswer] = useState('')
   const [sending, setSending] = useState(false)
+  const sendingRef = useRef(false)
   const [error, setError] = useState('')
   const canSend = !sending && answer.trim().length > 0
 
   const submit = async () => {
     const trimmed = answer.trim()
-    if (!trimmed || sending) return
+    if (!trimmed || sendingRef.current) return
+    sendingRef.current = true
     setSending(true)
     setError('')
     try {
       await answerWorkItem(item.id, trimmed)
+      Keyboard.dismiss()
       setAnswer('')
     } catch (failure) {
       setError(messageOf(failure))
     } finally {
+      sendingRef.current = false
       setSending(false)
     }
   }
@@ -145,6 +157,7 @@ export function QuestionBanner({ item }: { item: WorkItem }) {
           accessibilityLabel={`Answer ${item.ownerName}`}
           editable={!sending}
           returnKeyType="send"
+          submitBehavior="blurAndSubmit"
           onSubmitEditing={() => void submit()}
           style={{ flex: stack ? undefined : 1 }}
         />

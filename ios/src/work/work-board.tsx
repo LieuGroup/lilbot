@@ -39,11 +39,12 @@ export function WorkBoard({ tab, onTabChange, selectedItemId, onOpenItem }: Work
                 key={entry.id}
                 testID={`work-tab-${entry.id}`}
                 onPress={() => selectTab(entry.id)}
+                hitSlop={{ top: 4, bottom: 4 }}
                 accessibilityRole="tab"
                 accessibilityState={{ selected }}
                 style={{
                   flex: 1,
-                  minHeight: 34,
+                  minHeight: 36,
                   borderRadius: radius.sm,
                   backgroundColor: selected ? theme.card : 'transparent',
                   alignItems: 'center',

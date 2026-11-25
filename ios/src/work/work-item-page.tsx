@@ -5,9 +5,11 @@ import { Pressable, ScrollView, View } from 'react-native'
 import { partitionEvidence } from '../../../shared/client/work/work-groups'
 import { askedByLabel, itemTimestamp, levelDescription, levelReason } from '../../../shared/client/work/work-lines'
 import { FINAL_WORK } from '../../../shared/work-schema'
+import { sheetScrollBottomPadding } from '../ui/keyboard-sheet'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { MOBILE_SCALE, radius } from '../ui/tokens'
+import { KEYBOARD_SCROLL_PROPS, useKeyboardHeight } from '../ui/use-keyboard-height'
 import { WORK_TYPE_CAPS } from './board-state'
 import { DropWorkSheet } from './drop-work-sheet'
 import { EvidenceCard } from './evidence-card'
@@ -37,6 +39,7 @@ export function WorkItemPage({
   onOpenThread
 }: WorkItemPageProps) {
   const theme = useTheme()
+  const keyboardHeight = useKeyboardHeight()
   const { item, error } = useWorkItem(itemId)
   const [localDropOpen, setLocalDropOpen] = useState(false)
   const [tick, setTick] = useState(0)
@@ -69,7 +72,11 @@ export function WorkItemPage({
 
   return (
     <View testID={`work-item-page-${item.id}`} style={{ flex: 1, backgroundColor: theme.background }}>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 14, gap: 16 }}>
+      <ScrollView
+        {...KEYBOARD_SCROLL_PROPS}
+        scrollIndicatorInsets={{ bottom: keyboardHeight }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: sheetScrollBottomPadding(28, keyboardHeight), gap: 16 }}
+      >
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
           <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
             <AppText variant="title" color={theme.foreground}>

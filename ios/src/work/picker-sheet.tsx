@@ -1,5 +1,6 @@
 /** Reusable Duo-safe native `pageSheet` option picker for Work filters and Check level selection. */
-import { Modal, Pressable, ScrollView, View } from 'react-native'
+import { useEffect } from 'react'
+import { Keyboard, Modal, Pressable, ScrollView, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { CheckIcon, CloseIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
@@ -24,8 +25,11 @@ export interface OptionPickerSheetProps {
 }
 
 export function OptionPickerSheet({ visible, title, selected, options, onSelect, onClose }: OptionPickerSheetProps) {
+  useEffect(() => {
+    if (visible) Keyboard.dismiss()
+  }, [visible])
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" allowSwipeDismissal onRequestClose={onClose}>
       {visible ? <PickerBody title={title} selected={selected} options={options} onSelect={onSelect} onClose={onClose} /> : null}
     </Modal>
   )

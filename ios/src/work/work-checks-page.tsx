@@ -1,6 +1,6 @@
 /** "Checks" tab on the Work board (mirrors `web/src/work/work-checks-page.tsx`):
  *  default check level per kind (0–3 + Built-in reset) and per-bot overrides with `Add` sheet. */
-import { Fragment, useState } from 'react'
+import { Fragment, useRef, useState } from 'react'
 import { Pressable, ScrollView, View } from 'react-native'
 import { messageOf } from '../../../shared/client/socket'
 import { kindLabel, kindShortLabel, levelChoiceLabel } from '../../../shared/client/work/work-lines'
@@ -23,6 +23,7 @@ export function WorkChecksPage() {
   const theme = useTheme()
   const { levels, error } = useWorkLevels()
   const bots = useBotStore(state => state.bots)
+  const savingRef = useRef<Set<string>>(new Set())
   const [savingKeys, setSavingKeys] = useState<Set<string>>(() => new Set())
   const [actionError, setActionError] = useState('')
   const [picker, setPicker] = useState<ActivePicker | null>(null)
@@ -50,19 +51,17 @@ export function WorkChecksPage() {
 
   const save = async (kind: WorkKind, level: number | null, botId?: string) => {
     const key = `${kind}:${botId ?? ''}`
-    if (savingKeys.has(key)) return
-    setSavingKeys(prev => new Set(prev).add(key))
+    if (savingRef.current.has(key)) return
+    savingRef.current.add(key)
+    setSavingKeys(new Set(savingRef.current))
     setActionError('')
     try {
       await setWorkLevel(kind, level, botId)
     } catch (failure) {
       setActionError(messageOf(failure))
     } finally {
-      setSavingKeys(prev => {
-        const next = new Set(prev)
-        next.delete(key)
-        return next
-      })
+      savingRef.current.delete(key)
+      setSavingKeys(new Set(savingRef.current))
     }
   }
 
@@ -107,7 +106,7 @@ export function WorkChecksPage() {
           Different for one bot
         </AppText>
         {bots.length > 0 ? (
-          <Pressable testID="work-checks-add-override" onPress={() => setAdding(true)} hitSlop={8} accessibilityRole="button">
+          <Pressable testID="work-checks-add-override" onPress={() => setAdding(true)} hitSlop={10} accessibilityRole="button" style={{ minHeight: 32, justifyContent: 'center', paddingHorizontal: 4 }}>
             <AppText variant="preview" color={theme.foreground} maxFontSizeMultiplier={WORK_TYPE_CAPS.actionButton} style={{ fontFamily: 'Inter_600SemiBold' }}>
               Add
             </AppText>
@@ -166,21 +165,8 @@ export function WorkChecksPage() {
   )
 }
 
-function LevelRow({
-  testID,
-  label,
-  level,
-  busy,
-  avatar,
-  onPress
-}: {
-  testID?: string
-  label: string
-  level: number
-  busy: boolean
-  avatar?: { id: string; name: string }
-  onPress: () => void
-}) {
+function LevelRow(props: { testID?: string; label: string; level: number; busy: boolean; avatar?: { id: string; name: string }; onPress: () => void }) {
+  const { testID, label, level, busy, avatar, onPress } = props
   const theme = useTheme()
   return (
     <Pressable
@@ -189,27 +175,14 @@ function LevelRow({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`Check level for ${label}: ${levelChoiceLabel(level)}`}
-      style={({ pressed }) => ({
-        minHeight: 46,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 10,
-        paddingHorizontal: 14,
-        paddingVertical: 10,
-        opacity: busy ? 0.5 : pressed ? 0.7 : 1
-      })}
+      style={({ pressed }) => ({ minHeight: 46, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 10, opacity: busy ? 0.5 : pressed ? 0.7 : 1 })}
     >
       {avatar ? <WorkAvatar id={avatar.id} name={avatar.name} size={20} /> : null}
       <AppText variant="name" color={theme.foreground} numberOfLines={2} maxFontSizeMultiplier={WORK_TYPE_CAPS.rowTitle} style={{ flex: 1 }}>
         {label}
       </AppText>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-        <AppText
-          variant="preview"
-          color={level === 0 ? theme.mutedForeground : theme.foreground}
-          maxFontSizeMultiplier={WORK_TYPE_CAPS.actionButton}
-          style={{ fontFamily: level === 3 ? 'Inter_600SemiBold' : level === 2 ? 'Inter_500Medium' : 'Inter_400Regular' }}
-        >
+        <AppText variant="preview" color={level === 0 ? theme.mutedForeground : theme.foreground} maxFontSizeMultiplier={WORK_TYPE_CAPS.actionButton} style={{ fontFamily: level === 3 ? 'Inter_600SemiBold' : level === 2 ? 'Inter_500Medium' : 'Inter_400Regular' }}>
           {levelChoiceLabel(level)}
         </AppText>
         <ChevronRightIcon color={theme.mutedForeground} size={13} />

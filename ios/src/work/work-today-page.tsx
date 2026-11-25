@@ -4,9 +4,11 @@ import { Fragment, useEffect, useState } from 'react'
 import { Pressable, ScrollView, View } from 'react-native'
 import { briefSubtitle, checkSummaryLine, doneBreakdown, failedCheckItems, todayHeading } from '../../../shared/client/work/work-lines'
 import { CheckIcon, ChevronRightIcon } from '../ui/icon'
+import { sheetScrollBottomPadding } from '../ui/keyboard-sheet'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { radius } from '../ui/tokens'
+import { KEYBOARD_SCROLL_PROPS, useKeyboardHeight } from '../ui/use-keyboard-height'
 import { WORK_TYPE_CAPS } from './board-state'
 import { CheckBadge } from './check-badge'
 import { NeedsYouWorkCard } from './needs-you-card'
@@ -15,6 +17,7 @@ import { WorkAvatar } from './work-avatar'
 
 export function WorkTodayPage({ onOpenItem }: { onOpenItem: (itemId: string) => void }) {
   const theme = useTheme()
+  const keyboardHeight = useKeyboardHeight()
   const { brief, active, error } = useWorkBrief()
   const [doneOpen, setDoneOpen] = useState(false)
   const [tick, setTick] = useState(0)
@@ -43,7 +46,12 @@ export function WorkTodayPage({ onOpenItem }: { onOpenItem: (itemId: string) => 
   const doneLabel = brief.done.count === 1 ? '1 item done today' : `${brief.done.count} items done today`
 
   return (
-    <ScrollView testID="work-today-page" contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 14, gap: 18 }}>
+    <ScrollView
+      testID="work-today-page"
+      {...KEYBOARD_SCROLL_PROPS}
+      scrollIndicatorInsets={{ bottom: keyboardHeight }}
+      contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: sheetScrollBottomPadding(28, keyboardHeight), gap: 18 }}
+    >
       {error ? <AppText variant="preview" color={theme.destructive}>{error}</AppText> : null}
 
       <View style={{ gap: 2 }}>

@@ -1,7 +1,7 @@
 /** "Needs you" cards on Today's brief (`R3-06`, mirrors `web/src/work/needs-you-card.tsx`):
  *  inline answer form for bot questions and `Look` button for Oscar checks. */
-import { useState } from 'react'
-import { Pressable, TextInput, useWindowDimensions, View } from 'react-native'
+import { useRef, useState } from 'react'
+import { Keyboard, Pressable, TextInput, useWindowDimensions, View } from 'react-native'
 import { messageOf } from '../../../shared/client/socket'
 import { elapsedShort, isOscarCheck } from '../../../shared/client/work/work-lines'
 import type { WorkSummary } from '../../../shared/work-schema'
@@ -23,20 +23,24 @@ function QuestionCard({ item, now, onOpenItem }: { item: WorkSummary; now: numbe
   const stack = shouldStackWorkRow(fontScale)
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
+  const sendingRef = useRef(false)
   const [error, setError] = useState('')
   const canSend = !sending && text.trim().length > 0
 
   const submit = async () => {
     const trimmed = text.trim()
-    if (!trimmed || sending) return
+    if (!trimmed || sendingRef.current) return
+    sendingRef.current = true
     setSending(true)
     setError('')
     try {
       await answerWorkItem(item.id, trimmed)
+      Keyboard.dismiss()
       setText('')
     } catch (failure) {
       setError(messageOf(failure))
     } finally {
+      sendingRef.current = false
       setSending(false)
     }
   }
@@ -74,10 +78,11 @@ function QuestionCard({ item, now, onOpenItem }: { item: WorkSummary; now: numbe
           accessibilityLabel={`Answer ${item.ownerName}`}
           editable={!sending}
           returnKeyType="send"
+          submitBehavior="blurAndSubmit"
           onSubmitEditing={() => void submit()}
           style={{
             flex: stack ? undefined : 1,
-            minHeight: 40,
+            minHeight: 44,
             borderRadius: radius.md,
             borderWidth: 1,
             borderColor: theme.input,
@@ -97,7 +102,7 @@ function QuestionCard({ item, now, onOpenItem }: { item: WorkSummary; now: numbe
           accessibilityLabel={`Send answer to ${item.ownerName}`}
           accessibilityState={{ disabled: !canSend }}
           style={({ pressed }) => ({
-            minHeight: 40,
+            minHeight: 44,
             paddingHorizontal: 16,
             borderRadius: radius.md,
             backgroundColor: theme.foreground,

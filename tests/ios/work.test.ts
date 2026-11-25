@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { shouldStackWorkRow, windowStartEpoch, workSheetPadding, workTabBadge } from '../../ios/src/work/board-state'
-import { clockTime, configureWorkFormatters } from '../../ios/src/work/format-labels'
+import { clockTime, WORK_DATE_LABELS } from '../../ios/src/work/format-labels'
 import { createWorkStore, type WorkSocket } from '../../ios/src/work/store-core'
 import { groupByBot, groupByStatus, partitionEvidence } from '../../shared/client/work/work-groups'
 import { briefSubtitle, doneBreakdown, failedCheckItems, isOscarCheck, safeHttpUrl, workBadge, workLineStatus } from '../../shared/client/work/work-lines'
@@ -156,14 +156,14 @@ describe('ios/src/work board helpers and store', () => {
       onConnection: () => () => {}
     }
 
-    const store = createWorkStore(() => socket)
+    const store = createWorkStore(() => socket, { pushCoalesceMs: 5 })
     const stop = store.watchBadge()
     await Bun.sleep(10)
     expect(store.useStore.getState().badgeCount).toBe(2)
 
     needsCount = 1
     onWork?.()
-    await Bun.sleep(10)
+    await Bun.sleep(20)
     expect(store.useStore.getState().badgeCount).toBe(1)
 
     await store.passWorkItem('w1')
@@ -180,20 +180,20 @@ describe('ios/src/work board helpers and store', () => {
     expect(calls.map(c => c.method)).toContain('work.levels.set')
   })
 
-  test('supports injectable date formatters without importing web/', () => {
-    configureWorkFormatters({ clockTime: () => '09:42' })
-    expect(clockTime(1234)).toBe('09:42')
+  test('uses shared/client history label formatters directly', () => {
+    const sample = Date.UTC(2026, 10, 25, 12, 0, 0)
+    expect(clockTime(sample)).toMatch(/^\d{2}:\d{2}$/)
+    expect(WORK_DATE_LABELS.dayKey(sample)).toBeGreaterThan(20260000)
   })
 })
 
-describe('client boundary for ios/src/work and shared/client/work', () => {
+describe('client boundary for ios/src/work', () => {
   test('ios/src/work never imports from web/ or server/', () => {
     const dir = join(import.meta.dir, '../../ios/src/work')
     for (const file of readdirSync(dir)) {
       if (!file.endsWith('.ts') && !file.endsWith('.tsx')) continue
       const source = readFileSync(join(dir, file), 'utf8')
-      expect(source).not.toMatch(/from\s+['"][^'"]*\/web\//)
-      expect(source).not.toMatch(/from\s+['"][^'"]*\/server\//)
+      expect(source).not.toMatch(/from\s+['"][^'"]*\/(web|server)\//)
     }
   })
 })

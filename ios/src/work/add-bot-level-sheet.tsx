@@ -1,6 +1,6 @@
 /** Native pageSheet for adding a per-bot check level override on the Checks tab (mirrors `web/src/work/add-bot-level-dialog.tsx`). */
-import { useState } from 'react'
-import { Modal, Pressable, ScrollView, View } from 'react-native'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Keyboard, Modal, Pressable, ScrollView, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { Bot } from '../../../shared/bot-schema'
 import { messageOf } from '../../../shared/client/socket'
@@ -21,30 +21,46 @@ export interface AddBotLevelSheetProps {
 }
 
 export function AddBotLevelSheet({ visible, bots, onSave, onClose }: AddBotLevelSheetProps) {
+  const [busy, setBusy] = useState(false)
+  const busyRef = useRef(false)
+  const setSaving = useCallback((next: boolean) => {
+    busyRef.current = next
+    setBusy(next)
+  }, [])
+  const handleClose = useCallback(() => {
+    if (!busyRef.current) onClose()
+  }, [onClose])
+
+  useEffect(() => {
+    if (visible) Keyboard.dismiss()
+    else setSaving(false)
+  }, [visible, setSaving])
+
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      {visible ? <AddBotLevelBody bots={bots} onSave={onSave} onClose={onClose} /> : null}
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" allowSwipeDismissal={!busy} onRequestClose={handleClose}>
+      {visible ? <AddBotLevelBody bots={bots} busy={busy} busyRef={busyRef} setSaving={setSaving} onSave={onSave} onClose={handleClose} /> : null}
     </Modal>
   )
 }
 
-function AddBotLevelBody({ bots, onSave, onClose }: Omit<AddBotLevelSheetProps, 'visible'>) {
+function AddBotLevelBody(props: { bots: Bot[]; busy: boolean; busyRef: { current: boolean }; setSaving: (next: boolean) => void; onSave: (botId: string, kind: WorkKind, level: number) => Promise<void>; onClose: () => void }) {
+  const { bots, busy: saving, busyRef, setSaving, onSave, onClose } = props
   const theme = useTheme()
   const insets = useSafeAreaInsets()
   const pad = workSheetPadding(insets)
   const [botId, setBotId] = useState(bots[0]?.id ?? '')
   const [kind, setKind] = useState<WorkKind>('outside')
   const [level, setLevel] = useState(3)
-  const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [picking, setPicking] = useState<'bot' | 'kind' | 'level' | null>(null)
 
   const submit = async () => {
-    if (!botId || saving) return
+    if (!botId || busyRef.current) return
     setSaving(true)
     setError('')
     try {
       await onSave(botId, kind, level)
+      setSaving(false)
     } catch (failure) {
       setError(messageOf(failure))
       setSaving(false)

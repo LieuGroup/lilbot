@@ -37,7 +37,7 @@ export function WorkButton({
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ disabled }}
       style={({ pressed }) => ({
-        minHeight: 40,
+        minHeight: 44,
         paddingHorizontal: tone === 'ghost' ? 14 : 16,
         borderRadius: radius.md,
         borderWidth: tone === 'secondary' ? 1 : 0,
@@ -68,7 +68,7 @@ export function WorkInput({ style, ...props }: TextInputProps) {
       {...props}
       style={[
         {
-          minHeight: 40,
+          minHeight: 44,
           borderRadius: radius.md,
           borderWidth: 1,
           borderColor: theme.input,

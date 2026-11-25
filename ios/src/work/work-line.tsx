@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react'
 import { Pressable, useWindowDimensions, View } from 'react-native'
 import { workLineStatus } from '../../../shared/client/work/work-lines'
+import type { RenderToolItem } from '../chat/message-item'
 import { ChevronRightIcon, WorkTabIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
@@ -61,4 +62,12 @@ export function WorkLine({ workItemId, onOpenItem, fallback = null }: WorkLinePr
       </View>
     </Pressable>
   )
+}
+
+/** Composes a chat tool renderer so `lilbot_work` tool calls render quiet inline `WorkLine` cards while delegating other tools. */
+export function withWorkToolRenderer(onOpenItem: (itemId: string) => void, next?: RenderToolItem): RenderToolItem {
+  return (item, fallback) => {
+    if (item.workItemId) return <WorkLine workItemId={item.workItemId} onOpenItem={onOpenItem} fallback={fallback} />
+    return next ? next(item, fallback) : fallback
+  }
 }
