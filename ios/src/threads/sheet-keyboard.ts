@@ -16,11 +16,12 @@ export interface AnswerInputLayoutInput {
 }
 
 /** Converts window-level `keyboardHeight` (from `useKeyboardHeight`) into the exact bottom overlap inside
- *  a Modal pageSheet: identical to `keyboardHeight` on bottom-anchored iPhone / Folded Duo sheets, and
- *  trims any gap below centered iPad pageSheets once `measureInWindow` settles. */
+ *  a Modal pageSheet: keeps single bottom-anchored sheets exact, adds stacked-pageSheet bottom overhang
+ *  when a second sheet opens ~10 pt lower on top of another sheet, and trims gaps below centered iPad sheets. */
 export function sheetKeyboardInset(windowHeight: number, keyboardHeight: number, sheetFrame?: SheetWindowFrame | null): number {
   const kb = Math.max(0, Math.round(keyboardHeight))
   if (kb === 0) return 0
+  const sheetBottom = sheetFrame ? sheetFrame.y + sheetFrame.height : Number.NaN
   const validFrame =
     sheetFrame &&
     Number.isFinite(windowHeight) &&
@@ -29,10 +30,10 @@ export function sheetKeyboardInset(windowHeight: number, keyboardHeight: number,
     Number.isFinite(sheetFrame.height) &&
     sheetFrame.height > 100 &&
     sheetFrame.y >= 0 &&
-    sheetFrame.y + sheetFrame.height <= windowHeight + 4
+    sheetFrame.y < windowHeight * 0.5 &&
+    sheetBottom <= windowHeight + 48
   if (!validFrame) return kb
-  const gapBelowSheet = Math.max(0, Math.round(windowHeight - (sheetFrame.y + sheetFrame.height)))
-  return Math.max(0, kb - gapBelowSheet)
+  return Math.max(0, Math.round(kb + (sheetBottom - windowHeight)))
 }
 
 /** Caps multiline answer TextInput height to the measured ScrollView viewport so a 10-line answer scrolls

@@ -1,7 +1,7 @@
 /** Native pageSheet confirmation for stopping a running exchange, worker, or temporary group (shared copy with web).
  *  Locks dismiss and duplicate submits while stopping so in-flight calls run at most once and errors survive. */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Modal, Pressable, ScrollView, View } from 'react-native'
+import { Keyboard, Modal, Pressable, ScrollView, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { messageOf } from '../../../shared/client/socket'
 import { stopThreadCopy } from '../../../shared/client/threads/stop-copy'
@@ -32,6 +32,7 @@ export function StopThreadSheet({ botId, thread, onClose }: StopThreadSheetProps
 
   useEffect(() => {
     if (thread === null) setStopping(false)
+    else Keyboard.dismiss()
   }, [thread, setStopping])
 
   return (
@@ -102,7 +103,7 @@ function StopThreadBody({ botId, thread, busy, busyRef, setStopping, onClose }: 
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingLeft: pad.paddingLeft, paddingRight: pad.paddingRight, paddingTop: 16, paddingBottom: pad.paddingBottom, gap: 14 }}>
+      <ScrollView contentContainerStyle={{ paddingLeft: pad.paddingLeft, paddingRight: pad.paddingRight, paddingTop: 16, paddingBottom: pad.paddingBottom + 16, gap: 14 }}>
         {copy.subject ? (
           <AppText variant="chat" color={theme.foreground} maxFontSizeMultiplier={1.6} style={{ fontFamily: 'Inter_500Medium' }}>
             {copy.subject}

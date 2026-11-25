@@ -6,9 +6,12 @@ import { resolve } from 'node:path'
 import { answerInputMaxHeight, sheetKeyboardInset } from '../../ios/src/threads/sheet-keyboard'
 
 describe('pageSheet keyboard inset and bounded answer input geometry', () => {
-  test('computes exact inset on Folded Duo, iPhone, centered iPad pageSheet, and mid-slide fallback', () => {
+  test('computes exact inset on Folded Duo, stacked pageSheets, centered iPad, and mid-slide fallback', () => {
     expect(sheetKeyboardInset(678, 0)).toBe(0)
     expect(sheetKeyboardInset(678, 318, { y: 24, height: 654 })).toBe(318)
+    expect(sheetKeyboardInset(678, 296, { y: 21, height: 668 })).toBe(307)
+    expect(sheetKeyboardInset(874, 336, { y: 64, height: 820 })).toBe(346)
+    expect(sheetKeyboardInset(678, 318, { y: 400, height: 654 })).toBe(318)
     expect(sheetKeyboardInset(678, 318, { y: 678, height: 654 })).toBe(318)
     expect(sheetKeyboardInset(1024, 324, { y: 140, height: 744 })).toBe(184)
     expect(sheetKeyboardInset(1024, 100, { y: 140, height: 744 })).toBe(0)
@@ -56,6 +59,7 @@ describe('PR #303 sheet single-send, keyboard, snapshot, store hook, and 44 pt t
 
     expect(stopSrc).toContain('allowSwipeDismissal={!busy}')
     expect(stopSrc).toContain('if (busyRef.current) return')
+    expect(stopSrc).toContain('Keyboard.dismiss()')
 
     expect(storeSrc).not.toContain('state.connected')
     expect(storeSrc).toContain('manager.syncSocket()')

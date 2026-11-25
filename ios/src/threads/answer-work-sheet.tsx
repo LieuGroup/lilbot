@@ -68,8 +68,12 @@ function AnswerWorkBody(props: { work: WorkSummary; title: string; busy: boolean
   }, [])
 
   useEffect(() => {
-    const timer = setTimeout(measureSheet, 80)
-    return () => clearTimeout(timer)
+    const t1 = setTimeout(measureSheet, 80)
+    const t2 = setTimeout(measureSheet, 320)
+    return () => {
+      clearTimeout(t1)
+      clearTimeout(t2)
+    }
   }, [showSeq, keyboardHeight, measureSheet])
 
   const keyboardOverlap = sheetKeyboardInset(windowHeight, keyboardHeight, sheetFrame)
