@@ -1,14 +1,13 @@
 /** Loopback HTTP/2 mock tests for ApnsSender: sandbox routing, endpoint deletion, rejection breakers, backoff, expiry retry, and reconnects. */
 import { expect, test } from 'bun:test'
 import { generateKeyPairSync, verify } from 'node:crypto'
-import http2, { type Http2Server, type IncomingHttpHeaders } from 'node:http2'
-import type { AddressInfo } from 'node:net'
 import { openDatabase } from '../../server/database/database'
 import { DeviceStore } from '../../server/devices/device-store'
 import { ApnsSender } from '../../server/notifications/apns-sender'
 import type { NotificationPayload, NotificationRecipient } from '../../server/notifications/notification-sender'
 import { NotificationService } from '../../server/notifications/notification-service'
 import { NotificationStore } from '../../server/notifications/notification-store'
+import { startMockApns } from './apns-mock'
 
 const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
 const FAKE_PEM = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()
@@ -18,58 +17,6 @@ const D1 = '11111111-1111-4111-8111-111111111111'
 const D2 = '22222222-2222-4222-8222-222222222222'
 const TOK1 = '1111111111111111111111111111111111111111111111111111111111111111'
 const TOK2 = '2222222222222222222222222222222222222222222222222222222222222222'
-
-interface MockHit {
-  path: string
-  topic: string
-  auth: string
-  body: Record<string, unknown>
-}
-type MockResponder = (hit: MockHit, req: http2.ServerHttp2Stream) => { status: number; body?: string; headers?: Record<string, string>; hang?: boolean; goaway?: boolean }
-
-async function startMockApns(respond: MockResponder) {
-  const hits: MockHit[] = []
-  let sessions = 0
-  const server: Http2Server = http2.createServer()
-  server.on('session', () => {
-    sessions++
-  })
-  server.on('stream', (rawStream, headers: IncomingHttpHeaders) => {
-    const stream = rawStream as http2.ServerHttp2Stream
-    let raw = ''
-    stream.setEncoding('utf8')
-    stream.on('data', chunk => {
-      raw += chunk
-    })
-    stream.on('end', () => {
-      const hit: MockHit = {
-        path: String(headers[':path'] ?? ''),
-        topic: String(headers['apns-topic'] ?? ''),
-        auth: String(headers.authorization ?? ''),
-        body: raw ? (JSON.parse(raw) as Record<string, unknown>) : {}
-      }
-      hits.push(hit)
-      const out = respond(hit, stream)
-      if (out.hang) return
-      if (out.goaway) {
-        stream.respond({ ':status': out.status, ...out.headers })
-        stream.end(out.body ?? '')
-        stream.session?.goaway()
-        return
-      }
-      stream.respond({ ':status': out.status, 'content-type': 'application/json', ...out.headers })
-      stream.end(out.body ?? '')
-    })
-  })
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
-  const port = (server.address() as AddressInfo).port
-  return {
-    origin: `http://127.0.0.1:${port}`,
-    hits,
-    sessionCount: () => sessions,
-    close: () => new Promise<void>(resolve => server.close(() => resolve()))
-  }
-}
 
 function verifyBearerJwt(authHeader: string) {
   expect(authHeader.startsWith('bearer ')).toBe(true)
@@ -140,7 +87,7 @@ test('ApnsSender routes apns vs apns_sandbox per endpoint, reuses HTTP/2 session
   }
 })
 
-test('ApnsSender pauses rejected keys/topics once without retry storms, backs off on 429, refreshes expired JWTs, and recovers from GOAWAY/timeout', async () => {
+test('ApnsSender pauses rejected keys/topics once without retry storms, backs off on 429/503, refreshes expired JWTs, and recovers from GOAWAY/timeout', async () => {
   let clock = 1_700_000_000_000
   let prodBehavior: 'ok' | 'topic_bad' | 'expired_once' | 'throttle' | 'unavail' | 'goaway' | 'hang' = 'ok'
   let expiredTriggered = false
