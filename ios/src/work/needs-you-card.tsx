@@ -10,7 +10,7 @@ import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { MOBILE_SCALE, radius } from '../ui/tokens'
 import { isConnectionLostError, runSingleSubmit, staleItemNotice } from './action-state'
-import { shouldStackWorkRow, WORK_TYPE_CAPS } from './board-state'
+import { shouldStackWorkActions, shouldStackWorkRow, WORK_TYPE_CAPS } from './board-state'
 import { answerWorkItem } from './store'
 import { WorkAvatar } from './work-avatar'
 import { WorkButton, WorkInput, WorkNoticeBox } from './work-controls'
@@ -33,9 +33,10 @@ export function NeedsYouWorkCard(props: NeedsYouWorkCardProps) {
 
 function QuestionCard({ item, now, live = true, lostOnDisconnect = false, onOpenItem, onDraftChange, onDismissStale, onInputFocus }: NeedsYouWorkCardProps) {
   const theme = useTheme()
-  const { fontScale } = useWindowDimensions()
+  const { fontScale, width, height } = useWindowDimensions()
   const connected = useConnectionStore(s => s.connected)
   const stack = shouldStackWorkRow(fontScale)
+  const stackActions = shouldStackWorkActions(fontScale, { width, height })
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
   const [lost, setLost] = useState(lostOnDisconnect)
@@ -123,7 +124,7 @@ function QuestionCard({ item, now, live = true, lostOnDisconnect = false, onOpen
         />
       ) : null}
 
-      <View style={{ flexDirection: stack ? 'column' : 'row', alignItems: stack ? 'stretch' : 'center', gap: 8 }}>
+      <View style={{ flexDirection: stackActions ? 'column' : 'row', alignItems: stackActions ? 'stretch' : 'center', gap: 8 }}>
         <WorkInput
           testID={`needs-you-input-${item.id}`}
           value={text}
@@ -135,7 +136,7 @@ function QuestionCard({ item, now, live = true, lostOnDisconnect = false, onOpen
           returnKeyType="send"
           submitBehavior="blurAndSubmit"
           onSubmitEditing={() => void submit()}
-          style={{ flex: stack ? undefined : 1 }}
+          style={{ flex: stackActions ? undefined : 1 }}
         />
         <WorkButton
           testID={`needs-you-send-${item.id}`}

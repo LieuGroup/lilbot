@@ -37,6 +37,17 @@ export function shouldStackWorkRow(fontScale: number, width?: number): boolean {
   return false
 }
 
+/** Stacks an answer field above its button only when the window is tall enough; in phone landscape the strip above the keyboard fits one row, so the field and its button share it. */
+export function shouldStackWorkActions(fontScale: number, window: { width: number; height: number }): boolean {
+  if (isCompactWorkHeight(window.height)) return false
+  return shouldStackWorkRow(fontScale, window.width)
+}
+
+/** Phone landscape: too short for a stacked field plus buttons above the keyboard. */
+export function isCompactWorkHeight(height: number): boolean {
+  return height > 0 && height < 500
+}
+
 /** Safe-area padding for native `pageSheet` modals so Folded Duo's trailing rail and landscape cut-outs never overlap controls. */
 export function workSheetPadding(insets: { left: number; right: number; bottom: number }) {
   return {

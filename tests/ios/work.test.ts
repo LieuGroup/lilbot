@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { shouldStackWorkRow, windowStartEpoch, workSheetPadding, workTabBadge } from '../../ios/src/work/board-state'
+import { isCompactWorkHeight, shouldStackWorkActions, shouldStackWorkRow, windowStartEpoch, workSheetPadding, workTabBadge } from '../../ios/src/work/board-state'
 import { clockTime, WORK_DATE_LABELS } from '../../ios/src/work/format-labels'
 import { createWorkStore, type WorkSocket } from '../../ios/src/work/store-core'
 import { groupByBot, groupByStatus, partitionEvidence } from '../../shared/client/work/work-groups'
@@ -80,6 +80,11 @@ describe('ios/src/work board helpers and store', () => {
     expect(shouldStackWorkRow(1.0, 390)).toBe(false)
     expect(shouldStackWorkRow(1.7, 390)).toBe(true)
     expect(shouldStackWorkRow(1.0, 260)).toBe(true)
+    expect(shouldStackWorkActions(3.1, { width: 402, height: 874 })).toBe(true)
+    expect(shouldStackWorkActions(3.1, { width: 874, height: 402 })).toBe(false)
+    expect(shouldStackWorkActions(1.0, { width: 402, height: 874 })).toBe(false)
+    expect(isCompactWorkHeight(402)).toBe(true)
+    expect(isCompactWorkHeight(1194)).toBe(false)
     expect(workSheetPadding({ left: 0, right: 84, bottom: 20 })).toEqual({ paddingLeft: 16, paddingRight: 96, paddingBottom: 32 })
   })
 

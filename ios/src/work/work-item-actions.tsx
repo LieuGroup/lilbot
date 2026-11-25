@@ -8,7 +8,7 @@ import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { MOBILE_SCALE, radius } from '../ui/tokens'
 import { isConnectionLostError, runSingleSubmit } from './action-state'
-import { shouldStackWorkRow, WORK_TYPE_CAPS } from './board-state'
+import { isCompactWorkHeight, shouldStackWorkActions, shouldStackWorkRow, WORK_TYPE_CAPS } from './board-state'
 import { answerWorkItem, passWorkItem, sendBackWorkItem } from './store'
 import { WorkButton, WorkInput, WorkNoticeBox } from './work-controls'
 
@@ -28,8 +28,9 @@ export interface OscarCheckBannerProps {
 export function OscarCheckBanner(props: OscarCheckBannerProps) {
   const { item, live, reason, sendingBack, notice, onReasonChange, onSendingBackChange, onConnectionLost, onDismissNotice, onInputFocus } = props
   const theme = useTheme()
-  const { fontScale } = useWindowDimensions()
+  const { fontScale, height } = useWindowDimensions()
   const stack = shouldStackWorkRow(fontScale)
+  const inlineSendBack = isCompactWorkHeight(height)
   const [busy, setBusy] = useState(false)
   const busyRef = useRef(false)
   const [error, setError] = useState('')
@@ -89,8 +90,8 @@ export function OscarCheckBanner(props: OscarCheckBannerProps) {
           />
         </View>
       ) : (
-        <View style={{ gap: 8 }}>
-          <WorkInput testID={`work-send-back-input-${item.id}`} value={reason} onChangeText={onReasonChange} onFocus={onInputFocus} placeholder="What needs fixing?" accessibilityLabel="What needs fixing?" editable={!busy} autoFocus={live} returnKeyType="send" submitBehavior="blurAndSubmit" onSubmitEditing={() => void sendBack()} />
+        <View style={{ flexDirection: inlineSendBack ? 'row' : 'column', alignItems: inlineSendBack ? 'center' : 'stretch', gap: 8 }}>
+          <WorkInput testID={`work-send-back-input-${item.id}`} value={reason} onChangeText={onReasonChange} onFocus={onInputFocus} placeholder="What needs fixing?" accessibilityLabel="What needs fixing?" editable={!busy} autoFocus={live} returnKeyType="send" submitBehavior="blurAndSubmit" onSubmitEditing={() => void sendBack()} style={{ flex: inlineSendBack ? 1 : undefined }} />
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
             <WorkButton testID={`work-send-back-confirm-${item.id}`} label={busy ? 'Sending...' : 'Send back'} tone="destructive" disabled={!reason.trim() || busy || !live} onPress={() => void sendBack()} />
             <WorkButton label="Cancel" tone="ghost" disabled={busy} onPress={() => onSendingBackChange(false)} />
@@ -116,8 +117,8 @@ export interface QuestionBannerProps {
 export function QuestionBanner(props: QuestionBannerProps) {
   const { item, live, answer, notice, onAnswerChange, onConnectionLost, onDismissNotice, onInputFocus } = props
   const theme = useTheme()
-  const { fontScale } = useWindowDimensions()
-  const stack = shouldStackWorkRow(fontScale)
+  const { fontScale, width, height } = useWindowDimensions()
+  const stack = shouldStackWorkActions(fontScale, { width, height })
   const [sending, setSending] = useState(false)
   const sendingRef = useRef(false)
   const [error, setError] = useState('')
