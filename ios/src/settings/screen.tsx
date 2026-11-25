@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Pressable, ScrollView, TextInput, View } from 'react-native'
 import { serverUrlError } from '../connection/lilbot'
 import { useConnectionStore } from '../connection/store'
+import { NotificationsSection } from '../notifications/notifications-section'
 import { useTheme } from '../ui/theme'
 import { AppText } from '../ui/text'
 import { radius } from '../ui/tokens'
@@ -109,6 +110,8 @@ export function SettingsScreen({ onDone }: { onDone?: () => void }) {
           {device ? ` · this device: ${device.name}` : ''}
         </AppText>
       </View>
+
+      <NotificationsSection />
 
       {settings && onDone && (
         <Pressable onPress={onDone} style={{ marginTop: 8 }}>

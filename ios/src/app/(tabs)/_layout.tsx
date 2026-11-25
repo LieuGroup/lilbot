@@ -18,9 +18,11 @@ import { computeShellLayout } from '../../duo/layout'
 import { useBotSelection } from '../../duo/selection'
 import { shouldHideNativeTabBar } from '../../duo/stack-sync'
 import { useLiveSurface } from '../../duo/use-surface'
+import { useNotificationsLifecycle } from '../../notifications/use-notifications'
 import { useTheme } from '../../ui/theme'
 
 export default function TabsLayout() {
+  useNotificationsLifecycle()
   const theme = useTheme()
   const segments = useSegments()
   const { surface, metrics } = useLiveSurface()
