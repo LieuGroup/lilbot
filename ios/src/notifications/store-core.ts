@@ -53,27 +53,19 @@ export interface NotificationStoreState {
   consumePendingTarget: () => NotificationTarget | null
 }
 
+const errText = (cause: unknown, fallback: string) => (cause instanceof Error ? cause.message : fallback)
+const toggleMuted = (ids: readonly string[], botId: string, muted: boolean) => (muted ? Array.from(new Set([...ids, botId])).sort() : ids.filter(id => id !== botId))
+
 export function createNotificationStore(deps: NotificationStoreDeps) {
   let promptInFlight = false
-
   return create<NotificationStoreState>((set, get) => {
     const syncRegistration = async (deviceId: string, socket: NotificationSocket) => {
       const token = await deps.bridge.getDeviceToken()
       if (!token) return
-      const endpoint = await socket.call<NotificationEndpoint>('notifications.register', {
-        deviceId,
-        channel: deps.channel(),
-        token,
-        bundleId: deps.bundleId()
-      })
+      const endpoint = await socket.call<NotificationEndpoint>('notifications.register', { deviceId, channel: deps.channel(), token, bundleId: deps.bundleId() })
       set(state => ({
         registeredToken: token,
-        settings: state.settings
-          ? {
-              ...state.settings,
-              endpoints: [...state.settings.endpoints.filter(e => e.channel !== endpoint.channel), endpoint]
-            }
-          : state.settings
+        settings: state.settings ? { ...state.settings, endpoints: [...state.settings.endpoints.filter(e => e.channel !== endpoint.channel), endpoint] } : state.settings
       }))
     }
 
@@ -95,11 +87,9 @@ export function createNotificationStore(deps: NotificationStoreDeps) {
           const [deviceId, permission, promptedOnce] = await Promise.all([deps.getDeviceId(), deps.bridge.getPermission(), deps.readPrompted()])
           const settings = await socket.call<NotificationSettings>('notifications.prefs.get', { deviceId })
           set({ permission, settings, promptedOnce, loading: false })
-          if (options.registerIfGranted && permission === 'granted' && settings.device.enabled) {
-            await syncRegistration(deviceId, socket)
-          }
+          if (options.registerIfGranted && permission === 'granted' && settings.device.enabled) await syncRegistration(deviceId, socket)
         } catch (cause) {
-          set({ loading: false, error: cause instanceof Error ? cause.message : 'Could not load notification settings.' })
+          set({ loading: false, error: errText(cause, 'Could not load notification settings.') })
         }
       },
 
@@ -124,7 +114,7 @@ export function createNotificationStore(deps: NotificationStoreDeps) {
           set({ settings: fresh, registering: false })
           return true
         } catch (cause) {
-          set({ registering: false, error: cause instanceof Error ? cause.message : 'Could not enable notifications.' })
+          set({ registering: false, error: errText(cause, 'Could not enable notifications.') })
           return false
         }
       },
@@ -133,8 +123,7 @@ export function createNotificationStore(deps: NotificationStoreDeps) {
         if (promptInFlight || get().promptedOnce) return
         promptInFlight = true
         try {
-          const already = await deps.readPrompted()
-          if (already) {
+          if (await deps.readPrompted()) {
             set({ promptedOnce: true })
             return
           }
@@ -163,7 +152,7 @@ export function createNotificationStore(deps: NotificationStoreDeps) {
           set(state => ({ settings: state.settings ? { ...state.settings, device } : state.settings }))
           if (patch.enabled === true && get().permission === 'granted') await syncRegistration(deviceId, socket)
         } catch (cause) {
-          set({ settings: prev, error: cause instanceof Error ? cause.message : 'Could not update notification settings.' })
+          set({ settings: prev, error: errText(cause, 'Could not update notification settings.') })
         }
       },
 
@@ -171,21 +160,14 @@ export function createNotificationStore(deps: NotificationStoreDeps) {
         const socket = deps.getSocket()
         if (!socket) return
         const prev = get().settings
-        if (prev) {
-          const nextMuted = muted ? Array.from(new Set([...prev.mutedBotIds, botId])).sort() : prev.mutedBotIds.filter(id => id !== botId)
-          set({ settings: { ...prev, mutedBotIds: nextMuted }, error: '' })
-        }
+        if (prev) set({ settings: { ...prev, mutedBotIds: toggleMuted(prev.mutedBotIds, botId, muted) }, error: '' })
         try {
           const saved = await socket.call<NotificationBotPrefs>('notifications.botPrefs.set', { botId, muted })
-          set(state => {
-            if (!state.settings) return state
-            const mutedBotIds = saved.muted
-              ? Array.from(new Set([...state.settings.mutedBotIds, saved.botId])).sort()
-              : state.settings.mutedBotIds.filter(id => id !== saved.botId)
-            return { settings: { ...state.settings, mutedBotIds } }
-          })
+          set(state =>
+            state.settings ? { settings: { ...state.settings, mutedBotIds: toggleMuted(state.settings.mutedBotIds, saved.botId, saved.muted) } } : state
+          )
         } catch (cause) {
-          set({ settings: prev, error: cause instanceof Error ? cause.message : 'Could not update bot mute.' })
+          set({ settings: prev, error: errText(cause, 'Could not update bot mute.') })
         }
       },
 
