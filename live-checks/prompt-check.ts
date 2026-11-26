@@ -10,7 +10,8 @@ import '../scripts/dev-env'
  *  6. The deploy rollback hook, run against the real Hermes, takes the plug-in out of Hermes' enabled list: Hermes
  *     reports it not enabled, the next turn carries the engine's own prompt, and the bot shows the fallback.
  *  7. Deleting the bot removes its prompt file.
- *  Anthropic, OpenAI and Inkling models only, by the owner's decision (OpenAI and Inkling listed in the dev Hermes
+ *  Every model call goes through the capture proxy, which stops the check if a tool call reaches outside the
+ *  temporary bots' workspaces. Anthropic, OpenAI and Inkling models only, by the owner's decision (OpenAI and Inkling listed in the dev Hermes
  *  model catalogue). Any 403 or account message stops the check at once. */
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -43,9 +44,9 @@ function check(label: string, ok: boolean, detail = '') {
 }
 
 const upstream = readDevUpstreamBaseUrl()
-const proxy = startWireCaptureProxy(upstream)
 const offServer = await RestartServer.create('lilbot-prompt-off', { LILBOT_PROMPT_OWNERSHIP: '0' })
 const server = await RestartServer.create('lilbot-prompt', { LILBOT_PROMPT_OWNERSHIP: '1' })
+const proxy = startWireCaptureProxy(upstream, [join(offServer.root, 'workspaces'), join(server.root, 'workspaces')])
 
 async function turn(s: RestartServer, botId: string, chatId: string, text: string) {
   await Bun.sleep(SPACE_MS)
@@ -149,12 +150,11 @@ try {
   await runModelCase({ server, engine, records: proxy.records, turn, check, bot, nativeId, promptPath, spaceMs: SPACE_MS }, 'Inkling 2 Mini', INKLING)
 
   await server.call('bots.update', { botId: bot.id, model: CLAUDE })
-  await setProfileBaseUrl(nativeId, upstream)
   const direct = await server.call('chat.new', { botId: bot.id })
   const c1 = await turn(server, bot.id, direct.chatId, 'Remember code word MANGO-42. Reply with exactly: SAVED')
   const c2 = await turn(server, bot.id, direct.chatId, 'What was the code word? Reply with just the code word.')
   const cacheRead = Number(c2.finished?.usage?.cacheReadTokens ?? 0)
-  check('Claude direct: prompt caching works across turns', answered(c1.finished) && c2.reply.includes('MANGO-42') && cacheRead > 0, `cacheReadTokens=${cacheRead}`)
+  check('Claude: prompt caching works across turns', answered(c1.finished) && c2.reply.includes('MANGO-42') && cacheRead > 0, `cacheReadTokens=${cacheRead}`)
   await checkCompactionMarker(server, bot.id, async (cid, text) => (await turn(server, bot.id, cid, text)).finished)
 
   const fbChat = (await server.call('chat.new', { botId: bot.id })).chatId
@@ -167,7 +167,6 @@ try {
   await server.call('bots.update', { botId: bot.id, function: 'Refresh before rollback' })
   check('prompt file is written again on the next bot update', existsSync(promptPath))
 
-  await setProfileBaseUrl(nativeId, proxy.url)
   const dated = await turn(server, bot.id, (await server.call('chat.new', { botId: bot.id })).chatId, 'Reply with exactly: DATED_OK')
   const back = readFileSync(promptPath, 'utf8')
   check(

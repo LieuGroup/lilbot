@@ -3,9 +3,13 @@ import '../scripts/dev-env'
  *  Hermes with `LILBOT_PROMPT_OWNERSHIP=1`, on temporary `dev-` bots only (deleted in `finally`). For each model
  *  (Inkling 2 Mini, Claude Haiku, GPT Luna), with the prompt file on the wire byte for byte on every request:
  *  a plain answer with no tools, a real tool call, a work item opened and finished with evidence, a standing
- *  preference saved to memory, the bot's own identity, and a hidden routine run that does only its task.
+ *  preference saved to memory without a name the bot was not given, the bot's own identity, a hidden routine run that
+ *  does only its task, and a routine created in the turn it is asked for.
+ *  Every task is answerable from fixtures in the temporary bot's own folder (`fixtures/`, written before the first turn)
+ *  and each prompt says where they are. The capture proxy refuses any tool call that reaches outside the temporary
+ *  bots' workspaces, and the check stops and fails on it (`outside-access-guard.ts`).
  *  Model calls are spaced 10 s apart; any 403 or account message stops the check. No Google model is called. */
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { routineLine } from '../server/devices/origin-line'
 import { HermesEngine } from '../server/engines/hermes/hermes-engine'
@@ -22,6 +26,12 @@ const MODELS = [
 ].filter(m => !process.env.LILBOT_PROMPT_MODELS || process.env.LILBOT_PROMPT_MODELS.split(',').includes(m.model.model))
 const INSTRUCTIONS = "You are Pip, the owner's general assistant. You help with everyday questions, errands and small jobs around his computers."
 const VENDORS = /\b(claude|anthropic|chatgpt|gpt|openai|inkling|thinking machines|hermes|nous)\b/i
+const OWNER_WORDS = /\b(Oscar|the owner)\b/i
+const FIXTURES = {
+  'disk-status.txt': 'Disk status, read by the nightly check:\nSize: 1000 GB\nUsed: 588 GB (59% full)\nFree: 412 GB\n',
+  'weather.txt': 'Forecast for today: sunny, 24 degrees, light wind from the south.\n'
+}
+const DISK = 'how full is the disk, and how much is free? the latest disk status is in fixtures/disk-status.txt in your folder.'
 
 let failures = 0
 function check(label: string, ok: boolean, detail = '') {
@@ -31,8 +41,8 @@ function check(label: string, ok: boolean, detail = '') {
 const words = (text: string) => text.split(/\s+/).filter(Boolean).length
 const short = (text: string) => text.replace(/\s+/g, ' ').trim().slice(0, 140)
 
-const proxy = startWireCaptureProxy(readDevUpstreamBaseUrl())
 const server = await RestartServer.create('lilbot-prompt-behaviour', { LILBOT_PROMPT_OWNERSHIP: '1' })
+const proxy = startWireCaptureProxy(readDevUpstreamBaseUrl(), [join(server.root, 'workspaces')])
 const stamp = Date.now().toString(36)
 
 async function turn(botId: string, chatId: string, text: string, timeout = 300_000) {
@@ -61,6 +71,8 @@ async function modelCase(label: string, model: { provider: string; model: string
   const native = nativeProfileOf(server.root, bot.id)
   server.natives.add(native)
   await setProfileBaseUrl(native, proxy.url)
+  mkdirSync(join(bot.workspace, 'fixtures'), { recursive: true })
+  for (const [name, text] of Object.entries(FIXTURES)) writeFileSync(join(bot.workspace, 'fixtures', name), text)
   const promptFile = join(server.root, 'prompts', `${bot.id}.txt`)
   const prompt = () => readFileSync(promptFile, 'utf8')
   const fresh = async () => (await server.call('chat.new', { botId: bot.id })).chatId as string
@@ -74,14 +86,14 @@ async function modelCase(label: string, model: { provider: string; model: string
     `${words(plain.reply)} words, ${plain.wire.length} request(s): ${short(plain.reply)}`
   )
 
-  const live = await turn(bot.id, await fresh(), 'how much free space is left on the disk your folder is on?')
+  const live = await turn(bot.id, await fresh(), DISK)
   check(
     `${label}: something live is read with a real tool first`,
-    answered(live.finished) && live.tools.length > 0 && /\d/.test(live.reply) && exact(live.wire, prompt()),
+    answered(live.finished) && live.tools.length > 0 && /412|59/.test(live.reply) && exact(live.wire, prompt()),
     `tools=[${live.tools.join(', ')}]: ${short(live.reply)}`
   )
 
-  const job = await turn(bot.id, await fresh(), 'make a file packing-list.md in your folder with a packing list for a weekend camping trip')
+  const job = await turn(bot.id, await fresh(), 'make a file packing-list.md in your folder (your working directory) with a packing list for a weekend camping trip')
   const items = (await server.call('work.list', { botId: bot.id })) as { title: string; status: string; evidenceCount: number }[]
   const done = items.find(i => i.status === 'done' && i.evidenceCount > 0)
   check(
@@ -93,21 +105,26 @@ async function modelCase(label: string, model: { provider: string; model: string
   const pref = await turn(bot.id, await fresh(), "from now on give me money figures in AUD, not USD. anyway what's 250 USD in AUD roughly?")
   const facts = ((await server.call('memory.list', { botId: bot.id })).facts as { text: string }[]).map(f => f.text)
   check(
-    `${label}: a standing preference is saved to memory in the same turn`,
-    answered(pref.finished) && facts.some(f => /AUD|Australian/i.test(f)) && /AUD|A\$|\$\s?3\d\d/i.test(pref.reply) && exact(pref.wire, prompt()),
+    `${label}: a standing preference is saved to memory in the same turn, naming nobody the bot was not given`,
+    answered(pref.finished) &&
+      facts.some(f => /AUD|Australian/i.test(f)) &&
+      !facts.some(f => /\bOscar\b/i.test(f)) &&
+      !OWNER_WORDS.test(pref.reply) &&
+      /AUD|A\$|\$\s?3\d\d/i.test(pref.reply) &&
+      exact(pref.wire, prompt()),
     `facts=${JSON.stringify(facts).slice(0, 160)}: ${short(pref.reply)}`
   )
 
   const who = await turn(bot.id, await fresh(), 'who or what are you, exactly?')
   check(
     `${label}: says it is Pip, an AI bot in LilBot, and names no engine or model maker`,
-    answered(who.finished) && /Pip/.test(who.reply) && /\bAI\b/i.test(who.reply) && !VENDORS.test(who.reply) && exact(who.wire, prompt()),
+    answered(who.finished) && /Pip/.test(who.reply) && /\bAI\b/i.test(who.reply) && !VENDORS.test(who.reply) && !OWNER_WORDS.test(who.reply) && exact(who.wire, prompt()),
     short(who.reply)
   )
 
   await Bun.sleep(SPACE_MS)
   const routineFrom = proxy.records.length
-  const run = await new HermesEngine([native]).runRoutine(native, 'Report in one line how full the disk your folder is on is.', {
+  const run = await new HermesEngine([native]).runRoutine(native, 'Report in one line how full the disk is, from fixtures/disk-status.txt in your folder.', {
     runId: `behaviour-${label.toLowerCase().replace(/\W+/g, '-')}-${stamp}`,
     workspace: bot.workspace,
     model,
@@ -119,13 +136,22 @@ async function modelCase(label: string, model: { provider: string; model: string
   check(
     `${label}: a hidden routine run reports its task and starts nothing else`,
     run.status === 'completed' &&
-      /\d/.test(run.text) &&
+      /412|59/.test(run.text) &&
       started.every(n => n === 0) &&
       exact(
         proxy.records.slice(routineFrom).filter(r => r.toolCount > 0),
         prompt()
       ),
     `routines/threads started=${started.join('/')}: ${short(run.text)}`
+  )
+
+  const ask = 'every weekday at 7:30 send me a one-line summary of the forecast in fixtures/weather.txt in your folder'
+  const repeat = await turn(bot.id, await fresh(), ask)
+  const routines = (await server.call('routines.list', { botId: bot.id })) as { scheduleText: string }[]
+  check(
+    `${label}: a routine is created in the turn it is asked for`,
+    answered(repeat.finished) && repeat.tools.length > 0 && routines.length === 1 && !OWNER_WORDS.test(repeat.reply) && exact(repeat.wire, prompt()),
+    `tools=[${repeat.tools.join(', ')}] routines=${JSON.stringify(routines.map(r => r.scheduleText))}: ${short(repeat.reply)}`
   )
 }
 
