@@ -1,6 +1,6 @@
 /** The files bots showed in their replies (#317): the saved path inside the bot's folder, never a copy. */
 import type { Database } from 'bun:sqlite'
-import type { ShownKind } from '../../shared/shown-schema'
+import type { ShownKind } from '../../shared/shown-rules'
 
 export interface ShownRow {
   id: string

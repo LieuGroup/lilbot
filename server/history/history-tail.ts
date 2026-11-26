@@ -1,7 +1,7 @@
 /** Idempotent event-journal reconstruction and canonical-row pruning for unimported history tails. */
 import type { Database } from 'bun:sqlite'
 import type { ChatEvent, ChatItem } from '../../shared/chat-schema'
-import { isShowTool } from '../../shared/shown-schema'
+import { isShowTool } from '../../shared/shown-rules'
 import type { HistoryRow } from './history-store'
 
 export type EventRow = { rowid: number; at: number; event: string; key: string }

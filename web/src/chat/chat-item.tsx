@@ -14,7 +14,6 @@ import { useBotStore } from '../bots/bot-store'
 import { thisDeviceId } from '../devices/this-device'
 import { CompactionLine } from '../history/history-marks'
 import { TurnActions } from '../history/turn-actions'
-import { ShownItem } from './shown-item'
 
 type Failure = NonNullable<Extract<ChatItemData, { kind: 'error' }>['reason']>
 
@@ -32,6 +31,8 @@ const ThreadLine = lazy(() => import('../threads/thread-line'))
 const WorkLine = lazy(() => import('../work/work-line'))
 // A service sign-in card (#314) draws in the conversation; it loads with the first one.
 const SignInCard = lazy(() => import('../connections/sign-in-card'))
+// A file a bot showed (#317) draws with the first one; it stays out of the chat's first load.
+const ShownItem = lazy(() => import('./shown-item'))
 
 /** One transcript item drawn with the AI Elements patterns: Message and Bubble for turns, a Tool
  *  trace line for tool use. Memoised: a streamed chunk changes only the last item, so earlier
@@ -106,7 +107,9 @@ export const ChatItem = memo(function ChatItem({
     case 'shown':
       return (
         <div className="flex flex-col gap-1">
-          <ShownItem file={item.file} botName={useBotStore.getState().bots.find(bot => bot.id === botId)?.name} />
+          <Suspense fallback={<div className="h-40 w-full max-w-[420px] rounded-lg ring-1 ring-hairline" />}>
+            <ShownItem file={item.file} botName={useBotStore.getState().bots.find(bot => bot.id === botId)?.name} />
+          </Suspense>
           {replyActions}
         </div>
       )
