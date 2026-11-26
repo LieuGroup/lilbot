@@ -36,9 +36,9 @@ describe('reading tool calls off the wire', () => {
   })
 
   test('the capture proxy renames a refused call so the engine runs nothing, and a refused call that ran stops the check', async () => {
-    const answerFor = (path: string) =>
+    const answerFor = (path: string, name = 'read_file') =>
       [
-        'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"t","name":"read_file","input":{}}}',
+        `data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"t","name":"${name}","input":{}}}`,
         `data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":${JSON.stringify(JSON.stringify({ path }))}}}`
       ].join('\n\n')
     let answer = answerFor('fixtures/../../../code/QRit/docs/INVOICE.md')
@@ -69,13 +69,18 @@ describe('reading tool calls off the wire', () => {
       expect((await send(call(REFUSED_TOOL, '/etc/hostname'))).status).toBe(200)
       expect(proxy.records[1]?.outside ?? proxy.records[1]?.breach).toBeUndefined()
 
+      answer = answerFor('fixtures/disk-status.txt', 'lilbot_execute_code')
+      const repairable = await (await send()).text()
+      expect(repairable).toContain(`"name":"${REFUSED_TOOL}"`)
+      expect(proxy.records[2]?.outside).toContain('not a tool this session offers')
+
       answer = 'data: {"type":"tool_use" garbled'
       expect((await send()).status).toBe(400)
 
       const before = forwarded
       expect((await send(call('read_file', '/etc/hostname'))).status).toBe(451)
       expect(forwarded).toBe(before)
-      expect(proxy.records[3]?.breach).toContain('/etc/hostname')
+      expect(proxy.records[4]?.breach).toContain('/etc/hostname')
       expect(() => stopOnAccountProblem(proxy.records, 0, undefined, 'go on')).toThrow('does not allow ran')
     } finally {
       proxy.stop()

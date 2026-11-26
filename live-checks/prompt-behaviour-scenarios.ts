@@ -34,6 +34,8 @@ export interface Round {
   hidden: (text: string) => Promise<Turn>
 }
 export interface Outcome {
+  /** False when the scenario could not be measured (a timeout or an engine or proxy error, not the model's answer). */
+  measured?: false
   ok: boolean
   why: string
 }

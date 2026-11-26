@@ -91,15 +91,18 @@ export function startWireCaptureProxy(upstreamBaseUrl: string, guard?: { workspa
       headers.delete('host')
       const stated = guard && folderOf(parsed ? extractSystem(parsed).systemText : '', guard.workspaces)
       const folder = guard && (stated ?? guard.workspaces[0]!)
-      const reached = (calls: ReturnType<typeof inRequest>) =>
-        guard && folder ? calls.filter(c => c.name !== REFUSED_TOOL).flatMap(c => (why => (why ? [{ name: c.name, why }] : []))(refusal(c, folder, guard.policy))) : []
+      const offered = Array.isArray(parsed?.tools) ? parsed.tools.map(toolName) : []
+      const reached = (calls: ReturnType<typeof inRequest>, answer?: true) =>
+        guard && folder
+          ? calls.filter(c => c.name !== REFUSED_TOOL).flatMap(c => (why => (why ? [{ name: c.name, why }] : []))(refusal(c, folder, guard.policy, answer && offered)))
+          : []
       const breach = parsed ? reached(inRequest(parsed))[0]?.why : undefined
       const upstreamResponse = breach ? Response.json({}, { status: 451 }) : await fetch(target, { method: request.method, headers, body: rawBody })
       const outHeaders = new Headers(upstreamResponse.headers)
       for (const name of ['content-encoding', 'content-length', 'transfer-encoding']) outHeaders.delete(name)
       const errorText = upstreamResponse.status >= 400 ? (await upstreamResponse.clone().text()).replace(/\s+/g, ' ').slice(0, 240) : undefined
       const answer = guard && !breach ? await upstreamResponse.text() : undefined
-      const refused = answer === undefined ? [] : reached(inAnswer(answer))
+      const refused = answer === undefined ? [] : reached(inAnswer(answer), true)
       const outside = refused.map(r => r.why).join('; ') || undefined
       const { status, statusText } = upstreamResponse
       const body = refused.length
@@ -108,7 +111,7 @@ export function startWireCaptureProxy(upstreamBaseUrl: string, guard?: { workspa
             refused.map(r => r.name)
           )
         : answer
-      const unsafe = refused.length > 0 && reached(inAnswer(body!)).length > 0
+      const unsafe = refused.length > 0 && reached(inAnswer(body!), true).length > 0
       const response = unsafe ? Response.json(REFUSED, { status: 400 }) : new Response(body ?? upstreamResponse.body, { status, statusText, headers: outHeaders })
       if (parsed && (url.pathname.includes('/messages') || url.pathname.includes('/chat/completions') || url.pathname.includes('/responses'))) {
         const extracted = extractSystem(parsed)
@@ -117,7 +120,7 @@ export function startWireCaptureProxy(upstreamBaseUrl: string, guard?: { workspa
           model: typeof parsed.model === 'string' ? parsed.model : '',
           ...extracted,
           toolCount: Array.isArray(parsed.tools) ? parsed.tools.length : 0,
-          toolNames: Array.isArray(parsed.tools) ? parsed.tools.map(toolName) : [],
+          toolNames: offered,
           hasDateLine: JSON.stringify(parsed.messages ?? parsed.input ?? '').includes('[LilBot date: '),
           status: response.status,
           ...(errorText ? { error: errorText } : {}),

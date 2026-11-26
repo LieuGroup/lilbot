@@ -1,7 +1,11 @@
 /** The one guard for live checks that give a model real tools. It allows instead of forbids:
  *  - Tools: only local file, terminal and skill tools (LilBot's skills plug-in serves the skill tools from the check's
- *    own skills folder) and LilBot's own tools (never its computer or connection tools),
- *    plus any tool a check names. Everything else (web, browser, images, the engine's connectors, code) is refused.
+ *    own skills folder) and LilBot's own tools under the name the engine gives them (never its computer or connection
+ *    tools), plus any tool a check names. Everything else (web, browser, images, the engine's connectors, code) is
+ *    refused. A call in a model's answer must also name, exactly, a tool the request offers (`offered`): the engine
+ *    "repairs" a name it does not offer into the closest one it does (`lilbot_execute_code` becomes `execute_code`),
+ *    so a name the session does not offer is refused, whatever it looks like. Its `tool_call` bridge does no repair, so
+ *    a bridged name must be an allowed name exactly.
  *  - Paths: every string in every argument, at any depth and under any name, is resolved against the bot's own folder
  *    (`..` normalised wherever it appears, links followed) and must land inside that folder or a folder the check names.
  *  - Terminal: programs from the check's short list with plain flags and paths inside, joined at most by `&&`, `;` or
@@ -27,8 +31,9 @@ export interface GuardPolicy {
 
 const FILE_TOOLS = ['read_file', 'write_file', 'patch', 'search_files', 'terminal', 'todo_list', 'clarify']
 const LOCAL_TOOLS = new Set([...FILE_TOOLS, 'skills_list', 'skill_view', 'skill_manage', 'tool_search', 'tool_describe'])
-/** A LilBot tool, under the engine's prefix (which a model sometimes writes twice; the engine refuses that name). */
-const LILBOT_TOOL = /^(?:mcp__(?:lilbot_system__|editor_lilbot_[0-9a-f]{8}__)?)*(lilbot_[a-z_]+)$/
+/** A tool of LilBot's own server, as the engine names it: once under the server's prefix (the bot's own server, or a
+ *  session's scoped copy of it). The server's exact names come from the request's tool list (`offered`). */
+const LILBOT_TOOL = /^mcp__(?:lilbot_system|editor_lilbot_system_[0-9a-f]{8})__(lilbot_[a-z_]+)$/
 const LILBOT_OUTSIDE = /^lilbot_(?:computer|connection)/
 const HARMLESS = new Set(['/dev/null', '/dev/stdout', '/dev/stderr'])
 /** The Library address `lilbot_give_file` answers with, which bots quote as evidence: a LilBot route, not a file. */
@@ -99,8 +104,11 @@ function strings(value: unknown, out: string[] = []): string[] {
   return out
 }
 
-/** Why `call`, made by a bot working in `folder`, is refused under `policy`, or null when it is allowed. */
-export function refusal(call: ToolCall, folder: string, policy: GuardPolicy): string | null {
+/** Why `call`, made by a bot working in `folder`, is refused under `policy`, or null when it is allowed. `offered` is
+ *  the tool list of the request the call answers; leave it out for a call the engine already ran (history), whose name
+ *  is the one it ran. */
+export function refusal(call: ToolCall, folder: string, policy: GuardPolicy, offered?: readonly string[]): string | null {
+  if (offered && !offered.includes(call.name)) return `${call.name || 'an unnamed tool'} is not a tool this session offers`
   const bridged = call.name === 'tool_call' ? bridgedCalls(call.args) : null
   // The engine refuses a whole bridge call with an entry it cannot name, so only its paths are checked.
   if (bridged?.every(inner => inner.name)) return bridged.reduce<string | null>((why, inner) => why ?? refusal(inner, folder, policy), null)

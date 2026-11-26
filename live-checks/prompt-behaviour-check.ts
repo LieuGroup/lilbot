@@ -7,8 +7,8 @@ import '../scripts/dev-env'
  *  `prompt-behaviour-scenarios.ts`, from fixtures in its own folder. The capture proxy's guard refuses any tool call it
  *  does not allow before the engine runs it (`outside-access-guard.ts`): the model is told the tool does not exist, the
  *  scenario fails as "reached for ...", and the run goes on. The check stops at once, exiting non-zero, only when a
- *  call the guard does not allow ran, or on a 403 or account message; any other error (a turn that times out) fails
- *  its scenario. Model calls are spaced 10 s apart. No Google
+ *  call the guard does not allow ran, or on a 403 or account message. A turn that times out or fails in the engine
+ *  or proxy is "not measured", counted apart from the model's misses; its chat is closed either way. Model calls are spaced 10 s apart. No Google
  *  model is called. `LILBOT_BEHAVIOUR_TABLE` writes the table as Markdown to that file. */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -37,6 +37,8 @@ const GUARD = { roots: [WORKSPACES], programs: ['cat', 'ls', 'find', 'head', 'ta
 const proxy = startWireCaptureProxy(readDevUpstreamBaseUrl(), { workspaces: [WORKSPACES], policy: GUARD })
 const stamp = Date.now().toString(36)
 const results: { model: string; scenario: string; outcome: Outcome }[] = []
+/** A scenario that could not be measured: the turn timed out or the engine or proxy failed, not the model. */
+class NotMeasured extends Error {}
 
 /** What reached the wire since record `wireFrom`: the requests of the bot working in `workspace`, and every refusal
  *  (a second bot checking its work may have made one). */
@@ -65,38 +67,46 @@ async function round(label: string, model: { provider: string; model: string }, 
       const chatId = (await server.call('chat.new', { botId: bot.id })).chatId as string
       const from = server.events.length
       const wireFrom = proxy.records.length
-      await server.call('chat.send', { botId: bot.id, chatId, text, messageId: crypto.randomUUID() })
       const inChat = (e: any) => e.event === 'chat' && e.chatId === chatId
-      const end: any = await waitFor(
-        `turn (${text.slice(0, 24)})`,
-        async () => server.events.slice(from).find(e => inChat(e) && ['turn.finished', 'error'].includes(e.data?.type)),
-        Boolean,
-        300_000
-      )
-      stopOnAccountProblem(proxy.records, wireFrom, end?.data, 'go on')
-      const tools = server.events
-        .slice(from)
-        .filter(e => inChat(e) && e.data?.type === 'tool.started')
-        .map(e => String(e.data.name))
-      await server.call('chat.close', { chatId }).catch(() => {})
-      return turnOf(bot.workspace, wireFrom, answered(end?.data), String(end?.data?.text ?? ''), tools)
+      try {
+        await server.call('chat.send', { botId: bot.id, chatId, text, messageId: crypto.randomUUID() })
+        const end: any = await waitFor(
+          `turn (${text.slice(0, 24)})`,
+          async () => server.events.slice(from).find(e => inChat(e) && ['turn.finished', 'error'].includes(e.data?.type)),
+          Boolean,
+          300_000
+        ).catch(error => {
+          throw new NotMeasured(error.message)
+        })
+        stopOnAccountProblem(proxy.records, wireFrom, end?.data, 'go on')
+        if (end?.data?.type === 'error') throw new NotMeasured(`the turn failed: ${String(end.data.message ?? end.data.code ?? '').slice(0, 120)}`)
+        const tools = server.events
+          .slice(from)
+          .filter(e => inChat(e) && e.data?.type === 'tool.started')
+          .map(e => String(e.data.name))
+        return turnOf(bot.workspace, wireFrom, answered(end?.data), String(end?.data?.text ?? ''), tools)
+      } finally {
+        await server.call('chat.close', { chatId }).catch(() => {})
+      }
     },
     async hidden(text) {
       await Bun.sleep(SPACE_MS)
       const wireFrom = proxy.records.length
       const options = { runId: `behaviour-${native}-${n}`, workspace: bot.workspace, model, origin: { line: routineLine }, onChat: () => {} }
-      const run = await new HermesEngine([native]).runRoutine(native, text, options)
+      const run = await new HermesEngine([native]).runRoutine(native, text, options).catch(error => {
+        throw new NotMeasured(`the hidden run failed: ${String(error?.message ?? error).slice(0, 120)}`)
+      })
       stopOnAccountProblem(proxy.records, wireFrom, undefined, 'go on')
       return turnOf(bot.workspace, wireFrom, run.status === 'completed', run.text, [])
     }
   }
   for (const scenario of SCENARIOS) {
     const outcome = await scenario.run(r).catch((error: Error): Outcome => {
-      if (error.message.startsWith('Stopped:')) throw error
-      return { ok: false, why: `failed: ${error.message.slice(0, 200)}` }
+      if (!(error instanceof NotMeasured)) throw error
+      return { measured: false, ok: false, why: `not measured: ${error.message.slice(0, 200)}` }
     })
     results.push({ model: label, scenario: scenario.name, outcome })
-    console.log(`${outcome.ok ? 'ok  ' : 'miss'} ${label} round ${n}: ${scenario.name}  (${outcome.why})`)
+    console.log(`${outcome.measured === false ? 'n/m ' : outcome.ok ? 'ok  ' : 'miss'} ${label} round ${n}: ${scenario.name}  (${outcome.why})`)
   }
 }
 
@@ -105,18 +115,42 @@ let setupFailures = 0
 function table(): string {
   const labels = MODELS.map(m => m.label)
   const cell = (model: string, scenario: string) => {
-    const runs = results.filter(x => x.model === model && x.scenario === scenario)
-    return runs.length ? `${runs.filter(x => x.outcome.ok).length}/${runs.length}` : '–'
+    const all = results.filter(x => x.model === model && x.scenario === scenario)
+    const runs = all.filter(x => x.outcome.measured !== false)
+    const unmeasured = all.length - runs.length
+    return all.length ? `${runs.filter(x => x.outcome.ok).length}/${runs.length}${unmeasured ? ` (+${unmeasured} not measured)` : ''}` : '–'
   }
   const rows = SCENARIOS.map(s => `| ${s.name} | ${labels.map(l => cell(l, s.name)).join(' | ')} |`)
-  const misses = results.filter(x => !x.outcome.ok).map(x => `- ${x.model}, ${x.scenario}: ${x.outcome.why}`)
-  return [`| Scenario | ${labels.join(' | ')} |`, `|---|${labels.map(() => '---|').join('')}`, ...rows, '', 'Misses:', ...(misses.length ? misses : ['- none'])].join('\n')
+  const listed = (measured: boolean) => results.filter(x => !x.outcome.ok && (x.outcome.measured !== false) === measured).map(x => `- ${x.model}, ${x.scenario}: ${x.outcome.why}`)
+  const misses = listed(true)
+  const unmeasured = listed(false)
+  return [
+    `| Scenario | ${labels.join(' | ')} |`,
+    `|---|${labels.map(() => '---|').join('')}`,
+    ...rows,
+    '',
+    'Misses:',
+    ...(misses.length ? misses : ['- none']),
+    '',
+    'Not measured (a timeout or an engine or proxy error, not the model):',
+    ...(unmeasured.length ? unmeasured : ['- none'])
+  ].join('\n')
 }
 
 try {
   await server.start()
   await server.connect()
-  for (let n = 1; n <= ROUNDS; n++) for (const { label, model } of MODELS) await round(label, model, n)
+  for (let n = 1; n <= ROUNDS; n++)
+    for (const { label, model } of MODELS) {
+      const before = results.length
+      await round(label, model, n).catch((error: Error) => {
+        if (error.message.startsWith('Stopped:')) throw error
+        // A round that could not be set up measures nothing: every scenario it had not reached is "not measured".
+        const why = `not measured: the round failed (${error.message.slice(0, 160)})`
+        for (const scenario of SCENARIOS.slice(results.length - before)) results.push({ model: label, scenario: scenario.name, outcome: { measured: false, ok: false, why } })
+        console.log(`n/m  ${label} round ${n}: ${why}`)
+      })
+    }
 } finally {
   proxy.stop()
   await server.cleanup().catch(error => {

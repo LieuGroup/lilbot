@@ -35,10 +35,10 @@ describe('live check guard: what a scenario needs is allowed', () => {
     ['terminal', { command: 'ls fixtures 2>&1' }],
     ['terminal', { command: 'cat fixtures/disk-status.txt | head -5; wc -l fixtures/disk-status.txt 2>/dev/null' }],
     ['mcp__lilbot_system__lilbot_work', { title: 'Packing list', evidence: [{ proves: 'written', command: `cat ${folder}/packing-list.md` }] }],
-    ['tool_call', { calls: [{ name: 'lilbot_memory_save', arguments: '{"text":"Give money figures in AUD."}' }] }],
+    ['tool_call', { calls: [{ name: 'mcp__lilbot_system__lilbot_memory_save', arguments: '{"text":"Give money figures in AUD."}' }] }],
     ['tool_search', { query: 'routine schedule' }],
-    ['mcp__lilbot_system__mcp__lilbot_system__lilbot_skill_read', { name: 'lilbot-work' }],
-    ['mcp__lilbot_system__mcp__lilbot_give_file', { path: 'packing-list.md' }],
+    ['mcp__lilbot_system__lilbot_skill_read', { name: 'lilbot-work' }],
+    ['mcp__editor_lilbot_system_0a1b2c3d__lilbot_work_list', {}],
     ['mcp__lilbot_system__lilbot_work', { evidence: [{ proves: 'given', url: `/api/library/${crypto.randomUUID()}/${crypto.randomUUID()}` }] }],
     ['skill_manage', { action: 'create', name: 'packing', content: '---\nname: packing\n---\nPack light.' }]
   ])('%s %j', (name, args) => expect(why(name, args)).toBeNull())
@@ -111,6 +111,8 @@ describe('live check guard: every way out LILA-47 tried is refused', () => {
     expect(why('mcp__lilbot_system__lilbot_computer_exec', { command: 'ls' })).toContain('not a tool')
     expect(why('mcp__lilbot_system__mcp__lilbot_system__lilbot_computer_exec', { command: 'ls' })).toContain('not a tool')
     expect(why('mcp__lilbot_system__mcp__lilbot_computer_exec', { command: 'ls' })).toContain('not a tool')
+    expect(why('tool_call', { calls: [{ name: 'lilbot_memory_save', arguments: {} }] })).toContain('not a tool')
+    expect(why('tool_call', { calls: [{ name: 'cronjob', arguments: {} }] })).toContain('not a tool')
     expect(why('mcp__other__lilbot_skill_read', {})).toContain('not a tool')
     expect(why('tool_call', { calls: [{ name: 'lilbot_connection', arguments: {} }] })).toContain('not a tool')
     expect(why('tool_call', { name: 'read_file', arguments: { path: '/etc/hostname' } })).toContain('/etc/hostname')
@@ -137,5 +139,39 @@ describe('live check guard: every way out LILA-47 tried is refused', () => {
     expect(shell('ls || cat ../x')).not.toBeNull()
     expect(shell('cat fixtures/disk-status.txt > /tmp/x')).toContain('shell syntax')
     expect(shell('cat fixtures/disk-status.txt 2>/tmp/x')).toContain('shell syntax')
+  })
+})
+
+describe("live check guard: the engine's name repair cannot turn an allowed name into another tool", () => {
+  const offered = [
+    'terminal',
+    'read_file',
+    'write_file',
+    'execute_code',
+    'web_search',
+    'delegate_task',
+    'tool_call',
+    'mcp__lilbot_system__lilbot_work',
+    'mcp__lilbot_system__lilbot_guide'
+  ]
+  const answer = (name: string, args: Record<string, unknown> = {}) => refusal({ name, args }, folder, policy, offered)
+  test.each([
+    'lilbot_execute_code',
+    'lilbot_web_search',
+    'lilbot_delegate_task',
+    'lilbot_cronjob_manage',
+    'mcp__lilbot_system__lilbot_execute_code',
+    'mcp__lilbot_system__mcp__lilbot_system__lilbot_work',
+    'mcp__lilbot_system__mcp__lilbot_give_file',
+    'lilbot_work',
+    'Terminal',
+    'cronjob'
+  ])('%s is refused: the session does not offer that exact name', name => expect(answer(name)).toContain('not a tool this session offers'))
+
+  test('an offered name is still checked against the allow-list', () => {
+    expect(answer('mcp__lilbot_system__lilbot_work')).toBeNull()
+    expect(answer('terminal', { command: 'ls fixtures' })).toBeNull()
+    expect(answer('execute_code')).toContain('not a tool this check allows')
+    expect(answer('web_search')).toContain('not a tool this check allows')
   })
 })
