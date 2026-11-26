@@ -48,7 +48,7 @@ export function createServiceForward(options: ServiceForwardOptions) {
   const unreachable = (message: JsonRpc, connection: StoredConnection) => {
     store.setState(connection.id, 'unreachable')
     console.warn(`[connections] ${connection.id} did not answer`)
-    const text = `${connection.name} is not reachable right now. Try again later; if it keeps failing, tell Oscar.`
+    const text = `${connection.name} is not reachable right now. Try again later; if it keeps failing, tell the owner.`
     return message.method === 'tools/call' ? toolError(message.id, text) : rpcError(message.id, -32000, text)
   }
   const expired = (message: JsonRpc, connection: StoredConnection, refusedToken?: string) => {
@@ -121,7 +121,7 @@ export function createServiceForward(options: ServiceForwardOptions) {
         await response.body?.cancel()
         if (signed) return expired(message, connection, sentToken)
         store.setState(connection.id, 'needs_sign_in')
-        const prompt = `${connection.name} now asks for a sign-in. Call lilbot_connection with action sign_in and id ${connection.id}; LilBot places a sign-in card for Oscar and tells you when he finishes.`
+        const prompt = `${connection.name} now asks for a sign-in. Call lilbot_connection with action sign_in and id ${connection.id}; LilBot places a sign-in card for the owner and tells you when they finish.`
         return message.method === 'tools/call' ? toolError(message.id, prompt) : rpcError(message.id, -32000, prompt)
       }
       if (response.status >= 500 || (response.status >= 300 && response.status < 400)) {

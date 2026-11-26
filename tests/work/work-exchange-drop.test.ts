@@ -28,14 +28,14 @@ test('dropping a parent drops its children with the same reason, stops each dele
   ])
   for (const id of [exchanges[0].exchangeId, exchanges[1].exchangeId, tidy.id]) expect(f.w.work.view(id)).toMatchObject({ status: 'dropped', dropReason: 'Plan changed' })
   expect(f.w.work.view(tidy.id).events.at(-1)).toMatchObject({ by: 'oscar', kind: 'status', status: 'dropped' })
-  for (const e of exchanges) expect(f.d.store.get(e.exchangeId)).toMatchObject({ status: 'cancelled', stoppedBy: { kind: 'oscar', name: 'Oscar' } })
+  for (const e of exchanges) expect(f.d.store.get(e.exchangeId)).toMatchObject({ status: 'cancelled', stoppedBy: { kind: 'oscar', name: 'the owner' } })
   expect(f.d.stops).toEqual(f.d.runs.filter(r => r.botId !== 'a').map(r => r.chatId))
   const notices = deliveries(f, 'notice')
   expect(notices.map(n => [n.target, n.sourceChat])).toEqual([
     ['a', 'a-main'],
     ['a', 'a-main']
   ])
-  expect(notices[0].text).toContain('Oscar stopped the task you handed to "B"')
+  expect(notices[0].text).toContain('The owner stopped the task you handed to "B"')
   expect(notices[0].text).toContain('"Plan changed"')
   // The delegating bot is told in the work board’s own outbox; nothing is said in the sessions of the exchanges this drop stops.
   expect(f.w.database.query('SELECT bot_id, chat_id, status FROM work_answers ORDER BY rowid').all()).toEqual([{ bot_id: 'a', chat_id: null, status: 'stopping' }])

@@ -87,7 +87,7 @@ export class WebhookStore {
         if (prior) return this.from(prior)
         // Every webhook counts, whoever asked: `createdBy` is the bot's own word, and an injected run could claim Oscar.
         if (this.list(botId).length >= WEBHOOK_LIMITS.perBot)
-          throw new LilBotError('webhook_limit', `A bot can have at most ${WEBHOOK_LIMITS.perBot} webhooks, including paused ones. Delete one first, or ask Oscar.`)
+          throw new LilBotError('webhook_limit', `A bot can have at most ${WEBHOOK_LIMITS.perBot} webhooks, including paused ones. Delete one first, or ask the owner.`)
         const id = crypto.randomUUID()
         this.db
           .query('INSERT INTO webhooks (id, bot_id, request_id, description, source, created_by, created_at, address_nonce, signing) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')

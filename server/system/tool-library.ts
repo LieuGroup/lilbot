@@ -12,7 +12,7 @@ export function libraryTools({ giveFile }: SystemDeps): McpTool[] {
   return [
     actionTool(
       'lilbot_give_file',
-      'Give Oscar a finished file from your folder: it appears in your Library, and only what you give appears there. A regular file inside your folder, at most 50 MiB, with a short title; the Library points at the file, so do not move or delete it. Call it once for each file.',
+      'Give the owner a finished file from your folder: it appears in your Library, and only what you give appears there. A regular file inside your folder, at most 50 MiB, with a short title; the Library points at the file, so do not move or delete it. Call it once for each file.',
       GiveFileInput,
       async (caller, input, _raw, ctx) => {
         try {

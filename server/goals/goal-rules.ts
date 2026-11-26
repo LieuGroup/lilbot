@@ -16,7 +16,7 @@ export const today = (now: number) => new Date(now).toLocaleDateString('en-CA', 
 /** Nothing is done for a goal before Oscar agrees, while it is paused or after it ended. */
 export function requireAgreed<G extends Goal>(goal: G | null, botId: string): G {
   if (!goal || goal.botId !== botId) throw new LilBotError('goal_missing', 'No goal of yours has that id.')
-  if (goal.state === 'proposed') throw new LilBotError('goal_not_agreed', 'Oscar has not agreed this goal yet: do nothing for it until he does.')
+  if (goal.state === 'proposed') throw new LilBotError('goal_not_agreed', 'The owner has not agreed this goal yet: do nothing for it until the owner does.')
   if (goal.state !== 'agreed') throw new LilBotError('goal_not_agreed', `This goal is ${goal.state}: do nothing more for it.`)
   return goal
 }

@@ -62,7 +62,7 @@ const groupsOf = (tool: string, t3Enabled = false) =>
 export function refusalFor(allowed: WebhookCapability[] | null, tool: string, groups: WebhookCapability[]): string | null {
   if (allowed === null || groups.some(group => allowed.includes(group))) return null
   return `A webhook run cannot use ${tool}: webhook runs read their folder, report on their own work items and leave their bot one message (lilbot_webhook_message). ${
-    groups.length ? `Oscar can let this webhook's runs use "${groups[0]}" tools in the app.` : 'No webhook run can use it.'
+    groups.length ? `The owner can let this webhook's runs use "${groups[0]}" tools in the app.` : 'No webhook run can use it.'
   } If you are not in a webhook run, make the call again from your own conversation.`
 }
 

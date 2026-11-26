@@ -109,7 +109,7 @@ export const GoalInput = z.object({
   action: z.enum(['propose', 'progress']),
   requestId: z.string().min(1).max(100),
   goalId: goalId.optional(),
-  text: text(2000).optional().describe("Oscar's words (new goal)"),
+  text: text(2000).optional().describe("The owner's words (new goal)"),
   agreement: GoalAgreementInput.optional(),
   target: GoalTargetInput.optional(),
   review: RoutineSchedule.optional().describe('Review schedule (default weekly)'),

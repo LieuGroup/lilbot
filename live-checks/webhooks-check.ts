@@ -53,7 +53,7 @@ try {
     name: `Webhook check ${Date.now()}`,
     function: 'Tests webhooks',
     instructions:
-      'This is an isolated LilBot test bot. In a webhook run, do exactly what its task asks, briefly. In your main conversation use a tool only when Oscar names it, and reply in one short sentence.'
+      'This is an isolated LilBot test bot. In a webhook run, do exactly what its task asks, briefly. In your main conversation use a tool only when the owner names it, and reply in one short sentence.'
   })
   db = new Database(join(root, 'lilbot.db'))
   db.exec('PRAGMA busy_timeout = 5000')
@@ -180,7 +180,7 @@ try {
   assert.equal(burst[0].status, 'completed')
   assert.equal(burst[0].events, 3)
   const history = JSON.stringify(await call('chat.history', { botId: bot.id }))
-  assert.ok(!history.includes('Webhook run (not a message from Oscar)'), 'a webhook session reached the main conversation')
+  assert.ok(!history.includes('Webhook run (not a message from the owner)'), 'a webhook session reached the main conversation')
   console.log('ok: a burst of three events was handled in one run; no webhook session entered the main conversation')
   await delegationOnlyCheck({ call, db, token, port, botId: bot.id, nativeId, frames }, delHook, door, githubDelivery, sessionTools, ENGINE_TOOLS)
   await pauseResumeDelete(call, deliver, door, bot.id, hook)
