@@ -32,7 +32,7 @@ const FIXTURES = {
   'weather.txt': 'Forecast for today: sunny, 24 degrees, light wind from the south.\n',
   'rates.txt': "Today's exchange rate: 1 USD = 1.53 AUD.\n"
 }
-const DISK = 'how full is the disk, and how much is free? the latest disk status is in fixtures/disk-status.txt in your folder.'
+const DISK = 'how full is the disk, and how much is free? the latest disk status is in ./fixtures/disk-status.txt in your working directory.'
 
 let failures = 0
 function check(label: string, ok: boolean, detail = '') {
@@ -113,7 +113,7 @@ async function modelCase(label: string, model: { provider: string; model: string
   const pref = await turn(
     bot.id,
     await fresh(),
-    "from now on give me money figures in AUD, not USD. anyway what's 250 USD in AUD roughly? today's rate is in fixtures/rates.txt in your folder."
+    "from now on give me money figures in AUD, not USD. anyway what's 250 USD in AUD roughly? today's rate is in ./fixtures/rates.txt in your working directory."
   )
   const facts = ((await server.call('memory.list', { botId: bot.id })).facts as { text: string }[]).map(f => f.text)
   check(
@@ -136,7 +136,7 @@ async function modelCase(label: string, model: { provider: string; model: string
 
   await Bun.sleep(SPACE_MS)
   const routineFrom = proxy.records.length
-  const run = await new HermesEngine([native]).runRoutine(native, 'Report in one line how full the disk is, from fixtures/disk-status.txt in your folder.', {
+  const run = await new HermesEngine([native]).runRoutine(native, 'Report in one line how full the disk is, from ./fixtures/disk-status.txt in your working directory.', {
     runId: `behaviour-${label.toLowerCase().replace(/\W+/g, '-')}-${stamp}`,
     workspace: bot.workspace,
     model,
@@ -157,7 +157,7 @@ async function modelCase(label: string, model: { provider: string; model: string
     `routines/threads started=${started.join('/')}: ${short(run.text)}`
   )
 
-  const ask = 'every weekday at 7:30 send me a one-line summary of the forecast in fixtures/weather.txt in your folder'
+  const ask = 'every weekday at 7:30 send me a one-line summary of the forecast in ./fixtures/weather.txt in your working directory'
   const repeat = await turn(bot.id, await fresh(), ask)
   const routines = (await server.call('routines.list', { botId: bot.id })) as { scheduleText: string }[]
   check(
