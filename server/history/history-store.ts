@@ -2,6 +2,7 @@ import type { Database } from 'bun:sqlite'
 import type { ChatEvent, ChatItem } from '../../shared/chat-schema'
 import type { HistoryItem, HistoryPage, SessionReason } from '../../shared/history-schema'
 import { LilBotError } from '../../shared/lilbot-error'
+import { isShowTool, shownSearchText } from '../../shared/shown-schema'
 import { HistoryMetaStore } from './history-meta-store'
 import { HistoryOwnership } from './history-owned'
 import { HistoryPreviewStore } from './history-preview'
@@ -55,7 +56,11 @@ export class HistoryStore {
     // A stored row is written again only when its item changed, so re-reading unchanged rows touches no index or search entry.
     const insert = this.db.query(`INSERT INTO history_items(bot,session,id,at,position,item,text) VALUES(?,?,?,?,?,?,?)
         ON CONFLICT(bot,id) DO UPDATE SET item=excluded.item,text=excluded.text WHERE item IS NOT excluded.item`)
-    for (const row of enriched) insert.run(bot, session, row.id, row.at, row.order, JSON.stringify(row.item), 'text' in row.item ? row.item.text : '')
+    for (const row of enriched) {
+      if (row.item.kind === 'tool' && isShowTool(row.item.name)) continue
+      const text = 'text' in row.item ? row.item.text : row.item.kind === 'shown' ? shownSearchText(row.item.file) : ''
+      insert.run(bot, session, row.id, row.at, row.order, JSON.stringify(row.item), text)
+    }
     if (cursor !== undefined) this.db.query('UPDATE history_sessions SET cursor=?,complete=? WHERE bot=? AND id=?').run(cursor, +complete, bot, session)
     return enriched.some(row => row.item.kind === 'user' || row.item.kind === 'assistant') ? this.previews.backfillIfMissing(bot) : false
   }

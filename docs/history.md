@@ -20,7 +20,7 @@ LilBot never summarises. The short version is in `AGENTS.md` under "Conversation
 
 ## Which sessions are the conversation
 
-- LilBot records only the bot's own conversation (`history/history-owned.ts`, migration 45): sessions it opened as the
+- LilBot records only the bot's own conversation (`history/history-owned.ts`, migration 46): sessions it opened as the
   bot's main conversation (new, resumed or after an engine switch), the sessions the bot already had before LilBot first
   listed it (its one-time import of earlier history; a session with no start time is never adopted), and their
   compression continuations. A session started anywhere else, such as a chat held in the engine's own apps, is never
@@ -33,7 +33,7 @@ LilBot never summarises. The short version is in `AGENTS.md` under "Conversation
   busy (a hidden turn, a reply still running) when it starts on it, so an imported message takes the moment LilBot
   journalled sending it, and a reply the moment its text began to show; a row never moves above an earlier row known only
   by the engine's time. A reply imported while its turn is still open in the journal is placed when that turn is
-  journalled as finished, and until then is no floor for a message sent before it showed. Every lookup is an index seek (migration 45
+  journalled as finished, and until then is no floor for a message sent before it showed. Every lookup is an index seek (migration 46
   indexes the journal by event type, by a finished turn's row and by a sent message's text), so placing a page does not
   grow with the journal, which is never pruned. Finding the newest earlier row known only by its engine time walks only
   the rows between the moment being placed and the row's engine time. Opening a chat reads the newest engine page

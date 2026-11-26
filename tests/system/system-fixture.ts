@@ -17,6 +17,7 @@ import { LibraryService } from '../../server/library/library-service'
 import { LibraryStore } from '../../server/library/library-store'
 import { RoutineService } from '../../server/routines/routine-service'
 import { RoutineStore } from '../../server/routines/routine-store'
+import { createShown } from '../../server/shown/shown-service'
 import { SkillsService } from '../../server/skills/skills-service'
 import { SystemChanges } from '../../server/system/system-changes'
 import { SYSTEM_KEY_PURPOSE } from '../../server/system/system-connection'
@@ -32,6 +33,7 @@ import { WebhookService } from '../../server/webhooks/webhook-service'
 import { WebhookStore } from '../../server/webhooks/webhook-store'
 import { checkSessions } from '../../server/work/check-sessions'
 import type { T3ConnectionStatus } from '../../shared/connections-schema'
+import type { EventFrame } from '../../shared/protocol'
 import { fakeService } from '../helpers/fake-engine'
 import { groupHostFor } from '../threads/delegation-fixture'
 import { workFixture } from '../work/work-fixture'
@@ -44,9 +46,9 @@ const DEFAULT_COMPUTERS = [
   { id: 'leader', name: 'leader-box', os: 'linux', online: true, lastSeen: 1700000000000, keyConflict: false, main: false },
   { id: 'mac', name: 'MacBook', os: 'darwin', online: false, lastSeen: 1700000000000, keyConflict: false, main: true }
 ]
-type FixtureOpts = { t3Enabled?: boolean; makeComputers?: (fake: ReturnType<typeof fakeService>, workspaces: Workspaces) => ComputerService }
+type FixtureOpts = { t3Enabled?: boolean; show?: boolean; makeComputers?: (fake: ReturnType<typeof fakeService>, workspaces: Workspaces) => ComputerService }
 
-export function systemFixture({ t3Enabled = false, makeComputers }: FixtureOpts = {}) {
+export function systemFixture({ t3Enabled = false, show: showEnabled = false, makeComputers }: FixtureOpts = {}) {
   const fake = fakeService()
   const state = { memoryPushes: 0, t3: { state: 'connected', expiresAt: Date.now() + 86_400_000 } as T3ConnectionStatus }
   const changes = new SystemChanges(fake.database)
@@ -85,10 +87,10 @@ export function systemFixture({ t3Enabled = false, makeComputers }: FixtureOpts 
   const skills = new SkillsService(join(fake.root, 'skills'), fake.database)
   const giveFile = giveFrom(library, calls, threadStore, routineStore, webhookStore, rootOf)
   // Which calls come from webhook runs' sessions, and the messages runs left (shown in the main conversation).
-  const shown: { botId: string; runId: string; source: string; text: string }[] = []
+  const webhookShown: { botId: string; runId: string; source: string; text: string }[] = []
   const webhookRuns = {
     callers: webhookCallers(webhookStore, rootOf, calls),
-    messages: new WebhookMessages(fake.database, async (botId, runId, source, text) => shown.push({ botId, runId, source, text }) > 0),
+    messages: new WebhookMessages(fake.database, async (botId, runId, source, text) => webhookShown.push({ botId, runId, source, text }) > 0),
     callingChat: (botId: string, requestId: string) => calls.find(botId, 'lilbot_webhook_message', requestId)
   }
   const goals = new GoalService(
@@ -108,6 +110,9 @@ export function systemFixture({ t3Enabled = false, makeComputers }: FixtureOpts 
     async () => [],
     (bot, session) => fake.store.exists(bot) && !hiddenChat(bot, session)
   )
+  const published: EventFrame[] = []
+  const shownDeps = { database: fake.database, root: (id: string) => workspaces.pathFor(id), exists: (id: string) => fake.store.exists(id), calls, hiddenChat, history }
+  const { shown, show } = createShown({ ...shownDeps, publish: frame => void published.push(frame) }, showEnabled)
   const signedIn: { botId: string; chatId: string; name: string }[] = []
   const connections = new McpConnections(
     new McpConnectionStore(fake.database),
@@ -141,6 +146,7 @@ export function systemFixture({ t3Enabled = false, makeComputers }: FixtureOpts 
     routines,
     goals,
     giveFile,
+    show,
     library,
     webhooks,
     connections,
@@ -175,7 +181,7 @@ export function systemFixture({ t3Enabled = false, makeComputers }: FixtureOpts 
     return typeof data?.refused === 'string' ? { error: data.refused as string } : { data }
   }
   const refs = { state, changes, threads, work, goals, routines, routineStore, webhookStore, workspaces, library, skills }
-  const runtime = { calls, from, roots, reviewChats, webhooks, connections, history, historyService, signedIn, webhookRuns, shown }
+  const runtime = { calls, from, roots, reviewChats, webhooks, connections, history, historyService, signedIn, webhookRuns, shown: webhookShown, showService: shown, published }
   return { ...fake, ...server, ...refs, ...runtime, rosterPushes: fake.changes, request, as, rpc, call }
 }
 

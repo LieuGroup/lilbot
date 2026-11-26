@@ -12,7 +12,7 @@ const WINDOW_MS = 6 * 60 * 60_000
 const CLOCK_SKEW_MS = 5_000
 type Seen = { event: number; at: number }
 
-/** Every lookup below is an index seek (migration 45: `history_events_type`, `_reply`, `_sent`), so placing a page costs
+/** Every lookup below is an index seek (migration 46: `history_events_type`, `_reply`, `_sent`), so placing a page costs
  *  the same on a long journal as on a short one. */
 const TYPE = "json_extract(event,'$.type')"
 const FINISHED = `SELECT rowid FROM history_events WHERE bot=?1 AND session=?2 AND ${TYPE}='turn.finished' AND json_extract(event,'$.rowId')=?3 ORDER BY rowid LIMIT 1`

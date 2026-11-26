@@ -166,7 +166,7 @@ test('migration 43 upgrades a schema-42 database cleanly while preserving device
     )
     db.close()
     db = openDatabase(path)
-    expect(db.query('PRAGMA user_version').get()).toEqual({ user_version: 45 })
+    expect(db.query('PRAGMA user_version').get()).toEqual({ user_version: 46 })
     expect(new DeviceStore(db).get(D1)?.name).toBe('iPhone')
     const store = new NotificationStore(db)
     expect(store.register(D1, 'test', 'migrated-tok-1234', 'com.lilbot.app', 2000).enabled).toBe(true)

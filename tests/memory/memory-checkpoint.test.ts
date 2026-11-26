@@ -185,7 +185,7 @@ test('migration 35 upgrades a schema 34 database without losing memory facts', (
     db.exec('DROP TABLE memory_checkpoint_reviewed; PRAGMA user_version = 34;')
     db.close()
     const upgraded = openDatabase(path)
-    expect(upgraded.query('PRAGMA user_version').get()).toEqual({ user_version: 45 })
+    expect(upgraded.query('PRAGMA user_version').get()).toEqual({ user_version: 46 })
     expect(new MemoryService(new MemoryStore(upgraded)).list('b1').map(f => f.text)).toEqual(['Likes coffee.'])
     const store = new MemoryCheckpointStore(upgraded)
     store.record('b1', ['piece-1'], 123)

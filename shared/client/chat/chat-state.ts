@@ -1,8 +1,10 @@
 /** What a chat looks like on screen, and how each live event changes it. Pure functions only. */
 import type { ChatEvent, ChatItem, ChatSnapshot } from '../../chat-schema'
 import type { HistoryPage, SessionReason } from '../../history-schema'
+import { isShowTool } from '../../shown-schema'
 import { reuseItems, withLatest } from './history-view'
 import { withArrivedMessage } from './user-messages'
+import { replaced, stopWriting, writing } from './writing-reply'
 
 /** Where a new session began, inside the one continuous conversation. */
 type SessionMark = { kind: 'session'; text: string; reason?: SessionReason }
@@ -17,8 +19,7 @@ export type UserItem = Extract<ChatItem, { kind: 'user' }>
 export interface ChatView {
   chatId: string
   items: ViewItem[]
-  /** Messages sent while the bot was busy, oldest first. Each is already in `items` where it was sent and is drawn as
-   *  waiting until the engine starts on it; whatever the bot shows after it is drawn below it. */
+  /** Messages sent while the bot was busy, oldest first: each is in `items` where it was sent, waiting for its turn. */
   queued: UserItem[]
   /** A message was sent to an idle bot and its turn has not started yet. */
   awaitingStart: boolean
@@ -112,10 +113,6 @@ export const withError = (chat: ChatView, text: string): ChatView => ({
   running: false,
   activity: ''
 })
-/** The reply being written: it may sit above messages sent while it was written. */
-const writing = (items: readonly ViewItem[]) => items.map(item => item.kind === 'assistant' && item.streaming).lastIndexOf(true)
-const replaced = (items: readonly ViewItem[], at: number, item: ViewItem) => items.map((old, i) => (i === at ? item : old))
-const stopWriting = (items: ViewItem[]): ViewItem[] => items.map(item => (item.kind === 'assistant' && item.streaming ? { ...item, streaming: false } : item))
 
 export function applyChatEvent(chat: ChatView, event: ChatEvent): ChatView {
   switch (event.type) {
@@ -135,6 +132,10 @@ export function applyChatEvent(chat: ChatView, event: ChatEvent): ChatView {
       const next: ViewItem = index >= 0 ? { ...chat.items[index], kind: 'connection.sign_in', card: event.card } : { kind: 'connection.sign_in', card: event.card }
       return { ...chat, items: index >= 0 ? chat.items.map((item, i) => (i === index ? next : item)) : [...chat.items, next] }
     }
+    case 'shown':
+      return chat.items.some(item => item.kind === 'shown' && item.file.id === event.file.id)
+        ? chat
+        : { ...chat, items: [...stopWriting(chat.items), { kind: 'shown', file: event.file }] }
     case 'turn.started': {
       // This turn belongs to the message already in the transcript, or to the oldest queued one.
       if (chat.awaitingStart) return { ...chat, awaitingStart: false, turnStart: chat.turnStart ?? runningTurnStart(chat.items), running: true, activity: 'Thinking...' }
@@ -147,15 +148,15 @@ export function applyChatEvent(chat: ChatView, event: ChatEvent): ChatView {
     case 'activity':
       return { ...chat, activity: event.text }
     case 'text.delta': {
-      const at = writing(chat.items)
-      const reply = chat.items[at]
+      const reply = chat.items[writing(chat.items)]
       const items: ViewItem[] =
         reply?.kind === 'assistant'
-          ? replaced(chat.items, at, { ...reply, text: reply.text + event.text })
+          ? replaced(chat.items, writing(chat.items), { ...reply, text: reply.text + event.text })
           : [...chat.items, { kind: 'assistant', text: event.text, streaming: true }]
       return { ...chat, items, running: true, activity: '' }
     }
     case 'tool.started':
+      if (isShowTool(event.name)) return chat
       return {
         ...chat,
         items: [...stopWriting(chat.items), { kind: 'tool', toolId: event.toolId, name: event.name, detail: event.detail, running: true }],
@@ -172,8 +173,8 @@ export function applyChatEvent(chat: ChatView, event: ChatEvent): ChatView {
       const at = writing(chat.items)
       const last = chat.items[at]
       let items = chat.items
-      const streaming = last?.kind === 'assistant'
       const usage = event.usage ? { usage: event.usage } : {}
+      const streaming = last?.kind === 'assistant'
       if (streaming) {
         const text = event.text.endsWith(last.text) ? event.text : last.text
         items = replaced(items, at, { ...last, text, streaming: false, stopped, ...usage })

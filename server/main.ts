@@ -73,7 +73,7 @@ const services = createAppServices(engines, {
   publish: frame => publish(EVERYONE, JSON.stringify(frame)),
   botsChanged
 })
-const { bots, store, library, computers, attachments, t3Grants, mcp, system, engineApi, activity, routines, threads, boards, webhooks } = services
+const { bots, store, library, shown, computers, attachments, t3Grants, mcp, system, engineApi, activity, routines, threads, boards, webhooks } = services
 
 async function prepareMemory(onFailed: (id: string) => void) {
   await bots.prepareRuntimes()
@@ -119,7 +119,7 @@ const { websocket } = createBrowserWebSocket({
     )
 })
 
-const browserRoutes = appRoutes(library, DIST, ALLOWED_HOSTS, engines.defaultId, attachments, downloads, threads)
+const browserRoutes = appRoutes(library, DIST, ALLOWED_HOSTS, engines.defaultId, attachments, downloads, threads, shown)
 const server = Bun.serve<SocketData>({
   development: false,
   error: plainServerError,
@@ -156,7 +156,7 @@ const server = Bun.serve<SocketData>({
 const accessServer = ACCESS
   ? startAccessDoor(
       ACCESS,
-      appRoutes(library, DIST, new Set([ACCESS.host]), engines.defaultId, attachments, downloads, threads),
+      appRoutes(library, DIST, new Set([ACCESS.host]), engines.defaultId, attachments, downloads, threads, shown),
       websocket,
       ACCESS.callbackEnabled ? { [CALLBACK_PATH]: mcp.callback } : {}
     )

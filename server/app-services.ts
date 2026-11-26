@@ -45,6 +45,7 @@ import { checkpointConnectionFor } from './memory/memory-checkpoint-key'
 import { RoutineScheduler } from './routines/routine-scheduler'
 import { RoutineService, routineSettings } from './routines/routine-service'
 import { RoutineStore } from './routines/routine-store'
+import { createShown } from './shown/shown-service'
 import { SkillsService } from './skills/skills-service'
 import { SystemChanges } from './system/system-changes'
 import { systemNote } from './system/system-note-facts'
@@ -138,7 +139,7 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
       history.store.forget(botId)
       remoteWorkers.runner.stopForBot(botId)
       sessionGrants.revokeForBot(botId)
-      for (const s of [devices, routineStore, webhookStore, computers, activity, mem, links, goals, mcp.services, codingSwitch, notif, prompts]) s.forgetBot(botId)
+      for (const s of [devices, routineStore, webhookStore, computers, activity, mem, links, goals, mcp.services, codingSwitch, notif, prompts, shown]) s.forgetBot(botId)
     },
     skillConnection: { url: `http://127.0.0.1:${PORT}`, tokenFile: join(DATA_DIR, 'engine-token') },
     connections: botId => [...t3For(botId), system.connection(botId), ...mcp.connections(botId)],
@@ -170,16 +171,11 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
   const routines = new RoutineService(routineStore, bots, () => publish({ event: 'routines.changed' }), routineSettings(process.env))
   const { goals, boards } = createGoals({ goalStore: runs.goalStore, work, answers, threads, routines, activity, store, publish, onWaiting: notif.onGoalWaiting, repeat })
   const giveFile = giveFrom(library, calls, threadStore, routineStore, webhookStore, rootOf)
-  const core = { ...facts, bots, activity, memory, memoryChanged, history, skills, delegation, work, goals, routines, giveFile, library }
+  const { shown, show } = createShown({ database, root: wsPath, exists: botAlive, calls, hiddenChat, history: history.store, publish }, settings.SHOW_ENABLED)
+  const core = { ...facts, bots, activity, memory, memoryChanged, history, skills, delegation, work, goals, routines, giveFile, library, show }
   const sysExtra = { webhooks, webhookRuns, connections: mcp.services, calls, checkSessions, changes, grants: sessionGrants.grants, reviewTracker: sessionGrants.reviewTracker }
-  const system = createSystemServer({
-    ...core,
-    ...sysExtra,
-    t3Forward: mcp.t3Bridge.forBot,
-    engineToken: token,
-    port: PORT,
-    workerAllowMemory: id => threadStore.allowsWorkerMemory(id)
-  })
+  const sysWire = { t3Forward: mcp.t3Bridge.forBot, engineToken: token, port: PORT, workerAllowMemory: (id: string) => threadStore.allowsWorkerMemory(id) }
+  const system = createSystemServer({ ...core, ...sysExtra, ...sysWire })
   const routineScheduler = new RoutineScheduler(routines, observeRun)
   for (const [name, fn] of [
     ['threads', () => threads.tick()],
@@ -193,8 +189,7 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
   const apiAccess = { mainChat: (id: string) => prefs.mainChat(id), isLimited: (b: string, c: string) => webhookRuns.callers.isKnownLimited(b, c) }
   const apiChecks = { inCheck: sessionGrants.inCheck(checkSessions), skillWriteLocked: sessionGrants.skillWriteLocked, ...gates }
   const { engineApi, checkpointChoices } = mem.wireEngineApi(engines, token, PORT, { ...apiCore, ...apiAccess, ...apiChecks })
-  const base = { bots, store, skills, library, computers, remoteWorkers, devices, attachments, t3Grants, mcp, system, engineApi, memoryConnection }
-  /** Only the bot's conversation shows as activity or turns unread: an outside, hidden or unreadable session never does. */
+  const base = { bots, store, skills, library, shown, computers, remoteWorkers, devices, attachments, t3Grants, mcp, system, engineApi, memoryConnection }
   const watchActivity = () => bots.watchActivity(event => hiddenChat(event.botId, event.chatId) || activity.observe(event), activity.cursor)
   return { ...base, checkpointChoices, activity, routines, threads, boards, webhooks, hiddenChat, watchActivity, notifications: notif.notifications }
 }

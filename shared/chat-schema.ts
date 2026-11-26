@@ -4,6 +4,7 @@ import { Attachment, AttachmentMessage, ImageSupport } from './attachment-schema
 import { BotContext } from './bot-schema'
 import { ConnectionSignInCard } from './connections-schema'
 import { MessageOrigin } from './device-schema'
+import { ShownFile } from './shown-schema'
 
 /** Why a turn failed, when LilBot knows: never the engine's own wording. */
 const TurnFailure = z.literal('memory_save')
@@ -72,6 +73,8 @@ export const ChatItem = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('error'), text: z.string(), reason: TurnFailure.optional() }),
   /** An in-chat sign-in card for an MCP service a bot added (#216). Never holds the sign-in URL, state or pasted address. */
   z.object({ kind: z.literal('connection.sign_in'), card: ConnectionSignInCard }),
+  /** A file the bot showed inside its reply with `lilbot_show` (#317), placed after the words written so far. */
+  z.object({ kind: z.literal('shown'), file: ShownFile }),
   /** Where the middle of an oversized saved transcript was omitted to stay within the size limit. */
   z.object({ kind: z.literal('omitted'), text: z.string() })
 ])
@@ -83,6 +86,8 @@ export const ChatEvent = z.discriminatedUnion('type', [
   z.object({ type: z.literal('thread'), threadId: z.string(), name: z.string(), detail: z.string(), failure: z.string().optional() }),
   /** Live creation or state change of an in-chat service sign-in card (#216). Never carries the sign-in URL or state. */
   z.object({ type: z.literal('connection.sign_in'), card: ConnectionSignInCard }),
+  /** The bot showed a file inside its reply (#317). */
+  z.object({ type: z.literal('shown'), file: ShownFile }),
   /** Short status while the bot thinks, e.g. "pondering...". */
   z.object({ type: z.literal('activity'), text: z.string() }),
   z.object({ type: z.literal('text.delta'), text: z.string() }),
