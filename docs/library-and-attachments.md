@@ -54,6 +54,11 @@ Short summaries are in `AGENTS.md` under "Library and chat attachments"; screen 
   bots are told to show static pages; the frame cannot report its height, so it is a fixed 192 px tall (artboard 27,
   A3) at the reply's width (at most 420) and scrolls inside. A gone or too-large page draws the plain fallback line,
   with the file's name and why, never the caption (A4).
+- Known gap (#336 review, open): the frame may still navigate itself. One click on a link with `target="_self"` (or an
+  `<area>` or SVG `<a>`) sends a GET to the page's chosen address and draws that page inside the frame (Chrome 156).
+  The response stays sealed (opaque origin, no scripts, no access to LilBot), but the click reaches the network.
+  `<base target="_blank">` only covers links with no target. The Library preview has the same gap.
+  `bun run check:page-sandbox` fails on it until it is closed.
 - Routine and webhook transcripts drop `shown` items. A deleted bot's rows go with it.
 
 ## Chat attachments (`server/attachments/`)

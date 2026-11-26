@@ -7,11 +7,12 @@ import '../scripts/dev-env'
  *
  *  Controls draw the same page in a frame with no sandbox and no LilBot head, and must leak, so the listener is shown
  *  able to see each kind of leak: `--control` (with scripts), `--control-clicks` (no scripts, no refresh: a link click
- *  and a form post), `--control-refresh` (no scripts, a 1 s refresh). Needs Chrome (`LILBOT_CHROME`, default
+ *  and a form post), `--control-refresh` (no scripts, a 1 s refresh), `--control-self` (one click on each self-navigating
+ *  link page, unprotected). Needs Chrome (`LILBOT_CHROME`, default
  *  /usr/bin/google-chrome). No LilBot server, bot or engine is used. */
 import { PAGE_SANDBOX, pageDocument } from '../web/src/ui/page-document'
 import { openChrome } from './chrome-page'
-import { hostileStaticPage } from './page-hostile'
+import { hostileStaticPage, selfNavPages } from './page-hostile'
 
 const mode = process.argv.find(a => a.startsWith('--control')) ?? 'protected'
 const control = mode !== 'protected'
@@ -47,6 +48,41 @@ const lilbot = Bun.serve({
   }
 })
 
+/** One page in a fresh browser, drawn as the web draws it (or unprotected for a control), clicked once in the middle.
+ *  Returns what the listener saw and what the frame shows afterwards (read in a DevTools world inside the frame). */
+async function clickOnce(body: string, protectedFrame: boolean) {
+  hits.length = 0
+  const frameDoc = protectedFrame ? pageDocument(body) : body
+  const frameSandbox = protectedFrame ? ` sandbox="${PAGE_SANDBOX}"` : ''
+  const parent = `<!doctype html><title>LilBot</title><link rel="icon" href="data:,"><body style="margin:0"><p id="marker" style="margin:0;height:18px">untouched</p>
+<iframe id="view"${frameSandbox} referrerpolicy="no-referrer" style="width:420px;height:192px;border:0;display:block"></iframe>
+<script>document.getElementById('view').srcdoc = ${JSON.stringify(frameDoc).replace(/</g, '\\u003c')}</script>`
+  let served = false
+  const home = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch: () => {
+      if (served) return new Response('', { status: 404 })
+      served = true
+      return new Response(parent, { headers: { 'Content-Type': 'text/html' } })
+    }
+  })
+  const browser = await openChrome()
+  try {
+    await browser.navigate(`http://127.0.0.1:${home.port}/`)
+    await Bun.sleep(800)
+    await browser.click(210, 18 + 96)
+    await Bun.sleep(1500)
+    const frame = await browser
+      .evaluateInFrame("(document.getElementById('out')?.textContent ?? '(none)') + ' at ' + location.href")
+      .catch(() => '(no frame: the window navigated)')
+    return { hits: [...hits], frame: String(frame) }
+  } finally {
+    await browser.close()
+    home.stop(true)
+  }
+}
+
 const saw = (path: string) => hits.some(h => h.endsWith(path))
 let failed = false
 const page = await openChrome()
@@ -71,7 +107,21 @@ try {
   const outside = [...page.requests.values()].filter(r => !/^(data|blob|about):/.test(r.url) && r.url !== home)
   const answered = outside.filter(r => r.answered !== undefined || !r.blocked)
   if (control) {
-    const leaked = mode === '--control-clicks' ? saw('/link-blank') && saw('/form-post') : mode === '--control-refresh' ? saw('/meta-refresh') : hits.length > 0 && ran
+    let selfNav = true
+    if (mode === '--control-self')
+      for (const [name, body] of Object.entries(selfNavPages(`http://127.0.0.1:${attacker.port}`))) {
+        const seen = await clickOnce(body, false)
+        console.log(`CONTROL one click on ${name}: listener ${JSON.stringify(seen.hits)}, the view now shows "${seen.frame}"`)
+        selfNav &&= seen.hits.length > 0
+      }
+    const leaked =
+      mode === '--control-self'
+        ? selfNav
+        : mode === '--control-clicks'
+          ? saw('/link-blank') && saw('/form-post')
+          : mode === '--control-refresh'
+            ? saw('/meta-refresh')
+            : hits.length > 0 && ran
     console.log(`CONTROL ${mode}: the listener saw ${hits.length} requests: ${JSON.stringify(hits)}; the window is now at ${state.href}`)
     console.log(leaked ? `CONTROL PASS: unprotected, the same page leaks (${mode}).` : 'CONTROL FAIL: the unprotected page did not leak; the check cannot be trusted.')
     failed = !leaked
@@ -84,6 +134,16 @@ try {
       ['the parent page is untouched and did not navigate', state.marker === 'untouched' && state.href === home, `${state.marker} ${state.href}`],
       ["the page's script did not run: the view still holds its static text", shown === 'STATIC TEXT' && !ran, shown]
     ]
+    // One real click per page on a link that navigates the view itself (#336 review). Known gap, see the docs: a frame
+    // with no sandbox flags may still navigate itself, and a <meta> policy does not govern navigation. It fails the check.
+    for (const [name, body] of Object.entries(selfNavPages(`http://127.0.0.1:${attacker.port}`))) {
+      const seen = await clickOnce(body, true)
+      results.push([
+        `one click on ${name} sends nothing and leaves the view as drawn`,
+        seen.hits.length === 0 && seen.frame.startsWith('STATIC TEXT at about:srcdoc'),
+        `listener ${JSON.stringify(seen.hits)}, the view now shows "${seen.frame}"`
+      ])
+    }
     for (const [name, ok, detail] of results) {
       console.log(`${ok ? 'PASS' : 'FAIL'}: ${name}${ok ? '' : `: ${detail}`}`)
       if (!ok) failed = true

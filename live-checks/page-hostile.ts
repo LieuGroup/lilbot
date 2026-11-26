@@ -24,3 +24,17 @@ try { top.location = '${attacker}/script-top' } catch {}
   // Without its scripts (for a control that must show the form post, link click and meta refresh leak on their own).
   return scripts ? page : page.replace(/<script[\s\S]*$/, '')
 }
+
+/** Pages that try to navigate the view itself with one click, each filling the whole view (#336 review). LilBot's
+ *  `<base target="_blank">` only changes links with no target of their own; these name `_self` or set their own base. */
+export function selfNavPages(attacker: string): Record<string, string> {
+  const fill = 'position:fixed;left:0;top:0;width:100%;height:100%;display:block;z-index:9'
+  const out = '<p id="out">STATIC TEXT</p>'
+  return {
+    'a target=_self': `<a href="${attacker}/self-link" target="_self" style="${fill}"></a>${out}`,
+    'second <base target=_self>': `<base target="_self"><a href="${attacker}/second-base" style="${fill}"></a>${out}`,
+    'area target=_self': `<img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" usemap="#m" style="${fill}"><map name="m"><area shape="rect" coords="0,0,4000,4000" href="${attacker}/area-self" target="_self"></map>${out}`,
+    'svg a target=_self': `<svg style="${fill}"><a href="${attacker}/svg-self" target="_self"><rect width="100%" height="100%" fill="#eee"/></a></svg>${out}`,
+    'a target=_parent': `<a href="${attacker}/parent" target="_parent" style="${fill}"></a>${out}`
+  }
+}
