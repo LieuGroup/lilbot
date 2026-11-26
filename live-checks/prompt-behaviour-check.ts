@@ -29,7 +29,8 @@ const VENDORS = /\b(claude|anthropic|chatgpt|gpt|openai|inkling|thinking machine
 const OWNER_WORDS = /\b(Oscar|the owner)\b/i
 const FIXTURES = {
   'disk-status.txt': 'Disk status, read by the nightly check:\nSize: 1000 GB\nUsed: 588 GB (59% full)\nFree: 412 GB\n',
-  'weather.txt': 'Forecast for today: sunny, 24 degrees, light wind from the south.\n'
+  'weather.txt': 'Forecast for today: sunny, 24 degrees, light wind from the south.\n',
+  'rates.txt': "Today's exchange rate: 1 USD = 1.53 AUD.\n"
 }
 const DISK = 'how full is the disk, and how much is free? the latest disk status is in fixtures/disk-status.txt in your folder.'
 
@@ -102,7 +103,7 @@ async function modelCase(label: string, model: { provider: string; model: string
     `tools=[${job.tools.join(', ')}] items=${JSON.stringify(items.map(i => `${i.status}/${i.evidenceCount}`))}`
   )
 
-  const pref = await turn(bot.id, await fresh(), "from now on give me money figures in AUD, not USD. anyway what's 250 USD in AUD roughly?")
+  const pref = await turn(bot.id, await fresh(), "from now on give me money figures in AUD, not USD. anyway what's 250 USD in AUD roughly? today's rate is in fixtures/rates.txt in your folder.")
   const facts = ((await server.call('memory.list', { botId: bot.id })).facts as { text: string }[]).map(f => f.text)
   check(
     `${label}: a standing preference is saved to memory in the same turn, naming nobody the bot was not given`,
