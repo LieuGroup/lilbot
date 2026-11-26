@@ -1,7 +1,7 @@
 /** Editable bot identity, instructions, model, and reasoning-effort form inside Bot Details > Setup.
  *  Uses `MOBILE_SCALE.details` inputs and provides an explicit `Done` dismiss button for multiline fields. */
 import { useState } from 'react'
-import { Keyboard, Platform, Pressable, TextInput, View } from 'react-native'
+import { InputAccessoryView, Keyboard, Platform, Pressable, TextInput, View } from 'react-native'
 import type { BotModel, ModelProvider, ReasoningEffort } from '../../../shared/bot-schema'
 import { modelFromKey, modelGroups, modelKey } from '../../../shared/client/bots/model-choice'
 import { capabilityOf, effortLabel, reasons, sentDiffers } from '../../../shared/client/bots/reasoning-effort'
@@ -13,6 +13,7 @@ import { useTheme } from '../ui/theme'
 import { MOBILE_SCALE, radius } from '../ui/tokens'
 
 const MONO_FONT = Platform.select({ ios: 'Menlo', default: 'monospace' })
+const MULTILINE_DONE_ID = 'setup-multiline-done-bar'
 const EFFORT_LEVELS: readonly (ReasoningEffort | null)[] = [null, 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
 
 export interface SetupFormValues {
@@ -36,7 +37,6 @@ export function SetupForm({
 }) {
   const theme = useTheme()
   const [values, setValues] = useState<SetupFormValues>(initial)
-  const [focusedMultiline, setFocusedMultiline] = useState<'function' | 'instructions' | null>(null)
   const [pickingModel, setPickingModel] = useState(false)
   const [pickingEffort, setPickingEffort] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -48,10 +48,7 @@ export function SetupForm({
     setSaved(false)
   }
 
-  const dismissMultiline = () => {
-    setFocusedMultiline(null)
-    Keyboard.dismiss()
-  }
+  const dismissMultiline = () => Keyboard.dismiss()
 
   const capability = capabilityOf(providers, values.model)
   const showEffort = reasons(capability)
@@ -86,28 +83,25 @@ export function SetupForm({
 
   return (
     <SectionGroup title="Identity & model">
+      <MultilineDoneBar onDone={dismissMultiline} />
       <View style={{ padding: 14, gap: 14 }}>
         <View style={{ gap: 6 }}>
-          <AppText variant="preview" color={theme.mutedForeground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.sectionHeader} style={MOBILE_SCALE.details.sectionHeader}>
-            Name
-          </AppText>
+          <FieldLabel label="Name" />
           <TextInput value={values.name} onChangeText={name => set({ name })} maxLength={60} returnKeyType="done" submitBehavior="blurAndSubmit" onSubmitEditing={() => Keyboard.dismiss()} placeholder="Researcher" placeholderTextColor={theme.mutedForeground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.composerInput} style={field} />
         </View>
 
         <View style={{ gap: 6 }}>
-          <FieldLabelRow label="Function" showDone={focusedMultiline === 'function'} onDone={dismissMultiline} />
-          <TextInput testID="setup-function-input" value={values.function} onChangeText={fn => set({ function: fn })} onFocus={() => setFocusedMultiline('function')} onBlur={() => setFocusedMultiline(cur => (cur === 'function' ? null : cur))} maxLength={500} multiline placeholder="What this bot is for, in a sentence or two." placeholderTextColor={theme.mutedForeground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.composerInput} style={[field, { minHeight: 70, textAlignVertical: 'top' }]} />
+          <FieldLabel label="Function" />
+          <TextInput testID="setup-function-input" inputAccessoryViewID={MULTILINE_DONE_ID} value={values.function} onChangeText={fn => set({ function: fn })} maxLength={500} multiline placeholder="What this bot is for, in a sentence or two." placeholderTextColor={theme.mutedForeground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.composerInput} style={[field, { minHeight: 70, textAlignVertical: 'top' }]} />
         </View>
 
         <View style={{ gap: 6 }}>
-          <FieldLabelRow label="Instructions" showDone={focusedMultiline === 'instructions'} onDone={dismissMultiline} />
-          <TextInput testID="setup-instructions-input" value={values.instructions} onChangeText={instructions => set({ instructions })} onFocus={() => setFocusedMultiline('instructions')} onBlur={() => setFocusedMultiline(cur => (cur === 'instructions' ? null : cur))} multiline placeholder="Personality and standing rules the bot follows in every chat." placeholderTextColor={theme.mutedForeground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.composerInput} style={[field, { minHeight: 116, fontFamily: MONO_FONT, fontSize: MOBILE_SCALE.details.code.fontSize, lineHeight: MOBILE_SCALE.details.code.lineHeight, textAlignVertical: 'top' }]} />
+          <FieldLabel label="Instructions" />
+          <TextInput testID="setup-instructions-input" inputAccessoryViewID={MULTILINE_DONE_ID} value={values.instructions} onChangeText={instructions => set({ instructions })} multiline placeholder="Personality and standing rules the bot follows in every chat." placeholderTextColor={theme.mutedForeground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.composerInput} style={[field, { minHeight: 116, fontFamily: MONO_FONT, fontSize: MOBILE_SCALE.details.code.fontSize, lineHeight: MOBILE_SCALE.details.code.lineHeight, textAlignVertical: 'top' }]} />
         </View>
 
         <View style={{ gap: 6 }}>
-          <AppText variant="preview" color={theme.mutedForeground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.sectionHeader} style={MOBILE_SCALE.details.sectionHeader}>
-            Model
-          </AppText>
+          <FieldLabel label="Model" />
           <Pressable onPress={() => { dismissMultiline(); setPickingModel(open => !open) }} accessibilityRole="button" style={[field, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 48 }]}>
             <AppText variant="name" numberOfLines={1} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowName} style={[MOBILE_SCALE.details.rowTitle, { flex: 1 }]}>
               {values.model ? values.model.model : 'Engine default'}
@@ -179,20 +173,27 @@ export function SetupForm({
   )
 }
 
-function FieldLabelRow({ label, showDone, onDone }: { label: string; showDone: boolean; onDone: () => void }) {
+function FieldLabel({ label }: { label: string }) {
   const theme = useTheme()
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-      <AppText variant="preview" color={theme.mutedForeground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.sectionHeader} style={MOBILE_SCALE.details.sectionHeader}>
-        {label}
-      </AppText>
-      {showDone ? (
-        <Pressable testID="setup-multiline-done" onPress={onDone} hitSlop={8} accessibilityRole="button" accessibilityLabel="Dismiss keyboard" style={({ pressed }) => ({ paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.sm, backgroundColor: theme.muted, opacity: pressed ? 0.65 : 1 })}>
+    <AppText variant="preview" color={theme.mutedForeground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.sectionHeader} style={MOBILE_SCALE.details.sectionHeader}>
+      {label}
+    </AppText>
+  )
+}
+
+/** Keyboard-attached bar so `Done` stays visible above the keyboard even when a short landscape viewport hides the field's label. */
+function MultilineDoneBar({ onDone }: { onDone: () => void }) {
+  const theme = useTheme()
+  return (
+    <InputAccessoryView nativeID={MULTILINE_DONE_ID} backgroundColor={theme.card}>
+      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 12, paddingVertical: 6, borderTopWidth: 1, borderTopColor: theme.hairline }}>
+        <Pressable testID="setup-multiline-done" onPress={onDone} hitSlop={8} accessibilityRole="button" accessibilityLabel="Dismiss keyboard" style={({ pressed }) => ({ minHeight: 32, justifyContent: 'center', paddingHorizontal: 12, borderRadius: radius.sm, backgroundColor: theme.muted, opacity: pressed ? 0.65 : 1 })}>
           <AppText variant="name" color={theme.foreground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.control} style={MOBILE_SCALE.details.tabLabel}>
             Done
           </AppText>
         </Pressable>
-      ) : null}
-    </View>
+      </View>
+    </InputAccessoryView>
   )
 }

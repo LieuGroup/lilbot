@@ -31,7 +31,7 @@ export function RenameDeviceModal({
   const canSave = draft.trim().length > 0
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+    <Modal visible={visible} transparent animationType="fade" supportedOrientations={["portrait", "landscape"]} onRequestClose={onCancel}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' }}>
         <Pressable accessible={false} onPress={() => Keyboard.dismiss()} style={StyleSheet.absoluteFill} />
         <ScrollView

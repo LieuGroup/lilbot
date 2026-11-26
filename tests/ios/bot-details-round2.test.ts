@@ -164,9 +164,12 @@ describe('PR 302 Round 2 fixes (scale, Duo strip, safety, ErrorBoundary, AX5, ke
     expect(modalSrc).toContain('rename-device-scroll')
     expect(modalSrc).toContain('KEYBOARD_SCROLL_PROPS')
     expect(modalSrc).toContain('disabled={!canSave}')
+    expect(modalSrc).toContain('transparent animationType="fade" supportedOrientations={["portrait", "landscape"]}')
 
     const formSrc = read('ios/src/bots/setup-form.tsx')
     expect(formSrc).toContain('setup-multiline-done')
+    expect(formSrc.match(/inputAccessoryViewID=\{MULTILINE_DONE_ID\}/g)?.length).toBe(2)
+    expect(formSrc).toContain('<InputAccessoryView nativeID={MULTILINE_DONE_ID}')
 
     const setupSrc = read('ios/src/bots/setup-tab.tsx')
     expect(setupSrc).toContain('<SetupContextCard')
