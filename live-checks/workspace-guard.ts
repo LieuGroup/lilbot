@@ -5,7 +5,8 @@
 import { Database } from 'bun:sqlite'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { type GuardPolicy, refusal, toolCallsIn } from './outside-access-guard'
+import { type GuardPolicy, refusal } from './outside-access-guard'
+import { toolCallsIn } from './tool-calls-on-wire'
 
 /** Every refusal among the bots' recorded tool calls; each bot works in `<workspaces>/<bot id>`. */
 function refusals(bots: { id: string; engine_bot_id: string }[], policy: GuardPolicy, workspaces: string): string[] {

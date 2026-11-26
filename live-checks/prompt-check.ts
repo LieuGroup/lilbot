@@ -23,12 +23,12 @@ import {
   findForbiddenStockSnippets,
   nativeProfileOf,
   readDevUpstreamBaseUrl,
-  rollBackPromptPlugin,
   sendPromptTurn,
   setProfileBaseUrl,
   startWireCaptureProxy,
   stopOnAccountProblem
 } from './prompt-wire-proxy'
+import { rollBackPromptPlugin } from './prompt-rollback'
 import { RestartServer, waitFor } from './restart-server'
 
 const SPACE_MS = 10_000

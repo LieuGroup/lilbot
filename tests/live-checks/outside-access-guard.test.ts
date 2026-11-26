@@ -2,8 +2,9 @@ import { afterAll, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { type GuardPolicy, refusal, toolCallsInRequest, toolCallsInResponse } from '../../live-checks/outside-access-guard'
+import { type GuardPolicy, refusal } from '../../live-checks/outside-access-guard'
 import { startWireCaptureProxy, stopOnAccountProblem } from '../../live-checks/prompt-wire-proxy'
+import { toolCallsInRequest, toolCallsInResponse } from '../../live-checks/tool-calls-on-wire'
 
 const base = mkdtempSync(join(tmpdir(), 'guard-test-'))
 const workspaces = join(base, 'workspaces')

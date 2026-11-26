@@ -7,9 +7,8 @@ import { Database } from 'bun:sqlite'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { devPort } from '../scripts/dev-paths'
-import { command } from '../server/deploy/process'
-import { rollbackHook } from '../server/engines/hermes/hermes-rollback'
-import { folderOf, type GuardPolicy, refusal, toolCallsInRequest, toolCallsInResponse } from './outside-access-guard'
+import { folderOf, type GuardPolicy, refusal } from './outside-access-guard'
+import { toolCallsInRequest as inRequest, toolCallsInResponse as inAnswer } from './tool-calls-on-wire'
 import { type RestartServer, waitFor } from './restart-server'
 
 export interface CapturedRequest {
@@ -62,6 +61,8 @@ function extractSystem(body: Record<string, unknown>): Pick<CapturedRequest, 'sy
   return { systemKind: 'none', systemText: '', hasCacheControl: false }
 }
 
+const REFUSED = { type: 'error', error: { type: 'invalid_request_error', message: 'Live check guard: this tool call is not allowed in a live check.' } }
+
 export function startWireCaptureProxy(upstreamBaseUrl: string, guard?: { workspaces: string[]; policy: GuardPolicy }) {
   const port = devPort()
   const records: CapturedRequest[] = []
@@ -79,17 +80,16 @@ export function startWireCaptureProxy(upstreamBaseUrl: string, guard?: { workspa
       const headers = new Headers(request.headers)
       headers.delete('host')
       const folder = guard && (folderOf(parsed ? extractSystem(parsed).systemText : '', guard.workspaces) ?? guard.workspaces[0]!)
-      const reached = (calls: ReturnType<typeof toolCallsInRequest>) => (guard && folder ? calls.map(c => refusal(c, folder, guard.policy)).find(Boolean) : undefined)
-      const ran = parsed ? reached(toolCallsInRequest(parsed)) : undefined
+      const reached = (calls: ReturnType<typeof inRequest>) => (guard && folder ? calls.map(c => refusal(c, folder, guard.policy)).find(Boolean) : undefined)
+      const ran = parsed ? reached(inRequest(parsed)) : undefined
       const upstreamResponse = ran ? Response.json({}, { status: 451 }) : await fetch(target, { method: request.method, headers, body: rawBody })
       const outHeaders = new Headers(upstreamResponse.headers)
       for (const name of ['content-encoding', 'content-length', 'transfer-encoding']) outHeaders.delete(name)
       const errorText = upstreamResponse.status >= 400 ? (await upstreamResponse.clone().text()).replace(/\s+/g, ' ').slice(0, 240) : undefined
       const answer = guard && !ran ? await upstreamResponse.text() : undefined
-      const outside = ran ?? (answer === undefined ? undefined : reached(toolCallsInResponse(answer)))
-      const refused = { type: 'error', error: { type: 'invalid_request_error', message: 'Live check guard: this tool call is not allowed in a live check.' } }
+      const outside = ran ?? (answer === undefined ? undefined : reached(inAnswer(answer)))
       const { status, statusText } = upstreamResponse
-      const response = outside ? Response.json(refused, { status: 400 }) : new Response(answer ?? upstreamResponse.body, { status, statusText, headers: outHeaders })
+      const response = outside ? Response.json(REFUSED, { status: 400 }) : new Response(answer ?? upstreamResponse.body, { status, statusText, headers: outHeaders })
       if (parsed && (url.pathname.includes('/messages') || url.pathname.includes('/chat/completions') || url.pathname.includes('/responses'))) {
         const extracted = extractSystem(parsed)
         records.push({
@@ -166,20 +166,6 @@ export async function sendPromptTurn(server: RestartServer, botId: string, chatI
     .map(e => String(e.data.text ?? ''))
     .join('')
   return { finished: finished?.data, reply }
-}
-
-/** Runs the real deploy rollback hook on one temporary `dev-` profile against the dev Hermes, then asks Hermes itself
- *  how it lists the prompt plug-in (`enabled`, `disabled`, `not enabled`, or absent). */
-export async function rollBackPromptPlugin(profileId: string) {
-  if (!profileId.startsWith('dev-')) throw new Error(`Refusing to touch non-dev profile: ${profileId}`)
-  const env = Object.entries({ LILBOT_ENV: 'development', HERMES_HOME: process.env.HERMES_HOME, LILBOT_HERMES_BIN: process.env.LILBOT_HERMES_BIN, PATH: process.env.PATH })
-  const printed = env
-    .filter(([, value]) => value)
-    .map(([key, value]) => `"${key}=${value}"`)
-    .join(' ')
-  const rolled = await rollbackHook.rollback({ profiles: [profileId], printedEnvironment: printed, runCommand: (args, timeout, given) => command(args, undefined, timeout, given) })
-  const listed = Bun.spawnSync([process.env.LILBOT_HERMES_BIN ?? 'hermes', '-p', profileId, 'plugins', 'list', '--plain', '--no-bundled'], { env: process.env }).stdout.toString()
-  return { rolled, row: listed.split('\n').find(line => line.includes('lilbot-prompt-v1')) ?? 'absent' }
 }
 
 const ACCOUNT_STOP = /\b403\b|disabled in this account|violation of terms|unknown provider/i
