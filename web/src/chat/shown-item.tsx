@@ -7,20 +7,21 @@ import { lazy, type ReactNode, Suspense, useState } from 'react'
 
 import type { ViewedImage } from '@/ui/image-viewer'
 import { formatBytes } from '../../../shared/client/attachments/attachment-rules'
-import { SHOW_LIMITS } from '../../../shared/shown-rules'
+import { SHOW_LIMITS, type ShownProblem, shownProblem, shownProblemText } from '../../../shared/shown-rules'
 import type { ShownFile } from '../../../shared/shown-schema'
 
 const ImageViewer = lazy(() => import('@/ui/image-viewer'))
 
-type Missing = 'gone' | 'too_large'
+type Missing = ShownProblem
 
-/** Why the file did not load: the route answers 413 for a file past its limit and 404 for one that is gone. */
+/** Why the file did not load: the route answers 413 for a file past its limit, 404 for one that is gone, and 200 for
+ *  one that is there but this browser cannot draw (a clip in a codec it does not play). */
 async function whyMissing(url: string): Promise<Missing> {
   const status = await fetch(url, { method: 'HEAD', cache: 'no-store' }).then(
     res => res.status,
     () => 404
   )
-  return status === 413 ? 'too_large' : 'gone'
+  return shownProblem(status)
 }
 
 export default function ShownItem({ file, botName }: { file: ShownFile; botName?: string }) {
@@ -61,8 +62,7 @@ export default function ShownItem({ file, botName }: { file: ShownFile; botName?
 }
 
 function missingText(missing: Missing, file: ShownFile, botName?: string) {
-  if (missing === 'too_large') return `Too large to show here (limit ${formatBytes(SHOW_LIMITS.bytes[file.kind])})`
-  return `No longer in ${botName || 'the bot'}'s folder`
+  return shownProblemText(missing, formatBytes(SHOW_LIMITS.bytes[file.kind]), botName)
 }
 
 /** One plain line, never an error colour (A4): the file's name and why it is not drawn, or the HTML placeholder. */
