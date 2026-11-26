@@ -117,7 +117,7 @@ export const ChatItem = memo(function ChatItem({
       return <CompactionLine item={item} />
     case 'connection.sign_in':
       return (
-        <Suspense fallback={<div className="h-[52px] max-w-[460px] rounded-[14px] ring-1 ring-hairline" />}>
+        <Suspense fallback={<div className="h-[52px] max-w-[460px] rounded-[14px] ring-1 ring-hairline ring-inset" />}>
           <SignInCard card={item.card} />
         </Suspense>
       )
