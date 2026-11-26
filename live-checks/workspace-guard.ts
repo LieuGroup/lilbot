@@ -11,7 +11,7 @@ const URL = /\b[a-z][a-z0-9+.-]*:\/\/[^\s"'`\\]*/gi
 const HARMLESS = new Set(['/dev/null', '/dev/stdout', '/dev/stderr'])
 
 /** Every path the bots' recorded tool calls name outside `allowed`; `cwd` gives each bot's working folder. */
-export function pathsOutside(natives: string[], allowed: string[], cwd: (native: string) => string): string[] {
+function pathsOutside(natives: string[], allowed: string[], cwd: (native: string) => string): string[] {
   const home = process.env.HOME ?? ''
   const roots = allowed.map(root => resolve(root))
   const found = new Set<string>()
