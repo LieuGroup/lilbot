@@ -124,7 +124,8 @@ async function modelCase(label: string, model: { provider: string; model: string
       facts.some(f => /AUD|Australian/i.test(f)) &&
       !facts.some(f => /\bOscar\b/i.test(f)) &&
       !OWNER_WORDS.test(pref.reply) &&
-      /AUD|A\$|\$\s?3\d\d/i.test(pref.reply) &&
+      /AUD|A\$/i.test(pref.reply) &&
+      /\b153\b/.test(pref.reply) &&
       exact(pref.wire, prompt()),
     `tools=[${pref.tools.join(', ')}] failed=[${pref.failed.join(', ')}] facts=${JSON.stringify(facts).slice(0, 160)}: ${short(pref.reply)}`
   )
