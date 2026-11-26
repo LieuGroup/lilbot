@@ -6,10 +6,18 @@ export const DUO_VERTICAL_ITEM_PREFIX = 'lilbot.duo.vertical.'
 export const DUO_AVATAR_TEST_ID = `${DUO_VERTICAL_ITEM_PREFIX}bot-avatar`
 
 export type VerticalBarEdge = 'leading' | 'trailing' | null
-export type VerticalBarActionId = 'bot-avatar' | 'sidebar-toggle' | 'bot-menu' | 'new-bot' | 'search-bots'
+export type VerticalBarActionId = 'bot-avatar' | 'sidebar-toggle' | 'bot-menu' | 'new-bot' | 'search-bots' | 'drop-work' | 'add-check-override'
 export type VerticalBarPriority = 'high' | 'standard' | 'low'
-export type DuoStripScreen = 'folded-roster' | 'folded-chat' | 'folded-details' | 'unfolded-split' | 'unfolded-portrait'
-export type VerticalBarSFSymbol = 'sidebar.left' | 'ellipsis' | 'plus' | 'magnifyingglass'
+export type DuoStripScreen =
+  | 'folded-roster'
+  | 'folded-chat'
+  | 'folded-details'
+  | 'unfolded-split'
+  | 'unfolded-portrait'
+  | 'work-board-checks'
+  | 'work-item'
+  | 'work-split'
+export type VerticalBarSFSymbol = 'sidebar.left' | 'ellipsis' | 'plus' | 'magnifyingglass' | 'trash'
 
 export type VerticalBarSlotSpec =
   | {
@@ -45,7 +53,13 @@ export const DUO_VERTICAL_BAR_TABLE: Record<DuoStripScreen, readonly VerticalBar
     { id: 'new-bot', kind: 'button', sfSymbol: 'plus', priority: 'standard', defaultLabel: 'New bot' },
     { id: 'search-bots', kind: 'button', sfSymbol: 'magnifyingglass', priority: 'low', defaultLabel: 'Search bots' }
   ],
-  'unfolded-portrait': []
+  'unfolded-portrait': [],
+  'work-board-checks': [{ id: 'add-check-override', kind: 'button', sfSymbol: 'plus', priority: 'high', defaultLabel: 'Add bot check level' }],
+  'work-item': [{ id: 'drop-work', kind: 'button', sfSymbol: 'trash', priority: 'high', defaultLabel: 'Drop item' }],
+  'work-split': [
+    { id: 'drop-work', kind: 'button', sfSymbol: 'trash', priority: 'high', defaultLabel: 'Drop item' },
+    { id: 'add-check-override', kind: 'button', sfSymbol: 'plus', priority: 'standard', defaultLabel: 'Add bot check level' }
+  ]
 }
 
 export interface VerticalBarButtonHandler {
@@ -165,9 +179,9 @@ export function buildDuoVerticalBarItems(input: {
 export function duoVerticalHeaderOptions(
   items: readonly NativeVerticalBarHeaderItem[],
   tintColor: string,
-  options: { backVisible?: boolean } = {}
+  options: { backVisible?: boolean; keepTransparentWhenEmpty?: boolean } = {}
 ) {
-  if (items.length === 0) return { headerShown: false, unstable_headerRightItems: undefined }
+  if (items.length === 0 && !options.keepTransparentWhenEmpty) return { headerShown: false, unstable_headerRightItems: undefined }
   return {
     headerShown: true,
     title: '',
@@ -177,6 +191,6 @@ export function duoVerticalHeaderOptions(
     headerBackVisible: options.backVisible ?? false,
     headerBackButtonDisplayMode: 'minimal' as const,
     headerTintColor: tintColor,
-    unstable_headerRightItems: () => [...items]
+    unstable_headerRightItems: items.length > 0 ? () => [...items] : undefined
   }
 }

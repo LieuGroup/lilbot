@@ -63,6 +63,7 @@ test('an engine does not depend on what sits above it', () => {
     ...crossings('server/engines', 'server/attachments'),
     ...crossings('server/engines', 'server/devices'),
     ...crossings('server/engines', 'server/system'),
+    ...crossings('server/engines', 'server/prompts'),
     ...crossings('server/engines', 'server/webhooks')
   ]).toEqual([])
 })
@@ -179,5 +180,21 @@ test('notifications are engine-neutral and sit below HTTP and bots: no HTTP, bot
     ...crossings('server/devices', 'server/notifications'),
     ...crossings('server/history', 'server/notifications'),
     ...crossings('server/memory', 'server/notifications')
+  ]).toEqual([])
+})
+
+test('prompts are engine-neutral and sit below HTTP, bots, system, engines and other features', () => {
+  expect([
+    ...crossings('server/prompts', 'server/http'),
+    ...crossings('server/prompts', 'server/bots'),
+    ...crossings('server/prompts', 'server/system'),
+    ...crossings('server/prompts', 'server/engines'),
+    ...crossings('server/prompts', 'server/memory'),
+    ...crossings('server/prompts', 'server/skills'),
+    ...crossings('server/prompts', 'server/threads'),
+    ...crossings('server/prompts', 'server/routines'),
+    ...crossings('server/prompts', 'server/work'),
+    ...crossings('server/prompts', 'server/goals'),
+    ...crossings('server/prompts', 'server/devices')
   ]).toEqual([])
 })

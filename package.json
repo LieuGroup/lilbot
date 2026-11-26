@@ -41,6 +41,7 @@
     "check:add-computer": "bun live-checks/add-computer-check.ts && bun live-checks/add-command-line-check.ts",
     "check:computers": "bun live-checks/computers-check.ts",
     "check:skills": "bun live-checks/skills-check.ts",
+    "check:prompt": "bun live-checks/prompt-check.ts",
     "check:access": "bun live-checks/access-check.ts",
     "check:attachments": "bun live-checks/attachments-check.ts",
     "check:live": "bun live-checks/chat-check.ts",

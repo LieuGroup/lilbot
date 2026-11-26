@@ -1,0 +1,6 @@
+name: lilbot-prompt-v1
+version: 1.1.0
+description: Dumb pass-through llm_request middleware that forwards LilBot's assembled system prompt.
+kind: standalone
+provides_hooks:
+  - pre_api_request

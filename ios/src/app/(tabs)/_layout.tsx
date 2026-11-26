@@ -20,6 +20,8 @@ import { isPushedDetailSegments, shouldHideNativeTabBar } from '../../duo/stack-
 import { useLiveSurface } from '../../duo/use-surface'
 import { ThreadSheetHost } from '../../threads/thread-host'
 import { useTheme } from '../../ui/theme'
+import { workTabBadge } from '../../work/board-state'
+import { useNeedsYouCount } from '../../work/store'
 
 export default function TabsLayout() {
   const theme = useTheme()
@@ -27,10 +29,12 @@ export default function TabsLayout() {
   const segments = useSegments()
   const { surface, metrics } = useLiveSurface()
   const chatFocused = useBotSelection(state => state.chatFocusCount > 0)
+  const workItemFocused = useBotSelection(state => state.workItemFocusCount > 0)
   const selectedId = useBotSelection(state => state.selectedId)
   const selectBot = useBotSelection(state => state.select)
   const openNewBot = useBotMenuStore(state => state.openNewBot)
   const closeBotOverlays = useBotMenuStore(state => state.closeBotOverlays)
+  const workBadge = workTabBadge(useNeedsYouCount())
   const layout = computeShellLayout(surface, metrics)
   const trigger = detachedTabTriggerSpec({ surface, chatFocused })
   const botsTabActive = isBotsTabSegments(segments)
@@ -63,14 +67,22 @@ export default function TabsLayout() {
   return (
     <>
       <NativeTabs
-        hidden={shouldHideNativeTabBar(surface, chatFocused || isPushedDetailSegments(segments))}
+        hidden={shouldHideNativeTabBar(surface, chatFocused || workItemFocused || isPushedDetailSegments(segments))}
         minimizeBehavior={layout.tabBarMinimizeBehavior}
         tintColor={theme.foreground}
+        badgeBackgroundColor={theme.primary}
         iconColor={{ default: theme.mutedForeground, selected: theme.foreground }}
       >
         <NativeTabs.Trigger name="(bots)">
           <NativeTabs.Trigger.Icon sf={{ default: 'bubble.left.and.bubble.right', selected: 'bubble.left.and.bubble.right.fill' }} />
           <NativeTabs.Trigger.Label>Bots</NativeTabs.Trigger.Label>
+        </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="(work)">
+          <NativeTabs.Trigger.Icon sf={{ default: 'checkmark.square', selected: 'checkmark.square.fill' }} />
+          <NativeTabs.Trigger.Label>Work</NativeTabs.Trigger.Label>
+          <NativeTabs.Trigger.Badge hidden={!workBadge} selectedBackgroundColor={theme.primary}>
+            {workBadge}
+          </NativeTabs.Trigger.Badge>
         </NativeTabs.Trigger>
         <NativeTabs.Trigger name="(settings)">
           <NativeTabs.Trigger.Icon sf={{ default: 'gearshape', selected: 'gearshape.fill' }} />

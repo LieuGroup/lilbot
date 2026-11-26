@@ -6,6 +6,7 @@ import type { BotPrefsStore } from './bot-prefs-store'
 import type { BotRuntimes } from './bot-runtimes'
 import type { SessionSettings } from './bot-session-settings'
 import { ConversationTurnTracker } from './conversation-turn-tracker'
+import { withTurnLine } from './runtime-tools'
 import type { Workspaces } from './workspaces'
 
 /** Model-only text LilBot gives a bot with Oscar's next message in its main conversation (a webhook run's message or
@@ -115,7 +116,8 @@ export class BotConversations {
     if (fresh || ((!chatId || chatId === main) && chat.snapshot.chatId !== main)) this.prefs.setMainChat(botId, chat.snapshot.chatId)
     if (useHistory) for (const e of pending) this.history?.record(botId, id, e)
     const send = chat.send
-    chat.send = async (text, options) => {
+    chat.send = async (text, given) => {
+      const options = withTurnLine(given, this.runtimes.options.prompt)
       // Owner's own chat.send path: readOnlyChat fails OPEN on unreadable lineage (the opposite of hidden-chats.ts and tool gates, which fail closed).
       if (!openedAsMain && id !== this.prefs.mainChat(botId) && this.readOnlyChat?.(botId, id))
         throw new LilBotError('chat_read_only', 'A limited run conversation cannot be continued.')

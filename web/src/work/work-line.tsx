@@ -2,30 +2,10 @@
 import { Link } from '@tanstack/react-router'
 import { ChevronRightIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
-import type { WorkSummary } from '../../../shared/work-schema'
+import { workLineStatus } from '../../../shared/client/work/work-lines'
 import { CheckBadge } from './check-badge'
 import { WorkIcon } from './work-nav-row'
 import { useWorkItem } from './work-store'
-
-function lineStatus(item: WorkSummary, children: WorkSummary[]): string {
-  const parts = children.length > 0 ? ` · ${children.length} ${children.length === 1 ? 'part' : 'parts'}, ${children.filter(c => c.status === 'done').length} done` : ''
-  switch (item.status) {
-    case 'open':
-      return `Open${parts}`
-    case 'working':
-      return `Working${parts}`
-    case 'checking':
-      return 'Being checked'
-    case 'needs_oscar':
-      return 'Needs you'
-    case 'done':
-      return `Finished${parts}`
-    case 'failed':
-      return 'Failed'
-    case 'dropped':
-      return 'Dropped'
-  }
-}
 
 export default function WorkLine({ workItemId, fallback }: { workItemId: string; fallback: ReactNode }) {
   const { item } = useWorkItem(workItemId)
@@ -39,7 +19,7 @@ export default function WorkLine({ workItemId, fallback }: { workItemId: string;
       <WorkIcon className="size-4 flex-none text-muted-foreground" />
       <div className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-[13px]/[18px] font-medium text-foreground">Work · {item.title}</span>
-        <span className="truncate text-xs/4 text-muted-foreground">{lineStatus(item, item.children)}</span>
+        <span className="truncate text-xs/4 text-muted-foreground">{workLineStatus(item, item.children)}</span>
       </div>
       <CheckBadge item={item} />
       <ChevronRightIcon aria-hidden className="size-3.5 flex-none text-foreground/40" strokeWidth={1.75} />

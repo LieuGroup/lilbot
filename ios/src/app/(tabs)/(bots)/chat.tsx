@@ -27,6 +27,7 @@ import { DYNAMIC_TYPE_CAPS } from '../../../ui/dynamic-type'
 import { ChevronRightIcon, MoreHorizontalIcon } from '../../../ui/icon'
 import { AppText } from '../../../ui/text'
 import { useTheme } from '../../../ui/theme'
+import { withWorkToolRenderer } from '../../../work/work-line'
 
 export default function CompactChatRoute() {
   const theme = useTheme()
@@ -92,7 +93,13 @@ export default function CompactChatRoute() {
   const openBotMenu = useCallback(() => {
     if (bot) openMenu(bot.id)
   }, [bot, openMenu])
-  const renderToolItem = useMemo(() => (bot ? createThreadToolRenderer(bot.id) : undefined), [bot])
+  const openWorkItem = useCallback(
+    (itemId: string) => {
+      router.push({ pathname: '/(tabs)/(work)/item', params: { itemId } })
+    },
+    [router]
+  )
+  const renderToolItem = useMemo(() => (bot ? withWorkToolRenderer(openWorkItem, createThreadToolRenderer(bot.id)) : undefined), [bot, openWorkItem])
 
   const openBotDetails = useCallback(() => {
     if (bot) router.push({ pathname: '/(tabs)/(bots)/bot-details', params: { botId: bot.id } })

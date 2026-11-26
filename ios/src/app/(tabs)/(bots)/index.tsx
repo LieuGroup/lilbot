@@ -1,18 +1,32 @@
 /** Bots tab root screen: hosts the adaptive DuoShell inside the native Bots stack,
- *  wired to the Tasks dock, inline thread lines, split-mode thread inspector, and Bot Details inspector. */
+ *  wired to the Tasks dock, inline work/thread lines, split-mode thread inspector, and Bot Details inspector. */
+import { useRouter } from 'expo-router'
 import { useCallback } from 'react'
 import type { Bot } from '../../../../../shared/bot-schema'
 import { BotDetailsScreen } from '../../../bots/details-screen'
+import { computeShellLayout } from '../../../duo/layout'
 import { useBotSelection } from '../../../duo/selection'
 import { DuoShell } from '../../../duo/shell'
+import { useLiveSurface } from '../../../duo/use-surface'
 import { closeThreadView, useActiveThread } from '../../../threads/store'
 import { TaskDockSlot } from '../../../threads/task-dock'
 import { ThreadInspectorPane } from '../../../threads/thread-host'
 import { createThreadToolRenderer } from '../../../threads/thread-line'
+import { withWorkToolRenderer } from '../../../work/work-line'
 
 export default function BotsScreen() {
+  const router = useRouter()
+  const { surface, metrics } = useLiveSurface()
+  const layout = computeShellLayout(surface, metrics)
   const activeThread = useActiveThread()
   const selectedId = useBotSelection(state => state.selectedId)
+  const openWorkItem = useCallback(
+    (itemId: string) => {
+      if (layout.splitMode) router.navigate({ pathname: '/(tabs)/(work)', params: { itemId } })
+      else router.push({ pathname: '/(tabs)/(work)/item', params: { itemId } })
+    },
+    [layout.splitMode, router]
+  )
   const renderInspector = useCallback(
     (close: () => void) => {
       if (activeThread !== null) return <ThreadInspectorPane onClose={close} />
@@ -21,7 +35,7 @@ export default function BotsScreen() {
     [activeThread, selectedId]
   )
   const renderChatDock = useCallback((bot: Bot) => <TaskDockSlot botId={bot.id} />, [])
-  const renderChatToolItem = useCallback((bot: Bot) => createThreadToolRenderer(bot.id), [])
+  const renderChatToolItem = useCallback((bot: Bot) => withWorkToolRenderer(openWorkItem, createThreadToolRenderer(bot.id)), [openWorkItem])
 
   return (
     <DuoShell

@@ -220,6 +220,23 @@ manifest on `MessageCompletePayload` or `TranscriptMessage`.
   `check:skills` confirms it stays offered). The apply fingerprint is unchanged while the switch is on, so a release that
   adds the switch does not touch existing profiles.
 
+## System prompt plug-in (`prompt-adapter/`, only when `LILBOT_PROMPT_OWNERSHIP=1`)
+
+- `lilbot-prompt-v1` is a dumb `llm_request` middleware (`hermes.middleware.v1`): it reads the file named in the
+  profile's `lilbot-prompt.json` and puts it in place of Hermes' system prompt, keeping cache breakpoints. It holds no
+  LilBot logic, reads at most 256 kB, and caches the prompt per session, so a running session keeps the prompt it
+  started with; edits, skill changes and model switches reach the next session.
+- Hermes loads a plug-in only from `plugins.enabled` (`gate_manifest`); `plugins.entries.<id>.enabled` does not load or
+  stop one. LilBot switches it on and off through `plugins.manage` (enable, then disable and remove), reads
+  `plugins.enabled` to know whether it loads, and the deploy rollback runs `hermes plugins disable lilbot-prompt-v1`
+  and deletes `lilbot-prompt.json`. With the setting off, a profile that never had the plug-in is not touched at all.
+- Never silent: the plug-in records a fixed label in `lilbot-prompt-status.json` (0600): `ready`, `active`, or
+  `fallback` with the reason (settings or file missing, empty, unreadable or too large, no `llm_request` hook, a request
+  the hook never saw, or a swap Hermes dropped, both seen from its `pre_api_request` observer). LilBot reads it with
+  the enabled list each time the bot is looked at and shows the reason beside the instructions on the Setup tab.
+- The swap drops Hermes' "Conversation started" date line, so LilBot adds `[LilBot date: ...]` (date, time, offset and
+  zone) after the origin line of every turn instead; the cached prompt stays the same all day.
+
 ## Routines
 
 Each run gets its own hidden `yolo` session in the bot's folder. Hermes' `cron.manage` was rejected: mirroring
