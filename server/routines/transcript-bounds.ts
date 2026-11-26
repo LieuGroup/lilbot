@@ -22,6 +22,7 @@ function projectItem(item: ChatItem): ChatItem[] {
   switch (item.kind) {
     case 'user':
     case 'connection.sign_in':
+    case 'shown':
       return []
     case 'assistant':
       return [{ kind: 'assistant', text: item.text, ...(item.stopped ? { stopped: true } : {}), ...(item.usage ? { usage: item.usage } : {}) }]

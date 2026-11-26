@@ -8,6 +8,7 @@ import { Message, MessageContent, MessageFooter } from '@/ui/message'
 import { Trace, TraceIcon, TraceLine, TraceTitle } from '@/ui/trace'
 import type { ChatItem as ChatItemData } from '../../../shared/chat-schema'
 import type { MessageItem } from '../../../shared/client/chat/chat-state'
+import type { ReplyActions } from '../../../shared/client/chat/reply-actions'
 import { ImageNote, SentAttachments } from '../attachments/message-attachments'
 import { useBotStore } from '../bots/bot-store'
 import { thisDeviceId } from '../devices/this-device'
@@ -30,25 +31,31 @@ const ThreadLine = lazy(() => import('../threads/thread-line'))
 const WorkLine = lazy(() => import('../work/work-line'))
 // A service sign-in card (#314) draws in the conversation; it loads with the first one.
 const SignInCard = lazy(() => import('../connections/sign-in-card'))
+// A file a bot showed (#317) draws with the first one; it stays out of the chat's first load.
+const ShownItem = lazy(() => import('./shown-item'))
 
 /** One transcript item drawn with the AI Elements patterns: Message and Bubble for turns, a Tool
  *  trace line for tool use. Memoised: a streamed chunk changes only the last item, so earlier
  *  replies are not parsed or drawn again. `queued` draws a user message still waiting for the
  *  bot's current turn to end as a dashed, muted bubble. A message sent from another device says
- *  which one under its bubble; the name is the device's own text, drawn as plain text. */
+ *  which one under its bubble; the name is the device's own text, drawn as plain text. `actions` is the reply's one
+ *  actions row when this item ends a finished reply (`null`: it does not); without it each word segment has its own. */
 export const ChatItem = memo(function ChatItem({
   item,
   botId,
   queued = false,
   inTurn = false,
-  beforeTool = false
+  beforeTool = false,
+  actions
 }: {
   item: MessageItem
   botId: string
   queued?: boolean
   inTurn?: boolean
   beforeTool?: boolean
+  actions?: ReplyActions | null
 }) {
+  const replyActions = actions && !inTurn && <TurnActions text={actions.text} usage={actions.usage} showUsage={!beforeTool || actions.usage !== undefined} />
   switch (item.kind) {
     case 'user':
       return (
@@ -77,7 +84,9 @@ export const ChatItem = memo(function ChatItem({
               <Markdown remarkPlugins={[remarkGfm]}>{item.text}</Markdown>
             </div>
             {item.stopped && <MessageFooter className="px-0">Stopped</MessageFooter>}
-            {!item.streaming && !inTurn && <TurnActions text={item.text} usage={item.usage} showUsage={!beforeTool || item.usage !== undefined} />}
+            {actions === undefined
+              ? !item.streaming && !inTurn && <TurnActions text={item.text} usage={item.usage} showUsage={!beforeTool || item.usage !== undefined} />
+              : replyActions}
           </MessageContent>
         </Message>
       )
@@ -95,11 +104,20 @@ export const ChatItem = memo(function ChatItem({
           </Suspense>
         )
       return <ToolTrace item={item} />
+    case 'shown':
+      return (
+        <div className="flex flex-col gap-1">
+          <Suspense fallback={<div className="h-40 w-full max-w-[420px] rounded-lg ring-1 ring-hairline" />}>
+            <ShownItem file={item.file} botName={useBotStore.getState().bots.find(bot => bot.id === botId)?.name} />
+          </Suspense>
+          {replyActions}
+        </div>
+      )
     case 'compaction':
       return <CompactionLine item={item} />
     case 'connection.sign_in':
       return (
-        <Suspense fallback={<div className="h-[52px] max-w-[460px] rounded-[14px] ring-1 ring-hairline" />}>
+        <Suspense fallback={<div className="h-[52px] max-w-[460px] rounded-[14px] ring-1 ring-hairline ring-inset" />}>
           <SignInCard card={item.card} />
         </Suspense>
       )

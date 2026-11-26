@@ -1,5 +1,17 @@
 /** Engine-neutral matching between reported tool starts and LilBot-owned or forwarded MCP tools. */
 
+/** The tools that need to know their calling conversation. Engines may prefix the name with the server's. */
+export type CallingTool =
+  | 'lilbot_delegate'
+  | 'lilbot_delegation'
+  | 'lilbot_work'
+  | 'lilbot_group'
+  | 'lilbot_goal'
+  | 'lilbot_give_file'
+  | 'lilbot_webhook_message'
+  | 'lilbot_connection'
+  | 'lilbot_show'
+
 export type ToolNamer = (server: string, tool: string) => string
 export type ToolName = (botId: string, server: string, tool: string) => string
 export type BotNamer = (botId: string) => ToolNamer

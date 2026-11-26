@@ -101,7 +101,7 @@ function WaitingCard({ card }: { card: ConnectionSignInCard }) {
   const title = signInTitle(card)
   const reason = reasonOf(card)
   return (
-    <section aria-label={title} className="flex w-full max-w-[460px] flex-col gap-3.5 rounded-[14px] bg-card p-4 ring-1 ring-hairline">
+    <section aria-label={title} className="flex w-full max-w-[460px] flex-col gap-3.5 rounded-[14px] bg-card p-4 ring-1 ring-hairline ring-inset">
       <header className="flex items-center gap-2.5">
         <span aria-hidden className="flex size-9 flex-none items-center justify-center rounded-[9px] bg-foreground text-[15px]/[18px] font-semibold text-background">
           {card.serviceName.slice(0, 1).toUpperCase()}

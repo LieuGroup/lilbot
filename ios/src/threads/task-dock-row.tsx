@@ -141,3 +141,21 @@ export function DockRow({ botId, item, now, inWorkerBatch, onOpen, onAnswer, onS
     </View>
   )
 }
+
+/** "For Chief of Staff" / "Handed out" above each group, only when the dock holds both kinds (Paper "26", #316). */
+export function DockSectionLabel({ label }: { label: string }) {
+  const theme = useTheme()
+  return (
+    <View style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: theme.hairline }}>
+      <AppText
+        variant="meta"
+        color={theme.mutedForeground}
+        numberOfLines={1}
+        maxFontSizeMultiplier={THREAD_TYPE_CAPS.badge}
+        style={{ fontFamily: 'Inter_600SemiBold', fontSize: 11, letterSpacing: 0.6, textTransform: 'uppercase' }}
+      >
+        {label}
+      </AppText>
+    </View>
+  )
+}

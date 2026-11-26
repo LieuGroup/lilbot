@@ -101,6 +101,10 @@ export default function CompactChatRoute() {
   )
   const renderToolItem = useMemo(() => (bot ? withWorkToolRenderer(openWorkItem, createThreadToolRenderer(bot.id)) : undefined), [bot, openWorkItem])
 
+  const openBotDetails = useCallback(() => {
+    if (bot) router.push({ pathname: '/(tabs)/(bots)/bot-details', params: { botId: bot.id } })
+  }, [bot, router])
+
   const backVisible = shouldShowNativeBack(surface, screenReaderEnabled)
   const hideDuoHeader = shouldHideDuoChatHeader({ surface, verticalBarEdge, hasBot: bot !== null })
   const stripScreen = resolveDuoStripScreen({ surface, chatFocused: true })
@@ -110,13 +114,13 @@ export default function CompactChatRoute() {
         ? buildDuoVerticalBarItems({
             screen: stripScreen,
             actions: {
-              'bot-avatar': { element: <DuoStripAvatar bot={bot} running={running} unread={unread} onPress={openBotMenu} />, hidesSharedBackground: false },
+              'bot-avatar': { element: <DuoStripAvatar bot={bot} running={running} unread={unread} onPress={openBotDetails} />, hidesSharedBackground: false },
               'bot-menu': { label: `More for ${bot.name}`, onPress: openBotMenu }
             },
             tintColor: theme.foreground
           })
         : [],
-    [bot, hideDuoHeader, openBotMenu, running, stripScreen, theme.foreground, unread]
+    [bot, hideDuoHeader, openBotDetails, openBotMenu, running, stripScreen, theme.foreground, unread]
   )
 
   const screenOptions = useMemo(() => {
@@ -155,9 +159,16 @@ export default function CompactChatRoute() {
 
 function ChatHeaderTitle({ bot }: { bot: Bot }) {
   const theme = useTheme()
-  const openMenu = useBotMenuStore(state => state.openMenu)
+  const router = useRouter()
   return (
-    <Pressable testID="chat-header-pill" onPress={() => openMenu(bot.id)} hitSlop={6} accessibilityRole="button" accessibilityLabel={`${bot.name}, open bot options`} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 7, maxWidth: 220, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 9999, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.hairline, opacity: pressed ? 0.7 : 1 })}>
+    <Pressable
+      testID="chat-header-pill"
+      onPress={() => router.push({ pathname: '/(tabs)/(bots)/bot-details', params: { botId: bot.id } })}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel={`${bot.name}, open bot details`}
+      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 7, maxWidth: 220, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 9999, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.hairline, opacity: pressed ? 0.7 : 1 })}
+    >
       <BotAvatar name={bot.name} avatar={bot.prefs.avatar} size={22} />
       <AppText variant="title" numberOfLines={1} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.headerTitle} style={{ flexShrink: 1 }}>
         {bot.name}
