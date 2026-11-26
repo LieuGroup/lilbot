@@ -11,7 +11,7 @@ import '../scripts/dev-env'
  *  its scenario. Model calls are spaced 10 s apart. No Google
  *  model is called. `LILBOT_BEHAVIOUR_TABLE` writes the table as Markdown to that file. */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { routineLine } from '../server/devices/origin-line'
 import { HermesEngine } from '../server/engines/hermes/hermes-engine'
 import { FIXTURES, type Outcome, type Round, SCENARIOS, type Turn } from './prompt-behaviour-scenarios'
@@ -38,10 +38,12 @@ const proxy = startWireCaptureProxy(readDevUpstreamBaseUrl(), { workspaces: [WOR
 const stamp = Date.now().toString(36)
 const results: { model: string; scenario: string; outcome: Outcome }[] = []
 
-/** What reached the wire since record `wireFrom`; only one temporary bot exists at a time. */
-function turnOf(wireFrom: number, done: boolean, reply: string, tools: string[]): Turn {
+/** What reached the wire since record `wireFrom`: the requests of the bot working in `workspace`, and every refusal
+ *  (a second bot checking its work may have made one). */
+function turnOf(workspace: string, wireFrom: number, done: boolean, reply: string, tools: string[]): Turn {
   const wire = proxy.records.slice(wireFrom)
-  return { done, reply, tools, wire: wire.filter(r => r.toolCount > 0), refused: wire.flatMap(r => (r.outside ? [r.outside] : [])) }
+  const mine = wire.filter(r => r.toolCount > 0 && r.folder === resolve(workspace))
+  return { done, reply, tools, wire: mine, refused: wire.flatMap(r => (r.outside ? [r.outside] : [])) }
 }
 
 async function round(label: string, model: { provider: string; model: string }, n: number) {
@@ -75,7 +77,7 @@ async function round(label: string, model: { provider: string; model: string }, 
         .filter(e => inChat(e) && e.data?.type === 'tool.started')
         .map(e => String(e.data.name))
       await server.call('chat.close', { chatId }).catch(() => {})
-      return turnOf(wireFrom, answered(end?.data), String(end?.data?.text ?? ''), tools)
+      return turnOf(bot.workspace, wireFrom, answered(end?.data), String(end?.data?.text ?? ''), tools)
     },
     async hidden(text) {
       await Bun.sleep(SPACE_MS)
@@ -83,7 +85,7 @@ async function round(label: string, model: { provider: string; model: string }, 
       const options = { runId: `behaviour-${native}-${n}`, workspace: bot.workspace, model, origin: { line: routineLine }, onChat: () => {} }
       const run = await new HermesEngine([native]).runRoutine(native, text, options)
       stopOnAccountProblem(proxy.records, wireFrom, undefined, 'go on')
-      return turnOf(wireFrom, run.status === 'completed', run.text, [])
+      return turnOf(bot.workspace, wireFrom, run.status === 'completed', run.text, [])
     }
   }
   for (const scenario of SCENARIOS) {

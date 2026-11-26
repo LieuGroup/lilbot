@@ -26,6 +26,8 @@ export interface CapturedRequest {
   hasDateLine: boolean
   status: number
   error?: string
+  /** The bot's folder as the request's system note states it, when it lies inside the guard's workspaces. */
+  folder?: string
   /** Why the guard refused a tool call in this request's answer; the engine never ran it. */
   outside?: string
   /** Why a tool call the guard does not allow is in this request's history, so it ran. */
@@ -87,7 +89,8 @@ export function startWireCaptureProxy(upstreamBaseUrl: string, guard?: { workspa
       const parsed = rawBody ? safeJson(new TextDecoder().decode(rawBody)) : null
       const headers = new Headers(request.headers)
       headers.delete('host')
-      const folder = guard && (folderOf(parsed ? extractSystem(parsed).systemText : '', guard.workspaces) ?? guard.workspaces[0]!)
+      const stated = guard && folderOf(parsed ? extractSystem(parsed).systemText : '', guard.workspaces)
+      const folder = guard && (stated ?? guard.workspaces[0]!)
       const reached = (calls: ReturnType<typeof inRequest>) =>
         guard && folder ? calls.filter(c => c.name !== REFUSED_TOOL).flatMap(c => (why => (why ? [{ name: c.name, why }] : []))(refusal(c, folder, guard.policy))) : []
       const breach = parsed ? reached(inRequest(parsed))[0]?.why : undefined
@@ -118,6 +121,7 @@ export function startWireCaptureProxy(upstreamBaseUrl: string, guard?: { workspa
           hasDateLine: JSON.stringify(parsed.messages ?? parsed.input ?? '').includes('[LilBot date: '),
           status: response.status,
           ...(errorText ? { error: errorText } : {}),
+          ...(stated ? { folder: stated } : {}),
           ...(outside ? { outside } : {}),
           ...(breach ? { breach } : {}),
           elapsedMs: Date.now() - start
