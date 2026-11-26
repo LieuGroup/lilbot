@@ -19,7 +19,6 @@ const fullActions = {
   'bot-avatar': { element: fakeAvatar, hidesSharedBackground: false },
   'sidebar-toggle': { label: 'Hide bots sidebar', onPress: noop },
   'bot-menu': { label: 'More for Chief of Staff', onPress: noop },
-  'new-bot': { onPress: noop },
   'search-bots': { onPress: noop }
 }
 
@@ -40,9 +39,7 @@ describe('iPhone Duo fold/unfold transition continuity', () => {
     expect(splitItems.map(i => (i.type === 'custom' ? 'bot-avatar' : i.identifier))).toEqual([
       'bot-avatar',
       `${DUO_VERTICAL_ITEM_PREFIX}sidebar-toggle`,
-      `${DUO_VERTICAL_ITEM_PREFIX}bot-menu`,
-      `${DUO_VERTICAL_ITEM_PREFIX}new-bot`,
-      `${DUO_VERTICAL_ITEM_PREFIX}search-bots`
+      `${DUO_VERTICAL_ITEM_PREFIX}bot-menu`
     ])
     expect(resolveChatStatusLine({ connected: true, ready: true, running: true, activity: 'Working...' })).toEqual({
       text: 'Working...',
@@ -72,7 +69,7 @@ describe('iPhone Duo fold/unfold transition continuity', () => {
     expect(useChatStore.getState().slots[botId]?.draft).toBe('Keep this draft across fold')
     expect(useChatStore.getState().slots[botId]?.scrollOffset).toBe(148)
 
-    // Unfold back to landscape: compact /chat pops without clearing selected bot; 5 strip items return.
+    // Unfold back to landscape: compact /chat pops without clearing selected bot; 3 strip items return.
     expect(chatStackAction({ focused: true, splitMode: splitLayout.splitMode, hasBot: true })).toBe('pop-chat')
     expect(shouldClearSelectionOnChatPop(splitLayout.splitMode)).toBe(false)
     expect(useChatStore.getState().slots[botId]?.draft).toBe('Keep this draft across fold')

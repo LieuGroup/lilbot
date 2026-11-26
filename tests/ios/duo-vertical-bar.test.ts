@@ -65,8 +65,8 @@ describe('iPhone Duo native vertical side-strip table and availability guards', 
     expect(DUO_VERTICAL_BAR_TABLE['folded-roster'].map(s => s.priority)).toEqual(['high'])
     expect(DUO_VERTICAL_BAR_TABLE['folded-chat'].map(s => s.id)).toEqual(['bot-avatar', 'bot-menu'])
     expect(DUO_VERTICAL_BAR_TABLE['folded-chat'].map(s => s.priority)).toEqual(['high', 'high'])
-    expect(DUO_VERTICAL_BAR_TABLE['unfolded-split'].map(s => s.id)).toEqual(['bot-avatar', 'sidebar-toggle', 'bot-menu', 'new-bot', 'search-bots'])
-    expect(DUO_VERTICAL_BAR_TABLE['unfolded-split'].map(s => s.priority)).toEqual(['high', 'high', 'high', 'standard', 'low'])
+    expect(DUO_VERTICAL_BAR_TABLE['unfolded-split'].map(s => s.id)).toEqual(['bot-avatar', 'sidebar-toggle', 'bot-menu'])
+    expect(DUO_VERTICAL_BAR_TABLE['unfolded-split'].map(s => s.priority)).toEqual(['high', 'high', 'high'])
     expect(DUO_VERTICAL_BAR_TABLE['unfolded-portrait']).toEqual([])
 
     for (const slots of Object.values(DUO_VERTICAL_BAR_TABLE)) {
@@ -85,7 +85,6 @@ describe('iPhone Duo native vertical side-strip table and availability guards', 
         'search-bots': { onPress: noop },
         'bot-menu': { label: 'More for Chief', onPress: noop },
         'sidebar-toggle': { label: 'Hide bots sidebar', onPress: noop },
-        'new-bot': { onPress: noop },
         'bot-avatar': { element: fakeElement, hidesSharedBackground: false }
       },
       tintColor: '#111111'
@@ -93,11 +92,9 @@ describe('iPhone Duo native vertical side-strip table and availability guards', 
     expect(unfolded.map(i => (i.type === 'custom' ? 'custom:bot-avatar' : i.identifier))).toEqual([
       'custom:bot-avatar',
       `${DUO_VERTICAL_ITEM_PREFIX}sidebar-toggle`,
-      `${DUO_VERTICAL_ITEM_PREFIX}bot-menu`,
-      `${DUO_VERTICAL_ITEM_PREFIX}new-bot`,
-      `${DUO_VERTICAL_ITEM_PREFIX}search-bots`
+      `${DUO_VERTICAL_ITEM_PREFIX}bot-menu`
     ])
-    expect(unfolded.filter(i => i.type === 'button').map(i => i.visibilityPriority)).toEqual(['high', 'high', 'standard', 'low'])
+    expect(unfolded.filter(i => i.type === 'button').map(i => i.visibilityPriority)).toEqual(['high', 'high'])
     expect(unfolded[0]).toEqual({ type: 'custom', element: fakeElement, hidesSharedBackground: false })
 
     const folded = buildDuoVerticalBarItems({

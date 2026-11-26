@@ -21,6 +21,7 @@ import { computeShellLayout, nextSidebarState } from './layout'
 import { useBotSelection } from './selection'
 import { indexStackAction, shouldPushOnBotSelect } from './stack-sync'
 import { DuoStripAvatar } from './strip-avatar'
+import { useRosterSearchRequest } from './use-roster-search-request'
 import { useLiveSurface, useVerticalBarEdge } from './use-surface'
 import { buildDuoVerticalBarItems, duoVerticalHeaderOptions, isDuoVerticalBarActive, resolveDuoStripScreen, shouldHideDuoChatHeader, shouldShowInlineSidebarToggle } from './vertical-bar'
 
@@ -44,8 +45,7 @@ export function DuoShell({ inspectorOpen: inspectorOpenProp, onCloseInspector, r
   const loaded = useBotStore(state => state.loaded)
   const error = useBotStore(state => state.error)
   const connected = useConnectionStore(state => state.connected)
-  const openMenu = useBotMenuStore(state => state.openMenu)
-  const openNewBot = useBotMenuStore(state => state.openNewBot)
+  const openChatMenu = useBotMenuStore(state => state.openChatMenu)
   const selectedId = useBotSelection(state => state.selectedId)
   const pendingInitialPush = useBotSelection(state => state.pendingInitialPush)
   const select = useBotSelection(state => state.select)
@@ -75,6 +75,8 @@ export function DuoShell({ inspectorOpen: inspectorOpenProp, onCloseInspector, r
   }, [search.open])
 
   useFocusEffect(useCallback(() => { pushPendingRef.current = false }, []))
+  const revealRoster = useCallback(() => { setSidebarOpen(true); setInspectorOpen(false); onCloseInspector?.() }, [onCloseInspector])
+  useRosterSearchRequest({ focused: isFocused, rosterShown: showRoster, showRoster: revealRoster, openSearch })
   useEffect(() => { if (!isFocused || !showRoster) closeSearch() }, [closeSearch, isFocused, showRoster])
 
   useEffect(() => {
@@ -129,7 +131,7 @@ export function DuoShell({ inspectorOpen: inspectorOpenProp, onCloseInspector, r
   }, [closeInspector, inspectorActive, sidebarOpen])
 
   const toggleInspector = useCallback(() => setInspectorOpen(open => !open), [])
-  const openSelectedMenu = useCallback(() => { if (selected) openMenu(selected.id) }, [openMenu, selected])
+  const openSelectedMenu = useCallback(() => { if (selected) openChatMenu(selected.id) }, [openChatMenu, selected])
 
   const verticalBarActive = isDuoVerticalBarActive({ surface, verticalBarEdge })
   const hideDuoChatHeader = shouldHideDuoChatHeader({ surface, verticalBarEdge, hasBot: selected !== null })
@@ -150,12 +152,11 @@ export function DuoShell({ inspectorOpen: inspectorOpenProp, onCloseInspector, r
             }
           : {}),
         ...(layout.showSidebarToggle ? { 'sidebar-toggle': { label: sidebarLabel, onPress: handleToggleSidebar } } : {}),
-        ...(layout.splitMode ? { 'new-bot': { onPress: openNewBot } } : {}),
         ...(showRoster ? { 'search-bots': { onPress: toggleSearch } } : {})
       },
       tintColor: theme.foreground
     })
-  }, [handleToggleSidebar, layout.showSidebarToggle, layout.splitMode, openNewBot, openSelectedMenu, renderInspector, selected, selectedRunning, showRoster, sidebarLabel, stripScreen, theme.foreground, toggleInspector, toggleSearch, verticalBarActive])
+  }, [handleToggleSidebar, layout.showSidebarToggle, layout.splitMode, openSelectedMenu, renderInspector, selected, selectedRunning, showRoster, sidebarLabel, stripScreen, theme.foreground, toggleInspector, toggleSearch, verticalBarActive])
 
   const useNativeStripHeader = verticalBarActive && verticalBarItems.length > 0
   const stackOptions = useMemo(() => duoVerticalHeaderOptions(verticalBarItems, theme.foreground), [theme.foreground, verticalBarItems])
@@ -170,7 +171,7 @@ export function DuoShell({ inspectorOpen: inspectorOpenProp, onCloseInspector, r
       <Stack.Screen options={stackOptions} />
       <View style={{ flex: 1, flexDirection: 'row', backgroundColor: theme.background, paddingTop: useNativeStripHeader ? 0 : insets.top, paddingLeft: layout.horizontalPadding.left, paddingRight: layout.horizontalPadding.right }}>
         <View key="roster-pane" style={layout.splitMode ? { width: layout.rosterWidth, display: showRoster ? 'flex' : 'none', borderRightWidth: 1, borderRightColor: theme.hairline } : { flex: 1 }}>
-          <Roster bots={bots} sections={sections} loaded={loaded} connected={connected} error={error} selectedId={layout.splitMode ? (selected?.id ?? null) : null} splitMode={layout.splitMode} hideInlineSearch={verticalBarActive} hideInlineNewBot={verticalBarActive && layout.splitMode} searchOpen={search.open} searchQuery={search.query} onChangeSearchQuery={changeSearchQuery} onOpenSearch={openSearch} onCloseSearch={closeSearch} onSelect={handleSelectBot} />
+          <Roster bots={bots} sections={sections} loaded={loaded} connected={connected} error={error} selectedId={layout.splitMode ? (selected?.id ?? null) : null} splitMode={layout.splitMode} hideInlineSearch={verticalBarActive && (!layout.splitMode || selected !== null)} hideInlineNewBot={verticalBarActive && layout.splitMode && selected !== null} searchOpen={search.open} searchQuery={search.query} onChangeSearchQuery={changeSearchQuery} onOpenSearch={openSearch} onCloseSearch={closeSearch} onSelect={handleSelectBot} />
         </View>
         {layout.splitMode && (
           <View key="chat-pane" style={{ flex: 1 }}>

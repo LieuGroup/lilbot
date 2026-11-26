@@ -39,7 +39,7 @@ export default function CompactChatRoute() {
   const verticalBarEdge = useVerticalBarEdge()
   const screenReaderEnabled = useScreenReaderEnabled()
   const bots = useBotStore(state => state.bots)
-  const openMenu = useBotMenuStore(state => state.openMenu)
+  const openChatMenu = useBotMenuStore(state => state.openChatMenu)
   const selectedId = useBotSelection(state => state.selectedId)
   const enterChat = useBotSelection(state => state.enterChat)
   const leaveChat = useBotSelection(state => state.leaveChat)
@@ -91,8 +91,8 @@ export default function CompactChatRoute() {
   }, [bot, bots.length, isFocused, layout.splitMode, navigation])
 
   const openBotMenu = useCallback(() => {
-    if (bot) openMenu(bot.id)
-  }, [bot, openMenu])
+    if (bot) openChatMenu(bot.id)
+  }, [bot, openChatMenu])
   const openWorkItem = useCallback(
     (itemId: string) => {
       router.push({ pathname: '/(tabs)/(work)/item', params: { itemId } })
@@ -180,11 +180,11 @@ function ChatHeaderTitle({ bot }: { bot: Bot }) {
 
 function ChatHeaderActions({ bot }: { bot: Bot }) {
   const theme = useTheme()
-  const openMenu = useBotMenuStore(state => state.openMenu)
+  const openChatMenu = useBotMenuStore(state => state.openChatMenu)
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
       <ChatNewSessionButton botId={bot.id} />
-      <Pressable testID="chat-bot-menu-button" onPress={() => openMenu(bot.id)} hitSlop={8} accessibilityRole="button" accessibilityLabel={`More for ${bot.name}`} style={({ pressed }) => ({ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}>
+      <Pressable testID="chat-bot-menu-button" onPress={() => openChatMenu(bot.id)} hitSlop={8} accessibilityRole="button" accessibilityLabel={`More for ${bot.name}`} style={({ pressed }) => ({ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}>
         <MoreHorizontalIcon color={theme.foreground} size={16} />
       </Pressable>
     </View>
