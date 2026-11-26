@@ -135,6 +135,7 @@ export const HISTORY_OWNERSHIP_TABLES = `CREATE TABLE IF NOT EXISTS history_owne
    CREATE TABLE IF NOT EXISTS history_sent(bot TEXT NOT NULL, event INTEGER NOT NULL, row_id TEXT NOT NULL, PRIMARY KEY(bot, event), UNIQUE(bot, row_id));
    CREATE INDEX IF NOT EXISTS history_events_type ON history_events(bot, session, json_extract(event, '$.type'));
    CREATE INDEX IF NOT EXISTS history_events_reply ON history_events(bot, session, json_extract(event, '$.rowId')) WHERE json_extract(event, '$.type') = 'turn.finished';
+   CREATE INDEX IF NOT EXISTS history_events_tool ON history_events(bot, session, json_extract(event, '$.toolId')) WHERE json_extract(event, '$.type') = 'tool.started';
    CREATE INDEX IF NOT EXISTS history_events_sent ON history_events(bot, session, trim(json_extract(event, '$.text'))) WHERE json_extract(event, '$.type') = 'user.message';
    INSERT OR IGNORE INTO history_owned(bot, session, reason, at) SELECT s.bot, s.id, 'existing', s.at FROM history_sessions s WHERE NOT EXISTS (SELECT 1 FROM history_exclusions x WHERE x.bot = s.bot AND x.session = s.id);
    INSERT OR IGNORE INTO history_owned(bot, session, reason, at) SELECT bot_id, main_chat_id, 'existing', 0 FROM bot_prefs WHERE main_chat_id IS NOT NULL;

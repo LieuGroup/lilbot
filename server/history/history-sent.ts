@@ -1,81 +1,74 @@
-/** Every item of the conversation sits where Oscar first saw it. The engine writes a message he sent while the bot was
- *  busy when it starts on it, and a reply when it is complete, so by its times alone a message sent during a hidden turn
- *  falls below that turn's reply. LilBot's journal holds the moment he sent each message and the moment each reply began
- *  to show; an imported row takes that earlier moment. Journal and engine times are only compared between rows whose
- *  moment is known: a row never moves above an earlier row known only by its engine time, so a clock difference cannot
- *  reorder the conversation. A message is matched like its device (`devices/origin-store.ts`): the oldest unmatched send
- *  of the same text in the session, made just before the row. Matches are kept, so importing again gives the same answer. */
+/** Every item of the conversation sits where Oscar first saw it. The engine keeps everything in the order it happened,
+ *  except a message he sent while the bot was busy: it writes that when it starts on it, below the replies and tools that
+ *  showed after he sent it. So an imported message moves up past exactly those rows, and the decision compares only
+ *  positions in LilBot's journal (its event sequence), never a time from one clock with a time from another: a row
+ *  belongs after the message when the journal event at which LilBot first showed it (its tool's start, or the first words
+ *  of its reply) comes after the message's send. The message is matched like its device (`devices/origin-store.ts`): the
+ *  oldest unmatched send of the same text in the session, made before the row; the match is kept and a placed row is
+ *  never moved again, so importing again, opening the chat or restarting gives the same answer. */
 import type { Database } from 'bun:sqlite'
+import type { ChatItem } from '../../shared/chat-schema'
 import type { HistoryRow } from './history-store'
 
 const WINDOW_MS = 6 * 60 * 60_000
 const CLOCK_SKEW_MS = 5_000
+/** The most rows a message moves past: far more than one busy turn shows. */
+const MOST_PASSED = 500
 type Seen = { event: number; at: number }
+type Stored = { id: string; at: number; position: number; item: string }
 
-/** Every lookup below is an index seek (migration 46: `history_events_type`, `_reply`, `_sent`), so placing a page costs
- *  the same on a long journal as on a short one. */
+/** Every lookup below is an index seek (migration 46: `history_events_type`, `_reply`, `_sent`, `_tool`, and
+ *  `history_order`), so placing a message costs the same on a long journal as on a short one. */
 const TYPE = "json_extract(event,'$.type')"
 const FINISHED = `SELECT rowid FROM history_events WHERE bot=?1 AND session=?2 AND ${TYPE}='turn.finished' AND json_extract(event,'$.rowId')=?3 ORDER BY rowid LIMIT 1`
+const STARTED = `SELECT rowid FROM history_events WHERE bot=?1 AND session=?2 AND ${TYPE}='tool.started' AND json_extract(event,'$.toolId')=?3 ORDER BY rowid LIMIT 1`
 const LAST = `SELECT coalesce(max(rowid),0) id FROM history_events WHERE bot=?1 AND session=?2 AND ${TYPE}=?3 AND rowid<?4`
 
-/** A reply imported while its turn is still open in the journal is not yet placed: it is no floor for a message sent
- *  before it showed, and it takes its place when its turn is journalled as finished (`placeFinished`). The floor is the
- *  newest earlier row known only by its engine time; only one later than `above` (the moment being placed) can matter, so
- *  the walk covers the seconds between that moment and the row's engine time, never the whole session. */
-function floorBefore(db: Database, bot: string, session: string, open: number | null, position: number, rowId: string, skip: Set<string>, above: number) {
-  const next = db.query(
-    `SELECT id, at, position, json_extract(item,'$.kind') kind FROM history_items i WHERE bot=?1 AND session=?2 AND position<?3 AND id<>?4 AND (at,position)<(?5,?6) AND at>?7
-     AND id NOT LIKE 'journal:%' AND id NOT LIKE 'session:%' AND NOT EXISTS (SELECT 1 FROM history_sent s WHERE s.bot=?1 AND s.row_id=i.id) ORDER BY at DESC, position DESC LIMIT 1`
-  )
-  let key = [Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER]
-  for (;;) {
-    const row = next.get(bot, session, position, rowId, key[0], key[1], above) as { id: string; at: number; position: number; kind: string } | null
-    if (!row) return 0
-    if (!skip.has(row.id) && !(open !== null && row.at >= open && row.kind === 'assistant' && !db.query(FINISHED).get(bot, session, row.id))) return row.at
-    key = [row.at, row.position]
+/** Where a message the page brings for the first time goes; every other row, and a message already stored, keeps the
+ *  engine's place. Called just before the row is stored, after the rows above it in the page. */
+export function placeMessage(db: Database, bot: string, session: string, row: HistoryRow): HistoryRow {
+  if (row.item.kind !== 'user' || row.id.startsWith('journal:') || db.query('SELECT 1 FROM history_items WHERE bot=? AND id=?').get(bot, row.id)) return row
+  const sent = sentAt(db, bot, session, row)
+  if (!sent) return row
+  db.query('INSERT OR IGNORE INTO history_sent(bot,event,row_id) VALUES(?,?,?)').run(bot, sent.event, row.id)
+  const before = db.query('SELECT id, at, position, item FROM history_items WHERE bot=? AND session=? AND (at,position)<(?,?) ORDER BY at DESC, position DESC LIMIT 1')
+  let [first, next]: (Stored | null)[] = [null, null]
+  let above = before.get(bot, session, row.at, row.order) as Stored | null
+  for (let passed = 0; above && passed < MOST_PASSED && shownAfter(db, bot, session, above, next, sent); passed++) {
+    ;[first, next] = [above, above]
+    above = before.get(bot, session, above.at, above.position) as Stored | null
   }
+  if (!first) return row
+  // Any key strictly between the row it now follows and the first row it passed keeps that order; the time shown is the
+  // moment it was sent, held within those two rows' times.
+  const at = Math.min(first.at, Math.max(sent.at, above?.at ?? sent.at))
+  const order = at === above?.at ? (at === first.at ? (above.position + first.position) / 2 : above.position + 0.25) : at === first.at ? first.position - 0.25 : row.order
+  return { ...row, at, order }
 }
 
-/** Places the rows a page brings for the first time. A stored row keeps its place (a page never moves a stored row), so
- *  re-reading rows, as every chat open does for the newest page, costs one lookup each. */
-export function atFirstSight(db: Database, bot: string, session: string, rows: HistoryRow[]): HistoryRow[] {
-  const open = turnOpen(db, bot, session)
-  const stored = db.query('SELECT 1 FROM history_items WHERE bot=? AND id=?')
-  const unplaced: HistoryRow[] = []
-  const pending = new Set<string>()
-  return rows.map(row => {
-    if (row.id.startsWith('journal:') || stored.get(bot, row.id)) return row
-    const seen = row.item.kind === 'user' ? sentAt(db, bot, session, row) : row.item.kind === 'assistant' ? shownAt(db, bot, session, row.id) : null
-    if (!seen && open !== null && row.item.kind === 'assistant') pending.add(row.id)
-    if (!seen || seen.at >= row.at) {
-      if (!pending.has(row.id)) unplaced.push(row)
-      return row
-    }
-    db.query('INSERT OR IGNORE INTO history_sent(bot,event,row_id) VALUES(?,?,?)').run(bot, seen.event, row.id)
-    const floor = floorBefore(db, bot, session, open, row.order, row.id, pending, seen.at)
-    return { ...row, at: Math.min(row.at, Math.max(seen.at, floor, ...unplaced.map(other => other.at))) }
-  })
+/** Whether LilBot first showed this stored row after the message was sent. `next` is the row just below it. */
+function shownAfter(db: Database, bot: string, session: string, row: Stored, next: Stored | null, sent: Seen): boolean {
+  const item = JSON.parse(row.item) as ChatItem
+  const after = (event: number | undefined | null) => !!event && event > sent.event
+  // LilBot's own rows (a shown file, a sign-in card, a thread or work line, the journal's stand-ins) carry LilBot's time, as the send does.
+  if (item.kind === 'shown' || item.kind === 'connection.sign_in' || (item.kind === 'tool' && row.id === item.toolId) || row.id.startsWith('journal:')) return row.at > sent.at
+  if (item.kind === 'tool') return after(started(db, bot, session, item.toolId))
+  if (item.kind === 'user') return after((db.query('SELECT event FROM history_sent WHERE bot=? AND row_id=?').get(bot, row.id) as { event: number } | null)?.event)
+  if (item.kind !== 'assistant') return false
+  const done = (db.query(FINISHED).get(bot, session, row.id) as { rowid: number } | null)?.rowid
+  if (done) return after(wordsBefore(db, bot, session, done)?.event ?? done)
+  const tool = next && (JSON.parse(next.item) as ChatItem)
+  const start = tool?.kind === 'tool' ? started(db, bot, session, tool.toolId) : null
+  if (start) return after(wordsBefore(db, bot, session, start)?.event)
+  // The reply of a turn whose end is not journalled yet (the importer read it a moment before): its words are the open
+  // turn's. A reply the engine wrote well before the message was sent is never that one.
+  const open = last(db, bot, session, 'turn.started', Number.MAX_SAFE_INTEGER)
+  if (row.at < sent.at - CLOCK_SKEW_MS || open > sent.event || open <= last(db, bot, session, 'turn.finished', Number.MAX_SAFE_INTEGER)) return false
+  return after(wordsBefore(db, bot, session, Number.MAX_SAFE_INTEGER)?.event)
 }
 
-/** When a turn is journalled as finished, its reply already imported (while the turn was open) takes the moment it began to show. */
-export function placeFinished(db: Database, bot: string, session: string, rowId: string) {
-  const row = db
-    .query('SELECT at, position FROM history_items i WHERE bot=? AND session=? AND id=? AND NOT EXISTS (SELECT 1 FROM history_sent s WHERE s.bot=i.bot AND s.row_id=i.id)')
-    .get(bot, session, rowId) as { at: number; position: number } | null
-  const seen = row && shownAt(db, bot, session, rowId)
-  if (!row || !seen || seen.at >= row.at) return
-  db.query('INSERT OR IGNORE INTO history_sent(bot,event,row_id) VALUES(?,?,?)').run(bot, seen.event, rowId)
-  const floor = floorBefore(db, bot, session, null, row.position, rowId, new Set(), seen.at)
-  db.query('UPDATE history_items SET at=? WHERE bot=? AND id=?').run(Math.min(row.at, Math.max(seen.at, floor)), bot, rowId)
-}
-
-const last = (db: Database, bot: string, session: string, type: string, before = Number.MAX_SAFE_INTEGER) => (db.query(LAST).get(bot, session, type, before) as { id: number }).id
-/** When the turn still open in the journal started (less the clock allowance), or null when none is open. */
-function turnOpen(db: Database, bot: string, session: string) {
-  const started = last(db, bot, session, 'turn.started')
-  if (started <= last(db, bot, session, 'turn.finished')) return null
-  return (db.query('SELECT at FROM history_events WHERE rowid=?').get(started) as { at: number }).at - CLOCK_SKEW_MS
-}
+const started = (db: Database, bot: string, session: string, toolId: string) => (db.query(STARTED).get(bot, session, toolId) as { rowid: number } | null)?.rowid ?? null
+const last = (db: Database, bot: string, session: string, type: string, before: number) => (db.query(LAST).get(bot, session, type, before) as { id: number }).id
 
 function sentAt(db: Database, bot: string, session: string, row: HistoryRow): Seen | null {
   const known = db.query('SELECT e.rowid event, e.at FROM history_sent s JOIN history_events e ON e.rowid=s.event WHERE s.bot=? AND s.row_id=?').get(bot, row.id) as Seen | null
@@ -89,12 +82,10 @@ function sentAt(db: Database, bot: string, session: string, row: HistoryRow): Se
     .get(bot, session, text, row.at + CLOCK_SKEW_MS, row.at - WINDOW_MS) as Seen | null
 }
 
-/** When the reply this row finished began to show: its turn's first streamed text after the turn's last tool. */
-function shownAt(db: Database, bot: string, session: string, rowId: string): Seen | null {
-  const done = (db.query(FINISHED).get(bot, session, rowId) as { rowid: number } | null)?.rowid
-  if (!done) return null
-  const mark = Math.max(...['turn.started', 'tool.started', 'tool.finished', 'turn.finished'].map(type => last(db, bot, session, type, done)))
+/** The first words shown in the stretch of the journal that ends at `end`, since the turn's last start, tool or end. */
+function wordsBefore(db: Database, bot: string, session: string, end: number): Seen | null {
+  const mark = Math.max(...['turn.started', 'tool.started', 'tool.finished', 'turn.finished'].map(type => last(db, bot, session, type, end)))
   return db
     .query(`SELECT rowid event, at FROM history_events WHERE bot=? AND session=? AND ${TYPE}='text.delta' AND rowid>? AND rowid<? ORDER BY rowid LIMIT 1`)
-    .get(bot, session, mark, done) as Seen | null
+    .get(bot, session, mark, end) as Seen | null
 }

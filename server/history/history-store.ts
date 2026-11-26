@@ -7,7 +7,7 @@ import { HistoryMetaStore } from './history-meta-store'
 import { HistoryOwnership } from './history-owned'
 import { HistoryPreviewStore } from './history-preview'
 import { type HistorySearchMatch, searchHistory } from './history-search'
-import { atFirstSight, placeFinished } from './history-sent'
+import { placeMessage } from './history-sent'
 import { pruneSupersededJournalRows } from './history-tail'
 
 type HistorySession = { bot: string; id: string; at: number; cursor: string | null; complete: number }
@@ -51,13 +51,15 @@ export class HistoryStore {
   writeUnchecked(bot: string, session: string, rows: HistoryRow[], cursor?: string | null, complete = false): boolean {
     // Checked under the write lock, so an exclusion committed meanwhile is never undone by a late page.
     if (this.excluded(bot, session)) return false
-    const enriched = this.meta.mergeRows(bot, session, atFirstSight(this.db, bot, session, rows))
+    const enriched = this.meta.mergeRows(bot, session, rows)
     pruneSupersededJournalRows(this.db, bot, session, enriched)
     // A stored row is written again only when its item changed, so re-reading unchanged rows touches no index or search entry.
     const insert = this.db.query(`INSERT INTO history_items(bot,session,id,at,position,item,text) VALUES(?,?,?,?,?,?,?)
         ON CONFLICT(bot,id) DO UPDATE SET item=excluded.item,text=excluded.text WHERE item IS NOT excluded.item`)
-    for (const row of enriched) {
-      if (row.item.kind === 'tool' && isShowTool(row.item.name)) continue
+    for (const given of enriched) {
+      if (given.item.kind === 'tool' && isShowTool(given.item.name)) continue
+      // Each row is stored before the next is placed: a message moves only past rows already stored.
+      const row = placeMessage(this.db, bot, session, given)
       const text = 'text' in row.item ? row.item.text : row.item.kind === 'shown' ? shownSearchText(row.item.file) : ''
       insert.run(bot, session, row.id, row.at, row.order, JSON.stringify(row.item), text)
     }
@@ -77,7 +79,6 @@ export class HistoryStore {
           .run(bot, session, now, JSON.stringify(event), key)
         const out = inserted.changes > 0 ? this.previews.recordEvent(bot, session, event, now) : { changed: false }
         if (event.type === 'turn.finished' && !this.excluded(bot, session)) this.meta.recordTurn(bot, session, event, now)
-        if (event.type === 'turn.finished' && event.rowId && inserted.changes > 0) placeFinished(this.db, bot, session, event.rowId)
         return out
       })
       .immediate()

@@ -20,8 +20,6 @@ test("a message sent while a hidden turn runs is shown above that turn's reply, 
     store.event('b', 's', { type: 'text.delta', text: 'Paper is ' }, 'h2')
     store.event('b', 's', sent('i have connected paper mcp to lilbot', 'm1'), 'u1')
     store.event('b', 's', { type: 'turn.finished', status: 'completed', text: 'Paper is connected.', rowId: 'e:3' }, 'h3')
-    const reply = (db.query("SELECT at FROM history_events WHERE key='h2'").get() as { at: number }).at
-    const mine = (db.query("SELECT at FROM history_events WHERE key='u1'").get() as { at: number }).at
     const engineStamp = now + 1_000
     store.write('b', 's', [
       { id: 'e:3', at: engineStamp, order: 3, item: { kind: 'assistant', text: 'Paper is connected.' } },
@@ -30,11 +28,12 @@ test("a message sent while a hidden turn runs is shown above that turn's reply, 
     ])
     expect(texts(store)).toEqual(['connect paper', 'Sign in here.', 'Paper is connected.', 'i have connected paper mcp to lilbot', 'Great.'])
     const at = Object.fromEntries(store.page('b').items.map(row => [row.id, row.at]))
-    expect([at['e:3'], at['e:4']]).toEqual([reply, mine])
+    // He sent it after the reply began to show, so nothing moves: both keep the engine's place.
+    expect([at['e:3'], at['e:4']]).toEqual([engineStamp, engineStamp + 1])
     // Importing the same page again gives the same places; the journal copy of the message is not shown twice.
     store.write('b', 's', [{ id: 'e:4', at: engineStamp + 1, order: 4, item: { kind: 'user', text: 'i have connected paper mcp to lilbot' } }])
     expect(store.page('b').items.filter(row => row.item.kind === 'user')).toHaveLength(2)
-    expect(store.page('b').items.find(row => row.id === 'e:4')?.at).toBe(mine)
+    expect(store.page('b').items.find(row => row.id === 'e:4')?.at).toBe(engineStamp + 1)
   } finally {
     db.close()
   }

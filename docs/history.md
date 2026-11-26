@@ -29,15 +29,16 @@ LilBot never summarises. The short version is in `AGENTS.md` under "Conversation
 
 ## Where each item sits
 
-- An item sits where Oscar first saw it (`history/history-sent.ts`). The engine stores a message sent while the bot was
-  busy (a hidden turn, a reply still running) when it starts on it, so an imported message takes the moment LilBot
-  journalled sending it, and a reply the moment its text began to show; a row never moves above an earlier row known only
-  by the engine's time. A reply imported while its turn is still open in the journal is placed when that turn is
-  journalled as finished, and until then is no floor for a message sent before it showed. Every lookup is an index seek (migration 46
-  indexes the journal by event type, by a finished turn's row and by a sent message's text), so placing a page does not
-  grow with the journal, which is never pruned. Finding the newest earlier row known only by its engine time walks only
-  the rows between the moment being placed and the row's engine time. Opening a chat reads the newest engine page
-  (since #87: the importer pages oldest first, so this is how a reopened chat shows what happened while LilBot was not
+- An item sits where Oscar first saw it (`history/history-sent.ts`). The engine keeps everything in the order it
+  happened except a message sent while the bot was busy (a hidden turn, a reply still running), which it writes when it
+  starts on it. So an imported message moves up past exactly the rows LilBot first showed after he sent it, decided by
+  the journal's event order alone: a reply's first words, a tool's start, a placed message's send. No time from the
+  engine's clock is compared with the journal's, so no clock difference or coincidence changes the order; LilBot's own
+  rows (shown files, sign-in cards, thread and work lines) carry LilBot's time like the send. A reply whose turn end is
+  not yet journalled counts as the open turn's. Every lookup is an index seek (migration 46 indexes the journal by event
+  type, by a finished turn's row, by a sent message's text and by a tool's id), and a message passes at most 500 rows, so
+  placing does not grow with the history. Opening a chat reads the newest engine page (since #87: the importer pages
+  oldest first, so this is how a reopened chat shows what happened while LilBot was not
   watching); a row already stored is neither placed again nor rewritten unless its item changed. The web and phone apps put a message into the conversation the moment it is sent, marked as
   waiting until the engine starts on it; the engine's echo of it adds nothing.
 
