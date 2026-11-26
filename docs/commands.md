@@ -27,6 +27,11 @@ Every `check:*` and `bun live-checks/*.ts` follows the development rules in `AGE
 
 ## Live checks
 
+- `bun run check:page-sandbox`: no server, bot or model. Headless Chrome draws the HTML view (#317) as the web does
+  (`sandbox=""`, `srcDoc`, the shared head) with a hostile static page: image, stylesheet, font, form post, link clicks
+  (real mouse clicks), meta refresh, nested frames and script tags. A local listener, LilBot's stand-in origin and
+  Chrome's network log must record nothing, and the page's script must not have run. Three controls draw the same page
+  unprotected and must leak: with scripts, by clicks and a form post, and by a meta refresh.
 - `bun run check:live`: a temporary bot with a throwaway memory endpoint chats, stops, resumes and is deleted.
 - `bun run check:reasoning`: on an isolated server, the effort is readable before a message, a model and effort edit
   applies from the next message (between turns and mid-turn, with the earlier context kept), and a routine run and a

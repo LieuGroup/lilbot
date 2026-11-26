@@ -25,7 +25,7 @@ export async function openWorkspaceFile(root: string, input: string, directory =
     }
     const stat = await handle.stat()
     if (directory ? !stat.isDirectory() : !stat.isFile()) throw new LilBotError('invalid_path', 'Expected a regular file or folder.')
-    if (!directory && stat.size > MAX_FILE_BYTES) throw new LilBotError('file_too_large', 'Files must be at most 50 MiB.')
+    if (!directory && stat.size > MAX_FILE_BYTES) throw Object.assign(new LilBotError('file_too_large', 'Files must be at most 50 MiB.'), { size: stat.size })
     return { handle, path, stat }
   } catch (error) {
     await handle.close()

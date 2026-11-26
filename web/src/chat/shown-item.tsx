@@ -1,34 +1,32 @@
 /** A file a bot showed in its reply (#317, Paper artboard 27, row A): an image that opens in the viewer, a video that
- *  plays in place, or (until the sandboxed view, slice 3) a plain line for an HTML page. One width rule for every
- *  kind: the reply's width, at most 420. A file that is gone or grew past its limit draws as one plain line. The file's
- *  name and the caption are the bot's text, drawn as plain text. */
-import { FileCodeIcon, FileXIcon } from 'lucide-react'
-import { lazy, type ReactNode, Suspense, useState } from 'react'
+ *  plays in place, or an HTML page in a sandboxed frame (`page-view.tsx`, loaded with the first page). One width rule
+ *  for every kind: the reply's width, at most 420. A file that is gone or grew past its limit draws as one plain line
+ *  with its name and why (A4: no caption on it). The file's name and the caption are the bot's text, drawn as plain text. */
+import { FileXIcon } from 'lucide-react'
+import { lazy, type ReactNode, Suspense, useCallback, useState } from 'react'
 
 import type { ViewedImage } from '@/ui/image-viewer'
 import { formatBytes } from '../../../shared/client/attachments/attachment-rules'
+import { type Missing, whyMissing } from '../../../shared/client/chat/shown-load'
 import { SHOW_LIMITS } from '../../../shared/shown-rules'
 import type { ShownFile } from '../../../shared/shown-schema'
 
 const ImageViewer = lazy(() => import('@/ui/image-viewer'))
-
-type Missing = 'gone' | 'too_large'
-
-/** Why the file did not load: the route answers 413 for a file past its limit and 404 for one that is gone. */
-async function whyMissing(url: string): Promise<Missing> {
-  const status = await fetch(url, { method: 'HEAD', cache: 'no-store' }).then(
-    res => res.status,
-    () => 404
-  )
-  return status === 413 ? 'too_large' : 'gone'
-}
+const PageView = lazy(() => import('./page-view'))
+const PAGE_RESERVE = 192
 
 export default function ShownItem({ file, botName }: { file: ShownFile; botName?: string }) {
   const [missing, setMissing] = useState<Missing>()
   const [viewed, setViewed] = useState<ViewedImage>()
   const fail = () => void whyMissing(file.url).then(setMissing)
+  const onMissing = useCallback((why: Missing) => setMissing(why), [])
   if (missing) return <ShownLine file={file} icon={<FileXIcon />} detail={missingText(missing, file, botName)} />
-  if (file.kind === 'page') return <ShownLine file={file} icon={<FileCodeIcon />} detail={`HTML view · ${formatBytes(file.size)}`} />
+  if (file.kind === 'page')
+    return (
+      <Suspense fallback={<div className="w-full max-w-[420px] rounded-lg bg-card ring-1 ring-hairline" style={{ height: PAGE_RESERVE }} />}>
+        <PageView file={file} onMissing={onMissing} />
+      </Suspense>
+    )
   return (
     <figure data-shown={file.kind} className="m-0 flex w-full max-w-[420px] flex-col gap-1.5">
       {file.kind === 'image' ? (
@@ -60,12 +58,13 @@ export default function ShownItem({ file, botName }: { file: ShownFile; botName?
   )
 }
 
-function missingText(missing: Missing, file: ShownFile, botName?: string) {
-  if (missing === 'too_large') return `Too large to show here (limit ${formatBytes(SHOW_LIMITS.bytes[file.kind])})`
+export function missingText(missing: Missing, file: Pick<ShownFile, 'kind'>, botName?: string) {
+  const limit = `limit ${formatBytes(SHOW_LIMITS.bytes[file.kind])}`
+  if (missing.kind === 'too_large') return `Too large to show here (${missing.size ? `${formatBytes(missing.size)}, ` : ''}${limit})`
   return `No longer in ${botName || 'the bot'}'s folder`
 }
 
-/** One plain line, never an error colour (A4): the file's name and why it is not drawn, or the HTML placeholder. */
+/** One plain line, never an error colour (A4): the file's name and why it is not drawn. */
 function ShownLine({ file, icon, detail }: { file: ShownFile; icon: ReactNode; detail: string }) {
   return (
     <div data-shown-line className="flex w-full max-w-[420px] items-center gap-2.5 rounded-md bg-card px-3 py-2.25 ring-1 ring-hairline">
