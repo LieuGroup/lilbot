@@ -38,8 +38,11 @@ export function cleanCaption(text: string | undefined): string | undefined {
   return `${(space > SHOW_LIMITS.captionChars / 2 ? cut.slice(0, space) : cut).trimEnd()}…`
 }
 
-/** The engine's own row for a `lilbot_show` call: the item replaces it, so it is never drawn or kept. */
-export const isShowTool = (name: string) => name === 'lilbot_show' || name.endsWith('__lilbot_show')
+/** The engine's own row for a `lilbot_show` call: the item replaces it, so it is never drawn or kept. Only LilBot's own
+ *  system server's tool: engines name it `mcp__lilbot_system__lilbot_show` (seen live from Hermes), or bare. A tool of
+ *  the same name on another MCP server is that server's, and stays drawn. */
+const SHOW_TOOL_NAMES: ReadonlySet<string> = new Set(['lilbot_show', 'mcp__lilbot_system__lilbot_show'])
+export const isShowTool = (name: string) => SHOW_TOOL_NAMES.has(name)
 
 /** What search finds for an item: its caption and its file name. */
 export const shownSearchText = (file: { caption?: string; name: string }) => [file.caption, file.name].filter(Boolean).join(' ')

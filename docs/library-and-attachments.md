@@ -39,7 +39,9 @@ Short summaries are in `AGENTS.md` under "Library and chat attachments"; screen 
   `shown:<id>` at the call's time (so it sits between the reply's words after the engine's own import), published
   live as a `shown` chat event, and searched by caption and file name.
 - The engine's own row for the `lilbot_show` call is never drawn or kept: `isShowTool` filters it live
-  (`chat-state.ts`), in the journal rebuild (`history-tail.ts`) and on import (`history-store.ts`).
+  (`chat-state.ts`), in the journal rebuild (`history-tail.ts`) and on import (`history-store.ts`). It matches only
+  LilBot's own system server's tool (`lilbot_show` or `mcp__lilbot_system__lilbot_show`), never another server's tool
+  of the same name.
 - `/api/shown/<bot>/<id>` re-opens the saved path through `openWorkspaceFile` (no links, inside the folder), refuses a
   file grown past its kind's limit (413) or gone (404), and answers one `bytes=` range with 206 so video seeks. Same
   Host/Origin guard and download headers (`Content-Disposition: attachment`, `CSP: sandbox`) as the Library route; an

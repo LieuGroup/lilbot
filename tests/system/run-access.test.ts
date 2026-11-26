@@ -7,8 +7,10 @@ const CREATE = { requestId: 'c1', name: 'Helper', function: 'Helps', instruction
 const ALL = ['web', 'shell', 'computers', 'coding', 'bots', 'delegation', 'memory', 'routines', 'webhooks'] as const
 
 test('every LilBot tool is either open to webhook runs or in a capability group, so a new tool needs a decision', () => {
-  const f = systemFixture()
+  // With every switch on, so tools offered only behind one (lilbot_show, coding) are checked too.
+  const f = systemFixture({ show: true, t3Enabled: true })
   const grouped = new Set([...RUN_TOOLS, ...NO_RUN_TOOLS, ...Object.values(TOOL_GROUPS).flat()])
+  expect(f.tools.map(tool => tool.name)).toContain('lilbot_show')
   expect(f.tools.map(tool => tool.name).filter(name => !grouped.has(name))).toEqual([])
   expect(RUN_TOOLS).not.toContain('lilbot_bot_create')
   expect(RUN_TOOLS).toContain('lilbot_skill_read')
