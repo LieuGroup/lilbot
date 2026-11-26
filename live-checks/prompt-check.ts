@@ -157,8 +157,9 @@ try {
   check('Claude direct: prompt caching works across turns', answered(c1.finished) && c2.reply.includes('MANGO-42') && cacheRead > 0, `cacheReadTokens=${cacheRead}`)
   await checkCompactionMarker(server, bot.id, async (cid, text) => (await turn(server, bot.id, cid, text)).finished)
 
-  rmSync(promptPath, { force: true })
-  const fb = await turn(server, bot.id, (await server.call('chat.new', { botId: bot.id })).chatId, 'Reply with exactly: FALLBACK_OK')
+  const fbChat = (await server.call('chat.new', { botId: bot.id })).chatId
+  rmSync(promptPath, { force: true }) // after opening: opening a chat writes the file again
+  const fb = await turn(server, bot.id, fbChat, 'Reply with exactly: FALLBACK_OK')
   check('fail safe: a missing prompt file still answers', answered(fb.finished) && fb.reply.includes('FALLBACK_OK'))
   const reason = async () => (await server.call('bots.get', { botId: bot.id })).promptFallback
   const missing = await reason()
