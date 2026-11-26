@@ -1,10 +1,12 @@
 /** What the roster shows of each bot's work with other bots and its own workers: running groups (and what it does there),
- *  whose task it works on now, and how many of its own workers are running. */
-import type { BotGroup, BotWorkers, BotWorkingFor } from '../../shared/bot-schema'
+ *  every task it works on now for other bots, and how many of its own workers are running. */
+import type { BotGroup, BotTaskFor, BotWorkers, BotWorkingFor } from '../../shared/bot-schema'
 import type { GroupStore } from './group-store'
 import { rosterGroups } from './group-view'
 import type { ThreadRunner } from './thread-runner'
 import { type Delivery, isWork, type ThreadStore } from './thread-store'
+
+type RosterEntry = { groups?: BotGroup[]; workingFor?: BotWorkingFor; tasksFor?: BotTaskFor[]; workers?: BotWorkers }
 
 /** True when `d` is a non-cancelled same-bot worker delivery and the bot's sole active worker (so its tool line appears on the roster). */
 export function isSoleRunningWorker(store: ThreadStore, running: Iterable<Delivery>, d: Delivery) {
@@ -21,9 +23,10 @@ export function isSoleRunningWorker(store: ThreadStore, running: Iterable<Delive
 }
 
 export function botRoster(store: ThreadStore, groups: GroupStore | undefined, runner: ThreadRunner) {
-  const out = new Map<string, { groups?: BotGroup[]; workingFor?: BotWorkingFor; workers?: BotWorkers }>()
+  const out = new Map<string, RosterEntry>()
   if (groups) for (const [botId, list] of rosterGroups(store, groups, runner)) out.set(botId, { groups: list })
   const workers = new Map<string, BotWorkers>()
+  const received = new Map<string, Map<string, BotTaskFor & { startedAt: number }>>()
   for (const d of runner.running.values()) {
     // A receiver's turn on a task it was handed; answers and notices run in the delegating bot's own sessions.
     if (d.kind !== 'request' && d.kind !== 'redirect' && d.kind !== 'oscar') continue
@@ -40,7 +43,16 @@ export function botRoster(store: ThreadStore, groups: GroupStore | undefined, ru
       continue
     }
     if (thread.participants[1].id !== d.target) continue
-    out.set(d.target, { ...out.get(d.target), workingFor: { threadId: thread.id, name: thread.participants[0].name } })
+    // One entry per exchange, however many of its deliveries run at once.
+    const tasks = received.get(d.target) ?? new Map()
+    const from = thread.participants[0]
+    tasks.set(thread.id, { threadId: thread.id, botId: from.id, name: from.name, startedAt: thread.startedAt ?? thread.createdAt })
+    received.set(d.target, tasks)
+  }
+  for (const [botId, tasks] of received) {
+    const tasksFor = [...tasks.values()].sort((a, b) => a.startedAt - b.startedAt || a.threadId.localeCompare(b.threadId)).map(({ startedAt: _, ...task }) => task)
+    const first = tasksFor[0]
+    out.set(botId, { ...out.get(botId), workingFor: { threadId: first.threadId, name: first.name }, tasksFor })
   }
   for (const [botId, entry] of workers) out.set(botId, { ...out.get(botId), workers: entry })
   return out
