@@ -15,7 +15,7 @@ import { WORK_TYPE_CAPS, workScrollBottomPadding } from './board-state'
 import { CheckBadge } from './check-badge'
 import { NeedsYouWorkCard } from './needs-you-card'
 import { useWorkBrief } from './store'
-import { type RevealTarget, useRevealAboveKeyboard } from './use-reveal-above-keyboard'
+import { type RevealTarget, useRevealAboveKeyboard } from '../ui/use-reveal-above-keyboard'
 import { WorkAvatar } from './work-avatar'
 import { WorkKeyboardDoneBar } from './work-controls'
 

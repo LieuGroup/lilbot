@@ -6,11 +6,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { Computer } from '../../../shared/computer-schema'
 import { DYNAMIC_TYPE_CAPS, rosterRowTextLines } from '../ui/dynamic-type'
 import { CheckIcon, CloseIcon } from '../ui/icon'
+import { KeyboardBar } from '../ui/keyboard-bar'
 import { sheetScrollBottomPadding } from '../ui/keyboard-sheet'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { MOBILE_SCALE, radius } from '../ui/tokens'
 import { KEYBOARD_SCROLL_PROPS, useKeyboardHeight } from '../ui/use-keyboard-height'
+import { useRevealAboveKeyboard } from '../ui/use-reveal-above-keyboard'
 
 export function RenameDeviceModal({
   visible,
@@ -28,6 +30,7 @@ export function RenameDeviceModal({
   const theme = useTheme()
   const insets = useSafeAreaInsets()
   const keyboardHeight = useKeyboardHeight(visible)
+  const form = useRevealAboveKeyboard(keyboardHeight)
   const canSave = draft.trim().length > 0
 
   return (
@@ -35,14 +38,18 @@ export function RenameDeviceModal({
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' }}>
         <Pressable accessible={false} onPress={() => Keyboard.dismiss()} style={StyleSheet.absoluteFill} />
         <ScrollView
+          ref={form.scrollRef}
           testID="rename-device-scroll"
-          scrollIndicatorInsets={{ bottom: keyboardHeight }}
+          onScroll={form.onScroll}
+          onLayout={form.onLayout}
+          scrollEventThrottle={32}
+          scrollIndicatorInsets={{ bottom: form.doneBarHeight }}
           contentContainerStyle={{
             flexGrow: 1,
             justifyContent: 'center',
             paddingHorizontal: 20,
             paddingTop: Math.max(24, insets.top + 12),
-            paddingBottom: sheetScrollBottomPadding(Math.max(24, insets.bottom + 12), keyboardHeight)
+            paddingBottom: sheetScrollBottomPadding(Math.max(24, insets.bottom + 12), form.doneBarHeight ? form.doneBarHeight + 53 : 0)
           }}
           {...KEYBOARD_SCROLL_PROPS}
         >
@@ -52,6 +59,8 @@ export function RenameDeviceModal({
             </AppText>
             <TextInput
               testID="device-name-input"
+              onFocus={form.onFieldFocus}
+              onBlur={form.onFieldBlur}
               value={draft}
               onChangeText={onChangeDraft}
               maxLength={100}
@@ -97,6 +106,7 @@ export function RenameDeviceModal({
             </View>
           </View>
         </ScrollView>
+        <KeyboardBar bottom={form.doneBarHeight} secondary={{ label: 'Cancel', onPress: onCancel, testID: 'device-name-cancel-bar' }} primary={{ label: 'Save', onPress: onSave, disabled: !canSave, testID: 'device-name-save-bar' }} />
       </View>
     </Modal>
   )

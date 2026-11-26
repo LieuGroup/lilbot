@@ -4,7 +4,7 @@ import { Stack, useLocalSearchParams } from 'expo-router'
 import { View } from 'react-native'
 import { computeShellLayout } from '../../../duo/layout'
 import { useLiveSurface } from '../../../duo/use-surface'
-import { SettingsSectionErrorBoundary } from '../../../settings/section-error-boundary'
+import { SettingsSectionPage } from '../../../settings/section-list'
 import { findSettingsSectionRoute } from '../../../settings/sections'
 import { SETTINGS_SECTIONS } from '../../../settings/sections/index'
 import { AppText } from '../../../ui/text'
@@ -18,16 +18,13 @@ export default function SettingsSectionRoute() {
   const params = useLocalSearchParams<{ section?: string }>()
   const name = typeof params.section === 'string' ? params.section : undefined
   const entry = findSettingsSectionRoute(SETTINGS_SECTIONS, name)
-  const Detail = entry?.DetailScreen
 
   return (
     <>
       <Stack.Screen options={{ title: entry?.routeTitle ?? 'Settings' }} />
       <View style={{ flex: 1, backgroundColor: theme.background, paddingLeft: layout.horizontalPadding.left, paddingRight: layout.horizontalPadding.right }}>
-        {Detail && entry ? (
-          <SettingsSectionErrorBoundary sectionId={entry.id}>
-            <Detail />
-          </SettingsSectionErrorBoundary>
+        {entry?.DetailScreen ? (
+          <SettingsSectionPage section={entry} />
         ) : (
           <View style={{ flex: 1, backgroundColor: theme.background, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
             <AppText variant="preview" color={theme.mutedForeground} style={MOBILE_SCALE.details.rowSubtitle}>

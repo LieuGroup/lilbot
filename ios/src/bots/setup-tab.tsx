@@ -1,7 +1,7 @@
 /** Bot Details > Setup tab (`R3-05`): primary bot action, identity/instructions/model form (`bots.get` + `bots.update`),
  *  context window card, workspace path, shared Skills section, and Toolsets/Connectors summary. */
 import { useEffect, useState } from 'react'
-import { Keyboard, Platform, Pressable, ScrollView, useWindowDimensions, View } from 'react-native'
+import { Platform, Pressable, ScrollView, useWindowDimensions, View } from 'react-native'
 import type { Bot, BotDetail } from '../../../shared/bot-schema'
 import { primaryCandidates } from '../../../shared/client/bots/bot-menu-rules'
 import { modelKey } from '../../../shared/client/bots/model-choice'
@@ -13,11 +13,13 @@ import { SkillsSection } from '../skills/skills-section'
 import { DYNAMIC_TYPE_CAPS } from '../ui/dynamic-type'
 import { SectionGroup } from '../ui/grouped-card'
 import { StarIcon } from '../ui/icon'
+import { KeyboardBar, type KeyboardBarAction } from '../ui/keyboard-bar'
 import { sheetScrollBottomPadding } from '../ui/keyboard-sheet'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { MOBILE_SCALE } from '../ui/tokens'
-import { KEYBOARD_SCROLL_PROPS, useKeyboardHeight } from '../ui/use-keyboard-height'
+import { KEYBOARD_SCROLL_PROPS } from '../ui/use-keyboard-height'
+import { useRevealAboveKeyboard } from '../ui/use-reveal-above-keyboard'
 import { makeBotPrimary } from './actions'
 import { useBotMenuStore } from './menu-store'
 import { useModelProviders } from './model-list'
@@ -27,9 +29,11 @@ import { useBotStore } from './store'
 
 const MONO_FONT = Platform.select({ ios: 'Menlo', default: 'monospace' })
 
-export function SetupTab({ bot, bottomPadding = 28 }: { bot: Bot; bottomPadding?: number }) {
+export function SetupTab({ bot, bottomPadding = 28, keyboardHeight, onTypingChange }: { bot: Bot; bottomPadding?: number; keyboardHeight: number; onTypingChange?: (typing: boolean) => void }) {
   const theme = useTheme()
-  const keyboardHeight = useKeyboardHeight()
+  const form = useRevealAboveKeyboard(keyboardHeight)
+  const [saveAction, setSaveAction] = useState<KeyboardBarAction | null>(null)
+  useEffect(() => onTypingChange?.(form.typing), [form.typing, onTypingChange])
   const { fontScale } = useWindowDimensions()
   const stackWide = fontScale >= 1.35
   const connected = useConnectionStore(state => state.connected)
@@ -66,8 +70,7 @@ export function SetupTab({ bot, bottomPadding = 28 }: { bot: Bot; bottomPadding?
 
   return (
     <View style={{ flex: 1 }}>
-      {keyboardHeight > 0 ? <KeyboardDoneRow /> : null}
-      <ScrollView testID="bot-details-setup" automaticallyAdjustKeyboardInsets contentContainerStyle={{ padding: 16, gap: 20, paddingBottom: sheetScrollBottomPadding(bottomPadding, 0) }} {...KEYBOARD_SCROLL_PROPS}>
+      <ScrollView ref={form.scrollRef} testID="bot-details-setup" onScroll={form.onScroll} onLayout={form.onLayout} scrollEventThrottle={32} scrollIndicatorInsets={{ bottom: form.doneBarHeight }} contentContainerStyle={{ padding: 16, gap: 20, paddingBottom: sheetScrollBottomPadding(bottomPadding, form.doneBarHeight ? form.doneBarHeight + 53 : 0) }} {...KEYBOARD_SCROLL_PROPS}>
       {error ? (
         <AppText variant="preview" color={theme.destructive} style={MOBILE_SCALE.details.rowSubtitle}>
           {error}
@@ -116,6 +119,8 @@ export function SetupTab({ bot, bottomPadding = 28 }: { bot: Bot; bottomPadding?
             initial={{ name: detail.name, function: detail.function, instructions: detail.instructions, model: detail.model, reasoningEffort: detail.reasoningEffort }}
             sentEffort={detail.effectiveReasoningEffort}
             providers={providers}
+            field={{ onFocus: form.onFieldFocus, onBlur: form.onFieldBlur, maxHeight: form.fieldMaxHeight }}
+            onPrimaryAction={setSaveAction}
             onSubmit={async values => {
               const socket = ensureSocket()
               if (!socket) throw new Error('Not connected.')
@@ -148,26 +153,13 @@ export function SetupTab({ bot, bottomPadding = 28 }: { bot: Bot; bottomPadding?
             </View>
           </SectionGroup>
 
-          <SkillsSection botId={bot.id} botName={detail.name} />
+          <SkillsSection botId={bot.id} botName={detail.name} field={{ onFocus: form.onFieldFocus, onBlur: form.onFieldBlur }} />
 
           <AbilitiesCard abilities={detail.abilities} />
         </>
       ) : null}
       </ScrollView>
-    </View>
-  )
-}
-
-/** Sits above the scroll area (never under the keyboard), so multiline fields can always be dismissed, even in a 402 pt landscape window. */
-function KeyboardDoneRow() {
-  const theme = useTheme()
-  return (
-    <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 16, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: theme.hairline }}>
-      <Pressable testID="setup-multiline-done" onPress={() => Keyboard.dismiss()} hitSlop={8} accessibilityRole="button" accessibilityLabel="Dismiss keyboard" style={({ pressed }) => ({ minHeight: 32, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 8, backgroundColor: theme.muted, opacity: pressed ? 0.65 : 1 })}>
-        <AppText variant="name" color={theme.foreground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.control} style={MOBILE_SCALE.details.tabLabel}>
-          Done
-        </AppText>
-      </Pressable>
+      <KeyboardBar bottom={form.doneBarHeight} primary={saveAction} />
     </View>
   )
 }

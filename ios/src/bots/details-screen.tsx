@@ -11,9 +11,11 @@ import { LibraryTab } from '../library/library-tab'
 import { BotAvatar } from '../ui/avatar'
 import { DYNAMIC_TYPE_CAPS, rosterRowTextLines } from '../ui/dynamic-type'
 import { evaluateTabSwipe } from '../ui/gestures/rules'
+import { collapseHeaderWhileTyping } from '../ui/keyboard-sheet'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { MOBILE_SCALE } from '../ui/tokens'
+import { useKeyboardHeight } from '../ui/use-keyboard-height'
 import { BOT_DETAILS_TABS, type BotDetailsTab, normalizeBotDetailsTab } from './details-tabs'
 import { SetupTab } from './setup-tab'
 import { useBotStore } from './store'
@@ -29,10 +31,12 @@ export function BotDetailsScreen({
 }) {
   const theme = useTheme()
   const insets = useSafeAreaInsets()
-  const { fontScale } = useWindowDimensions()
+  const { fontScale, height: windowHeight } = useWindowDimensions()
+  const keyboardHeight = useKeyboardHeight()
   const rowLines = rosterRowTextLines(fontScale)
   const bot = useBotStore(state => state.bots.find(candidate => candidate.id === botId) ?? null)
   const [tab, setTab] = useState<BotDetailsTab>(() => normalizeBotDetailsTab(initialTab))
+  const [setupTyping, setSetupTyping] = useState(false)
   const startXRef = useRef(0)
   const activeIndex = BOT_DETAILS_TABS.findIndex(entry => entry.id === tab)
 
@@ -67,10 +71,11 @@ export function BotDetailsScreen({
   }
 
   const bottomPadding = Math.max(32, insets.bottom + 18)
+  const headerFolded = tab === 'setup' && setupTyping && collapseHeaderWhileTyping(windowHeight, keyboardHeight)
 
   return (
     <View testID="bot-details-screen" style={{ flex: 1, backgroundColor: theme.background }}>
-      <View style={{ paddingHorizontal: 16, paddingTop: compact ? 8 : 4, paddingBottom: 12, gap: 12, borderBottomWidth: 1, borderBottomColor: theme.hairline }}>
+      <View style={{ display: headerFolded ? 'none' : 'flex', paddingHorizontal: 16, paddingTop: compact ? 8 : 4, paddingBottom: 12, gap: 12, borderBottomWidth: 1, borderBottomColor: theme.hairline }}>
         {!compact ? (
           <View testID="bot-details-identity" style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             <BotAvatar name={bot.name} avatar={bot.prefs.avatar} size={44} />
@@ -129,7 +134,7 @@ export function BotDetailsScreen({
         <View style={{ flex: 1 }}>
           {tab === 'activity' ? <ActivityTab bot={bot} bottomPadding={bottomPadding} /> : null}
           {tab === 'library' ? <LibraryTab bot={bot} bottomPadding={bottomPadding} /> : null}
-          {tab === 'setup' ? <SetupTab bot={bot} bottomPadding={bottomPadding} /> : null}
+          {tab === 'setup' ? <SetupTab bot={bot} bottomPadding={bottomPadding} keyboardHeight={keyboardHeight} onTypingChange={setSetupTyping} /> : null}
         </View>
       </GestureDetector>
     </View>

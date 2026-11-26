@@ -1,11 +1,13 @@
 /** Editable bot identity, instructions, model, and reasoning-effort form inside Bot Details > Setup.
- *  Uses `MOBILE_SCALE.details` inputs; the Setup tab shows the keyboard `Done` row above the scroll area. */
-import { useState } from 'react'
+ *  Uses `MOBILE_SCALE.details` inputs; the Setup tab keeps the focused field in view and puts Save changes in its keyboard bar. */
+import { useEffect, useRef, useState } from 'react'
 import { Keyboard, Platform, Pressable, TextInput, View } from 'react-native'
 import type { BotModel, ModelProvider, ReasoningEffort } from '../../../shared/bot-schema'
 import { modelFromKey, modelGroups, modelKey } from '../../../shared/client/bots/model-choice'
 import { capabilityOf, effortLabel, reasons, sentDiffers } from '../../../shared/client/bots/reasoning-effort'
 import { DYNAMIC_TYPE_CAPS } from '../ui/dynamic-type'
+import type { KeyboardBarAction } from '../ui/keyboard-bar'
+import type { FormFieldFocus } from '../ui/use-reveal-above-keyboard'
 import { SectionGroup } from '../ui/grouped-card'
 import { CheckIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
@@ -27,12 +29,16 @@ export function SetupForm({
   initial,
   sentEffort,
   providers,
-  onSubmit
+  onSubmit,
+  field: focus,
+  onPrimaryAction
 }: {
   initial: SetupFormValues
   sentEffort?: string | null
   providers: ModelProvider[] | null
   onSubmit: (values: SetupFormValues) => Promise<void>
+  field?: FormFieldFocus
+  onPrimaryAction?: (action: KeyboardBarAction) => void
 }) {
   const theme = useTheme()
   const [values, setValues] = useState<SetupFormValues>(initial)
@@ -66,6 +72,15 @@ export function SetupForm({
     color: theme.foreground
   } as const
 
+  const submitRef = useRef<() => Promise<void>>(async () => {})
+  const canSave = Boolean(values.name.trim()) && !saving
+  useEffect(() => {
+    onPrimaryAction?.({ label: saving ? 'Saving…' : 'Save changes', disabled: !canSave, testID: 'setup-save-bar', onPress: () => void submitRef.current() })
+  }, [canSave, onPrimaryAction, saving])
+
+  const focusProps = { onFocus: focus?.onFocus, onBlur: focus?.onBlur }
+  const multilineCap = focus?.maxHeight ? { maxHeight: focus.maxHeight } : null
+
   const submit = async () => {
     if (!values.name.trim() || saving) return
     setSaving(true)
@@ -80,22 +95,24 @@ export function SetupForm({
     }
   }
 
+  submitRef.current = submit
+
   return (
     <SectionGroup title="Identity & model">
       <View style={{ padding: 14, gap: 14 }}>
         <View style={{ gap: 6 }}>
           <FieldLabel label="Name" />
-          <TextInput value={values.name} onChangeText={name => set({ name })} maxLength={60} returnKeyType="done" submitBehavior="blurAndSubmit" onSubmitEditing={() => Keyboard.dismiss()} placeholder="Researcher" placeholderTextColor={theme.mutedForeground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.composerInput} style={field} />
+          <TextInput testID="setup-name-input" {...focusProps} value={values.name} onChangeText={name => set({ name })} maxLength={60} returnKeyType="done" submitBehavior="blurAndSubmit" onSubmitEditing={() => Keyboard.dismiss()} placeholder="Researcher" placeholderTextColor={theme.mutedForeground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.composerInput} style={field} />
         </View>
 
         <View style={{ gap: 6 }}>
           <FieldLabel label="Function" />
-          <TextInput testID="setup-function-input" value={values.function} onChangeText={fn => set({ function: fn })} maxLength={500} multiline placeholder="What this bot is for, in a sentence or two." placeholderTextColor={theme.mutedForeground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.composerInput} style={[field, { minHeight: 70, textAlignVertical: 'top' }]} />
+          <TextInput testID="setup-function-input" {...focusProps} value={values.function} onChangeText={fn => set({ function: fn })} maxLength={500} multiline placeholder="What this bot is for, in a sentence or two." placeholderTextColor={theme.mutedForeground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.composerInput} style={[field, { minHeight: 70, textAlignVertical: 'top' }, multilineCap]} />
         </View>
 
         <View style={{ gap: 6 }}>
           <FieldLabel label="Instructions" />
-          <TextInput testID="setup-instructions-input" value={values.instructions} onChangeText={instructions => set({ instructions })} multiline placeholder="Personality and standing rules the bot follows in every chat." placeholderTextColor={theme.mutedForeground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.composerInput} style={[field, { minHeight: 116, fontFamily: MONO_FONT, fontSize: MOBILE_SCALE.details.code.fontSize, lineHeight: MOBILE_SCALE.details.code.lineHeight, textAlignVertical: 'top' }]} />
+          <TextInput testID="setup-instructions-input" {...focusProps} value={values.instructions} onChangeText={instructions => set({ instructions })} multiline placeholder="Personality and standing rules the bot follows in every chat." placeholderTextColor={theme.mutedForeground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.composerInput} style={[field, { minHeight: 116, fontFamily: MONO_FONT, fontSize: MOBILE_SCALE.details.code.fontSize, lineHeight: MOBILE_SCALE.details.code.lineHeight, textAlignVertical: 'top' }, multilineCap ? { minHeight: Math.min(116, multilineCap.maxHeight), maxHeight: multilineCap.maxHeight } : null]} />
         </View>
 
         <View style={{ gap: 6 }}>

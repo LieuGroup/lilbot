@@ -11,10 +11,11 @@ import { SearchIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { MOBILE_SCALE } from '../ui/tokens'
+import type { FormFieldFocus } from '../ui/use-reveal-above-keyboard'
 import { SkillDetailSheet } from './skill-detail-sheet'
 import { useSkills } from './use-skills'
 
-export function SkillsSection({ botId, botName }: { botId: string; botName: string }) {
+export function SkillsSection({ botId, botName, field }: { botId: string; botName: string; field?: FormFieldFocus }) {
   const theme = useTheme()
   const { fontScale } = useWindowDimensions()
   const rowLines = rosterRowTextLines(fontScale)
@@ -60,6 +61,8 @@ export function SkillsSection({ botId, botName }: { botId: string; botName: stri
             <SearchIcon color={theme.mutedForeground} size={16} />
             <TextInput
               testID="skills-search-input"
+              onFocus={field?.onFocus}
+              onBlur={field?.onBlur}
               value={query}
               onChangeText={setQuery}
               placeholder="Find a skill"
