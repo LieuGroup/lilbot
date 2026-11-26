@@ -40,7 +40,7 @@ export function WorkItemPage({ itemId, showDropButton = true, dropOpen, onDropOp
   const { item, error } = useWorkItem(itemId)
   const [localDropOpen, setLocalDropOpen] = useState(false)
   const [tick, setTick] = useState(0)
-  const { scrollRef, onScroll, reveal } = useRevealAboveKeyboard(keyboardHeight)
+  const { scrollRef, onScroll, reveal, doneBarHeight } = useRevealAboveKeyboard(keyboardHeight)
   const banner = useRef<RevealTarget>(null)
 
   useEffect(() => {
@@ -138,7 +138,7 @@ export function WorkItemPage({ itemId, showDropButton = true, dropOpen, onDropOp
         <WorkFooterLinks item={item} onOpenItem={onOpenItem} onOpenBot={onOpenBot} onOpenThread={onOpenThread} />
       </ScrollView>
 
-      <WorkKeyboardDoneBar keyboardHeight={keyboardHeight} testID="item-keyboard-done" />
+      <WorkKeyboardDoneBar keyboardHeight={doneBarHeight} testID="item-keyboard-done" />
       <DropWorkSheet
         visible={dropping}
         itemId={item.id}

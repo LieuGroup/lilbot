@@ -27,7 +27,7 @@ export function WorkTodayPage({ onOpenItem, hasFloatingTabBar = false }: { onOpe
   const [doneOpen, setDoneOpen] = useState(false)
   const [preserved, setPreserved] = useState<Record<string, PreservedTodayDraft>>({})
   const [tick, setTick] = useState(0)
-  const { scrollRef, onScroll, reveal } = useRevealAboveKeyboard(keyboardHeight)
+  const { scrollRef, onScroll, reveal, doneBarHeight } = useRevealAboveKeyboard(keyboardHeight)
   const cards = useRef<Record<string, RevealTarget | null>>({})
 
   useEffect(() => {
@@ -146,7 +146,7 @@ export function WorkTodayPage({ onOpenItem, hasFloatingTabBar = false }: { onOpe
           </View>
         </View>
       </ScrollView>
-      <WorkKeyboardDoneBar keyboardHeight={keyboardHeight} testID="today-keyboard-done" />
+      <WorkKeyboardDoneBar keyboardHeight={doneBarHeight} testID="today-keyboard-done" />
     </View>
   )
 }
