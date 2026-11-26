@@ -23,6 +23,7 @@ export function useKeyboardHeight(active = true): number {
       setHeight(keyboardOverlapHeight(windowHeight, event.endCoordinates))
     }
     const clear = () => setHeight(0)
+    setHeight(Keyboard.isVisible() ? keyboardOverlapHeight(windowHeight, Keyboard.metrics()) : 0)
 
     const subs =
       Platform.OS === 'ios'

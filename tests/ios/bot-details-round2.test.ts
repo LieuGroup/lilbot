@@ -174,6 +174,7 @@ describe('PR 302 Round 2 fixes (scale, Duo strip, safety, ErrorBoundary, AX5, ke
     expect(setupSrc).toContain('{keyboardHeight > 0 ? <KeyboardDoneRow /> : null}')
     expect(setupSrc.indexOf('<KeyboardDoneRow />')).toBeLessThan(setupSrc.indexOf('<ScrollView testID="bot-details-setup"'))
     expect(setupSrc).toContain('testID="setup-multiline-done"')
+    expect(read('ios/src/ui/use-keyboard-height.ts')).toContain('Keyboard.isVisible() ? keyboardOverlapHeight(windowHeight, Keyboard.metrics()) : 0')
 
     const runListSrc = read('ios/src/routines/run-list-section.tsx')
     const transcriptSrc = read('ios/src/routines/run-transcript-sheet.tsx')
