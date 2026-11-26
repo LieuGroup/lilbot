@@ -1,9 +1,11 @@
-/** Round 4 Composer Tasks Dock (`R3-03`, `R4-G3`, `R4-01b`, `R4-02b`):
+/** Round 4 Composer Tasks Dock (`R3-03`, `R4-G3`, `R4-01b`, `R4-02b`; Paper "26 Tasks a bot does for others", #316):
+ *  - Tasks this bot handed out and its workers, and tasks other bots handed it; two labelled groups when both are there.
  *  - Collapsed (default): `TaskDockPill` (32 pt floating Liquid Glass pill with 1-tap ink `Answer`).
  *  - Expanded: Liquid Glass floating card with swipe-down grab handle, batch headers, Answer/Stop/dismiss rows, and tap to open. */
 import { Fragment, useEffect, useState } from 'react'
 import { Pressable, ScrollView, useWindowDimensions, View } from 'react-native'
 import { type DockItem, dockEntries, dockHeaderSummary, dockItems, dockRowTitle, nextDockExpiryAt } from '../../../shared/client/threads/dock-items'
+import { dockSections } from '../../../shared/client/threads/received-summary'
 import type { BotThread } from '../../../shared/thread-schema'
 import type { WorkSummary } from '../../../shared/work-schema'
 import { SheetDismissGesture } from '../ui/gestures/sheet-gesture'
@@ -12,12 +14,12 @@ import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { radius } from '../ui/tokens'
 import { AnswerWorkSheet } from './answer-work-sheet'
-import { buildDockPillModel, shouldWrapDockPill, THREAD_TYPE_CAPS } from './dock-pill'
+import { buildDockPillModel, compactDockWording, shouldWrapDockPill, THREAD_TYPE_CAPS } from './dock-pill'
 import { ChevronDownIcon } from './icons'
 import { StopThreadSheet } from './stop-thread-sheet'
 import { dismissDockItem, openThreadView, setDockCollapsed, useDismissed, useDockCollapsed, useThreads, useWaitingWork } from './store'
 import { TaskDockPill } from './task-dock-pill'
-import { DockRow } from './task-dock-row'
+import { DockRow, DockSectionLabel } from './task-dock-row'
 import { ThreadStatusIcon } from './thread-badges'
 
 export interface TaskDockSlotProps {
@@ -26,7 +28,7 @@ export interface TaskDockSlotProps {
 
 export function TaskDockSlot({ botId }: TaskDockSlotProps) {
   const theme = useTheme()
-  const { fontScale, width } = useWindowDimensions()
+  const { fontScale, width, height } = useWindowDimensions()
   const threads = useThreads(botId)
   const waitingWork = useWaitingWork()
   const dismissed = useDismissed(botId)
@@ -61,9 +63,10 @@ export function TaskDockSlot({ botId }: TaskDockSlotProps) {
 
   if (items.length === 0 && !answering && !stopping) return null
 
-  const pill = buildDockPillModel(items, botId)
-  const header = items.length > 0 ? dockHeaderSummary(items) : null
-  const entries = dockEntries(items, threads ?? [], botId, waitingWork)
+  const compact = compactDockWording({ width, height })
+  const pill = buildDockPillModel(items, botId, compact)
+  const header = items.length > 0 ? dockHeaderSummary(items, compact) : null
+  const sections = dockSections(items).map(section => ({ ...section, entries: dockEntries(section.items, threads ?? [], botId, waitingWork) }))
   const wrapPill = shouldWrapDockPill({ fontScale, availableWidth: width })
 
   const openItem = (item: DockItem) => {
@@ -112,66 +115,71 @@ export function TaskDockSlot({ botId }: TaskDockSlotProps) {
                   scrollEventThrottle={16}
                   onScroll={event => setScrollOffsetY(event.nativeEvent.contentOffset.y)}
                 >
-                  {entries.map((entry, index) =>
-                    entry.kind === 'single' ? (
-                      <Fragment key={entry.item.thread.id}>
-                        {index > 0 ? <View style={{ height: 1, backgroundColor: theme.hairline }} /> : null}
-                        <DockRow
-                          botId={botId}
-                          item={entry.item}
-                          now={now}
-                          inWorkerBatch={false}
-                          onOpen={() => openItem(entry.item)}
-                          onAnswer={work => setAnswering({ work, title: dockRowTitle(entry.item, botId, false) })}
-                          onStop={() => setStopping(entry.item.thread)}
-                        />
-                      </Fragment>
-                    ) : (
-                      <Fragment key={`batch:${entry.batchId}`}>
-                        {index > 0 ? <View style={{ height: 1, backgroundColor: theme.hairline }} /> : null}
-                        <View
-                          style={{
-                            flexDirection: 'row',
-                            flexWrap: 'wrap',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: 8,
-                            paddingHorizontal: 12,
-                            paddingVertical: 6,
-                            borderBottomWidth: 1,
-                            borderBottomColor: theme.hairline
-                          }}
-                        >
-                          <AppText
-                            variant="meta"
-                            color={theme.mutedForeground}
-                            numberOfLines={1}
-                            maxFontSizeMultiplier={THREAD_TYPE_CAPS.badge}
-                            style={{ flexShrink: 1, fontFamily: 'Inter_500Medium' }}
-                          >
-                            {entry.title}
-                          </AppText>
-                          <AppText variant="meta" color={theme.mutedForeground} maxFontSizeMultiplier={THREAD_TYPE_CAPS.badge}>
-                            {entry.progress}
-                          </AppText>
-                        </View>
-                        {entry.items.map((item, childIndex) => (
-                          <Fragment key={item.thread.id}>
-                            {childIndex > 0 ? <View style={{ height: 1, backgroundColor: theme.hairline }} /> : null}
+                  {sections.map(section => (
+                    <Fragment key={section.label ?? 'all'}>
+                      {section.label ? <DockSectionLabel label={section.label} /> : null}
+                      {section.entries.map((entry, index) =>
+                        entry.kind === 'single' ? (
+                          <Fragment key={entry.item.thread.id}>
+                            {index > 0 ? <View style={{ height: 1, backgroundColor: theme.hairline }} /> : null}
                             <DockRow
                               botId={botId}
-                              item={item}
+                              item={entry.item}
                               now={now}
-                              inWorkerBatch={entry.allWorkers}
-                              onOpen={() => openItem(item)}
-                              onAnswer={work => setAnswering({ work, title: dockRowTitle(item, botId, false) })}
-                              onStop={() => setStopping(item.thread)}
+                              inWorkerBatch={false}
+                              onOpen={() => openItem(entry.item)}
+                              onAnswer={work => setAnswering({ work, title: dockRowTitle(entry.item, botId, false) })}
+                              onStop={() => setStopping(entry.item.thread)}
                             />
                           </Fragment>
-                        ))}
-                      </Fragment>
-                    )
-                  )}
+                        ) : (
+                          <Fragment key={`batch:${entry.batchId}`}>
+                            {index > 0 ? <View style={{ height: 1, backgroundColor: theme.hairline }} /> : null}
+                            <View
+                              style={{
+                                flexDirection: 'row',
+                                flexWrap: 'wrap',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: 8,
+                                paddingHorizontal: 12,
+                                paddingVertical: 6,
+                                borderBottomWidth: 1,
+                                borderBottomColor: theme.hairline
+                              }}
+                            >
+                              <AppText
+                                variant="meta"
+                                color={theme.mutedForeground}
+                                numberOfLines={1}
+                                maxFontSizeMultiplier={THREAD_TYPE_CAPS.badge}
+                                style={{ flexShrink: 1, fontFamily: 'Inter_500Medium' }}
+                              >
+                                {entry.title}
+                              </AppText>
+                              <AppText variant="meta" color={theme.mutedForeground} maxFontSizeMultiplier={THREAD_TYPE_CAPS.badge}>
+                                {entry.progress}
+                              </AppText>
+                            </View>
+                            {entry.items.map((item, childIndex) => (
+                              <Fragment key={item.thread.id}>
+                                {childIndex > 0 ? <View style={{ height: 1, backgroundColor: theme.hairline }} /> : null}
+                                <DockRow
+                                  botId={botId}
+                                  item={item}
+                                  now={now}
+                                  inWorkerBatch={entry.allWorkers}
+                                  onOpen={() => openItem(item)}
+                                  onAnswer={work => setAnswering({ work, title: dockRowTitle(item, botId, false) })}
+                                  onStop={() => setStopping(item.thread)}
+                                />
+                              </Fragment>
+                            ))}
+                          </Fragment>
+                        )
+                      )}
+                    </Fragment>
+                  ))}
                 </ScrollView>
               </SheetDismissGesture>
             </View>
