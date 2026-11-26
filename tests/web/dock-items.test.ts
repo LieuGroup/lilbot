@@ -54,9 +54,9 @@ function waitingWork(id: string, extra: Partial<WorkSummary> = {}): WorkSummary 
   }
 }
 
-test('empty, stopped, incoming and group threads are excluded from the dock', () => {
+test('empty, stopped, group threads and exchanges between other bots are excluded from the dock', () => {
   const stopped = makeThread('stopped', { worker: true, status: 'cancelled', stoppedBy: { kind: 'oscar', id: null, name: 'the owner', at: T0 + MIN } })
-  const incoming = makeThread('incoming', { participants: [eng, lead], status: 'working' })
+  const incoming = makeThread('incoming', { participants: [eng, gone], status: 'working' })
   const group = makeThread('group', {
     group: { purpose: 'Discuss', roundCap: 6, rounds: [], turns: 0, lastAt: T0, end: null, kept: [], folder: '', seen: {} }
   })
