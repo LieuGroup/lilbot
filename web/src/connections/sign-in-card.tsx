@@ -46,6 +46,10 @@ function useCardAction() {
   return { busy, error, run }
 }
 
+/** Which cards Sign in was pressed for on this page, by card id, with the expiry it was pressed for. In memory only
+ *  (it holds no link), so a phone-width layout change that remounts the conversation keeps the paste field open. */
+const openedCards = new Map<string, number>()
+
 const restartOf = (cardId: string) => lilbot.call('connections.signIn.restart', { cardId })
 
 /** A settled card needs no clock: only a waiting one counts down. */
@@ -61,7 +65,11 @@ function SettledLine({ card }: { card: ConnectionSignInCard }) {
 function WaitingCard({ card }: { card: ConnectionSignInCard }) {
   const botName = useBotStore(state => state.bots.find(bot => bot.id === card.botId)?.name) ?? 'The bot'
   const now = useNow(1000)
-  const [openedFor, setOpenedFor] = useState<number | null>(null)
+  const [openedFor, setOpened] = useState<number | null>(() => openedCards.get(card.id) ?? null)
+  const setOpenedFor = (expiresAt: number) => {
+    openedCards.set(card.id, expiresAt)
+    setOpened(expiresAt)
+  }
   const [pasted, setPasted] = useState('')
   const { busy, error, run } = useCardAction()
   const phase = signInPhase(card, now, openedFor)
