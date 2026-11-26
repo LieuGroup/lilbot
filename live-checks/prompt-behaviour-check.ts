@@ -115,7 +115,7 @@ async function modelCase(label: string, model: { provider: string; model: string
   const pref = await turn(
     bot.id,
     await fresh(),
-    "from now on give me money figures in AUD, not USD. anyway what's 250 USD in AUD roughly? today's rate is in ./fixtures/rates.txt in your working directory."
+    "from now on give me money figures in AUD, not USD. anyway what's 100 USD in AUD? today's rate is in ./fixtures/rates.txt in your working directory."
   )
   const facts = ((await server.call('memory.list', { botId: bot.id })).facts as { text: string }[]).map(f => f.text)
   check(
