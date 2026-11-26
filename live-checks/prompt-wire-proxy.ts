@@ -5,6 +5,8 @@ import { Database } from 'bun:sqlite'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { devPort } from '../scripts/dev-paths'
+import { command } from '../server/deploy/process'
+import { rollbackHook } from '../server/engines/hermes/hermes-rollback'
 import { type RestartServer, waitFor } from './restart-server'
 
 export interface CapturedRequest {
@@ -15,6 +17,8 @@ export interface CapturedRequest {
   hasCacheControl: boolean
   toolCount: number
   toolNames: string[]
+  /** Whether the request's messages carry LilBot's per-turn `[LilBot date: ...]` line. */
+  hasDateLine: boolean
   status: number
   error?: string
   elapsedMs: number
@@ -83,6 +87,7 @@ export function startWireCaptureProxy(upstreamBaseUrl: string) {
           ...extracted,
           toolCount: Array.isArray(parsed.tools) ? parsed.tools.length : 0,
           toolNames: Array.isArray(parsed.tools) ? parsed.tools.map(toolName) : [],
+          hasDateLine: JSON.stringify(parsed.messages ?? parsed.input ?? '').includes('[LilBot date: '),
           status: response.status,
           ...(errorText ? { error: errorText } : {}),
           elapsedMs: Date.now() - start
@@ -150,3 +155,31 @@ export async function sendPromptTurn(server: RestartServer, botId: string, chatI
     .join('')
   return { finished: finished?.data, reply }
 }
+
+/** Runs the real deploy rollback hook on one temporary `dev-` profile against the dev Hermes, then asks Hermes itself
+ *  how it lists the prompt plug-in (`enabled`, `disabled`, `not enabled`, or absent). */
+export async function rollBackPromptPlugin(profileId: string) {
+  if (!profileId.startsWith('dev-')) throw new Error(`Refusing to touch non-dev profile: ${profileId}`)
+  const env = Object.entries({ LILBOT_ENV: 'development', HERMES_HOME: process.env.HERMES_HOME, LILBOT_HERMES_BIN: process.env.LILBOT_HERMES_BIN, PATH: process.env.PATH })
+  const printed = env
+    .filter(([, value]) => value)
+    .map(([key, value]) => `"${key}=${value}"`)
+    .join(' ')
+  const rolled = await rollbackHook.rollback({ profiles: [profileId], printedEnvironment: printed, runCommand: (args, timeout, given) => command(args, undefined, timeout, given) })
+  const listed = Bun.spawnSync([process.env.LILBOT_HERMES_BIN ?? 'hermes', '-p', profileId, 'plugins', 'list', '--plain', '--no-bundled'], { env: process.env }).stdout.toString()
+  return { rolled, row: listed.split('\n').find(line => line.includes('lilbot-prompt-v1')) ?? 'absent' }
+}
+
+const ACCOUNT_STOP = /\b403\b|disabled in this account|violation of terms|unknown provider/i
+
+/** Throws at once on any 403, account message or unknown-provider answer since record `from`, or in a failed turn. */
+export function stopOnAccountProblem(records: CapturedRequest[], from = 0, finished?: { type?: string; message?: string; text?: string }) {
+  const bad = records.slice(from).find(r => r.status === 403 || ACCOUNT_STOP.test(r.error ?? ''))
+  const text = finished?.type === 'error' ? `${finished.message ?? ''} ${finished.text ?? ''}` : ''
+  if (bad || ACCOUNT_STOP.test(text))
+    throw new Error(`Stopped: upstream refused with an account or 403 answer (${bad ? `HTTP ${bad.status} ${bad.error ?? ''}`.trim() : text.trim().slice(0, 120)}).`)
+}
+
+/** Every captured request answered 200 and carried exactly `prompt` as its system prompt, with no stock engine text. */
+export const exact = (wire: CapturedRequest[], prompt: string) =>
+  wire.length > 0 && wire.every(r => r.status === 200 && r.systemText === prompt && findForbiddenStockSnippets(r.systemText).length === 0)

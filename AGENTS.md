@@ -184,7 +184,8 @@ directories and files (0700/0600).
   (see Connections).
 - Put nothing new into Hermes plug-ins. A new bot-facing tool goes on LilBot's own MCP server (`server/system/`), with
   the same service function the screen uses, so a second engine gets it for free; the plug-ins keep only what MCP
-  cannot do (pre-compress save, native skill-write lock, and the dumb `lilbot-prompt-v1` `llm_request` pass-through that swaps the outbound system prompt with LilBot's assembled file).
+  cannot do (pre-compress save, native skill-write lock, and the dumb `lilbot-prompt-v1` `llm_request` pass-through that swaps the outbound system prompt with LilBot's assembled file;
+  Hermes loads it only from `plugins.enabled`, see [docs/hermes-engine.md](docs/hermes-engine.md)).
 - Mapping onto Hermes: [docs/hermes-engine.md](docs/hermes-engine.md). Engine checklist:
   [docs/engine-contract.md](docs/engine-contract.md).
 

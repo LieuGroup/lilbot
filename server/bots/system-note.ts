@@ -9,7 +9,8 @@
 import type { BotModel } from '../../shared/bot-schema'
 
 export interface NoteFacts {
-  bot: { id: string; name: string; workspace: string; model: BotModel | null }
+  /** `model` left out (LilBot's own cached prompt): the note points to `lilbot_about`, so a mid-session switch never leaves a stale line. */
+  bot: { id: string; name: string; workspace: string; model?: BotModel | null }
   /** Whether legacy T3 Code mode is enabled (`LILBOT_T3_ENABLED=1`). Omit or false when off. */
   t3Enabled?: boolean
 }
@@ -22,7 +23,7 @@ export function buildNote({ bot, t3Enabled }: NoteFacts): string {
   return [
     OPEN,
     'About your system, written by LilBot.',
-    `You run in LilBot, Oscar's own bot app, on the leader machine. You are "${bot.name}" (id ${bot.id}). Your folder is ${bot.workspace}. Your model is ${bot.model ? `${bot.model.provider}/${bot.model.model}` : "the engine's default"}.`,
+    `You run in LilBot, Oscar's own bot app, on the leader machine. You are "${bot.name}" (id ${bot.id}). Your folder is ${bot.workspace}. ${bot.model === undefined ? 'lilbot_about names your current model.' : `Your model is ${bot.model ? `${bot.model.provider}/${bot.model.model}` : "the engine's default"}.`}`,
     'Choosing a computer: each message ends with a [LilBot origin] line. Use lilbot_guide topic `computers` for the full rules; never guess for a command that changes something, and ask Oscar in your reply if unclear.',
     t3Enabled
       ? 'Coding through T3 Code: check lilbot_status (area `t3`) or lilbot_about for current sign-in status.'

@@ -1,25 +1,40 @@
 import '../scripts/dev-env'
 /** Live wire-capture check for OSC-112 prompt ownership (`bun run check:prompt`), on isolated dev Hermes with
- *  temporary `dev-` bots only (deleted in `finally`). Models: Anthropic and OpenAI only, calls spaced 10 s apart.
+ *  temporary `dev-` bots only (deleted in `finally`). Model calls are spaced 10 s apart.
  *  1. Default off: a baseline turn writes no prompt file. On: a private `0o600` file keyed by bot id.
  *  2. Claude: a real file tool call and a mid-turn steer, with the wire system prompt equal to LilBot's file byte for byte.
  *  3. Mid-session switch to OpenAI, then a hidden routine session on OpenAI: same byte-for-byte wire check.
+ *     Inkling 2 Mini (the owner's bots' model): a normal answer, a file tool call and a hidden session, same check.
  *  4. Direct Claude prompt caching (`cacheReadTokens > 0`) and a real compaction with the owned prompt active.
- *  5. A missing prompt file falls back and still answers; deleting the bot removes its prompt file.
- *  The OpenAI model must be listed in the dev Hermes model catalogue. Gemini 4 Neon acceptance is skipped: the Google model route is closed on the account. Any 403 or account message
- *  stops the check at once. */
+ *  5. A missing prompt file falls back, still answers, and the bot shows why; each turn carries today's date.
+ *  6. The deploy rollback hook, run against the real Hermes, takes the plug-in out of Hermes' enabled list: Hermes
+ *     reports it not enabled, the next turn carries the engine's own prompt, and the bot shows the fallback.
+ *  7. Deleting the bot removes its prompt file.
+ *  Anthropic, OpenAI and Inkling models only, by the owner's decision (OpenAI and Inkling listed in the dev Hermes
+ *  model catalogue). Any 403 or account message stops the check at once. */
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { HermesEngine } from '../server/engines/hermes/hermes-engine'
 import { checkCompactionMarker } from './history-compaction'
-import { findForbiddenStockSnippets, nativeProfileOf, readDevUpstreamBaseUrl, sendPromptTurn, setProfileBaseUrl, startWireCaptureProxy } from './prompt-wire-proxy'
+import { answered, runModelCase } from './prompt-model-case'
+import {
+  exact,
+  findForbiddenStockSnippets,
+  nativeProfileOf,
+  readDevUpstreamBaseUrl,
+  rollBackPromptPlugin,
+  sendPromptTurn,
+  setProfileBaseUrl,
+  startWireCaptureProxy,
+  stopOnAccountProblem
+} from './prompt-wire-proxy'
 import { RestartServer, waitFor } from './restart-server'
 
 const SPACE_MS = 10_000
 const CLAUDE = { provider: 'cliproxyapi', model: 'anthropic/claude-sonnet-5-5' }
 const OPENAI = { provider: 'cliproxyapi', model: 'gpt-5.6-luna' }
+const INKLING = { provider: 'cliproxyapi', model: 'thinkingmachines/inkling-2-mini' }
 const INSTRUCTIONS = 'You are a concise verification assistant. Follow the user exactly.'
-const ACCOUNT_STOP = /\b403\b|disabled in this account|violation of terms|unknown provider/i
 
 let failures = 0
 function check(label: string, ok: boolean, detail = '') {
@@ -32,25 +47,13 @@ const proxy = startWireCaptureProxy(upstream)
 const offServer = await RestartServer.create('lilbot-prompt-off', { LILBOT_PROMPT_OWNERSHIP: '0' })
 const server = await RestartServer.create('lilbot-prompt', { LILBOT_PROMPT_OWNERSHIP: '1' })
 
-function stopOnAccountProblem(from = 0, finished?: { type?: string; message?: string; text?: string }) {
-  const bad = proxy.records.slice(from).find(r => r.status === 403 || ACCOUNT_STOP.test(r.error ?? ''))
-  const text = finished?.type === 'error' ? `${finished.message ?? ''} ${finished.text ?? ''}` : ''
-  if (bad || ACCOUNT_STOP.test(text))
-    throw new Error(`Stopped: upstream refused with an account or 403 answer (${bad ? `HTTP ${bad.status} ${bad.error ?? ''}`.trim() : text.trim().slice(0, 120)}).`)
-}
-
 async function turn(s: RestartServer, botId: string, chatId: string, text: string) {
   await Bun.sleep(SPACE_MS)
   const from = proxy.records.length
   const result = await sendPromptTurn(s, botId, chatId, text)
-  stopOnAccountProblem(from, result.finished)
+  stopOnAccountProblem(proxy.records, from, result.finished)
   return { ...result, wire: proxy.records.slice(from).filter(r => r.toolCount > 0) }
 }
-
-const answered = (finished: { type?: string; status?: string } | undefined) => finished?.type === 'turn.finished' && finished.status === 'completed'
-
-const exact = (wire: { status: number; systemText: string }[], prompt: string) =>
-  wire.length > 0 && wire.every(r => r.status === 200 && r.systemText === prompt && findForbiddenStockSnippets(r.systemText).length === 0)
 
 try {
   await offServer.start()
@@ -75,7 +78,7 @@ try {
   const owned = readFileSync(promptPath, 'utf8')
   const layers = ['<lilbot-base-prompt version="1">', '<lilbot-runtime-tuning>', '<lilbot-system-note>', `<lilbot-bot-instructions>\n${INSTRUCTIONS}\n</lilbot-bot-instructions>`]
   check(
-    'prompt file holds base, engine tuning, system note and the bot instructions as separate parts',
+    'prompt file holds every part separately',
     layers.every(part => owned.includes(part))
   )
   check('prompt file holds no stock engine text', findForbiddenStockSnippets(owned).length === 0)
@@ -95,12 +98,6 @@ try {
     `${t1.wire.length} request(s), ${t1.wire[0]?.systemText.length ?? 0} chars`
   )
   check('Claude: wire system prompt equals the prompt file byte for byte', exact(t1.wire, owned))
-  const frames = server.events.slice(toolFrom).filter(e => e.event === 'chat')
-  console.log(
-    `info Claude turn: chat=${chat.chatId} frames=${frames.map(e => `${e.chatId === chat.chatId ? '' : '~'}${e.data?.type}`).join(',')} text=${String(t1.finished?.text ?? '').slice(0, 60)}`
-  )
-  const found = Bun.spawnSync(['find', server.root, '-name', 'probe.txt']).stdout.toString().trim()
-  console.log(`info probe.txt found at: ${found ? found.replace(server.root, '<run>') : 'nowhere'}`)
   const probe = join(bot.workspace, 'probe.txt')
   const offered = t1.wire[0]?.toolNames ?? []
   check(
@@ -123,22 +120,14 @@ try {
   const engine = new HermesEngine([nativeId])
   const steered = started ? await engine.steerRun(nativeId, chat.chatId, 'Also include the exact word STEERED_99 in your final reply.') : 'no tool started'
   const done: any = await waitFor('steered turn finished', inChat('turn.finished'), Boolean, 180_000)
-  stopOnAccountProblem(steerWire, done?.data)
+  stopOnAccountProblem(proxy.records, steerWire, done?.data)
   check('Claude: mid-turn steer reaches the running turn and is followed', steered === 'steered' && String(done?.data?.text ?? '').includes('STEERED_99'), `steer=${steered}`)
-  check(
-    'Claude: steered turn keeps the same wire system prompt',
-    exact(
-      proxy.records.slice(steerWire).filter(r => r.toolCount > 0),
-      owned
-    )
-  )
+  const steeredWire = proxy.records.slice(steerWire).filter(r => r.toolCount > 0)
+  check('Claude: steered turn keeps the same wire system prompt', exact(steeredWire, owned))
 
   await server.call('bots.update', { botId: bot.id, model: OPENAI })
   const t3 = await turn(server, bot.id, chat.chatId, 'Reply with exactly: OPENAI_SWITCH_OK')
   const switched = readFileSync(promptPath, 'utf8')
-  console.log(
-    `info after switch: finished=${t3.finished?.type}/${t3.finished?.status} file changed=${switched !== owned} http=${t3.wire.map(r => r.status).join(',')} err=${t3.wire.find(r => r.error)?.error ?? ''} kinds=${t3.wire.map(r => r.systemKind).join(',')} equalsStart=${t3.wire.map(r => r.systemText === owned).join(',')} equalsFile=${t3.wire.map(r => r.systemText === switched).join(',')} lens=${t3.wire.map(r => r.systemText.length).join(',')} vs ${owned.length}`
-  )
   check(
     'mid-session switch to OpenAI: answers with the owned prompt on the wire',
     answered(t3.finished) && (exact(t3.wire, owned) || exact(t3.wire, switched)),
@@ -153,14 +142,11 @@ try {
     model: OPENAI,
     onChat: () => {}
   })
-  stopOnAccountProblem(routineFrom)
+  stopOnAccountProblem(proxy.records, routineFrom)
   const routineWire = proxy.records.slice(routineFrom).filter(r => r.toolCount > 0)
-  console.log(
-    `info routine: status=${run.status} text=${run.text.slice(0, 60)} http=${routineWire.map(r => r.status).join(',')} err=${routineWire.find(r => r.error)?.error ?? ''} lens=${routineWire.map(r => r.systemText.length).join(',')}`
-  )
   check('hidden routine session on OpenAI: answers with the owned prompt on the wire', run.status === 'completed' && exact(routineWire, switched))
 
-  console.log('skip Gemini 4 Neon acceptance: the Google model route is closed on the account, so no Google model is called')
+  await runModelCase({ server, engine, records: proxy.records, turn, check, bot, nativeId, promptPath, spaceMs: SPACE_MS }, 'Inkling 2 Mini', INKLING)
 
   await server.call('bots.update', { botId: bot.id, model: CLAUDE })
   await setProfileBaseUrl(nativeId, upstream)
@@ -174,8 +160,30 @@ try {
   rmSync(promptPath, { force: true })
   const fb = await turn(server, bot.id, (await server.call('chat.new', { botId: bot.id })).chatId, 'Reply with exactly: FALLBACK_OK')
   check('fail safe: a missing prompt file still answers', answered(fb.finished) && fb.reply.includes('FALLBACK_OK'))
-  await server.call('bots.update', { botId: bot.id, function: 'Refresh before delete' })
+  const reason = async () => (await server.call('bots.get', { botId: bot.id })).promptFallback
+  const missing = await reason()
+  check('fail safe: the bot shows why its own prompt is not in use', missing === 'prompt file missing', String(missing))
+  await server.call('bots.update', { botId: bot.id, function: 'Refresh before rollback' })
   check('prompt file is written again on the next bot update', existsSync(promptPath))
+
+  await setProfileBaseUrl(nativeId, proxy.url)
+  const dated = await turn(server, bot.id, (await server.call('chat.new', { botId: bot.id })).chatId, 'Reply with exactly: DATED_OK')
+  const back = readFileSync(promptPath, 'utf8')
+  check(
+    'owned again: the next session sends the prompt file and the turn carries the date line',
+    answered(dated.finished) && exact(dated.wire, back) && dated.wire.every(r => r.hasDateLine)
+  )
+  check('owned again: the bot no longer shows a fallback', !(await reason()))
+
+  const { rolled, row } = await rollBackPromptPlugin(nativeId)
+  check('rollback: real Hermes no longer enables the prompt plug-in', rolled.cleared === 1 && rolled.failed === 0 && !/^\s*enabled\b/.test(row), row.trim())
+  const after = await turn(server, bot.id, (await server.call('chat.new', { botId: bot.id })).chatId, 'Reply with exactly: ROLLED_OK')
+  check(
+    "rollback: the next turn answers with the engine's own prompt",
+    answered(after.finished) && after.wire.length > 0 && after.wire.every(r => r.systemText !== back && findForbiddenStockSnippets(r.systemText).length > 0)
+  )
+  const rolledReason = await reason()
+  check('rollback: the bot shows its own prompt is not in use', rolledReason === 'prompt plug-in not enabled', String(rolledReason))
   await server.call('bots.delete', { botId: bot.id, files: 'delete', privateMemories: 'forget' })
   check('deleting the bot removes its prompt file', !existsSync(promptPath))
 

@@ -22,4 +22,10 @@ function noteFacts({ workspaces, t3Enabled }: Pick<SystemFacts, 'workspaces' | '
   }
 }
 
-export const systemNote = (facts: Pick<SystemFacts, 'workspaces' | 't3Enabled'>) => (bot: BotRecord) => buildNote(noteFacts(facts, bot))
+/** The note for one bot. LilBot's own cached prompt leaves the model out, so a mid-session switch never makes it wrong. */
+export const systemNote =
+  (facts: Pick<SystemFacts, 'workspaces' | 't3Enabled'>, withModel = true) =>
+  (bot: BotRecord) => {
+    const note = noteFacts(facts, bot)
+    return buildNote(withModel ? note : { ...note, bot: { id: bot.id, name: bot.name, workspace: note.bot.workspace } })
+  }

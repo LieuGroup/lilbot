@@ -5,6 +5,7 @@ import type { Workspaces } from './bots/workspaces'
 import type { EngineRegistry } from './engines/engine-registry'
 import { assembleBotPrompt } from './prompts/prompt-assembler'
 import { isPromptOwnershipEnabled, PromptStore } from './prompts/prompt-store'
+import { dateLine } from './prompts/turn-date'
 import type { SkillsService } from './skills/skills-service'
 
 export interface PromptController {
@@ -43,7 +44,7 @@ export function createPromptController(deps: {
   }
 
   return {
-    source: { enabled, write, pathFor: botId => store.pathFor(botId) },
+    source: { enabled, write, pathFor: botId => store.pathFor(botId), ...(enabled ? { turnLine: () => dateLine() } : {}) },
     refreshAll: () => {
       if (!enabled) return
       for (const bot of deps.store.list()) {

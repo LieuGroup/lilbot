@@ -87,7 +87,12 @@ export function BotSetupPanel({ botId }: { botId: string }) {
             initial={{ name: bot.name, function: bot.function, instructions: bot.instructions, model: bot.model, reasoningEffort: bot.reasoningEffort }}
             sentEffort={bot.effectiveReasoningEffort}
             instructionsNote={
-              bot.engineIdentityInInstructions ? 'These instructions mention the engine’s default identity, which some models reject. Edit and save to remove it.' : undefined
+              [
+                bot.promptFallback && `LilBot’s own system prompt is not in use for this bot, so the engine’s own prompt answers (${bot.promptFallback}).`,
+                bot.engineIdentityInInstructions && 'These instructions mention the engine’s default identity, which some models reject. Edit and save to remove it.'
+              ]
+                .filter(Boolean)
+                .join(' ') || undefined
             }
             context={<SetupContextCard botId={botId} fallback={bot.context} />}
             submitLabel="Save changes"

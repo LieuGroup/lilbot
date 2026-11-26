@@ -1,17 +1,20 @@
 /** What LilBot gives every bot's runtime besides its identity: the shared skills and
  *  LilBot's own MCP connections. The engine skips what it has already applied. */
 import { backgroundFailure } from '../background'
-import type { BotEngine, SkillConnection } from '../engines/bot-engine'
+import type { BotEngine, SkillConnection, TurnOrigin } from '../engines/bot-engine'
 import type { EngineRegistry } from '../engines/engine-registry'
 import type { McpConnection } from '../engines/mcp-connection'
 import { files } from '../skills/skill-files'
 import type { SkillsService } from '../skills/skills-service'
+import type { BotRuntimes } from './bot-runtimes'
 import type { BotRecord } from './bot-store'
 
 export interface BotPromptSource {
   enabled: boolean
   write: (bot: BotRecord) => string
   pathFor: (botId: string) => string
+  /** A line LilBot adds to every turn while it owns the prompt (today's date, which the cached prompt cannot carry). */
+  turnLine?: () => string
 }
 
 export interface RuntimeOptions {
@@ -83,6 +86,24 @@ export interface PromptRuntimeStatus {
   promptFallback?: string
 }
 
+/** Adds LilBot's per-turn line (today's date while it owns the prompt) right after the turn's origin line. */
+export function withTurnLine<T extends { origin?: TurnOrigin }>(options: T, prompt?: BotPromptSource): T
+export function withTurnLine<T extends { origin?: TurnOrigin }>(options: T | undefined, prompt?: BotPromptSource): T | undefined
+export function withTurnLine<T extends { origin?: TurnOrigin }>(options: T | undefined, prompt?: BotPromptSource): T | undefined {
+  const line = prompt?.turnLine?.()
+  if (!line) return options
+  return { ...options, origin: { ...options?.origin, line: [options?.origin?.line, line].filter(Boolean).join('\n') } } as T
+}
+
+/** The last fallback reason logged per bot, so a bot that stays on the engine's prompt is logged once, not on every use. */
+const logged = new Map<string, string>()
+function noteFallback(botId: string, reason: string | undefined) {
+  if (logged.get(botId) === reason) return
+  if (reason) console.error(`[prompt] owned prompt not in use; the engine's own prompt answers (${reason})`)
+  if (reason) logged.set(botId, reason)
+  else logged.delete(botId)
+}
+
 async function applyPromptFailSafe(engine: BotEngine, bot: BotRecord, prompt?: BotPromptSource): Promise<PromptRuntimeStatus> {
   if (!prompt || !engine.configurePrompt) return {}
   if (!prompt.enabled) {
@@ -96,14 +117,23 @@ async function applyPromptFailSafe(engine: BotEngine, bot: BotRecord, prompt?: B
   try {
     const promptFile = prompt.write(bot)
     const applied = await engine.configurePrompt(bot.engineBotId, { enabled: true, botId: bot.id, promptFile })
-    if (applied.active) return { promptActive: true }
-    const reason = applied.reason || 'engine prompt middleware inactive'
-    console.error('[prompt] owned prompt inactive; falling back to engine prompt')
-    return { promptActive: false, promptFallback: reason }
+    const reason = applied.active ? undefined : (applied.reason ?? 'engine prompt middleware inactive').slice(0, 80)
+    noteFallback(bot.id, reason)
+    return reason ? { promptActive: false, promptFallback: reason } : { promptActive: true }
   } catch {
-    console.error('[prompt] owned prompt setup failed; falling back to engine prompt')
+    noteFallback(bot.id, 'prompt setup failed')
     return { promptActive: false, promptFallback: 'prompt setup failed' }
   }
+}
+
+/** The runtime state with the prompt status read again, so a plug-in that fell back mid-session shows on the next look. */
+export async function withFreshPrompt(runtimes: Pick<BotRuntimes, 'snapshot' | 'restoreState' | 'engineFor' | 'options'>, bot: BotRecord) {
+  const state = runtimes.snapshot(bot)
+  if (!state || !runtimes.options.prompt?.enabled) return state
+  const { promptActive: _active, promptFallback: _fallback, ...rest } = state
+  const fresh = { ...rest, ...(await applyPromptFailSafe(runtimes.engineFor(bot), bot, runtimes.options.prompt)) }
+  runtimes.restoreState(bot.id, fresh)
+  return fresh
 }
 
 export async function prepareTools(

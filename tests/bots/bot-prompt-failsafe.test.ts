@@ -31,6 +31,7 @@ function harness(options: {
   promptTuning?: string
   onConfigurePrompt?: ScriptedEngineOptions['onConfigurePrompt']
   hasEngineIdentityText?: (instructions: string) => boolean
+  modelFree?: boolean
 }) {
   const root = tempDir()
   const dataDir = join(root, 'data')
@@ -48,7 +49,8 @@ function harness(options: {
   const engines = asEngineRegistry(engine)
   const note = (bot: { id: string; name: string; model: { provider: string; model: string } | null }) =>
     buildNote({ bot: { id: bot.id, name: bot.name, workspace: workspaces.pathFor(bot.id), model: bot.model } })
-  const prompts = createPromptController({ dataDir, engines, workspaces, skills, store, systemNote: note, enabled: options.enabled })
+  const promptNote = (bot: { id: string; name: string }) => buildNote({ bot: { id: bot.id, name: bot.name, workspace: workspaces.pathFor(bot.id) } })
+  const prompts = createPromptController({ dataDir, engines, workspaces, skills, store, systemNote: options.modelFree ? promptNote : note, enabled: options.enabled })
   const bots = new BotService(engines, store, prefs, workspaces, memory, {
     skills,
     systemNote: note,
@@ -121,5 +123,39 @@ describe('BotService prompt ownership and fail-safe behavior', () => {
     await bots.updateBot({ botId: b.id, instructions: 'I am a clean LilBot assistant.' })
     const after = await bots.getBot(b.id)
     expect(after.engineIdentityInInstructions).toBeUndefined()
+  })
+  test("while LilBot owns the prompt every turn carries today's date after its origin line; off adds nothing", async () => {
+    const on = harness({ enabled: true })
+    const bot = await on.bots.createBot({ name: 'Dated', function: 'Test', instructions: 'Hi.' })
+    const chat = await on.bots.openChat(bot.id, undefined, () => {})
+    await chat.send('hello', { origin: { line: '[LilBot origin: test.]' } })
+    const line = on.engine.sessionOf(chat.snapshot.chatId)?.inputs.at(-1)?.origin?.line ?? ''
+    expect(line).toMatch(/^\[LilBot origin: test\.\]\n\[LilBot date: \w+day, \d{1,2} \w+ 20\d\d at \d\d:\d\d GMT[^\]]*\]$/)
+    expect(readFileSync(on.prompts.source.pathFor(bot.id), 'utf8')).not.toContain('LilBot date')
+
+    const off = harness({ enabled: false })
+    const plain = await off.bots.createBot({ name: 'Plain', function: 'Test', instructions: 'Hi.' })
+    const offChat = await off.bots.openChat(plain.id, undefined, () => {})
+    await offChat.send('hello', { origin: { line: '[LilBot origin: test.]' } })
+    expect(off.engine.sessionOf(offChat.snapshot.chatId)?.inputs.at(-1)?.origin?.line).toBe('[LilBot origin: test.]')
+  })
+
+  test('a fallback the engine reports later (plug-in fell back mid-session) shows on the next look at the bot', async () => {
+    let reply = { active: true } as { active: boolean; reason?: string }
+    const { bots } = harness({ enabled: true, onConfigurePrompt: () => reply })
+    const bot = await bots.createBot({ name: 'Later', function: 'Test', instructions: 'Hi.' })
+    expect((await bots.getBot(bot.id)).promptFallback).toBeUndefined()
+    reply = { active: false, reason: 'prompt file missing' }
+    expect((await bots.getBot(bot.id)).promptFallback).toBe('prompt file missing')
+    reply = { active: true }
+    expect((await bots.getBot(bot.id)).promptFallback).toBeUndefined()
+  })
+
+  test('the cached prompt leaves the model out, so a model switch never makes it wrong', async () => {
+    const { bots, prompts } = harness({ enabled: true, modelFree: true })
+    const bot = await bots.createBot({ name: 'Switcher', function: 'Test', instructions: 'Hi.' })
+    const text = readFileSync(prompts.source.pathFor(bot.id), 'utf8')
+    expect(text).toContain('lilbot_about names your current model.')
+    expect(text).not.toContain('Your model is')
   })
 })

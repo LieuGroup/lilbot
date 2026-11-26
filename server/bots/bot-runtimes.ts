@@ -21,7 +21,7 @@ export class BotRuntimes {
     private skills?: import('../skills/skills-service').SkillsService,
     private connection?: import('../engines/bot-engine').SkillConnection,
     private connections?: (botId: string) => import('../engines/mcp-connection').McpConnection[],
-    private options: RuntimeOptions = {}
+    readonly options: RuntimeOptions = {}
   ) {
     this.engines = asEngineRegistry(engine)
     this.prepared = new PrepareTracker(options.prepareRetryMs, options.now)

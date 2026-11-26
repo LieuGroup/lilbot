@@ -18,6 +18,7 @@ import { BotRuntimes } from './bot-runtimes'
 import { SessionSettings } from './bot-session-settings'
 import { BotSkills } from './bot-skills'
 import type { BotRecord, BotStore } from './bot-store'
+import { withFreshPrompt } from './runtime-tools'
 import type { Workspaces } from './workspaces'
 
 export interface BotServiceOptions {
@@ -153,7 +154,7 @@ export class BotService {
 
   async getBot(botId: string): Promise<BotDetail> {
     const bot = await this.requireBot(botId)
-    const state = this.runtimes.snapshot(bot)
+    const state = await withFreshPrompt(this.runtimes, bot)
     const skills = this.library?.list(botId).filter(s => !s.excluded) ?? []
     return {
       ...this.identity(bot),

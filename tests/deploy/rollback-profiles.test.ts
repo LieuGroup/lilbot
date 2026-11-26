@@ -49,10 +49,9 @@ test('a rollback clears the flag only where it is set, for bound bots that are n
     expect(readFileSync(log, 'utf8').trim().split('\n')).toEqual([
       `${dev.HERMES_HOME} -p dev-on config get compression.checkpoint_required`,
       `${dev.HERMES_HOME} -p dev-on config set compression.checkpoint_required false`,
-      `${dev.HERMES_HOME} -p dev-on config get plugins.entries.lilbot-prompt-v1.enabled`,
-      `${dev.HERMES_HOME} -p dev-on config set plugins.entries.lilbot-prompt-v1.enabled false`,
+      `${dev.HERMES_HOME} -p dev-on config get plugins.enabled`,
       `${dev.HERMES_HOME} -p dev-off config get compression.checkpoint_required`,
-      `${dev.HERMES_HOME} -p dev-off config get plugins.entries.lilbot-prompt-v1.enabled`
+      `${dev.HERMES_HOME} -p dev-off config get plugins.enabled`
     ])
     expect(await runEngineRollbacks(database, null, { hooks: [hermesRollbackHook] })).toEqual({ cleared: 0, failed: 3 })
     expect(await runEngineRollbacks(join(root, 'missing.db'), printed, { hooks: [hermesRollbackHook] })).toEqual({ cleared: 0, failed: 1 })
