@@ -27,7 +27,8 @@ export interface GuardPolicy {
 
 const FILE_TOOLS = ['read_file', 'write_file', 'patch', 'search_files', 'terminal', 'todo_list', 'clarify']
 const LOCAL_TOOLS = new Set([...FILE_TOOLS, 'skills_list', 'skill_view', 'skill_manage', 'tool_search', 'tool_describe'])
-const LILBOT_TOOL = /^(?:mcp__(?:lilbot_system|editor_lilbot_[0-9a-f]{8})__)?(lilbot_[a-z_]+)$/
+/** A LilBot tool, under the engine's prefix (which a model sometimes writes twice; the engine refuses that name). */
+const LILBOT_TOOL = /^(?:mcp__(?:lilbot_system|editor_lilbot_[0-9a-f]{8})__)*(lilbot_[a-z_]+)$/
 const LILBOT_OUTSIDE = /^lilbot_(?:computer|connection)/
 const HARMLESS = new Set(['/dev/null', '/dev/stdout', '/dev/stderr'])
 /** The Library address `lilbot_give_file` answers with, which bots quote as evidence: a LilBot route, not a file. */

@@ -39,6 +39,7 @@ describe('live check guard: what a scenario needs is allowed', () => {
     ['mcp__lilbot_system__lilbot_work', { title: 'Packing list', evidence: [{ proves: 'written', command: `cat ${folder}/packing-list.md` }] }],
     ['tool_call', { calls: [{ name: 'lilbot_memory_save', arguments: '{"text":"Give money figures in AUD."}' }] }],
     ['tool_search', { query: 'routine schedule' }],
+    ['mcp__lilbot_system__mcp__lilbot_system__lilbot_skill_read', { name: 'lilbot-work' }],
     ['mcp__lilbot_system__lilbot_work', { evidence: [{ proves: 'given', url: `/api/library/${crypto.randomUUID()}/${crypto.randomUUID()}` }] }],
     ['skill_manage', { action: 'create', name: 'packing', content: '---\nname: packing\n---\nPack light.' }]
   ])('%s %j', (name, args) => expect(why(name, args)).toBeNull())
@@ -109,6 +110,8 @@ describe('live check guard: every way out LILA-47 tried is refused', () => {
     for (const name of ['web_search', 'web_extract', 'browser_exec', 'manage_connections', 'vision_analyze', 'image_generate', 'execute_code', 'delegate_task'])
       expect(why(name, {})).toContain('not a tool this check allows')
     expect(why('mcp__lilbot_system__lilbot_computer_exec', { command: 'ls' })).toContain('not a tool')
+    expect(why('mcp__lilbot_system__mcp__lilbot_system__lilbot_computer_exec', { command: 'ls' })).toContain('not a tool')
+    expect(why('mcp__other__lilbot_skill_read', {})).toContain('not a tool')
     expect(why('tool_call', { calls: [{ name: 'lilbot_connection', arguments: {} }] })).toContain('not a tool')
     expect(why('tool_call', { name: 'read_file', arguments: { path: '/etc/hostname' } })).toContain('/etc/hostname')
     expect(why('tool_call', { calls: [{ arguments: { itemId: 'a', result: 'packed' } }, 'stray'] })).toBeNull()
