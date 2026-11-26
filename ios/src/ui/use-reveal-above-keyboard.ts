@@ -53,10 +53,6 @@ export function useRevealAboveKeyboard(keyboardHeight: number, options: { barHei
   }, [barHeight, keyboardHeight, paneId, windowHeight])
 
   useEffect(() => {
-    if (keyboardHeight <= 0 && focusedHere) useFocusedPane.setState({ paneId: null })
-  }, [focusedHere, keyboardHeight])
-
-  useEffect(() => {
     if (keyboardHeight <= 0 || !focusedHere) return
     const handle = setTimeout(revealNow, 60)
     return () => clearTimeout(handle)
