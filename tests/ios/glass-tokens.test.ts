@@ -80,6 +80,19 @@ describe('iOS Liquid Glass tokens', () => {
         composerInput: { fontSize: 18, lineHeight: 25 },
         composerActionSize: 36
       },
+      details: {
+        sectionHeader: { fontSize: 15, lineHeight: 20 },
+        rowTitle: { fontSize: 17, lineHeight: 22 },
+        rowSubtitle: { fontSize: 15, lineHeight: 20 },
+        meta: { fontSize: 14, lineHeight: 19 },
+        input: { fontSize: 17, lineHeight: 24 },
+        button: { fontSize: 16, lineHeight: 21 },
+        body: { fontSize: 16, lineHeight: 23 },
+        code: { fontSize: 14, lineHeight: 20 },
+        tabLabel: { fontSize: 15, lineHeight: 20 },
+        botTitle: { fontSize: 20, lineHeight: 25 },
+        sheetTitle: { fontSize: 18, lineHeight: 24 }
+      },
       work: {
         pageTitle: { fontSize: 22, lineHeight: 28 },
         cardTitle: { fontSize: 18, lineHeight: 24 },
@@ -114,7 +127,9 @@ describe('iOS Liquid Glass tokens', () => {
       rowTime: 1.45,
       headerTitle: 1.35,
       modelPill: 1.5,
-      composerInput: 2.0
+      composerInput: 2.0,
+      tabLabel: 1.35,
+      control: 1.5
     })
   })
 })

@@ -39,10 +39,18 @@ export function createBotActions(deps: BotActionDeps) {
     }
   }
 
+  let primaryInFlight: Promise<void> | null = null
+
   return {
     setBotPrefs: (prefs: BotPrefsInput) => attempt(() => requireSocket().call('bots.setPrefs', prefs)),
     setBotUnread: (botId: string, unread: boolean) => attempt(() => requireSocket().call('activity.setUnread', { botId, unread })),
-    makeBotPrimary: (botId: string) => attempt(() => requireSocket().call('bots.setPrimary', { botId })),
+    /** One primary change at a time: a second tap while one is in flight joins it instead of sending again. */
+    makeBotPrimary: (botId: string) => {
+      primaryInFlight ??= attempt(() => requireSocket().call('bots.setPrimary', { botId })).finally(() => {
+        primaryInFlight = null
+      })
+      return primaryInFlight
+    },
     moveToNewSection: async (botId: string, name: string): Promise<void> => {
       const socket = requireSocket()
       const section = await socket.call('sections.create', { name })

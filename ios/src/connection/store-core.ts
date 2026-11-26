@@ -44,6 +44,7 @@ export interface ConnectionState {
   load: () => Promise<void>
   retryTokenRead: () => Promise<void>
   save: (settings: ServerSettings, options?: SaveConnectionOptions) => Promise<void>
+  disconnect: () => Promise<void>
   setConnected: (connected: boolean) => void
   setDevice: (device: Device) => void
 }
@@ -58,7 +59,8 @@ function parseSavedAddress(raw: string | null): string | null {
   }
 }
 
-export function createConnectionStore(deps: { plain: PlainStorage; secret: SecretStorage }) {
+export function createConnectionStore(deps: { plain: PlainStorage; secret: SecretStorage; onDisconnect?: () => void }) {
+  let disconnecting: Promise<void> | null = null
   return create<ConnectionState>((set, get) => ({
     settings: null,
     loaded: false,
@@ -138,6 +140,26 @@ export function createConnectionStore(deps: { plain: PlainStorage; secret: Secre
         })
         throw new Error(CONNECTION_STORE_MESSAGES.saveTokenFailed)
       }
+    },
+    /** One disconnect at a time: a second tap while one is running joins it, so the socket stops and the token clears once. */
+    disconnect: () => {
+      disconnecting ??= (async () => {
+        deps.onDisconnect?.()
+        try {
+          await deps.plain.setItem(SETTINGS_KEY, '')
+        } catch {
+          // Best-effort clear on disconnect.
+        }
+        try {
+          await deps.secret.deleteItem(TOKEN_KEY)
+        } catch {
+          // Best-effort Keychain delete on disconnect.
+        }
+        set({ settings: null, connected: false, device: null, tokenNotice: '', tokenReadFailed: false })
+      })().finally(() => {
+        disconnecting = null
+      })
+      return disconnecting
     },
     setConnected: connected => set({ connected }),
     setDevice: device => set({ device })

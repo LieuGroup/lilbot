@@ -18,7 +18,11 @@ export const DYNAMIC_TYPE_CAPS = {
   /** Caps composer model pill (~19.5 pt) so model + effort remain readable at AX5 instead of "Default...". */
   modelPill: 1.5,
   /** Caps composer input (~36 pt) paired with a scaled maxHeight so multi-word placeholders stay visible. */
-  composerInput: 2.0
+  composerInput: 2.0,
+  /** Caps segmented tab/filter labels (~20 pt at AX5) so 3-tab switchers stay legible without clipping. */
+  tabLabel: 1.35,
+  /** Caps compact pill controls and badges (~22 pt at AX5) so buttons keep full labels beside rows. */
+  control: 1.5
 } as const
 
 /** Pinned tile columns: keeps 2/3-up at default size, drops 3-up to 2-up at xxxLarge (>= 1.35),

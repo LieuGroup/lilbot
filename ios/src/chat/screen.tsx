@@ -12,7 +12,7 @@ import { useConnectionStore } from '../connection/store'
 import { thisDeviceId } from '../devices/device'
 import { BotAvatar } from '../ui/avatar'
 import { DYNAMIC_TYPE_CAPS } from '../ui/dynamic-type'
-import { MoreHorizontalIcon, NewChatIcon } from '../ui/icon'
+import { ChevronRightIcon, MoreHorizontalIcon, NewChatIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { MOBILE_SCALE } from '../ui/tokens'
@@ -30,13 +30,15 @@ export interface ChatScreenProps {
   headerLeading?: ReactNode
   /** Show a separate New session button beside `•••` on split surfaces without a side strip (iPad). */
   showNewSession?: boolean
+  /** Optional handler when tapping the bot's identity in the inline header (e.g. toggling iPad Bot Details inspector). */
+  onOpenDetails?: () => void
   /** Optional dock rendered directly above the composer inside the keyboard-avoiding container. */
   dock?: ReactNode
   /** Optional renderer for tool items, receiving the default tool row as fallback. */
   renderToolItem?: RenderToolItem
 }
 
-export function ChatScreen({ bot, hideHeader = false, headerLeading, showNewSession = false, dock, renderToolItem }: ChatScreenProps) {
+export function ChatScreen({ bot, hideHeader = false, headerLeading, showNewSession = false, onOpenDetails, dock, renderToolItem }: ChatScreenProps) {
   const theme = useTheme()
   const insets = useSafeAreaInsets()
   const connected = useConnectionStore(state => state.connected)
@@ -80,10 +82,29 @@ export function ChatScreen({ bot, hideHeader = false, headerLeading, showNewSess
       {!hideHeader && (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: theme.hairline }}>
           {headerLeading}
-          <BotAvatar name={bot.name} avatar={bot.prefs.avatar} size={28} />
-          <AppText variant="title" numberOfLines={1} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.headerTitle} style={{ flex: 1 }}>
-            {bot.name}
-          </AppText>
+          {onOpenDetails ? (
+            <Pressable
+              testID="chat-inline-details-button"
+              onPress={onOpenDetails}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel={`${bot.name}, open bot details`}
+              style={({ pressed }) => ({ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10, opacity: pressed ? 0.65 : 1 })}
+            >
+              <BotAvatar name={bot.name} avatar={bot.prefs.avatar} size={28} />
+              <AppText variant="title" numberOfLines={1} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.headerTitle} style={{ flexShrink: 1 }}>
+                {bot.name}
+              </AppText>
+              <ChevronRightIcon color={theme.mutedForeground} size={14} />
+            </Pressable>
+          ) : (
+            <>
+              <BotAvatar name={bot.name} avatar={bot.prefs.avatar} size={28} />
+              <AppText variant="title" numberOfLines={1} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.headerTitle} style={{ flex: 1 }}>
+                {bot.name}
+              </AppText>
+            </>
+          )}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             {showNewSession && (
               <Pressable

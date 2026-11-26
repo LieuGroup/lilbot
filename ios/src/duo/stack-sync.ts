@@ -49,9 +49,16 @@ export function shouldShowNativeBack(surface: SurfaceKind, screenReaderEnabled: 
   return true
 }
 
-/** Hides the bottom NativeTabs bar while focused in compact Chat on surfaces where tabs sit at the bottom
- *  (Standard iPhone and Duo Unfolded Portrait), so the bar never covers the Composer (R4-03b).
- *  Keeps the 84 pt side strip visible on Folded Duo (R4-01b) and keeps tabs visible on Roster/Settings/Split. */
-export function shouldHideNativeTabBar(surface: SurfaceKind, chatFocused: boolean): boolean {
-  return (surface === 'phone' || surface === 'duo-unfolded-portrait') && chatFocused
+/** True when the active route is a pushed detail screen inside a tab stack (`bot-details` or a Settings
+ *  sub-section `[section]`) where compact iPhone hides the floating bottom NativeTabs bar. */
+export function isPushedDetailSegments(segments: readonly string[]): boolean {
+  return segments.includes('bot-details') || segments.includes('[section]')
+}
+
+/** Hides the bottom NativeTabs bar while focused in compact Chat or a pushed detail screen on surfaces
+ *  where tabs sit at the bottom (Standard iPhone and Duo Unfolded Portrait), so the floating bar never
+ *  covers the Composer or pushed content (R4-03b, R3-05, R3-07b). Keeps the 84 pt side strip visible on
+ *  Folded Duo (R4-01b) and keeps tabs visible on Roster/Settings roots and Split surfaces. */
+export function shouldHideNativeTabBar(surface: SurfaceKind, hideInCompactStack: boolean): boolean {
+  return (surface === 'phone' || surface === 'duo-unfolded-portrait') && hideInCompactStack
 }

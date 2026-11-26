@@ -66,7 +66,7 @@ export function detachedTabTriggerSpec(input: { surface: SurfaceKind; chatFocuse
 
 /** Returns true when Expo Router segments are on the Bots tab rather than Settings. */
 export function isBotsTabSegments(segments: readonly string[]): boolean {
-  if (segments.includes('settings')) return false
+  if (segments.includes('settings') || segments.includes('(settings)')) return false
   return segments.includes('(bots)') || segments.length <= 1
 }
 
