@@ -18,6 +18,7 @@ import { BotRuntimes } from './bot-runtimes'
 import { SessionSettings } from './bot-session-settings'
 import { BotSkills } from './bot-skills'
 import type { BotRecord, BotStore } from './bot-store'
+import { withFreshPrompt } from './runtime-tools'
 import type { Workspaces } from './workspaces'
 
 export interface BotServiceOptions {
@@ -35,6 +36,7 @@ export interface BotServiceOptions {
   connections?: (botId: string) => import('../engines/mcp-connection').McpConnection[]
   onConnectionsChanged?: (botId: string) => void
   systemNote?: (bot: BotRecord) => string
+  prompt?: import('./runtime-tools').BotPromptSource
   busyReason?: (botId: string) => string | null
   deletionRetry?: import('./bot-deletion').BotDeletionOptions
   readOnlyChat?: (botId: string, chatId: string) => boolean
@@ -152,12 +154,14 @@ export class BotService {
 
   async getBot(botId: string): Promise<BotDetail> {
     const bot = await this.requireBot(botId)
-    const state = this.runtimes.snapshot(bot)
+    const state = await withFreshPrompt(this.runtimes, bot)
     const skills = this.library?.list(botId).filter(s => !s.excluded) ?? []
     return {
       ...this.identity(bot),
       instructions: bot.instructions,
       memoryConnected: state?.memoryConnected ?? false,
+      ...(state?.promptFallback ? { promptFallback: state.promptFallback } : {}),
+      ...(this.engines.get(bot.engineId)?.hasEngineIdentityText?.(bot.instructions) ? { engineIdentityInInstructions: true } : {}),
       abilities: [
         ...(state?.abilities ?? []).filter(a => a.kind !== 'skill' || !skills.some(s => s.name === a.id)),
         ...skills.map(s => ({ kind: 'skill' as const, id: s.name, label: s.name, enabled: s.enabled }))
@@ -226,26 +230,11 @@ export class BotService {
   browseMemory = (input: import('../../shared/memory-schema').MemoryBrowseInput) => this.botMemory.browse(input)
   connectMemory = (botId: string, options?: { keepOwnNotes: boolean }) => this.botMemory.connect(botId, options)
   connectAllMemory = (onFailed?: (botId: string) => void) => this.botMemory.connectAll(onFailed)
-  async listModels(target?: string | { botId?: string; engineId?: string }): Promise<ModelProvider[]> {
+  listModels = async (target?: string | { botId?: string; engineId?: string }): Promise<ModelProvider[]> => {
     if (typeof target === 'string') return this.engines.require(target).listModels()
     const engineId = target?.botId ? (await this.requireBot(target.botId)).engineId : target?.engineId
     if (target?.botId && target.engineId && engineId !== target.engineId) throw new LilBotError('invalid_params', 'That bot belongs to a different engine.')
     return (engineId ? this.engines.require(engineId) : this.engines.defaultEngine).listModels()
-  }
-  listSections = (): Section[] => this.prefs.sections()
-  createSection(name: string): Section {
-    const section = this.prefs.createSection(name)
-    this.changed()
-    return section
-  }
-  renameSection(sectionId: string, name: string): Section {
-    const section = this.prefs.renameSection(sectionId, name)
-    this.changed()
-    return section
-  }
-  deleteSection(sectionId: string) {
-    this.prefs.deleteSection(sectionId)
-    this.changed()
   }
 
   openChat = (botId: string, chatId: string | undefined, onEvent: (event: ChatEvent) => void, requireExisting = false) =>
@@ -278,28 +267,19 @@ export class BotService {
   private summary(bot: BotRecord): Bot {
     return { ...this.identity(bot), runnable: this.runtimes.snapshot(bot) !== null, runtimePending: this.runtimes.pending(bot), ...this.own(bot) }
   }
-
   private identity(bot: BotRecord, context = this.sessions.contextFor(bot.id), lastMessage = this.history?.store.preview(bot.id)) {
     const { id, name, function: fn, model, reasoningEffort, isDefault, permissionMode } = bot
     const base = { id, name, function: fn, model, reasoningEffort, effectiveReasoningEffort: this.sessions.effectiveFor(id), isDefault, permissionMode }
     return { ...base, ...(context ? { context } : {}), ...(lastMessage ? { lastMessage } : {}) }
   }
-
   private own(identity: BotRecord): Pick<Bot, 'isPrimary' | 'prefs' | 'workspace'> {
     return { isPrimary: identity.id === this.primaryId(this.runtimes.store.list()), prefs: this.prefs.prefs(identity.id), workspace: this.workspaces.pathFor(identity.id) }
   }
-
-  async createFromBot(callerId: string, input: import('./bot-creation').BotCreationInput, options?: import('./bot-creation').BotCreationOptions) {
-    return this.creation.create(await this.requireBot(callerId), input, options)
-  }
-
-  private primaryId(bots: BotRecord[]): string | undefined {
-    return bots.find(bot => bot.id === this.prefs.primaryBot())?.id ?? bots.find(bot => bot.isDefault)?.id
-  }
-
-  async reviewMemory(botId: string, prompt: string, options: import('../engines/bot-engine').ReviewOptions): Promise<void> {
-    return this.background.review(await this.requireBot(botId), prompt, options)
-  }
+  createFromBot = async (callerId: string, input: import('./bot-creation').BotCreationInput, options?: import('./bot-creation').BotCreationOptions) =>
+    this.creation.create(await this.requireBot(callerId), input, options)
+  private primaryId = (bots: BotRecord[]): string | undefined => bots.find(bot => bot.id === this.prefs.primaryBot())?.id ?? bots.find(bot => bot.isDefault)?.id
+  reviewMemory = async (botId: string, prompt: string, options: import('../engines/bot-engine').ReviewOptions): Promise<void> =>
+    this.background.review(await this.requireBot(botId), prompt, options)
 
   async setPrimary(botId: string): Promise<{ ok: true }> {
     await this.requireBot(botId)
@@ -307,6 +287,20 @@ export class BotService {
     this.changed()
     return { ok: true }
   }
-
   requireBot = (botId: string): Promise<BotRecord> => this.runtimes.require(botId)
+  listSections = (): Section[] => this.prefs.sections()
+  createSection(name: string): Section {
+    const section = this.prefs.createSection(name)
+    this.changed()
+    return section
+  }
+  renameSection(sectionId: string, name: string): Section {
+    const section = this.prefs.renameSection(sectionId, name)
+    this.changed()
+    return section
+  }
+  deleteSection(sectionId: string) {
+    this.prefs.deleteSection(sectionId)
+    this.changed()
+  }
 }

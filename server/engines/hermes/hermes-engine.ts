@@ -18,6 +18,8 @@ import { compressionRoot } from './hermes-history-catalog'
 import { reviewMemory } from './hermes-memory-review'
 import { installMemory, legacyNotes, MEMORY_ADAPTER_VERSION, memoryInstalled, refreshMemoryAdapters } from './hermes-memory-setup'
 import { ensureFullAccess } from './hermes-permissions'
+import { hasHermesIdentityText, promptApplicator } from './hermes-prompt'
+import { HERMES_PROMPT_TUNING } from './hermes-prompt-tuning'
 import { runRoutine } from './hermes-routines'
 import { steerRun, stopRun } from './hermes-run-control'
 import { applyIdentity, createRuntime } from './hermes-runtime'
@@ -150,9 +152,12 @@ export class HermesEngine implements BotEngine {
   }
 
   private skillSettings = new Map<string, string>()
+  private applyPrompt = promptApplicator()
   readonly alwaysOnSkills = ALWAYS_ON_SKILLS
+  readonly promptTuning = HERMES_PROMPT_TUNING
   userSkillPaths = userSkillPaths
   bundledSkills = bundledSkillNames
+  hasEngineIdentityText = hasHermesIdentityText
   async configureSkills(id: string, settings: Parameters<typeof configureSkills>[1]) {
     await this.requireBot(id)
     const key = JSON.stringify(settings)
@@ -161,6 +166,7 @@ export class HermesEngine implements BotEngine {
     await applied(id, 'skills', hashOf('acp-skills-known-v1', adapterHash('skills-adapter'), ...skillsFingerprint(id, settings)), () => configureSkills(id, settings, activate))
     this.skillSettings.set(id, key)
   }
+  configurePrompt = (id: string, settings: import('../bot-engine').PromptSettings) => this.withBot(id, () => this.applyPrompt(id, settings))
   validateModel = async (model: BotModel) => requireListedModel(await this.listModels(), model)
 
   async listModels() {

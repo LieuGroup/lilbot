@@ -30,10 +30,12 @@ interface BotFormProps {
   sentEffort?: string | null
   /** Optional context occupancy card shown under the model fields (Setup). */
   context?: ReactNode
+  /** Muted note shown below Instructions when saved text still mentions leftover engine identity. */
+  instructionsNote?: string
   onSubmit: (values: BotFormValues) => Promise<void>
 }
 
-export function BotForm({ initial, submitLabel, noModelLabel, sentEffort, context, onSubmit, children }: BotFormProps) {
+export function BotForm({ initial, submitLabel, noModelLabel, sentEffort, context, instructionsNote, onSubmit, children }: BotFormProps) {
   const [values, setValues] = useState(initial)
   const listed = useModelProviders()
   const providers = listed ?? []
@@ -85,6 +87,7 @@ export function BotForm({ initial, submitLabel, noModelLabel, sentEffort, contex
           className="max-h-[28rem] min-h-48 font-mono"
           onChange={event => set({ instructions: event.target.value })}
         />
+        {instructionsNote && values.instructions === initial.instructions && <p className="mt-1.5 text-xs text-muted-foreground">{instructionsNote}</p>}
       </FormField>
       <FormField label="Model" htmlFor={`${id}-model`}>
         <ModelSelector id={`${id}-model`} providers={providers} value={values.model} noModelLabel={noModelLabel} onChange={model => set({ model })} />
