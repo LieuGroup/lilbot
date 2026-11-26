@@ -53,7 +53,7 @@ function botText(): { where: string; text: string }[] {
     const file = relative(ROOT, join(ROOT, path))
     if (ALLOWED[file]) continue
     if (file.endsWith('.md')) {
-      for (const [i, line] of readFileSync(join(ROOT, file), 'utf8').split('\n').entries()) if (NAME.test(line)) hits.push(`${file}:${i + 1}: ${line.trim().slice(0, 120)}`)
+      for (const [i, line] of readFileSync(join(ROOT, file), 'utf8').split('\n').entries()) found.push({ where: `${file}:${i + 1}`, text: line })
       continue
     }
     for (const text of literals(readFileSync(join(ROOT, file), 'utf8'))) if (!LEGACY.has(text)) found.push({ where: file, text })
