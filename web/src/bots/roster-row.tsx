@@ -55,7 +55,7 @@ export function RosterRow({ bot, active, tab }: { bot: Bot; active: boolean; tab
         aria-label={`More for ${bot.name}`}
         aria-haspopup="menu"
         onClick={event => openBotMenu(bot.id, event.currentTarget)}
-        className="absolute top-1/2 right-2 size-4 -translate-y-1/2 rounded-sm p-0 text-muted-foreground opacity-0 group-hover:opacity-100 group-has-focus-visible:opacity-100 after:absolute after:-inset-3.5 hover:bg-transparent hover:text-foreground pointer-coarse:right-3.5 pointer-coarse:size-[18px] pointer-coarse:text-foreground/70 pointer-coarse:opacity-100 pointer-coarse:[&_svg]:size-[18px]"
+        className="absolute top-1/2 right-2 size-4 -translate-y-1/2 rounded-sm p-0 text-muted-foreground opacity-0 group-hover:opacity-100 group-has-focus-visible:opacity-100 hover:bg-transparent hover:text-foreground pointer-coarse:right-3.5 pointer-coarse:size-[18px] pointer-coarse:after:absolute pointer-coarse:after:-inset-3.5 pointer-coarse:text-foreground/70 pointer-coarse:opacity-100 pointer-coarse:[&_svg]:size-[18px]"
       >
         <EllipsisIcon strokeWidth={1.75} />
       </Button>

@@ -54,7 +54,7 @@ function RosterTile({ bot, active, tab, narrow }: { bot: Bot; active: boolean; t
         aria-label={`More for ${bot.name}`}
         aria-haspopup="menu"
         onClick={event => openBotMenu(bot.id, event.currentTarget)}
-        className="absolute top-1 right-1 size-5 rounded-[6px] bg-card p-0 text-foreground opacity-0 ring-1 ring-hairline group-hover:opacity-100 group-has-focus-visible:opacity-100 after:absolute after:-inset-3 hover:bg-card dark:hover:bg-card pointer-coarse:opacity-100 [&_svg]:size-3.5"
+        className="absolute top-1 right-1 size-5 rounded-[6px] bg-card p-0 text-foreground opacity-0 ring-1 ring-hairline group-hover:opacity-100 group-has-focus-visible:opacity-100 hover:bg-card dark:hover:bg-card pointer-coarse:opacity-100 pointer-coarse:after:absolute pointer-coarse:after:-inset-3.5 [&_svg]:size-3.5"
       >
         <EllipsisIcon strokeWidth={1.75} />
       </Button>
