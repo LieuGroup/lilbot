@@ -1,7 +1,7 @@
 /** What a chat looks like on screen, and how each live event changes it. Pure functions only. */
 import type { ChatEvent, ChatItem, ChatSnapshot } from '../../chat-schema'
 import type { HistoryPage, SessionReason } from '../../history-schema'
-import { isShowTool } from '../../shown-schema'
+import { isShowTool } from '../../shown-rules'
 import { reuseItems, withLatest } from './history-view'
 import { withArrivedMessage } from './user-messages'
 import { replaced, stopWriting, writing } from './writing-reply'

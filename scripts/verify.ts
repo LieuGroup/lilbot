@@ -14,6 +14,7 @@ for (const args of [
   ['bun', 'scripts/check-size.ts'],
   ['bun', 'test', 'tests'],
   ['bun', 'run', 'build'],
+  ['bun', 'scripts/check-first-load.ts'],
   ['bun', 'scripts/growth-report.ts']
 ]) {
   const child = Bun.spawn(args, { stdio: ['inherit', 'inherit', 'inherit'] })
