@@ -1,29 +1,20 @@
 /** A service sign-in card in the conversation (#314, Paper artboard 25): waiting, after Sign in on this device, and
  *  the one line it shrinks to. The card's state always comes from the server (live events and the saved history); this
- *  component holds only what is device-local: whether Sign in was pressed and the address being pasted. The sign-in
- *  link is fetched on each press and handed straight to the new tab, never kept. */
+ *  component holds only what is device-local: whether Sign in was pressed and the address being pasted. Sign in opens
+ *  a blank tab inside the click, then fetches the link and hands it straight to that tab (`sign-in-tab.ts`); it is
+ *  never kept. */
 import { ArrowUpRightIcon, LoaderCircleIcon } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/ui/button'
-import { Input } from '@/ui/input'
 import { Notice } from '@/ui/notice'
-import {
-  canFinish,
-  openedBody,
-  PASTE_HINT,
-  reasonOf,
-  showsSignInDomain,
-  signInPhase,
-  signInTitle,
-  timeLeft,
-  waitingLine,
-  wantsLine
-} from '../../../shared/client/connections/sign-in-card'
+import { isWebAddress, POPUP_BLOCKED, reasonOf, signInPhase, signInTitle, timeLeft, waitingLine, wantsLine } from '../../../shared/client/connections/sign-in-card'
 import type { ConnectionSignInCard } from '../../../shared/connections-schema'
 import { lilbot, messageOf } from '../app/lilbot-socket'
 import { useNow } from '../app/use-now'
 import { useBotStore } from '../bots/bot-store'
+import { PasteForm, SignInFacts } from './sign-in-faces'
 import { SignInLine } from './sign-in-line'
+import { openBlankTab } from './sign-in-tab'
 
 type Busy = 'open' | 'finish' | 'cancel' | 'restart' | null
 
@@ -43,7 +34,7 @@ function useCardAction() {
       setBusy(null)
     }
   }
-  return { busy, error, run }
+  return { busy, error, run, fail: setError }
 }
 
 /** Which cards Sign in was pressed for on this page, by card id, with the expiry it was pressed for. In memory only
@@ -71,16 +62,27 @@ function WaitingCard({ card }: { card: ConnectionSignInCard }) {
     setOpened(expiresAt)
   }
   const [pasted, setPasted] = useState('')
-  const { busy, error, run } = useCardAction()
+  const { busy, error, run, fail } = useCardAction()
   const phase = signInPhase(card, now, openedFor)
 
-  const signIn = () =>
-    run('open', async () => {
-      const { url } = await lilbot.call('connections.signIn.open', { cardId: card.id })
-      // The opened page gets no handle on LilBot and no referrer.
-      window.open(url, '_blank', 'noopener,noreferrer')
+  // The tab opens inside the click itself (a pop-up blocker allows that), then goes to the link once it is fetched.
+  // Only when a tab really opened does the card say it is waiting; a blocked tab leaves the card as it was.
+  const signIn = () => {
+    if (busy) return
+    const tab = openBlankTab()
+    if (!tab) return fail(POPUP_BLOCKED)
+    void run('open', async () => {
+      try {
+        const { url } = await lilbot.call('connections.signIn.open', { cardId: card.id })
+        if (!isWebAddress(url)) throw new Error('LilBot did not return a sign-in page.')
+        tab.go(url)
+      } catch (failure) {
+        tab.close()
+        throw failure
+      }
       setOpenedFor(card.expiresAt)
     })
+  }
   const finish = () =>
     run('finish', async () => {
       await lilbot.call('connections.signIn.finish', { cardId: card.id, address: pasted.trim() })
@@ -122,51 +124,9 @@ function WaitingCard({ card }: { card: ConnectionSignInCard }) {
       </header>
 
       {phase === 'open' ? (
-        <>
-          <dl className="flex flex-col rounded-[10px] bg-background text-xs/[18px]">
-            <Fact term="Service" value={card.serviceAddress} />
-            {showsSignInDomain(card) && (
-              <>
-                <div className="h-px bg-foreground/6" />
-                <Fact term="You sign in at" value={card.providerDomain} />
-              </>
-            )}
-          </dl>
-          {reason && (
-            <p className="text-[13px]/5 break-words whitespace-pre-wrap text-foreground">
-              <span className="text-muted-foreground">{botName} says:</span> {reason}
-            </p>
-          )}
-        </>
+        <SignInFacts card={card} botName={botName} reason={reason} />
       ) : (
-        <>
-          <p className="text-[13px]/5 text-foreground">{openedBody(card)}</p>
-          <form
-            className="flex flex-col gap-2 rounded-[10px] bg-background p-3"
-            onSubmit={event => {
-              event.preventDefault()
-              if (canFinish(pasted)) void finish()
-            }}
-          >
-            <label htmlFor={`sign-in-paste-${card.id}`} className="text-xs/[17px] text-muted-foreground">
-              {PASTE_HINT}
-            </label>
-            <div className="flex gap-2">
-              <Input
-                id={`sign-in-paste-${card.id}`}
-                value={pasted}
-                onChange={event => setPasted(event.target.value)}
-                placeholder="https://..."
-                autoComplete="off"
-                spellCheck={false}
-                className="bg-card dark:bg-card"
-              />
-              <Button type="submit" disabled={!canFinish(pasted) || busy !== null}>
-                {busy === 'finish' ? 'Finishing…' : 'Finish'}
-              </Button>
-            </div>
-          </form>
-        </>
+        <PasteForm card={card} pasted={pasted} setPasted={setPasted} busy={busy !== null} finishing={busy === 'finish'} onFinish={() => void finish()} />
       )}
 
       {error && <Notice tone="error">{error}</Notice>}
@@ -186,14 +146,5 @@ function WaitingCard({ card }: { card: ConnectionSignInCard }) {
         </Button>
       </div>
     </section>
-  )
-}
-
-function Fact({ term, value }: { term: string; value: string }) {
-  return (
-    <div className="flex gap-3 px-3 py-2">
-      <dt className="w-[92px] flex-none text-muted-foreground">{term}</dt>
-      <dd className="min-w-0 font-mono break-all text-foreground">{value}</dd>
-    </div>
   )
 }

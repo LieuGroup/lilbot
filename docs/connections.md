@@ -140,8 +140,10 @@ address, signsInAt, note }`, telling the bot to wait for LilBot to notify it whe
   first card); iPhone does not yet. What it shows in each state and its wording are pure, in
   `shared/client/connections/sign-in-card.ts`, for both clients. The card's state is always the server's (live event,
   or history after a reload); only "Sign in was pressed on this device" and the address being pasted are local, in
-  component state, never stored. Sign in fetches the link on each press and opens it with `noopener,noreferrer`; the
-  link is not kept. Bot label and reason are rendered as plain text. A waiting card whose time is up shows the ran-out
+  component state, never stored. Sign in opens a blank tab synchronously inside the click (a `window.open` after an
+  await is blocked by Safari and by stale click activation), cuts its opener, then fetches the link and sends the tab
+  there through a no-referrer meta refresh (`web/src/connections/sign-in-tab.ts`); the link is not kept. A blocked tab
+  leaves the card on its first face with a plain note. Bot label and reason are rendered as plain text. A waiting card whose time is up shows the ran-out
   line at once, before the server's own update arrives.
 - **Automatic callback & trust boundaries:**
   - `GET /api/connections/callback` remains strictly on the Access door behind `LILBOT_ACCESS_CALLBACK_ENABLED=1` and

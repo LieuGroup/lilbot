@@ -47,6 +47,7 @@ export const wantsLine = (botName: string) => `${botName} wants to use it`
 export const waitingLine = (card: ConnectionSignInCard) => `Waiting for ${card.providerDomain}`
 export const openedBody = (card: ConnectionSignInCard) => `Finish on the page that opened. This card completes by itself when ${card.serviceName} sends you back.`
 export const PASTE_HINT = 'Page did not come back? Copy the address from that browser tab and paste it here.'
+export const POPUP_BLOCKED = 'Your browser blocked the sign-in page. Allow pop-ups for LilBot, then press Sign in again.'
 
 /** The bot's own reason, shown only while the card waits (the server keeps it on a card that ran out; it is not news then). */
 export const reasonOf = (card: ConnectionSignInCard) => (card.state === 'waiting' && card.reason ? card.reason : null)
@@ -66,8 +67,8 @@ export function endedLine(card: ConnectionSignInCard): EndedLine {
   }
 }
 
+/** A single http(s) address with no spaces: what Finish accepts and what a sign-in tab may be sent to. */
+export const isWebAddress = (text: string) => /^https?:\/\/\S+$/i.test(text)
+
 /** The pasted address can be sent once it looks like a web address; the server checks everything else. */
-export function canFinish(pasted: string): boolean {
-  const text = pasted.trim()
-  return /^https?:\/\/\S+$/i.test(text)
-}
+export const canFinish = (pasted: string) => isWebAddress(pasted.trim())
