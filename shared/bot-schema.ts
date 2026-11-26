@@ -60,6 +60,9 @@ export type BotGroup = z.infer<typeof BotGroup>
 /** The exchange a bot is working on now for another bot, and that bot's name. */
 export const BotWorkingFor = z.object({ threadId: z.string(), name: z.string() })
 export type BotWorkingFor = z.infer<typeof BotWorkingFor>
+/** One task a bot is doing now for another bot: the exchange, and the id and name of the bot that handed it out. */
+export const BotTaskFor = BotWorkingFor.extend({ botId: z.string() })
+export type BotTaskFor = z.infer<typeof BotTaskFor>
 /** Running same-bot workers for this bot, for the roster row and Activity "Now" card. */
 export const BotWorkers = z.object({ count: z.number().int().positive(), activity: z.string().optional() })
 export type BotWorkers = z.infer<typeof BotWorkers>
@@ -92,8 +95,10 @@ export const Bot = BotIdentity.extend({
   activity: BotActivity.optional(),
   /** Running groups it leads or is in; absent when none. */
   groups: z.array(BotGroup).optional(),
-  /** Set while it works on a task another bot handed it. */
+  /** Set while it works on a task another bot handed it: the first of `tasksFor`. Kept for clients that read one task. */
   workingFor: BotWorkingFor.optional(),
+  /** Every task it is doing now for other bots, oldest started first; absent when none. */
+  tasksFor: z.array(BotTaskFor).optional(),
   /** Set while one or more of its own workers are running. */
   workers: BotWorkers.optional(),
   prefs: BotPrefs,
