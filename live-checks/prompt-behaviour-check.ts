@@ -107,7 +107,7 @@ async function modelCase(label: string, model: { provider: string; model: string
   check(
     `${label}: a small job opens a work item, and finishes it with evidence`,
     answered(job.finished) && existsSync(join(bot.workspace, 'packing-list.md')) && !!done && exact(job.wire, prompt()),
-    `tools=[${job.tools.join(', ')}] failed=[${job.failed.join(', ')}] items=${JSON.stringify(items.map(i => `${i.status}/${i.evidenceCount}`))}`
+    `answered=${answered(job.finished)} file=${existsSync(join(bot.workspace, 'packing-list.md'))} wire=${exact(job.wire, prompt())} tools=[${job.tools.join(', ')}] failed=[${job.failed.join(', ')}] items=${JSON.stringify(items.map(i => `${i.status}/${i.evidenceCount}`))}`
   )
 
   const pref = await turn(

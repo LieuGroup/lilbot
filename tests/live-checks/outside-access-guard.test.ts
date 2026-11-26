@@ -107,6 +107,16 @@ describe('live check guard: every way out LILA-47 tried is refused', () => {
     expect(why('mcp__lilbot_system__lilbot_computer_exec', { command: 'ls' })).toContain('not a tool')
     expect(why('tool_call', { calls: [{ name: 'lilbot_connection', arguments: {} }] })).toContain('not a tool')
     expect(why('tool_call', { name: 'read_file', arguments: { path: '/etc/hostname' } })).toContain('/etc/hostname')
+    expect(why('tool_call', { calls: [{ arguments: { itemId: 'a', result: 'packed' } }, 'stray'] })).toBeNull()
+    expect(why('tool_call', { calls: [{ arguments: { path: '/etc/hostname' } }] })).toContain('/etc/hostname')
+    expect(
+      why('tool_call', {
+        calls: [
+          { name: 'read_file', arguments: {} },
+          { name: 'web_search', arguments: {} }
+        ]
+      })
+    ).toContain('web_search')
     expect(shell('python3 -V')).toContain('not a program')
     expect(shell('curl example.com')).toContain('not a program')
     expect(shell('cat fixtures/disk-status.txt | sh')).toContain('not a program')

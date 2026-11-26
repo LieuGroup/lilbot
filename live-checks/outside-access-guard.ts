@@ -101,9 +101,11 @@ function strings(value: unknown, out: string[] = []): string[] {
 
 /** Why `call`, made by a bot working in `folder`, is refused under `policy`, or null when it is allowed. */
 export function refusal(call: ToolCall, folder: string, policy: GuardPolicy): string | null {
-  if (call.name === 'tool_call') return bridgedCalls(call.args).reduce<string | null>((why, inner) => why ?? refusal(inner, folder, policy), null)
+  const bridged = call.name === 'tool_call' ? bridgedCalls(call.args) : null
+  // The engine refuses a whole bridge call with an entry it cannot name, so only its paths are checked.
+  if (bridged?.every(inner => inner.name)) return bridged.reduce<string | null>((why, inner) => why ?? refusal(inner, folder, policy), null)
   const lilbot = call.name.match(LILBOT_TOOL)?.[1]
-  const local = LOCAL_TOOLS.has(call.name) || (lilbot && !LILBOT_OUTSIDE.test(lilbot))
+  const local = bridged || LOCAL_TOOLS.has(call.name) || (lilbot && !LILBOT_OUTSIDE.test(lilbot))
   if (!local && !policy.tools?.includes(call.name)) return `${call.name || 'an unnamed tool'} is not a tool this check allows`
   const allowed = [folder, ...policy.roots].map(root => resolve(root))
   if (call.name === 'terminal') {
@@ -149,7 +151,8 @@ function argsOf(raw: unknown): Record<string, unknown> {
 
 function bridgedCalls(args: Record<string, unknown>): ToolCall[] {
   const raw = typeof args.calls === 'string' ? argsOf(args.calls) : (args.calls ?? (args.name ? [args] : []))
-  return (Array.isArray(raw) ? raw : [raw]).map((c: any) => ({ name: String(c?.name ?? ''), args: argsOf(c?.arguments) }))
+  const entries = Array.isArray(raw) ? raw : [raw]
+  return entries.length ? entries.map((c: any) => ({ name: typeof c?.name === 'string' ? c.name.trim() : '', args: argsOf(c?.arguments) })) : [{ name: '', args: {} }]
 }
 
 /** Every complete tool call in any of the three wire formats, at any depth of `value`. */
