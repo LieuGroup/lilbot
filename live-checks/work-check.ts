@@ -59,7 +59,7 @@ try {
   client = await checkClient(port, frame => events.push(frame), 240_000)
   db = new Database(join(root, 'lilbot.db'))
   db.exec('PRAGMA busy_timeout = 5000')
-  const plain = 'You help Oscar in a live check. Do what he asks, with your own tools, and keep replies short.'
+  const plain = 'You help the owner in a live check. Do what they ask, with your own tools, and keep replies short.'
   const lead = await call('bots.create', { name: 'Work Lead', function: 'Temporary work board check', instructions: plain })
   const helper = await call('bots.create', { name: 'Work Helper', function: 'Temporary work board check', instructions: plain })
   await until(

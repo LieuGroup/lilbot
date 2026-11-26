@@ -51,7 +51,7 @@ test('Oscar’s answer and send-back reach the main conversation, the item fence
   expect(w.delivered).toHaveLength(1)
   expect(w.delivered[0].chatId).toBeNull()
   expect(w.delivered[0].prompt).toContain('<webhook-work-item>')
-  expect(w.delivered[0].prompt).toContain('Oscar\'s words: "Use the bug label."')
+  expect(w.delivered[0].prompt).toContain('The owner\'s words: "Use the bug label."')
   const figure = await w.act({ title: 'Count stars', kind: 'figure', done: 'the star count' })
   await w.act({ itemId: figure.id, status: 'done', result: '12', evidence: [{ proves: 'the count', url: 'https://example.com/stars' }] })
   w.board.sendBack(figure.id, 'Count again from the repository page.')

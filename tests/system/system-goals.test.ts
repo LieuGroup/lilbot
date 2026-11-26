@@ -36,7 +36,7 @@ test("a goal is proposed only from the session that made the call: a routine run
   f.routineStore.attach(run.id, 'run-session', Date.now())
   const propose = { action: 'propose', requestId: 'g1', text: 'Grow notes.txt', agreement, target }
   f.from.set('b1', 'run-session')
-  expect((await f.call('b1', 'lilbot_goal', propose)).error).toContain("A goal is Oscar's")
+  expect((await f.call('b1', 'lilbot_goal', propose)).error).toContain("A goal is the owner's")
   f.from.delete('b1')
   const late = f.call('b1', 'lilbot_goal', propose, false)
   setTimeout(() => f.calls.saw('b1', 'b1-main', 'mcp__lilbot_system__lilbot_goal', propose, 'late'), 50)

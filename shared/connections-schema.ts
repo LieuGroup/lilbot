@@ -71,7 +71,7 @@ export const ConnectionActionInput = z.object({
   action: z.enum(['add', 'sign_in', 'finish', 'remove']),
   requestId: z.string().min(1).max(200).describe('New for each add, sign_in or finish; the same when retrying'),
   name: Name.optional(),
-  address: z.string().min(1).max(2000).optional().describe("add: the service's MCP address (HTTPS). finish: the full address Oscar's browser ended on"),
+  address: z.string().min(1).max(2000).optional().describe("add: the service's MCP address (HTTPS). finish: the full address the owner's browser ended on"),
   id: z.string().min(1).max(100).optional().describe('sign_in and remove: the connection id'),
   label: z.string().trim().min(1).max(120).optional().describe('add/sign_in: optional short plain-text label shown on the sign-in card'),
   reason: z.string().trim().min(1).max(300).optional().describe('add/sign_in: optional short plain-text reason shown on the sign-in card')
