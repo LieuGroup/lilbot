@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { mkdir, symlink, truncate, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ChatItem } from '../../shared/chat-schema'
-import { SHOW_LIMITS } from '../../shared/shown-schema'
+import { SHOW_LIMITS } from '../../shared/shown-rules'
 import { systemFixture } from './system-fixture'
 
 const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex')

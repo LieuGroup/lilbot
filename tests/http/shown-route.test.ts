@@ -3,7 +3,7 @@ import { rm, truncate, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { shownRoute } from '../../server/http/shown-route'
 import { parseRange } from '../../server/shown/shown-range'
-import { SHOW_LIMITS } from '../../shared/shown-schema'
+import { SHOW_LIMITS } from '../../shared/shown-rules'
 import { systemFixture } from '../system/system-fixture'
 
 const HOST = '127.0.0.1:3370'

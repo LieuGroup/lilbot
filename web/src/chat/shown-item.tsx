@@ -7,7 +7,8 @@ import { lazy, type ReactNode, Suspense, useState } from 'react'
 
 import type { ViewedImage } from '@/ui/image-viewer'
 import { formatBytes } from '../../../shared/client/attachments/attachment-rules'
-import { SHOW_LIMITS, type ShownFile } from '../../../shared/shown-schema'
+import { SHOW_LIMITS } from '../../../shared/shown-rules'
+import type { ShownFile } from '../../../shared/shown-schema'
 
 const ImageViewer = lazy(() => import('@/ui/image-viewer'))
 
@@ -22,7 +23,7 @@ async function whyMissing(url: string): Promise<Missing> {
   return status === 413 ? 'too_large' : 'gone'
 }
 
-export function ShownItem({ file, botName }: { file: ShownFile; botName?: string }) {
+export default function ShownItem({ file, botName }: { file: ShownFile; botName?: string }) {
   const [missing, setMissing] = useState<Missing>()
   const [viewed, setViewed] = useState<ViewedImage>()
   const fail = () => void whyMissing(file.url).then(setMissing)

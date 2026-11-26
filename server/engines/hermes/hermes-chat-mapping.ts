@@ -1,7 +1,7 @@
 /** Hermes session rows and events -> LilBot chat items and events. Only fields that Hermes' wire
  *  contract declares are read here; `tests/engines/hermes/hermes-contract.test.ts` checks that they still exist. */
 import type { ChatEvent, ChatItem } from '../../../shared/chat-schema'
-import { isShowTool } from '../../../shared/shown-schema'
+import { isShowTool } from '../../../shared/shown-rules'
 import type { HermesEvent } from './hermes-socket'
 import { unwrapToolCalls } from './hermes-tool-calls'
 import { rowIdFromComplete, type TurnUsageTracker } from './hermes-usage'
