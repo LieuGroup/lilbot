@@ -52,6 +52,7 @@ async function turn(botId: string, chatId: string, text: string, timeout = 300_0
     .slice(from)
     .filter(e => inChat(e) && e.data?.type === 'tool.started')
     .map(e => String(e.data.name))
+  await server.call('chat.close', { chatId }).catch(() => {})
   return { finished: end?.data, reply: String(end?.data?.text ?? ''), tools, wire: proxy.records.slice(wireFrom).filter(r => r.toolCount > 0) }
 }
 
