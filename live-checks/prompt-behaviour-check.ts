@@ -47,6 +47,8 @@ function turnOf(workspace: string, wireFrom: number, done: boolean, reply: strin
 }
 
 async function round(label: string, model: { provider: string; model: string }, n: number) {
+  // Shared facts outlive a deleted bot: each round starts with none, so a save is this round's own.
+  for (const fact of (await server.call('memory.listAll', { view: 'shared', limit: 200 })).facts as { id: string }[]) await server.call('memory.forget', { factId: fact.id })
   const bot = await server.call('bots.create', { name: `Pip ${label} ${stamp} ${n}`, function: 'General assistant', instructions: INSTRUCTIONS, model })
   const native = nativeProfileOf(server.root, bot.id)
   server.natives.add(native)
@@ -96,7 +98,6 @@ async function round(label: string, model: { provider: string; model: string }, 
     results.push({ model: label, scenario: scenario.name, outcome })
     console.log(`${outcome.ok ? 'ok  ' : 'miss'} ${label} round ${n}: ${scenario.name}  (${outcome.why})`)
   }
-  await server.call('bots.delete', { botId: bot.id, files: 'delete', privateMemories: 'forget' }).catch(() => {})
 }
 
 let setupFailures = 0
