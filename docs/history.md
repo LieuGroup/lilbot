@@ -35,7 +35,7 @@ LilBot never summarises. The short version is in `AGENTS.md` under "Conversation
   the journal's event order alone: a reply's first words, a tool's start, a placed message's send. No time from the
   engine's clock is compared with the journal's, so no clock difference or coincidence changes the order; LilBot's own
   rows (shown files, sign-in cards, thread and work lines) carry LilBot's time like the send. A reply whose turn end is
-  not yet journalled counts as the open turn's only when it begins with that turn's first journalled words. Every lookup is an index seek (migration 46 indexes the journal by event
+  not yet journalled counts as the open turn's only when it begins with every word that turn has journalled since its last start or tool. Every lookup is an index seek (migration 46 indexes the journal by event
   type, by a finished turn's row, by a sent message's text and by a tool's id), and a message passes at most 500 rows, so
   placing does not grow with the history. Opening a chat reads the newest engine page (since #87: the importer pages
   oldest first, so this is how a reopened chat shows what happened while LilBot was not

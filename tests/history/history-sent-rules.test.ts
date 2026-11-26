@@ -86,3 +86,23 @@ test('a hidden turn queued before the message, read while still open, sits below
   })
   expect(order).toEqual(['tool:t1', 'sent while busy', 'First hidden reply.', 'Second hidden reply.'])
 })
+
+test("an older reply whose end LilBot missed stays above the message even when it opens like the open turn's words", () => {
+  const order = run((store, db) => {
+    // LilBot restarted during this turn and never journalled its end.
+    journal(store, db, [
+      [T - 60_000, started],
+      [T - 59_000, words('I ')],
+      [T - 58_900, words('checked the river.')]
+    ])
+    store.write('b', 's', [user(1, T - 61_000, 'check the river'), reply(2, T - 59_000, 'I checked the river.')])
+    journal(store, db, [
+      [T, started],
+      [T + 1000, sent('sent while busy')],
+      [T + 2000, words('I ')],
+      [T + 2100, words('am connecting the lake.')]
+    ])
+    store.write('b', 's', [user(3, T + 3000, 'sent while busy')])
+  })
+  expect(order).toEqual(['check the river', 'I checked the river.', 'sent while busy'])
+})
