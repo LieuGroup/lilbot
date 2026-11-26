@@ -115,3 +115,25 @@ test('upgrading keeps every session already recorded and the main one; nothing e
     db.close()
   }
 })
+
+test("switching the bot's engine makes the new engine's session part of the conversation", async () => {
+  const db = openDatabase(':memory:')
+  const store = new HistoryStore(db)
+  const source: ConversationSource = { list: async () => [], read: async () => ({ rows: [], cursor: null, reset: false, empty: true }), close() {} }
+  const history = new HistoryService(
+    store,
+    { id: 'old', conversations: async () => source } as unknown as BotEngine,
+    async () => [],
+    () => true
+  )
+  try {
+    store.owned.own('b1', 'old-main')
+    const prepared = await history.prepareEngineSwitch({ id: 'b1', engineId: 'old', engineBotId: 'n1' })
+    expect(store.owned.owns('b1', 'new-main')).toBe(false)
+    prepared.commit('new-main')
+    expect(store.owned.owns('b1', 'new-main')).toBe(true)
+  } finally {
+    history.close()
+    db.close()
+  }
+})

@@ -194,5 +194,7 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
   const apiChecks = { inCheck: sessionGrants.inCheck(checkSessions), skillWriteLocked: sessionGrants.skillWriteLocked, ...gates }
   const { engineApi, checkpointChoices } = mem.wireEngineApi(engines, token, PORT, { ...apiCore, ...apiAccess, ...apiChecks })
   const base = { bots, store, skills, library, computers, remoteWorkers, devices, attachments, t3Grants, mcp, system, engineApi, memoryConnection }
-  return { ...base, checkpointChoices, activity, routines, threads, boards, webhooks, hiddenChat, notifications: notif.notifications }
+  /** Only the bot's conversation shows as activity or turns unread: an outside, hidden or unreadable session never does. */
+  const watchActivity = () => bots.watchActivity(event => hiddenChat(event.botId, event.chatId) || activity.observe(event), activity.cursor)
+  return { ...base, checkpointChoices, activity, routines, threads, boards, webhooks, hiddenChat, watchActivity, notifications: notif.notifications }
 }
