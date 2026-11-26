@@ -13,9 +13,9 @@ export const ENABLE_NESTED_TAB_SCROLL_MINIMIZE = true
 export const ENABLE_DUO_VERTICAL_BAR_ITEMS = true
 
 const VARIANTS = {
-  development: { name: 'LilBot Dev', bundleIdentifier: 'com.lilbot.app.dev', scheme: 'lilbot-dev' },
-  preview: { name: 'LilBot Preview', bundleIdentifier: 'com.lilbot.app.preview', scheme: 'lilbot-preview' },
-  production: { name: 'LilBot', bundleIdentifier: 'com.lilbot.app', scheme: 'lilbot' }
+  development: { name: 'LilBot Dev', bundleIdentifier: 'com.lilbot.app.dev', scheme: 'lilbot-dev', icon: './assets/icons/LilBotDev.icon' },
+  preview: { name: 'LilBot Preview', bundleIdentifier: 'com.lilbot.app.preview', scheme: 'lilbot-preview', icon: './assets/icons/LilBotPreview.icon' },
+  production: { name: 'LilBot', bundleIdentifier: 'com.lilbot.app', scheme: 'lilbot', icon: './assets/icons/LilBot.icon' }
 } as const
 
 type Variant = keyof typeof VARIANTS
@@ -71,6 +71,7 @@ export function buildAppConfig(
     userInterfaceStyle: 'automatic',
     ios: {
       bundleIdentifier: chosen.bundleIdentifier,
+      icon: chosen.icon,
       buildNumber: process.env.APP_BUILD_NUMBER ?? '1',
       supportsTablet: true,
       infoPlist: {
