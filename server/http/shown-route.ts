@@ -37,7 +37,15 @@ export async function shownRoute(request: Request, hosts: Set<string>, shown: Pi
   let sent = 0
   const body = new ReadableStream<Uint8Array>({
     async pull(controller) {
-      const part = await readSlice(file.handle, start + sent, Math.min(CHUNK, length - sent))
+      let part: Uint8Array
+      try {
+        part = await readSlice(file.handle, start + sent, Math.min(CHUNK, length - sent))
+      } catch (error) {
+        // A read that fails mid-stream (the disk, or the file changed under it) must not leak the open handle.
+        await file.handle.close().catch(() => {})
+        controller.error(error)
+        return
+      }
       sent += part.length
       if (part.length) controller.enqueue(part)
       if (!part.length || sent >= length) {

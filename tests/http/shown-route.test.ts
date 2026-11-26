@@ -67,6 +67,27 @@ test('a file gone from the folder, grown past its limit, or another bot or item 
   expect((await get()).status).toBe(404)
 })
 
+test('a read that fails mid-stream closes the file and errors the response instead of leaking the handle', async () => {
+  let closed = 0
+  let reads = 0
+  const handle = {
+    read: async (buffer: Buffer, offset: number, length: number) => {
+      if (reads++ > 0) throw new Error('EIO')
+      buffer.fill(7, offset, offset + length)
+      return { bytesRead: length, buffer }
+    },
+    close: async () => {
+      closed++
+    }
+  }
+  const shown = { content: async () => ({ handle, size: 600 * 1024, mime: 'video/mp4', name: 'clip.mp4' }) } as never
+  const res = await shownRoute(new Request(`http://${HOST}/api/shown/b1/x`, { headers: { host: HOST } }), new Set([HOST]), shown)
+  expect(res.status).toBe(200)
+  await expect(res.arrayBuffer()).rejects.toThrow('EIO')
+  await Bun.sleep(10)
+  expect(closed).toBe(1)
+})
+
 test('parseRange reads one bytes range and ignores anything it cannot serve', () => {
   expect(parseRange(null, 10)).toBeNull()
   expect(parseRange('bytes=-', 10)).toBeNull()

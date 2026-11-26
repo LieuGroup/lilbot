@@ -401,6 +401,9 @@ Full upload, storage, marker, safety and read rules: [docs/library-and-attachmen
   upload into `attachments/` via `O_NOFOLLOW` exclusive-create with SHA-256 verification and PNG/JPEG/GIF/WebP magic
   checks. `chat.send` requires client UUID `messageId` for idempotency; display-only markers reconcile stored engine text
   at the HTTP edge; non-image files pass as untrusted workspace references.
+- **Shown files (`server/shown/`, #317):** `lilbot_show` places an image, video or HTML page from the bot's folder in
+  its reply as a `shown` item; LilBot keeps the path (never a copy) and serves it at `/api/shown/` with byte ranges.
+  Off by default behind `LILBOT_SHOW_ENABLED=1` until web and iPhone draw every kind.
 
 ## Coding
 

@@ -1,10 +1,20 @@
 /** Hermes session rows and events -> LilBot chat items and events. Only fields that Hermes' wire
  *  contract declares are read here; `tests/engines/hermes/hermes-contract.test.ts` checks that they still exist. */
 import type { ChatEvent, ChatItem } from '../../../shared/chat-schema'
+import { isShowTool } from '../../../shared/shown-schema'
 import type { HermesEvent } from './hermes-socket'
+import { unwrapToolCalls } from './hermes-tool-calls'
 import { rowIdFromComplete, type TurnUsageTracker } from './hermes-usage'
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '')
+
+/** A stored row for `lilbot_show` (#317), also when Hermes' tool search wrapped it in `tool_call`: its `shown` item
+ *  replaces it, so the row is not drawn. Live events already carry the unwrapped name. */
+function showRow(name: string, args: unknown) {
+  if (isShowTool(name)) return true
+  const calls = name === 'tool_call' ? unwrapToolCalls(name, args) : []
+  return calls.length > 0 && calls.every(call => isShowTool(call.name))
+}
 
 /** `display_messages` from `session.create` / `session.resume`. `failedSave` says whether a row that closes a failed turn
  *  (`display_kind` `failed_turn`, at its `timestamp` in seconds) closes one that stopped for want of the memory save. */
@@ -20,7 +30,7 @@ export function itemsFromRows(rows: unknown, failedSave?: (at: number) => boolea
     const unsaved = role === 'assistant' && (row as Record<string, unknown>).display_kind === 'failed_turn' && typeof at === 'number' && failedSave?.(at * 1000)
     if (unsaved) items.push({ kind: 'error', text: '', reason: 'memory_save' })
     else if (role === 'assistant' && body) items.push({ kind: 'assistant', text: body })
-    if (role === 'tool')
+    if (role === 'tool' && !showRow(text(name), (row as Record<string, unknown>).args))
       items.push({
         kind: 'tool',
         toolId: text(tool_call_id) || `stored-${items.length}`,

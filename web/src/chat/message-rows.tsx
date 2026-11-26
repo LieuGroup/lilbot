@@ -1,8 +1,9 @@
-import { memo, type ReactNode, useRef } from 'react'
+import { memo, type ReactNode, useMemo, useRef } from 'react'
 
 import { MessageScrollerItem } from '@/ui/message-scroller'
 import type { Avatar } from '../../../shared/avatar'
 import type { MessageItem, UserItem, ViewItem } from '../../../shared/client/chat/chat-state'
+import { type ReplyActions, replyActions } from '../../../shared/client/chat/reply-actions'
 import { dayKey } from '../history/history-labels'
 import { DateLine, SessionDivider, StartMarker } from '../history/history-marks'
 import { ChatItem } from './chat-item'
@@ -52,7 +53,9 @@ const ChatRow = memo(function ChatRow({
   botId,
   inTurn,
   beforeTool,
-  queued
+  queued,
+  copyText,
+  usage
 }: {
   item: MessageItem
   position: number
@@ -61,11 +64,14 @@ const ChatRow = memo(function ChatRow({
   inTurn: boolean
   beforeTool: boolean
   queued: boolean
+  /** The reply's words when this row carries its actions; plain values, so the memo holds while other rows stream. */
+  copyText: string | null
+  usage?: ReplyActions['usage']
 }) {
   return (
     // A task drawn in its batch's card leaves its own row empty: hidden, so it takes no gap.
     <MessageScrollerItem messageId={String(position)} scrollAnchor={anchor} className="empty:hidden">
-      <ChatItem item={item} botId={botId} inTurn={inTurn} beforeTool={beforeTool} queued={queued} />
+      <ChatItem item={item} botId={botId} inTurn={inTurn} beforeTool={beforeTool} queued={queued} actions={copyText === null ? null : { text: copyText, usage }} />
     </MessageScrollerItem>
   )
 })
@@ -91,6 +97,8 @@ export function MessageRows({ botId, botName, avatar, items, first, drawFrom, st
   const loaded = useRef(loadedTranscript(first, items.length, load))
   loaded.current = updateLoaded(loaded.current, first, items.length, load)
   const newest = newestDivider(items)
+  // One Copy per reply, under its last part, copying all its words (#317).
+  const actions = useMemo(() => replyActions(items), [items])
   const rows: ReactNode[] = []
   if (start !== null && drawFrom === 0) rows.push(<StartMarker key="start" name={botName} avatar={avatar} at={start} />)
   for (let index = drawFrom; index < items.length; index++) {
@@ -113,6 +121,8 @@ export function MessageRows({ botId, botName, avatar, items, first, drawFrom, st
         inTurn={inTurn}
         beforeTool={beforeTool}
         queued={item.kind === 'user' && queued.includes(item)}
+        copyText={actions.get(index)?.text ?? null}
+        usage={actions.get(index)?.usage}
       />
     )
   }
