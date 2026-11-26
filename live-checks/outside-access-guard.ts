@@ -1,60 +1,126 @@
-/** Outside-access guard for live checks that give a model real tools (used by `prompt-wire-proxy.ts`).
- *  The capture proxy reads every tool call in a model's answer before the engine sees it, and in the history of every
- *  request. A call that names a path outside the allowed roots (the temporary bots' workspaces), escapes its working
- *  folder with `..`, reads the home folder, opens a URL, or uses a tool that acts on a real computer or an outside
- *  service is refused: the engine gets an error instead of the call, so it never runs, and the check stops and fails.
- *  Paths are reported; nothing the call would have read is. */
-import { homedir } from 'node:os'
-import { isAbsolute, normalize, resolve } from 'node:path'
+/** The one guard for live checks that give a model real tools. It allows instead of forbids:
+ *  - Tools: only local file, terminal and skill tools and LilBot's own tools (never its computer or connection tools),
+ *    plus any tool a check names. Everything else (web, browser, images, the engine's connectors, code) is refused.
+ *  - Paths: every string in every argument, at any depth and under any name, is resolved against the bot's own folder
+ *    (`..` normalised wherever it appears, links followed) and must land inside that folder or a folder the check names.
+ *  - Terminal: one program from the check's short list with plain flags and paths inside, or a whole command the check
+ *    writes out. No `cd`, variables, substitutions, pipes, redirects, globs or other shell syntax.
+ *  Used by the capture proxy (`prompt-wire-proxy.ts`), which refuses a call before the engine runs it, and by
+ *  `workspace-guard.ts`, which reads the calls an engine recorded. Reports paths, never anything read. */
+import { existsSync, realpathSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
 
 export interface ToolCall {
   name: string
   args: Record<string, unknown>
 }
 
-const OUTSIDE_TOOLS = /lilbot_computer|lilbot_connection|^(manage_connections|web_search|web_extract|x_search|computer_use|browser_\w+)$/
-const PATH_KEYS = new Set(['path', 'file_path', 'filepath', 'workdir', 'cwd', 'dir', 'directory', 'folder'])
-const SHELL_KEYS = new Set(['command', 'cmd', 'script'])
-const CODE_KEYS = new Set(['code'])
-const DEVICES = new Set(['/dev/null', '/dev/stdout', '/dev/stderr'])
-const HOME_WORDS = /\$HOME\b|\$\{HOME\}|expanduser|Path\.home|getenv\(\s*['"]HOME|environ\[\s*['"]HOME|https?:\/\//
-const SHELL_TOKEN = /(?:^|[\s'"`=:(\[,;|&<>{])(~[^\s'"`;|&<>)\]},]*|\.\.(?:\/[^\s'"`;|&<>)\]},]*)?|\/[^\s'"`;|&<>)\]},]*)/g
-const CODE_TOKEN = /['"](~[^'"]*|\.\.(?:\/[^'"]*)?|\/[^'"\s]*)/g
-const BARE_CD = /(?:^|[;&|]\s*)cd\s*(?:$|[;&|])/m
-const PATCH_FILE = /^\*\*\* (?:Update File|Add File|Delete File|Move to): *(.+)$/gm
-
-function reach(path: string, roots: string[]): string | null {
-  const value = path.trim()
-  if (!value || DEVICES.has(value)) return null
-  if (!value.startsWith('~') && !isAbsolute(value)) return normalize(value).split('/')[0] === '..' ? value : null
-  const full = resolve(value.startsWith('~') ? homedir() + value.slice(1) : value)
-  return roots.some(root => full === root || full.startsWith(`${root}/`)) ? null : value
+export interface GuardPolicy {
+  /** Folders besides the bot's own that its tools may name. */
+  roots: string[]
+  /** Programs a terminal command may run, with plain flags and paths inside the allowed folders only. */
+  programs: string[]
+  /** Whole terminal commands a scenario needs beyond that, written out exactly. */
+  commands?: string[]
+  /** Tools a scenario names beyond the local ones every check allows. */
+  tools?: string[]
 }
 
-/** Why `call` reaches outside `roots`, or null when it stays inside. */
-export function outsideReach(call: ToolCall, roots: string[]): string | null {
-  if (call.name === 'tool_call') {
-    for (const inner of bridgedCalls(call.args)) {
-      const why = outsideReach(inner, roots)
-      if (why) return why
-    }
-    return null
+const LOCAL_TOOLS = new Set(['read_file', 'write_file', 'patch', 'search_files', 'terminal', 'skills_list', 'skill_view', 'todo_list', 'tool_search', 'tool_describe', 'clarify'])
+const LILBOT_TOOL = /^(?:mcp__(?:lilbot_system|editor_lilbot_[0-9a-f]{8})__)?(lilbot_[a-z_]+)$/
+const LILBOT_OUTSIDE = /^lilbot_(?:computer|connection)/
+const HARMLESS = new Set(['/dev/null', '/dev/stdout', '/dev/stderr'])
+const SHELL_SYNTAX = /[$`;|&<>(){}*?[\]!\\#~\n\r]/
+const FLAG = /^-{1,2}[A-Za-z0-9][A-Za-z0-9-]*$/
+const SPLIT = /[\s"'`()<>,;|&=[\]{}]+/
+const VARIABLE = /\$[A-Za-z_{(]/
+const SCHEME = /^([a-z][a-z0-9+.-]*):\/\//i
+const HOME_PATH = /^~([A-Za-z_][\w.-]*)?(\/|$)/
+const clip = (text: string) => text.replace(/\s+/g, ' ').slice(0, 160)
+const inside = (path: string, allowed: string[]) => allowed.some(root => path === root || path.startsWith(`${root}/`))
+
+/** Where `path` really is: links in the part of it that exists are followed. */
+function real(path: string): string {
+  let probe = path
+  while (!existsSync(probe) && dirname(probe) !== probe) probe = dirname(probe)
+  try {
+    return realpathSync(probe) + path.slice(probe.length)
+  } catch {
+    return path
   }
-  if (OUTSIDE_TOOLS.test(call.name)) return `${call.name} acts outside the development area`
-  for (const [key, value] of Object.entries(call.args)) {
-    if (typeof value !== 'string') continue
-    const found = PATH_KEYS.has(key)
-      ? reach(value, roots)
-      : key === 'patch'
-        ? [...value.matchAll(PATCH_FILE)].map(m => reach(m[1]!, roots)).find(Boolean)
-        : SHELL_KEYS.has(key) || CODE_KEYS.has(key)
-          ? (value.match(HOME_WORDS)?.[0] ??
-            (SHELL_KEYS.has(key) && BARE_CD.test(value) ? 'cd' : null) ??
-            [...value.matchAll(SHELL_KEYS.has(key) ? SHELL_TOKEN : CODE_TOKEN)].map(m => reach(m[1]!, roots)).find(Boolean))
-          : null
-    if (found) return `${call.name} ${key} reaches ${found}${PATH_KEYS.has(key) ? '' : ` in: ${value.replace(/\s+/g, ' ').slice(0, 160)}`}`
+}
+
+/** Why `word` (a whole argument, or one word of a longer text) is not inside `allowed`, or null. */
+function pathRefusal(word: string, folder: string, allowed: string[], whole: boolean): string | null {
+  if (!word || HARMLESS.has(word)) return null
+  if (VARIABLE.test(word)) return word
+  const scheme = word.match(SCHEME)
+  if (scheme) return scheme[1]!.toLowerCase() === 'file' ? pathRefusal(word.slice(7), folder, allowed, whole) : null
+  if (HOME_PATH.test(word)) return word
+  if (!whole && (!/\/|^\.\.?$/.test(word) || /^\/+$/.test(word))) return null
+  const lexical = resolve(folder, word)
+  if (!inside(lexical, allowed)) return word
+  return inside(real(lexical), allowed.map(real)) ? null : `${word} (a link out)`
+}
+
+function commandRefusal(command: string, folder: string, allowed: string[], policy: GuardPolicy): string | null {
+  const text = command.trim()
+  if (policy.commands?.includes(text)) return null
+  if (SHELL_SYNTAX.test(text)) return `shell syntax in "${clip(text)}"`
+  const words = (text.match(/'[^']*'|"[^"]*"|\S+/g) ?? []).map(word => word.replace(/^(['"])(.*)\1$/, '$2'))
+  const [program, ...rest] = words
+  if (!program || !policy.programs.includes(program)) return `"${clip(program ?? '')}" is not a program this check allows`
+  for (const word of rest) {
+    if (/['"]/.test(word)) return `a quote inside a word in "${clip(text)}"`
+    if (word.startsWith('-') && !FLAG.test(word)) return `a flag with a value in "${clip(text)}"`
+    const why = FLAG.test(word) ? null : pathRefusal(word, folder, allowed, true)
+    if (why) return `"${clip(text)}" names ${why}`
   }
   return null
+}
+
+function strings(value: unknown, out: string[] = []): string[] {
+  if (typeof value === 'string') out.push(value)
+  else if (Array.isArray(value)) for (const v of value) strings(v, out)
+  else if (value && typeof value === 'object') for (const v of Object.values(value)) strings(v, out)
+  return out
+}
+
+/** Why `call`, made by a bot working in `folder`, is refused under `policy`, or null when it is allowed. */
+export function refusal(call: ToolCall, folder: string, policy: GuardPolicy): string | null {
+  if (call.name === 'tool_call') return bridgedCalls(call.args).reduce<string | null>((why, inner) => why ?? refusal(inner, folder, policy), null)
+  const lilbot = call.name.match(LILBOT_TOOL)?.[1]
+  const local = LOCAL_TOOLS.has(call.name) || (lilbot && !LILBOT_OUTSIDE.test(lilbot))
+  if (!local && !policy.tools?.includes(call.name)) return `${call.name || 'an unnamed tool'} is not a tool this check allows`
+  const allowed = [folder, ...policy.roots].map(root => resolve(root))
+  if (call.name === 'terminal') {
+    const why = commandRefusal(String(call.args.command ?? ''), folder, allowed, policy)
+    if (why) return `terminal: ${why}`
+  }
+  for (const text of strings(call.args)) {
+    const value = text.trim()
+    const why =
+      (/\s/.test(value) ? null : pathRefusal(value, folder, allowed, true)) ??
+      value
+        .split(SPLIT)
+        .flatMap(word => (SCHEME.test(word) ? [word] : word.split(':')))
+        .map(word => pathRefusal(word, folder, allowed, false))
+        .find(Boolean)
+    if (why) return `${call.name} names ${why}`
+  }
+  return null
+}
+
+/** The bot's folder as LilBot's system note states it, when it lies inside `workspaces`. */
+export function folderOf(systemText: string, workspaces: string[]): string | undefined {
+  const folder = systemText.match(/Your folder is (\/\S+?)\.(?:\s|$)/m)?.[1]
+  return folder &&
+    inside(
+      resolve(folder),
+      workspaces.map(w => resolve(w))
+    )
+    ? resolve(folder)
+    : undefined
 }
 
 function argsOf(raw: unknown): Record<string, unknown> {
@@ -73,36 +139,30 @@ function bridgedCalls(args: Record<string, unknown>): ToolCall[] {
   return (Array.isArray(raw) ? raw : [raw]).map((c: any) => ({ name: String(c?.name ?? ''), args: argsOf(c?.arguments) }))
 }
 
-/** Every complete tool call in a request body or a non-streamed answer, in any of the three wire formats. */
-function walk(value: unknown, out: ToolCall[]) {
+/** Every complete tool call in any of the three wire formats, at any depth of `value`. */
+export function toolCallsIn(value: unknown, out: ToolCall[] = []): ToolCall[] {
   if (Array.isArray(value)) {
-    for (const v of value) walk(v, out)
-    return
+    for (const v of value) toolCallsIn(v, out)
+    return out
   }
-  if (!value || typeof value !== 'object') return
+  if (!value || typeof value !== 'object') return out
   const o = value as Record<string, any>
   if (o.type === 'tool_use' && typeof o.name === 'string') out.push({ name: o.name, args: argsOf(o.input) })
   else if (o.type === 'function_call' && typeof o.name === 'string') out.push({ name: o.name, args: argsOf(o.arguments) })
   else if (o.function && typeof o.function.name === 'string') out.push({ name: o.function.name, args: argsOf(o.function.arguments) })
-  for (const v of Object.values(o)) if (v && typeof v === 'object') walk(v, out)
-}
-
-export function toolCallsInRequest(body: unknown): ToolCall[] {
-  const out: ToolCall[] = []
-  const b = body as Record<string, unknown>
-  walk([b?.messages, b?.input], out)
+  for (const v of Object.values(o)) if (v && typeof v === 'object') toolCallsIn(v, out)
   return out
 }
 
-/** Every tool call in a model's answer, streamed (server-sent events, rebuilt from their pieces) or not. */
+export const toolCallsInRequest = (body: unknown) => toolCallsIn([(body as any)?.messages, (body as any)?.input])
+
+/** Every tool call in a model's answer, streamed (server-sent events, rebuilt from their pieces) or not. An answer
+ *  that mentions a tool call none of this could read counts as one unnamed call, so it is refused rather than passed. */
 export function toolCallsInResponse(text: string): ToolCall[] {
   const out: ToolCall[] = []
-  if (text.trimStart().startsWith('{')) {
-    walk(argsOf(text), out)
-    return out
-  }
+  if (text.trimStart().startsWith('{')) toolCallsIn(argsOf(text), out)
   const blocks = new Map<string, { name: string; json: string; input?: unknown }>()
-  for (const line of text.split('\n')) {
+  for (const line of text.trimStart().startsWith('{') ? [] : text.split('\n')) {
     if (!line.startsWith('data:')) continue
     const event = argsOf(line.slice(5).trim()) as Record<string, any>
     if (event.type === 'content_block_start' && event.content_block?.type === 'tool_use')
@@ -110,7 +170,7 @@ export function toolCallsInResponse(text: string): ToolCall[] {
     else if (event.type === 'content_block_delta' && event.delta?.type === 'input_json_delta') {
       const block = blocks.get(`a${event.index}`)
       if (block) block.json += event.delta.partial_json ?? ''
-    } else if (event.type === 'response.output_item.done' || event.type === 'response.completed') walk(event, out)
+    } else if (event.type === 'response.output_item.done' || event.type === 'response.completed') toolCallsIn(event, out)
     for (const call of event.choices?.[0]?.delta?.tool_calls ?? []) {
       const block = blocks.get(`o${call.index ?? 0}`) ?? { name: '', json: '' }
       block.name ||= call.function?.name ?? ''
@@ -119,5 +179,6 @@ export function toolCallsInResponse(text: string): ToolCall[] {
     }
   }
   for (const block of blocks.values()) out.push({ name: block.name, args: block.json ? argsOf(block.json) : argsOf(block.input) })
+  if (!out.length && /"type"\s*:\s*"(?:tool_use|function_call)"|"tool_calls"\s*:\s*\[\s*\{/.test(text)) out.push({ name: '', args: {} })
   return out
 }

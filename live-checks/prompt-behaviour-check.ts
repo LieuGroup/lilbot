@@ -43,7 +43,9 @@ const words = (text: string) => text.split(/\s+/).filter(Boolean).length
 const short = (text: string) => text.replace(/\s+/g, ' ').trim().slice(0, 140)
 
 const server = await RestartServer.create('lilbot-prompt-behaviour', { LILBOT_PROMPT_OWNERSHIP: '1' })
-const proxy = startWireCaptureProxy(readDevUpstreamBaseUrl(), [join(server.root, 'workspaces')])
+/** What the scenarios need: the bot reads and lists its own fixtures and writes in its own folder. */
+const GUARD = { roots: [], programs: ['cat', 'ls', 'head', 'tail', 'wc', 'grep', 'stat', 'echo', 'pwd', 'date'] }
+const proxy = startWireCaptureProxy(readDevUpstreamBaseUrl(), { workspaces: [join(server.root, 'workspaces')], policy: GUARD })
 const stamp = Date.now().toString(36)
 
 async function turn(botId: string, chatId: string, text: string, timeout = 300_000) {

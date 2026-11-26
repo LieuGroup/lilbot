@@ -1,14 +1,15 @@
 /** Loopback HTTP capture proxy for the prompt live checks.
  *  Forwards dev CLIProxyAPI requests verbatim while recording the outbound system prompt,
  *  cache_control presence, tool count, and HTTP status without logging keys or upstream URLs.
- *  With `roots`, it also refuses any tool call that reaches outside them (`outside-access-guard.ts`). */
+ *  With a guard, it refuses any tool call the guard does not allow before the engine runs it (`outside-access-guard.ts`):
+ *  each bot's folder is read from its system note and must lie inside `workspaces`. */
 import { Database } from 'bun:sqlite'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { devPort } from '../scripts/dev-paths'
 import { command } from '../server/deploy/process'
 import { rollbackHook } from '../server/engines/hermes/hermes-rollback'
-import { outsideReach, toolCallsInRequest, toolCallsInResponse } from './outside-access-guard'
+import { folderOf, type GuardPolicy, refusal, toolCallsInRequest, toolCallsInResponse } from './outside-access-guard'
 import { type RestartServer, waitFor } from './restart-server'
 
 export interface CapturedRequest {
@@ -23,11 +24,10 @@ export interface CapturedRequest {
   hasDateLine: boolean
   status: number
   error?: string
-  /** Set when a tool call reached outside the allowed roots; the call was refused before the engine ran it. */
+  /** Why the guard refused a tool call in this request or its answer; the engine never ran it. */
   outside?: string
   elapsedMs: number
 }
-
 const FORBIDDEN_STOCK_SNIPPETS = ['Hermes Agent', 'hermes-agent', 'Mid-turn user steering', 'Hermes runtime environment', 'Hermes desktop app', 'Nous Research'] as const
 
 export function findForbiddenStockSnippets(systemText: string): string[] {
@@ -62,7 +62,7 @@ function extractSystem(body: Record<string, unknown>): Pick<CapturedRequest, 'sy
   return { systemKind: 'none', systemText: '', hasCacheControl: false }
 }
 
-export function startWireCaptureProxy(upstreamBaseUrl: string, roots?: string[]) {
+export function startWireCaptureProxy(upstreamBaseUrl: string, guard?: { workspaces: string[]; policy: GuardPolicy }) {
   const port = devPort()
   const records: CapturedRequest[] = []
   const upstream = upstreamBaseUrl.replace(/\/+$/, '')
@@ -78,17 +78,18 @@ export function startWireCaptureProxy(upstreamBaseUrl: string, roots?: string[])
       const parsed = rawBody ? safeJson(new TextDecoder().decode(rawBody)) : null
       const headers = new Headers(request.headers)
       headers.delete('host')
-      const reached = (calls: ReturnType<typeof toolCallsInRequest>) => (roots ? calls.map(c => outsideReach(c, roots)).find(Boolean) : undefined)
+      const folder = guard && (folderOf(parsed ? extractSystem(parsed).systemText : '', guard.workspaces) ?? guard.workspaces[0]!)
+      const reached = (calls: ReturnType<typeof toolCallsInRequest>) => (guard && folder ? calls.map(c => refusal(c, folder, guard.policy)).find(Boolean) : undefined)
       const ran = parsed ? reached(toolCallsInRequest(parsed)) : undefined
       const upstreamResponse = ran ? Response.json({}, { status: 451 }) : await fetch(target, { method: request.method, headers, body: rawBody })
       const outHeaders = new Headers(upstreamResponse.headers)
       for (const name of ['content-encoding', 'content-length', 'transfer-encoding']) outHeaders.delete(name)
       const errorText = upstreamResponse.status >= 400 ? (await upstreamResponse.clone().text()).replace(/\s+/g, ' ').slice(0, 240) : undefined
-      const answer = roots && !ran ? await upstreamResponse.text() : undefined
+      const answer = guard && !ran ? await upstreamResponse.text() : undefined
       const outside = ran ?? (answer === undefined ? undefined : reached(toolCallsInResponse(answer)))
-      const refusal = { type: 'error', error: { type: 'invalid_request_error', message: 'Live check guard: a tool call reached outside the test workspace.' } }
+      const refused = { type: 'error', error: { type: 'invalid_request_error', message: 'Live check guard: this tool call is not allowed in a live check.' } }
       const { status, statusText } = upstreamResponse
-      const response = outside ? Response.json(refusal, { status: 400 }) : new Response(answer ?? upstreamResponse.body, { status, statusText, headers: outHeaders })
+      const response = outside ? Response.json(refused, { status: 400 }) : new Response(answer ?? upstreamResponse.body, { status, statusText, headers: outHeaders })
       if (parsed && (url.pathname.includes('/messages') || url.pathname.includes('/chat/completions') || url.pathname.includes('/responses'))) {
         const extracted = extractSystem(parsed)
         records.push({
@@ -183,11 +184,11 @@ export async function rollBackPromptPlugin(profileId: string) {
 
 const ACCOUNT_STOP = /\b403\b|disabled in this account|violation of terms|unknown provider/i
 
-/** Throws at once on any tool call that reached outside the allowed roots, any 403, account message or
- *  unknown-provider answer since record `from`, or in a failed turn. */
+/** Throws at once on any tool call the guard refused, any 403, account message or unknown-provider answer since
+ *  record `from`, or in a failed turn. */
 export function stopOnAccountProblem(records: CapturedRequest[], from = 0, finished?: { type?: string; message?: string; text?: string }) {
   const outside = records.find(r => r.outside)
-  if (outside) throw new Error(`Stopped: a tool call reached outside the test workspace and was refused (${outside.outside}).`)
+  if (outside) throw new Error(`Stopped: the live check guard refused a tool call (${outside.outside}).`)
   const bad = records.slice(from).find(r => r.status === 403 || ACCOUNT_STOP.test(r.error ?? ''))
   const text = finished?.type === 'error' ? `${finished.message ?? ''} ${finished.text ?? ''}` : ''
   if (bad || ACCOUNT_STOP.test(text))

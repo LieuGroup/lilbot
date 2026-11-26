@@ -15,8 +15,7 @@ const OWNER_AS_BOT =
 
 /** Files that may still hold the name, each with the reason. */
 const ALLOWED: Record<string, string> = {
-  // Owned by the base-prompt work (PR 321), which renames the person there.
-  'server/prompts/base-prompt.ts': 'base prompt',
+  // The note bots get with LilBot's own prompt off stays byte for byte as it is; it changes in a follow-up.
   'server/bots/system-note.ts': 'system note',
   'server/system/system-note-facts.ts': 'system note facts',
   // Screen-only: the roster shows "Waiting for you" for it; no bot reads it.

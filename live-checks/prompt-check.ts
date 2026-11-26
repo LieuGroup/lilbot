@@ -46,7 +46,8 @@ function check(label: string, ok: boolean, detail = '') {
 const upstream = readDevUpstreamBaseUrl()
 const offServer = await RestartServer.create('lilbot-prompt-off', { LILBOT_PROMPT_OWNERSHIP: '0' })
 const server = await RestartServer.create('lilbot-prompt', { LILBOT_PROMPT_OWNERSHIP: '1' })
-const proxy = startWireCaptureProxy(upstream, [join(offServer.root, 'workspaces'), join(server.root, 'workspaces')])
+const policy = { roots: [], programs: ['cat', 'ls', 'echo', 'pwd'], commands: ['sleep 8 && echo DONE', 'sleep 8 && echo "DONE"', 'sleep 8; echo DONE'] }
+const proxy = startWireCaptureProxy(upstream, { workspaces: [join(server.root, 'workspaces'), join(offServer.root, 'workspaces')], policy })
 
 async function turn(s: RestartServer, botId: string, chatId: string, text: string) {
   await Bun.sleep(SPACE_MS)
