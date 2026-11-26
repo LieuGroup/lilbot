@@ -33,6 +33,8 @@ const LOCAL_TOOLS = new Set([...FILE_TOOLS, 'skills_list', 'skill_view', 'skill_
 const LILBOT_TOOL = /^(?:mcp__(?:lilbot_system|editor_lilbot_[0-9a-f]{8})__)?(lilbot_[a-z_]+)$/
 const LILBOT_OUTSIDE = /^lilbot_(?:computer|connection)/
 const HARMLESS = new Set(['/dev/null', '/dev/stdout', '/dev/stderr'])
+/** The Library address `lilbot_give_file` answers with, which bots quote as evidence: a LilBot route, not a file. */
+const LIBRARY_ROUTE = /^\/api\/library\/[0-9a-f-]{36}\/[0-9a-f-]{36}$/
 const SHELL_SYNTAX = /[$`;|&<>(){}*?[\]!\\#~\n\r]/
 const FLAG = /^-{1,2}[A-Za-z0-9][A-Za-z0-9-]*$/
 const SPLIT = /[\s"'`()<>,;|&=[\]{}]+/
@@ -55,7 +57,7 @@ function real(path: string): string {
 
 /** Why `word` (a whole argument, or one word of a longer text) is not inside `allowed`, or null. */
 function pathRefusal(word: string, folder: string, allowed: string[], whole: boolean): string | null {
-  if (!word || HARMLESS.has(word)) return null
+  if (!word || HARMLESS.has(word) || LIBRARY_ROUTE.test(word)) return null
   if (VARIABLE.test(word)) return word
   const scheme = word.match(SCHEME)
   if (scheme) return scheme[1]!.toLowerCase() === 'file' ? pathRefusal(word.slice(7), folder, allowed, whole) : null

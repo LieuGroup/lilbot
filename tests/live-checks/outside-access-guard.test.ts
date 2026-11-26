@@ -37,6 +37,7 @@ describe('live check guard: what a scenario needs is allowed', () => {
     ['mcp__lilbot_system__lilbot_work', { title: 'Packing list', evidence: [{ proves: 'written', command: `cat ${folder}/packing-list.md` }] }],
     ['tool_call', { calls: [{ name: 'lilbot_memory_save', arguments: '{"text":"Give money figures in AUD."}' }] }],
     ['tool_search', { query: 'routine schedule' }],
+    ['mcp__lilbot_system__lilbot_work', { evidence: [{ proves: 'given', url: `/api/library/${crypto.randomUUID()}/${crypto.randomUUID()}` }] }],
     ['skill_manage', { action: 'create', name: 'packing', content: '---\nname: packing\n---\nPack light.' }]
   ])('%s %j', (name, args) => expect(why(name, args)).toBeNull())
 })
@@ -80,6 +81,7 @@ describe('live check guard: every way out LILA-47 tried is refused', () => {
   test.each([
     ['terminal', { command: 'ls', workdir: '..' }],
     ['read_file', { path: '../x' }],
+    ['read_file', { path: '/api/library/x/../../../etc/hostname' }],
     ['read_file', { path: 'fixtures/../../../code/x' }],
     ['read_file', { path: 'root/etc/hostname' }],
     ['read_file', { path: '~/code/notes.md' }],
