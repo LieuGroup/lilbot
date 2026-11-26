@@ -48,6 +48,7 @@ describe('folded Duo strip in a short window', () => {
 
     const sheet = readFileSync(resolve(process.cwd(), 'ios/src/bots/bot-menu-sheet.tsx'), 'utf8')
     expect(sheet).toContain("[...(menuWithDetails ? [{ id: 'details' as const, label: 'Bot details' }] : []), ...rosterMenuActions(")
+    expect(sheet).toContain("supportedOrientations={['portrait', 'landscape']} onRequestClose={dismissMenu}")
     expect(sheet).toContain("router.push({ pathname: '/(tabs)/(bots)/bot-details', params: { botId: detailsBotId } })")
     const chat = readFileSync(resolve(process.cwd(), 'ios/src/app/(tabs)/(bots)/chat.tsx'), 'utf8')
     expect(chat).toContain('resolveDuoStripScreen({ surface, chatFocused: true, windowHeight: metrics.height })')

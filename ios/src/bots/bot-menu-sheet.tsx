@@ -93,7 +93,7 @@ export function BotMenuHost() {
 
   return (
     <>
-      <Modal visible={!!menuBot} transparent animationType="fade" onRequestClose={dismissMenu} onDismiss={handleMenuDismiss}>
+      <Modal visible={!!menuBot} transparent animationType="fade" supportedOrientations={['portrait', 'landscape']} onRequestClose={dismissMenu} onDismiss={handleMenuDismiss}>
         <View style={{ flex: 1, justifyContent: 'flex-end', padding: 12 }}>
           <Pressable accessible={false} onPress={dismissMenu} style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.34)' }]} />
           {menuBot && (
