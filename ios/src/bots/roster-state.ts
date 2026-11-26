@@ -23,6 +23,8 @@ export interface RosterRowDisplay {
   boldName: boolean
   showPrimaryStar: boolean
   inlineText: string
+  /** Never truncated end of `inlineText` ("· 2 tasks", #316). */
+  inlineTail: string | null
   inlineTone: InlineTextTone
   timeText: string | null
   statusMark: RowStatusMark
@@ -112,7 +114,8 @@ export function sameRosterBotDisplay(a: Bot, b: Bot): boolean {
   for (let i = 0; i < ag.length; i++) {
     if (ag[i].id !== bg[i].id || ag[i].leading !== bg[i].leading || ag[i].activity !== bg[i].activity) return false
   }
-  return true
+  const senders = (bot: Bot) => (bot.tasksFor ?? []).map(task => `${task.botId}:${task.name}`).join('|')
+  return senders(a) === senders(b)
 }
 
 /** Maps shared rowState(bot) + optional `bot.lastMessage` into two-line Roster row display: live status wins
@@ -142,6 +145,7 @@ export function rosterRowDisplay(bot: Bot, timeOptions?: RosterTimeOptions): Ros
     boldName: state.unread,
     showPrimaryStar: bot.isPrimary,
     inlineText,
+    inlineTail: showingLastMessage ? null : (state.tail ?? null),
     inlineTone,
     timeText,
     statusMark,
