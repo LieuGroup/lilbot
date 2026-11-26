@@ -35,7 +35,7 @@ export function DockRow({
       {thread.worker ? <WorkerBadge size={22} surface="card" /> : <ThreadAvatar id={other.id} name={otherName(thread, botId)} size={22} />}
       <div className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-[13px]/[18px] font-medium text-foreground">{title}</span>
-        <StateText state={state} strong={item.kind === 'waiting_oscar'} />
+        <StateText state={state} strong={item.kind === 'waiting_oscar'} wrap={item.kind === 'waiting_oscar'} />
       </div>
       {item.kind === 'waiting_oscar' && item.canAnswer && item.waiting && (
         <Button
