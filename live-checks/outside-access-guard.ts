@@ -28,20 +28,8 @@ export interface GuardPolicy {
   tools?: string[]
 }
 
-const LOCAL_TOOLS = new Set([
-  'read_file',
-  'write_file',
-  'patch',
-  'search_files',
-  'terminal',
-  'skills_list',
-  'skill_view',
-  'skill_manage',
-  'todo_list',
-  'tool_search',
-  'tool_describe',
-  'clarify'
-])
+const FILE_TOOLS = ['read_file', 'write_file', 'patch', 'search_files', 'terminal', 'todo_list', 'clarify']
+const LOCAL_TOOLS = new Set([...FILE_TOOLS, 'skills_list', 'skill_view', 'skill_manage', 'tool_search', 'tool_describe'])
 const LILBOT_TOOL = /^(?:mcp__(?:lilbot_system|editor_lilbot_[0-9a-f]{8})__)?(lilbot_[a-z_]+)$/
 const LILBOT_OUTSIDE = /^lilbot_(?:computer|connection)/
 const HARMLESS = new Set(['/dev/null', '/dev/stdout', '/dev/stderr'])
