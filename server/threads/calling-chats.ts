@@ -15,7 +15,16 @@ const EARLY_MS = 15_000
 /** Minimum grace window for exact-arg matching before falling back to a lone unmatched start (tools without requestId). */
 const FALLBACK_GRACE_MS = 500
 /** The tools that need to know their calling conversation. Engines may prefix the name with the server's. */
-type CallingTool = 'lilbot_delegate' | 'lilbot_delegation' | 'lilbot_work' | 'lilbot_group' | 'lilbot_goal' | 'lilbot_give_file' | 'lilbot_webhook_message' | 'lilbot_connection'
+type CallingTool =
+  | 'lilbot_delegate'
+  | 'lilbot_delegation'
+  | 'lilbot_work'
+  | 'lilbot_group'
+  | 'lilbot_goal'
+  | 'lilbot_give_file'
+  | 'lilbot_webhook_message'
+  | 'lilbot_connection'
+  | 'lilbot_show'
 
 type SlotState = 'open' | 'ambiguous' | 'taken'
 

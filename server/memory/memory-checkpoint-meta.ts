@@ -136,7 +136,7 @@ export function findStoppedTurn(db: Database, botId: string, chatId: string): St
         continue
       }
       if (ev.type === 'turn.started') continue
-      if (ev.type === 'tool.started' || ev.type === 'tool.finished' || (ev.type === 'text.delta' && ev.text.trim())) {
+      if (ev.type === 'tool.started' || ev.type === 'tool.finished' || ev.type === 'shown' || (ev.type === 'text.delta' && ev.text.trim())) {
         sawSideEffect = true
         continue
       }
@@ -177,7 +177,7 @@ export function findStoppedTurn(db: Database, botId: string, chatId: string): St
       if (itemTurnKey !== stoppedKey) return { kind: 'unsafe' }
       continue
     }
-    if (item.kind === 'tool' || item.kind === 'assistant') {
+    if (item.kind === 'tool' || item.kind === 'assistant' || item.kind === 'shown') {
       sawSideEffect = true
       continue
     }

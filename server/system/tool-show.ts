@@ -1,0 +1,13 @@
+/** Showing Oscar a file inside the reply (#317). Registered only when `LILBOT_SHOW_ENABLED=1`. The conversation is
+ *  taken from LilBot's record of the call, never from an argument. */
+import { ShowInput } from '../../shared/shown-schema'
+import { actionTool, type McpTool } from './mcp-tool'
+import type { SystemDeps } from './system-deps'
+
+const DESCRIPTION =
+  'Show Oscar an image (PNG, JPEG, GIF, WebP), a video (MP4, MOV) or an HTML page from your folder inside your reply, right after the words you have written so far; keep writing after it. Optional one-line caption. At most 4 per reply; image 20 MB, HTML 2 MB, video 50 MB. Showing is not giving: call lilbot_give_file too if Oscar should keep it.'
+
+export function showTools({ show }: SystemDeps): McpTool[] {
+  if (!show) return []
+  return [actionTool('lilbot_show', DESCRIPTION, ShowInput, (caller, input, _raw, ctx) => show.show(caller, input, ctx?.chatId))]
+}

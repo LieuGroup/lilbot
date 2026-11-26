@@ -14,6 +14,7 @@ import type { LibraryService } from '../library/library-service'
 import type { MemoryService } from '../memory/memory-service'
 import type { ReviewOutcomeTracker } from '../memory/review-run'
 import type { RoutineService } from '../routines/routine-service'
+import type { ShownService } from '../shown/shown-service'
 import type { SkillsService } from '../skills/skills-service'
 import type { CallingChats } from '../threads/calling-chats'
 import type { DelegationControl } from '../threads/delegation-control'
@@ -54,6 +55,8 @@ export interface SystemDeps extends SystemFacts {
   goals: GoalService
   /** Gives a file to the bot's Library from the conversation the call came from (`giveFrom` in `app-work.ts`). */
   giveFile: (botId: string, input: z.infer<typeof GiveFileInput>, knownChatId?: string) => ReturnType<LibraryService['give']>
+  /** `lilbot_show` (#317); absent while `LILBOT_SHOW_ENABLED` is off, so the tool is not offered at all. */
+  show?: Pick<ShownService, 'show'>
   webhooks: WebhookService
   /** The MCP services bots add (#187). */
   connections: McpConnections
