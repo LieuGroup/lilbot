@@ -154,6 +154,11 @@ test('Notifications is registered in Settings slot 20 with its own pushed page, 
   expect(readFileSync(join(ROOT, 'ios/src/notifications/notifications-screen.tsx'), 'utf8')).toContain('onPress={() => void enableAndRegister()}')
 })
 
+test('notification store selectors never return a fresh array, which loops React on every render (crash after connect)', () => {
+  const readers = ['ios/src/bots/bot-menu-sheet.tsx', 'ios/src/settings/sections/notifications-section.tsx', 'ios/src/notifications/use-notifications.ts']
+  for (const file of readers) expect(readFileSync(join(ROOT, file), 'utf8')).not.toMatch(/useNotificationStore\(state => [^)]*\?\? \[\]\)/)
+})
+
 test('builds carry no push entitlement until IOS_PUSH_NOTIFICATIONS=1, so the current App Store profile keeps signing', () => {
   expect(pushEntitlementMode('production', undefined)).toBeNull()
   expect(pushEntitlementMode('production', '')).toBeNull()

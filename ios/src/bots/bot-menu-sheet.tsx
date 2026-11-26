@@ -24,9 +24,8 @@ export function BotMenuHost() {
   const pendingDialogRef = useRef<BotDialogState | null>(null)
 
   const menuBot = bots.find(bot => bot.id === menuBotId) ?? null
-  const mutedBotIds = useNotificationStore(state => state.settings?.mutedBotIds ?? [])
   const setBotMuted = useNotificationStore(state => state.setBotMuted)
-  const menuBotMuted = menuBot ? mutedBotIds.includes(menuBot.id) : false
+  const menuBotMuted = useNotificationStore(state => (menuBot ? (state.settings?.mutedBotIds.includes(menuBot.id) ?? false) : false))
   const candidates = primaryCandidates(bots)
   const actions = menuBot ? rosterMenuActions(menuBot, candidates.length > 0) : []
 
