@@ -51,7 +51,7 @@ test('migration gives an existing identity full access without losing fields', a
   try {
     const path = join(dir, 'old.db')
     const old = new Database(path)
-    old.exec(`CREATE TABLE bot_prefs (bot_id TEXT PRIMARY KEY, avatar_shape TEXT, avatar_color TEXT, pinned INTEGER NOT NULL DEFAULT 0);
+    old.exec(`CREATE TABLE bot_prefs (bot_id TEXT PRIMARY KEY, avatar_shape TEXT, avatar_color TEXT, pinned INTEGER NOT NULL DEFAULT 0, main_chat_id TEXT);
       CREATE TABLE bots (id TEXT PRIMARY KEY, name TEXT, function TEXT, instructions TEXT, model TEXT,
       is_default INTEGER, engine_id TEXT, engine_bot_id TEXT);
       INSERT INTO bots VALUES ('old', 'Existing', 'work', 'instructions', NULL, 0, 'test', 'native');
@@ -100,7 +100,7 @@ test('shipped deletion schema upgrades without changing tombstones or deletion d
     expect(restored.list()).toEqual([])
     expect(restored.deleted('deleted')).toMatchObject({ bot: { name: 'Remembered', permissionMode: 'full-access' }, choices })
     expect(restored.deleteDefaults()).toEqual(choices)
-    expect(upgraded.query('PRAGMA user_version').get()).toEqual({ user_version: 44 })
+    expect(upgraded.query('PRAGMA user_version').get()).toEqual({ user_version: 45 })
     upgraded.close()
   } finally {
     rmSync(root, { recursive: true, force: true })

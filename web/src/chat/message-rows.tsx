@@ -2,7 +2,7 @@ import { memo, type ReactNode, useRef } from 'react'
 
 import { MessageScrollerItem } from '@/ui/message-scroller'
 import type { Avatar } from '../../../shared/avatar'
-import type { MessageItem, ViewItem } from '../../../shared/client/chat/chat-state'
+import type { MessageItem, UserItem, ViewItem } from '../../../shared/client/chat/chat-state'
 import { dayKey } from '../history/history-labels'
 import { DateLine, SessionDivider, StartMarker } from '../history/history-marks'
 import { ChatItem } from './chat-item'
@@ -38,6 +38,8 @@ interface MessageRowsProps {
   /** Whether a turn is running right now, and where its items begin in `items`. */
   running: boolean
   turnStart: number | null
+  /** `ChatView.queued`: messages drawn as waiting for the bot. */
+  queued: readonly UserItem[]
 }
 
 /** One message row. Memoised with its item, so a streamed chunk, a reloaded transcript or an earlier
@@ -49,7 +51,8 @@ const ChatRow = memo(function ChatRow({
   anchor,
   botId,
   inTurn,
-  beforeTool
+  beforeTool,
+  queued
 }: {
   item: MessageItem
   position: number
@@ -57,11 +60,12 @@ const ChatRow = memo(function ChatRow({
   botId: string
   inTurn: boolean
   beforeTool: boolean
+  queued: boolean
 }) {
   return (
     // A task drawn in its batch's card leaves its own row empty: hidden, so it takes no gap.
     <MessageScrollerItem messageId={String(position)} scrollAnchor={anchor} className="empty:hidden">
-      <ChatItem item={item} botId={botId} inTurn={inTurn} beforeTool={beforeTool} />
+      <ChatItem item={item} botId={botId} inTurn={inTurn} beforeTool={beforeTool} queued={queued} />
     </MessageScrollerItem>
   )
 })
@@ -83,7 +87,7 @@ function newestDivider(items: ViewItem[]) {
 }
 
 /** The conversation's rows: the start marker, day lines, session dividers and messages. */
-export function MessageRows({ botId, botName, avatar, items, first, drawFrom, start, load, running, turnStart }: MessageRowsProps) {
+export function MessageRows({ botId, botName, avatar, items, first, drawFrom, start, load, running, turnStart, queued }: MessageRowsProps) {
   const loaded = useRef(loadedTranscript(first, items.length, load))
   loaded.current = updateLoaded(loaded.current, first, items.length, load)
   const newest = newestDivider(items)
@@ -100,7 +104,16 @@ export function MessageRows({ botId, botName, avatar, items, first, drawFrom, st
     const inTurn = running && turnStart !== null && index >= turnStart
     const beforeTool = items[index + 1]?.kind === 'tool'
     rows.push(
-      <ChatRow key={position} item={item} position={position} anchor={isScrollAnchor(loaded.current, position, item.kind)} botId={botId} inTurn={inTurn} beforeTool={beforeTool} />
+      <ChatRow
+        key={position}
+        item={item}
+        position={position}
+        anchor={isScrollAnchor(loaded.current, position, item.kind)}
+        botId={botId}
+        inTurn={inTurn}
+        beforeTool={beforeTool}
+        queued={item.kind === 'user' && queued.includes(item)}
+      />
     )
   }
   return rows

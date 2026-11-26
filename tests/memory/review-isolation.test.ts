@@ -64,6 +64,7 @@ test('review sessions run on scoped MCP, protect owner facts, lock skills/hooks 
   await services.bots.createBot({ name: 'Iso Bot', function: 'Testing', instructions: '' })
   const [bot] = services.store.list()
   const token = engineToken(join(dir, 'data'))
+  services.threads.store.db.query("INSERT INTO history_owned(bot,session,reason,at) VALUES(?,'main-1','opened',0)").run(bot.id)
   const ownerFact = await services.bots.writeMemory({ botId: bot.id, kind: 'profile', scope: 'bot', text: 'Owner written standing rule.' })
 
   let reviewConnUrl = ''

@@ -84,7 +84,8 @@ export function createRekeyFixture(root: string) {
   const history = new HistoryStore(db)
   history.session(OLD_ID, 'chat-main-1', 1000)
   history.session(OTHER_ID, 'chat-other', 1000)
-  db.query('INSERT INTO history_imports VALUES (?)').run(OLD_ID)
+  const owned = ['history_imports VALUES (?)', "history_owned VALUES (?, 'chat-main-1', 'opened', 1000)", 'history_adoption VALUES (?, 1000)']
+  for (const row of [...owned, "history_sent VALUES (?, 1, 'row-1')"]) db.query(`INSERT INTO ${row}`).run(OLD_ID)
   db.query('INSERT INTO history_exclusions VALUES (?, ?, ?, 1000)').run(OLD_ID, 'excl-1', 'reason')
   db.query("INSERT INTO history_previews VALUES (?, 'bot', 'Rekeyed preview', 1000, 'chat-main-1', ?)").run(OLD_ID, `hermes:${OLD_ID}:1`)
   const userItem = JSON.stringify({

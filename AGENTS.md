@@ -317,7 +317,8 @@ Full journalling, importer, `#180` usage/compaction and `#148` pre-compress chec
 [docs/history.md](docs/history.md).
 
 - `server/history/` keeps an append-only SQLite record per bot via live event journalling plus a background importer
-  (one 100-row page/bot/s; operator `bun run history:exclude` removes non-main sessions). Hidden sessions (routines,
+  (one 100-row page/bot/s; operator `bun run history:exclude` removes non-main sessions). Only sessions LilBot opened,
+  the bot's pre-LilBot sessions and their continuations are recorded; chats from the engine's own apps never are. Hidden sessions (routines,
   webhooks, threads, reviews) and their compression continuations (`bots/hidden-chats.ts`, fail-closed on unreadable
   lineage) are excluded from history, activity and memory reviews.
 - `chat.open`/`chat.new` preserve `items` and add paginated `history`; `chat.history` pages newest-first with stable

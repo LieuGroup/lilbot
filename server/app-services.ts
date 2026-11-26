@@ -96,7 +96,8 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
   repeat('notifications prune', 60 * 60_000, () => notif.prune())
   const sessionGrants = createSessionGrants(database, token, rootOf, isMainChat, () => system.sessionConnections)
   const ownChat = sessionGrants.ownChat({ routineStore, threadStore, webhookStore, checkStore, mem })
-  const chatKind = chatKinds(rootOf, ownChat)
+  const historyStore = new HistoryStore(database, () => botsChanged())
+  const chatKind = chatKinds(rootOf, ownChat, (botId, chatId) => historyStore.owned.owns(botId, chatId))
   const hiddenChat = hiddenChats(chatKind)
   const library = new LibraryService(libraryStore, wsPath, botAlive, botId => publish({ event: 'library.changed', botId }))
   const attachments = new AttachmentService(new AttachmentStore(database), wsPath, botAlive, (chatId, message) =>
@@ -112,13 +113,13 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
   const note = systemNote(facts)
   const prompts = createPromptController({ dataDir: DATA_DIR, engines, workspaces, skills, store, systemNote: systemNote(facts, false), enabled: settings.PROMPT_OWNERSHIP })
   const history = new HistoryService(
-    new HistoryStore(database, () => botsChanged()),
+    historyStore,
     engines,
     async () => {
       await bots.listBots()
       return store.list().filter(b => engines.has(b.engineId))
     },
-    (bot, session) => store.exists(bot) && !hiddenChat(bot, session),
+    (bot, session) => store.exists(bot) && (session === '' || !hiddenChat(bot, session)),
     (botId, chatId, rows) => devices.mergeRows(botId, rows).map(row => ({ ...row, item: attachments.mergeItem(botId, chatId, row.item) })),
     botId => publish({ event: 'history.changed', botId })
   )

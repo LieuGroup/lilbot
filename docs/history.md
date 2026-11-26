@@ -18,6 +18,23 @@ LilBot never summarises. The short version is in `AGENTS.md` under "Conversation
   the main session is refused). It previews without `--yes` and reads `LILBOT_DATA_DIR`.
 - `bun live-checks/history-benchmark.ts` uses a synthetic 5,000-row dev copy, never production data.
 
+## Which sessions are the conversation
+
+- LilBot records only the bot's own conversation (`history/history-owned.ts`, migration 45): sessions it opened as the
+  bot's main conversation (new, resumed or after an engine switch), the sessions the bot already had before LilBot first
+  listed it (its one-time import of earlier history; a session with no start time is never adopted), and their
+  compression continuations. A session started anywhere else, such as a chat held in the engine's own apps, is never
+  imported, journalled, searched, shown as activity or unread, or reviewed for memory (`ChatKind` `outside`), whatever
+  the engine lists. Sessions already in a copy at the upgrade are kept; an excluded session is never the conversation.
+
+## Where each item sits
+
+- An item sits where Oscar first saw it (`history/history-sent.ts`). The engine stores a message sent while the bot was
+  busy (a hidden turn, a reply still running) when it starts on it, so an imported message takes the moment LilBot
+  journalled sending it, and a reply the moment its text began to show; a row never moves above an earlier row known only
+  by the engine's time. The web and phone apps put a message into the conversation the moment it is sent, marked as
+  waiting until the engine starts on it; the engine's echo of it adds nothing.
+
 ## Hidden sessions and compression lineage
 
 - Attachment metadata and thread references are merged at the HTTP edge; a thread's private transcript is never

@@ -69,14 +69,14 @@ describe('a normal turn', () => {
 })
 
 describe('messages sent while the bot is busy', () => {
-  test('wait in the queue and join the transcript when their own turn starts', () => {
+  test('appear at once where they were sent, wait there, and the reply being written goes on above them', () => {
     let chat = play(withUserMessage(emptyChat, 'first'), { type: 'turn.started' }, { type: 'text.delta', text: 'Working on fi' })
     chat = withUserMessage(chat, 'second')
     expect(chat.queued).toEqual([{ kind: 'user', text: 'second' }])
-    expect(texts(chat)).toEqual(['user:first', 'assistant:Working on fi'])
+    expect(texts(chat)).toEqual(['user:first', 'assistant:Working on fi', 'user:second'])
 
     chat = play(chat, { type: 'text.delta', text: 'rst.' }, { type: 'turn.finished', status: 'completed', text: 'Working on first.' })
-    expect(texts(chat)).toEqual(['user:first', 'assistant:Working on first.'])
+    expect(texts(chat)).toEqual(['user:first', 'assistant:Working on first.', 'user:second'])
     expect(chat.running).toBe(true)
 
     chat = play(chat, { type: 'turn.started' }, { type: 'text.delta', text: 'Second done.' }, { type: 'turn.finished', status: 'completed', text: 'Second done.' })
@@ -85,11 +85,29 @@ describe('messages sent while the bot is busy', () => {
     expect(chat.running).toBe(false)
   })
 
-  test('a second message sent before the first turn started does not jump ahead of the first reply', () => {
+  test("a message sent while a turn with no message of its own (a hidden turn) runs stays above that turn's later reply", () => {
+    let chat = play(emptyChat, { type: 'turn.started' }, { type: 'tool.started', toolId: 't', name: 'connect', detail: '' })
+    chat = withUserMessage(chat, { kind: 'user', text: 'i have connected paper mcp to lilbot', messageId: 'm1' })
+    chat = play(chat, { type: 'tool.finished', toolId: 't', failed: false }, { type: 'text.delta', text: 'Paper is connected.' })
+    chat = play(chat, { type: 'turn.finished', status: 'completed', text: 'Paper is connected.' }, { type: 'turn.started' })
+    expect(texts(chat)).toEqual(['tool:connect', 'user:i have connected paper mcp to lilbot', 'assistant:Paper is connected.'])
+    expect(chat).toMatchObject({ queued: [], turnStart: 1 })
+    // The engine echoing the message once its turn starts adds nothing.
+    chat = applyChatEvent(chat, {
+      type: 'user.message',
+      messageId: 'm1',
+      text: 'i have connected paper mcp to lilbot',
+      attachments: [],
+      images: { support: 'unknown', imageCount: 0 }
+    })
+    expect(texts(chat).filter(text => text.startsWith('user:'))).toHaveLength(1)
+  })
+
+  test('a second message sent before the first turn started keeps its place and waits there', () => {
     let chat = withUserMessage(emptyChat, 'first')
     chat = withUserMessage(chat, 'second')
     chat = play(chat, { type: 'turn.started' }, { type: 'text.delta', text: 'A1' })
-    expect(texts(chat)).toEqual(['user:first', 'assistant:A1'])
+    expect(texts(chat)).toEqual(['user:first', 'user:second', 'assistant:A1'])
     expect(chat.queued).toEqual([{ kind: 'user', text: 'second' }])
   })
 })

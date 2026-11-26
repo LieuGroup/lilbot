@@ -17,7 +17,7 @@ describe('iOS MessageList row building, fold scroll guard, rich markdown, and co
     const queuedNoId1 = { kind: 'user' as const, text: 'Second queued' }
     const queuedNoId2 = { kind: 'user' as const, text: 'Third queued' }
     const view: Pick<ChatView, 'items' | 'queued' | 'first' | 'start' | 'running' | 'turnStart'> = {
-      items: [sentUser, sentReply, session2, day2User],
+      items: [sentUser, sentReply, session2, day2User, queuedWithId, queuedNoId1, queuedNoId2],
       queued: [queuedWithId, queuedNoId1, queuedNoId2],
       first: 0,
       start: day1,
@@ -27,10 +27,13 @@ describe('iOS MessageList row building, fold scroll guard, rich markdown, and co
 
     const rows = buildTranscriptRows(view, 'Atlas', day2)
     expect(new Set(rows.map(r => r.key)).size).toBe(rows.length)
-    // Inverted FlatList expects newest first (queued -> day2User -> session2 -> sentReply -> sentUser -> day1 -> start).
-    expect(rows[0]?.key).toBe('queued-2')
-    expect(rows[1]?.key).toBe('queued-1')
-    expect(rows[2]?.key).toBe('queued-m-1')
+    // Inverted FlatList expects newest first (queued, where they were sent -> day2User -> session2 -> sentReply -> sentUser -> day1 -> start).
+    expect(rows.slice(0, 4).map(r => (r.kind === 'message' ? [r.key, r.queued] : r.kind))).toEqual([
+      ['pos:6', true],
+      ['pos:5', true],
+      ['pos:4', true],
+      ['id:u2', false]
+    ])
     expect(rows[2]?.kind === 'message' ? rows[2].item : undefined).toBe(queuedWithId)
     expect(rows[2]?.kind === 'message' && rows[2].item.kind === 'user' ? rows[2].item.attachments : undefined).toEqual([attachment])
     expect(rows[rows.length - 1]).toEqual({ kind: 'start', key: 'start', at: day1 })

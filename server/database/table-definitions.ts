@@ -121,3 +121,14 @@ export const NOTIFICATION_TABLES = `CREATE TABLE IF NOT EXISTS notification_endp
  *  Stores only piece SHA-256 keys, refusal counts, approximate non-text timing, and choice metadata — never conversation text. Repeatable. */
 export const MEMORY_CHECKPOINT_REFUSAL_TABLES = `CREATE TABLE IF NOT EXISTS memory_checkpoint_refusals(bot_id TEXT NOT NULL, chat_id TEXT NOT NULL, piece_key TEXT NOT NULL, piece_keys TEXT NOT NULL, refusal_count INTEGER NOT NULL DEFAULT 1, state TEXT NOT NULL CHECK(state IN ('counting', 'waiting', 'resolved')), single_message INTEGER NOT NULL DEFAULT 0, piece_at INTEGER, messages_back INTEGER, two_models INTEGER NOT NULL DEFAULT 0, choice TEXT CHECK(choice IS NULL OR choice IN ('skip_piece', 'new_session')), chosen_by TEXT, first_refused_at INTEGER NOT NULL, last_refused_at INTEGER NOT NULL, chosen_at INTEGER, PRIMARY KEY(bot_id, chat_id, piece_key));
    CREATE INDEX IF NOT EXISTS memory_checkpoint_refusals_waiting ON memory_checkpoint_refusals(bot_id, state) WHERE state = 'waiting';`
+
+/** Schema step 45: the sessions that are a bot's LilBot conversation (`history/history-owned.ts`), the moment LilBot
+ *  first listed each bot, and which sent message each imported message row is (`history/history-sent.ts`). Sessions already in LilBot's copy are kept as owned (they were recorded under the old rule; an
+ *  operator removes any that are not with `history:exclude`); a bot whose engine sessions were already listed adopts no more. */
+export const HISTORY_OWNERSHIP_TABLES = `CREATE TABLE IF NOT EXISTS history_owned(bot TEXT NOT NULL, session TEXT NOT NULL, reason TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY(bot, session));
+   CREATE TABLE IF NOT EXISTS history_adoption(bot TEXT PRIMARY KEY, before INTEGER NOT NULL);
+   CREATE TABLE IF NOT EXISTS history_sent(bot TEXT NOT NULL, event INTEGER NOT NULL, row_id TEXT NOT NULL, PRIMARY KEY(bot, event), UNIQUE(bot, row_id));
+   CREATE INDEX IF NOT EXISTS history_events_type ON history_events(bot, session, json_extract(event, '$.type'));
+   INSERT OR IGNORE INTO history_owned(bot, session, reason, at) SELECT s.bot, s.id, 'existing', s.at FROM history_sessions s WHERE NOT EXISTS (SELECT 1 FROM history_exclusions x WHERE x.bot = s.bot AND x.session = s.id);
+   INSERT OR IGNORE INTO history_owned(bot, session, reason, at) SELECT bot_id, main_chat_id, 'existing', 0 FROM bot_prefs WHERE main_chat_id IS NOT NULL;
+   INSERT OR IGNORE INTO history_adoption(bot, before) SELECT bot, 0 FROM history_imports;`

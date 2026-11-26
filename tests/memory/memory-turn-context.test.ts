@@ -187,6 +187,7 @@ describe('MemoryTurnContext', () => {
 
     mem.conversationHooks(() => 'conversation').onTurnCompleted('b1', 'chat-1', modelText, 'Noted.')
     mem.conversationHooks(() => 'lilbot').onTurnCompleted('b1', 'chat-hidden', 'Should not queue', 'Ignored.')
+    mem.conversationHooks(() => 'outside').onTurnCompleted('b1', 'engine-app-chat', 'From the engine app', 'Ignored.')
 
     const queued = new ReviewQueue(db).take('b1', 10)
     expect(queued).toHaveLength(1)

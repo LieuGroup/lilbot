@@ -102,6 +102,7 @@ export async function flushBotHistory(
     source = await raceDeadline(engine.conversations(bot.engineBotId), remaining, s => s.close())
     const listed = await raceDeadline(source.list(), remaining)
     if (!deps.allowed(bot.id, '')) return { incomplete: false, imported: 0 }
+    deps.store.owned.adoptEarlier(bot.id, listed)
     for (const s of listed) if (deps.allowed(bot.id, s.id)) deps.store.session(bot.id, s.id, s.at)
     deps.store.discovered(bot.id)
     const all = syncHistoryDividers(deps.store, bot.id)

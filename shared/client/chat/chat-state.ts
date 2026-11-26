@@ -17,8 +17,8 @@ export type UserItem = Extract<ChatItem, { kind: 'user' }>
 export interface ChatView {
   chatId: string
   items: ViewItem[]
-  /** Messages sent while the bot was busy. The engine runs them next; each joins the transcript
-   *  when its turn starts, so it never lands in the middle of the reply being written. */
+  /** Messages sent while the bot was busy, oldest first. Each is already in `items` where it was sent and is drawn as
+   *  waiting until the engine starts on it; whatever the bot shows after it is drawn below it. */
   queued: UserItem[]
   /** A message was sent to an idle bot and its turn has not started yet. */
   awaitingStart: boolean
@@ -112,6 +112,9 @@ export const withError = (chat: ChatView, text: string): ChatView => ({
   running: false,
   activity: ''
 })
+/** The reply being written: it may sit above messages sent while it was written. */
+const writing = (items: readonly ViewItem[]) => items.map(item => item.kind === 'assistant' && item.streaming).lastIndexOf(true)
+const replaced = (items: readonly ViewItem[], at: number, item: ViewItem) => items.map((old, i) => (i === at ? item : old))
 const stopWriting = (items: ViewItem[]): ViewItem[] => items.map(item => (item.kind === 'assistant' && item.streaming ? { ...item, streaming: false } : item))
 
 export function applyChatEvent(chat: ChatView, event: ChatEvent): ChatView {
@@ -137,16 +140,18 @@ export function applyChatEvent(chat: ChatView, event: ChatEvent): ChatView {
       if (chat.awaitingStart) return { ...chat, awaitingStart: false, turnStart: chat.turnStart ?? runningTurnStart(chat.items), running: true, activity: 'Thinking...' }
       const [next, ...rest] = chat.queued
       if (next === undefined) return { ...chat, bareTurn: chat.items.length, turnStart: chat.items.length, running: true, activity: 'Thinking...' }
-      return { ...chat, items: [...stopWriting(chat.items), next], queued: rest, turnStart: chat.items.length, running: true, activity: 'Thinking...' }
+      const items = stopWriting(chat.items)
+      return { ...chat, items, queued: rest, turnStart: items.indexOf(next), running: true, activity: 'Thinking...' }
     }
 
     case 'activity':
       return { ...chat, activity: event.text }
     case 'text.delta': {
-      const last = chat.items[chat.items.length - 1]
+      const at = writing(chat.items)
+      const reply = chat.items[at]
       const items: ViewItem[] =
-        last?.kind === 'assistant' && last.streaming
-          ? [...chat.items.slice(0, -1), { ...last, text: last.text + event.text }]
+        reply?.kind === 'assistant'
+          ? replaced(chat.items, at, { ...reply, text: reply.text + event.text })
           : [...chat.items, { kind: 'assistant', text: event.text, streaming: true }]
       return { ...chat, items, running: true, activity: '' }
     }
@@ -164,13 +169,14 @@ export function applyChatEvent(chat: ChatView, event: ChatEvent): ChatView {
       }
     case 'turn.finished': {
       const stopped = event.status === 'stopped'
-      const last = chat.items[chat.items.length - 1]
+      const at = writing(chat.items)
+      const last = chat.items[at]
       let items = chat.items
-      const streaming = last?.kind === 'assistant' && last.streaming
+      const streaming = last?.kind === 'assistant'
       const usage = event.usage ? { usage: event.usage } : {}
       if (streaming) {
         const text = event.text.endsWith(last.text) ? event.text : last.text
-        items = [...items.slice(0, -1), { ...last, text, streaming: false, stopped, ...usage }]
+        items = replaced(items, at, { ...last, text, streaming: false, stopped, ...usage })
       } else if (event.text) {
         items = [...items, { kind: 'assistant', text: event.text, stopped, ...usage }]
       }

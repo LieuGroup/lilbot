@@ -35,8 +35,9 @@ export function createPreCompressCheckpoint(
   return async (bot: string, chatId: string, messages: PreCompressEvidence[]) => {
     if (!history || !bots) throw new LilBotError('unavailable', 'History is unavailable.')
     const kind = reviewer?.isReview(chatId) ? 'lilbot' : (chatKind?.(bot, chatId) ?? 'conversation')
-    // A session LilBot runs itself, a review included, carries outside or bot text: nothing in it is reviewed for memory.
-    if (kind === 'lilbot') return { saved: false, skipped: true }
+    // A session LilBot runs itself, a review included, carries outside or bot text, and a session started outside LilBot is
+    // not the bot's conversation with Oscar here: nothing in either is reviewed for memory.
+    if (kind === 'lilbot' || kind === 'outside') return { saved: false, skipped: true }
     // Never let a conversation be shortened unreviewed because its lineage cannot be read just now: the engine asks again.
     if (kind === 'unknown') throw new LilBotError('lineage_unknown', 'LilBot cannot tell which conversation this is just now; try again.')
     const passes = await checkpoint.save(

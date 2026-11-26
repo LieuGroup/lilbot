@@ -3,37 +3,32 @@ import type { ChatEvent, ChatItem } from '../../shared/chat-schema'
 import type { HistoryItem, HistoryPage, SessionReason } from '../../shared/history-schema'
 import { LilBotError } from '../../shared/lilbot-error'
 import { HistoryMetaStore } from './history-meta-store'
+import { HistoryOwnership } from './history-owned'
 import { HistoryPreviewStore } from './history-preview'
 import { type HistorySearchMatch, searchHistory } from './history-search'
+import { atFirstSight } from './history-sent'
 import { pruneSupersededJournalRows } from './history-tail'
 
-interface HistorySession {
-  bot: string
-  id: string
-  at: number
-  cursor: string | null
-  complete: number
-}
+type HistorySession = { bot: string; id: string; at: number; cursor: string | null; complete: number }
 type StoredRow = { id: string; at: number; position: number; item: string }
-export interface HistoryRow {
-  id: string
-  at: number
-  order: number
-  item: ChatItem
-}
+export type HistoryRow = { id: string; at: number; order: number; item: ChatItem }
 
 /** SQL guard: the row is inserted or counted only while its session is not excluded, atomically with the statement. */
 const notExcluded = (bot: string, session: string) => `NOT EXISTS (SELECT 1 FROM history_exclusions x WHERE x.bot=${bot} AND x.session=${session})`
 
+const HISTORY_TABLES = 'items sessions events imports exclusions previews owned adoption sent'.split(' ').map(name => `history_${name}`)
+
 /** SQLite owns stable display rows and an event journal written before forwarding each live event. */
 export class HistoryStore {
   readonly meta: HistoryMetaStore
+  readonly owned: HistoryOwnership
   private previews: HistoryPreviewStore
   constructor(
     readonly db: Database,
     onPreviewChanged?: (botId: string) => void
   ) {
     this.meta = new HistoryMetaStore(db)
+    this.owned = new HistoryOwnership(db)
     this.previews = new HistoryPreviewStore(db, onPreviewChanged)
   }
   preview = (bot: string) => this.previews.get(bot)
@@ -55,7 +50,7 @@ export class HistoryStore {
   writeUnchecked(bot: string, session: string, rows: HistoryRow[], cursor?: string | null, complete = false): boolean {
     // Checked under the write lock, so an exclusion committed meanwhile is never undone by a late page.
     if (this.excluded(bot, session)) return false
-    const enriched = this.meta.mergeRows(bot, session, rows)
+    const enriched = this.meta.mergeRows(bot, session, atFirstSight(this.db, bot, session, rows))
     pruneSupersededJournalRows(this.db, bot, session, enriched)
     const insert = this.db.query(`INSERT INTO history_items(bot,session,id,at,position,item,text) VALUES(?,?,?,?,?,?,?)
         ON CONFLICT(bot,id) DO UPDATE SET item=excluded.item,text=excluded.text`)
@@ -189,8 +184,7 @@ export class HistoryStore {
   }
   forget(bot: string) {
     this.db.transaction(() => {
-      for (const table of ['history_items', 'history_sessions', 'history_events', 'history_imports', 'history_exclusions', 'history_previews'])
-        this.db.query(`DELETE FROM ${table} WHERE bot=?`).run(bot)
+      for (const table of HISTORY_TABLES) this.db.query(`DELETE FROM ${table} WHERE bot=?`).run(bot)
       this.meta.forget(bot)
     })()
     this.previews.forget(bot)

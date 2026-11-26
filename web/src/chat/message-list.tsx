@@ -1,7 +1,7 @@
 import { ArrowDownIcon, SparklesIcon } from 'lucide-react'
 import { lazy, Suspense, startTransition, useEffect, useRef, useState } from 'react'
 
-import { MessageScroller, MessageScrollerButton, MessageScrollerContent, MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport } from '@/ui/message-scroller'
+import { MessageScroller, MessageScrollerButton, MessageScrollerContent, MessageScrollerProvider, MessageScrollerViewport } from '@/ui/message-scroller'
 import { Trace, TraceIcon, TraceLine, TraceTitle } from '@/ui/trace'
 import type { Avatar } from '../../../shared/avatar'
 import type { ChatView } from '../../../shared/client/chat/chat-state'
@@ -11,7 +11,6 @@ import { useBotStore } from '../bots/bot-store'
 import { LoadingEarlier } from '../history/history-marks'
 import { useOlderHistory } from '../history/use-older-history'
 import { useHasWaitingGoal } from '../work/work-badge-store'
-import { ChatItem } from './chat-item'
 import { MessageRows } from './message-rows'
 
 const GoalChatCards = lazy(() => import('../goals/goal-chat-cards'))
@@ -144,13 +143,8 @@ export function MessageList({ botId, botName, avatar, chat, emptyHint, sendSeq, 
               load={chat.load}
               running={chat.running}
               turnStart={chat.turnStart}
+              queued={queued}
             />
-            {/* Sent while the bot was busy: waits here until its turn starts. */}
-            {queued.map((message, index) => (
-              <MessageScrollerItem key={`queued-${index}`} messageId={`queued-${index}`}>
-                <ChatItem item={message} botId={botId} queued />
-              </MessageScrollerItem>
-            ))}
             {/* The bot's one-line status ("Thinking...", "Using terminal..."), shimmering while it works. */}
             {activity && (
               <Trace role="status">
