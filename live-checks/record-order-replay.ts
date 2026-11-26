@@ -41,25 +41,41 @@ function replyMoments(journal: JournalRow[]) {
   return moments
 }
 
-/** Imports the session's real engine rows into a fresh copy of its real journal, once per timing, oldest page first as
- *  the importer does, and asserts every round each time. */
+/** Imports the session's real engine rows into a fresh copy of its real journal, oldest page first as the importer does,
+ *  once per timing, and asserts every round each time. Two kinds of timing: the engine's whole clock moved against
+ *  LilBot's, and each reply's engine time set exactly at, just before or just after the moment its words began to show
+ *  (never before the engine row written before it: the engine writes in order). */
 export function replayTimings(bot: string, session: string, profile: string, journal: JournalRow[], transcript: Record<string, unknown>[], rounds: Round[]) {
   const moments = replyMoments(journal)
   assert.ok(moments.size >= rounds.length * 2, 'every reply has its first words journalled')
   const rows = historyRows(profile, session, transcript)
-  for (const delta of [-2000, -100, -1, 0, 1, 100, 2000]) {
+  const timings: [string, (at: number, id: string, previous: number) => number][] = [
+    ...[-2000, -100, 100, 2000].map(skew => [`engine clock ${skew} ms`, (at: number) => at + skew] as [string, (at: number) => number]),
+    ...[-100, -1, 0, 1, 100].map(
+      delta =>
+        [`each reply ${delta} ms from its first words`, (at: number, id: string, previous: number) => (moments.has(id) ? Math.max(previous, moments.get(id)! + delta) : at)] as [
+          string,
+          (at: number, id: string, previous: number) => number
+        ]
+    )
+  ]
+  for (const [label, time] of timings) {
     const db = openDatabase(':memory:')
     try {
       const store = new HistoryStore(db)
       store.session(bot, session, 0)
       const copy = db.query('INSERT INTO history_events(bot,session,at,event,key) VALUES(?,?,?,?,?)')
       for (const row of journal) copy.run(bot, session, row.at, row.event, row.key)
-      const timed = rows.map(row => (moments.has(row.id) ? { ...row, at: moments.get(row.id)! + delta } : row))
+      let previous = 0
+      const timed = rows.map(row => {
+        previous = Math.max(previous, time(row.at, row.id, previous))
+        return { ...row, at: previous }
+      })
       for (let start = 0; start < timed.length; start += 100) store.write(bot, session, timed.slice(start, start + 100))
-      assertRounds(store.page(bot).items, rounds, `replay with reply time ${delta} ms from its first words`)
+      assertRounds(store.page(bot).items, rounds, `replay, ${label}`)
     } finally {
       db.close()
     }
   }
-  console.log(`ok: the real rows keep that order with every reply's engine time from 2 s before to 2 s after its first words`)
+  console.log("ok: the real rows keep that order with the engine's clock 2 s behind to 2 s ahead, and with each reply's time at, just before or just after its first words")
 }
