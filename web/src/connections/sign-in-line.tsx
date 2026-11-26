@@ -16,7 +16,7 @@ export function SignInLine({ card, busy, error, onRestart }: { card: ConnectionS
     <div className="flex w-full max-w-[460px] flex-col gap-1.5">
       <div
         role="status"
-        className={`flex min-h-10 items-center gap-2 rounded-xl py-1.5 pr-1.5 pl-3 ring-1 ${failed ? 'bg-destructive/6 ring-destructive/20' : 'bg-background ring-hairline'}`}
+        className={`flex min-h-10 items-center gap-2 rounded-xl py-1.5 pr-1.5 pl-3 ring-1 ring-inset ${failed ? 'bg-destructive/6 ring-destructive/20' : 'bg-background ring-hairline'}`}
       >
         <Icon
           aria-hidden
