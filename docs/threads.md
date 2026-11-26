@@ -90,9 +90,10 @@ in groups `point` (the leader's point for one member) and `round` (a round's rep
   event also carries `failure` while the thread has one (never on the stored tool line, which history records once).
 - The leader's row between its own turns in a group reads "Leading a group" (idle), not working and not "waiting" (that
   status means waiting for Oscar); the working marks are chosen in `ThreadRunner.mark`.
-- `bots.list` gives a bot working on a task another bot handed it `workingFor` (exchange id and the delegating bot's
-  name), from the deliveries running now (`thread-roster.ts`, with the running groups); the roster row reads "For
-  <bot> · <activity>". Each of a bot's `groups` entries adds `activity` while its own turn in that group runs and a tool
+- `bots.list` gives a bot working on tasks other bots handed it `tasksFor` (every such exchange running now, oldest
+  started first, each with the delegating bot's id and name) and `workingFor` (the first of them, exchange id and name,
+  kept for clients that read one), from the deliveries running now (`thread-roster.ts`, with the running groups); the
+  roster row reads "For <bot> · <activity>". Each of a bot's `groups` entries adds `activity` while its own turn in that group runs and a tool
   call has been seen in it (the runner's live line; a tool call in a group also pushes `bots.changed`): "In a group ·
   <activity>".
 - Main conversations get one `tool` reference with `threadId` per exchange (in snapshots and idempotent `thread` chat
@@ -231,7 +232,7 @@ below are this implementation's.
 - **Oscar on a member's item.** A member's child item is an ordinary item to the board (#160): his answer or drop reaches
   the member as a turn of its own in its group session, outside the discussion, and a drop interrupts the member's
   running turn, which then counts as its reply.
-- **Roster.** `bots.list` carries `groups`, `workingFor` (non-worker tasks only), and `workers` (`{ count, activity? }`
+- **Roster.** `bots.list` carries `groups`, `tasksFor` and `workingFor` (non-worker tasks only), and `workers` (`{ count, activity? }`
   while a bot's own workers run, updated live on worker tool calls) per bot instead of new methods, so the existing
   `bots.changed` push keeps the roster's "Working together" section and every row's live state current.
 
