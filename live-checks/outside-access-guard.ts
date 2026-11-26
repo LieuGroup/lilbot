@@ -1,5 +1,6 @@
 /** The one guard for live checks that give a model real tools. It allows instead of forbids:
- *  - Tools: only local file, terminal and skill tools and LilBot's own tools (never its computer or connection tools),
+ *  - Tools: only local file, terminal and skill tools (LilBot's skills plug-in serves the skill tools from the check's
+ *    own skills folder) and LilBot's own tools (never its computer or connection tools),
  *    plus any tool a check names. Everything else (web, browser, images, the engine's connectors, code) is refused.
  *  - Paths: every string in every argument, at any depth and under any name, is resolved against the bot's own folder
  *    (`..` normalised wherever it appears, links followed) and must land inside that folder or a folder the check names.
@@ -27,7 +28,20 @@ export interface GuardPolicy {
   tools?: string[]
 }
 
-const LOCAL_TOOLS = new Set(['read_file', 'write_file', 'patch', 'search_files', 'terminal', 'skills_list', 'skill_view', 'todo_list', 'tool_search', 'tool_describe', 'clarify'])
+const LOCAL_TOOLS = new Set([
+  'read_file',
+  'write_file',
+  'patch',
+  'search_files',
+  'terminal',
+  'skills_list',
+  'skill_view',
+  'skill_manage',
+  'todo_list',
+  'tool_search',
+  'tool_describe',
+  'clarify'
+])
 const LILBOT_TOOL = /^(?:mcp__(?:lilbot_system|editor_lilbot_[0-9a-f]{8})__)?(lilbot_[a-z_]+)$/
 const LILBOT_OUTSIDE = /^lilbot_(?:computer|connection)/
 const HARMLESS = new Set(['/dev/null', '/dev/stdout', '/dev/stderr'])

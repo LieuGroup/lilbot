@@ -36,7 +36,8 @@ describe('live check guard: what a scenario needs is allowed', () => {
     ['terminal', { command: 'cat fixtures/disk-status.txt | head -5; wc -l fixtures/disk-status.txt 2>/dev/null' }],
     ['mcp__lilbot_system__lilbot_work', { title: 'Packing list', evidence: [{ proves: 'written', command: `cat ${folder}/packing-list.md` }] }],
     ['tool_call', { calls: [{ name: 'lilbot_memory_save', arguments: '{"text":"Give money figures in AUD."}' }] }],
-    ['tool_search', { query: 'routine schedule' }]
+    ['tool_search', { query: 'routine schedule' }],
+    ['skill_manage', { action: 'create', name: 'packing', content: '---\nname: packing\n---\nPack light.' }]
   ])('%s %j', (name, args) => expect(why(name, args)).toBeNull())
 })
 
