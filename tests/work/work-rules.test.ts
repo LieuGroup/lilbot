@@ -12,7 +12,7 @@ test('an item opened in a conversation records who asked, where it came from, an
   const f = workFixture()
   const item = await f.open('a')
   expect(item).toMatchObject({ ownerId: 'a', ownerName: 'A', status: 'working', checkLevel: 1, done: 'report.md lists every month', parentId: null })
-  expect(item.askedBy).toEqual({ kind: 'oscar', id: null, name: 'Oscar' })
+  expect(item.askedBy).toEqual({ kind: 'oscar', id: null, name: 'the owner' })
   expect(item.origin).toEqual({ kind: 'conversation', id: 'a-main' })
   expect(item.startedAt).not.toBeNull()
   expect(f.state.lines.map(line => line.id)).toEqual([item.id])

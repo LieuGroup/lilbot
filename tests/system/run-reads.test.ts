@@ -51,7 +51,7 @@ test('a run’s message is a notice: shown in the main conversation, given to th
   expect(f.shown).toEqual([{ botId: 'b1', runId: 'run-1', source: 'GitHub', text: 'Issue #7 is a duplicate of #3.' }])
   const note = f.webhookRuns.messages.pending('b1')
   expect(note?.text).toContain('<webhook-run-message>')
-  expect(note?.text).toContain('not from Oscar')
+  expect(note?.text).toContain('not from the owner')
   // The webhook's task stays out: the main conversation must not be handed it to carry out with full access.
   expect(note?.text).not.toContain('Triage issues')
   note?.taken()

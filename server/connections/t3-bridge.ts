@@ -85,7 +85,7 @@ export function createT3Bridge(options: T3BridgeOptions) {
     if (!grant) return t3SignedOut(message, explanation())
     const response = await upstream(request, grant.accessToken, JSON.stringify(message))
     if (!response) {
-      const text = 'T3 Code is not reachable on this machine right now. Tell Oscar; do not start the task another way.'
+      const text = 'T3 Code is not reachable on this machine right now. Tell the owner; do not start the task another way.'
       return message.method === 'tools/call' ? toolError(message.id, text) : rpcError(message.id, -32000, text)
     }
     // Never pass T3's 401 on: an engine would start its own OAuth sign-in for the bridge.

@@ -7,7 +7,7 @@ import { T3_STATUS_TOOL } from './t3-connection'
 export const t3SignedOut = (message: JsonRpc, explanation: string) =>
   signedOutReply(message, explanation, 'LilBot T3 Code bridge', {
     name: T3_STATUS_TOOL,
-    description: 'T3 Code coding tools are unavailable: LilBot is not signed in. Call this to learn what to tell Oscar.'
+    description: 'T3 Code coding tools are unavailable: LilBot is not signed in. Call this to learn what to tell the owner.'
   })
 
 /** One T3 sign-in is shared by every bot, and T3 scopes retry keys to the sign-in. Prefixing a bot's

@@ -68,7 +68,7 @@ export class DelegationControl {
       status: t.status,
       activity: t.activity,
       runSeconds: t.startedAt ? Math.round(((t.endedAt ?? Date.now()) - t.startedAt) / 1000) : null,
-      stoppedBy: t.stoppedBy?.name ?? null,
+      stoppedBy: t.stoppedBy ? (t.stoppedBy.kind === 'oscar' ? 'the owner' : t.stoppedBy.name) : null,
       files: t.messages.flatMap(m => m.files ?? []),
       ...(text ? { lastAnswer: text.slice(0, 2000) } : {})
     }

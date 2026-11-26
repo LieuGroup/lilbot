@@ -16,7 +16,7 @@ function makeWork(overrides: Partial<WorkSummary & { chatId?: string | null }> =
     title: 'Rebuild index',
     ownerId: 'b1',
     ownerName: 'Chief of Staff',
-    askedBy: { kind: 'oscar', id: null, name: 'Oscar' },
+    askedBy: { kind: 'oscar', id: null, name: 'the owner' },
     origin: { kind: 'conversation', id: 'chat-1' },
     chatId: 'chat-1',
     parentId: null,

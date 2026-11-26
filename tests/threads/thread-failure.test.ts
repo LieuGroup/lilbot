@@ -85,7 +85,7 @@ test('a stopped exchange stays stopped when a later notice cannot be delivered, 
   const f = delegationFixture()
   const id = await hand(f)
   await f.settle()
-  await f.threads.cancel(id, { kind: 'oscar', id: null, name: 'Oscar' })
+  await f.threads.cancel(id, { kind: 'oscar', id: null, name: 'the owner' })
   f.remove('a')
   f.runs[0].finish('A late answer.')
   await f.settle()

@@ -20,7 +20,7 @@ function workFixture(overrides: Partial<WorkSummary & { chatId?: string | null }
     title: 'Long job',
     ownerId: 'b1',
     ownerName: 'Bot One',
-    askedBy: { kind: 'oscar', id: null, name: 'Oscar' },
+    askedBy: { kind: 'oscar', id: null, name: 'the owner' },
     origin: { kind: 'conversation', id: 'chat-1' },
     chatId: 'chat-1',
     parentId: null,

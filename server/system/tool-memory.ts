@@ -60,7 +60,7 @@ export function memoryTools({ bots, memory, memoryChanged }: SystemDeps): McpToo
     ),
     actionTool(
       'lilbot_memory_forget',
-      'Mark one of your visible facts (your own or shared) as forgotten by short or full id. Reversible: Oscar can restore it in Memory.',
+      'Mark one of your visible facts (your own or shared) as forgotten by short or full id. Reversible: the owner can restore it in Memory.',
       z.object({ id: fact }),
       async (caller, { id }, _raw, context) => {
         const forgotten = memory.forgetAsBot(caller, id, { review: context?.review === true })

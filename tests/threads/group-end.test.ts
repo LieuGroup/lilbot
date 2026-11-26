@@ -5,7 +5,7 @@ import { delegationFixture, removeFixtureFolders } from './delegation-fixture'
 afterAll(removeFixtureFolders)
 
 type Fixture = ReturnType<typeof delegationFixture>
-const OSCAR = { kind: 'oscar', id: null, name: 'Oscar' } as const
+const OSCAR = { kind: 'oscar', id: null, name: 'the owner' } as const
 const runsOf = (f: Fixture, bot: string) => f.runs.filter(r => r.botId === bot)
 async function started(f: Fixture) {
   const { groupId } = (await f.groups.act('a', { action: 'start', requestId: 'g', purpose: 'Plan the trip', members: ['b', 'c'], text: 'Where to?' })) as any
@@ -50,7 +50,7 @@ test('Oscar stops a group: every turn stops, nothing more runs, the leader is to
   const f = delegationFixture()
   const groupId = await started(f)
   const stopped = await f.threads.cancel(groupId, OSCAR)
-  expect(stopped).toMatchObject({ status: 'cancelled', stoppedBy: { kind: 'oscar' }, group: { end: { how: 'stopped', outcome: 'Stopped by Oscar in round 1.' } } })
+  expect(stopped).toMatchObject({ status: 'cancelled', stoppedBy: { kind: 'oscar' }, group: { end: { how: 'stopped', outcome: 'Stopped by the owner in round 1.' } } })
   expect(f.stops.sort()).toEqual([runsOf(f, 'b')[0].chatId, runsOf(f, 'c')[0].chatId].sort())
   expect((await f.threads.cancel(groupId, OSCAR)).group!.end!.at).toBe(stopped.group!.end!.at)
   await replies(f, 'Too late', 'Also late')
@@ -60,7 +60,7 @@ test('Oscar stops a group: every turn stops, nothing more runs, the leader is to
   expect(view.group!.turns).toBe(0)
   const told = runsOf(f, 'a')
   expect(told.map(r => r.options.chatId)).toEqual(['a-main'])
-  expect(told[0].prompt).toContain('was stopped by Oscar in round 1')
+  expect(told[0].prompt).toContain('was stopped by the owner in round 1')
   expect(f.group.journal).toHaveLength(2)
 })
 

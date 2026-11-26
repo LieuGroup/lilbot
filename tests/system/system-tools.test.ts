@@ -104,5 +104,5 @@ test('status and about report computers and the release without credentials, and
   expect((await on.call('b1', 'lilbot_status', { area: 't3' })).data.state).toBe('connected')
   on.state.t3 = { state: 'expired', expiresAt: 1700000000000 }
   const expired = (await on.call('b1', 'lilbot_status', { area: 't3' })).data
-  expect(expired.whatToTellOscar).toContain('expired on 2023-11-14')
+  expect(expired.whatToTellTheOwner).toContain('expired on 2023-11-14')
 })

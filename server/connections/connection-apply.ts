@@ -27,12 +27,12 @@ const RETRY_MS = 30_000
 const READY_WAIT_MS = 5_000
 
 export const connectedPrompt = (name: string) =>
-  `Oscar finished signing in to ${name}, so LilBot is connected to it and its tools are yours now. Carry on with what he asked; if nothing waits on ${name}, tell him in one short sentence that it is connected.`
+  `The owner finished signing in to ${name}, so LilBot is connected to it and its tools are yours now. Carry on with what the owner asked; if nothing waits on ${name}, say in one short sentence that it is connected.`
 
-export const cancelledPrompt = (name: string) => `Oscar cancelled the sign-in for ${name}. Let him know briefly if you need it for what he asked.`
+export const cancelledPrompt = (name: string) => `The owner cancelled the sign-in for ${name}. Say so briefly if you need it for what the owner asked.`
 
 export const failedPrompt = (name: string, reason: string) =>
-  `The sign-in for ${name} did not finish (${reason}). Let Oscar know briefly; he can press Start again on the sign-in card if he wants to retry.`
+  `The sign-in for ${name} did not finish (${reason}). Let the owner know briefly; they can press Start again on the sign-in card to retry.`
 
 export class ConnectionApplier {
   private pending = new Map<string, Pending>()
