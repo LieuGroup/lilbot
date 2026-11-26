@@ -52,12 +52,10 @@ export class HistoryStore {
     if (this.excluded(bot, session)) return false
     const enriched = this.meta.mergeRows(bot, session, atFirstSight(this.db, bot, session, rows))
     pruneSupersededJournalRows(this.db, bot, session, enriched)
+    // A stored row is written again only when its item changed, so re-reading unchanged rows touches no index or search entry.
     const insert = this.db.query(`INSERT INTO history_items(bot,session,id,at,position,item,text) VALUES(?,?,?,?,?,?,?)
-        ON CONFLICT(bot,id) DO UPDATE SET item=excluded.item,text=excluded.text`)
-    for (const row of enriched) {
-      const text = 'text' in row.item ? row.item.text : ''
-      insert.run(bot, session, row.id, row.at, row.order, JSON.stringify(row.item), text)
-    }
+        ON CONFLICT(bot,id) DO UPDATE SET item=excluded.item,text=excluded.text WHERE item IS NOT excluded.item`)
+    for (const row of enriched) insert.run(bot, session, row.id, row.at, row.order, JSON.stringify(row.item), 'text' in row.item ? row.item.text : '')
     if (cursor !== undefined) this.db.query('UPDATE history_sessions SET cursor=?,complete=? WHERE bot=? AND id=?').run(cursor, +complete, bot, session)
     return enriched.some(row => row.item.kind === 'user' || row.item.kind === 'assistant') ? this.previews.backfillIfMissing(bot) : false
   }

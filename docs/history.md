@@ -35,7 +35,10 @@ LilBot never summarises. The short version is in `AGENTS.md` under "Conversation
   by the engine's time. A reply imported while its turn is still open in the journal is placed when that turn is
   journalled as finished, and until then is no floor for a message sent before it showed. Every lookup is an index seek (migration 45
   indexes the journal by event type, by a finished turn's row and by a sent message's text), so placing a page does not
-  grow with the journal, which is never pruned. The web and phone apps put a message into the conversation the moment it is sent, marked as
+  grow with the journal, which is never pruned. Finding the newest earlier row known only by its engine time walks only
+  the rows between the moment being placed and the row's engine time. Opening a chat reads the newest engine page
+  (since #87: the importer pages oldest first, so this is how a reopened chat shows what happened while LilBot was not
+  watching); a row already stored is neither placed again nor rewritten unless its item changed. The web and phone apps put a message into the conversation the moment it is sent, marked as
   waiting until the engine starts on it; the engine's echo of it adds nothing.
 
 ## Hidden sessions and compression lineage

@@ -20,35 +20,40 @@ const LAST = `SELECT coalesce(max(rowid),0) id FROM history_events WHERE bot=?1 
 
 /** A reply imported while its turn is still open in the journal is not yet placed: it is no floor for a message sent
  *  before it showed, and it takes its place when its turn is journalled as finished (`placeFinished`). The floor is the
- *  newest earlier row known only by its engine time. */
-function floorBefore(db: Database, bot: string, session: string, open: number | null, position: number, rowId: string, skip: Set<string>) {
+ *  newest earlier row known only by its engine time; only one later than `above` (the moment being placed) can matter, so
+ *  the walk covers the seconds between that moment and the row's engine time, never the whole session. */
+function floorBefore(db: Database, bot: string, session: string, open: number | null, position: number, rowId: string, skip: Set<string>, above: number) {
   const next = db.query(
-    `SELECT id, at, position, json_extract(item,'$.kind') kind FROM history_items i WHERE bot=?1 AND session=?2 AND position<?3 AND id<>?4 AND (at,position)<(?5,?6)
+    `SELECT id, at, position, json_extract(item,'$.kind') kind FROM history_items i WHERE bot=?1 AND session=?2 AND position<?3 AND id<>?4 AND (at,position)<(?5,?6) AND at>?7
      AND id NOT LIKE 'journal:%' AND id NOT LIKE 'session:%' AND NOT EXISTS (SELECT 1 FROM history_sent s WHERE s.bot=?1 AND s.row_id=i.id) ORDER BY at DESC, position DESC LIMIT 1`
   )
   let key = [Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER]
   for (;;) {
-    const row = next.get(bot, session, position, rowId, key[0], key[1]) as { id: string; at: number; position: number; kind: string } | null
+    const row = next.get(bot, session, position, rowId, key[0], key[1], above) as { id: string; at: number; position: number; kind: string } | null
     if (!row) return 0
     if (!skip.has(row.id) && !(open !== null && row.at >= open && row.kind === 'assistant' && !db.query(FINISHED).get(bot, session, row.id))) return row.at
     key = [row.at, row.position]
   }
 }
 
+/** Places the rows a page brings for the first time. A stored row keeps its place (a page never moves a stored row), so
+ *  re-reading rows, as every chat open does for the newest page, costs one lookup each. */
 export function atFirstSight(db: Database, bot: string, session: string, rows: HistoryRow[]): HistoryRow[] {
   const open = turnOpen(db, bot, session)
+  const stored = db.query('SELECT 1 FROM history_items WHERE bot=? AND id=?')
+  const unplaced: HistoryRow[] = []
   const pending = new Set<string>()
-  const placed = new Set<string>()
-  return rows.map((row, index) => {
-    if (row.id.startsWith('journal:')) return row
+  return rows.map(row => {
+    if (row.id.startsWith('journal:') || stored.get(bot, row.id)) return row
     const seen = row.item.kind === 'user' ? sentAt(db, bot, session, row) : row.item.kind === 'assistant' ? shownAt(db, bot, session, row.id) : null
     if (!seen && open !== null && row.item.kind === 'assistant') pending.add(row.id)
-    if (!seen || seen.at >= row.at) return row
+    if (!seen || seen.at >= row.at) {
+      if (!pending.has(row.id)) unplaced.push(row)
+      return row
+    }
     db.query('INSERT OR IGNORE INTO history_sent(bot,event,row_id) VALUES(?,?,?)').run(bot, seen.event, row.id)
-    placed.add(row.id)
-    const stored = floorBefore(db, bot, session, open, row.order, row.id, pending)
-    const batch = rows.slice(0, index).filter(other => !other.id.startsWith('journal:') && !pending.has(other.id) && !placed.has(other.id))
-    return { ...row, at: Math.min(row.at, Math.max(seen.at, stored, ...batch.map(other => other.at))) }
+    const floor = floorBefore(db, bot, session, open, row.order, row.id, pending, seen.at)
+    return { ...row, at: Math.min(row.at, Math.max(seen.at, floor, ...unplaced.map(other => other.at))) }
   })
 }
 
@@ -60,7 +65,7 @@ export function placeFinished(db: Database, bot: string, session: string, rowId:
   const seen = row && shownAt(db, bot, session, rowId)
   if (!row || !seen || seen.at >= row.at) return
   db.query('INSERT OR IGNORE INTO history_sent(bot,event,row_id) VALUES(?,?,?)').run(bot, seen.event, rowId)
-  const floor = floorBefore(db, bot, session, null, row.position, rowId, new Set())
+  const floor = floorBefore(db, bot, session, null, row.position, rowId, new Set(), seen.at)
   db.query('UPDATE history_items SET at=? WHERE bot=? AND id=?').run(Math.min(row.at, Math.max(seen.at, floor)), bot, rowId)
 }
 
