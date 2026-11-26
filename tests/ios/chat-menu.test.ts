@@ -4,7 +4,7 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { ReactElement } from 'react'
-import { CHAT_MENU_APP_ACTIONS, menuAppActions, menuPeekHeight } from '../../ios/src/bots/chat-menu'
+import { CHAT_MENU_APP_ACTIONS, MENU_MAX_WIDTH_LANDSCAPE, menuAppActions, menuPeekHeight, menuSheetFrame } from '../../ios/src/bots/chat-menu'
 import { useBotMenuStore } from '../../ios/src/bots/menu-store'
 import { rosterMenuActions } from '../../ios/src/bots/roster-state'
 import type { SurfaceKind } from '../../ios/src/duo/layout'
@@ -85,6 +85,40 @@ describe('one ••• per chat screen (#313)', () => {
     expect(useBotMenuStore.getState().rosterSearchRequested).toBe(true)
     useBotMenuStore.getState().clearRosterSearchRequest()
     expect(useBotMenuStore.getState().rosterSearchRequested).toBe(false)
+  })
+
+  test('a Search bots request that was never served does not open search later by itself', () => {
+    const menu = useBotMenuStore.getState()
+    // Leaving the Bots tab before the roster showed: the tabs layout calls closeBotOverlays().
+    menu.requestRosterSearch()
+    menu.closeBotOverlays()
+    expect(useBotMenuStore.getState().rosterSearchRequested).toBe(false)
+    expect(source('ios/src/app/(tabs)/_layout.tsx')).toContain('if (!botsTabActive) closeBotOverlays()')
+    // Any menu opening afterwards also drops a stale request.
+    for (const open of [() => menu.openMenu('atlas'), () => menu.openChatMenu('atlas')]) {
+      menu.requestRosterSearch()
+      open()
+      expect(useBotMenuStore.getState().rosterSearchRequested).toBe(false)
+    }
+    menu.closeBotOverlays()
+  })
+})
+
+describe('menu sheet width and side safe areas (#313 review)', () => {
+  test('portrait is unchanged: full width inside 12 pt, no cap', () => {
+    expect(menuSheetFrame({ width: 390, height: 844, insetLeft: 0, insetRight: 0 })).toEqual({ paddingLeft: 12, paddingRight: 12, maxWidth: undefined })
+    expect(menuSheetFrame({ width: 669, height: 951, insetLeft: 0, insetRight: 0 })).toEqual({ paddingLeft: 12, paddingRight: 12, maxWidth: undefined })
+  })
+
+  test('iPhone landscape stays clear of the Dynamic Island and home side and is at most 420 pt wide', () => {
+    const frame = menuSheetFrame({ width: 844, height: 390, insetLeft: 47, insetRight: 47 })
+    expect(frame).toEqual({ paddingLeft: 59, paddingRight: 59, maxWidth: MENU_MAX_WIDTH_LANDSCAPE })
+  })
+
+  test('Duo landscape keeps the sheet off the 84 pt strip, and a narrow window shrinks the cap to what is left', () => {
+    expect(menuSheetFrame({ width: 678, height: 466, insetLeft: 0, insetRight: 84 })).toEqual({ paddingLeft: 12, paddingRight: 96, maxWidth: 420 })
+    expect(menuSheetFrame({ width: 951, height: 669, insetLeft: 0, insetRight: 84 })).toEqual({ paddingLeft: 12, paddingRight: 96, maxWidth: 420 })
+    expect(menuSheetFrame({ width: 500, height: 400, insetLeft: 40, insetRight: 84 }).maxWidth).toBe(500 - 52 - 96)
   })
 })
 
