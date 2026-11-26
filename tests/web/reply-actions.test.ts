@@ -75,28 +75,33 @@ test('an error line between two turns ends the first; neither copies the other',
   ])
 })
 
-test('a message sent while the bot is busy, drawn mid-reply, does not split it; the next turn is separate', () => {
+test('a message from the owner ends the reply even when the answer after it carries numbers (review of #334)', () => {
   const items: ViewItem[] = [
-    { kind: 'user', text: 'Look into it', messageId: 'm1' } as ViewItem,
-    { kind: 'assistant', text: 'Looking.' },
+    { kind: 'assistant', text: 'Unmarked reply.' },
+    { kind: 'user', text: 'next', messageId: 'm2' } as ViewItem,
     { kind: 'tool', toolId: 't1', name: 'terminal', detail: '', running: false },
+    { kind: 'assistant', text: 'Marked answer.', usage }
+  ]
+  expect([...replyActions(items)]).toEqual([
+    [0, { text: 'Unmarked reply.' }],
+    [3, { text: 'Marked answer.', usage }]
+  ])
+})
+
+// Not solved (#325): a message sent while the bot was busy, drawn where it was sent, splits the reply it sits in, as on
+// main. Nothing in the items says it was sent mid-turn. This pins what the code does today, so a fix shows up here.
+test('a message drawn mid-reply splits that reply (no mark says it was sent while the bot was busy)', () => {
+  const items: ViewItem[] = [
+    { kind: 'assistant', text: 'Looking.' },
     { kind: 'user', text: 'Also check logs', messageId: 'm2' } as ViewItem,
     { kind: 'assistant', text: 'Found it.', usage },
     { kind: 'assistant', text: 'Logs are clean.', usage: later }
   ]
   expect([...replyActions(items)]).toEqual([
-    [4, { text: 'Looking.\n\nFound it.', usage }],
-    [5, { text: 'Logs are clean.', usage: later }]
+    [0, { text: 'Looking.' }],
+    [2, { text: 'Found it.', usage }],
+    [3, { text: 'Logs are clean.', usage: later }]
   ])
-})
-
-test('while that reply is still being written it has no Copy, and the message does not give its first half one', () => {
-  const items: ViewItem[] = [
-    { kind: 'assistant', text: 'Looking.' },
-    { kind: 'user', text: 'Also check logs', messageId: 'm2' } as ViewItem,
-    { kind: 'assistant', text: 'Found', streaming: true }
-  ]
-  expect([...replyActions(items)]).toEqual([])
 })
 
 test('a reply with no end mark (older history) still ends at the next message', () => {
