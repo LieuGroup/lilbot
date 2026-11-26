@@ -14,7 +14,7 @@ export const differentModel = (own: BotModel | null, configured: BotModel | null
 
 /** LilBot's note on a check no other bot could take, saying which model the owner's fresh session checks on. */
 export const sameBotNote = (model: BotModel | null) =>
-  `No other bot was eligible, so a fresh session of the owner checks this, ${model ? `on ${model.provider}::${model.model}` : 'on its own model: no different review model is configured'}.`
+  `No other bot was eligible, so a fresh session of the bot that did the work checks this, ${model ? `on ${model.provider}::${model.model}` : 'on its own model: no different review model is configured'}.`
 
 /** How a check's bot is named in what Oscar and the owner read. */
 export const checkerLabel = (check: Pick<WorkCheck, 'by' | 'sameBot'>) => (check.sameBot ? `${check.by.name} (a fresh session of the same bot)` : check.by.name)

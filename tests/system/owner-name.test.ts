@@ -9,6 +9,9 @@ import ts from 'typescript'
 
 const ROOT = join(import.meta.dir, '../..')
 const NAME = /\bOscar\b/
+/** "The owner" is the person only. These phrasings would use it for a bot (the one that did a work item). */
+const OWNER_AS_BOT =
+  /\b(?:its|item's|their|a bot's) owner\b|\bthe owner is you\b|\bsession of the owner\b|\bowner's (?:evidence|claim|folder|definition|commands|output|links|result|work item)\b|\bonly the owner reports\b|\bback to (?:its|the) owner\b/i
 
 /** Files that may still hold the name, each with the reason. */
 const ALLOWED: Record<string, string> = {
@@ -43,8 +46,9 @@ function literals(code: string): string[] {
   return found
 }
 
-test('no personal name in text LilBot sends to a bot', () => {
-  const hits: string[] = []
+/** Every piece of text a bot can read: Markdown lines and string literals, outside the allowed files. */
+function botText(): { where: string; text: string }[] {
+  const found: { where: string; text: string }[] = []
   for (const path of [...files('server'), ...files('shared')]) {
     const file = relative(ROOT, join(ROOT, path))
     if (ALLOWED[file]) continue
@@ -52,9 +56,22 @@ test('no personal name in text LilBot sends to a bot', () => {
       for (const [i, line] of readFileSync(join(ROOT, file), 'utf8').split('\n').entries()) if (NAME.test(line)) hits.push(`${file}:${i + 1}: ${line.trim().slice(0, 120)}`)
       continue
     }
-    for (const text of literals(readFileSync(join(ROOT, file), 'utf8'))) if (NAME.test(text) && !LEGACY.has(text)) hits.push(`${file}: ${text.slice(0, 120)}`)
+    for (const text of literals(readFileSync(join(ROOT, file), 'utf8'))) if (!LEGACY.has(text)) found.push({ where: file, text })
   }
-  expect(hits).toEqual([])
+  return found
+}
+
+test('no personal name in text LilBot sends to a bot', () => {
+  const hits = botText().filter(({ text }) => NAME.test(text))
+  expect(hits.map(({ where, text }) => `${where}: ${text.trim().slice(0, 120)}`)).toEqual([])
+})
+
+test('"the owner" means the person, never the bot that did the work', () => {
+  const hits = botText().filter(({ text }) => OWNER_AS_BOT.test(text))
+  expect(hits.map(({ where, text }) => `${where}: ${text.trim().slice(0, 120)}`)).toEqual([])
+  for (const old of ['goes back to its owner once', 'the owner is you', 'a fresh session of the owner', "The owner's evidence", 'only the owner reports'])
+    expect(OWNER_AS_BOT.test(old)).toBe(true)
+  for (const fine of ['Tell the owner briefly', "the owner's words", "the owner's answer", "the owner's board"]) expect(OWNER_AS_BOT.test(fine)).toBe(false)
 })
 
 test('the scan finds the name in strings and templates, not in comments or identifiers', () => {

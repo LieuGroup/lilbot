@@ -57,11 +57,11 @@ try {
   db.exec('PRAGMA busy_timeout = 5000')
   const lead = await server.createBot(
     'Drop Lead',
-    'You are in a live check. Follow Oscar exactly, with your own tools. If LilBot tells you Oscar dropped a work item, stop that work and answer exactly "STOPPED_ACK <title>". When another bot’s answer contains HELPER_FINAL, answer exactly "LEAD_GOT <the word>". Never poll.'
+    'You are in a live check. Follow Oscar exactly, with your own tools. If LilBot tells you the owner dropped a work item, stop that work and answer exactly "STOPPED_ACK <title>". When another bot’s answer contains HELPER_FINAL, answer exactly "LEAD_GOT <the word>". Never poll.'
   )
   const helper = await server.createBot(
     'Drop Helper',
-    'You are in a live check. Do exactly what each task and each message says, with your own tools. Never contact other bots. When Oscar answers your question, carry on as the message says.'
+    'You are in a live check. Do exactly what each task and each message says, with your own tools. Never contact other bots. When the owner answers your question, carry on as the message says.'
   )
   const open = (await server.call('chat.open', { botId: lead.id })).chatId
   const send = (text: string) => server.call('chat.send', { chatId: open, text })
@@ -125,7 +125,7 @@ try {
   assert.equal(sql("SELECT 1 FROM thread_deliveries WHERE threadId = ? AND kind = 'answer'", exchange.threadId).length, 0, 'a late answer is kept, never delivered')
   assert.ok(
     sql("SELECT text FROM thread_deliveries WHERE kind = 'notice' AND target = ?", lead.id).some(
-      r => r.text.includes('Oscar stopped the task') && r.text.includes('The plan changed')
+      r => r.text.includes('The owner stopped the task') && r.text.includes('The plan changed')
     )
   )
   console.log('ok: dropping the parent dropped the child with the same reason, stopped the helper’s exchange as Oscar, and told the lead')

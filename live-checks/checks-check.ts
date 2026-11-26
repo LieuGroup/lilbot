@@ -4,6 +4,7 @@ import { checkClient } from './check-client'
 import { deleteProfile, startServer } from './check-process'
 import { assertCheckEngineRefusals, engineView, sentToModel } from './engine-observer'
 import { waitFor } from './wait-for'
+import { pathsOutside } from './workspace-guard'
 /** `bun run check:checks`: check levels on an isolated dev server with temporary bots, review model Haiku. A `lilbot_work`
  *  call no session made is refused. With one bot, a true level 2 claim is verified by a fresh hidden session of the same
  *  bot (a same-bot check on the review model, outside the conversation history) whose verdict reuses the request id the
@@ -182,6 +183,11 @@ try {
   await server.exited
   const natives = db ? (db.query('SELECT engine_bot_id FROM bots').all() as { engine_bot_id: string }[]).map(r => r.engine_bot_id) : []
   db?.close()
+  const outside = pathsOutside(natives, [root, join(process.env.HOME ?? '', 'lilbot-dev')])
+  if (outside.length) {
+    console.error(`A test bot's tool call named paths outside its workspace and the development area: ${outside.join(', ')}`)
+    process.exitCode = 1
+  } else console.log('ok: no tool call named a path outside the workspace and the development area')
   for (const id of natives)
     if (await deleteProfile(id).exited) {
       console.error(`Failed to delete temporary profile ${id}`)
