@@ -10,6 +10,7 @@ import { SetupContextCard } from '../history/setup-context-card'
 import { SkillsSection } from '../skills/skills-section'
 import { BotForm } from './bot-form'
 import { useBotStore } from './bot-store'
+import { instructionsNote } from './instructions-note'
 import { PrimaryBotAction } from './primary-bot-action'
 
 // Skills have their own section with a switch each.
@@ -86,14 +87,7 @@ export function BotSetupPanel({ botId }: { botId: string }) {
             key={`${bot.id}:${bot.name}:${modelKey(bot.model)}:${bot.reasoningEffort}`}
             initial={{ name: bot.name, function: bot.function, instructions: bot.instructions, model: bot.model, reasoningEffort: bot.reasoningEffort }}
             sentEffort={bot.effectiveReasoningEffort}
-            instructionsNote={
-              [
-                bot.promptFallback && `LilBot’s own system prompt is not in use for this bot, so the engine’s own prompt answers (${bot.promptFallback}).`,
-                bot.engineIdentityInInstructions && 'These instructions mention the engine’s default identity, which some models reject. Edit and save to remove it.'
-              ]
-                .filter(Boolean)
-                .join(' ') || undefined
-            }
+            instructionsNote={instructionsNote(bot)}
             context={<SetupContextCard botId={botId} fallback={bot.context} />}
             submitLabel="Save changes"
             onSubmit={async values => {

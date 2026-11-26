@@ -14,6 +14,7 @@ import { ScriptedEngine, type ScriptedEngineOptions } from '../../server/engines
 import { MemoryService } from '../../server/memory/memory-service'
 import { MemoryStore } from '../../server/memory/memory-store'
 import { SkillsService } from '../../server/skills/skills-service'
+import { systemNote } from '../../server/system/system-note-facts'
 
 const dirs: string[] = []
 const tempDir = () => {
@@ -31,7 +32,8 @@ function harness(options: {
   promptTuning?: string
   onConfigurePrompt?: ScriptedEngineOptions['onConfigurePrompt']
   hasEngineIdentityText?: (instructions: string) => boolean
-  modelFree?: boolean
+  /** Use the note exactly as the app wires it into the cached prompt (`systemNote(facts, false)`). */
+  appNote?: boolean
 }) {
   const root = tempDir()
   const dataDir = join(root, 'data')
@@ -49,8 +51,8 @@ function harness(options: {
   const engines = asEngineRegistry(engine)
   const note = (bot: { id: string; name: string; model: { provider: string; model: string } | null }) =>
     buildNote({ bot: { id: bot.id, name: bot.name, workspace: workspaces.pathFor(bot.id), model: bot.model } })
-  const promptNote = (bot: { id: string; name: string }) => buildNote({ bot: { id: bot.id, name: bot.name, workspace: workspaces.pathFor(bot.id) } })
-  const prompts = createPromptController({ dataDir, engines, workspaces, skills, store, systemNote: options.modelFree ? promptNote : note, enabled: options.enabled })
+  const appNote = systemNote({ workspaces, t3Enabled: false }, false)
+  const prompts = createPromptController({ dataDir, engines, workspaces, skills, store, systemNote: options.appNote ? appNote : note, enabled: options.enabled })
   const bots = new BotService(engines, store, prefs, workspaces, memory, {
     skills,
     systemNote: note,
@@ -133,6 +135,9 @@ describe('BotService prompt ownership and fail-safe behavior', () => {
     expect(line).toMatch(/^\[LilBot origin: test\.\]\n\[LilBot date: \w+day, \d{1,2} \w+ 20\d\d at \d\d:\d\d GMT[^\]]*\]$/)
     expect(readFileSync(on.prompts.source.pathFor(bot.id), 'utf8')).not.toContain('LilBot date')
 
+    await on.bots.runRoutine(bot.id, 'routine', { runId: 'r1', onChat: () => {}, origin: { line: '[LilBot origin: a routine.]' } })
+    expect(on.engine.routineCalls.at(-1)?.options.origin?.line).toMatch(/^\[LilBot origin: a routine\.\]\n\[LilBot date: [^\]]+\]$/)
+
     const off = harness({ enabled: false })
     const plain = await off.bots.createBot({ name: 'Plain', function: 'Test', instructions: 'Hi.' })
     const offChat = await off.bots.openChat(plain.id, undefined, () => {})
@@ -152,10 +157,12 @@ describe('BotService prompt ownership and fail-safe behavior', () => {
   })
 
   test('the cached prompt leaves the model out, so a model switch never makes it wrong', async () => {
-    const { bots, prompts } = harness({ enabled: true, modelFree: true })
+    const { bots, prompts } = harness({ enabled: true, appNote: true })
     const bot = await bots.createBot({ name: 'Switcher', function: 'Test', instructions: 'Hi.' })
     const text = readFileSync(prompts.source.pathFor(bot.id), 'utf8')
     expect(text).toContain('lilbot_about names your current model.')
     expect(text).not.toContain('Your model is')
+    await bots.updateBot({ botId: bot.id, model: { provider: 'scripted', model: 'think' } })
+    expect(readFileSync(prompts.source.pathFor(bot.id), 'utf8')).not.toMatch(/Your model is|scripted\/think/)
   })
 })

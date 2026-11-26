@@ -33,10 +33,12 @@ const MAX_NOTE_BYTES = 8_000
 const MAX_INSTRUCTIONS_BYTES = 64_000
 const SHORTENED = '\n[shortened by LilBot]'
 
-const INVISIBLE = '\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u206F\\uFEFF'
-const INVISIBLE_CHARS = new RegExp(`[${INVISIBLE}]`, 'g')
+/** Characters that show nothing: Unicode's default-ignorable class (zero-width and bidi marks, soft hyphen, joiners,
+ *  variation selectors, tag characters, Hangul fillers), all format characters, and the blank Braille pattern. */
+const INVISIBLE = '\\p{Default_Ignorable_Code_Point}\\p{Cf}\\u2800'
+const INVISIBLE_CHARS = new RegExp(`[${INVISIBLE}]`, 'gu')
 /** A `<` that would open or close one of LilBot's own tags, allowing spaces, slashes and invisible characters anywhere in it. */
-const OWN_TAG_OPEN = new RegExp(`<(?=[\\s${INVISIBLE}/]*${[...'lilbot-'].join(`[${INVISIBLE}]*`)})`, 'gi')
+const OWN_TAG_OPEN = new RegExp(`<(?=[\\s${INVISIBLE}/]*${[...'lilbot-'].join(`[${INVISIBLE}]*`)})`, 'giu')
 const NOTE_OPEN = '<lilbot-system-note>'
 const NOTE_CLOSE = '</lilbot-system-note>'
 
