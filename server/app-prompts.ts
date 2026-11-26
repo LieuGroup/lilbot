@@ -7,6 +7,7 @@ import { assembleBotPrompt } from './prompts/prompt-assembler'
 import { isPromptOwnershipEnabled, PromptStore } from './prompts/prompt-store'
 import { dateLine } from './prompts/turn-date'
 import type { SkillsService } from './skills/skills-service'
+import { systemNote } from './system/system-note-facts'
 
 export interface PromptController {
   source: BotPromptSource
@@ -20,11 +21,12 @@ export function createPromptController(deps: {
   workspaces: Workspaces
   skills: SkillsService
   store: BotStore
-  systemNote: (bot: BotRecord) => string
+  t3Enabled?: boolean
   enabled?: boolean
 }): PromptController {
   const store = new PromptStore(deps.dataDir)
   const enabled = deps.enabled ?? isPromptOwnershipEnabled(process.env)
+  const note = systemNote({ workspaces: deps.workspaces, t3Enabled: deps.t3Enabled }, false)
 
   const write = (bot: BotRecord): string => {
     const offered = deps.skills
@@ -36,7 +38,7 @@ export function createPromptController(deps: {
       botName: bot.name,
       workspace: deps.workspaces.pathFor(bot.id),
       instructions: bot.instructions,
-      systemNote: deps.systemNote(bot),
+      systemNote: note(bot),
       engineTuning: deps.engines.get(bot.engineId)?.promptTuning,
       skills: offered
     })
