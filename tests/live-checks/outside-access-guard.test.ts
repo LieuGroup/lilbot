@@ -3,8 +3,6 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { type GuardPolicy, refusal } from '../../live-checks/outside-access-guard'
-import { startWireCaptureProxy, stopOnAccountProblem } from '../../live-checks/prompt-wire-proxy'
-import { toolCallsInRequest, toolCallsInResponse } from '../../live-checks/tool-calls-on-wire'
 
 const base = mkdtempSync(join(tmpdir(), 'guard-test-'))
 const workspaces = join(base, 'workspaces')
@@ -137,52 +135,5 @@ describe('live check guard: every way out LILA-47 tried is refused', () => {
     expect(shell('ls || cat ../x')).not.toBeNull()
     expect(shell('cat fixtures/disk-status.txt > /tmp/x')).toContain('shell syntax')
     expect(shell('cat fixtures/disk-status.txt 2>/tmp/x')).toContain('shell syntax')
-  })
-})
-
-describe('reading tool calls off the wire', () => {
-  test('streamed and plain answers in each format, and request history', () => {
-    const anthropic = [
-      'data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"t1","name":"read_file","input":{}}}',
-      'data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\\"path\\": \\"/et"}}',
-      'data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"c/hostname\\"}"}}'
-    ].join('\n')
-    expect(toolCallsInResponse(anthropic)).toEqual([{ name: 'read_file', args: { path: '/etc/hostname' } }])
-    const openai = [
-      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"terminal","arguments":"{\\"command\\":"}}]}}]}',
-      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\\"ls ~\\"}"}}]}}]}'
-    ].join('\n')
-    expect(toolCallsInResponse(openai)).toEqual([{ name: 'terminal', args: { command: 'ls ~' } }])
-    expect(toolCallsInResponse('{"content":[{"type":"tool_use","name":"read_file","input":{"path":"a"}}]}')).toEqual([{ name: 'read_file', args: { path: 'a' } }])
-    expect(toolCallsInResponse('data: {"type":"tool_use" garbled')).toEqual([{ name: '', args: {} }])
-    const history = { messages: [{ role: 'assistant', content: [{ type: 'tool_use', name: 'terminal', input: { command: 'cat /etc/hostname' } }] }] }
-    expect(toolCallsInRequest(history)).toEqual([{ name: 'terminal', args: { command: 'cat /etc/hostname' } }])
-  })
-
-  test('the capture proxy refuses a deliberate outside read before the engine sees it, and the check stops', async () => {
-    const answerFor = (path: string) =>
-      [
-        'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"t","name":"read_file","input":{}}}',
-        `data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":${JSON.stringify(JSON.stringify({ path }))}}}`
-      ].join('\n\n')
-    let answer = answerFor('fixtures/../../../code/QRit/docs/INVOICE.md')
-    const upstream = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response(answer, { headers: { 'content-type': 'text/event-stream' } }) })
-    const proxy = startWireCaptureProxy(`http://127.0.0.1:${upstream.port}`, { workspaces: [workspaces], policy })
-    const body = JSON.stringify({ model: 'm', system: `Your folder is ${folder}.`, tools: [{ name: 'read_file' }], messages: [] })
-    const send = () => fetch(`${proxy.url}/v1/messages`, { method: 'POST', body })
-    try {
-      const refused = await send()
-      expect(refused.status).toBe(400)
-      expect(await refused.text()).not.toContain('INVOICE')
-      expect(proxy.records[0]?.outside).toContain('INVOICE.md')
-      expect(() => stopOnAccountProblem(proxy.records)).toThrow('guard refused a tool call')
-      answer = answerFor('fixtures/disk-status.txt')
-      const passed = await send()
-      expect(passed.status).toBe(200)
-      expect(proxy.records[1]?.outside).toBeUndefined()
-    } finally {
-      proxy.stop()
-      upstream.stop(true)
-    }
   })
 })

@@ -2,7 +2,10 @@
  *  Forwards dev CLIProxyAPI requests verbatim while recording the outbound system prompt,
  *  cache_control presence, tool count, and HTTP status without logging keys or upstream URLs.
  *  With a guard, it refuses any tool call the guard does not allow before the engine runs it (`outside-access-guard.ts`):
- *  each bot's folder is read from its system note and must lie inside `workspaces`. */
+ *  each bot's folder is read from its system note and must lie inside `workspaces`. A refused call in the model's answer
+ *  is renamed `REFUSED_TOOL`, which the engine does not have: it runs nothing, tells the model the tool does not exist,
+ *  and the turn goes on. A refused call already in the request history ran (the guard missed it in the answer): that
+ *  request is not forwarded, and it is a breach. */
 import { Database } from 'bun:sqlite'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -23,8 +26,10 @@ export interface CapturedRequest {
   hasDateLine: boolean
   status: number
   error?: string
-  /** Why the guard refused a tool call in this request or its answer; the engine never ran it. */
+  /** Why the guard refused a tool call in this request's answer; the engine never ran it. */
   outside?: string
+  /** Why a tool call the guard does not allow is in this request's history, so it ran. */
+  breach?: string
   elapsedMs: number
 }
 const FORBIDDEN_STOCK_SNIPPETS = ['Hermes Agent', 'hermes-agent', 'Mid-turn user steering', 'Hermes runtime environment', 'Hermes desktop app', 'Nous Research'] as const
@@ -62,6 +67,9 @@ function extractSystem(body: Record<string, unknown>): Pick<CapturedRequest, 'sy
 }
 
 const REFUSED = { type: 'error', error: { type: 'invalid_request_error', message: 'Live check guard: this tool call is not allowed in a live check.' } }
+export const REFUSED_TOOL = 'refused_by_live_check_guard'
+const renamed = (answer: string, names: string[]) =>
+  names.reduce((text, name) => text.replace(new RegExp(`("name"\\s*:\\s*")${name.replace(/[^\w]/g, '\\$&')}"`, 'g'), `$1${REFUSED_TOOL}"`), answer)
 
 export function startWireCaptureProxy(upstreamBaseUrl: string, guard?: { workspaces: string[]; policy: GuardPolicy }) {
   const port = devPort()
@@ -80,16 +88,25 @@ export function startWireCaptureProxy(upstreamBaseUrl: string, guard?: { workspa
       const headers = new Headers(request.headers)
       headers.delete('host')
       const folder = guard && (folderOf(parsed ? extractSystem(parsed).systemText : '', guard.workspaces) ?? guard.workspaces[0]!)
-      const reached = (calls: ReturnType<typeof inRequest>) => (guard && folder ? calls.map(c => refusal(c, folder, guard.policy)).find(Boolean) : undefined)
-      const ran = parsed ? reached(inRequest(parsed)) : undefined
-      const upstreamResponse = ran ? Response.json({}, { status: 451 }) : await fetch(target, { method: request.method, headers, body: rawBody })
+      const reached = (calls: ReturnType<typeof inRequest>) =>
+        guard && folder ? calls.filter(c => c.name !== REFUSED_TOOL).flatMap(c => (why => (why ? [{ name: c.name, why }] : []))(refusal(c, folder, guard.policy))) : []
+      const breach = parsed ? reached(inRequest(parsed))[0]?.why : undefined
+      const upstreamResponse = breach ? Response.json({}, { status: 451 }) : await fetch(target, { method: request.method, headers, body: rawBody })
       const outHeaders = new Headers(upstreamResponse.headers)
       for (const name of ['content-encoding', 'content-length', 'transfer-encoding']) outHeaders.delete(name)
       const errorText = upstreamResponse.status >= 400 ? (await upstreamResponse.clone().text()).replace(/\s+/g, ' ').slice(0, 240) : undefined
-      const answer = guard && !ran ? await upstreamResponse.text() : undefined
-      const outside = ran ?? (answer === undefined ? undefined : reached(inAnswer(answer)))
+      const answer = guard && !breach ? await upstreamResponse.text() : undefined
+      const refused = answer === undefined ? [] : reached(inAnswer(answer))
+      const outside = refused.map(r => r.why).join('; ') || undefined
       const { status, statusText } = upstreamResponse
-      const response = outside ? Response.json(REFUSED, { status: 400 }) : new Response(answer ?? upstreamResponse.body, { status, statusText, headers: outHeaders })
+      const body = refused.length
+        ? renamed(
+            answer!,
+            refused.map(r => r.name)
+          )
+        : answer
+      const unsafe = refused.length > 0 && reached(inAnswer(body!)).length > 0
+      const response = unsafe ? Response.json(REFUSED, { status: 400 }) : new Response(body ?? upstreamResponse.body, { status, statusText, headers: outHeaders })
       if (parsed && (url.pathname.includes('/messages') || url.pathname.includes('/chat/completions') || url.pathname.includes('/responses'))) {
         const extracted = extractSystem(parsed)
         records.push({
@@ -102,6 +119,7 @@ export function startWireCaptureProxy(upstreamBaseUrl: string, guard?: { workspa
           status: response.status,
           ...(errorText ? { error: errorText } : {}),
           ...(outside ? { outside } : {}),
+          ...(breach ? { breach } : {}),
           elapsedMs: Date.now() - start
         })
       }
@@ -167,32 +185,3 @@ export async function sendPromptTurn(server: RestartServer, botId: string, chatI
     .join('')
   return { finished: finished?.data, reply }
 }
-
-const ACCOUNT_STOP = /\b403\b|disabled in this account|violation of terms|unknown provider/i
-
-/** Throws at once on any tool call the guard refused, any 403, account message or unknown-provider answer since
- *  record `from`, or in a failed turn. */
-export function stopOnAccountProblem(records: CapturedRequest[], from = 0, finished?: { type?: string; message?: string; text?: string }) {
-  const outside = records.find(r => r.outside)
-  if (outside) throw new Error(`Stopped: the live check guard refused a tool call (${outside.outside}).`)
-  const bad = records.slice(from).find(r => r.status === 403 || ACCOUNT_STOP.test(r.error ?? ''))
-  const text = finished?.type === 'error' ? `${finished.message ?? ''} ${finished.text ?? ''}` : ''
-  if (bad || ACCOUNT_STOP.test(text))
-    throw new Error(`Stopped: upstream refused with an account or 403 answer (${bad ? `HTTP ${bad.status} ${bad.error ?? ''}`.trim() : text.trim().slice(0, 120)}).`)
-}
-
-/** Every captured request answered 200 and carried exactly `prompt` as its system prompt, with no stock engine text. */
-export const exact = (wire: CapturedRequest[], prompt: string) =>
-  wire.length > 0 && wire.every(r => r.status === 200 && r.systemText === prompt && findForbiddenStockSnippets(r.systemText).length === 0)
-
-/** Why each captured request fails `exact`, for a failing check's detail. */
-export const wireProblems = (wire: CapturedRequest[], prompt: string) =>
-  wire
-    .filter(r => !exact([r], prompt))
-    .map(r =>
-      r.status !== 200
-        ? `HTTP ${r.status} ${r.error ?? ''}`.trim()
-        : r.systemText === prompt
-          ? 'stock engine text'
-          : `another system prompt (${r.systemText.length} chars, model ${r.model})`
-    )

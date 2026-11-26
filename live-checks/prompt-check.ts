@@ -1,6 +1,7 @@
 import '../scripts/dev-env'
 /** Live wire-capture check for OSC-112 prompt ownership (`bun run check:prompt`), on isolated dev Hermes with
- *  temporary `dev-` bots only (deleted in `finally`). Model calls are spaced 10 s apart.
+ *  temporary `dev-` bots only (deleted in `finally`). Model calls are spaced 10 s apart. This is the merge gate: every
+ *  check passes every time, on every model (`check:prompt-behaviour` measures behaviour and is not a gate).
  *  1. Default off: a baseline turn writes no prompt file. On: a private `0o600` file keyed by bot id.
  *  2. Claude: a real file tool call and a mid-turn steer, with the wire system prompt equal to LilBot's file byte for byte.
  *  3. Mid-session switch to OpenAI, then a hidden routine session on OpenAI: same byte-for-byte wire check.
@@ -18,18 +19,10 @@ import { join } from 'node:path'
 import { HermesEngine } from '../server/engines/hermes/hermes-engine'
 import { checkCompactionMarker } from './history-compaction'
 import { answered, runModelCase } from './prompt-model-case'
-import {
-  exact,
-  findForbiddenStockSnippets,
-  nativeProfileOf,
-  readDevUpstreamBaseUrl,
-  sendPromptTurn,
-  setProfileBaseUrl,
-  startWireCaptureProxy,
-  stopOnAccountProblem
-} from './prompt-wire-proxy'
+import { findForbiddenStockSnippets, nativeProfileOf, readDevUpstreamBaseUrl, sendPromptTurn, setProfileBaseUrl, startWireCaptureProxy } from './prompt-wire-proxy'
 import { rollBackPromptPlugin } from './prompt-rollback'
 import { RestartServer, waitFor } from './restart-server'
+import { exact, stopOnAccountProblem } from './wire-verdicts'
 
 const SPACE_MS = 10_000
 const CLAUDE = { provider: 'cliproxyapi', model: 'anthropic/claude-sonnet-5-5' }
