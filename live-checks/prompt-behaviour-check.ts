@@ -103,7 +103,11 @@ async function modelCase(label: string, model: { provider: string; model: string
     `tools=[${job.tools.join(', ')}] items=${JSON.stringify(items.map(i => `${i.status}/${i.evidenceCount}`))}`
   )
 
-  const pref = await turn(bot.id, await fresh(), "from now on give me money figures in AUD, not USD. anyway what's 250 USD in AUD roughly? today's rate is in fixtures/rates.txt in your folder.")
+  const pref = await turn(
+    bot.id,
+    await fresh(),
+    "from now on give me money figures in AUD, not USD. anyway what's 250 USD in AUD roughly? today's rate is in fixtures/rates.txt in your folder."
+  )
   const facts = ((await server.call('memory.list', { botId: bot.id })).facts as { text: string }[]).map(f => f.text)
   check(
     `${label}: a standing preference is saved to memory in the same turn, naming nobody the bot was not given`,
