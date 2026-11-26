@@ -67,7 +67,7 @@ export function SetupTab({ bot, bottomPadding = 28 }: { bot: Bot; bottomPadding?
   return (
     <View style={{ flex: 1 }}>
       {keyboardHeight > 0 ? <KeyboardDoneRow /> : null}
-      <ScrollView testID="bot-details-setup" scrollIndicatorInsets={{ bottom: keyboardHeight }} contentContainerStyle={{ padding: 16, gap: 20, paddingBottom: sheetScrollBottomPadding(bottomPadding, keyboardHeight) }} {...KEYBOARD_SCROLL_PROPS}>
+      <ScrollView testID="bot-details-setup" automaticallyAdjustKeyboardInsets contentContainerStyle={{ padding: 16, gap: 20, paddingBottom: sheetScrollBottomPadding(bottomPadding, 0) }} {...KEYBOARD_SCROLL_PROPS}>
       {error ? (
         <AppText variant="preview" color={theme.destructive} style={MOBILE_SCALE.details.rowSubtitle}>
           {error}
