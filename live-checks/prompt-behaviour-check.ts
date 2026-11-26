@@ -24,7 +24,7 @@ const MODELS = [
   { label: 'Claude Haiku', model: { provider: 'cliproxyapi', model: 'anthropic/claude-haiku-5-5' } },
   { label: 'GPT Luna', model: { provider: 'cliproxyapi', model: 'gpt-5.6-luna' } }
 ].filter(m => !process.env.LILBOT_PROMPT_MODELS || process.env.LILBOT_PROMPT_MODELS.split(',').includes(m.model.model))
-const INSTRUCTIONS = "You are Pip, the owner's general assistant. You help with everyday questions, errands and small jobs around his computers."
+const INSTRUCTIONS = 'You are Pip, a general assistant. You help with everyday questions, errands and small jobs around the computers.'
 const VENDORS = /\b(claude|anthropic|chatgpt|gpt|openai|inkling|thinking machines|hermes|nous)\b/i
 const OWNER_WORDS = /\b(Oscar|the owner)\b/i
 const FIXTURES = {
@@ -44,7 +44,7 @@ const short = (text: string) => text.replace(/\s+/g, ' ').trim().slice(0, 140)
 
 const server = await RestartServer.create('lilbot-prompt-behaviour', { LILBOT_PROMPT_OWNERSHIP: '1' })
 /** What the scenarios need: the bot reads and lists its own fixtures and writes in its own folder. */
-const GUARD = { roots: [], programs: ['cat', 'ls', 'head', 'tail', 'wc', 'grep', 'stat', 'echo', 'pwd', 'date'] }
+const GUARD = { roots: [], programs: ['cat', 'ls', 'find', 'head', 'tail', 'wc', 'grep', 'stat', 'echo', 'pwd', 'date'] }
 const proxy = startWireCaptureProxy(readDevUpstreamBaseUrl(), { workspaces: [join(server.root, 'workspaces')], policy: GUARD })
 const stamp = Date.now().toString(36)
 
@@ -75,7 +75,7 @@ async function turn(botId: string, chatId: string, text: string, timeout = 300_0
 }
 
 async function modelCase(label: string, model: { provider: string; model: string }) {
-  const bot = await server.call('bots.create', { name: `Pip ${label} ${stamp}`, function: "The owner's general assistant", instructions: INSTRUCTIONS, model })
+  const bot = await server.call('bots.create', { name: `Pip ${label} ${stamp}`, function: 'General assistant', instructions: INSTRUCTIONS, model })
   const native = nativeProfileOf(server.root, bot.id)
   server.natives.add(native)
   await setProfileBaseUrl(native, proxy.url)

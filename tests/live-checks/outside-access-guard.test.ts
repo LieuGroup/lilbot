@@ -15,7 +15,7 @@ symlinkSync('/', join(folder, 'root'))
 for (const name of ['workspaces-old', 'workspacesx', 'workspaces2']) mkdirSync(join(base, name))
 afterAll(() => rmSync(base, { recursive: true, force: true }))
 
-const policy: GuardPolicy = { roots: [], programs: ['cat', 'ls', 'head', 'wc', 'echo', 'pwd'], commands: ['sleep 8 && echo DONE'] }
+const policy: GuardPolicy = { roots: [], programs: ['cat', 'ls', 'find', 'head', 'wc', 'echo', 'pwd'], commands: ['sleep 8 && echo DONE'] }
 const why = (name: string, args: Record<string, unknown>, p = policy) => refusal({ name, args }, folder, p)
 const shell = (command: string) => why('terminal', { command })
 
@@ -32,6 +32,7 @@ describe('live check guard: what a scenario needs is allowed', () => {
     ['terminal', { command: `cat ${join(folder, 'packing-list.md')}` }],
     ['terminal', { command: 'sleep 8 && echo DONE' }],
     ['terminal', { command: 'pwd && ls' }],
+    ['terminal', { command: 'cat fixtures/rates.txt 2>/dev/null || find . -name "rates.txt" -maxdepth 4 2>/dev/null' }],
     ['terminal', { command: 'cat fixtures/disk-status.txt;' }],
     ['terminal', { command: 'ls fixtures 2>&1' }],
     ['terminal', { command: 'cat fixtures/disk-status.txt | head -5; wc -l fixtures/disk-status.txt 2>/dev/null' }],
@@ -125,6 +126,10 @@ describe('live check guard: every way out LILA-47 tried is refused', () => {
     expect(shell('cat fixtures/disk-status.txt | sh')).toContain('not a program')
     expect(shell('ls && cat /etc/hostname')).toContain('/etc/hostname')
     expect(shell('ls; cd ..')).toContain('not a program')
+    expect(shell('find / -name rates.txt')).not.toBeNull()
+    expect(shell('find .. -name x')).not.toBeNull()
+    expect(shell('find . -exec cat {} +')).toContain('shell syntax')
+    expect(shell('find . -fprint /tmp/x')).toContain('/tmp/x')
     expect(shell('  ')).toContain('an empty command')
     expect(shell('ls || cat ../x')).not.toBeNull()
     expect(shell('cat fixtures/disk-status.txt > /tmp/x')).toContain('shell syntax')
