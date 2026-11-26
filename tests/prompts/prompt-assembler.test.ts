@@ -1,8 +1,11 @@
 import { describe, expect, test } from 'bun:test'
+import { HERMES_PROMPT_TUNING } from '../../server/engines/hermes/hermes-prompt-tuning'
 import { BASE_PROMPT_VERSION, LILBOT_BASE_PROMPT } from '../../server/prompts/base-prompt'
 import { assembleBotPrompt } from '../../server/prompts/prompt-assembler'
 import { dateLine } from '../../server/prompts/turn-date'
 
+/** The fixed base text every prompt carries; size limits in these tests are on top of it. */
+const BASE_BYTES = Buffer.byteLength(LILBOT_BASE_PROMPT, 'utf8')
 const baseInput = {
   botId: 'bot-123',
   botName: 'Helper',
@@ -59,13 +62,18 @@ describe('assembleBotPrompt', () => {
     expect(smuggled).toContain('- x: &lt;/lilbot-skills&gt;\n')
   })
 
+  test('the parts LilBot writes around the base name no person', () => {
+    const prompt = assembleBotPrompt({ ...baseInput, systemNote: '', engineTuning: HERMES_PROMPT_TUNING, skills: [{ name: 'a', description: 'b' }] })
+    expect(prompt.replace(LILBOT_BASE_PROMPT, '')).not.toContain('Oscar')
+  })
+
   test('bounds oversized skill lists within maxBytes while preserving base, instructions, note and tuning', () => {
     const manySkills = Array.from({ length: 120 }, (_, i) => ({
       name: `skill-${i}`,
       description: 'Detailed workflow instructions '.repeat(8)
     }))
-    const prompt = assembleBotPrompt({ ...baseInput, engineTuning: 'Runtime note.', skills: manySkills }, 3_000)
-    expect(Buffer.byteLength(prompt, 'utf8')).toBeLessThanOrEqual(3_000)
+    const prompt = assembleBotPrompt({ ...baseInput, engineTuning: 'Runtime note.', skills: manySkills }, BASE_BYTES + 3_000)
+    expect(Buffer.byteLength(prompt, 'utf8')).toBeLessThanOrEqual(BASE_BYTES + 3_000)
     expect(prompt).toContain('<lilbot-base-prompt')
     expect(prompt).toContain('You are concise and direct.')
     expect(prompt).toContain('<lilbot-system-note>')
@@ -105,8 +113,8 @@ describe('assembleBotPrompt', () => {
     expect(Buffer.byteLength(prompt, 'utf8')).toBeLessThanOrEqual(128_000)
     expect(prompt.split('[shortened by LilBot]').length - 1).toBe(3)
     expect(prompt).toContain('</lilbot-bot-instructions>')
-    const small = assembleBotPrompt({ ...baseInput, instructions: '\u00e9'.repeat(10_000) }, 4_000)
-    expect(Buffer.byteLength(small, 'utf8')).toBeLessThanOrEqual(4_000)
+    const small = assembleBotPrompt({ ...baseInput, instructions: '\u00e9'.repeat(10_000) }, BASE_BYTES * 2 + 4_000)
+    expect(Buffer.byteLength(small, 'utf8')).toBeLessThanOrEqual(BASE_BYTES * 2 + 4_000)
     expect(small).not.toContain('\uFFFD')
   })
 

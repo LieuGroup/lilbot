@@ -22,10 +22,8 @@ function noteFacts({ workspaces, t3Enabled }: Pick<SystemFacts, 'workspaces' | '
   }
 }
 
-/** The note for one bot. LilBot's own cached prompt leaves the model out, so a mid-session switch never makes it wrong. */
+/** The note for one bot; `owned` gives the shorter form for LilBot's own prompt, which carries the base text. */
 export const systemNote =
-  (facts: Pick<SystemFacts, 'workspaces' | 't3Enabled'>, withModel = true) =>
-  (bot: BotRecord) => {
-    const note = noteFacts(facts, bot)
-    return buildNote(withModel ? note : { ...note, bot: { id: bot.id, name: bot.name, workspace: note.bot.workspace } })
-  }
+  (facts: Pick<SystemFacts, 'workspaces' | 't3Enabled'>, owned = false) =>
+  (bot: BotRecord) =>
+    buildNote({ ...noteFacts(facts, bot), ...(owned ? { owned: true } : {}) })

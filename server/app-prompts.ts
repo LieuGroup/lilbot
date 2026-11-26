@@ -26,7 +26,7 @@ export function createPromptController(deps: {
 }): PromptController {
   const store = new PromptStore(deps.dataDir)
   const enabled = deps.enabled ?? isPromptOwnershipEnabled(process.env)
-  const note = systemNote({ workspaces: deps.workspaces, t3Enabled: deps.t3Enabled }, false)
+  const note = systemNote({ workspaces: deps.workspaces, t3Enabled: deps.t3Enabled }, true)
 
   const write = (bot: BotRecord): string => {
     const offered = deps.skills

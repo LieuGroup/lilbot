@@ -78,8 +78,7 @@ function buildNoteSection(note: string): string {
 
 function buildSkillsSection(skills: readonly PromptSkillEntry[], maxBytes: number): string {
   if (!skills.length || maxBytes <= 0) return ''
-  const open =
-    '<lilbot-skills>\nShared LilBot skills. Before replying, scan the skills below and load any relevant skill with lilbot_skill_read before starting; create or improve shared skills with lilbot_skill_manage.\n'
+  const open = '<lilbot-skills>\nShared LilBot skills (read one with lilbot_skill_read; create or improve one with lilbot_skill_manage):\n'
   const close = '\n</lilbot-skills>'
   const lines = skills.map(skill => {
     const name = escapeXml(skill.name.trim())

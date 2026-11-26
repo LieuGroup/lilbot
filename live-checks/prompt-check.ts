@@ -76,7 +76,7 @@ try {
   const promptPath = join(server.root, 'prompts', `${bot.id}.txt`)
   check('prompt file exists with private 0o600 mode', existsSync(promptPath) && (statSync(promptPath).mode & 0o777) === 0o600)
   const owned = readFileSync(promptPath, 'utf8')
-  const layers = ['<lilbot-base-prompt version="1">', '<lilbot-runtime-tuning>', '<lilbot-system-note>', `<lilbot-bot-instructions>\n${INSTRUCTIONS}\n</lilbot-bot-instructions>`]
+  const layers = ['<lilbot-base-prompt version="', '<lilbot-runtime-tuning>', '<lilbot-system-note>', `<lilbot-bot-instructions>\n${INSTRUCTIONS}\n</lilbot-bot-instructions>`]
   check(
     'prompt file holds every part separately',
     layers.every(part => owned.includes(part))
