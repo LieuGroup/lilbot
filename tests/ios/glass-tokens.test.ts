@@ -79,6 +79,19 @@ describe('iOS Liquid Glass tokens', () => {
         composerRadius: 26,
         composerInput: { fontSize: 18, lineHeight: 25 },
         composerActionSize: 36
+      },
+      work: {
+        pageTitle: { fontSize: 22, lineHeight: 28 },
+        cardTitle: { fontSize: 18, lineHeight: 24 },
+        sectionHeader: { fontSize: 15, lineHeight: 20 },
+        rowTitle: { fontSize: 17, lineHeight: 22 },
+        rowMeta: { fontSize: 15, lineHeight: 20 },
+        tabLabel: { fontSize: 15, lineHeight: 20 },
+        body: { fontSize: 17, lineHeight: 24 },
+        chip: { fontSize: 14, lineHeight: 18 },
+        button: { fontSize: 16, lineHeight: 20 },
+        input: { fontSize: 17, lineHeight: 23 },
+        code: { fontSize: 14, lineHeight: 20 }
       }
     })
     expect(pinnedTileColumns(2, 1.0)).toBe(2)
