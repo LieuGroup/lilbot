@@ -3,8 +3,9 @@
  *    plus any tool a check names. Everything else (web, browser, images, the engine's connectors, code) is refused.
  *  - Paths: every string in every argument, at any depth and under any name, is resolved against the bot's own folder
  *    (`..` normalised wherever it appears, links followed) and must land inside that folder or a folder the check names.
- *  - Terminal: one program from the check's short list with plain flags and paths inside, or a whole command the check
- *    writes out. No `cd`, variables, substitutions, pipes, redirects, globs or other shell syntax.
+ *  - Terminal: programs from the check's short list with plain flags and paths inside, joined at most by `&&`, `;` or
+ *    `|` (each part checked alone), or a whole command the check writes out. No `cd`, variables, substitutions,
+ *    redirects (except `2>/dev/null`), globs or other shell syntax.
  *  Used by the capture proxy (`prompt-wire-proxy.ts`), which refuses a call before the engine runs it, and by
  *  `workspace-guard.ts`, which reads the calls an engine recorded. Reports paths, never anything read. */
 import { existsSync, realpathSync } from 'node:fs'
@@ -64,8 +65,16 @@ function pathRefusal(word: string, folder: string, allowed: string[], whole: boo
 }
 
 function commandRefusal(command: string, folder: string, allowed: string[], policy: GuardPolicy): string | null {
+  if (policy.commands?.includes(command.trim())) return null
+  for (const part of command.split(/&&|;|\|/)) {
+    const why = simpleRefusal(part.replace(/\s2>\/dev\/null(?=\s|$)/g, ' '), folder, allowed, policy)
+    if (why) return why
+  }
+  return null
+}
+
+function simpleRefusal(command: string, folder: string, allowed: string[], policy: GuardPolicy): string | null {
   const text = command.trim()
-  if (policy.commands?.includes(text)) return null
   if (SHELL_SYNTAX.test(text)) return `shell syntax in "${clip(text)}"`
   const words = (text.match(/'[^']*'|"[^"]*"|\S+/g) ?? []).map(word => word.replace(/^(['"])(.*)\1$/, '$2'))
   const [program, ...rest] = words

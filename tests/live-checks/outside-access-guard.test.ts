@@ -14,7 +14,7 @@ symlinkSync('/', join(folder, 'root'))
 for (const name of ['workspaces-old', 'workspacesx', 'workspaces2']) mkdirSync(join(base, name))
 afterAll(() => rmSync(base, { recursive: true, force: true }))
 
-const policy: GuardPolicy = { roots: [], programs: ['cat', 'ls', 'head', 'wc', 'echo'], commands: ['sleep 8 && echo DONE'] }
+const policy: GuardPolicy = { roots: [], programs: ['cat', 'ls', 'head', 'wc', 'echo', 'pwd'], commands: ['sleep 8 && echo DONE'] }
 const why = (name: string, args: Record<string, unknown>, p = policy) => refusal({ name, args }, folder, p)
 const shell = (command: string) => why('terminal', { command })
 
@@ -30,6 +30,8 @@ describe('live check guard: what a scenario needs is allowed', () => {
     ['terminal', { command: 'ls -la fixtures' }],
     ['terminal', { command: `cat ${join(folder, 'packing-list.md')}` }],
     ['terminal', { command: 'sleep 8 && echo DONE' }],
+    ['terminal', { command: 'pwd && ls' }],
+    ['terminal', { command: 'cat fixtures/disk-status.txt | head -5; wc -l fixtures/disk-status.txt 2>/dev/null' }],
     ['mcp__lilbot_system__lilbot_work', { title: 'Packing list', evidence: [{ proves: 'written', command: `cat ${folder}/packing-list.md` }] }],
     ['tool_call', { calls: [{ name: 'lilbot_memory_save', arguments: '{"text":"Give money figures in AUD."}' }] }],
     ['tool_search', { query: 'routine schedule' }]
@@ -104,7 +106,12 @@ describe('live check guard: every way out LILA-47 tried is refused', () => {
     expect(why('tool_call', { name: 'read_file', arguments: { path: '/etc/hostname' } })).toContain('/etc/hostname')
     expect(shell('python3 -V')).toContain('not a program')
     expect(shell('curl example.com')).toContain('not a program')
-    expect(shell('cat fixtures/disk-status.txt | sh')).toContain('shell syntax')
+    expect(shell('cat fixtures/disk-status.txt | sh')).toContain('not a program')
+    expect(shell('ls && cat /etc/hostname')).toContain('/etc/hostname')
+    expect(shell('ls; cd ..')).toContain('not a program')
+    expect(shell('ls || cat ../x')).not.toBeNull()
+    expect(shell('cat fixtures/disk-status.txt > /tmp/x')).toContain('shell syntax')
+    expect(shell('cat fixtures/disk-status.txt 2>/tmp/x')).toContain('shell syntax')
   })
 })
 
