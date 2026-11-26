@@ -79,7 +79,7 @@ export function useNotificationsLifecycle() {
     const action = planNotificationRoute(target, { splitMode: layout.splitMode, botIds })
     if (!action) return
     if (action.kind === 'open-settings') {
-      router.navigate('/settings')
+      router.navigate({ pathname: '/(tabs)/(settings)/[section]', params: { section: 'notifications' } })
       return
     }
     selectBot(action.botId)

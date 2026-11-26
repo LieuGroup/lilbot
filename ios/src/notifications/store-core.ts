@@ -30,8 +30,6 @@ export interface NotificationStoreDeps {
   bridge: NotificationBridge
   channel: () => NotificationChannel
   bundleId: () => string
-  readPrompted: () => Promise<boolean>
-  writePrompted: () => Promise<void>
 }
 
 export interface NotificationStoreState {
@@ -40,12 +38,10 @@ export interface NotificationStoreState {
   loading: boolean
   registering: boolean
   error: string
-  promptedOnce: boolean
   registeredToken: string | null
   pendingTarget: NotificationTarget | null
   sync: (options?: { registerIfGranted?: boolean }) => Promise<void>
   enableAndRegister: () => Promise<boolean>
-  promptOnFirstSend: () => Promise<void>
   updatePrefs: (patch: NotificationPrefsPatch) => Promise<void>
   setBotMuted: (botId: string, muted: boolean) => Promise<void>
   unregister: () => Promise<void>
@@ -57,7 +53,6 @@ const errText = (cause: unknown, fallback: string) => (cause instanceof Error ? 
 const toggleMuted = (ids: readonly string[], botId: string, muted: boolean) => (muted ? Array.from(new Set([...ids, botId])).sort() : ids.filter(id => id !== botId))
 
 export function createNotificationStore(deps: NotificationStoreDeps) {
-  let promptInFlight = false
   return create<NotificationStoreState>((set, get) => {
     const syncRegistration = async (deviceId: string, socket: NotificationSocket) => {
       const token = await deps.bridge.getDeviceToken()
@@ -75,7 +70,6 @@ export function createNotificationStore(deps: NotificationStoreDeps) {
       loading: false,
       registering: false,
       error: '',
-      promptedOnce: false,
       registeredToken: null,
       pendingTarget: null,
 
@@ -84,9 +78,9 @@ export function createNotificationStore(deps: NotificationStoreDeps) {
         if (!socket) return
         set({ loading: true, error: '' })
         try {
-          const [deviceId, permission, promptedOnce] = await Promise.all([deps.getDeviceId(), deps.bridge.getPermission(), deps.readPrompted()])
+          const [deviceId, permission] = await Promise.all([deps.getDeviceId(), deps.bridge.getPermission()])
           const settings = await socket.call<NotificationSettings>('notifications.prefs.get', { deviceId })
-          set({ permission, settings, promptedOnce, loading: false })
+          set({ permission, settings, loading: false })
           if (options.registerIfGranted && permission === 'granted' && settings.device.enabled) await syncRegistration(deviceId, socket)
         } catch (cause) {
           set({ loading: false, error: errText(cause, 'Could not load notification settings.') })
@@ -100,8 +94,7 @@ export function createNotificationStore(deps: NotificationStoreDeps) {
         try {
           const current = await deps.bridge.getPermission()
           const permission = current === 'granted' ? 'granted' : await deps.bridge.requestPermission()
-          await deps.writePrompted()
-          set({ permission, promptedOnce: true })
+          set({ permission })
           if (permission !== 'granted') {
             set({ registering: false })
             return false
@@ -116,28 +109,6 @@ export function createNotificationStore(deps: NotificationStoreDeps) {
         } catch (cause) {
           set({ registering: false, error: errText(cause, 'Could not enable notifications.') })
           return false
-        }
-      },
-
-      async promptOnFirstSend() {
-        if (promptInFlight || get().promptedOnce) return
-        promptInFlight = true
-        try {
-          if (await deps.readPrompted()) {
-            set({ promptedOnce: true })
-            return
-          }
-          const permission = await deps.bridge.getPermission()
-          set({ permission })
-          if (permission !== 'undetermined') {
-            await deps.writePrompted()
-            set({ promptedOnce: true })
-            if (permission === 'granted') await get().sync({ registerIfGranted: true })
-            return
-          }
-          await get().enableAndRegister()
-        } finally {
-          promptInFlight = false
         }
       },
 

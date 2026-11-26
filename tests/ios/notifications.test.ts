@@ -1,9 +1,14 @@
 import { expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { pushEntitlementMode } from '../../ios/app.config'
+import { notificationSummary, phoneControl } from '../../ios/src/notifications/notification-copy'
 import { resolveNotificationPresence, samePresence } from '../../ios/src/notifications/presence-state'
 import { createNotificationStore, type NotificationBridge, type NotificationSocket } from '../../ios/src/notifications/store-core'
 import { parseNotificationTarget, planNotificationRoute } from '../../ios/src/notifications/tap-target'
 import type { NotificationSettings } from '../../shared/notification-schema'
 
+const ROOT = join(import.meta.dir, '../..')
 const DEVICE_ID = '11111111-1111-4111-8111-111111111111'
 
 test('parseNotificationTarget and planNotificationRoute handle bot, work, goal, and deploy targets across iPhone and Duo', () => {
@@ -49,9 +54,8 @@ test('resolveNotificationPresence suppresses only when app is active and viewing
   expect(samePresence({ foreground: true, botId: 'b1' }, { foreground: false, botId: null })).toBe(false)
 })
 
-test('notification store prompts once on first send, registers raw APNs token, updates prefs, and toggles bot mute', async () => {
+test('notification store asks iOS only when Turn on is tapped, registers raw APNs token, updates prefs, and toggles bot mute', async () => {
   let perm: 'undetermined' | 'granted' | 'denied' = 'undetermined'
-  let prompted = false
   let requestCalls = 0
   const calls: { method: string; params: Record<string, unknown> }[] = []
   let serverSettings: NotificationSettings = {
@@ -98,20 +102,17 @@ test('notification store prompts once on first send, registers raw APNs token, u
     getDeviceId: async () => DEVICE_ID,
     bridge,
     channel: () => 'apns',
-    bundleId: () => 'com.lilbot.app',
-    readPrompted: async () => prompted,
-    writePrompted: async () => {
-      prompted = true
-    }
+    bundleId: () => 'com.lilbot.app'
   })
 
   await store.getState().sync()
   expect(store.getState().permission).toBe('undetermined')
   expect(calls.some(c => c.method === 'notifications.register')).toBe(false)
 
-  // First send triggers permission prompt once and registers raw APNs token.
-  await store.getState().promptOnFirstSend()
-  await store.getState().promptOnFirstSend()
+  // Loading settings never asks iOS; only Turn on does, and a second tap does not ask again.
+  expect(requestCalls).toBe(0)
+  expect(await store.getState().enableAndRegister()).toBe(true)
+  expect(await store.getState().enableAndRegister()).toBe(true)
   expect(requestCalls).toBe(1)
   expect(store.getState().permission).toBe('granted')
   expect(calls.find(c => c.method === 'notifications.register')?.params).toEqual({
@@ -128,4 +129,36 @@ test('notification store prompts once on first send, registers raw APNs token, u
   expect(store.getState().settings?.mutedBotIds).toEqual(['b1'])
   await store.getState().setBotMuted('b1', false)
   expect(store.getState().settings?.mutedBotIds).toEqual([])
+})
+
+test('the Settings row says plainly whether this phone gets alerts, and the page asks iOS only on tap', () => {
+  expect(notificationSummary({ connected: false, permission: 'granted', enabled: true })).toBe('Offline')
+  expect(notificationSummary({ connected: true, permission: 'undetermined', enabled: true })).toBe('Off')
+  expect(notificationSummary({ connected: true, permission: 'denied', enabled: true })).toBe('Off in iOS Settings')
+  expect(notificationSummary({ connected: true, permission: 'granted', enabled: null })).toBe('Loading…')
+  expect(notificationSummary({ connected: true, permission: 'granted', enabled: false })).toBe('Off for this phone')
+  expect(notificationSummary({ connected: true, permission: 'granted', enabled: true })).toBe('On for this phone')
+  expect(phoneControl('undetermined').kind).toBe('ask')
+  expect(phoneControl('unknown').kind).toBe('ask')
+  expect(phoneControl('denied').kind).toBe('open-settings')
+  expect(phoneControl('granted').kind).toBe('switch')
+})
+
+test('Notifications is registered in Settings slot 20 with its own pushed page, and nothing asks iOS outside that page', () => {
+  const registry = readFileSync(join(ROOT, 'ios/src/settings/sections/index.ts'), 'utf8')
+  const section = readFileSync(join(ROOT, 'ios/src/settings/sections/notifications-section.tsx'), 'utf8')
+  expect(registry).toContain('[computersSettingsSection, notificationsSettingsSection, generalSettingsSection]')
+  for (const part of ["id: 'notifications'", 'order: 20', "group: 'navigation'", "routeName: 'notifications'", 'DetailScreen: NotificationsScreen']) expect(section).toContain(part)
+  const askers = ['ios/src/notifications/store-core.ts', 'ios/src/chat/use-chat.ts', 'ios/src/app/(tabs)/_layout.tsx', 'ios/src/notifications/use-notifications.ts']
+  for (const file of askers) expect(readFileSync(join(ROOT, file), 'utf8')).not.toContain('promptOnFirstSend')
+  expect(readFileSync(join(ROOT, 'ios/src/notifications/notifications-screen.tsx'), 'utf8')).toContain('onPress={() => void enableAndRegister()}')
+})
+
+test('builds carry no push entitlement until IOS_PUSH_NOTIFICATIONS=1, so the current App Store profile keeps signing', () => {
+  expect(pushEntitlementMode('production', undefined)).toBeNull()
+  expect(pushEntitlementMode('production', '')).toBeNull()
+  expect(pushEntitlementMode('development', '0')).toBeNull()
+  expect(pushEntitlementMode('development', '1')).toBe('development')
+  expect(pushEntitlementMode('preview', '1')).toBe('production')
+  expect(pushEntitlementMode('production', '1')).toBe('production')
 })

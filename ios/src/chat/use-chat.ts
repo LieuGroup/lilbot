@@ -5,7 +5,6 @@ import type { Attachment } from '../../../shared/attachment-schema'
 import { ensureSocket } from '../connection/lilbot'
 import { useConnectionStore } from '../connection/store'
 import { newMessageId, thisDeviceId } from '../devices/device'
-import { useNotificationStore } from '../notifications/store'
 import { ChatSessionManager, type ChatSessionSocket } from './session-manager'
 import { clearRowHeights, emptySlot, updateChat, useChatStore } from './store'
 
@@ -36,14 +35,7 @@ export function useChat(botId: string) {
     return sessions.acquire(botId)
   }, [botId, connected])
 
-  const send = useCallback(
-    (text: string, attachments: Attachment[] = []) => {
-      const pending = sessions.send(botId, text, attachments)
-      void useNotificationStore.getState().promptOnFirstSend()
-      return pending
-    },
-    [botId]
-  )
+  const send = useCallback((text: string, attachments: Attachment[] = []) => sessions.send(botId, text, attachments), [botId])
   const stop = useCallback(() => sessions.stop(botId), [botId])
   const newChat = useCallback(() => startNewChat(botId), [botId])
 

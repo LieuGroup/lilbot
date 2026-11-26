@@ -12,6 +12,12 @@ export const ENABLE_NESTED_TAB_SCROLL_MINIMIZE = true
  *  exposes `axisBehavior` natively. */
 export const ENABLE_DUO_VERTICAL_BAR_ITEMS = true
 
+/** Push needs the Push Notifications capability on the app id and a profile that carries it. Until both exist,
+ *  builds carry no `aps-environment` entitlement (the app shows Settings > Notifications but gets no device token).
+ *  `IOS_PUSH_NOTIFICATIONS=1` turns it on: `development` for the dev variant, `production` for preview and production. */
+export const pushEntitlementMode = (variant: string, env: string | undefined): 'development' | 'production' | null =>
+  env === '1' ? (variant === 'development' ? 'development' : 'production') : null
+
 const VARIANTS = {
   development: { name: 'LilBot Dev', bundleIdentifier: 'com.lilbot.app.dev', scheme: 'lilbot-dev', icon: './assets/icons/LilBotDev.icon' },
   preview: { name: 'LilBot Preview', bundleIdentifier: 'com.lilbot.app.preview', scheme: 'lilbot-preview', icon: './assets/icons/LilBotPreview.icon' },
@@ -60,6 +66,7 @@ export function buildAppConfig(
   const chosen = VARIANTS[variant]
   const enableScrollMinimize = options.enableTabScrollMinimize ?? ENABLE_NESTED_TAB_SCROLL_MINIMIZE
   const enableDuoVerticalBar = options.enableDuoVerticalBar ?? ENABLE_DUO_VERTICAL_BAR_ITEMS
+  const pushMode = pushEntitlementMode(variant, process.env.IOS_PUSH_NOTIFICATIONS)
   const base: ExpoConfig = {
     ...config,
     name: chosen.name,
@@ -82,6 +89,7 @@ export function buildAppConfig(
     plugins: [
       'expo-router',
       'expo-secure-store',
+      ['expo-notifications', pushMode ? { mode: pushMode } : { enableRemoteNotifications: false }],
       ['expo-splash-screen', { image: './assets/images/splash-icon.png', resizeMode: 'contain', backgroundColor: '#f6f6f4' }],
       ['expo-image-picker', { photosPermission: 'Allow LilBot to attach photos you pick to a conversation.', cameraPermission: false, microphonePermission: false }],
       ...(enableScrollMinimize ? ['./plugins/with-tab-scroll-minimize'] : []),
