@@ -7,8 +7,14 @@ interface RowState {
   tone: RowTone
   /** The second line: what the bot is doing, or its function when it is idle. */
   text: string
+  /** Set when the end of `text` must never be cut ("· 2 tasks"): `text` is then `${lead}${tail}`, and a narrow row truncates
+   *  only `lead` ("For Chief of St… · 2 tasks"). Absent for every other line, which truncates as a whole. */
+  tail?: string
   unread: boolean
 }
+
+/** The part of the line that may be cut: all of `text`, or what comes before its `tail`. */
+export const rowLead = (state: { text: string; tail?: string }) => (state.tail ? state.text.slice(0, state.text.length - state.tail.length) : state.text)
 
 /** Working shows the server's activity text ("Running commands"), and whom it works for while it
  *  is on a task another bot handed it ("For FillLight Bot · Working", or "For FillLight Bot · 2 tasks" for more than one) or that it works in a group
@@ -22,7 +28,7 @@ export function rowState(bot: Bot): RowState {
   switch (activity?.status) {
     case 'working': {
       const tasks = tasksForText(bot)
-      if (tasks) return { tone: 'working', text: tasks, unread }
+      if (tasks) return { tone: 'working', text: `${tasks.lead}${tasks.tail}`, tail: tasks.tail, unread }
       return { tone: 'working', text: `${workingIn(bot)}${(!bot.workingFor && groupActivity(bot)) || activity.text || 'Working'}`, unread }
     }
     case 'finished':
@@ -44,9 +50,9 @@ function workerText(workers: NonNullable<Bot['workers']>) {
  *  today's "For <bot> · <activity>". */
 function tasksForText(bot: Bot) {
   const tasks = bot.tasksFor ?? []
-  if (tasks.length < 2) return ''
+  if (tasks.length < 2) return null
   const senders = new Set(tasks.map(task => task.botId))
-  return `For ${senders.size === 1 ? tasks[0].name : `${senders.size} bots`} · ${tasks.length} tasks`
+  return { lead: `For ${senders.size === 1 ? tasks[0].name : `${senders.size} bots`}`, tail: ` · ${tasks.length} tasks` }
 }
 
 /** A task handed over wins over a group: that is the turn running now. */

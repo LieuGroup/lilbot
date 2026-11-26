@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { rowState } from '../../shared/client/bots/row-state'
+import { rowLead, rowState } from '../../shared/client/bots/row-state'
 import { stopThreadCopy } from '../../shared/client/threads/stop-copy'
 import { lineState, lineTitle, stripState } from '../../shared/client/threads/thread-lines'
 import type { BotThread } from '../../shared/thread-schema'
@@ -156,4 +156,21 @@ test("the roster row counts every task for other bots; one keeps today's words",
   expect(rowState({ ...three, activity: { ...three.activity!, status: 'waiting' } }).text).toBe('Waiting for you')
   // An older server without tasksFor: today's text.
   expect(rowState({ ...bot('eng', working), workingFor: { threadId: 'a', name: 'Chief of Staff' } }).text).toBe('For Chief of Staff · Running commands')
+})
+
+test('the count is a tail that never truncates; only the name before it may be cut', () => {
+  const working = { activity: { status: 'working' as const, text: 'Running commands' } }
+  const task = (threadId: string, botId: string, name: string) => ({ threadId, botId, name })
+  const two = { ...bot('eng', working), tasksFor: [task('a', 'cos', 'Chief of Staff'), task('b', 'cos', 'Chief of Staff')] }
+  expect(rowState(two)).toMatchObject({ text: 'For Chief of Staff · 2 tasks', tail: ' · 2 tasks' })
+  expect(rowLead(rowState(two))).toBe('For Chief of Staff')
+  const three = { ...two, tasksFor: [...two.tasksFor, task('c', 'srv', 'Server Engineer')] }
+  expect(rowState(three)).toMatchObject({ text: 'For 2 bots · 3 tasks', tail: ' · 3 tasks' })
+  expect(rowLead(rowState(three))).toBe('For 2 bots')
+  // Every other line has no tail and is cut as a whole, as before.
+  const one = { ...bot('eng', working), workingFor: { threadId: 'a', name: 'Chief of Staff' }, tasksFor: [task('a', 'cos', 'Chief of Staff')] }
+  expect(rowState(one).tail).toBeUndefined()
+  expect(rowLead(rowState(one))).toBe('For Chief of Staff · Running commands')
+  expect(rowState({ ...three, activity: { ...three.activity!, status: 'waiting' } }).tail).toBeUndefined()
+  expect(rowState(bot('idle', { function: 'Ships builds' })).tail).toBeUndefined()
 })

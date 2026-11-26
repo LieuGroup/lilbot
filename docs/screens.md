@@ -35,7 +35,8 @@ type scale, bundle budget) are in `AGENTS.md` under "Stack" and "Web app".
   dot while offline). The deployment failure notice shows only in the open roster.
 - Row (52px), one line from `bots/row-state.ts`: working (blue spinner and the activity text, "For <bot> · <activity>"
   while it works on a task another bot handed it, from `workingFor` on `bots.list`, or "For <bot> · N tasks" / "For N
-  bots · N tasks" with two or more, from `tasksFor`; "1 worker · <activity>" or
+  bots · N tasks" with two or more, from `tasksFor`, where only the name gives way on a narrow row and the count (`tail`
+  in `row-state.ts`, drawn by `bots/row-text.tsx`) is never cut; "1 worker · <activity>" or
   "<N> workers running" while its own workers run, from `workers` on `bots.list`, never "For <own name>";
   "In a group · <activity>" or "Leading a group · <activity>" while it works and is in a running group, the activity
   being the bot's own turn in that group, from `groups[].activity`, else its general one), "Waiting for you", finished
