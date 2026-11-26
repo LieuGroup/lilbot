@@ -10,3 +10,4 @@ export {
   FINISHED_TTL_MS,
   nextDockExpiryAt
 } from '../../../shared/client/threads/dock-items'
+export { dockSections } from '../../../shared/client/threads/received-summary'

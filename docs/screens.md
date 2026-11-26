@@ -34,7 +34,8 @@ type scale, bundle budget) are in `AGENTS.md` under "Stack" and "Web app".
   Foot: open roster, search (opens the roster with the search box focused), new bot, settings, the user (or a red
   dot while offline). The deployment failure notice shows only in the open roster.
 - Row (52px), one line from `bots/row-state.ts`: working (blue spinner and the activity text, "For <bot> · <activity>"
-  while it works on a task another bot handed it, from `workingFor` on `bots.list`; "1 worker · <activity>" or
+  while it works on a task another bot handed it, from `workingFor` on `bots.list`, or "For <bot> · N tasks" / "For N
+  bots · N tasks" with two or more, from `tasksFor`; "1 worker · <activity>" or
   "<N> workers running" while its own workers run, from `workers` on `bots.list`, never "For <own name>";
   "In a group · <activity>" or "Leading a group · <activity>" while it works and is in a running group, the activity
   being the bot's own turn in that group, from `groups[].activity`, else its general one), "Waiting for you", finished
@@ -248,7 +249,14 @@ read again on `threads.changed`, `work.changed` and reconnect). Bot and file nam
   frames 1 to 4): sits flush on top of the composer's rounded message box (`bg-background`, top radius 14, `hairline`
   border), leaving staged attachments, notes, model pill and the message box's own main-reply Stop untouched inside the
   box. Lists everything this bot has in flight: its own workers (22px neutral corner-down-right badge, "Worker · <task>")
-  and tasks handed to other bots (22px bot avatar, "<Bot> · <task>"). Absent when nothing qualifies; shows at most 4 rows
+  and tasks handed to other bots (22px bot avatar, "<Bot> · <task>"), and since #316 (Paper "26 Tasks a bot does for
+  others") tasks other bots handed it (the sender's avatar and the task title alone; the state line starts with the
+  sender's name only while tasks from two or more bots are there; Stop with today's dialog). With both kinds the rows
+  sit under two 11px labels, "For <bot>" (or "For N bots") first, then "Handed out"; with one kind there is no label.
+  Header and collapsed bar then use the same words from `received-summary.ts`, each task counted once: "2 running ·
+  for Chief of Staff", "2 running · for 2 bots", "2 for Chief of Staff (1 waiting for you) · 1 handed out"; below the
+  `sm` breakpoint the both-kinds form drops whom they are for ("1 waiting for you · 2 running"). The icon follows the
+  lead: the waiting bubble while something waits for Oscar, the spinner only while something runs. Absent when nothing qualifies; shows at most 4 rows
   and scrolls internally when more fit; collapses to one 36px live summary bar ("2 running · 1 finished · Worker, Server
   Engineer" + "Show") remembered per bot in `localStorage`. Priority order is explicit: waiting on Oscar (`needs_oscar`
   work item, with an ink "Answer" button opening lazy `threads/answer-work-dialog.tsx`), running (with "Stop"), failed

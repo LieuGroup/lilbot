@@ -10,7 +10,10 @@ const FINISHED_TTL_MS = 2 * 60_000
 function anyInDock(threads: BotThread[] | undefined, botId: string, waiting: Record<string, WorkSummary>, dismissed: Record<string, number>, now: number) {
   if (!threads?.length) return false
   return threads.some(thread => {
-    if (thread.group || thread.participants[0]?.id !== botId || thread.status === 'cancelled') return false
+    if (thread.group || thread.status === 'cancelled') return false
+    // Tasks it handed out (and its workers), or since #316 a task another bot handed it.
+    const [from, to] = thread.participants
+    if (from?.id !== botId && (thread.worker || to?.id !== botId)) return false
     const active = thread.status === 'waiting' || thread.status === 'working'
     if (thread.state === 'limited' && !active) return false
     if (waiting[thread.id]?.status === 'needs_oscar' || active) return true
@@ -23,7 +26,7 @@ function anyInDock(threads: BotThread[] | undefined, botId: string, waiting: Rec
 }
 
 /** First-load gate for the composer-top tasks dock: watches `threads.list` and loads the dock chunk only once this bot has
- *  an in-flight, waiting, failed or recently finished task to show. Keyed per bot so dialog state never leaks across switches. */
+ *  an in-flight, waiting, failed or recently finished task to show, handed out or received. Keyed per bot so dialog state never leaks across switches. */
 export function TaskDockSlot({ botId }: { botId: string }) {
   const threads = useThreads(botId)
   const waitingWork = useWaitingWork()

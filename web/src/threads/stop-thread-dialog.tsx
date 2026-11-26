@@ -32,7 +32,7 @@ export default function StopThreadDialog({ botId, thread, onClose }: { botId: st
   return (
     <Dialog open onOpenChange={open => !open && !stopping && onClose()}>
       <DialogContent showCloseButton={false} className="w-[calc(100%-2rem)] max-w-[400px] gap-4 rounded-2xl bg-card p-5 sm:max-w-[400px]">
-        <div className="flex flex-col gap-1.5">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <DialogTitle className="text-base/[22px] font-semibold tracking-[-0.01em]">{copy.title}</DialogTitle>
           {copy.subject && <p className="truncate text-[13px]/[18px] font-medium text-foreground">{copy.subject}</p>}
           <DialogDescription className="text-[13px]/5 text-muted-foreground">{copy.description}</DialogDescription>
