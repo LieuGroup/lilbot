@@ -184,3 +184,15 @@ export function stopOnAccountProblem(records: CapturedRequest[], from = 0, finis
 /** Every captured request answered 200 and carried exactly `prompt` as its system prompt, with no stock engine text. */
 export const exact = (wire: CapturedRequest[], prompt: string) =>
   wire.length > 0 && wire.every(r => r.status === 200 && r.systemText === prompt && findForbiddenStockSnippets(r.systemText).length === 0)
+
+/** Why each captured request fails `exact`, for a failing check's detail. */
+export const wireProblems = (wire: CapturedRequest[], prompt: string) =>
+  wire
+    .filter(r => !exact([r], prompt))
+    .map(r =>
+      r.status !== 200
+        ? `HTTP ${r.status} ${r.error ?? ''}`.trim()
+        : r.systemText === prompt
+          ? 'stock engine text'
+          : `another system prompt (${r.systemText.length} chars, model ${r.model})`
+    )

@@ -15,7 +15,7 @@ import { routineLine } from '../server/devices/origin-line'
 import { HermesEngine } from '../server/engines/hermes/hermes-engine'
 import { LILBOT_BASE_PROMPT } from '../server/prompts/base-prompt'
 import { answered } from './prompt-model-case'
-import { exact, nativeProfileOf, readDevUpstreamBaseUrl, setProfileBaseUrl, startWireCaptureProxy, stopOnAccountProblem } from './prompt-wire-proxy'
+import { exact, nativeProfileOf, wireProblems, readDevUpstreamBaseUrl, setProfileBaseUrl, startWireCaptureProxy, stopOnAccountProblem } from './prompt-wire-proxy'
 import { RestartServer, waitFor } from './restart-server'
 
 const SPACE_MS = 10_000
@@ -109,7 +109,7 @@ async function modelCase(label: string, model: { provider: string; model: string
   check(
     `${label}: a small job opens a work item, and finishes it with evidence`,
     answered(job.finished) && existsSync(join(bot.workspace, 'packing-list.md')) && !!done && exact(job.wire, prompt()),
-    `answered=${answered(job.finished)} file=${existsSync(join(bot.workspace, 'packing-list.md'))} wire=${exact(job.wire, prompt())} tools=[${job.tools.join(', ')}] failed=[${job.failed.join(', ')}] items=${JSON.stringify(items.map(i => `${i.status}/${i.evidenceCount}`))}`
+    `answered=${answered(job.finished)} file=${existsSync(join(bot.workspace, 'packing-list.md'))} wire=${exact(job.wire, prompt()) || JSON.stringify(wireProblems(job.wire, prompt()))} tools=[${job.tools.join(', ')}] failed=[${job.failed.join(', ')}] items=${JSON.stringify(items.map(i => `${i.status}/${i.evidenceCount}`))}`
   )
 
   const pref = await turn(
