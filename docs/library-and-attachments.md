@@ -25,6 +25,29 @@ Short summaries are in `AGENTS.md` under "Library and chat attachments"; screen 
 - Hermes exposes no outgoing attachment manifest, so assistant files are not collected automatically; tool image
   previews are not deliveries.
 
+## Shown files (`server/shown/`, #317)
+
+- Off by default: `lilbot_show` is offered only with `LILBOT_SHOW_ENABLED=1` (`isShowEnabled`), the same switch pattern
+  as `LILBOT_PROMPT_OWNERSHIP` and `LILBOT_T3_ENABLED`. With it off the tool is not listed at all; the route and the
+  item kind exist so a reply shown while it was on still draws.
+- `lilbot_show({ path, caption?, requestId })` shows an image (PNG, JPEG, GIF, WebP), video (MP4, M4V, MOV) or HTML page
+  (.html/.htm), by extension. The conversation comes from the call's own tool start (as `lilbot_give_file`); a session
+  Oscar does not see (routine, webhook, check, exchange) is refused. Limits (Oscar, 2026-11-26): 4 per reply (since
+  Oscar's latest message or the turn's start), image 20 MB, HTML 2 MB, video 50 MB; caption one line of at most 120
+  characters, cut at a word. Every refusal returns its reason to the bot and places nothing.
+- `shown_files` keeps the path inside the bot's folder, never a copy. The item is written to `history_items` as
+  `shown:<id>` at the call's time (so it sits between the reply's words after the engine's own import), published
+  live as a `shown` chat event, and searched by caption and file name.
+- The engine's own row for the `lilbot_show` call is never drawn or kept: `isShowTool` filters it live
+  (`chat-state.ts`), in the journal rebuild (`history-tail.ts`) and on import (`history-store.ts`). It matches only
+  LilBot's own system server's tool (`lilbot_show` or `mcp__lilbot_system__lilbot_show`), never another server's tool
+  of the same name.
+- `/api/shown/<bot>/<id>` re-opens the saved path through `openWorkspaceFile` (no links, inside the folder), refuses a
+  file grown past its kind's limit (413) or gone (404), and answers one `bytes=` range with 206 so video seeks. Same
+  Host/Origin guard and download headers (`Content-Disposition: attachment`, `CSP: sandbox`) as the Library route; an
+  HTML page is never rendered from it on LilBot's origin.
+- Routine and webhook transcripts drop `shown` items. A deleted bot's rows go with it.
+
 ## Chat attachments (`server/attachments/`)
 
 `server/attachments/` owns incoming files and message associations; the screens are in `web/src/attachments/`.

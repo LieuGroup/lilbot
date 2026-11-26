@@ -5,7 +5,7 @@
  *  chat that has them open or the activity observer, within a second or two. A call whose start is not seen in time, or
  *  that two sessions could have made, is refused with a retryable error: it is never guessed. */
 import { LilBotError } from '../../shared/lilbot-error'
-import { argsKey, asRecord, type BotNamer, type CallingToolCatalog, defaultNamer, expectedToolName, isOwnedTool, type ToolName } from './calling-tool-names'
+import { argsKey, asRecord, type BotNamer, type CallingTool, type CallingToolCatalog, defaultNamer, expectedToolName, isOwnedTool, type ToolName } from './calling-tool-names'
 
 export { argsKey, type BotNamer, type CallingToolCatalog, type ToolName }
 
@@ -14,9 +14,6 @@ const KEEP_MS = 120_000
 const EARLY_MS = 15_000
 /** Minimum grace window for exact-arg matching before falling back to a lone unmatched start (tools without requestId). */
 const FALLBACK_GRACE_MS = 500
-/** The tools that need to know their calling conversation. Engines may prefix the name with the server's. */
-type CallingTool = 'lilbot_delegate' | 'lilbot_delegation' | 'lilbot_work' | 'lilbot_group' | 'lilbot_goal' | 'lilbot_give_file' | 'lilbot_webhook_message' | 'lilbot_connection'
-
 type SlotState = 'open' | 'ambiguous' | 'taken'
 
 interface Seen {

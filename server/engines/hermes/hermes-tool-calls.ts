@@ -17,7 +17,7 @@ const record = (value: unknown) => (value && typeof value === 'object' && !Array
 
 /** Hermes tool search wraps deferred tools as `tool_call({ calls: [{ name, arguments }] })` or a single
  *  `{ name, arguments }`, with each call's arguments as an object or JSON text. */
-function unwrapToolCalls(tool: string, args: unknown): { name: string; args: unknown }[] {
+export function unwrapToolCalls(tool: string, args: unknown): { name: string; args: unknown }[] {
   if (tool !== 'tool_call') return [{ name: tool, args }]
   const outer = record(args)
   return (Array.isArray(outer.calls) ? outer.calls : [outer]).flatMap(entry => {

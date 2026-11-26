@@ -188,7 +188,7 @@ describe('Option B: persistent pre-compress memory-save refusals', () => {
       db.exec('DROP TABLE memory_checkpoint_refusals; PRAGMA user_version = 43;')
       db.close()
       const upgraded = openDatabase(file)
-      expect(upgraded.query('PRAGMA user_version').get()).toEqual({ user_version: 44 })
+      expect(upgraded.query('PRAGMA user_version').get()).toEqual({ user_version: 45 })
       expect(upgraded.query("SELECT name FROM sqlite_master WHERE type='table' AND name='memory_checkpoint_refusals'").get()).toEqual({
         name: 'memory_checkpoint_refusals'
       })

@@ -11,7 +11,9 @@ export const texts = (chat: ChatView) =>
         ? `compaction:${item.summary ?? ''}`
         : item.kind === 'connection.sign_in'
           ? `connection.sign_in:${item.card.serviceName}`
-          : `${item.kind}:${item.text}`
+          : item.kind === 'shown'
+            ? `shown:${item.file.name}`
+            : `${item.kind}:${item.text}`
   )
 
 /** The `chat.open` answer for the bot's main conversation: the saved history, and its rows without session dividers. */
