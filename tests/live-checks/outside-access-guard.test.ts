@@ -31,6 +31,8 @@ describe('live check guard: what a scenario needs is allowed', () => {
     ['terminal', { command: `cat ${join(folder, 'packing-list.md')}` }],
     ['terminal', { command: 'sleep 8 && echo DONE' }],
     ['terminal', { command: 'pwd && ls' }],
+    ['terminal', { command: 'cat fixtures/disk-status.txt;' }],
+    ['terminal', { command: 'ls fixtures 2>&1' }],
     ['terminal', { command: 'cat fixtures/disk-status.txt | head -5; wc -l fixtures/disk-status.txt 2>/dev/null' }],
     ['mcp__lilbot_system__lilbot_work', { title: 'Packing list', evidence: [{ proves: 'written', command: `cat ${folder}/packing-list.md` }] }],
     ['tool_call', { calls: [{ name: 'lilbot_memory_save', arguments: '{"text":"Give money figures in AUD."}' }] }],
@@ -109,6 +111,7 @@ describe('live check guard: every way out LILA-47 tried is refused', () => {
     expect(shell('cat fixtures/disk-status.txt | sh')).toContain('not a program')
     expect(shell('ls && cat /etc/hostname')).toContain('/etc/hostname')
     expect(shell('ls; cd ..')).toContain('not a program')
+    expect(shell('  ')).toContain('an empty command')
     expect(shell('ls || cat ../x')).not.toBeNull()
     expect(shell('cat fixtures/disk-status.txt > /tmp/x')).toContain('shell syntax')
     expect(shell('cat fixtures/disk-status.txt 2>/tmp/x')).toContain('shell syntax')

@@ -5,7 +5,7 @@
  *    (`..` normalised wherever it appears, links followed) and must land inside that folder or a folder the check names.
  *  - Terminal: programs from the check's short list with plain flags and paths inside, joined at most by `&&`, `;` or
  *    `|` (each part checked alone), or a whole command the check writes out. No `cd`, variables, substitutions,
- *    redirects (except `2>/dev/null`), globs or other shell syntax.
+ *    redirects (except `2>/dev/null` and `2>&1`), globs or other shell syntax.
  *  Used by the capture proxy (`prompt-wire-proxy.ts`), which refuses a call before the engine runs it, and by
  *  `workspace-guard.ts`, which reads the calls an engine recorded. Reports paths, never anything read. */
 import { existsSync, realpathSync } from 'node:fs'
@@ -66,9 +66,11 @@ function pathRefusal(word: string, folder: string, allowed: string[], whole: boo
 
 function commandRefusal(command: string, folder: string, allowed: string[], policy: GuardPolicy): string | null {
   if (policy.commands?.includes(command.trim())) return null
-  for (const part of command.split(/&&|;|\|/)) {
-    const why = simpleRefusal(part.replace(/\s2>\/dev\/null(?=\s|$)/g, ' '), folder, allowed, policy)
-    if (why) return why
+  const parts = command.split(/&&|;|\|/).filter(part => part.trim())
+  if (!parts.length) return 'an empty command'
+  for (const part of parts) {
+    const why = simpleRefusal(part.replace(/\s2>(?:\/dev\/null|&1)(?=\s|$)/g, ' '), folder, allowed, policy)
+    if (why) return `${why}, in "${clip(command)}"`
   }
   return null
 }
