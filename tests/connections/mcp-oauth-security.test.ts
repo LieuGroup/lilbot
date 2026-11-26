@@ -65,7 +65,9 @@ test('M2 & default-off callback note: sign-in payload names service address, sig
   expect(off.note).toContain(oauth.address)
   expect(off.note).toContain('not-found or error page')
   const fOn = connectionsFixture(undefined, true)
-  expect(((await fOn.services.add('bot-a', { name: 'svc_on', address: oauth.address, requestId: 'r-on' })) as any).note).toContain('LilBot notifies you here when he finishes')
+  expect(((await fOn.services.add('bot-a', { name: 'svc_on', address: oauth.address, requestId: 'r-on' })) as any).note).toContain(
+    'LilBot notifies you here when the owner finishes'
+  )
 
   const idp = Bun.serve({
     hostname: '127.0.0.1',

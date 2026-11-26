@@ -45,7 +45,7 @@ export function botTools({ bots, activity }: SystemDeps): McpTool[] {
     }),
     actionTool(
       'lilbot_bot_create',
-      'Create a bot. Write its name, function (one line) and instructions. It inherits your model and greets Oscar. Reuse requestId when retrying one request, use a new one for each new bot. Reply with the link.',
+      'Create a bot. Write its name, function (one line) and instructions. It inherits your model and greets the owner. Reuse requestId when retrying one request, use a new one for each new bot. Reply with the link.',
       BotCreationInput,
       (caller, input, _raw, ctx) => (ctx?.sessionBound ? bots.createFromBot(caller, input, { waitForGreeting: false }) : bots.createFromBot(caller, input))
     ),

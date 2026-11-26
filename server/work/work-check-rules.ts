@@ -4,7 +4,7 @@ import type { WorkCheck } from '../../shared/work-check-schema'
 import type { WorkStatus } from '../../shared/work-schema'
 
 type Bot = { id: string; name: string }
-export const OSCAR = { kind: 'oscar', id: null, name: 'Oscar' } as const
+export const OSCAR = { kind: 'oscar', id: null, name: 'the owner' } as const
 /** The question a level 3 item asks Oscar. */
 export const OSCAR_QUESTION = 'Check the result and its evidence, then pass it or send it back.'
 

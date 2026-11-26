@@ -80,7 +80,7 @@ export class BrowserSession {
     'threads.open': ({ botId, threadId }) => this.threads!.open(botId, threadId),
     'threads.cancel': async ({ botId, threadId }) => {
       await this.threads!.open(botId, threadId)
-      return this.threads!.cancel(threadId, { kind: 'oscar', id: null, name: 'Oscar' })
+      return this.threads!.cancel(threadId, { kind: 'oscar', id: null, name: 'the owner' })
     },
     ...boardHandlers(
       () => requireService(this.work, 'The work board is unavailable.'),

@@ -1,0 +1,63 @@
+/** Text LilBot hard-codes for a bot calls its person "the owner", never by a personal name: guide topics, shipped
+ *  skills, tool descriptions and answers, notices sent into a turn, error texts and record labels. Scans every string
+ *  literal and template chunk in `server/` and protocol `shared/` (comments and identifiers are not text a bot reads),
+ *  and every Markdown file under `server/`. */
+import { expect, test } from 'bun:test'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { join, relative } from 'node:path'
+import ts from 'typescript'
+
+const ROOT = join(import.meta.dir, '../..')
+const NAME = /\bOscar\b/
+
+/** Files that may still hold the name, each with the reason. */
+const ALLOWED: Record<string, string> = {
+  // Owned by the base-prompt work (PR 321), which renames the person there.
+  'server/prompts/base-prompt.ts': 'base prompt',
+  'server/bots/system-note.ts': 'system note',
+  'server/system/system-note-facts.ts': 'system note facts',
+  // Screen-only: the roster shows "Waiting for you" for it; no bot reads it.
+  'server/activity/activity-service.ts': 'screen-only activity text'
+}
+/** Earlier wording still present in stored conversations, kept only to recognise and strip it; never sent. */
+const LEGACY = new Set(['[LilBot notice, not from Oscar: a run of your webhook'])
+
+function files(folder: string, out: string[] = []): string[] {
+  for (const name of readdirSync(join(ROOT, folder))) {
+    const path = join(folder, name)
+    if (name === 'node_modules' || path === join('shared', 'client')) continue
+    if (statSync(join(ROOT, path)).isDirectory()) files(path, out)
+    else if (/\.(ts|md)$/.test(name)) out.push(path)
+  }
+  return out
+}
+
+function literals(code: string): string[] {
+  const source = ts.createSourceFile('scan.ts', code, ts.ScriptTarget.Latest, true)
+  const found: string[] = []
+  const visit = (node: ts.Node) => {
+    if (ts.isStringLiteralLike(node) || ts.isTemplateLiteralToken(node)) found.push(node.text)
+    ts.forEachChild(node, visit)
+  }
+  visit(source)
+  return found
+}
+
+test('no personal name in text LilBot sends to a bot', () => {
+  const hits: string[] = []
+  for (const path of [...files('server'), ...files('shared')]) {
+    const file = relative(ROOT, join(ROOT, path))
+    if (ALLOWED[file]) continue
+    if (file.endsWith('.md')) {
+      for (const [i, line] of readFileSync(join(ROOT, file), 'utf8').split('\n').entries()) if (NAME.test(line)) hits.push(`${file}:${i + 1}: ${line.trim().slice(0, 120)}`)
+      continue
+    }
+    for (const text of literals(readFileSync(join(ROOT, file), 'utf8'))) if (NAME.test(text) && !LEGACY.has(text)) hits.push(`${file}: ${text.slice(0, 120)}`)
+  }
+  expect(hits).toEqual([])
+})
+
+test('the scan finds the name in strings and templates, not in comments or identifiers', () => {
+  const code = `// Oscar\nconst needsOscar = 'needs_oscar'\nconst a = 'Ask Oscar'\nconst b = \`$\{a} told Oscar\``
+  expect(literals(code).filter(text => NAME.test(text))).toEqual(['Ask Oscar', ' told Oscar'])
+})

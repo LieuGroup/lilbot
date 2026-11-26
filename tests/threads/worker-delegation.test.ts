@@ -153,11 +153,11 @@ test('concurrentWorkers caps running workers at 4 while non-worker delegations, 
   // Finish one worker (queueing its answer) and cancel one waiting delegation as Oscar (queueing a notice).
   // On the next tick, B2 fills the 4th worker slot (6/6 work slots occupied), yet both the answer and notice still start.
   f.runs[0].finish('Answer while slots full')
-  await f.threads.cancel(waitingDel.exchanges[0].exchangeId, { kind: 'oscar', id: null, name: 'Oscar' })
+  await f.threads.cancel(waitingDel.exchanges[0].exchangeId, { kind: 'oscar', id: null, name: 'the owner' })
   await f.settle()
   await f.settle()
   expect(f.store.get(bWorkers.exchanges[1].exchangeId).status).toBe('working')
   expect(f.store.get(extraDel.exchanges[0].exchangeId).status).toBe('waiting')
   expect(f.runs.some(r => r.prompt.includes('Answer while slots full'))).toBe(true)
-  expect(f.runs.some(r => r.prompt.includes('Oscar stopped'))).toBe(true)
+  expect(f.runs.some(r => r.prompt.includes('The owner stopped'))).toBe(true)
 })

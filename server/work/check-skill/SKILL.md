@@ -47,4 +47,4 @@ Call `lilbot_work` with the `itemId` you were given and:
   `value` with its `source` and `readAt`. Never include secrets; show only the part that proves the point.
 
 Then end your turn. LilBot records the verdict on the item: verified work is done, unverified work goes back
-to its owner once and then to Oscar.
+to its owner once and then to the owner.

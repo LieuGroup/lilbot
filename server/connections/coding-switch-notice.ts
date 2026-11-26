@@ -17,7 +17,7 @@ interface SwitchState {
 export const T3_OFF_OSCAR_NOTICE = 'Coding in LilBot is now native (T3 Code is off). Any T3 task still running continues in T3 Code and is no longer followed here.'
 
 const botSwitchNote = (hadT3Grant: boolean) =>
-  `[LilBot notice, not from Oscar: Coding in LilBot has switched from T3 Code to native coding. This conversation started before the switch, so its earlier prompt is outdated: T3 Code (lilbot_t3) and the t3-coding skill have been removed. Do not use T3 Code or the t3 CLI. Read and follow the lilbot-coding skill (via lilbot_skill_read or skill_view) for all coding work from now on.${hadT3Grant ? ' Any T3 task that was still running continues in T3 Code and is no longer followed here.' : ''}]`
+  `[LilBot notice, not from the owner: Coding in LilBot has switched from T3 Code to native coding. This conversation started before the switch, so its earlier prompt is outdated: T3 Code (lilbot_t3) and the t3-coding skill have been removed. Do not use T3 Code or the t3 CLI. Read and follow the lilbot-coding skill (via lilbot_skill_read or skill_view) for all coding work from now on.${hadT3Grant ? ' Any T3 task that was still running continues in T3 Code and is no longer followed here.' : ''}]`
 
 export interface CodingSwitchStartup {
   t3Enabled: boolean

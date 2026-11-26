@@ -69,15 +69,15 @@ export async function completeSignIn(deps: CompletionDeps, answer: SignInReturn,
 }
 
 export const hiddenChatSignIn = () =>
-  new LilBotError('connection_hidden_chat', 'A sign-in card can only be placed in a conversation with Oscar, not a background run or bot-to-bot thread.')
+  new LilBotError('connection_hidden_chat', 'A sign-in card can only be placed in a conversation with the owner, not a background run or bot-to-bot thread.')
 
 export const connectionNotFound = () => new LilBotError('connection_not_found', 'There is no connection with that id. lilbot_status with area connections lists them.')
 export const signInUnavailable = () =>
-  new LilBotError('sign_in_unavailable', 'LilBot has no sign-in address (its Access door is not set up), so it cannot sign in to this service. Tell Oscar.')
+  new LilBotError('sign_in_unavailable', 'LilBot has no sign-in address (its Access door is not set up), so it cannot sign in to this service. Tell the owner.')
 export const signInRefused = () =>
   new LilBotError(
     'sign_in_refused',
-    'That address does not finish a sign-in LilBot started in this conversation in the last ten minutes. Ask Oscar to paste the full address or ask for a new sign-in card with sign_in.'
+    'That address does not finish a sign-in LilBot started in this conversation in the last ten minutes. Ask the owner to paste the full address or ask for a new sign-in card with sign_in.'
   )
 
 /** Browser-only paste completion: binds strictly to `cardId`'s pending flow without spending any other card's flow. */
@@ -100,8 +100,8 @@ export function cardToolReply(connection: StoredConnection, card: ConnectionSign
       ? `The card shows that the token goes to ${connection.address} and sign-in happens at ${card.providerDomain}.`
       : `The card shows that the token goes to ${connection.address}.`
   const completion = callbackEnabled
-    ? 'LilBot notifies you here when he finishes (automatically, or if he pastes the final address into the card).'
-    : 'After he signs in, his browser will land on a not-found or error page and he can paste that address into the sign-in card.'
+    ? 'LilBot notifies you here when the owner finishes (automatically, or by pasting the final address into the card).'
+    : "After signing in, the owner's browser will land on a not-found or error page; they can paste that address into the sign-in card."
   return {
     id: connection.id,
     name: connection.name,
@@ -110,6 +110,6 @@ export function cardToolReply(connection: StoredConnection, card: ConnectionSign
     cardId: card.id,
     address: connection.address,
     signsInAt: card.providerDomain,
-    note: `LilBot placed a sign-in card in this conversation for Oscar; it works for ten minutes. ${where} Wait for LilBot to notify you when he finishes. ${completion}`
+    note: `LilBot placed a sign-in card in this conversation for the owner; it works for ten minutes. ${where} Wait for LilBot to notify you when the owner finishes. ${completion}`
   }
 }

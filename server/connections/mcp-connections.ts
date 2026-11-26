@@ -67,7 +67,7 @@ export class McpConnections {
     const address = serviceAddress(input.address)
     if (this.store.byName(input.name))
       throw new LilBotError('connection_exists', `A connection named ${input.name} exists already. lilbot_status with area connections lists them.`)
-    if (this.store.list().length >= MAX_SERVICES) throw new LilBotError('connection_limit', `LilBot holds at most ${MAX_SERVICES} connections. Ask Oscar which to remove.`)
+    if (this.store.list().length >= MAX_SERVICES) throw new LilBotError('connection_limit', `LilBot holds at most ${MAX_SERVICES} connections. Ask the owner which to remove.`)
     const chatId = await this.host.callingChat(botId, input.requestId)
     const found = await probe(address, undefined, this.mapTool(input.name, botId))
     if (found.kind === 'unreachable') throw new LilBotError('connection_unreachable', 'LilBot could not reach an MCP service at that address.')
@@ -150,7 +150,7 @@ export class McpConnections {
     const connection = id ? this.store.get(id) : null
     if (!connection) throw connectionNotFound()
     if (connection.addedById !== botId && this.host.botExists(connection.addedById))
-      throw new LilBotError('connection_not_yours', `Only ${connection.addedBy}, which added ${connection.name}, can remove it. Ask that bot, or Oscar.`)
+      throw new LilBotError('connection_not_yours', `Only ${connection.addedBy}, which added ${connection.name}, can remove it. Ask that bot, or the owner.`)
     this.credentials.delete(connection.id)
     this.store.delete(connection.id)
     this.flows.forget(connection.id)

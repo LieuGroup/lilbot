@@ -19,7 +19,7 @@ test("Oscar's agreement starts the goal: LilBot makes its review routine and tel
   expect(routine.description).toContain(`goalId ${goal.id}`)
   const [notice] = f.notices()
   expect(notice).toMatchObject({ about: goal.id, botId: 'a', chatId: null })
-  expect(notice.text).toContain('Oscar agreed your goal')
+  expect(notice.text).toContain('The owner agreed your goal')
   expect(notice.text).toContain('Ideas for the lines')
   expect(f.g.waits.map(w => w.on)).toEqual([true, false])
   // The review routine is not one of the bot's own five.
@@ -83,7 +83,7 @@ test('when nothing moves the review must propose a change; Oscar agrees and the 
   expect(changed).toMatchObject({ proposal: null, waitsForOscar: false, target: { value: 5 }, review: { seconds: 1200 } })
   expect(changed.routineId).not.toBe(old)
   expect(f.routineStore.list('a').map(r => r.schedule)).toEqual([{ kind: 'interval', seconds: 1200 }])
-  expect(f.notices().at(-1).text).toContain('Oscar agreed your proposed change')
+  expect(f.notices().at(-1).text).toContain('The owner agreed your proposed change')
 })
 
 test("pausing pauses the review routine and the bot's work for it; agreeing resumes; a routine the bot removed is put back", async () => {
@@ -92,7 +92,7 @@ test("pausing pauses the review routine and the bot's work for it; agreeing resu
   expect(paused.state).toBe('paused')
   expect(f.routineStore.get('a', goal.routineId!).paused).toBe(true)
   await expect(f.open('a', { goalId: goal.id })).rejects.toThrow(/This goal is paused/)
-  expect(f.notices().at(-1).text).toContain('Oscar paused your goal')
+  expect(f.notices().at(-1).text).toContain('The owner paused your goal')
   await f.goalBoard.agree(goal.id)
   expect(f.routineStore.get('a', goal.routineId!).paused).toBe(false)
   await f.routines.delete('a', goal.routineId!)
@@ -109,7 +109,7 @@ test('dropping ends the goal, removes its routine and drops its unfinished items
   const dropped = await f.goalBoard.drop(goal.id, 'Not needed any more')
   expect(dropped).toMatchObject({ state: 'dropped', dropReason: 'Not needed any more', routineId: null })
   expect(f.routineStore.list('a')).toEqual([])
-  expect(f.work.view(item.id)).toMatchObject({ status: 'dropped', dropReason: 'Oscar dropped the goal "Grow notes.txt to 10 lines": Not needed any more' })
+  expect(f.work.view(item.id)).toMatchObject({ status: 'dropped', dropReason: 'The owner dropped the goal "Grow notes.txt to 10 lines": Not needed any more' })
   expect(f.notices().length).toBe(before)
   expect(f.database.query('SELECT 1 FROM work_answers WHERE id = ?').get(`drop-${item.id}`)).toBeTruthy()
   expect((await f.goalBoard.drop(goal.id)).events.filter(e => e.kind === 'dropped').length).toBe(1)
@@ -117,7 +117,7 @@ test('dropping ends the goal, removes its routine and drops its unfinished items
   const other = await f.goalBoard.agree((await f.propose()).id)
   await f.goalBoard.drop(other.id)
   expect(f.notices().at(-1)).toMatchObject({ about: other.id })
-  expect(f.notices().at(-1).text).toContain('Oscar dropped your goal')
+  expect(f.notices().at(-1).text).toContain('The owner dropped your goal')
 })
 
 test('a proposal to drop is agreed by dropping; adjusting an agreed goal clears a proposal and asks the bot for a change', async () => {
@@ -125,7 +125,7 @@ test('a proposal to drop is agreed by dropping; adjusting an agreed goal clears 
   await f.goals.act('a', { action: 'propose', requestId: 'drop-it', goalId: goal.id, drop: true, why: 'Oscar has no use for it' })
   await f.goalBoard.adjust(goal.id, 'Keep it, but by March')
   expect(f.goals.view(goal.id)).toMatchObject({ state: 'agreed', proposal: null, oscar: 'Keep it, but by March' })
-  expect(f.notices().at(-1).text).toContain('Oscar wants a change')
+  expect(f.notices().at(-1).text).toContain('The owner wants a change')
   await f.goals.act('a', { action: 'propose', requestId: 'drop-again', goalId: goal.id, drop: true, why: 'Still no use' })
   expect((await f.goalBoard.agree(goal.id)).state).toBe('dropped')
 })

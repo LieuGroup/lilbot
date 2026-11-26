@@ -55,7 +55,7 @@ function waitingWork(id: string, extra: Partial<WorkSummary> = {}): WorkSummary 
 }
 
 test('empty, stopped, incoming and group threads are excluded from the dock', () => {
-  const stopped = makeThread('stopped', { worker: true, status: 'cancelled', stoppedBy: { kind: 'oscar', id: null, name: 'Oscar', at: T0 + MIN } })
+  const stopped = makeThread('stopped', { worker: true, status: 'cancelled', stoppedBy: { kind: 'oscar', id: null, name: 'the owner', at: T0 + MIN } })
   const incoming = makeThread('incoming', { participants: [eng, lead], status: 'working' })
   const group = makeThread('group', {
     group: { purpose: 'Discuss', roundCap: 6, rounds: [], turns: 0, lastAt: T0, end: null, kept: [], folder: '', seen: {} }
@@ -92,7 +92,7 @@ test('waiting-on-Oscar and failed rows stay past 2 minutes until answered or dis
     ask1: waitingWork('ask1'),
     chk1: waitingWork('chk1', {
       question: null,
-      check: { round: 1, by: { kind: 'oscar', id: null, name: 'Oscar' }, state: 'checking', text: null, note: null, sameBot: false, model: null, at: T0, settledAt: null }
+      check: { round: 1, by: { kind: 'oscar', id: null, name: 'the owner' }, state: 'checking', text: null, note: null, sameBot: false, model: null, at: T0, settledAt: null }
     })
   }
   const items = dockItems([failed, check, asked], lead.id, waiting, {}, longAfter)

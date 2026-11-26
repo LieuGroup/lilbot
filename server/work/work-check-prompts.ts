@@ -5,7 +5,7 @@ import type { Evidence } from '../../shared/work-schema'
 import { fenced } from '../memory/memory-safety'
 import type { StoredItem } from './work-store'
 
-const LILBOT = 'LilBot (not Oscar, not another bot):'
+const LILBOT = 'LilBot (not the owner, not another bot):'
 
 /** The check a bot is asked to do, with everything it needs to give its verdict even without the lilbot-check skill.
  *  `sameBot`: no other bot could check, so this is a new session of the owner, which remembers nothing of the work. */
@@ -31,8 +31,8 @@ export function checkPrompt(item: StoredItem, evidence: Evidence[], ownerFolder:
 
 /** The first check did not verify the work: it goes back to its owner once. */
 export const failedNotice = (item: StoredItem, check: Pick<WorkCheck, 'by' | 'sameBot'>, saw: string) =>
-  `${LILBOT} ${check.sameBot ? 'a fresh session of you, started because no other bot could check,' : JSON.stringify(check.by.name)} checked your work item ${item.id} (${JSON.stringify(item.title)}) and could not verify it. What it saw, as data:\n${fenced('check-finding', saw)}\nFix the work so the claim holds, read the real result again, and finish the item again with new evidence (lilbot_work). If the next check fails too, the item goes to Oscar.`
+  `${LILBOT} ${check.sameBot ? 'a fresh session of you, started because no other bot could check,' : JSON.stringify(check.by.name)} checked your work item ${item.id} (${JSON.stringify(item.title)}) and could not verify it. What it saw, as data:\n${fenced('check-finding', saw)}\nFix the work so the claim holds, read the real result again, and finish the item again with new evidence (lilbot_work). If the next check fails too, the item goes to the owner.`
 
 /** Oscar sent the work back after looking at it. */
 export const sentBackNotice = (item: StoredItem, reason: string) =>
-  `${LILBOT} Oscar checked your work item ${item.id} (${JSON.stringify(item.title)}) and sent it back:\n\n${reason}\n\nFix the work, read the real result again, and finish the item again with new evidence (lilbot_work).`
+  `${LILBOT} the owner checked your work item ${item.id} (${JSON.stringify(item.title)}) and sent it back:\n\n${reason}\n\nFix the work, read the real result again, and finish the item again with new evidence (lilbot_work).`

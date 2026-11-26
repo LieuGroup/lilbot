@@ -128,7 +128,10 @@ export function createThreads(deps: ThreadDeps) {
       threadEvents(threadStore, store, prefs, publish, (botId, chatId, item, at) => {
         if (store.exists(botId)) history.store.reference(botId, chatId, item, at)
       })
-      work.settleExchanges(id => threadStore.get(id).stoppedBy?.name ?? null)
+      work.settleExchanges(id => {
+        const by = threadStore.get(id).stoppedBy
+        return by ? (by.kind === 'oscar' ? 'the owner' : by.name) : null
+      })
     },
     (botId, d, working) => {
       if (store.exists(botId)) activity.observe({ botId, chatId: `thread:${d.id}`, key: `${d.id}:${working}:${Date.now()}`, status: working ? 'working' : 'finished' })
