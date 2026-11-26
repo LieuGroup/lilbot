@@ -36,14 +36,19 @@ const SHORTENED = '\n[shortened by LilBot]'
 /** Characters that show nothing: Unicode's default-ignorable class (zero-width and bidi marks, soft hyphen, joiners,
  *  variation selectors, tag characters, Hangul fillers), all format characters, and the blank Braille pattern. */
 const INVISIBLE = '\\p{Default_Ignorable_Code_Point}\\p{Cf}\\u2800'
-const INVISIBLE_CHARS = new RegExp(`[${INVISIBLE}]`, 'gu')
+/** Skill text loses invisible characters, except inside a complete emoji (❤️, 👨‍👩‍👧, flags), which stays as written. */
+const INVISIBLE_OUTSIDE_EMOJI = new RegExp(`(\\p{RGI_Emoji})|[${INVISIBLE}]`, 'gv')
 /** A `<` that would open or close one of LilBot's own tags, allowing spaces, slashes and invisible characters anywhere in it. */
 const OWN_TAG_OPEN = new RegExp(`<(?=[\\s${INVISIBLE}/]*${[...'lilbot-'].join(`[${INVISIBLE}]*`)})`, 'giu')
 const NOTE_OPEN = '<lilbot-system-note>'
 const NOTE_CLOSE = '</lilbot-system-note>'
 
 const byteLen = (text: string) => Buffer.byteLength(text, 'utf8')
-const escapeXml = (text: string) => text.replace(INVISIBLE_CHARS, '').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+const escapeXml = (text: string) =>
+  text
+    .replace(INVISIBLE_OUTSIDE_EMOJI, (_, emoji: string | undefined) => emoji ?? '')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
 
 /** Makes text unable to open or close a LilBot tag, leaving every other character as written. */
 const defuseTags = (text: string) => text.replace(OWN_TAG_OPEN, '&lt;')

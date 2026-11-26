@@ -27,7 +27,7 @@ export function RosterTiles({ bots, openId, tab }: { bots: Bot[]; openId?: strin
 
 /** A tile has no status line: its title gives the name and the row's one-line state. The name
  *  takes up to two lines. The "more" button appears at its top right on hover; it and a
- *  right-click open the bot menu. */
+ *  right-click open the bot menu. On a touch screen it always shows, with a 44pt tap area (#318). */
 function RosterTile({ bot, active, tab, narrow }: { bot: Bot; active: boolean; tab?: DetailsTab; narrow: boolean }) {
   const label = botLabel(bot)
   return (
@@ -54,7 +54,7 @@ function RosterTile({ bot, active, tab, narrow }: { bot: Bot; active: boolean; t
         aria-label={`More for ${bot.name}`}
         aria-haspopup="menu"
         onClick={event => openBotMenu(bot.id, event.currentTarget)}
-        className="absolute top-1 right-1 size-5 rounded-[6px] bg-card p-0 text-foreground opacity-0 ring-1 ring-hairline group-hover:opacity-100 group-has-focus-visible:opacity-100 hover:bg-card dark:hover:bg-card [&_svg]:size-3.5"
+        className="absolute top-1 right-1 size-5 rounded-[6px] bg-card p-0 text-foreground opacity-0 ring-1 ring-hairline group-hover:opacity-100 group-has-focus-visible:opacity-100 hover:bg-card dark:hover:bg-card pointer-coarse:opacity-100 pointer-coarse:after:absolute pointer-coarse:after:-inset-3.5 [&_svg]:size-3.5"
       >
         <EllipsisIcon strokeWidth={1.75} />
       </Button>

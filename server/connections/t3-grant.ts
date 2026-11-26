@@ -84,5 +84,5 @@ export function signInMessage(status: T3ConnectionStatus): string {
       : status.state === 'revoked'
         ? 'LilBot’s T3 Code approval was revoked.'
         : `LilBot’s T3 Code approval expired on ${new Date(status.expiresAt ?? 0).toISOString().slice(0, 10)}.`
-  return `${reason} Coding through T3 Code is unavailable until Oscar approves LilBot${status.state === 'missing' ? '' : ' again'}: in T3 Code he creates a one-time pairing code (Settings → Sharing & access → Create link, then Copy code), and LilBot is signed in with it (\`bun run t3:sign-in\` on the leader). Tell Oscar exactly this and wait; do not do the coding task another way unless he asks. If he has just approved, start a new session so the T3 tools load.`
+  return `${reason} Coding through T3 Code is unavailable until the owner approves LilBot${status.state === 'missing' ? '' : ' again'}: in T3 Code they create a one-time pairing code (Settings → Sharing & access → Create link, then Copy code), and LilBot is signed in with it (\`bun run t3:sign-in\` on the leader). Tell the owner exactly this and wait; do not do the coding task another way unless the owner asks. If they have just approved, start a new session so the T3 tools load.`
 }

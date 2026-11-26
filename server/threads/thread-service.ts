@@ -24,7 +24,7 @@ export interface ThreadHost extends RunnerHost {
   listBots(): Promise<{ id: string; name: string }[]>
   computerName?(computerId: string): string | undefined
 }
-type StoppedBy = { kind: 'bot'; id: string; name: string } | { kind: 'oscar'; id: null; name: 'Oscar' }
+type StoppedBy = { kind: 'bot'; id: string; name: string } | { kind: 'oscar'; id: null; name: 'the owner' }
 
 export class ThreadService {
   readonly runner: ThreadRunner
@@ -142,7 +142,7 @@ export class ThreadService {
         this.tellDelegator(
           next,
           `stopped:${threadId}:${next.messages.length}`,
-          `Oscar stopped ${next.worker ? `your worker (exchange ${threadId})` : `the task you handed to ${JSON.stringify(receiver.name)} (exchange ${threadId})`}${reason ? `, saying ${JSON.stringify(reason)}` : ''}. Its answer will not come.`
+          `The owner stopped ${next.worker ? `your worker (exchange ${threadId})` : `the task you handed to ${JSON.stringify(receiver.name)} (exchange ${threadId})`}${reason ? `, saying ${JSON.stringify(reason)}` : ''}. Its answer will not come.`
         )
       this.waits.settle(threadId, null)
       return next
@@ -179,11 +179,11 @@ export class ThreadService {
   /** Oscar dropped the work item this exchange was handed out as. A running exchange is stopped, with the same database part as
    *  `cancel`; one that has settled only tells the delegating bot. Returns what ends the receiver's turn once the caller commits. */
   dropped(threadId: string, reason: string) {
-    const stop = this.stopping(threadId, { kind: 'oscar', id: null, name: 'Oscar' }, reason)
+    const stop = this.stopping(threadId, { kind: 'oscar', id: null, name: 'the owner' }, reason)
     if (stop) return stop.end
     const t = this.store.get(threadId)
     const what = t.worker ? `your worker (exchange ${threadId})` : `the task you handed to ${JSON.stringify(t.participants[1].name)} (exchange ${threadId})`
-    this.tellDelegator(t, `dropped:${threadId}`, `Oscar dropped the work item of ${what}, saying ${JSON.stringify(reason)}. Its work is no longer wanted.`)
+    this.tellDelegator(t, `dropped:${threadId}`, `The owner dropped the work item of ${what}, saying ${JSON.stringify(reason)}. Its work is no longer wanted.`)
     return async () => {}
   }
 

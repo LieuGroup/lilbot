@@ -101,7 +101,7 @@ export class WorkService {
       if (open) {
         const who =
           open.by.kind === 'oscar'
-            ? "This item waits for Oscar's check"
+            ? "This item waits for the owner's check"
             : open.sameBot
               ? 'LilBot started a fresh session of you to check this item'
               : `LilBot asked ${open.by.name} to check this item`
@@ -135,7 +135,7 @@ export class WorkService {
     const least = this.levels.floor(input.kind, caller.id)
     if (input.level !== undefined && input.level < least) throw belowDefault(input.kind, least)
     if (input.goalId) this.host.checkGoal(caller.id, input.goalId)
-    const asked: WorkAsker = session.askedBy ?? (input.asked === 'self' ? { kind: 'self', id: caller.id, name: caller.name } : { kind: 'oscar', id: null, name: 'Oscar' })
+    const asked: WorkAsker = session.askedBy ?? (input.asked === 'self' ? { kind: 'self', id: caller.id, name: caller.name } : { kind: 'oscar', id: null, name: 'the owner' })
     const id = crypto.randomUUID()
     const at = this.now()
     this.store.create({

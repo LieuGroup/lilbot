@@ -28,6 +28,8 @@ export function failureLine(reason: Failure, botName: string | undefined): strin
 const ThreadLine = lazy(() => import('../threads/thread-line'))
 // A work item opened in a conversation draws as a bordered Work line; it loads with the first one.
 const WorkLine = lazy(() => import('../work/work-line'))
+// A service sign-in card (#314) draws in the conversation; it loads with the first one.
+const SignInCard = lazy(() => import('../connections/sign-in-card'))
 
 /** One transcript item drawn with the AI Elements patterns: Message and Bubble for turns, a Tool
  *  trace line for tool use. Memoised: a streamed chunk changes only the last item, so earlier
@@ -96,7 +98,11 @@ export const ChatItem = memo(function ChatItem({
     case 'compaction':
       return <CompactionLine item={item} />
     case 'connection.sign_in':
-      return null
+      return (
+        <Suspense fallback={<div className="h-[52px] max-w-[460px] rounded-[14px] ring-1 ring-hairline" />}>
+          <SignInCard card={item.card} />
+        </Suspense>
+      )
     case 'omitted':
       return (
         <div className="flex w-full items-center gap-3 py-2">

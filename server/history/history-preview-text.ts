@@ -9,7 +9,9 @@ export type PersistedPreview = { preview: BotLastMessage; id?: string }
 
 const ATTACHMENT_MARKER = /(?:\r?\n){0,2}\[LilBot attachment message [0-9a-f-]{36}\]/gi
 const ATTACHED_JSON_BLOCK = /(?:^|(?:\r?\n){1,2})The following JSON lists attached files\.[\s\S]*$/i
-const WEBHOOK_NOTE_PREFIX = '[LilBot notice, not from Oscar: a run of your webhook'
+const WEBHOOK_NOTE_PREFIX = '[LilBot notice, not from the owner: a run of your webhook'
+/** The same note's older opening, still in stored conversations: matched only, never sent. */
+const LEGACY_WEBHOOK_NOTE_PREFIX = '[LilBot notice, not from Oscar: a run of your webhook'
 
 /** Linear-time removal of paired fenced notice blocks (`start` .. `end`). */
 function stripPaired(text: string, start: string, end: string): string {
@@ -81,7 +83,7 @@ export function previewFromItem(item: ChatItem, at: number): BotLastMessage | nu
   const hasMarker = ATTACHMENT_MARKER.test(raw)
   ATTACHMENT_MARKER.lastIndex = 0
   const hasAttachedBlock = ATTACHED_JSON_BLOCK.test(raw)
-  let cleaned = stripPaired(raw, WEBHOOK_NOTE_PREFIX, '</webhook-run-message>')
+  let cleaned = stripPaired(stripPaired(raw, WEBHOOK_NOTE_PREFIX, '</webhook-run-message>'), LEGACY_WEBHOOK_NOTE_PREFIX, '</webhook-run-message>')
   cleaned = stripPaired(cleaned, '<webhook-run-message>', '</webhook-run-message>')
   cleaned = stripPaired(cleaned, '<webhook-work-item>', '</webhook-work-item>')
   cleaned = stripAttachmentPaths(cleaned.replace(ATTACHED_JSON_BLOCK, '').replace(ATTACHMENT_MARKER, ''))

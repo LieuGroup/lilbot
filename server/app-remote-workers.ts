@@ -78,7 +78,7 @@ export function createRemoteWorkers(deps: RemoteWorkerAppDeps) {
     }
     if (bot.permissionMode !== 'full-access') throw new LilBotError('permission_denied', 'Remote workers require full-access mode.')
     if (found.keyConflict) throw new LilBotError('computer_offline', `Computer "${found.name}" has a key conflict and cannot run workers until re-registered.`)
-    if (!found.online) throw new LilBotError('computer_offline', `Computer "${found.name}" is offline. Wait until it is back online or tell Oscar.`)
+    if (!found.online) throw new LilBotError('computer_offline', `Computer "${found.name}" is offline. Wait until it is back online or tell the owner.`)
     const agents = found.workerAgents ?? []
     const pick = selectRemoteWorkerEngine({ computerName: found.name, botEngineId: bot.engineId, agents, requestedEngine: opts.engine, requestedModel: opts.model ?? bot.model })
     if (!pick.ok) throw new LilBotError(pick.code, pick.message)

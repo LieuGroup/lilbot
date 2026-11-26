@@ -134,7 +134,7 @@ describe('engine conformance: temporary groups', () => {
     expect(checks).toEqual({ selfRefused: true, dupRefused: true, tooManyRefused: true, perBotCapRefused: true })
     expect(g1 && g2).toBeTruthy()
     // Oscar stops g2 while g1 runs to its 6-round limit.
-    const cancelled = await services.threads.cancel(g2, { kind: 'oscar', id: null, name: 'Oscar' })
+    const cancelled = await services.threads.cancel(g2, { kind: 'oscar', id: null, name: 'the owner' })
     expect(cancelled.status).toBe('cancelled')
     expect(cancelled.group?.end?.how).toBe('stopped')
     await waitFor(() => {

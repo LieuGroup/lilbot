@@ -21,7 +21,7 @@ export const makeWorkSummary = (over: Partial<WorkSummary> = {}): WorkSummary =>
   title: 'Ship update',
   ownerId: 'b1',
   ownerName: 'Alpha',
-  askedBy: { kind: 'oscar', id: null, name: 'Oscar' },
+  askedBy: { kind: 'oscar', id: null, name: 'the owner' },
   origin: { kind: 'conversation', id: 's1' },
   parentId: null,
   goalId: null,

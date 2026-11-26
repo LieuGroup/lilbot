@@ -9,7 +9,7 @@ export function historyTools({ history }: SystemDeps): McpTool[] {
   return [
     readTool(
       'lilbot_history_search',
-      'Search your own past conversations with Oscar (excludes other bots and hidden runs). Returns snippets with ids, times and import progress.',
+      'Search your own past conversations with the owner (excludes other bots and hidden runs). Returns snippets with ids, times and import progress.',
       HistorySearchInput,
       async (caller, { query, limit }) => history.search(caller, query, limit)
     )

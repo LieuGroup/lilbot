@@ -111,12 +111,12 @@ describe('engine conformance: restart recovery (routines, webhooks, deliveries &
         await delGate.promise
         return 'DIGEST_READY'
       }
-      if (ctx.nativeId === alphaNative && ctx.input.text.includes('Oscar answered your question')) {
+      if (ctx.nativeId === alphaNative && ctx.input.text.includes('The owner answered your question')) {
         answerEffects++
         await ansGate.promise
         return 'ANSWER_APPLIED'
       }
-      if (ctx.nativeId === alphaNative && ctx.input.text.includes('Oscar dropped your work item')) {
+      if (ctx.nativeId === alphaNative && ctx.input.text.includes('The owner dropped your work item')) {
         dropEffects++
         await dropGate.promise
         return 'DROP_APPLIED'
