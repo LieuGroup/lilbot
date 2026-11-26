@@ -53,3 +53,28 @@ test('a message the engine wrote before its journal time stays where the engine 
     db.close()
   }
 })
+
+test("a hidden turn's reply imported before its turn is journalled as finished still sits below a message sent before it showed", () => {
+  const db = openDatabase(':memory:')
+  try {
+    const store = new HistoryStore(db)
+    store.session('b', 's', 1)
+    store.event('b', 's', { type: 'turn.started' }, 'h1')
+    store.event('b', 's', { type: 'tool.started', toolId: 't1', name: 'terminal', detail: 'sleep 8' }, 'h2')
+    store.event('b', 's', sent('sent while busy', 'm1'), 'u1')
+    store.event('b', 's', { type: 'tool.finished', toolId: 't1', failed: false }, 'h3')
+    store.event('b', 's', { type: 'text.delta', text: 'The river ' }, 'h4')
+    db.query('UPDATE history_events SET at=at+rowid*1000').run()
+    const engineStamp = Date.now() + 10_000
+    // The importer reads the stored reply before LilBot has journalled the turn's end, then the message the engine started on next.
+    store.write('b', 's', [{ id: 'e:4', at: engineStamp, order: 4, item: { kind: 'assistant', text: 'The river service is connected.' } }])
+    store.event('b', 's', { type: 'turn.finished', status: 'completed', text: 'The river service is connected.', rowId: 'e:4' }, 'h5')
+    store.write('b', 's', [
+      { id: 'e:5', at: engineStamp + 1, order: 5, item: { kind: 'user', text: 'sent while busy' } },
+      { id: 'e:6', at: engineStamp + 3_000, order: 6, item: { kind: 'assistant', text: 'Got it.' } }
+    ])
+    expect(texts(store)).toEqual(['sent while busy', 'The river service is connected.', 'Got it.'])
+  } finally {
+    db.close()
+  }
+})

@@ -12,21 +12,47 @@ const WINDOW_MS = 6 * 60 * 60_000
 const CLOCK_SKEW_MS = 5_000
 type Seen = { event: number; at: number }
 
+/** A reply imported while its turn is still open in the journal is not yet placed: it is no floor for a message sent
+ *  before it showed, and it takes its place when its turn is journalled as finished (`placeFinished`). */
+const PENDING = `json_extract(i.item,'$.kind')='assistant' AND ?3 AND NOT EXISTS (SELECT 1 FROM history_events e WHERE e.bot=?1 AND e.session=?2
+  AND json_extract(e.event,'$.type')='turn.finished' AND json_extract(e.event,'$.rowId')=i.id)`
+const FLOOR = `SELECT max(at) at FROM history_items i WHERE bot=?1 AND session=?2 AND position<?4 AND id<>?5 AND id NOT LIKE 'journal:%' AND id NOT LIKE 'session:%'
+  AND NOT EXISTS (SELECT 1 FROM history_sent s WHERE s.bot=?1 AND s.row_id=i.id) AND NOT (${PENDING})`
+
 export function atFirstSight(db: Database, bot: string, session: string, rows: HistoryRow[]): HistoryRow[] {
-  const floorBefore = db.query(
-    `SELECT max(at) at FROM history_items i WHERE bot=?1 AND session=?2 AND position<?3 AND id NOT LIKE 'journal:%' AND id NOT LIKE 'session:%'
-     AND NOT EXISTS (SELECT 1 FROM history_sent s WHERE s.bot=?1 AND s.row_id=i.id)`
-  )
+  const open = turnOpen(db, bot, session)
+  const pending = new Set<string>()
   return rows.map((row, index) => {
     if (row.id.startsWith('journal:')) return row
     const seen = row.item.kind === 'user' ? sentAt(db, bot, session, row) : row.item.kind === 'assistant' ? shownAt(db, bot, session, row.id) : null
+    if (!seen && open && row.item.kind === 'assistant') pending.add(row.id)
     if (!seen || seen.at >= row.at) return row
     db.query('INSERT OR IGNORE INTO history_sent(bot,event,row_id) VALUES(?,?,?)').run(bot, seen.event, row.id)
-    const stored = (floorBefore.get(bot, session, row.order) as { at: number | null }).at ?? 0
-    const batch = rows.slice(0, index).filter(other => !other.id.startsWith('journal:') && !sight(db, bot, other.id))
-    const floor = Math.max(stored, ...batch.map(other => other.at))
-    return { ...row, at: Math.min(row.at, Math.max(seen.at, floor)) }
+    const stored = (db.query(FLOOR).get(bot, session, open, row.order, row.id) as { at: number | null }).at ?? 0
+    const batch = rows.slice(0, index).filter(other => !other.id.startsWith('journal:') && !pending.has(other.id) && !sight(db, bot, other.id))
+    return { ...row, at: Math.min(row.at, Math.max(seen.at, stored, ...batch.map(other => other.at))) }
   })
+}
+
+/** When a turn is journalled as finished, its reply already imported (while the turn was open) takes the moment it began to show. */
+export function placeFinished(db: Database, bot: string, session: string, rowId: string) {
+  const row = db
+    .query('SELECT at, position FROM history_items i WHERE bot=? AND session=? AND id=? AND NOT EXISTS (SELECT 1 FROM history_sent s WHERE s.bot=i.bot AND s.row_id=i.id)')
+    .get(bot, session, rowId) as {
+    at: number
+    position: number
+  } | null
+  const seen = row && shownAt(db, bot, session, rowId)
+  if (!row || !seen || seen.at >= row.at) return
+  db.query('INSERT OR IGNORE INTO history_sent(bot,event,row_id) VALUES(?,?,?)').run(bot, seen.event, rowId)
+  const floor = (db.query(FLOOR).get(bot, session, false, row.position, rowId) as { at: number | null }).at ?? 0
+  db.query('UPDATE history_items SET at=? WHERE bot=? AND id=?').run(Math.min(row.at, Math.max(seen.at, floor)), bot, rowId)
+}
+
+const turnOpen = (db: Database, bot: string, session: string) => {
+  const last = (type: string) =>
+    (db.query("SELECT coalesce(max(rowid),0) id FROM history_events WHERE bot=? AND session=? AND json_extract(event,'$.type')=?").get(bot, session, type) as { id: number }).id
+  return last('turn.started') > last('turn.finished')
 }
 
 const sight = (db: Database, bot: string, rowId: string) => !!db.query('SELECT 1 FROM history_sent WHERE bot=? AND row_id=?').get(bot, rowId)

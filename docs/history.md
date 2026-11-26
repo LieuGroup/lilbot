@@ -32,7 +32,8 @@ LilBot never summarises. The short version is in `AGENTS.md` under "Conversation
 - An item sits where Oscar first saw it (`history/history-sent.ts`). The engine stores a message sent while the bot was
   busy (a hidden turn, a reply still running) when it starts on it, so an imported message takes the moment LilBot
   journalled sending it, and a reply the moment its text began to show; a row never moves above an earlier row known only
-  by the engine's time. The web and phone apps put a message into the conversation the moment it is sent, marked as
+  by the engine's time. A reply imported while its turn is still open in the journal is placed when that turn is
+  journalled as finished, and until then is no floor for a message sent before it showed. The web and phone apps put a message into the conversation the moment it is sent, marked as
   waiting until the engine starts on it; the engine's echo of it adds nothing.
 
 ## Hidden sessions and compression lineage

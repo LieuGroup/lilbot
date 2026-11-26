@@ -6,7 +6,7 @@ import { HistoryMetaStore } from './history-meta-store'
 import { HistoryOwnership } from './history-owned'
 import { HistoryPreviewStore } from './history-preview'
 import { type HistorySearchMatch, searchHistory } from './history-search'
-import { atFirstSight } from './history-sent'
+import { atFirstSight, placeFinished } from './history-sent'
 import { pruneSupersededJournalRows } from './history-tail'
 
 type HistorySession = { bot: string; id: string; at: number; cursor: string | null; complete: number }
@@ -74,6 +74,7 @@ export class HistoryStore {
           .run(bot, session, now, JSON.stringify(event), key)
         const out = inserted.changes > 0 ? this.previews.recordEvent(bot, session, event, now) : { changed: false }
         if (event.type === 'turn.finished' && !this.excluded(bot, session)) this.meta.recordTurn(bot, session, event, now)
+        if (event.type === 'turn.finished' && event.rowId && inserted.changes > 0) placeFinished(this.db, bot, session, event.rowId)
         return out
       })
       .immediate()
