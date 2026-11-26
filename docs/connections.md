@@ -136,6 +136,13 @@ address, signsInAt, note }`, telling the bot to wait for LilBot to notify it whe
     the service still needs sign-in, voids the previous flow, mints a fresh 10-minute flow for the same card (clearing
     prior `reason`/`settledAt`), pushes to browsers, and returns the updated card (**not** the URL; the UI calls
     `connections.signIn.open` on demand when Oscar clicks Sign in).
+- **Clients (#314, Paper artboard 25):** web draws the card (`web/src/connections/sign-in-card.tsx`, loaded with the
+  first card); iPhone does not yet. What it shows in each state and its wording are pure, in
+  `shared/client/connections/sign-in-card.ts`, for both clients. The card's state is always the server's (live event,
+  or history after a reload); only "Sign in was pressed on this device" and the address being pasted are local, in
+  component state, never stored. Sign in fetches the link on each press and opens it with `noopener,noreferrer`; the
+  link is not kept. Bot label and reason are rendered as plain text. A waiting card whose time is up shows the ran-out
+  line at once, before the server's own update arrives.
 - **Automatic callback & trust boundaries:**
   - `GET /api/connections/callback` remains strictly on the Access door behind `LILBOT_ACCESS_CALLBACK_ENABLED=1` and
     Access JWT/Host/Origin checks (never on the helper door or private listener). Completing or failing a flow through
