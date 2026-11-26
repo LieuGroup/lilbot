@@ -15,8 +15,14 @@ export interface DockPillModel {
   accessibilityLabel: string
 }
 
+/** Build note 2 on #316: the longest wording ("2 for Chief of Staff (1 waiting for you) · 1 handed out") does not fit a
+ *  portrait phone, so iPhone and folded Duo in portrait take the short form; unfolded Duo and landscape keep the full one. */
+export function compactDockWording(window: { width: number; height: number }): boolean {
+  return window.height > window.width && window.width < 600
+}
+
 /** Builds the collapsed Tasks pill model so any waiting bot question exposes a 1-tap `Answer` action directly on the pill. */
-export function buildDockPillModel(items: DockItem[], botId: string): DockPillModel | null {
+export function buildDockPillModel(items: DockItem[], botId: string, compact = false): DockPillModel | null {
   if (items.length === 0) return null
   const answerable = items.find(item => item.kind === 'waiting_oscar' && item.canAnswer && item.waiting)
   if (answerable && answerable.waiting) {
@@ -31,7 +37,7 @@ export function buildDockPillModel(items: DockItem[], botId: string): DockPillMo
       accessibilityLabel: `Tasks in flight, ${items.length} active, waiting for your answer: ${question}. Swipe up or tap to expand.`
     }
   }
-  const summary = dockCollapsedSummary(items, botId)
+  const summary = dockCollapsedSummary(items, botId, compact)
   return {
     icon: summary.icon,
     lead: summary.lead,

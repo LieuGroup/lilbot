@@ -8,6 +8,7 @@ import { rowState } from '../../../shared/client/bots/row-state'
 import { BotLink, menuOnContext } from './bot-link'
 import { openBotMenu } from './bot-menu-target'
 import type { DetailsTab } from './details-tabs'
+import { RowText } from './row-text'
 import { StatusIcon } from './status-icon'
 
 /** One bot in the roster: avatar, name, one line of live state or preview, and a 16px trailing
@@ -32,7 +33,7 @@ export function RosterRow({ bot, active, tab }: { bot: Bot; active: boolean; tab
         </span>
         <span className={cn('flex min-w-0 items-center gap-[5px] text-[13px]/[18px]', lineColor)}>
           {state.tone !== 'idle' && <StatusIcon tone={state.tone} />}
-          <span className="truncate">{state.text}</span>
+          <RowText state={state} />
         </span>
       </span>
       <span className="flex w-4 flex-none justify-center">

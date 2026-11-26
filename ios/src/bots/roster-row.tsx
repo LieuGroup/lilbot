@@ -15,7 +15,7 @@ import { useTheme } from '../ui/theme'
 import { MOBILE_SCALE, radius } from '../ui/tokens'
 import { setBotPrefs, setBotUnread } from './actions'
 import { useBotMenuStore } from './menu-store'
-import { rosterRowDisplay, rosterSwipeActionSpecs, sameRosterBotDisplay } from './roster-state'
+import { type RosterRowDisplay, rosterRowDisplay, rosterSwipeActionSpecs, sameRosterBotDisplay } from './roster-state'
 import { RowStatusMarks } from './status-marks'
 
 interface RosterRowProps {
@@ -141,17 +141,7 @@ export const RosterRow = memo(function RosterRow({ bot, selected, splitMode, spa
                 {!stackMeta && metaRow}
               </View>
               {stackMeta && metaRow}
-              {display.inlineText ? (
-                <AppText
-                  color={previewColor}
-                  numberOfLines={textLines}
-                  ellipsizeMode="tail"
-                  maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowPreview}
-                  style={{ ...MOBILE_SCALE.roster.rowPreview, fontFamily: 'Inter_400Regular' }}
-                >
-                  {display.inlineText}
-                </AppText>
-              ) : null}
+              {display.inlineText ? <RowPreview display={display} color={previewColor} lines={textLines} /> : null}
             </View>
           </View>
         </SwipeRow>
@@ -159,3 +149,20 @@ export const RosterRow = memo(function RosterRow({ bot, selected, splitMode, spa
     </View>
   )
 }, areRosterRowPropsEqual)
+
+/** Line 2; with an `inlineTail` ("· 2 tasks", #316) only the name before it is cut and the count always shows. */
+function RowPreview({ display, color, lines }: { display: RosterRowDisplay; color: string; lines: number }) {
+  const style = { ...MOBILE_SCALE.roster.rowPreview, fontFamily: 'Inter_400Regular' }
+  const text = (value: string, extra: object = {}) => (
+    <AppText color={color} numberOfLines={lines} ellipsizeMode="tail" maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.rowPreview} style={{ ...style, ...extra }}>
+      {value}
+    </AppText>
+  )
+  if (!display.inlineTail) return text(display.inlineText)
+  return (
+    <View style={{ flexDirection: 'row', minWidth: 0 }}>
+      {text(display.inlineText.slice(0, display.inlineText.length - display.inlineTail.length), { flexShrink: 1 })}
+      {text(display.inlineTail, { flexShrink: 0 })}
+    </View>
+  )
+}

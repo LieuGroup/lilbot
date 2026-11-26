@@ -5,6 +5,7 @@ import { Button } from '@/ui/button'
 import { rowState } from '../../../shared/client/bots/row-state'
 import { useNow } from '../app/use-now'
 import { useBotStore } from '../bots/bot-store'
+import { RowText } from '../bots/row-text'
 import { StatusIcon } from '../bots/status-icon'
 import { RoutinesCard } from '../routines/routines-card'
 import { WithOtherBots } from '../threads/with-other-bots'
@@ -49,7 +50,7 @@ export function ActivityTab({ botId }: { botId: string }) {
         <div className="flex items-center gap-2.5 px-3 py-2.5">
           <StatusIcon tone={state.tone} className="size-3.5" />
           <div className="flex min-w-0 flex-1 flex-col">
-            <span className={`truncate text-[13px]/[18px] font-medium ${state.tone === 'failed' ? 'text-destructive' : ''}`}>{title}</span>
+            <RowText state={state.tone === 'idle' ? { text: title } : state} className={`text-[13px]/[18px] font-medium ${state.tone === 'failed' ? 'text-destructive' : ''}`} />
             <span className="text-xs text-muted-foreground">{meta}</span>
           </div>
         </div>
