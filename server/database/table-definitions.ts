@@ -117,6 +117,11 @@ export const NOTIFICATION_TABLES = `CREATE TABLE IF NOT EXISTS notification_endp
    CREATE INDEX IF NOT EXISTS notification_deliveries_bot ON notification_deliveries(device_id, bot_id, kind, at);
    CREATE INDEX IF NOT EXISTS notification_deliveries_at ON notification_deliveries(at);`
 
+/** Schema step 45: files bots showed in their replies (#317): the saved path in the bot's folder, never a copy. Repeatable. */
+export const SHOWN_TABLES = `CREATE TABLE IF NOT EXISTS shown_files(id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, chat_id TEXT NOT NULL, path TEXT NOT NULL, name TEXT NOT NULL,
+     kind TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL, caption TEXT, created_at INTEGER NOT NULL);
+   CREATE INDEX IF NOT EXISTS shown_files_bot_chat ON shown_files(bot_id, chat_id, created_at);`
+
 /** Schema step 44: pre-compress memory-save refusal tracking and explicit owner skip/new-session choices.
  *  Stores only piece SHA-256 keys, refusal counts, approximate non-text timing, and choice metadata — never conversation text. Repeatable. */
 export const MEMORY_CHECKPOINT_REFUSAL_TABLES = `CREATE TABLE IF NOT EXISTS memory_checkpoint_refusals(bot_id TEXT NOT NULL, chat_id TEXT NOT NULL, piece_key TEXT NOT NULL, piece_keys TEXT NOT NULL, refusal_count INTEGER NOT NULL DEFAULT 1, state TEXT NOT NULL CHECK(state IN ('counting', 'waiting', 'resolved')), single_message INTEGER NOT NULL DEFAULT 0, piece_at INTEGER, messages_back INTEGER, two_models INTEGER NOT NULL DEFAULT 0, choice TEXT CHECK(choice IS NULL OR choice IN ('skip_piece', 'new_session')), chosen_by TEXT, first_refused_at INTEGER NOT NULL, last_refused_at INTEGER NOT NULL, chosen_at INTEGER, PRIMARY KEY(bot_id, chat_id, piece_key));

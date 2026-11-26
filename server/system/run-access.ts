@@ -51,8 +51,9 @@ export const TOOL_GROUPS: Partial<Record<WebhookCapability, string[]>> = {
   webhooks: ['lilbot_webhook', 'lilbot_webhooks_list']
 }
 
-/** In no group: Oscar's list names the work board, not goals, and no webhook run may add/remove MCP services or manage skills. */
-export const NO_RUN_TOOLS = ['lilbot_goal', 'lilbot_connection', 'lilbot_skill_manage']
+/** In no group: Oscar's list names the work board, not goals, and no webhook run may add/remove MCP services or manage skills.
+ *  `lilbot_show` places an item in Oscar's conversation, which a run's session is not. */
+export const NO_RUN_TOOLS = ['lilbot_goal', 'lilbot_connection', 'lilbot_skill_manage', 'lilbot_show']
 
 const groupsOf = (tool: string, t3Enabled = false) =>
   (Object.keys(TOOL_GROUPS) as WebhookCapability[]).filter(group => (group !== 'coding' || t3Enabled) && TOOL_GROUPS[group]?.includes(tool))

@@ -65,6 +65,7 @@ export const PLAIN_TARGETS: readonly PlainTarget[] = [
   { table: 'goals', column: 'bot_id' },
   { table: 'mcp_connections', column: 'added_by' },
   { table: 'connection_sign_in_cards', column: 'bot_id' },
+  { table: 'shown_files', column: 'bot_id' },
   { table: 'session_grants', column: 'bot_id' },
   { table: 'session_grant_chats', column: 'bot_id' },
   { table: 'notification_bot_prefs', column: 'bot_id' },
