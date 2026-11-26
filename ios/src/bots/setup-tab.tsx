@@ -1,7 +1,7 @@
 /** Bot Details > Setup tab (`R3-05`): primary bot action, identity/instructions/model form (`bots.get` + `bots.update`),
  *  context window card, workspace path, shared Skills section, and Toolsets/Connectors summary. */
 import { useEffect, useState } from 'react'
-import { Platform, Pressable, ScrollView, useWindowDimensions, View } from 'react-native'
+import { Keyboard, Platform, Pressable, ScrollView, useWindowDimensions, View } from 'react-native'
 import type { Bot, BotDetail } from '../../../shared/bot-schema'
 import { primaryCandidates } from '../../../shared/client/bots/bot-menu-rules'
 import { modelKey } from '../../../shared/client/bots/model-choice'
@@ -65,7 +65,9 @@ export function SetupTab({ bot, bottomPadding = 28 }: { bot: Bot; bottomPadding?
   const canChangePrimary = primaryCandidates(bots).length > 0
 
   return (
-    <ScrollView testID="bot-details-setup" scrollIndicatorInsets={{ bottom: keyboardHeight }} contentContainerStyle={{ padding: 16, gap: 20, paddingBottom: sheetScrollBottomPadding(bottomPadding, keyboardHeight) }} {...KEYBOARD_SCROLL_PROPS}>
+    <View style={{ flex: 1 }}>
+      {keyboardHeight > 0 ? <KeyboardDoneRow /> : null}
+      <ScrollView testID="bot-details-setup" scrollIndicatorInsets={{ bottom: keyboardHeight }} contentContainerStyle={{ padding: 16, gap: 20, paddingBottom: sheetScrollBottomPadding(bottomPadding, keyboardHeight) }} {...KEYBOARD_SCROLL_PROPS}>
       {error ? (
         <AppText variant="preview" color={theme.destructive} style={MOBILE_SCALE.details.rowSubtitle}>
           {error}
@@ -151,6 +153,21 @@ export function SetupTab({ bot, bottomPadding = 28 }: { bot: Bot; bottomPadding?
           <AbilitiesCard abilities={detail.abilities} />
         </>
       ) : null}
-    </ScrollView>
+      </ScrollView>
+    </View>
+  )
+}
+
+/** Sits above the scroll area (never under the keyboard), so multiline fields can always be dismissed, even in a 402 pt landscape window. */
+function KeyboardDoneRow() {
+  const theme = useTheme()
+  return (
+    <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 16, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: theme.hairline }}>
+      <Pressable testID="setup-multiline-done" onPress={() => Keyboard.dismiss()} hitSlop={8} accessibilityRole="button" accessibilityLabel="Dismiss keyboard" style={({ pressed }) => ({ minHeight: 32, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 8, backgroundColor: theme.muted, opacity: pressed ? 0.65 : 1 })}>
+        <AppText variant="name" color={theme.foreground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.control} style={MOBILE_SCALE.details.tabLabel}>
+          Done
+        </AppText>
+      </Pressable>
+    </View>
   )
 }

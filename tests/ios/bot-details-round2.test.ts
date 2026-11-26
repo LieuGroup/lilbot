@@ -167,12 +167,13 @@ describe('PR 302 Round 2 fixes (scale, Duo strip, safety, ErrorBoundary, AX5, ke
     expect(modalSrc).toContain('transparent animationType="fade" supportedOrientations={["portrait", "landscape"]}')
 
     const formSrc = read('ios/src/bots/setup-form.tsx')
-    expect(formSrc).toContain('setup-multiline-done')
-    expect(formSrc.match(/inputAccessoryViewID=\{MULTILINE_DONE_ID\}/g)?.length).toBe(2)
-    expect(formSrc).toContain('<InputAccessoryView nativeID={MULTILINE_DONE_ID}')
+    expect(formSrc).toContain('setup-function-input')
 
     const setupSrc = read('ios/src/bots/setup-tab.tsx')
     expect(setupSrc).toContain('<SetupContextCard')
+    expect(setupSrc).toContain('{keyboardHeight > 0 ? <KeyboardDoneRow /> : null}')
+    expect(setupSrc.indexOf('<KeyboardDoneRow />')).toBeLessThan(setupSrc.indexOf('<ScrollView testID="bot-details-setup"'))
+    expect(setupSrc).toContain('testID="setup-multiline-done"')
 
     const runListSrc = read('ios/src/routines/run-list-section.tsx')
     const transcriptSrc = read('ios/src/routines/run-transcript-sheet.tsx')

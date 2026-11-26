@@ -1,7 +1,7 @@
 /** Editable bot identity, instructions, model, and reasoning-effort form inside Bot Details > Setup.
- *  Uses `MOBILE_SCALE.details` inputs and provides an explicit `Done` dismiss button for multiline fields. */
+ *  Uses `MOBILE_SCALE.details` inputs; the Setup tab shows the keyboard `Done` row above the scroll area. */
 import { useState } from 'react'
-import { InputAccessoryView, Keyboard, Platform, Pressable, TextInput, View } from 'react-native'
+import { Keyboard, Platform, Pressable, TextInput, View } from 'react-native'
 import type { BotModel, ModelProvider, ReasoningEffort } from '../../../shared/bot-schema'
 import { modelFromKey, modelGroups, modelKey } from '../../../shared/client/bots/model-choice'
 import { capabilityOf, effortLabel, reasons, sentDiffers } from '../../../shared/client/bots/reasoning-effort'
@@ -13,7 +13,6 @@ import { useTheme } from '../ui/theme'
 import { MOBILE_SCALE, radius } from '../ui/tokens'
 
 const MONO_FONT = Platform.select({ ios: 'Menlo', default: 'monospace' })
-const MULTILINE_DONE_ID = 'setup-multiline-done-bar'
 const EFFORT_LEVELS: readonly (ReasoningEffort | null)[] = [null, 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
 
 export interface SetupFormValues {
@@ -83,7 +82,6 @@ export function SetupForm({
 
   return (
     <SectionGroup title="Identity & model">
-      <MultilineDoneBar onDone={dismissMultiline} />
       <View style={{ padding: 14, gap: 14 }}>
         <View style={{ gap: 6 }}>
           <FieldLabel label="Name" />
@@ -92,12 +90,12 @@ export function SetupForm({
 
         <View style={{ gap: 6 }}>
           <FieldLabel label="Function" />
-          <TextInput testID="setup-function-input" inputAccessoryViewID={MULTILINE_DONE_ID} value={values.function} onChangeText={fn => set({ function: fn })} maxLength={500} multiline placeholder="What this bot is for, in a sentence or two." placeholderTextColor={theme.mutedForeground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.composerInput} style={[field, { minHeight: 70, textAlignVertical: 'top' }]} />
+          <TextInput testID="setup-function-input" value={values.function} onChangeText={fn => set({ function: fn })} maxLength={500} multiline placeholder="What this bot is for, in a sentence or two." placeholderTextColor={theme.mutedForeground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.composerInput} style={[field, { minHeight: 70, textAlignVertical: 'top' }]} />
         </View>
 
         <View style={{ gap: 6 }}>
           <FieldLabel label="Instructions" />
-          <TextInput testID="setup-instructions-input" inputAccessoryViewID={MULTILINE_DONE_ID} value={values.instructions} onChangeText={instructions => set({ instructions })} multiline placeholder="Personality and standing rules the bot follows in every chat." placeholderTextColor={theme.mutedForeground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.composerInput} style={[field, { minHeight: 116, fontFamily: MONO_FONT, fontSize: MOBILE_SCALE.details.code.fontSize, lineHeight: MOBILE_SCALE.details.code.lineHeight, textAlignVertical: 'top' }]} />
+          <TextInput testID="setup-instructions-input" value={values.instructions} onChangeText={instructions => set({ instructions })} multiline placeholder="Personality and standing rules the bot follows in every chat." placeholderTextColor={theme.mutedForeground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.composerInput} style={[field, { minHeight: 116, fontFamily: MONO_FONT, fontSize: MOBILE_SCALE.details.code.fontSize, lineHeight: MOBILE_SCALE.details.code.lineHeight, textAlignVertical: 'top' }]} />
         </View>
 
         <View style={{ gap: 6 }}>
@@ -179,21 +177,5 @@ function FieldLabel({ label }: { label: string }) {
     <AppText variant="preview" color={theme.mutedForeground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.sectionHeader} style={MOBILE_SCALE.details.sectionHeader}>
       {label}
     </AppText>
-  )
-}
-
-/** Keyboard-attached bar so `Done` stays visible above the keyboard even when a short landscape viewport hides the field's label. */
-function MultilineDoneBar({ onDone }: { onDone: () => void }) {
-  const theme = useTheme()
-  return (
-    <InputAccessoryView nativeID={MULTILINE_DONE_ID} backgroundColor={theme.card}>
-      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 12, paddingVertical: 6, borderTopWidth: 1, borderTopColor: theme.hairline }}>
-        <Pressable testID="setup-multiline-done" onPress={onDone} hitSlop={8} accessibilityRole="button" accessibilityLabel="Dismiss keyboard" style={({ pressed }) => ({ minHeight: 32, justifyContent: 'center', paddingHorizontal: 12, borderRadius: radius.sm, backgroundColor: theme.muted, opacity: pressed ? 0.65 : 1 })}>
-          <AppText variant="name" color={theme.foreground} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.control} style={MOBILE_SCALE.details.tabLabel}>
-            Done
-          </AppText>
-        </Pressable>
-      </View>
-    </InputAccessoryView>
   )
 }
