@@ -15,6 +15,7 @@ const CLOCK_SKEW_MS = 5_000
 /** The most rows a message moves past: far more than one busy turn shows. */
 const MOST_PASSED = 500
 type Seen = { event: number; at: number }
+type Words = { event: number; text: string }
 type Stored = { id: string; at: number; position: number; item: string }
 
 /** Every lookup below is an index seek (migration 46: `history_events_type`, `_reply`, `_sent`, `_tool`, and
@@ -60,11 +61,10 @@ function shownAfter(db: Database, bot: string, session: string, row: Stored, nex
   const tool = next && (JSON.parse(next.item) as ChatItem)
   const start = tool?.kind === 'tool' ? started(db, bot, session, tool.toolId) : null
   if (start) return after(wordsBefore(db, bot, session, start)?.event)
-  // The reply of a turn whose end is not journalled yet (the importer read it a moment before): its words are the open
-  // turn's. A reply the engine wrote well before the message was sent is never that one.
-  const open = last(db, bot, session, 'turn.started', Number.MAX_SAFE_INTEGER)
-  if (row.at < sent.at - CLOCK_SKEW_MS || open > sent.event || open <= last(db, bot, session, 'turn.finished', Number.MAX_SAFE_INTEGER)) return false
-  return after(wordsBefore(db, bot, session, Number.MAX_SAFE_INTEGER)?.event)
+  // The reply of a turn whose end is not journalled yet (the importer read it a moment before) is the open turn's when it
+  // begins with that turn's first words; an older reply whose end LilBot never journalled does not, and stays put.
+  const first = wordsBefore(db, bot, session, Number.MAX_SAFE_INTEGER)
+  return !!first && item.text.trimStart().startsWith(first.text.trimStart()) && after(first.event)
 }
 
 const started = (db: Database, bot: string, session: string, toolId: string) => (db.query(STARTED).get(bot, session, toolId) as { rowid: number } | null)?.rowid ?? null
@@ -83,9 +83,11 @@ function sentAt(db: Database, bot: string, session: string, row: HistoryRow): Se
 }
 
 /** The first words shown in the stretch of the journal that ends at `end`, since the turn's last start, tool or end. */
-function wordsBefore(db: Database, bot: string, session: string, end: number): Seen | null {
+function wordsBefore(db: Database, bot: string, session: string, end: number): Words | null {
   const mark = Math.max(...['turn.started', 'tool.started', 'tool.finished', 'turn.finished'].map(type => last(db, bot, session, type, end)))
   return db
-    .query(`SELECT rowid event, at FROM history_events WHERE bot=? AND session=? AND ${TYPE}='text.delta' AND rowid>? AND rowid<? ORDER BY rowid LIMIT 1`)
-    .get(bot, session, mark, end) as Seen | null
+    .query(
+      `SELECT rowid event, json_extract(event,'$.text') text FROM history_events WHERE bot=? AND session=? AND ${TYPE}='text.delta' AND rowid>? AND rowid<? ORDER BY rowid LIMIT 1`
+    )
+    .get(bot, session, mark, end) as Words | null
 }

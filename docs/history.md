@@ -35,12 +35,17 @@ LilBot never summarises. The short version is in `AGENTS.md` under "Conversation
   the journal's event order alone: a reply's first words, a tool's start, a placed message's send. No time from the
   engine's clock is compared with the journal's, so no clock difference or coincidence changes the order; LilBot's own
   rows (shown files, sign-in cards, thread and work lines) carry LilBot's time like the send. A reply whose turn end is
-  not yet journalled counts as the open turn's. Every lookup is an index seek (migration 46 indexes the journal by event
+  not yet journalled counts as the open turn's only when it begins with that turn's first journalled words. Every lookup is an index seek (migration 46 indexes the journal by event
   type, by a finished turn's row, by a sent message's text and by a tool's id), and a message passes at most 500 rows, so
   placing does not grow with the history. Opening a chat reads the newest engine page (since #87: the importer pages
   oldest first, so this is how a reopened chat shows what happened while LilBot was not
   watching); a row already stored is neither placed again nor rewritten unless its item changed. The web and phone apps put a message into the conversation the moment it is sent, marked as
   waiting until the engine starts on it; the engine's echo of it adds nothing.
+- Known limits, both the same as before this rule:
+  - A row an earlier release already stored in the wrong place (a message sent while busy, stored below the reply that
+    showed after it) stays there. Stored rows are never moved, and nothing kept for them shows what really happened.
+  - When LilBot was not running while a hidden reply's first words showed, or missed that turn's end and a later turn has
+    already started, the journal has nothing to compare, so the message keeps the engine's place below that reply.
 
 ## Hidden sessions and compression lineage
 
