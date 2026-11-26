@@ -43,9 +43,11 @@ const words = (text: string) => text.split(/\s+/).filter(Boolean).length
 const short = (text: string) => text.replace(/\s+/g, ' ').trim().slice(0, 140)
 
 const server = await RestartServer.create('lilbot-prompt-behaviour', { LILBOT_PROMPT_OWNERSHIP: '1' })
-/** What the scenarios need: the bot reads and lists its own fixtures and writes in its own folder. */
-const GUARD = { roots: [], programs: ['cat', 'ls', 'find', 'head', 'tail', 'wc', 'grep', 'stat', 'echo', 'pwd', 'date', 'sleep'] }
-const proxy = startWireCaptureProxy(readDevUpstreamBaseUrl(), { workspaces: [join(server.root, 'workspaces')], policy: GUARD })
+/** What the scenarios need: the bot reads and lists its own fixtures and writes in its own folder. A second bot's work
+ *  check reads the working bot's folder, so every temporary bot's folder is allowed. */
+const WORKSPACES = join(server.root, 'workspaces')
+const GUARD = { roots: [WORKSPACES], programs: ['cat', 'ls', 'find', 'head', 'tail', 'wc', 'grep', 'stat', 'echo', 'pwd', 'date', 'sleep'] }
+const proxy = startWireCaptureProxy(readDevUpstreamBaseUrl(), { workspaces: [WORKSPACES], policy: GUARD })
 const stamp = Date.now().toString(36)
 
 async function turn(botId: string, chatId: string, text: string, timeout = 300_000) {
