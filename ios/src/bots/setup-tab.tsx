@@ -29,11 +29,10 @@ import { useBotStore } from './store'
 
 const MONO_FONT = Platform.select({ ios: 'Menlo', default: 'monospace' })
 
-export function SetupTab({ bot, bottomPadding = 28, keyboardHeight, onTypingChange }: { bot: Bot; bottomPadding?: number; keyboardHeight: number; onTypingChange?: (typing: boolean) => void }) {
+export function SetupTab({ bot, bottomPadding = 28, keyboardHeight }: { bot: Bot; bottomPadding?: number; keyboardHeight: number }) {
   const theme = useTheme()
   const form = useRevealAboveKeyboard(keyboardHeight)
   const [saveAction, setSaveAction] = useState<KeyboardBarAction | null>(null)
-  useEffect(() => onTypingChange?.(form.typing), [form.typing, onTypingChange])
   const { fontScale } = useWindowDimensions()
   const stackWide = fontScale >= 1.35
   const connected = useConnectionStore(state => state.connected)
@@ -70,7 +69,7 @@ export function SetupTab({ bot, bottomPadding = 28, keyboardHeight, onTypingChan
 
   return (
     <View style={{ flex: 1 }}>
-      <ScrollView ref={form.scrollRef} testID="bot-details-setup" onScroll={form.onScroll} onLayout={form.onLayout} scrollEventThrottle={32} scrollIndicatorInsets={{ bottom: form.doneBarHeight }} contentContainerStyle={{ padding: 16, gap: 20, paddingBottom: sheetScrollBottomPadding(bottomPadding, form.doneBarHeight ? form.doneBarHeight + 53 : 0) }} {...KEYBOARD_SCROLL_PROPS}>
+      <ScrollView ref={form.scrollRef} testID="bot-details-setup" onScroll={form.onScroll} onLayout={form.onLayout} onContentSizeChange={form.onContentSizeChange} scrollEventThrottle={32} scrollIndicatorInsets={{ bottom: form.doneBarHeight }} contentContainerStyle={{ padding: 16, gap: 20, paddingBottom: sheetScrollBottomPadding(bottomPadding, form.contentBottom) }} {...KEYBOARD_SCROLL_PROPS}>
       {error ? (
         <AppText variant="preview" color={theme.destructive} style={MOBILE_SCALE.details.rowSubtitle}>
           {error}

@@ -11,11 +11,11 @@ import { LibraryTab } from '../library/library-tab'
 import { BotAvatar } from '../ui/avatar'
 import { DYNAMIC_TYPE_CAPS, rosterRowTextLines } from '../ui/dynamic-type'
 import { evaluateTabSwipe } from '../ui/gestures/rules'
-import { collapseHeaderWhileTyping } from '../ui/keyboard-sheet'
 import { AppText } from '../ui/text'
 import { useTheme } from '../ui/theme'
 import { MOBILE_SCALE } from '../ui/tokens'
 import { useKeyboardHeight } from '../ui/use-keyboard-height'
+import { useFoldChromeWhileTyping } from '../ui/use-reveal-above-keyboard'
 import { BOT_DETAILS_TABS, type BotDetailsTab, normalizeBotDetailsTab } from './details-tabs'
 import { SetupTab } from './setup-tab'
 import { useBotStore } from './store'
@@ -31,12 +31,12 @@ export function BotDetailsScreen({
 }) {
   const theme = useTheme()
   const insets = useSafeAreaInsets()
-  const { fontScale, height: windowHeight } = useWindowDimensions()
+  const { fontScale } = useWindowDimensions()
   const keyboardHeight = useKeyboardHeight()
+  const foldChrome = useFoldChromeWhileTyping(keyboardHeight)
   const rowLines = rosterRowTextLines(fontScale)
   const bot = useBotStore(state => state.bots.find(candidate => candidate.id === botId) ?? null)
   const [tab, setTab] = useState<BotDetailsTab>(() => normalizeBotDetailsTab(initialTab))
-  const [setupTyping, setSetupTyping] = useState(false)
   const startXRef = useRef(0)
   const activeIndex = BOT_DETAILS_TABS.findIndex(entry => entry.id === tab)
 
@@ -71,7 +71,7 @@ export function BotDetailsScreen({
   }
 
   const bottomPadding = Math.max(32, insets.bottom + 18)
-  const headerFolded = tab === 'setup' && setupTyping && collapseHeaderWhileTyping(windowHeight, keyboardHeight)
+  const headerFolded = tab === 'setup' && foldChrome
 
   return (
     <View testID="bot-details-screen" style={{ flex: 1, backgroundColor: theme.background }}>
@@ -134,7 +134,7 @@ export function BotDetailsScreen({
         <View style={{ flex: 1 }}>
           {tab === 'activity' ? <ActivityTab bot={bot} bottomPadding={bottomPadding} /> : null}
           {tab === 'library' ? <LibraryTab bot={bot} bottomPadding={bottomPadding} /> : null}
-          {tab === 'setup' ? <SetupTab bot={bot} bottomPadding={bottomPadding} keyboardHeight={keyboardHeight} onTypingChange={setSetupTyping} /> : null}
+          {tab === 'setup' ? <SetupTab bot={bot} bottomPadding={bottomPadding} keyboardHeight={keyboardHeight} /> : null}
         </View>
       </GestureDetector>
     </View>

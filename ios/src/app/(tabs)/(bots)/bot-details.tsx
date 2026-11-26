@@ -19,6 +19,8 @@ import { DYNAMIC_TYPE_CAPS } from '../../../ui/dynamic-type'
 import { MoreHorizontalIcon } from '../../../ui/icon'
 import { AppText } from '../../../ui/text'
 import { useTheme } from '../../../ui/theme'
+import { useKeyboardHeight } from '../../../ui/use-keyboard-height'
+import { useFoldChromeWhileTyping } from '../../../ui/use-reveal-above-keyboard'
 
 export default function BotDetailsRoute() {
   const theme = useTheme()
@@ -30,6 +32,7 @@ export default function BotDetailsRoute() {
   const selectedId = useBotSelection(state => state.selectedId)
   const bots = useBotStore(state => state.bots)
   const openMenu = useBotMenuStore(state => state.openMenu)
+  const foldChrome = useFoldChromeWhileTyping(useKeyboardHeight())
 
   const botId = (typeof params.botId === 'string' && params.botId) || selectedId || ''
   const initialTab = typeof params.tab === 'string' ? params.tab : undefined
@@ -112,7 +115,7 @@ export default function BotDetailsRoute() {
 
   return (
     <>
-      <Stack.Screen options={screenOptions} />
+      <Stack.Screen options={foldChrome && !verticalBarActive ? { ...screenOptions, headerShown: false } : screenOptions} />
       <View
         style={{
           flex: 1,

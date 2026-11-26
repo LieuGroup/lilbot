@@ -6,7 +6,7 @@
 import { type ComponentRef, useCallback, useEffect, useId, useRef, useState } from 'react'
 import { type NativeScrollEvent, type NativeSyntheticEvent, type ScrollView, TextInput, useWindowDimensions, type View } from 'react-native'
 import { create } from 'zustand'
-import { focusedFieldMaxHeight, KEYBOARD_BAR_HEIGHT, revealScrollTarget } from './keyboard-sheet'
+import { collapseHeaderWhileTyping, focusedFieldMaxHeight, KEYBOARD_BAR_HEIGHT, revealScrollTarget } from './keyboard-sheet'
 
 export type RevealTarget = ComponentRef<typeof View>
 
@@ -19,6 +19,14 @@ export interface FormFieldFocus {
 type Measurable = { measureInWindow: (callback: (x: number, y: number, width: number, height: number) => void) => void }
 
 const useFocusedPane = create<{ paneId: string | null }>(() => ({ paneId: null }))
+
+/** True while a form field that uses this helper has focus and the window above the keyboard is short (iPhone and Duo
+ *  landscape): screens fold their own header and navigation bar then, so the field being typed in has room. */
+export function useFoldChromeWhileTyping(keyboardHeight: number): boolean {
+  const { height } = useWindowDimensions()
+  const focused = useFocusedPane(state => state.paneId !== null)
+  return focused && collapseHeaderWhileTyping(height, keyboardHeight)
+}
 
 export function useRevealAboveKeyboard(keyboardHeight: number, options: { barHeight?: number } = {}) {
   const barHeight = options.barHeight ?? KEYBOARD_BAR_HEIGHT
@@ -45,12 +53,17 @@ export function useRevealAboveKeyboard(keyboardHeight: number, options: { barHei
   }, [barHeight, keyboardHeight, paneId, windowHeight])
 
   useEffect(() => {
+    if (keyboardHeight <= 0 && focusedHere) useFocusedPane.setState({ paneId: null })
+  }, [focusedHere, keyboardHeight])
+
+  useEffect(() => {
     if (keyboardHeight <= 0 || !focusedHere) return
     const handle = setTimeout(revealNow, 60)
     return () => clearTimeout(handle)
   }, [focusedHere, keyboardHeight, revealNow])
 
-  /** The scroll area moved or resized (a header collapsed, the window rotated): line the focused field up again. */
+  /** The scroll area moved or resized, or its content grew to make room (a header folded, the window rotated, the
+   *  keyboard padding arrived): line the focused field up again, since an earlier scroll may have been clamped. */
   const onLayout = useCallback(() => {
     if (keyboardHeight > 0) setTimeout(revealNow, 40)
   }, [keyboardHeight, revealNow])
@@ -86,10 +99,13 @@ export function useRevealAboveKeyboard(keyboardHeight: number, options: { barHei
     scrollRef,
     onScroll,
     onLayout,
+    onContentSizeChange: onLayout,
     reveal,
     onFieldFocus,
     onFieldBlur,
     typing,
+    /** Extra bottom padding for the scroll content while typing, so the last field can scroll clear of keyboard and bar. */
+    contentBottom: typing ? Math.round(keyboardHeight + barHeight) : 0,
     /** Bottom offset for the keyboard bar inside the scroll area's container; 0 while this pane has no focused field. */
     doneBarHeight: typing ? Math.max(1, Math.round(keyboardHeight - (windowHeight - frame.bottom))) : 0,
     /** Height cap for a focused multiline field so its caret line stays between the scroll top and the keyboard bar. */

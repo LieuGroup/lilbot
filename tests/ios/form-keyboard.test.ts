@@ -53,6 +53,8 @@ describe('shared form keyboard rules', () => {
     expect(read('ios/src/bots/setup-form.tsx')).toContain("label: saving ? 'Saving…' : 'Save changes'")
     expect(read('ios/src/settings/server-section.tsx')).toContain("label: saving ? 'Saving…' : 'Save and connect'")
     expect(read('ios/src/bots/setup-tab.tsx')).not.toContain('automaticallyAdjustKeyboardInsets')
+    expect(read('ios/src/app/(tabs)/(bots)/bot-details.tsx')).toContain('foldChrome && !verticalBarActive ? { ...screenOptions, headerShown: false }')
+    expect(read('ios/src/app/(tabs)/(settings)/index.tsx')).toContain('headerShown: !foldChrome')
   })
 })
 

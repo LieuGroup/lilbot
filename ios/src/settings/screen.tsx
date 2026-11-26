@@ -42,11 +42,12 @@ export function SettingsScreen({
         testID="settings-screen"
         onScroll={form.onScroll}
         onLayout={form.onLayout}
+        onContentSizeChange={form.onContentSizeChange}
         scrollEventThrottle={32}
         style={{ flex: 1, backgroundColor: theme.background }}
         contentInsetAdjustmentBehavior="automatic"
         scrollIndicatorInsets={{ bottom: form.doneBarHeight }}
-        contentContainerStyle={{ padding: 16, gap: 20, paddingBottom: sheetScrollBottomPadding(hasServer ? 116 : 40, form.doneBarHeight ? form.doneBarHeight + 53 : 0) }}
+        contentContainerStyle={{ padding: 16, gap: 20, paddingBottom: sheetScrollBottomPadding(hasServer ? 116 : 40, form.contentBottom) }}
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
       >

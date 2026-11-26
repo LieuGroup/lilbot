@@ -42,6 +42,7 @@ export function RenameDeviceModal({
           testID="rename-device-scroll"
           onScroll={form.onScroll}
           onLayout={form.onLayout}
+          onContentSizeChange={form.onContentSizeChange}
           scrollEventThrottle={32}
           scrollIndicatorInsets={{ bottom: form.doneBarHeight }}
           contentContainerStyle={{
@@ -49,7 +50,7 @@ export function RenameDeviceModal({
             justifyContent: 'center',
             paddingHorizontal: 20,
             paddingTop: Math.max(24, insets.top + 12),
-            paddingBottom: sheetScrollBottomPadding(Math.max(24, insets.bottom + 12), form.doneBarHeight ? form.doneBarHeight + 53 : 0)
+            paddingBottom: sheetScrollBottomPadding(Math.max(24, insets.bottom + 12), form.contentBottom)
           }}
           {...KEYBOARD_SCROLL_PROPS}
         >
