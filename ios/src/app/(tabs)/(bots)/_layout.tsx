@@ -16,6 +16,7 @@ export default function BotsStackLayout() {
     >
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="chat" options={{ headerShown: true, gestureEnabled: true }} />
+      <Stack.Screen name="bot-details" options={{ headerShown: true, gestureEnabled: true }} />
     </Stack>
   )
 }

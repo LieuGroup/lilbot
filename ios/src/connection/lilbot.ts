@@ -29,6 +29,14 @@ export function serverAuthHeadersFor(targetUrl: string | null | undefined): Reco
 let socket: LilBotSocket | null = null
 let socketKey = ''
 
+/** Stops and discards the live socket immediately (used on Disconnect so the old token cannot keep reconnecting). */
+export function stopSocket() {
+  if (!socket) return
+  socket.stop()
+  socket = null
+  socketKey = ''
+}
+
 /** The live socket, created on first use from the saved settings. Null until a server is set. */
 export function ensureSocket(): LilBotSocket | null {
   const { settings } = useConnectionStore.getState()

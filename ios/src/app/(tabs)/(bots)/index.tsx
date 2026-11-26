@@ -1,9 +1,11 @@
 /** Bots tab root screen: hosts the adaptive DuoShell inside the native Bots stack,
- *  wired to the Tasks dock, inline work/thread lines, and split-mode thread inspector pane. */
+ *  wired to the Tasks dock, inline work/thread lines, split-mode thread inspector, and Bot Details inspector. */
 import { useRouter } from 'expo-router'
 import { useCallback } from 'react'
 import type { Bot } from '../../../../../shared/bot-schema'
+import { BotDetailsScreen } from '../../../bots/details-screen'
 import { computeShellLayout } from '../../../duo/layout'
+import { useBotSelection } from '../../../duo/selection'
 import { DuoShell } from '../../../duo/shell'
 import { useLiveSurface } from '../../../duo/use-surface'
 import { closeThreadView, useActiveThread } from '../../../threads/store'
@@ -17,6 +19,7 @@ export default function BotsScreen() {
   const { surface, metrics } = useLiveSurface()
   const layout = computeShellLayout(surface, metrics)
   const activeThread = useActiveThread()
+  const selectedId = useBotSelection(state => state.selectedId)
   const openWorkItem = useCallback(
     (itemId: string) => {
       if (layout.splitMode) router.navigate({ pathname: '/(tabs)/(work)', params: { itemId } })
@@ -24,15 +27,21 @@ export default function BotsScreen() {
     },
     [layout.splitMode, router]
   )
-  const renderInspector = useCallback((close: () => void) => <ThreadInspectorPane onClose={close} />, [])
+  const renderInspector = useCallback(
+    (close: () => void) => {
+      if (activeThread !== null) return <ThreadInspectorPane onClose={close} />
+      return selectedId ? <BotDetailsScreen botId={selectedId} compact /> : null
+    },
+    [activeThread, selectedId]
+  )
   const renderChatDock = useCallback((bot: Bot) => <TaskDockSlot botId={bot.id} />, [])
   const renderChatToolItem = useCallback((bot: Bot) => withWorkToolRenderer(openWorkItem, createThreadToolRenderer(bot.id)), [openWorkItem])
 
   return (
     <DuoShell
-      inspectorOpen={activeThread !== null}
+      inspectorOpen={activeThread !== null ? true : undefined}
       onCloseInspector={closeThreadView}
-      renderInspector={renderInspector}
+      renderInspector={activeThread !== null || selectedId ? renderInspector : undefined}
       renderChatDock={renderChatDock}
       renderChatToolItem={renderChatToolItem}
     />

@@ -126,6 +126,29 @@ export function selectionScrollOffset(itemY: number, itemHeight: number, viewpor
   return Math.max(0, Math.round(target))
 }
 
+/** Height of the keyboard action bar pinned above the keyboard (44 pt button, 4 pt padding each side, hairline). */
+export const KEYBOARD_BAR_HEIGHT = 53
+
+/** Scroll offset that lifts a focused field or card's bottom just above the keyboard bar, or null when it already shows.
+ *  Coordinates are window points; in iPhone landscape the strip above the keyboard is shorter than a card, so the bottom wins. */
+export function revealScrollTarget(input: { offset: number; targetY: number; targetHeight: number; visibleBottom: number; visibleTop?: number }): number | null {
+  const overflow = input.targetY + input.targetHeight + 8 - input.visibleBottom
+  if (overflow > 0) return Math.round(input.offset + overflow)
+  const hiddenAbove = (input.visibleTop ?? Number.NEGATIVE_INFINITY) + 8 - input.targetY
+  return hiddenAbove > 0 ? Math.max(0, Math.round(input.offset - hiddenAbove)) : null
+}
+
+/** Tallest a multiline field may grow while typing so its caret line stays between the scroll area's top and the keyboard bar. */
+export function focusedFieldMaxHeight(input: { scrollTop: number; visibleBottom: number }): number {
+  return Math.max(48, Math.round(input.visibleBottom - Math.max(0, input.scrollTop) - 16))
+}
+
+/** While typing, a screen's own header (tabs, identity) folds away when the window left above the keyboard is short:
+ *  iPhone landscape, folded Duo and unfolded Duo landscape, so the field being typed in has room above the keyboard bar. */
+export function collapseHeaderWhileTyping(windowHeight: number, keyboardHeight: number): boolean {
+  return keyboardHeight > 0 && windowHeight - keyboardHeight < 420
+}
+
 /** Tapping outside a popover field drops the keyboard first while search is active, and closes once down. */
 export function shouldBackdropDismissKeyboard(keyboardHeight: number, searchFocused: boolean): boolean {
   return keyboardHeight > 0 || searchFocused

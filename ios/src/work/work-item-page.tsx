@@ -20,7 +20,7 @@ import { WorkKeyboardDoneBar } from './work-controls'
 import { WorkItemBanner } from './work-item-banner'
 import { WorkCheckCard, WorkFooterLinks } from './work-item-sections'
 import { WorkRow } from './work-row'
-import { type RevealTarget, useRevealAboveKeyboard } from './use-reveal-above-keyboard'
+import { type RevealTarget, useRevealAboveKeyboard } from '../ui/use-reveal-above-keyboard'
 
 export interface WorkItemPageProps {
   itemId: string
