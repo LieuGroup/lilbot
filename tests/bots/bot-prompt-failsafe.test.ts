@@ -14,7 +14,6 @@ import { ScriptedEngine, type ScriptedEngineOptions } from '../../server/engines
 import { MemoryService } from '../../server/memory/memory-service'
 import { MemoryStore } from '../../server/memory/memory-store'
 import { SkillsService } from '../../server/skills/skills-service'
-import { systemNote } from '../../server/system/system-note-facts'
 
 const dirs: string[] = []
 const tempDir = () => {
@@ -32,8 +31,6 @@ function harness(options: {
   promptTuning?: string
   onConfigurePrompt?: ScriptedEngineOptions['onConfigurePrompt']
   hasEngineIdentityText?: (instructions: string) => boolean
-  /** Use the note exactly as the app wires it into the cached prompt (`systemNote(facts, false)`). */
-  appNote?: boolean
 }) {
   const root = tempDir()
   const dataDir = join(root, 'data')
@@ -51,8 +48,7 @@ function harness(options: {
   const engines = asEngineRegistry(engine)
   const note = (bot: { id: string; name: string; model: { provider: string; model: string } | null }) =>
     buildNote({ bot: { id: bot.id, name: bot.name, workspace: workspaces.pathFor(bot.id), model: bot.model } })
-  const appNote = systemNote({ workspaces, t3Enabled: false }, false)
-  const prompts = createPromptController({ dataDir, engines, workspaces, skills, store, systemNote: options.appNote ? appNote : note, enabled: options.enabled })
+  const prompts = createPromptController({ dataDir, engines, workspaces, skills, store, enabled: options.enabled })
   const bots = new BotService(engines, store, prefs, workspaces, memory, {
     skills,
     systemNote: note,
@@ -157,7 +153,7 @@ describe('BotService prompt ownership and fail-safe behavior', () => {
   })
 
   test('the cached prompt leaves the model out, so a model switch never makes it wrong', async () => {
-    const { bots, prompts } = harness({ enabled: true, appNote: true })
+    const { bots, prompts } = harness({ enabled: true })
     const bot = await bots.createBot({ name: 'Switcher', function: 'Test', instructions: 'Hi.' })
     const text = readFileSync(prompts.source.pathFor(bot.id), 'utf8')
     expect(text).toContain('lilbot_about names your current model.')

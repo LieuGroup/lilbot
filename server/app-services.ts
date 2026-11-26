@@ -110,7 +110,7 @@ export function createAppServices(engineOrRegistry: BotEngine | EngineRegistry, 
   const t3Grants = new T3Grants(join(DATA_DIR, 't3-grant.json'), () => publish({ event: 'connections.changed' }))
   const facts = { store, workspaces, computers, t3: () => t3Grants.status(), t3Enabled, commit: COMMIT, dataDir: DATA_DIR }
   const note = systemNote(facts)
-  const prompts = createPromptController({ dataDir: DATA_DIR, engines, workspaces, skills, store, systemNote: systemNote(facts, false), enabled: settings.PROMPT_OWNERSHIP })
+  const prompts = createPromptController({ dataDir: DATA_DIR, engines, workspaces, skills, store, t3Enabled, enabled: settings.PROMPT_OWNERSHIP })
   const history = new HistoryService(
     new HistoryStore(database, () => botsChanged()),
     engines,

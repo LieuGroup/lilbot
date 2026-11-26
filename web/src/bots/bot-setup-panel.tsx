@@ -46,6 +46,37 @@ function AbilitySummary({ abilities }: { abilities: Ability[] }) {
   )
 }
 
+/** The bot's own fields in Setup, with the line under Instructions when LilBot's prompt is not in use or the text needs a look. */
+export function SetupForm({ bot, onKept, onSaved }: { bot: BotDetail; onKept: (message: string | null) => void; onSaved: (bot: BotDetail) => void }) {
+  return (
+    <BotForm
+      key={`${bot.id}:${bot.name}:${modelKey(bot.model)}:${bot.reasoningEffort}`}
+      initial={{ name: bot.name, function: bot.function, instructions: bot.instructions, model: bot.model, reasoningEffort: bot.reasoningEffort }}
+      sentEffort={bot.effectiveReasoningEffort}
+      instructionsNote={instructionsNote(bot)}
+      context={<SetupContextCard botId={bot.id} fallback={bot.context} />}
+      submitLabel="Save changes"
+      onSubmit={async values => {
+        onKept(null)
+        const input = {
+          botId: bot.id,
+          name: values.name,
+          function: values.function,
+          instructions: values.instructions,
+          reasoningEffort: values.reasoningEffort,
+          ...(values.model ? { model: values.model } : {})
+        }
+        const updated = await lilbot.call('bots.update', input).catch(async failure => {
+          if (!(failure instanceof LilBotError && failure.code === 'confirm_required')) throw failure
+          onKept(failure.message)
+          return lilbot.call('bots.get', { botId: bot.id })
+        })
+        onSaved(updated)
+      }}
+    />
+  )
+}
+
 /** The Setup panel beside the chat: what the bot is, how it behaves, and what it can use. */
 export function BotSetupPanel({ botId }: { botId: string }) {
   const connected = useBotStore(state => state.connected)
@@ -83,28 +114,10 @@ export function BotSetupPanel({ botId }: { botId: string }) {
         <>
           <PrimaryBotAction botId={botId} />
           {kept?.botId === botId && <Notice tone="ok">{kept.message}</Notice>}
-          <BotForm
-            key={`${bot.id}:${bot.name}:${modelKey(bot.model)}:${bot.reasoningEffort}`}
-            initial={{ name: bot.name, function: bot.function, instructions: bot.instructions, model: bot.model, reasoningEffort: bot.reasoningEffort }}
-            sentEffort={bot.effectiveReasoningEffort}
-            instructionsNote={instructionsNote(bot)}
-            context={<SetupContextCard botId={botId} fallback={bot.context} />}
-            submitLabel="Save changes"
-            onSubmit={async values => {
-              setKept(null)
-              const input = {
-                botId,
-                name: values.name,
-                function: values.function,
-                instructions: values.instructions,
-                reasoningEffort: values.reasoningEffort,
-                ...(values.model ? { model: values.model } : {})
-              }
-              const updated = await lilbot.call('bots.update', input).catch(async failure => {
-                if (!(failure instanceof LilBotError && failure.code === 'confirm_required')) throw failure
-                setKept({ botId, message: failure.message })
-                return lilbot.call('bots.get', { botId })
-              })
+          <SetupForm
+            bot={bot}
+            onKept={message => setKept(message === null ? null : { botId, message })}
+            onSaved={updated => {
               setBot(updated)
               upsert(updated)
             }}
