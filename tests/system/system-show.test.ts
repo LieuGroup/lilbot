@@ -114,7 +114,7 @@ test('a session Oscar does not see (a routine run) cannot show; the call is refu
   const [run] = f.routineStore.claimDue(Date.now() + 1_000_000)
   f.routineStore.attach(run.id, 'run-chat', Date.now())
   f.from.set('b1', 'run-chat')
-  expect((await show(f)).error).toContain('works only in your conversation with Oscar')
+  expect((await show(f)).error).toContain('works only in your conversation with the owner')
 })
 
 test('the call is matched to the conversation that started it; one nobody reported is refused (#174)', async () => {

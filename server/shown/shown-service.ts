@@ -13,15 +13,15 @@ import type { CallingChats } from '../threads/calling-chats'
 import { type ShownRow, ShownStore } from './shown-store'
 
 /** Off by default until web and iPhone both draw every kind; the last #317 pull request turns it on. */
-export const isShowEnabled = (env: Record<string, string | undefined> = process.env) => env.LILBOT_SHOW_ENABLED === '1'
+const isShowEnabled = (env: Record<string, string | undefined> = process.env) => env.LILBOT_SHOW_ENABLED === '1'
 
 const WORD: Record<ShownKind, string> = { image: 'image', video: 'video', page: 'HTML page' }
 const mb = (bytes: number) => `${Math.ceil((bytes / 1024 / 1024) * 10) / 10} MB`
 const refuse = (code: string, text: string) => new LilBotError(code, text)
 const KEEP = 'Say it in words instead, or give the file with lilbot_give_file.'
 
-export const shownUrl = (botId: string, id: string) => `/api/shown/${encodeURIComponent(botId)}/${encodeURIComponent(id)}`
-export const shownFile = (row: ShownRow): ShownFile => ({
+const shownUrl = (botId: string, id: string) => `/api/shown/${encodeURIComponent(botId)}/${encodeURIComponent(id)}`
+const shownFile = (row: ShownRow): ShownFile => ({
   id: row.id,
   name: row.name,
   kind: row.kind,
@@ -47,7 +47,7 @@ export class ShownService {
   async show(botId: string, input: z.infer<typeof ShowInput>, knownChatId?: string) {
     const { store, root, exists, calls, hiddenChat, history, publish } = this.deps
     const chatId = knownChatId ?? (await calls.find(botId, 'lilbot_show', input.requestId))
-    if (hiddenChat(botId, chatId)) throw refuse('show_hidden', `lilbot_show works only in your conversation with Oscar; he does not see this session. ${KEEP}`)
+    if (hiddenChat(botId, chatId)) throw refuse('show_hidden', `lilbot_show works only in your conversation with the owner; they do not see this session. ${KEEP}`)
     const type = shownTypeOf(input.path)
     if (!type) throw refuse('show_type', `LilBot shows PNG, JPEG, GIF and WebP images, MP4 and MOV videos, and HTML pages. ${KEEP}`)
     const file = await openWorkspaceFile(root(botId), input.path).catch(error => {
