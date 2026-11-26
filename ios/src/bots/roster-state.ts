@@ -39,7 +39,7 @@ export interface RosterSwipeSpec {
 }
 
 export interface RosterMenuActionSpec {
-  id: 'pin' | 'move-section' | 'toggle-unread' | 'name-and-avatar' | 'primary' | 'hide' | 'delete'
+  id: 'details' | 'pin' | 'move-section' | 'toggle-unread' | 'name-and-avatar' | 'primary' | 'hide' | 'delete'
   label: string
   destructive?: boolean
   disabled?: boolean

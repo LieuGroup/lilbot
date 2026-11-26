@@ -11,11 +11,13 @@ export type BotDialogState =
 interface BotMenuStore {
   newBotOpen: boolean
   menuBotId: string | null
+  /** The menu opened from a strip with no room for the avatar, so it lists "Bot details" first. */
+  menuWithDetails: boolean
   dialog: BotDialogState | null
   error: string
   openNewBot: () => void
   closeNewBot: () => void
-  openMenu: (botId: string) => void
+  openMenu: (botId: string, options?: { withDetails?: boolean }) => void
   closeMenu: () => void
   openDialog: (dialog: BotDialogState) => void
   closeDialog: () => void
@@ -26,14 +28,15 @@ interface BotMenuStore {
 export const useBotMenuStore = create<BotMenuStore>(set => ({
   newBotOpen: false,
   menuBotId: null,
+  menuWithDetails: false,
   dialog: null,
   error: '',
-  openNewBot: () => set({ newBotOpen: true, menuBotId: null, dialog: null }),
+  openNewBot: () => set({ newBotOpen: true, menuBotId: null, menuWithDetails: false, dialog: null }),
   closeNewBot: () => set({ newBotOpen: false }),
-  openMenu: botId => set({ menuBotId: botId, dialog: null, error: '' }),
-  closeMenu: () => set({ menuBotId: null }),
-  openDialog: dialog => set({ menuBotId: null, dialog }),
+  openMenu: (botId, options) => set({ menuBotId: botId, menuWithDetails: options?.withDetails ?? false, dialog: null, error: '' }),
+  closeMenu: () => set({ menuBotId: null, menuWithDetails: false }),
+  openDialog: dialog => set({ menuBotId: null, menuWithDetails: false, dialog }),
   closeDialog: () => set({ dialog: null }),
-  closeBotOverlays: () => set({ menuBotId: null, dialog: null }),
+  closeBotOverlays: () => set({ menuBotId: null, menuWithDetails: false, dialog: null }),
   setError: error => set({ error })
 }))

@@ -1,4 +1,5 @@
 /** Long-press / VoiceOver Bot menu sheet and dialog host, mirroring `web/src/bots/bot-menu.tsx` 1:1. */
+import { useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef } from 'react'
 import { Keyboard, Modal, Pressable, StyleSheet, View } from 'react-native'
 import { isUnread, primaryCandidates } from '../../../shared/client/bots/bot-menu-rules'
@@ -17,14 +18,19 @@ import { useBotStore } from './store'
 export function BotMenuHost() {
   const theme = useTheme()
   const bots = useBotStore(state => state.bots)
+  const router = useRouter()
   const menuBotId = useBotMenuStore(state => state.menuBotId)
+  const menuWithDetails = useBotMenuStore(state => state.menuWithDetails)
   const closeMenu = useBotMenuStore(state => state.closeMenu)
   const openDialog = useBotMenuStore(state => state.openDialog)
   const pendingDialogRef = useRef<BotDialogState | null>(null)
+  const pendingDetailsRef = useRef<string | null>(null)
 
   const menuBot = bots.find(bot => bot.id === menuBotId) ?? null
   const candidates = primaryCandidates(bots)
-  const actions = menuBot ? rosterMenuActions(menuBot, candidates.length > 0) : []
+  const actions: RosterMenuActionSpec[] = menuBot
+    ? [...(menuWithDetails ? [{ id: 'details' as const, label: 'Bot details' }] : []), ...rosterMenuActions(menuBot, candidates.length > 0)]
+    : []
 
   useEffect(() => {
     if (menuBot) Keyboard.dismiss()
@@ -32,6 +38,7 @@ export function BotMenuHost() {
 
   const dismissMenu = useCallback(() => {
     pendingDialogRef.current = null
+    pendingDetailsRef.current = null
     closeMenu()
   }, [closeMenu])
 
@@ -46,13 +53,20 @@ export function BotMenuHost() {
 
   const handleMenuDismiss = useCallback(() => {
     const next = pendingDialogRef.current
+    const detailsBotId = pendingDetailsRef.current
     pendingDialogRef.current = null
+    pendingDetailsRef.current = null
     if (next) openDialog(next)
-  }, [openDialog])
+    if (detailsBotId) router.push({ pathname: '/(tabs)/(bots)/bot-details', params: { botId: detailsBotId } })
+  }, [openDialog, router])
 
   const run = (action: RosterMenuActionSpec) => {
     if (!menuBot || action.disabled) return
-    if (action.id === 'pin') {
+    if (action.id === 'details') {
+      pendingDialogRef.current = null
+      pendingDetailsRef.current = menuBot.id
+      closeMenu()
+    } else if (action.id === 'pin') {
       dismissMenu()
       void setBotPrefs({ botId: menuBot.id, pinned: !menuBot.prefs.pinned })
     } else if (action.id === 'move-section') {
