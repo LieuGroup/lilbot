@@ -48,12 +48,13 @@ export function transition(item: StoredItem, move: Move, done: string, evidenceC
   if (status === 'open') throw new LilBotError('work_status', 'An item cannot go back to open.')
   if ((status === 'working' || status === 'done') && !item.kind) throw new LilBotError('work_no_kind', `Say what kind of work this is first (kind: ${KINDS}).`)
   if ((status === 'working' || status === 'done') && checked && !done)
-    throw new LilBotError('work_no_definition', 'Write the "done" definition (done) first: how you and Oscar will know this is done.')
+    throw new LilBotError('work_no_definition', 'Write the "done" definition (done) first: how you and the owner will know this is done.')
   if (status === 'done' && checked && evidenceCount === 0)
     throw new LilBotError('work_no_evidence', 'An item is done only with evidence of the real result: read it and add an evidence entry first.')
   if ((status === 'done' || status === 'failed') && !move.result) throw new LilBotError('work_no_result', `Say what came of it (result) when the item is ${status}.`)
-  if (status === 'needs_oscar' && !move.question) throw new LilBotError('work_no_question', 'Ask Oscar exactly one question (question).')
-  if (status === 'needs_oscar' && item.status === 'needs_oscar') throw new LilBotError('work_asked', 'Oscar has not answered the question already asked. One question at a time.')
+  if (status === 'needs_oscar' && !move.question) throw new LilBotError('work_no_question', 'Ask the owner exactly one question (question).')
+  if (status === 'needs_oscar' && item.status === 'needs_oscar')
+    throw new LilBotError('work_asked', 'The owner has not answered the question already asked. One question at a time.')
   if (status === 'dropped' && !move.reason) throw new LilBotError('work_no_reason', 'Say why the item is dropped (reason). Nothing is deleted.')
   const change: ItemChange = { status }
   if (status === 'working' && item.startedAt === null) change.startedAt = now

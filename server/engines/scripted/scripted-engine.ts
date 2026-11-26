@@ -7,6 +7,8 @@ import type {
   ChatOptions,
   MemoryConnection,
   PreCompressHandler,
+  PromptApplyResult,
+  PromptSettings,
   ReviewOptions,
   RoutineOptions,
   RuntimeIdentity,
@@ -15,17 +17,11 @@ import type {
   ToolCallSeen
 } from '../bot-engine'
 import type { McpConnection } from '../mcp-connection'
-import { conversationSource, newSession, openScriptedChat, type ResumeOutcome, runScriptedTurn, type ScriptedSession, type ScriptedTurnHandler } from './scripted-chat'
+import { conversationSource, newSession, openScriptedChat, type ResumeOutcome, type ScriptedSession, type ScriptedTurnHandler } from './scripted-chat'
 import { attachSessionMcp, callMcpServer, findMcpConnection } from './scripted-mcp'
-import { DEFAULT_SCRIPTED_MODELS, runSessionPreCompress, ScriptedRoutineLedger, type ScriptedRuntime } from './scripted-routines'
+import { DEFAULT_SCRIPTED_MODELS, runScriptedReview, runSessionPreCompress, type ScriptedEngineOptions, ScriptedRoutineLedger, type ScriptedRuntime } from './scripted-routines'
 
-export interface ScriptedEngineOptions {
-  id?: string
-  onTurn?: ScriptedTurnHandler
-  mcpToolName?: (server: string, tool: string) => string
-  models?: ModelProvider[]
-}
-
+export type { ScriptedEngineOptions }
 export class ScriptedEngine implements BotEngine {
   readonly id: string
   readonly supportedPermissionModes = ['full-access'] as const
@@ -38,6 +34,9 @@ export class ScriptedEngine implements BotEngine {
   private botListeners = new Set<() => void>()
   private nextChat = 0
   private onTurn?: ScriptedTurnHandler
+  private onConfigurePrompt?: ScriptedEngineOptions['onConfigurePrompt']
+  readonly promptTuning?: string
+  readonly hasEngineIdentityText?: (instructions: string) => boolean
   private preCompress?: PreCompressHandler
   private models: ModelProvider[]
   readonly mcpToolName: (server: string, tool: string) => string
@@ -46,11 +45,14 @@ export class ScriptedEngine implements BotEngine {
   constructor(options: ScriptedEngineOptions = {}) {
     this.id = options.id ?? 'scripted'
     this.onTurn = options.onTurn
+    this.onConfigurePrompt = options.onConfigurePrompt
+    this.promptTuning = options.promptTuning
+    this.hasEngineIdentityText = options.hasEngineIdentityText
     this.models = options.models ?? DEFAULT_SCRIPTED_MODELS
     this.mcpToolName = options.mcpToolName ?? ((_server, tool) => tool)
   }
 
-  setTurnHandler = (handler: ScriptedTurnHandler | undefined) => {
+  setTurnHandler(handler: ScriptedTurnHandler | undefined) {
     this.onTurn = handler
   }
   runtimeOf = (nativeId: string) => this.runtimes.get(nativeId)
@@ -96,6 +98,10 @@ export class ScriptedEngine implements BotEngine {
   async configureSkills(engineBotId: string, settings: SkillSettings) {
     this.requireRuntime(engineBotId).skills = { ...settings, disabled: [...settings.disabled], names: [...settings.names] }
   }
+  async configurePrompt(engineBotId: string, settings: PromptSettings): Promise<PromptApplyResult> {
+    this.requireRuntime(engineBotId).prompt = { ...settings }
+    return this.onConfigurePrompt ? this.onConfigurePrompt(engineBotId, settings) : { active: settings.enabled }
+  }
   async validateModel(model: BotModel) {
     if (!this.models.find(p => p.provider === model.provider)?.models.includes(model.model))
       throw new LilBotError('invalid_model', `Unknown model: ${model.provider}::${model.model}`)
@@ -111,9 +117,18 @@ export class ScriptedEngine implements BotEngine {
   }
   async openChat(engineBotId: string, chatId: string | null, options: ChatOptions, onEvent: (event: ChatEvent) => void) {
     this.requireRuntime(engineBotId)
-    const mk = (n: string, w: string, h: boolean) => this.createSession(n, w, h)
-    const mcp = (n: string, c: string, t: string, a?: Record<string, unknown>, s?: string) => this.callMcp(n, c, t, a, s)
-    return openScriptedChat(this.sessions, mk, mcp, () => this.onTurn, engineBotId, chatId, options, onEvent, this.client.signal, this.resumeOutcomes)
+    return openScriptedChat(
+      this.sessions,
+      (n, w, h) => this.createSession(n, w, h),
+      (n, c, t, a, s) => this.callMcp(n, c, t, a, s),
+      () => this.onTurn,
+      engineBotId,
+      chatId,
+      options,
+      onEvent,
+      this.client.signal,
+      this.resumeOutcomes
+    )
   }
   async connectMemory(engineBotId: string, connection: MemoryConnection) {
     const runtime = this.requireRuntime(engineBotId)
@@ -122,26 +137,14 @@ export class ScriptedEngine implements BotEngine {
     return { aboutUser: [], ownNotes: [] }
   }
   refreshMemory = async () => []
-  setPreCompressCheckpoint = (handler: PreCompressHandler) => {
+  setPreCompressCheckpoint(handler: PreCompressHandler) {
     this.preCompress = handler
   }
   triggerPreCompress = (botId: string, chatId: string) => runSessionPreCompress(this.sessions.get(chatId), this.preCompress, botId, chatId)
   async reviewMemory(engineBotId: string, prompt: string, options: ReviewOptions) {
     this.requireRuntime(engineBotId)
-    if (!options.sessionMcp?.length) throw new LilBotError('session_mcp_unavailable', 'Limited sessions require a session-bound MCP connection.')
     const session = this.createSession(engineBotId, options.workspace ?? '', true)
-    await attachSessionMcp(session, options.sessionMcp, true, options.assertSessionMcpReady)
-    options.onChat(session.chatId)
-    if (!this.onTurn) return
-    const result = await runScriptedTurn(
-      session,
-      { text: prompt, hidden: true, model: options.model },
-      (t, a, s) => this.callMcp(engineBotId, session.chatId, t, a, s),
-      this.onTurn
-    )
-    if (result.status === 'completed') return
-    if (result.errorCode === 'review_refused') throw new LilBotError('review_refused', result.text || 'The model refused to review this part of the conversation.')
-    throw new LilBotError('review_failed', `The memory review did not finish (${result.status}).`)
+    await runScriptedReview(session, prompt, options, (t, a, s) => this.callMcp(engineBotId, session.chatId, t, a, s), this.onTurn)
   }
   async runRoutine(engineBotId: string, prompt: string, options: RoutineOptions & ChatOptions) {
     this.requireRuntime(engineBotId)
@@ -174,10 +177,8 @@ export class ScriptedEngine implements BotEngine {
     s.controller?.abort()
     return true
   }
-  async steerRun(engineBotId: string, chatId: string) {
-    const s = this.sessions.get(chatId)
-    return s && s.nativeId === engineBotId && s.running ? ('steered' as const) : ('not_running' as const)
-  }
+  steerRun = async (engineBotId: string, chatId: string) =>
+    this.sessions.get(chatId)?.nativeId === engineBotId && this.sessions.get(chatId)?.running ? ('steered' as const) : ('not_running' as const)
   private createSession(nativeId: string, workspace: string, hidden: boolean): ScriptedSession {
     const chatId = `${this.id}-chat-${++this.nextChat}`
     const session = newSession(chatId, nativeId, workspace, hidden, Date.now() + this.nextChat)

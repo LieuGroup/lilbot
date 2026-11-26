@@ -104,7 +104,7 @@ describe('collapsed Tasks pill 1-tap Answer model & Duo/Dynamic Type guards', ()
     const checkWorker = makeThread('chk1', { worker: true, status: 'finished', endedAt: T0 })
     const checkWork = makeWork('chk1', {
       question: null,
-      check: { round: 1, by: { kind: 'oscar', id: null, name: 'Oscar' }, state: 'checking', text: null, note: null, sameBot: false, model: null, at: T0, settledAt: null }
+      check: { round: 1, by: { kind: 'oscar', id: null, name: 'the owner' }, state: 'checking', text: null, note: null, sameBot: false, model: null, at: T0, settledAt: null }
     })
     expect(buildDockPillModel(dockItems([checkWorker], atlas.id, { chk1: checkWork }, {}, T0 + MIN), atlas.id)).toMatchObject({
       answerTarget: null,

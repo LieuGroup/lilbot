@@ -57,8 +57,8 @@ export class GoalService {
     if (!input.goalId) return this.propose(caller, input)
     const goal = this.goal(input.goalId)
     if (goal.botId !== caller.id) throw new LilBotError('goal_forbidden', 'Only the bot a goal belongs to proposes for it.')
-    if (isFinalGoal(goal.state)) throw new LilBotError('goal_final', `This goal is ${goal.state}. Oscar gives new goals himself.`)
-    if (input.text) throw new LilBotError('goal_text', "A goal's words are Oscar's: propose a new agreement or target instead.")
+    if (isFinalGoal(goal.state)) throw new LilBotError('goal_final', `This goal is ${goal.state}. Only the owner gives new goals.`)
+    if (input.text) throw new LilBotError('goal_text', "A goal's words are the owner's: propose a new agreement or target instead.")
     if (this.store.logged(goal.id, input.requestId)) return this.view(goal.id)
     const event = this.store.db.transaction(() => (goal.state === 'proposed' ? this.revise(goal, input) : this.change(goal, input)))()
     this.settle(goal.waitsForOscar, this.goal(goal.id), event)
@@ -69,10 +69,10 @@ export class GoalService {
   private async propose(caller: { id: string; name: string }, input: GoalInput) {
     const prior = this.store.byRequest(caller.id, input.requestId)
     if (prior) return this.view(prior.id)
-    if (!input.text || !input.agreement || !input.target) throw new LilBotError('goal_incomplete', "A new goal needs Oscar's words (text), the agreement and the target.")
+    if (!input.text || !input.agreement || !input.target) throw new LilBotError('goal_incomplete', "A new goal needs the owner's words (text), the agreement and the target.")
     const chatId = await this.work.host.callingChat(caller.id, 'lilbot_goal', input.requestId)
     if (this.work.checks.isCheckChat(chatId) || this.work.host.session(caller.id, chatId).origin.kind !== 'conversation')
-      throw new LilBotError('goal_not_oscars', "A goal is Oscar's: propose one only from his own words, in your conversation with him.")
+      throw new LilBotError('goal_not_oscars', "A goal is the owner's: propose one only from their own words, in your conversation with them.")
     const at = this.now()
     const target = targetOf(input.target, id => this.work.host.libraryTitle(caller.id, id), at)
     const id = crypto.randomUUID()
@@ -136,7 +136,7 @@ export class GoalService {
     if (session.origin.kind !== 'routine_run' || session.askedBy?.id !== goal.routineId)
       throw new LilBotError(
         'goal_review_session',
-        "Reviews run only in the goal's review routine, on its rhythm. To tell Oscar where it stands now, read the measure and say so: that is not a review."
+        "Reviews run only in the goal's review routine, on its rhythm. To tell the owner where it stands now, read the measure and say so: that is not a review."
       )
     const at = this.now()
     const compared = compare(goal.target, goal.latest, input.value, at)

@@ -2,9 +2,30 @@
 import type { ModelProvider } from '../../../shared/bot-schema'
 import type { ChatItem } from '../../../shared/chat-schema'
 import { LilBotError } from '../../../shared/lilbot-error'
-import type { ChatOptions, MemoryConnection, PreCompressHandler, RoutineOptions, RuntimeIdentity, SkillSettings } from '../bot-engine'
+import type {
+  ChatOptions,
+  MemoryConnection,
+  PreCompressHandler,
+  PromptApplyResult,
+  PromptSettings,
+  ReviewOptions,
+  RoutineOptions,
+  RuntimeIdentity,
+  SkillSettings
+} from '../bot-engine'
 import type { McpConnection } from '../mcp-connection'
 import { runScriptedTurn, type ScriptedSession, type ScriptedTurnContext, type ScriptedTurnHandler } from './scripted-chat'
+import { attachSessionMcp } from './scripted-mcp'
+
+export interface ScriptedEngineOptions {
+  id?: string
+  onTurn?: ScriptedTurnHandler
+  mcpToolName?: (server: string, tool: string) => string
+  models?: ModelProvider[]
+  onConfigurePrompt?: (engineBotId: string, settings: PromptSettings) => Promise<PromptApplyResult> | PromptApplyResult
+  promptTuning?: string
+  hasEngineIdentityText?: (instructions: string) => boolean
+}
 
 export const DEFAULT_SCRIPTED_MODELS: ModelProvider[] = [
   {
@@ -23,6 +44,7 @@ export interface ScriptedRuntime {
   identity: RuntimeIdentity
   connections: McpConnection[]
   skills?: SkillSettings
+  prompt?: PromptSettings
   memoryConnection?: MemoryConnection
   memoryConnected: boolean
 }
@@ -107,4 +129,15 @@ export class ScriptedRoutineLedger {
     this.inFlight.set(options.runId, { chatId: session.chatId, promise: engineWork })
     return awaitWithDisconnect(engineWork, signal)
   }
+}
+
+export async function runScriptedReview(session: ScriptedSession, prompt: string, options: ReviewOptions, callMcp: ScriptedTurnContext['callMcp'], onTurn?: ScriptedTurnHandler) {
+  if (!options.sessionMcp?.length) throw new LilBotError('session_mcp_unavailable', 'Limited sessions require a session-bound MCP connection.')
+  await attachSessionMcp(session, options.sessionMcp, true, options.assertSessionMcpReady)
+  options.onChat(session.chatId)
+  if (!onTurn) return
+  const result = await runScriptedTurn(session, { text: prompt, hidden: true, model: options.model }, callMcp, onTurn)
+  if (result.status === 'completed') return
+  if (result.errorCode === 'review_refused') throw new LilBotError('review_refused', result.text || 'The model refused to review this part of the conversation.')
+  throw new LilBotError('review_failed', `The memory review did not finish (${result.status}).`)
 }

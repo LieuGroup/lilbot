@@ -49,12 +49,12 @@ test('a bot stops its own task: the session is interrupted and a late answer is 
 test('Oscar stops a task before it starts; nothing runs and the delegating bot is told', async () => {
   const f = delegationFixture()
   const { exchanges } = await f.delegation.delegate('a', { requestId: 'r', tasks: [{ to: 'b', task: 'Later' }] })
-  const thread = await f.threads.cancel(exchanges[0].exchangeId, { kind: 'oscar', id: null, name: 'Oscar' })
-  expect(thread.stoppedBy).toMatchObject({ kind: 'oscar', name: 'Oscar' })
+  const thread = await f.threads.cancel(exchanges[0].exchangeId, { kind: 'oscar', id: null, name: 'the owner' })
+  expect(thread.stoppedBy).toMatchObject({ kind: 'oscar', name: 'the owner' })
   await f.settle()
   expect(f.runs.map(r => r.botId)).toEqual(['a'])
   expect(f.runs[0].options.chatId).toBe('a-main')
-  expect(f.runs[0].prompt).toContain('Oscar stopped the task you handed to "B"')
+  expect(f.runs[0].prompt).toContain('The owner stopped the task you handed to "B"')
 })
 
 test('a redirect reaches a running turn by steering; one the turn never took runs as its next turn', async () => {

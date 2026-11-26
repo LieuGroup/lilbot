@@ -7,24 +7,15 @@ import type { ConnectionsApplied, McpConnection } from './mcp-connection'
 
 export type EngineBotDetail = BotIdentity & BotSetup
 export type RuntimeIdentity = BotIdentity & { instructions: string }
-export type RuntimeState = Pick<BotSetup, 'abilities' | 'memoryConnected'>
-/** Per-bot pre-compress checkpoint connection (`/engine/history/save`, never the server's master token). */
-export interface MemoryConnection {
-  url: string
-  checkpointKey: string
-  botId?: string
-}
+export type RuntimeState = Pick<BotSetup, 'abilities' | 'memoryConnected'> & { promptActive?: boolean; promptFallback?: string }
+export type PromptSettings = { enabled: boolean; botId: string; promptFile: string }
+export type PromptApplyResult = { active: boolean; reason?: string }
+export type MemoryConnection = { url: string; checkpointKey: string; botId?: string }
 export type SkillConnection = { url: string; tokenFile: string }
 export type PreCompressEvidence = { role: 'user' | 'assistant'; text: string }
 export type PreCompressHandler = (botId: string, chatId: string, evidence: PreCompressEvidence[]) => Promise<{ saved: boolean; skipped?: boolean; passes?: number }>
 export type LegacyNotes = { aboutUser: string[]; ownNotes: string[] }
-
-/** Where a turn came from, given by LilBot beside the user's text and never part of it. `line` is what the model is told
- *  for this turn only; `device` is what LilBot stores with a user message (a routine run or another bot has none). */
-export interface TurnOrigin {
-  line: string
-  device?: MessageOrigin
-}
+export type TurnOrigin = { line: string; device?: MessageOrigin }
 
 export interface ReviewOptions {
   model?: BotModel
@@ -146,6 +137,9 @@ export interface BotEngine {
   /** Engine skills nobody can hide, with the reason to show. */
   readonly alwaysOnSkills?: readonly { name: string; reason: string }[]
   configureSkills?(engineBotId: string, settings: SkillSettings): Promise<void>
+  configurePrompt?(engineBotId: string, settings: PromptSettings): Promise<PromptApplyResult>
+  readonly promptTuning?: string
+  hasEngineIdentityText?(instructions: string): boolean
   /** Refuse an unavailable model before an identity edit is saved. Must not apply the old identity. */
   validateModel(model: BotModel): Promise<void>
   listModels(): Promise<ModelProvider[]>
@@ -181,7 +175,6 @@ export interface BotEngine {
   /** Give a running turn more text at its next step without stopping it. */
   steerRun?(engineBotId: string, chatId: string, text: string): Promise<'steered' | 'not_running'>
 }
-
 export interface EngineAttachment {
   id: string
   name: string
@@ -189,7 +182,6 @@ export interface EngineAttachment {
   path: string
   data: Uint8Array
 }
-
 export interface OpenChat {
   imageSupport?: 'supported' | 'unsupported' | 'unknown'
   snapshot: ChatSnapshot

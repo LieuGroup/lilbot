@@ -82,7 +82,7 @@ export function aboutTools({ bots, workspaces, computers, t3, t3Enabled, commit,
             .map(({ id, name, address, state, addedBy, lastWorkedAt, tools }) => ({ id, name, address, state, addedBy, lastWorked: iso(lastWorkedAt), tools }))
         if (area === 'deploy') return { running: commit.slice(0, 12), latest: deployStatus(dataDir) ?? null, lastFailure: deployNotice(dataDir) ?? null }
         const status = t3()
-        return { state: status.state, expiresAt: iso(status.expiresAt), ...(status.state === 'connected' ? {} : { whatToTellOscar: signInMessage(status) }) }
+        return { state: status.state, expiresAt: iso(status.expiresAt), ...(status.state === 'connected' ? {} : { whatToTellTheOwner: signInMessage(status) }) }
       }
     )
   ]

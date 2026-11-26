@@ -33,7 +33,7 @@ export function webhookRunAccess(capabilities: WebhookCapability[], t3Enabled = 
     access: { kind: 'webhook', capabilities: granted },
     prompt: [
       'You can read the files in your own folder (lilbot_workspace_read), open, read and update your own work items (lilbot_work, lilbot_work_list) and send your bot one message (lilbot_webhook_message).',
-      granted.length ? `Oscar also lets this webhook's runs ${listed(granted, 'and')}.` : '',
+      granted.length ? `The owner also lets this webhook's runs ${listed(granted, 'and')}.` : '',
       withheld.length ? `You cannot ${listed(withheld, 'or')}: LilBot refuses those tools here.` : '',
       'Work without asking for approval.'
     ]

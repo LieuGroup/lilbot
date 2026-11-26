@@ -47,7 +47,7 @@ export class WebhookService {
   }
 
   private requireOrigin() {
-    if (!this.origin) throw new LilBotError('webhooks_unavailable', 'Webhooks need the public door, which is not set up on this LilBot. Tell Oscar.')
+    if (!this.origin) throw new LilBotError('webhooks_unavailable', 'Webhooks need the public door, which is not set up on this LilBot. Tell the owner.')
     return this.origin
   }
   private address(webhook: { id: string; nonce: string }) {

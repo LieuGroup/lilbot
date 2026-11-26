@@ -73,7 +73,7 @@ function item(row: Row): StoredItem {
     title: row.title,
     ownerId: row.owner_id,
     ownerName: row.owner_name,
-    askedBy: { kind: row.asked_kind, id: row.asked_id, name: row.asked_name },
+    askedBy: { kind: row.asked_kind, id: row.asked_id, name: row.asked_kind === 'oscar' ? 'the owner' : row.asked_name },
     origin: { kind: row.origin_kind, id: row.origin_id },
     parentId: row.parent_id,
     goalId: row.goal_id,

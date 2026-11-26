@@ -189,7 +189,7 @@ export class GroupService {
     return botStatus(this.threads.view(this.store.get(thread.id)))
   }
   async stop(groupId: string) {
-    if (this.store.db.transaction(() => this.ending.end(groupId, 'stopped', '', { stoppedBy: { kind: 'oscar', id: null, name: 'Oscar' } }))()) await this.ending.settle(groupId)
+    if (this.store.db.transaction(() => this.ending.end(groupId, 'stopped', '', { stoppedBy: { kind: 'oscar', id: null, name: 'the owner' } }))()) await this.ending.settle(groupId)
     return this.threads.view(this.store.get(groupId))
   }
   private pushed = () => {

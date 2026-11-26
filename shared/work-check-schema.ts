@@ -12,7 +12,7 @@ export const KIND_NAMES = Object.keys(WORK_KINDS) as [WorkKind, ...WorkKind[]]
  *  or 3 item is done only as `verified` (a bot) or `passed` (Oscar). */
 export interface WorkCheck {
   round: number
-  by: { kind: 'bot'; id: string; name: string } | { kind: 'oscar'; id: null; name: 'Oscar' }
+  by: { kind: 'bot'; id: string; name: string } | { kind: 'oscar'; id: null; name: 'the owner' }
   state: 'checking' | 'verified' | 'not_verified' | 'could_not_check' | 'passed' | 'sent_back' | 'dropped'
   /** What the checker saw, why it could not check, or Oscar's word. */
   text: string | null

@@ -10,7 +10,7 @@ function item(overrides: Partial<WorkSummary> = {}): WorkSummary {
     title: 'Test item',
     ownerId: 'b1',
     ownerName: 'Alpha',
-    askedBy: { kind: 'oscar', id: null, name: 'Oscar' },
+    askedBy: { kind: 'oscar', id: null, name: 'the owner' },
     origin: { kind: 'conversation', id: 'c1' },
     parentId: null,
     goalId: null,
@@ -58,7 +58,7 @@ function ev(overrides: Partial<Evidence> = {}): Evidence {
 describe('workBadge', () => {
   test('green Verified appears only for level 2+ items verified by a bot or passed by Oscar', () => {
     expect(workBadge(item({ status: 'done', checkLevel: 2, check: check({ state: 'verified' }) }))).toBe('verified')
-    expect(workBadge(item({ status: 'done', checkLevel: 3, check: check({ by: { kind: 'oscar', id: null, name: 'Oscar' }, state: 'passed' }) }))).toBe('verified')
+    expect(workBadge(item({ status: 'done', checkLevel: 3, check: check({ by: { kind: 'oscar', id: null, name: 'the owner' }, state: 'passed' }) }))).toBe('verified')
     expect(workBadge(item({ status: 'done', checkLevel: 2, check: null }))).toBe('not_verified')
     expect(workBadge(item({ status: 'done', checkLevel: 1, check: null }))).toBe('self_checked')
     expect(workBadge(item({ status: 'done', checkLevel: 0, check: null }))).toBe('not_checked')
@@ -77,7 +77,7 @@ describe('board helpers', () => {
     const oscarCheck = item({
       status: 'needs_oscar',
       checkLevel: 3,
-      check: check({ by: { kind: 'oscar', id: null, name: 'Oscar' }, state: 'checking', settledAt: null })
+      check: check({ by: { kind: 'oscar', id: null, name: 'the owner' }, state: 'checking', settledAt: null })
     })
     const question = item({ status: 'needs_oscar', question: 'Which price?', check: null })
     expect(isOscarCheck(oscarCheck)).toBe(true)
@@ -93,7 +93,7 @@ describe('board helpers', () => {
     expect(checkSummaryLine(sentBack)).toBe('Not verified by Beta: Only one worker running. Sent back to Alpha.')
 
     const r1 = check({ round: 1, state: 'not_verified', text: 'Old mismatch' })
-    const r2 = check({ round: 2, by: { kind: 'oscar', id: null, name: 'Oscar' }, state: 'sent_back', text: 'Fix pricing' })
+    const r2 = check({ round: 2, by: { kind: 'oscar', id: null, name: 'the owner' }, state: 'sent_back', text: 'Fix pricing' })
     const open = check({ round: 3, state: 'checking', settledAt: null })
     expect(latestSettledCheck([r1, r2, open])?.state).toBe('sent_back')
     expect(latestSettledCheck([r1, r2, open])?.text).toBe('Fix pricing')

@@ -4,6 +4,7 @@ import { checkClient } from './check-client'
 import { deleteProfile, startServer } from './check-process'
 import { assertCheckEngineRefusals, engineView, sentToModel } from './engine-observer'
 import { waitFor } from './wait-for'
+import { assertInside, guardPassed } from './workspace-guard'
 /** `bun run check:checks`: check levels on an isolated dev server with temporary bots, review model Haiku. A `lilbot_work`
  *  call no session made is refused. With one bot, a true level 2 claim is verified by a fresh hidden session of the same
  *  bot (a same-bot check on the review model, outside the conversation history) whose verdict reuses the request id the
@@ -42,8 +43,11 @@ const server = startServer(env)
 let client: Awaited<ReturnType<typeof checkClient>> | undefined
 let db: Database | undefined
 const call = (method: string, params = {}) => client!.call(method, params)
+const testBots = () => (db?.query('SELECT id, engine_bot_id FROM bots').all() ?? []) as { id: string; engine_bot_id: string }[]
+const guard = () => assertInside(testBots(), [root, join(process.env.HOME ?? '', 'lilbot-dev')], workspaces)
+/** Waits for `ok`; stops the check at once if a test bot's tool call names a path outside its area. */
 const until = <T>(read: () => Promise<T> | T, ok: (value: T) => boolean, label: string, timeout = 400_000, interval = 1000): Promise<T> =>
-  waitFor(read, ok, { label, timeout, interval })
+  waitFor(() => (guard(), read()), ok, { label, timeout, interval })
 const settled = (itemId: string) =>
   until(
     () => call('work.open', { itemId }),
@@ -180,7 +184,8 @@ try {
   client?.socket.close()
   server.kill()
   await server.exited
-  const natives = db ? (db.query('SELECT engine_bot_id FROM bots').all() as { engine_bot_id: string }[]).map(r => r.engine_bot_id) : []
+  if (!guardPassed(guard)) process.exitCode = 1
+  const natives = testBots().map(bot => bot.engine_bot_id)
   db?.close()
   for (const id of natives)
     if (await deleteProfile(id).exited) {

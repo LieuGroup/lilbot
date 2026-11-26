@@ -16,7 +16,7 @@ export interface BotCreationOptions {
   waitForGreeting?: boolean
 }
 const GREETING =
-  'Introduce yourself to Oscar in a short greeting and suggest three concrete tasks you could help him start, based on your instructions. Do not use tools or claim to have done work. This is your first message in your main conversation.'
+  'Introduce yourself to the owner in a short greeting and suggest three concrete tasks you could help the owner start, based on your instructions. Do not use tools or claim to have done work. This is your first message in your main conversation.'
 
 export class BotCreation {
   private creating = new Map<string, Promise<void>>()

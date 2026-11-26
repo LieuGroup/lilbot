@@ -93,7 +93,7 @@ test('hidden chats cannot place sign-in cards or write hidden history_sessions; 
   const f = connectionsFixture()
   f.chatOf.set('bot-a', 'routine-run-1')
   f.hiddenChats.add('routine-run-1')
-  await expect(f.services.add('bot-a', { name: 'hidden_svc', address: oauth.address, requestId: 'h1' })).rejects.toThrow('conversation with Oscar')
+  await expect(f.services.add('bot-a', { name: 'hidden_svc', address: oauth.address, requestId: 'h1' })).rejects.toThrow('conversation with the owner')
   expect(f.store.byName('hidden_svc')).toBeNull()
   expect(f.history.sessions('bot-a')).toHaveLength(0)
 
@@ -101,7 +101,7 @@ test('hidden chats cannot place sign-in cards or write hidden history_sessions; 
   f.chatOf.delete('bot-a')
   const added: any = await f.services.add('bot-a', { name: 'race_svc', address: oauth.address, requestId: 'h2' })
   f.chatOf.set('bot-a', 'routine-run-1')
-  await expect(f.services.signIn('bot-a', { id: added.id, requestId: 'h3' })).rejects.toThrow('conversation with Oscar')
+  await expect(f.services.signIn('bot-a', { id: added.id, requestId: 'h3' })).rejects.toThrow('conversation with the owner')
   f.chatOf.delete('bot-a')
 
   const landed = await f.browse(f.linkFor(added.cardId))

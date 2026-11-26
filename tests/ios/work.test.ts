@@ -51,7 +51,7 @@ describe('shared/client/work rules', () => {
       id: 'n2',
       status: 'needs_oscar',
       checkLevel: 3,
-      check: check({ by: { kind: 'oscar', id: null, name: 'Oscar' }, state: 'checking', settledAt: null })
+      check: check({ by: { kind: 'oscar', id: null, name: 'the owner' }, state: 'checking', settledAt: null })
     })
     const failed = summary({ id: 'f1', status: 'working', checkLevel: 2, check: check({ state: 'not_verified', at: 9_000, settledAt: 9_500 }) })
 

@@ -5,32 +5,32 @@ description: Use for work that takes more than a reply (handed to you or by you,
 
 # Working on the board
 
-Every real piece of work is an item on your board: Oscar reads it instead of asking you. Open one with
+Every real piece of work is an item on your board: the owner reads it instead of asking you. Open one with
 `lilbot_work` (no itemId) before you start; report on it with its itemId as you go. Answering a question,
 explaining or chatting is not an item.
 
 ## 1. Say what kind of work it is, and how much it is checked
 
-Give `kind` when you open the item. Each kind has a default check level, which Oscar may have changed for you;
+Give `kind` when you open the item. Each kind has a default check level, which the owner may have changed for you;
 LilBot refuses a level below it and never lets it go down later.
 
 - `reply`, `note` (level 0): answers, drafts, notes, reading. No check.
 - `file`, `computer`, `code` (level 1): a file or report, a change on a computer, a code change. You read the
   real result yourself and attach the evidence.
-- `deploy`, `outside` (a message or post that leaves the system), `spending`, `figure` (a number Oscar will
+- `deploy`, `outside` (a message or post that leaves the system), `spending`, `figure` (a number the owner will
   decide on) (level 2): another bot, chosen by LilBot (a fresh session of you when none is eligible), reproduces your claim before the item is done.
 - Raise the level for anything hard to undo (deleting data, a change others depend on): 2 for a second check,
-  3 when Oscar must look himself.
+  3 when the owner must look personally.
 
 ## 2. Write "done" before you start
 
-The definition says how you, Oscar or another bot will know the work is done, without taking your word for it.
+The definition says how you, the owner or another bot will know the work is done, without taking your word for it.
 
 - Name the observable result and where to look: a file and what it contains, a page and what it shows, a
   command and what it prints, a number and its source.
 - Be specific enough that someone else could check it: "`~/reports/sales.md` lists the 12 months of 2026 with a
   total that matches the dashboard" — not "write the report".
-- Include the limits Oscar gave: deadline, scope, what must not change.
+- Include the limits the owner gave: deadline, scope, what must not change.
 - Write it from the request, not from what turned out easy. If the request is unclear, ask first (status
   `needs_oscar` with one question), then write it.
 
@@ -38,7 +38,7 @@ The definition says how you, Oscar or another bot will know the work is done, wi
 
 Each entry says what it proves and points at one real thing you read yourself, after doing the work:
 
-- `library`: a file you gave to the Library (`lilbot_give_file`), for results Oscar should open.
+- `library`: a file you gave to the Library (`lilbot_give_file`), for results the owner should open.
 - `url`: a page you opened and saw the result on.
 - `command` and `output`: the read-only command you ran to check the result, and the part of its output that
   shows it (`cat`, `ls -l`, `git log -1`, `curl -s`, a test run). Use absolute paths, so another bot can repeat it.
@@ -52,15 +52,15 @@ evidence; show the part of an output that proves the point.
 
 - `working` once the definition is written. Done without a definition or evidence is refused unless the item was
   opened at level 0 (answers, drafts, notes, reading; level 1 is the default).
-- `needs_oscar` with exactly one question when only Oscar can decide: say what you need and the choices. You are
-  marked unread; carry on with other work. His answer arrives as a new turn.
+- `needs_oscar` with exactly one question when only the owner can decide: say what you need and the choices. You are
+  marked unread; carry on with other work. The answer arrives as a new turn.
 - `done` with a result: one or two sentences on what came of it and where it is. One call can add the evidence
   and finish. At level 2 the item then shows `checking` while another bot reproduces your claim (a new session of you
   when no other bot is eligible); you can report nothing more on it meanwhile. Verified, it is done. Not
   verified, it comes back to you once with what the checker saw: fix the work and finish again; a second
-  failure goes to Oscar. At level 3 it waits for Oscar, who passes it or sends it back.
+  failure goes to the owner. At level 3 it waits for the owner, who passes it or sends it back.
 - `failed` with what went wrong and what you tried; `dropped` with the reason. Nothing is deleted.
-- Oscar can drop an item, and items handed over under it: LilBot tells you in the session the item belongs to. Stop
+- The owner can drop an item, and items handed over under it: LilBot tells you in the session the item belongs to. Stop
   that work at once, report nothing more on it (the board refuses it) and say in one line that you stopped.
 
 ## 5. Handing work over
