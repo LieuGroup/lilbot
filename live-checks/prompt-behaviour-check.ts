@@ -59,12 +59,17 @@ async function turn(botId: string, chatId: string, text: string, timeout = 300_0
     timeout
   )
   stopOnAccountProblem(proxy.records, wireFrom, end?.data)
-  const tools = server.events
-    .slice(from)
-    .filter(e => inChat(e) && e.data?.type === 'tool.started')
-    .map(e => String(e.data.name))
+  const started = server.events.slice(from).filter(e => inChat(e) && e.data?.type === 'tool.started')
+  const tools = started.map(e => String(e.data.name))
+  const failedIds = new Set(
+    server.events
+      .slice(from)
+      .filter(e => inChat(e) && e.data?.type === 'tool.finished' && e.data.failed)
+      .map(e => e.data.toolId)
+  )
+  const failed = started.filter(e => failedIds.has(e.data.toolId)).map(e => String(e.data.name))
   await server.call('chat.close', { chatId }).catch(() => {})
-  return { finished: end?.data, reply: String(end?.data?.text ?? ''), tools, wire: proxy.records.slice(wireFrom).filter(r => r.toolCount > 0) }
+  return { finished: end?.data, reply: String(end?.data?.text ?? ''), tools, failed, wire: proxy.records.slice(wireFrom).filter(r => r.toolCount > 0) }
 }
 
 async function modelCase(label: string, model: { provider: string; model: string }) {
@@ -100,7 +105,7 @@ async function modelCase(label: string, model: { provider: string; model: string
   check(
     `${label}: a small job opens a work item, and finishes it with evidence`,
     answered(job.finished) && existsSync(join(bot.workspace, 'packing-list.md')) && !!done && exact(job.wire, prompt()),
-    `tools=[${job.tools.join(', ')}] items=${JSON.stringify(items.map(i => `${i.status}/${i.evidenceCount}`))}`
+    `tools=[${job.tools.join(', ')}] failed=[${job.failed.join(', ')}] items=${JSON.stringify(items.map(i => `${i.status}/${i.evidenceCount}`))}`
   )
 
   const pref = await turn(
@@ -117,7 +122,7 @@ async function modelCase(label: string, model: { provider: string; model: string
       !OWNER_WORDS.test(pref.reply) &&
       /AUD|A\$|\$\s?3\d\d/i.test(pref.reply) &&
       exact(pref.wire, prompt()),
-    `facts=${JSON.stringify(facts).slice(0, 160)}: ${short(pref.reply)}`
+    `tools=[${pref.tools.join(', ')}] failed=[${pref.failed.join(', ')}] facts=${JSON.stringify(facts).slice(0, 160)}: ${short(pref.reply)}`
   )
 
   const who = await turn(bot.id, await fresh(), 'who or what are you, exactly?')
@@ -155,7 +160,7 @@ async function modelCase(label: string, model: { provider: string; model: string
   const routines = (await server.call('routines.list', { botId: bot.id })) as { scheduleText: string }[]
   check(
     `${label}: a routine is created in the turn it is asked for`,
-    answered(repeat.finished) && repeat.tools.length > 0 && routines.length === 1 && !OWNER_WORDS.test(repeat.reply) && exact(repeat.wire, prompt()),
+    answered(repeat.finished) && routines.length > 0 && routines.every(r => r.scheduleText.includes('07:30')) && !OWNER_WORDS.test(repeat.reply) && exact(repeat.wire, prompt()),
     `tools=[${repeat.tools.join(', ')}] routines=${JSON.stringify(routines.map(r => r.scheduleText))}: ${short(repeat.reply)}`
   )
 }

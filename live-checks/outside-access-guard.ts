@@ -52,7 +52,7 @@ export function outsideReach(call: ToolCall, roots: string[]): string | null {
             (SHELL_KEYS.has(key) && BARE_CD.test(value) ? 'cd' : null) ??
             [...value.matchAll(SHELL_KEYS.has(key) ? SHELL_TOKEN : CODE_TOKEN)].map(m => reach(m[1]!, roots)).find(Boolean))
           : null
-    if (found) return `${call.name} ${key} reaches ${found}`
+    if (found) return `${call.name} ${key} reaches ${found}${PATH_KEYS.has(key) ? '' : ` in: ${value.replace(/\s+/g, ' ').slice(0, 160)}`}`
   }
   return null
 }
