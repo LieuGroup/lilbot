@@ -9,7 +9,7 @@ import { AppState, View } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context'
 import { useBotStore, watchRoster } from '../bots/store'
-import { startConnection } from '../connection/start'
+import { startConnection, stopConnection } from '../connection/start'
 import { useConnectionStore } from '../connection/store'
 import { SettingsScreen } from '../settings/screen'
 import { useTheme } from '../ui/theme'
@@ -37,13 +37,19 @@ function AppGate() {
     }
   }, [retryTokenRead])
 
-  // `settings` (not just the address) is a dependency: a new token replaces the socket too.
+  // `settings` (not just the address) is a dependency: a new token replaces the socket too,
+  // and clearing `settings` on Disconnect stops the old socket immediately.
   useEffect(() => {
-    if (!loaded || !settings?.serverUrl) return
+    if (!loaded) return
+    if (!settings?.serverUrl) {
+      stopConnection()
+      return
+    }
     startConnection()
     const stopWatching = watchRoster()
     return () => {
       stopWatching()
+      if (!useConnectionStore.getState().settings?.serverUrl) stopConnection()
     }
   }, [loaded, settings])
 

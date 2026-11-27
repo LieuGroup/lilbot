@@ -2,17 +2,11 @@ import { type ReactNode, useEffect, useState } from 'react'
 import { Input } from '@/ui/input'
 import { Notice } from '@/ui/notice'
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from '@/ui/select'
+import { deviceLine } from '../../../shared/client/devices/device-line'
 import type { Computer } from '../../../shared/computer-schema'
-import type { DeviceComputer } from '../../../shared/device-schema'
 import type { useThisDevice } from './use-this-device'
 
-/** The muted line under "This device": what "my computer" means when written from here. Pure. */
-export function deviceLine(resolves: DeviceComputer): string {
-  if (resolves.via === 'none') return 'No main computer yet. From here, bots will ask which computer you mean.'
-  if (!resolves.online) return `${resolves.name} is offline. Bots will ask before using another computer.`
-  if (resolves.via === 'main') return `When you write "my computer" from here, bots use your main computer, ${resolves.name}.`
-  return `When you write "my computer" from here, bots use ${resolves.name}.`
-}
+export { deviceLine }
 
 const NONE = 'none'
 const FIELD = 'h-[30px] w-50 min-w-0 rounded-[8px] border-0 bg-card text-[13px]/[18px] ring-1 ring-foreground/12 sm:w-55 md:text-[13px]/[18px]'

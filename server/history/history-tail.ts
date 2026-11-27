@@ -1,6 +1,7 @@
 /** Idempotent event-journal reconstruction and canonical-row pruning for unimported history tails. */
 import type { Database } from 'bun:sqlite'
 import type { ChatEvent, ChatItem } from '../../shared/chat-schema'
+import { isShowTool } from '../../shared/shown-rules'
 import type { HistoryRow } from './history-store'
 
 export type EventRow = { rowid: number; at: number; event: string; key: string }
@@ -52,7 +53,7 @@ export function reconstructFromEvents(session: string, events: EventRow[]): Hist
         ...(event.origin ? { origin: event.origin } : {})
       })
     } else if (event.type === 'tool.started') {
-      if (tools.has(event.toolId)) continue
+      if (tools.has(event.toolId) || isShowTool(event.name)) continue
       const item: Extract<ChatItem, { kind: 'tool' }> = { kind: 'tool', toolId: event.toolId, name: event.name, detail: event.detail, running: false }
       tools.set(event.toolId, { index: candidates.length, item })
       push(`journal:${session}:t:${event.toolId}`, row.at, item)

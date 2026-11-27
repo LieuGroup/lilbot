@@ -1,6 +1,7 @@
 /** What a chat looks like on screen, and how each live event changes it. Pure functions only. */
 import type { ChatEvent, ChatItem, ChatSnapshot } from '../../chat-schema'
 import type { HistoryPage, SessionReason } from '../../history-schema'
+import { isShowTool } from '../../shown-rules'
 import { reuseItems, withLatest } from './history-view'
 import { withArrivedMessage } from './user-messages'
 
@@ -132,6 +133,10 @@ export function applyChatEvent(chat: ChatView, event: ChatEvent): ChatView {
       const next: ViewItem = index >= 0 ? { ...chat.items[index], kind: 'connection.sign_in', card: event.card } : { kind: 'connection.sign_in', card: event.card }
       return { ...chat, items: index >= 0 ? chat.items.map((item, i) => (i === index ? next : item)) : [...chat.items, next] }
     }
+    case 'shown':
+      return chat.items.some(item => item.kind === 'shown' && item.file.id === event.file.id)
+        ? chat
+        : { ...chat, items: [...stopWriting(chat.items), { kind: 'shown', file: event.file }] }
     case 'turn.started': {
       // This turn belongs to the message already in the transcript, or to the oldest queued one.
       if (chat.awaitingStart) return { ...chat, awaitingStart: false, turnStart: chat.turnStart ?? runningTurnStart(chat.items), running: true, activity: 'Thinking...' }
@@ -151,6 +156,7 @@ export function applyChatEvent(chat: ChatView, event: ChatEvent): ChatView {
       return { ...chat, items, running: true, activity: '' }
     }
     case 'tool.started':
+      if (isShowTool(event.name)) return chat
       return {
         ...chat,
         items: [...stopWriting(chat.items), { kind: 'tool', toolId: event.toolId, name: event.name, detail: event.detail, running: true }],

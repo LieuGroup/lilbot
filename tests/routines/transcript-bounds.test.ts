@@ -39,6 +39,19 @@ test('prepareTranscriptItems strips user messages, sign-in cards, and tool resul
   expect(JSON.stringify(out)).not.toContain('RAW_OUTPUT_5MB')
 })
 
+test('a shown item (#317) is dropped from a run transcript, with nothing in its place', () => {
+  const file = { id: 's', name: 'a.png', kind: 'image' as const, mime: 'image/png', size: 1, url: '/api/shown/b1/s' }
+  const out = prepareTranscriptItems([
+    { kind: 'assistant', text: 'a' },
+    { kind: 'shown', file },
+    { kind: 'assistant', text: 'b' }
+  ])
+  expect(out).toEqual([
+    { kind: 'assistant', text: 'a' },
+    { kind: 'assistant', text: 'b' }
+  ])
+})
+
 test('oversized multi-item transcript is bounded to MAX_TRANSCRIPT_BYTES and keeps start and end with an omitted marker', () => {
   const many: ChatItem[] = [
     { kind: 'tool', toolId: 'first-tool', name: 'terminal', detail: 'FIRST_STEP', running: false, result: 'x'.repeat(100_000) },

@@ -117,7 +117,7 @@ export const WorkInput = z.object({
   title: text(200).optional(),
   done: text(2000).optional().describe('Done criteria, written before starting'),
   kind: z.enum(KIND_NAMES).optional().describe('At open. Defaults: reply/note=0; file/computer/code=1; deploy/outside/spending/figure=2'),
-  level: z.number().int().min(0).max(3).optional().describe('>= kind default (raise if hard to undo, never lower). 0 none, 1 self, 2 bot check, 3 Oscar'),
+  level: z.number().int().min(0).max(3).optional().describe('>= kind default (raise if hard to undo, never lower). 0 none, 1 self, 2 bot check, 3 the owner'),
   asked: z.enum(['oscar', 'self']).optional().describe('Who asked (default oscar)'),
   goalId: itemId.optional().describe('At open: your agreed goal id'),
   status: z.enum(['working', 'needs_oscar', 'done', 'failed', 'dropped']).optional(),

@@ -6,6 +6,7 @@ import { allowsMemoryForScope, type MemoryTurnContext } from '../memory/memory-t
 import type { BotRuntimes } from './bot-runtimes'
 import type { SessionSettings } from './bot-session-settings'
 import type { BotRecord } from './bot-store'
+import { withTurnLine } from './runtime-tools'
 import type { Workspaces } from './workspaces'
 
 export class BackgroundRuns {
@@ -44,7 +45,8 @@ export class BackgroundRuns {
           : await this.sessions.forNewSession(bot)
       const mem = allowsMemoryForScope(options.access) ? this.memoryContext?.prepare(bot.id, options.chatId) : undefined
       let resolvedChat = options.chatId
-      const origin = mem?.text ? { ...options.origin, line: [options.origin?.line, mem.text].filter(Boolean).join('\n\n') } : options.origin
+      const given = withTurnLine(options, this.runtimes.options.prompt).origin
+      const origin = mem?.text ? { ...given, line: [given?.line, mem.text].filter(Boolean).join('\n\n') } : given
       const result = await this.runtimes.engineFor(bot).runRoutine(bot.engineBotId, prompt, {
         ...options,
         origin,

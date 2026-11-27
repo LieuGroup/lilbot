@@ -21,14 +21,14 @@ const isObject = (value: unknown): value is Record<string, any> => !!value && ty
 const isServerRequest = (msg: Record<string, any>) => typeof msg.method === 'string' && msg.id !== undefined
 
 function explanation(connection: StoredConnection): string {
-  const why = connection.state === 'sign_in_expired' ? `LilBot's sign-in to ${connection.name} expired or was refused.` : `${connection.name} needs Oscar to sign in.`
-  return `${why} Its tools are unavailable until he does. Call lilbot_connection with action sign_in and id ${connection.id}; LilBot places a sign-in card for Oscar and tells you when he finishes.`
+  const why = connection.state === 'sign_in_expired' ? `LilBot's sign-in to ${connection.name} expired or was refused.` : `${connection.name} needs the owner to sign in.`
+  return `${why} Its tools are unavailable until the owner does. Call lilbot_connection with action sign_in and id ${connection.id}; LilBot places a sign-in card for the owner and tells you when they finish.`
 }
 
 export const serviceSignedOut = (message: JsonRpc, connection: StoredConnection) =>
   signedOutReply(message, explanation(connection), `LilBot connection ${connection.name}`, {
     name: STATUS_TOOL,
-    description: `${connection.name} is not signed in yet. Call this to learn what to tell Oscar.`
+    description: `${connection.name} is not signed in yet. Call this to learn what to tell the owner.`
   })
 
 export const serviceGenericError = (message: JsonRpc, name: string) => {

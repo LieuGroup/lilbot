@@ -5,7 +5,7 @@
  *    so the conversation uses the full vertical height, placing the tappable bot avatar (with working ring /
  *    unread dot, opening BotMenuHost) and native Back in the 84 pt vertical strip.
  *  - Unfolded Portrait (`duo-unfolded-portrait`), ordinary iPhone, and iOS < 27.1 keep `ChatHeaderTitle` + `•••`. */
-import { Stack, useFocusEffect, useIsFocused, useLocalSearchParams, useNavigation } from 'expo-router'
+import { Stack, useFocusEffect, useIsFocused, useLocalSearchParams, useNavigation, useRouter } from 'expo-router'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Pressable, View } from 'react-native'
 import type { Bot } from '../../../../../shared/bot-schema'
@@ -27,9 +27,11 @@ import { DYNAMIC_TYPE_CAPS } from '../../../ui/dynamic-type'
 import { ChevronRightIcon, MoreHorizontalIcon } from '../../../ui/icon'
 import { AppText } from '../../../ui/text'
 import { useTheme } from '../../../ui/theme'
+import { withWorkToolRenderer } from '../../../work/work-line'
 
 export default function CompactChatRoute() {
   const theme = useTheme()
+  const router = useRouter()
   const navigation = useNavigation()
   const isFocused = useIsFocused()
   const params = useLocalSearchParams<{ botId?: string }>()
@@ -91,7 +93,17 @@ export default function CompactChatRoute() {
   const openBotMenu = useCallback(() => {
     if (bot) openMenu(bot.id)
   }, [bot, openMenu])
-  const renderToolItem = useMemo(() => (bot ? createThreadToolRenderer(bot.id) : undefined), [bot])
+  const openWorkItem = useCallback(
+    (itemId: string) => {
+      router.push({ pathname: '/(tabs)/(work)/item', params: { itemId } })
+    },
+    [router]
+  )
+  const renderToolItem = useMemo(() => (bot ? withWorkToolRenderer(openWorkItem, createThreadToolRenderer(bot.id)) : undefined), [bot, openWorkItem])
+
+  const openBotDetails = useCallback(() => {
+    if (bot) router.push({ pathname: '/(tabs)/(bots)/bot-details', params: { botId: bot.id } })
+  }, [bot, router])
 
   const backVisible = shouldShowNativeBack(surface, screenReaderEnabled)
   const hideDuoHeader = shouldHideDuoChatHeader({ surface, verticalBarEdge, hasBot: bot !== null })
@@ -102,13 +114,13 @@ export default function CompactChatRoute() {
         ? buildDuoVerticalBarItems({
             screen: stripScreen,
             actions: {
-              'bot-avatar': { element: <DuoStripAvatar bot={bot} running={running} unread={unread} onPress={openBotMenu} />, hidesSharedBackground: false },
+              'bot-avatar': { element: <DuoStripAvatar bot={bot} running={running} unread={unread} onPress={openBotDetails} />, hidesSharedBackground: false },
               'bot-menu': { label: `More for ${bot.name}`, onPress: openBotMenu }
             },
             tintColor: theme.foreground
           })
         : [],
-    [bot, hideDuoHeader, openBotMenu, running, stripScreen, theme.foreground, unread]
+    [bot, hideDuoHeader, openBotDetails, openBotMenu, running, stripScreen, theme.foreground, unread]
   )
 
   const screenOptions = useMemo(() => {
@@ -147,9 +159,16 @@ export default function CompactChatRoute() {
 
 function ChatHeaderTitle({ bot }: { bot: Bot }) {
   const theme = useTheme()
-  const openMenu = useBotMenuStore(state => state.openMenu)
+  const router = useRouter()
   return (
-    <Pressable testID="chat-header-pill" onPress={() => openMenu(bot.id)} hitSlop={6} accessibilityRole="button" accessibilityLabel={`${bot.name}, open bot options`} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 7, maxWidth: 220, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 9999, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.hairline, opacity: pressed ? 0.7 : 1 })}>
+    <Pressable
+      testID="chat-header-pill"
+      onPress={() => router.push({ pathname: '/(tabs)/(bots)/bot-details', params: { botId: bot.id } })}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel={`${bot.name}, open bot details`}
+      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 7, maxWidth: 220, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 9999, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.hairline, opacity: pressed ? 0.7 : 1 })}
+    >
       <BotAvatar name={bot.name} avatar={bot.prefs.avatar} size={22} />
       <AppText variant="title" numberOfLines={1} maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.headerTitle} style={{ flexShrink: 1 }}>
         {bot.name}

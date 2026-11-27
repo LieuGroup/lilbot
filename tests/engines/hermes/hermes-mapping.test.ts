@@ -58,6 +58,19 @@ test('stored rows become transcript items, skipping empty assistant rows', () =>
   expect(itemsFromRows(undefined)).toEqual([])
 })
 
+test('a stored lilbot_show row is not drawn, also when tool search wrapped it in tool_call; its shown item replaces it (#317)', () => {
+  const wrapped = (calls: unknown) => ({ role: 'tool', name: 'tool_call', context: 'Lilbot System · lilbot show', tool_call_id: 'c1', args: { calls } })
+  const items = itemsFromRows([
+    { role: 'assistant', text: 'Here it is.' },
+    wrapped([{ name: 'mcp__lilbot_system__lilbot_show', arguments: '{"path":"a.png","requestId":"r1"}' }]),
+    { ...wrapped({ name: 'mcp__lilbot_system__lilbot_show', arguments: { path: 'b.mp4' } }), args: { name: 'mcp__lilbot_system__lilbot_show', arguments: { path: 'b.mp4' } } },
+    { role: 'tool', name: 'mcp__lilbot_system__lilbot_show', context: '', tool_call_id: 'c2' },
+    wrapped([{ name: 'mcp__lilbot_system__lilbot_work', arguments: '{}' }]),
+    { role: 'tool', name: 'tool_call', context: '', tool_call_id: 'c3' }
+  ])
+  expect(items.map(item => (item.kind === 'tool' ? `tool:${item.name}` : item.kind))).toEqual(['assistant', 'tool:tool_call', 'tool:tool_call'])
+})
+
 describe('bots', () => {
   test('the display name prefers LilBot’s own, then Hermes’ names, then the id', () => {
     const base = { name: 'researcher', description: 'Finds sources', is_default: false, skill_count: 3 }

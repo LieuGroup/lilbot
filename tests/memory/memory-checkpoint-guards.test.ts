@@ -86,6 +86,30 @@ describe('PR #300 regressions and guard mutation killers', () => {
     db.close()
   })
 
+  test('#317: a stopped turn whose only side effect is a shown item is not offered for resending, in events and in items', () => {
+    const file = { id: 's1', name: 'a.png', kind: 'image', mime: 'image/png', size: 1, url: '/api/shown/b1/s1' }
+    const db = openDatabase(':memory:')
+    const ev = (event: unknown, at: number) =>
+      db.query('INSERT INTO history_events(bot, session, at, event, key) VALUES (?, ?, ?, ?, ?)').run('b1', 'c-ev', at, JSON.stringify(event), crypto.randomUUID())
+    ev({ type: 'user.message', messageId: 'm', text: 'Show it', attachments: [] }, 1)
+    ev({ type: 'turn.started' }, 2)
+    ev({ type: 'shown', file }, 3)
+    ev({ type: 'turn.finished', status: 'failed', text: '', failure: 'memory_save' }, 4)
+    expect(findStoppedTurn(db, 'b1', 'c-ev')).toEqual({ kind: 'unsafe' })
+    const item = (id: string, value: unknown, at: number) =>
+      db.query("INSERT INTO history_items(bot, session, id, at, position, item, text) VALUES ('b1', 'c-items', ?, ?, 0, ?, '')").run(id, at, JSON.stringify(value))
+    item('u', { kind: 'user', text: 'Show it' }, 1)
+    item('shown:s1', { kind: 'shown', file }, 2)
+    item('e', { kind: 'error', text: '', reason: 'memory_save' }, 3)
+    expect(findStoppedTurn(db, 'b1', 'c-items')).toEqual({ kind: 'unsafe' })
+    // The same turns with no side effect are offered, so the answers above come from the shown item.
+    db.query('DELETE FROM history_events WHERE event LIKE \'%"shown"%\'').run()
+    db.query("DELETE FROM history_items WHERE id = 'shown:s1'").run()
+    expect(findStoppedTurn(db, 'b1', 'c-ev')).toEqual({ kind: 'stopped', text: 'Show it', attachmentIds: [] })
+    expect(findStoppedTurn(db, 'b1', 'c-items')).toEqual({ kind: 'stopped', text: 'Show it', attachmentIds: [] })
+    db.close()
+  })
+
   test('Fix #3: pieceTiming resolves recent unimported history_events and repeated short messages by stored position, never text matching', () => {
     const db = openDatabase(':memory:')
     const t1 = new Date(2026, 10, 25, 13, 0, 0).getTime()

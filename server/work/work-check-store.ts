@@ -30,7 +30,7 @@ export const LATEST_CHECK = `(SELECT json_object('round', c.round, 'checker_kind
 export function checkOf(row: Omit<Row, 'id' | 'item_id' | 'request_id' | 'verdict_request'>): WorkCheck {
   return {
     round: row.round,
-    by: row.checker_kind === 'bot' ? { kind: 'bot', id: row.checker_id!, name: row.checker_name } : { kind: 'oscar', id: null, name: 'Oscar' },
+    by: row.checker_kind === 'bot' ? { kind: 'bot', id: row.checker_id!, name: row.checker_name } : { kind: 'oscar', id: null, name: 'the owner' },
     state: row.state,
     text: row.text,
     note: row.note,

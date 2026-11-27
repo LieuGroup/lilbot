@@ -131,6 +131,14 @@ describe('iPhone Duo native vertical side-strip table and availability guards', 
 
   test('duoVerticalHeaderOptions hides header when inactive and returns transparent zero-title options when active', () => {
     expect(duoVerticalHeaderOptions([], '#111111')).toEqual({ headerShown: false, unstable_headerRightItems: undefined })
+    const keepEmpty = duoVerticalHeaderOptions([], '#111111', { backVisible: true, keepTransparentWhenEmpty: true })
+    expect(keepEmpty.headerShown).toBe(true)
+    expect(keepEmpty.headerTransparent).toBe(true)
+    expect(keepEmpty.headerBackVisible).toBe(true)
+    const workItemBar = buildDuoVerticalBarItems({ screen: 'work-item', actions: { 'drop-work': { onPress: () => {} } } })
+    expect(workItemBar[0]).toMatchObject({ type: 'button', identifier: `${DUO_VERTICAL_ITEM_PREFIX}drop-work`, icon: { type: 'sfSymbol', name: 'trash' } })
+    const workChecksBar = buildDuoVerticalBarItems({ screen: 'work-board-checks', actions: { 'add-check-override': { onPress: () => {} } } })
+    expect(workChecksBar[0]).toMatchObject({ type: 'button', identifier: `${DUO_VERTICAL_ITEM_PREFIX}add-check-override`, icon: { type: 'sfSymbol', name: 'plus' } })
     const items = buildDuoVerticalBarItems({ screen: 'folded-chat', actions: { 'bot-avatar': { element: fakeElement } } })
     const active = duoVerticalHeaderOptions(items, '#111111', { backVisible: true })
     expect(active.headerShown).toBe(true)

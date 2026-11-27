@@ -50,6 +50,7 @@ server/            The LilBot server (runs on the leader).
   library/           Delivered workspace files, metadata, safe reads and folder listings.
   attachments/       Incoming chat files, streaming uploads and durable message associations.
   skills/            The shared skills library, per-bot switches and each engine's "Include this engine's skills" switch.
+  prompts/           LilBot's versioned base prompt, engine-neutral prompt assembler and private per-bot prompt store (`LILBOT_PROMPT_OWNERSHIP=1`, off by default).
   connections/       LilBot-owned connections: MCP services bots add (sign-in, tokens, forwarding route, applying changes),
                      legacy T3 Code bridge/sign-in/skill (off by default behind `LILBOT_T3_ENABLED=1`) and shared MCP helpers.
   system/            LilBot's own MCP server through which bots operate the app, and the note every bot gets about its system.
@@ -183,7 +184,8 @@ directories and files (0700/0600).
   (see Connections).
 - Put nothing new into Hermes plug-ins. A new bot-facing tool goes on LilBot's own MCP server (`server/system/`), with
   the same service function the screen uses, so a second engine gets it for free; the plug-ins keep only what MCP
-  cannot do.
+  cannot do (pre-compress save, native skill-write lock, and the dumb `lilbot-prompt-v1` `llm_request` pass-through that swaps the outbound system prompt with LilBot's assembled file;
+  Hermes loads it only from `plugins.enabled`, see [docs/hermes-engine.md](docs/hermes-engine.md)).
 - Mapping onto Hermes: [docs/hermes-engine.md](docs/hermes-engine.md). Engine checklist:
   [docs/engine-contract.md](docs/engine-contract.md).
 
@@ -398,6 +400,9 @@ Full upload, storage, marker, safety and read rules: [docs/library-and-attachmen
   upload into `attachments/` via `O_NOFOLLOW` exclusive-create with SHA-256 verification and PNG/JPEG/GIF/WebP magic
   checks. `chat.send` requires client UUID `messageId` for idempotency; display-only markers reconcile stored engine text
   at the HTTP edge; non-image files pass as untrusted workspace references.
+- **Shown files (`server/shown/`, #317):** `lilbot_show` places an image, video or HTML page from the bot's folder in
+  its reply as a `shown` item; LilBot keeps the path (never a copy) and serves it at `/api/shown/` with byte ranges.
+  Off by default behind `LILBOT_SHOW_ENABLED=1` until web and iPhone draw every kind.
 
 ## Coding
 

@@ -1,12 +1,21 @@
 /** What LilBot gives every bot's runtime besides its identity: the shared skills and
  *  LilBot's own MCP connections. The engine skips what it has already applied. */
 import { backgroundFailure } from '../background'
-import type { BotEngine, SkillConnection } from '../engines/bot-engine'
+import type { BotEngine, SkillConnection, TurnOrigin } from '../engines/bot-engine'
 import type { EngineRegistry } from '../engines/engine-registry'
 import type { McpConnection } from '../engines/mcp-connection'
 import { files } from '../skills/skill-files'
 import type { SkillsService } from '../skills/skills-service'
+import type { BotRuntimes } from './bot-runtimes'
 import type { BotRecord } from './bot-store'
+
+export interface BotPromptSource {
+  enabled: boolean
+  write: (bot: BotRecord) => string
+  pathFor: (botId: string) => string
+  /** A line LilBot adds to every turn while it owns the prompt (today's date, which the cached prompt cannot carry). */
+  turnLine?: () => string
+}
 
 export interface RuntimeOptions {
   changed?: () => void
@@ -15,6 +24,7 @@ export interface RuntimeOptions {
   prepareRetryMs?: number
   now?: () => number
   systemNote?: (bot: BotRecord) => string
+  prompt?: BotPromptSource
   onConnectionsChanged?: (botId: string) => void
 }
 
@@ -67,10 +77,70 @@ interface ToolSources {
   skills?: SkillsService
   connection?: SkillConnection
   connections?: (botId: string) => McpConnection[]
+  prompt?: BotPromptSource
   onConnectionsChanged?: (botId: string) => void
 }
 
-export async function prepareTools(engine: BotEngine, bot: BotRecord, { skills, connection, connections, onConnectionsChanged }: ToolSources) {
+export interface PromptRuntimeStatus {
+  promptActive?: boolean
+  promptFallback?: string
+}
+
+/** Adds LilBot's per-turn line (today's date while it owns the prompt) right after the turn's origin line. */
+export function withTurnLine<T extends { origin?: TurnOrigin }>(options: T, prompt?: BotPromptSource): T
+export function withTurnLine<T extends { origin?: TurnOrigin }>(options: T | undefined, prompt?: BotPromptSource): T | undefined
+export function withTurnLine<T extends { origin?: TurnOrigin }>(options: T | undefined, prompt?: BotPromptSource): T | undefined {
+  const line = prompt?.turnLine?.()
+  if (!line) return options
+  return { ...options, origin: { ...options?.origin, line: [options?.origin?.line, line].filter(Boolean).join('\n') } } as T
+}
+
+/** The last fallback reason logged per bot, so a bot that stays on the engine's prompt is logged once, not on every use. */
+const logged = new Map<string, string>()
+function noteFallback(botId: string, reason: string | undefined) {
+  if (logged.get(botId) === reason) return
+  if (reason) console.error(`[prompt] owned prompt not in use; the engine's own prompt answers (${reason})`)
+  if (reason) logged.set(botId, reason)
+  else logged.delete(botId)
+}
+
+async function applyPromptFailSafe(engine: BotEngine, bot: BotRecord, prompt?: BotPromptSource): Promise<PromptRuntimeStatus> {
+  if (!prompt || !engine.configurePrompt) return {}
+  if (!prompt.enabled) {
+    try {
+      await engine.configurePrompt(bot.engineBotId, { enabled: false, botId: bot.id, promptFile: prompt.pathFor(bot.id) })
+    } catch {
+      console.error('[prompt] could not disable owned prompt on engine; continuing with current setup')
+    }
+    return { promptActive: false }
+  }
+  try {
+    const promptFile = prompt.write(bot)
+    const applied = await engine.configurePrompt(bot.engineBotId, { enabled: true, botId: bot.id, promptFile })
+    const reason = applied.active ? undefined : (applied.reason ?? 'engine prompt middleware inactive').slice(0, 80)
+    noteFallback(bot.id, reason)
+    return reason ? { promptActive: false, promptFallback: reason } : { promptActive: true }
+  } catch {
+    noteFallback(bot.id, 'prompt setup failed')
+    return { promptActive: false, promptFallback: 'prompt setup failed' }
+  }
+}
+
+/** The runtime state with the prompt status read again, so a plug-in that fell back mid-session shows on the next look. */
+export async function withFreshPrompt(runtimes: Pick<BotRuntimes, 'snapshot' | 'restoreState' | 'engineFor' | 'options'>, bot: BotRecord) {
+  const state = runtimes.snapshot(bot)
+  if (!state || !runtimes.options.prompt?.enabled) return state
+  const { promptActive: _active, promptFallback: _fallback, ...rest } = state
+  const fresh = { ...rest, ...(await applyPromptFailSafe(runtimes.engineFor(bot), bot, runtimes.options.prompt)) }
+  runtimes.restoreState(bot.id, fresh)
+  return fresh
+}
+
+export async function prepareTools(
+  engine: BotEngine,
+  bot: BotRecord,
+  { skills, connection, connections, prompt, onConnectionsChanged }: ToolSources
+): Promise<PromptRuntimeStatus> {
   if (skills && connection) {
     // An engine whose switch is off is not imported from; the bot is marked only after an import, so switching on imports it.
     const includeEngineSkills = skills.engineIncluded(engine.id)
@@ -89,6 +159,7 @@ export async function prepareTools(engine: BotEngine, bot: BotRecord, { skills, 
   }
   const given = connections?.(bot.id)
   if (given?.length && (await engine.prepareConnections?.(bot.engineBotId, given))) onConnectionsChanged?.(bot.id)
+  return applyPromptFailSafe(engine, bot, prompt)
 }
 
 /** Gives each bot its connections again, for example after a connection or sign-in changed. */

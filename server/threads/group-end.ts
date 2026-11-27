@@ -43,7 +43,7 @@ export interface GroupHost {
   /** The roster shows running groups. */
   rosterChanged(): void
 }
-const DROPPED: Record<string, string> = { closed: 'The group closed.', stopped: 'The group was stopped by Oscar.' }
+const DROPPED: Record<string, string> = { closed: 'The group closed.', stopped: 'The group was stopped by the owner.' }
 
 export class GroupEnding {
   private settling = new Set<string>()

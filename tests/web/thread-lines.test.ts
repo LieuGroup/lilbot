@@ -59,7 +59,7 @@ test('a handed-over task says who, which task and every state, from the delegati
   for (const botId of ['lead', 'eng']) expect(lineState(why, botId, now)).toMatchObject({ failed: true, text: 'Failed · the turn ended in an error' })
   expect(stripState(why, now)).toMatchObject({ failed: true, text: 'Failed · the turn ended in an error' })
   expect(activityRow(why, 'lead', now).line).toContain('Failed · the turn ended in an error')
-  const byOscar = thread({ status: 'cancelled', endedAt: now, stoppedBy: { kind: 'oscar', id: null, name: 'Oscar', at: now } })
+  const byOscar = thread({ status: 'cancelled', endedAt: now, stoppedBy: { kind: 'oscar', id: null, name: 'the owner', at: now } })
   expect(lineState(byOscar, 'lead', now)).toEqual({ icon: null, text: 'Stopped by you · after 4 min', failed: false, stopped: true })
   const byBot = thread({ status: 'cancelled', stoppedBy: { kind: 'bot', id: 'lead', name: 'FillLight Bot', at: now } })
   expect(lineState(byBot, 'lead', now)).toMatchObject({ text: 'Stopped by FillLight Bot', stopped: true })
@@ -103,7 +103,7 @@ test('tasks handed out in one call are one card, in the order they were handed o
 test('the opened task strip, and where the stop line falls with greyed late answers after it', () => {
   expect(stripState(thread(), now)).toMatchObject({ icon: 'working', text: 'Working · Running commands · 4 min' })
   const late = message('eng', 'Second worker is up.', now + MIN, { withheld: true })
-  const stopped = thread({ status: 'cancelled', stoppedBy: { kind: 'oscar', id: null, name: 'Oscar', at: now }, messages: [...thread().messages, late] })
+  const stopped = thread({ status: 'cancelled', stoppedBy: { kind: 'oscar', id: null, name: 'the owner', at: now }, messages: [...thread().messages, late] })
   expect(stopIndex(stopped)).toBe(1)
   expect(stopIndex({ ...stopped, messages: thread().messages })).toBe(1)
   expect(stopIndex(thread())).toBe(-1)
@@ -136,7 +136,10 @@ test('same-bot workers format titles, file counts, inline records, custom model 
   expect(batchSummary([worker, thread()])).toEqual({ title: 'Handed out 2 tasks', progress: '0 of 2 finished' })
   expect(inlineState(worker)).toEqual({ icon: null, text: 'Started 10:02', failed: false, stopped: false })
   expect(inlineState({ ...worker, status: 'finished' })).toEqual({ icon: 'finished', text: 'Finished', failed: false, stopped: false })
-  expect(inlineState({ ...worker, status: 'cancelled', stoppedBy: { kind: 'oscar', id: null, name: 'Oscar', at: now } })).toMatchObject({ text: 'Stopped by you', stopped: true })
+  expect(inlineState({ ...worker, status: 'cancelled', stoppedBy: { kind: 'oscar', id: null, name: 'the owner', at: now } })).toMatchObject({
+    text: 'Stopped by you',
+    stopped: true
+  })
   expect(inlineState({ ...worker, status: 'failed' })).toEqual({ icon: null, text: 'Failed', failed: true, stopped: false })
   // Header shows custom model/effort only when different from the bot's own.
   expect(workerSubtitle(worker, { provider: 'anthropic', model: 'Sonnet 5.5' }, 'medium')).toBe("FillLight Bot's worker · Opus 5.5 · high")

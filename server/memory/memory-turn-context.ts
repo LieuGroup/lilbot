@@ -21,7 +21,7 @@ const OPEN_MARKER = `<lilbot-memory>\n${MEMORY_BLOCK_HEADER}`
 const CLOSE_MARKER = '\n</lilbot-memory>'
 const escapeDelimiters = (text: string) => text.replace(/<(\/?lilbot-memory\b[^>]*)>/gi, '&lt;$1&gt;')
 
-/** Strips only LilBot's appended trailing `<lilbot-memory>` block(s) and `[LilBot origin: ...]` line(s) from review/checkpoint evidence. */
+/** Strips only LilBot's appended trailing `<lilbot-memory>` block(s) and `[LilBot origin: ...]` / `[LilBot date: ...]` line(s) from review/checkpoint evidence. */
 export function withoutInjectedContext(text: string): string {
   let out = text
   while (true) {
@@ -37,7 +37,7 @@ export function withoutInjectedContext(text: string): string {
         }
       }
     }
-    const origin = /\n*\[LilBot origin: [^\n]*\]\s*$/.exec(out)
+    const origin = /\n*\[LilBot (?:origin|date): [^\n]*\]\s*$/.exec(out)
     if (origin && (origin.index === 0 || out[origin.index - 1] === '\n' || origin[0].startsWith('\n'))) {
       out = out.slice(0, origin.index).replace(/\n+$/, '')
       continue

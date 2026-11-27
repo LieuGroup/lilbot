@@ -15,11 +15,11 @@ test('a narrow run emits an empty webhook access scope; each granted group passe
   expect(narrow.prompt).not.toMatch(/t3/i)
   expect(webhookRunAccess(['web']).access).toEqual({ kind: 'webhook', capabilities: ['web'] })
   expect(hermesToolsetsForRun(webhookRunAccess(['web']).access)).toEqual(['skills', 'no_mcp', 'web'])
-  expect(webhookRunAccess(['web']).prompt).toContain("Oscar also lets this webhook's runs read the web.")
+  expect(webhookRunAccess(['web']).prompt).toContain("The owner also lets this webhook's runs read the web.")
   expect(hermesToolsetsForRun(webhookRunAccess(['shell']).access)).toEqual(['skills', 'no_mcp', 'terminal', 'code_execution', 'file'])
   expect(webhookRunAccess(['computers']).access).toEqual({ kind: 'webhook', capabilities: ['computers'] })
   expect(hermesToolsetsForRun(webhookRunAccess(['computers']).access)).toEqual(['skills', 'no_mcp'])
-  expect(webhookRunAccess(['computers']).prompt).toContain("Oscar also lets this webhook's runs use computers.")
+  expect(webhookRunAccess(['computers']).prompt).toContain("The owner also lets this webhook's runs use computers.")
   expect(webhookRunAccess(['coding', 'computers']).access).toEqual({ kind: 'webhook', capabilities: ['computers'] })
   expect(hermesToolsetsForRun(webhookRunAccess(['coding', 'computers']).access)).toEqual(['skills', 'no_mcp'])
   expect(webhookRunAccess(['coding', 'computers'], true).access).toEqual({ kind: 'webhook', capabilities: ['computers', 'coding'] })
@@ -28,7 +28,7 @@ test('a narrow run emits an empty webhook access scope; each granted group passe
   expect(hermesToolsetsForRun(webhookRunAccess(['bots', 'delegation', 'routines', 'webhooks']).access)).toEqual(['skills', 'no_mcp'])
   expect(hermesToolsetsForRun(webhookRunAccess(['bots']).access)).not.toContain('memory')
   expect(hermesToolsetsForRun(webhookRunAccess(['memory']).access)).toEqual(['skills', 'no_mcp', 'memory'])
-  expect(webhookRunAccess(['memory', 'bots']).prompt).toContain("Oscar also lets this webhook's runs read and change memory and manage bots.")
+  expect(webhookRunAccess(['memory', 'bots']).prompt).toContain("The owner also lets this webhook's runs read and change memory and manage bots.")
 })
 
 test('hermesToolsetsForRun rejects unknown scope kinds and ignores prototype or unknown capability keys', () => {
@@ -83,9 +83,9 @@ test('Oscar’s groups are saved on the webhook and its next run starts with the
         ['skills', 'no_mcp', 'terminal', 'code_execution', 'file']
       ])
       expect(f.prompts[0]).toContain('LilBot refuses those tools here')
-      if (t3On) expect(f.prompts[1]).toContain("Oscar also lets this webhook's runs run commands or write files and code through T3 Code.")
+      if (t3On) expect(f.prompts[1]).toContain("The owner also lets this webhook's runs run commands or write files and code through T3 Code.")
       else {
-        expect(f.prompts[1]).toContain("Oscar also lets this webhook's runs run commands or write files.")
+        expect(f.prompts[1]).toContain("The owner also lets this webhook's runs run commands or write files.")
         expect(f.prompts[1]).not.toMatch(/t3/i)
       }
     } finally {

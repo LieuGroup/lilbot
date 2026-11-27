@@ -2,6 +2,7 @@ import type { Database } from 'bun:sqlite'
 import type { ChatEvent, ChatItem } from '../../shared/chat-schema'
 import type { HistoryItem, HistoryPage, SessionReason } from '../../shared/history-schema'
 import { LilBotError } from '../../shared/lilbot-error'
+import { isShowTool, shownSearchText } from '../../shared/shown-rules'
 import { HistoryMetaStore } from './history-meta-store'
 import { HistoryPreviewStore } from './history-preview'
 import { type HistorySearchMatch, searchHistory } from './history-search'
@@ -60,7 +61,8 @@ export class HistoryStore {
     const insert = this.db.query(`INSERT INTO history_items(bot,session,id,at,position,item,text) VALUES(?,?,?,?,?,?,?)
         ON CONFLICT(bot,id) DO UPDATE SET item=excluded.item,text=excluded.text`)
     for (const row of enriched) {
-      const text = 'text' in row.item ? row.item.text : ''
+      if (row.item.kind === 'tool' && isShowTool(row.item.name)) continue
+      const text = 'text' in row.item ? row.item.text : row.item.kind === 'shown' ? shownSearchText(row.item.file) : ''
       insert.run(bot, session, row.id, row.at, row.order, JSON.stringify(row.item), text)
     }
     if (cursor !== undefined) this.db.query('UPDATE history_sessions SET cursor=?,complete=? WHERE bot=? AND id=?').run(cursor, +complete, bot, session)

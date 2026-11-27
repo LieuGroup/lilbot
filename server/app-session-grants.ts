@@ -15,6 +15,9 @@ export interface AppServicesSettings {
   ACCESS_HOST: string | undefined
   ACCESS_CALLBACK_ENABLED?: boolean
   T3_ENABLED?: boolean
+  PROMPT_OWNERSHIP?: boolean
+  /** `LILBOT_SHOW_ENABLED=1`: offer `lilbot_show` (#317). Off by default. */
+  SHOW_ENABLED?: boolean
   notificationSender?: NotificationSender
   publish: (frame: EventFrame) => void
   botsChanged: () => void

@@ -15,7 +15,7 @@ export function webhookTools({ webhooks, webhookRuns }: SystemDeps): McpTool[] {
   return [
     actionTool(
       'lilbot_webhook_message',
-      'Only in a webhook run: leave your bot one short message (once per run). Shown in its main conversation; the bot reads it as outside data with Oscar’s next message.',
+      'Only in a webhook run: leave your bot one short message (once per run). Shown in its main conversation; the bot reads it as outside data with the owner’s next message.',
       z.object({ requestId: z.string().min(1).max(200), text: z.string().trim().min(1).max(MESSAGE_CHARS) }),
       async (caller, { requestId, text }, _raw, ctx) => {
         if (ctx?.webhookRunId) {
@@ -32,7 +32,7 @@ export function webhookTools({ webhooks, webhookRuns }: SystemDeps): McpTool[] {
     ),
     actionTool(
       'lilbot_webhook',
-      'Create, pause, resume, delete or re-address your own webhooks. create: requestId, description, source, createdBy (oscar only if he asked), signing? (returns address and any generated signingSecret; same requestId repeats). pause/resume/delete/new_address: id.',
+      'Create, pause, resume, delete or re-address your own webhooks. create: requestId, description, source, createdBy (oscar only if the owner asked), signing? (returns address and any generated signingSecret; same requestId repeats). pause/resume/delete/new_address: id.',
       WebhookActionInput,
       async (caller, { action, id, ...fields }) => {
         if (action === 'create') return webhooks.create(caller, WebhookCreate.parse(fields))

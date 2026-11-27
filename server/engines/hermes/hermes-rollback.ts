@@ -6,12 +6,26 @@
  *  (`compression.checkpoint_required`) with a memory adapter that cannot take the save, so it could never
  *  shorten a long conversation again. Before the previous release starts, the watchdog clears the flag
  *  for every bound, non-deleted Hermes bot whose profile has it; a release that has #148 sets it again
- *  once at start-up (`hermes-memory-setup.ts`). Hermes runs with the service's own Hermes home and
+ *  once at start-up (`hermes-memory-setup.ts`). The previous release may also predate LilBot's own system prompt,
+ *  so the `lilbot-prompt-v1` plug-in is disabled through Hermes and its settings file removed: either alone
+ *  makes Hermes send its own prompt again. Hermes runs with the service's own Hermes home and
  *  executable, never the watchdog's, and in development only on `dev-` profiles under the development home. */
+import { existsSync, rmSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import type { EngineRollbackContext, EngineRollbackHook, EngineRollbackResult } from '../engine-ops'
 
 const PROFILE_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/
 const PASSED = ['HERMES_HOME', 'LILBOT_HERMES_BIN', 'LILBOT_ENV', 'PATH'] as const
+const CHECKPOINT = 'compression.checkpoint_required'
+const PROMPT_PLUGIN = 'lilbot-prompt-v1'
+const PROMPT_SETTINGS = 'lilbot-prompt.json'
+
+/** The profile's Hermes home for the argument list `rollbackProfiles` gave (`[]` is the default profile). */
+const profileHome = (env: Record<string, string>, profile: string[]) => {
+  const root = env.HERMES_HOME || join(homedir(), '.hermes')
+  return profile.length ? join(root, 'profiles', profile[1]) : root
+}
 
 /** The unit's `Environment` as systemd prints it (`KEY=value`, double-quoted when it holds spaces), only the keys Hermes needs. */
 export function serviceEnvironment(printed: string): Record<string, string> {
@@ -43,11 +57,26 @@ export const rollbackHook: EngineRollbackHook = {
     const run = (args: string[]) => context.runCommand([hermes, ...args], 30_000, { ...base, ...env })
     const result = { cleared: 0, failed: 0 }
     for (const profile of rollbackProfiles(context.profiles, env)) {
+      let touched = false
       try {
         // The value is the last line: anything Hermes prints before it is not the setting.
-        if ((await run([...profile, 'config', 'get', 'compression.checkpoint_required'])).trim().split('\n').at(-1)?.trim().toLowerCase() !== 'true') continue
-        await run([...profile, 'config', 'set', 'compression.checkpoint_required', 'false'])
-        result.cleared++
+        if ((await run([...profile, 'config', 'get', CHECKPOINT])).trim().split('\n').at(-1)?.trim().toLowerCase() === 'true') {
+          await run([...profile, 'config', 'set', CHECKPOINT, 'false'])
+          touched = true
+        }
+        // Hermes loads a plug-in only from `plugins.enabled`, so the prompt plug-in goes off through Hermes' own disable.
+        const enabled = await run([...profile, 'config', 'get', 'plugins.enabled']).catch(() => '')
+        if (enabled.split('\n').some(line => line.replace(/^[\s-]+/, '').trim() === PROMPT_PLUGIN)) {
+          await run([...profile, 'plugins', 'disable', PROMPT_PLUGIN])
+          touched = true
+        }
+        // Without its settings file the plug-in sends the engine's own prompt even if it were still loaded.
+        const settings = join(profileHome(env, profile), PROMPT_SETTINGS)
+        if (existsSync(settings)) {
+          rmSync(settings, { force: true })
+          touched = true
+        }
+        if (touched) result.cleared++
       } catch {
         result.failed++
       }
