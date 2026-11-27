@@ -106,3 +106,25 @@ test("an older reply whose end LilBot missed stays above the message even when i
   })
   expect(order).toEqual(['check the river', 'I checked the river.', 'sent while busy'])
 })
+
+test('an older reply whose end LilBot missed stays above the message while the open turn has shown only its opening word', () => {
+  const order = run((store, db) => {
+    // LilBot restarted during this turn and never journalled its end.
+    journal(store, db, [
+      [T - 60_000, started],
+      [T - 59_000, words('I ')],
+      [T - 58_900, words('checked')]
+    ])
+    store.write('b', 's', [user(1, T - 61_000, 'check the river'), reply(2, T - 59_000, 'I checked it yesterday.')])
+    journal(store, db, [
+      [T, started],
+      [T + 1000, sent('busy')],
+      [T + 2000, words('Connected.')],
+      [T + 3000, finished('Connected.', 'e:3')],
+      [T + 3001, started],
+      [T + 3100, words('I ')]
+    ])
+    store.write('b', 's', [reply(3, T + 2000, 'Connected.'), user(4, T + 3001, 'busy')])
+  })
+  expect(order).toEqual(['check the river', 'I checked it yesterday.', 'busy', 'Connected.'])
+})

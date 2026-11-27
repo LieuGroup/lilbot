@@ -62,9 +62,11 @@ function shownAfter(db: Database, bot: string, session: string, row: Stored, nex
   if (start) return after(wordsBefore(db, bot, session, start)?.event)
   // The reply of a turn whose end is not journalled yet (the importer read it a moment before) is the open turn's when it
   // begins with every word that turn has shown since its last start or tool; an older reply whose end LilBot never
-  // journalled does not, even when its opening words are the same, and stays put.
+  // journalled does not, even when its opening words are the same, and stays put. A reply the engine wrote before the open
+  // turn started (beyond the clock allowance) is never that turn's: this only rules rows out, it never orders two rows.
   const first = wordsBefore(db, bot, session, Number.MAX_SAFE_INTEGER)
-  if (!first) return false
+  const opened = db.query('SELECT at FROM history_events WHERE rowid=?').get(last(db, bot, session, 'turn.started', Number.MAX_SAFE_INTEGER)) as { at: number } | null
+  if (!first || !opened || row.at < opened.at - CLOCK_SKEW_MS) return false
   const shown = db
     .query(
       `SELECT group_concat(text, '') text FROM (SELECT json_extract(event,'$.text') text FROM history_events WHERE bot=? AND session=? AND ${TYPE}='text.delta' AND rowid>=? ORDER BY rowid)`
