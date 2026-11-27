@@ -114,6 +114,8 @@ Rules that keep it this way:
 
 ## Status
 
+**Paused since 27 Nov 2026.** Read [docs/paused-2026-11.md](docs/paused-2026-11.md) first: what is live, parked PRs, resume order.
+
 Built: roster, create bot, Setup panel (toolsets and connectors read-only; skills with per-bot switch and reader, #137),
 chat with live tool rows, stop and new session, continuous main conversation per bot across devices, three-column shell
 (Activity, Library, Setup), bot menu, delete confirmation, Settings, chat attachments, LilBot memory with Settings > Memory
