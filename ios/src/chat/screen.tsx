@@ -42,7 +42,7 @@ export function ChatScreen({ bot, hideHeader = false, headerLeading, showNewSess
   const theme = useTheme()
   const insets = useSafeAreaInsets()
   const connected = useConnectionStore(state => state.connected)
-  const openMenu = useBotMenuStore(state => state.openMenu)
+  const openChatMenu = useBotMenuStore(state => state.openChatMenu)
   const chat = useChat(bot.id)
   const modelPicker = useModelPicker(bot)
   const send = useCallback((text: string, attachments: Attachment[]) => void chat.send(text, attachments), [chat])
@@ -131,7 +131,7 @@ export function ChatScreen({ bot, hideHeader = false, headerLeading, showNewSess
             )}
             <Pressable
               testID="chat-bot-menu-button"
-              onPress={() => openMenu(bot.id)}
+              onPress={() => openChatMenu(bot.id)}
               hitSlop={6}
               accessibilityRole="button"
               accessibilityLabel={`More for ${bot.name}`}

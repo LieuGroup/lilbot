@@ -6,7 +6,7 @@ export const DUO_VERTICAL_ITEM_PREFIX = 'lilbot.duo.vertical.'
 export const DUO_AVATAR_TEST_ID = `${DUO_VERTICAL_ITEM_PREFIX}bot-avatar`
 
 export type VerticalBarEdge = 'leading' | 'trailing' | null
-export type VerticalBarActionId = 'bot-avatar' | 'sidebar-toggle' | 'bot-menu' | 'new-bot' | 'search-bots' | 'drop-work' | 'add-check-override'
+export type VerticalBarActionId = 'bot-avatar' | 'sidebar-toggle' | 'bot-menu' | 'search-bots' | 'drop-work' | 'add-check-override'
 export type VerticalBarPriority = 'high' | 'standard' | 'low'
 export type DuoStripScreen =
   | 'folded-roster'
@@ -49,9 +49,8 @@ export const DUO_VERTICAL_BAR_TABLE: Record<DuoStripScreen, readonly VerticalBar
   'unfolded-split': [
     { id: 'bot-avatar', kind: 'custom', priority: 'high', defaultLabel: 'Bot options' },
     { id: 'sidebar-toggle', kind: 'button', sfSymbol: 'sidebar.left', priority: 'high', defaultLabel: 'Toggle bots sidebar' },
-    { id: 'bot-menu', kind: 'button', sfSymbol: 'ellipsis', priority: 'high', defaultLabel: 'Bot options' },
-    { id: 'new-bot', kind: 'button', sfSymbol: 'plus', priority: 'standard', defaultLabel: 'New bot' },
-    { id: 'search-bots', kind: 'button', sfSymbol: 'magnifyingglass', priority: 'low', defaultLabel: 'Search bots' }
+    // One `•••` (#313): New bot and Search bots live in its menu, so nothing is left for UIKit's own overflow button.
+    { id: 'bot-menu', kind: 'button', sfSymbol: 'ellipsis', priority: 'high', defaultLabel: 'Bot options' }
   ],
   'unfolded-portrait': [],
   'work-board-checks': [{ id: 'add-check-override', kind: 'button', sfSymbol: 'plus', priority: 'high', defaultLabel: 'Add bot check level' }],
