@@ -13,6 +13,7 @@ import { asEngineRegistry } from '../../server/engines/engine-registry'
 import { ScriptedEngine, type ScriptedEngineOptions } from '../../server/engines/scripted/scripted-engine'
 import { MemoryService } from '../../server/memory/memory-service'
 import { MemoryStore } from '../../server/memory/memory-store'
+import { BASE_PROMPT_VERSION, LILBOT_BASE_PROMPT } from '../../server/prompts/base-prompt'
 import { SkillsService } from '../../server/skills/skills-service'
 
 const dirs: string[] = []
@@ -66,7 +67,7 @@ describe('BotService prompt ownership and fail-safe behavior', () => {
     expect(existsSync(file)).toBe(true)
     expect(statSync(file).mode & 0o777).toBe(0o600)
     const content = readFileSync(file, 'utf8')
-    expect(content).toContain('<lilbot-base-prompt version="1">')
+    expect(content).toContain(`<lilbot-base-prompt version="${BASE_PROMPT_VERSION}">\n${LILBOT_BASE_PROMPT}\n</lilbot-base-prompt>`)
     expect(content).toContain('<lilbot-runtime-tuning>\nDeferred tools use tool_search.\n</lilbot-runtime-tuning>')
     expect(content).toContain('<lilbot-system-note>')
     expect(content).toContain('<lilbot-bot-instructions>\nBe terse.\n</lilbot-bot-instructions>')

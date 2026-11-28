@@ -1,0 +1,166 @@
+import '../scripts/dev-env'
+/** `bun run check:prompt-behaviour`: a measurement, not a gate. It runs LilBot's own prompt (base, tuning, note,
+ *  instructions, skills) through the real dev Hermes with `LILBOT_PROMPT_OWNERSHIP=1` and real tools, on temporary
+ *  `dev-` bots only (deleted in `finally`), and reports a pass rate per scenario per model with each failure's reason.
+ *  The merge gate is the deterministic `check:prompt`.
+ *  Each round (`LILBOT_BEHAVIOUR_ROUNDS`, default 5) is a fresh bot per model running every scenario in
+ *  `prompt-behaviour-scenarios.ts`, from fixtures in its own folder. The capture proxy's guard refuses any tool call it
+ *  does not allow before the engine runs it (`outside-access-guard.ts`): the model is told the tool does not exist, the
+ *  scenario fails as "reached for ...", and the run goes on. The check stops at once, exiting non-zero, only when a
+ *  call the guard does not allow ran, or on a 403 or account message. A turn that times out or fails in the engine
+ *  or proxy is "not measured", counted apart from the model's misses; its chat is closed either way. Model calls are spaced 10 s apart. No Google
+ *  model is called. `LILBOT_BEHAVIOUR_TABLE` writes the table as Markdown to that file. */
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+import { routineLine } from '../server/devices/origin-line'
+import { HermesEngine } from '../server/engines/hermes/hermes-engine'
+import { FIXTURES, type Outcome, type Round, SCENARIOS, type Turn } from './prompt-behaviour-scenarios'
+import { answered } from './prompt-model-case'
+import { readDevUpstreamBaseUrl, nativeProfileOf, setProfileBaseUrl, startWireCaptureProxy } from './prompt-wire-proxy'
+import { RestartServer, waitFor } from './restart-server'
+import { stopOnAccountProblem } from './wire-verdicts'
+
+const SPACE_MS = 10_000
+const ROUNDS = Number(process.env.LILBOT_BEHAVIOUR_ROUNDS ?? 5)
+const MODELS = [
+  { label: 'Inkling 2 Mini', model: { provider: 'cliproxyapi', model: 'thinkingmachines/inkling-2-mini' } },
+  { label: 'Claude Haiku', model: { provider: 'cliproxyapi', model: 'anthropic/claude-haiku-5-5' } },
+  { label: 'GPT Luna', model: { provider: 'cliproxyapi', model: 'gpt-5.6-luna' } }
+].filter(m => !process.env.LILBOT_PROMPT_MODELS || process.env.LILBOT_PROMPT_MODELS.split(',').includes(m.model.model))
+const INSTRUCTIONS = 'You are Pip, a general assistant. You help with everyday questions, errands and small jobs around the computers.'
+
+const server = await RestartServer.create('lilbot-prompt-behaviour', { LILBOT_PROMPT_OWNERSHIP: '1' })
+/** What the scenarios need: the bot reads and lists its own fixtures and writes in its own folder. A second bot's work
+ *  check reads the working bot's folder, so every temporary bot's folder is allowed. */
+const WORKSPACES = join(server.root, 'workspaces')
+const GUARD = { roots: [WORKSPACES], programs: ['cat', 'ls', 'find', 'head', 'tail', 'wc', 'grep', 'stat', 'echo', 'pwd', 'date', 'sleep'] }
+const proxy = startWireCaptureProxy(readDevUpstreamBaseUrl(), { workspaces: [WORKSPACES], policy: GUARD })
+const stamp = Date.now().toString(36)
+const results: { model: string; scenario: string; outcome: Outcome }[] = []
+/** A scenario that could not be measured: the turn timed out or the engine or proxy failed, not the model. */
+class NotMeasured extends Error {}
+
+/** What reached the wire since record `wireFrom`: the requests of the bot working in `workspace`, and every refusal
+ *  (a second bot checking its work may have made one). */
+function turnOf(workspace: string, wireFrom: number, done: boolean, reply: string, tools: string[]): Turn {
+  const wire = proxy.records.slice(wireFrom)
+  const mine = wire.filter(r => r.toolCount > 0 && r.folder === resolve(workspace))
+  return { done, reply, tools, wire: mine, refused: wire.flatMap(r => (r.outside ? [r.outside] : [])) }
+}
+
+async function round(label: string, model: { provider: string; model: string }, n: number) {
+  // Shared facts outlive a deleted bot: each round starts with none, so a save is this round's own.
+  for (const fact of (await server.call('memory.listAll', { view: 'shared', limit: 200 })).facts as { id: string }[]) await server.call('memory.forget', { factId: fact.id })
+  const bot = await server.call('bots.create', { name: `Pip ${label} ${stamp} ${n}`, function: 'General assistant', instructions: INSTRUCTIONS, model })
+  const native = nativeProfileOf(server.root, bot.id)
+  server.natives.add(native)
+  await setProfileBaseUrl(native, proxy.url)
+  mkdirSync(join(bot.workspace, 'fixtures'), { recursive: true })
+  for (const [name, text] of Object.entries(FIXTURES)) writeFileSync(join(bot.workspace, 'fixtures', name), text)
+  const promptFile = join(server.root, 'prompts', `${bot.id}.txt`)
+  const r: Round = {
+    server,
+    bot,
+    prompt: () => readFileSync(promptFile, 'utf8'),
+    async turn(text) {
+      await Bun.sleep(SPACE_MS)
+      const chatId = (await server.call('chat.new', { botId: bot.id })).chatId as string
+      const from = server.events.length
+      const wireFrom = proxy.records.length
+      const inChat = (e: any) => e.event === 'chat' && e.chatId === chatId
+      try {
+        await server.call('chat.send', { botId: bot.id, chatId, text, messageId: crypto.randomUUID() })
+        const end: any = await waitFor(
+          `turn (${text.slice(0, 24)})`,
+          async () => server.events.slice(from).find(e => inChat(e) && ['turn.finished', 'error'].includes(e.data?.type)),
+          Boolean,
+          300_000
+        ).catch(error => {
+          throw new NotMeasured(error.message)
+        })
+        stopOnAccountProblem(proxy.records, wireFrom, end?.data, 'go on')
+        if (end?.data?.type === 'error') throw new NotMeasured(`the turn failed: ${String(end.data.message ?? end.data.code ?? '').slice(0, 120)}`)
+        const tools = server.events
+          .slice(from)
+          .filter(e => inChat(e) && e.data?.type === 'tool.started')
+          .map(e => String(e.data.name))
+        return turnOf(bot.workspace, wireFrom, answered(end?.data), String(end?.data?.text ?? ''), tools)
+      } finally {
+        await server.call('chat.close', { chatId }).catch(() => {})
+      }
+    },
+    async hidden(text) {
+      await Bun.sleep(SPACE_MS)
+      const wireFrom = proxy.records.length
+      const options = { runId: `behaviour-${native}-${n}`, workspace: bot.workspace, model, origin: { line: routineLine }, onChat: () => {} }
+      const run = await new HermesEngine([native]).runRoutine(native, text, options).catch(error => {
+        throw new NotMeasured(`the hidden run failed: ${String(error?.message ?? error).slice(0, 120)}`)
+      })
+      stopOnAccountProblem(proxy.records, wireFrom, undefined, 'go on')
+      return turnOf(bot.workspace, wireFrom, run.status === 'completed', run.text, [])
+    }
+  }
+  for (const scenario of SCENARIOS) {
+    const outcome = await scenario.run(r).catch((error: Error): Outcome => {
+      if (!(error instanceof NotMeasured)) throw error
+      return { measured: false, ok: false, why: `not measured: ${error.message.slice(0, 200)}` }
+    })
+    results.push({ model: label, scenario: scenario.name, outcome })
+    console.log(`${outcome.measured === false ? 'n/m ' : outcome.ok ? 'ok  ' : 'miss'} ${label} round ${n}: ${scenario.name}  (${outcome.why})`)
+  }
+}
+
+let setupFailures = 0
+
+function table(): string {
+  const labels = MODELS.map(m => m.label)
+  const cell = (model: string, scenario: string) => {
+    const all = results.filter(x => x.model === model && x.scenario === scenario)
+    const runs = all.filter(x => x.outcome.measured !== false)
+    const unmeasured = all.length - runs.length
+    return all.length ? `${runs.filter(x => x.outcome.ok).length}/${runs.length}${unmeasured ? ` (+${unmeasured} not measured)` : ''}` : '–'
+  }
+  const rows = SCENARIOS.map(s => `| ${s.name} | ${labels.map(l => cell(l, s.name)).join(' | ')} |`)
+  const listed = (measured: boolean) => results.filter(x => !x.outcome.ok && (x.outcome.measured !== false) === measured).map(x => `- ${x.model}, ${x.scenario}: ${x.outcome.why}`)
+  const misses = listed(true)
+  const unmeasured = listed(false)
+  return [
+    `| Scenario | ${labels.join(' | ')} |`,
+    `|---|${labels.map(() => '---|').join('')}`,
+    ...rows,
+    '',
+    'Misses:',
+    ...(misses.length ? misses : ['- none']),
+    '',
+    'Not measured (a timeout or an engine or proxy error, not the model):',
+    ...(unmeasured.length ? unmeasured : ['- none'])
+  ].join('\n')
+}
+
+try {
+  await server.start()
+  await server.connect()
+  for (let n = 1; n <= ROUNDS; n++)
+    for (const { label, model } of MODELS) {
+      const before = results.length
+      await round(label, model, n).catch((error: Error) => {
+        if (error.message.startsWith('Stopped:')) throw error
+        // A round that could not be set up measures nothing: every scenario it had not reached is "not measured".
+        const why = `not measured: the round failed (${error.message.slice(0, 160)})`
+        for (const scenario of SCENARIOS.slice(results.length - before)) results.push({ model: label, scenario: scenario.name, outcome: { measured: false, ok: false, why } })
+        console.log(`n/m  ${label} round ${n}: ${why}`)
+      })
+    }
+} finally {
+  proxy.stop()
+  await server.cleanup().catch(error => {
+    setupFailures++
+    console.log(`FAIL cleanup: ${error instanceof Error ? error.message : error}`)
+  })
+}
+
+const report = table()
+console.log(`\nPrompt behaviour: ${ROUNDS} round(s) per model (a measurement, not a gate)\n\n${report}`)
+if (process.env.LILBOT_BEHAVIOUR_TABLE) writeFileSync(process.env.LILBOT_BEHAVIOUR_TABLE, `${report}\n`)
+console.log(setupFailures === 0 ? '\nPrompt behaviour live check finished: no guard breach.' : `\nPrompt behaviour live check had ${setupFailures} setup failure(s).`)
+process.exit(setupFailures === 0 ? 0 : 1)

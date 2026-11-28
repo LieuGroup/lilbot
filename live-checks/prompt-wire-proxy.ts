@@ -1,12 +1,17 @@
-/** Loopback HTTP capture proxy for `live-checks/prompt-check.ts`.
+/** Loopback HTTP capture proxy for the prompt live checks.
  *  Forwards dev CLIProxyAPI requests verbatim while recording the outbound system prompt,
- *  cache_control presence, tool count, and HTTP status without logging keys or upstream URLs. */
+ *  cache_control presence, tool count, and HTTP status without logging keys or upstream URLs.
+ *  With a guard, it refuses any tool call the guard does not allow before the engine runs it (`outside-access-guard.ts`):
+ *  each bot's folder is read from its system note and must lie inside `workspaces`. A refused call in the model's answer
+ *  is renamed `REFUSED_TOOL`, which the engine does not have: it runs nothing, tells the model the tool does not exist,
+ *  and the turn goes on. A refused call already in the request history ran (the guard missed it in the answer): that
+ *  request is not forwarded, and it is a breach. */
 import { Database } from 'bun:sqlite'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { devPort } from '../scripts/dev-paths'
-import { command } from '../server/deploy/process'
-import { rollbackHook } from '../server/engines/hermes/hermes-rollback'
+import { folderOf, type GuardPolicy, refusal } from './outside-access-guard'
+import { toolCallsInRequest as inRequest, toolCallsInResponse as inAnswer } from './tool-calls-on-wire'
 import { type RestartServer, waitFor } from './restart-server'
 
 export interface CapturedRequest {
@@ -21,9 +26,14 @@ export interface CapturedRequest {
   hasDateLine: boolean
   status: number
   error?: string
+  /** The bot's folder as the request's system note states it, when it lies inside the guard's workspaces. */
+  folder?: string
+  /** Why the guard refused a tool call in this request's answer; the engine never ran it. */
+  outside?: string
+  /** Why a tool call the guard does not allow is in this request's history, so it ran. */
+  breach?: string
   elapsedMs: number
 }
-
 const FORBIDDEN_STOCK_SNIPPETS = ['Hermes Agent', 'hermes-agent', 'Mid-turn user steering', 'Hermes runtime environment', 'Hermes desktop app', 'Nous Research'] as const
 
 export function findForbiddenStockSnippets(systemText: string): string[] {
@@ -58,14 +68,19 @@ function extractSystem(body: Record<string, unknown>): Pick<CapturedRequest, 'sy
   return { systemKind: 'none', systemText: '', hasCacheControl: false }
 }
 
-export function startWireCaptureProxy(upstreamBaseUrl: string) {
+const REFUSED = { type: 'error', error: { type: 'invalid_request_error', message: 'Live check guard: this tool call is not allowed in a live check.' } }
+export const REFUSED_TOOL = 'refused_by_live_check_guard'
+const renamed = (answer: string, names: string[]) =>
+  names.reduce((text, name) => text.replace(new RegExp(`("name"\\s*:\\s*")${name.replace(/[^\w]/g, '\\$&')}"`, 'g'), `$1${REFUSED_TOOL}"`), answer)
+
+export function startWireCaptureProxy(upstreamBaseUrl: string, guard?: { workspaces: string[]; policy: GuardPolicy }) {
   const port = devPort()
   const records: CapturedRequest[] = []
   const upstream = upstreamBaseUrl.replace(/\/+$/, '')
   const server = Bun.serve({
     hostname: '127.0.0.1',
     port,
-    idleTimeout: 120,
+    idleTimeout: 255,
     async fetch(request) {
       const start = Date.now()
       const url = new URL(request.url)
@@ -74,11 +89,30 @@ export function startWireCaptureProxy(upstreamBaseUrl: string) {
       const parsed = rawBody ? safeJson(new TextDecoder().decode(rawBody)) : null
       const headers = new Headers(request.headers)
       headers.delete('host')
-      const upstreamResponse = await fetch(target, { method: request.method, headers, body: rawBody })
+      const stated = guard && folderOf(parsed ? extractSystem(parsed).systemText : '', guard.workspaces)
+      const folder = guard && (stated ?? guard.workspaces[0]!)
+      const offered = Array.isArray(parsed?.tools) ? parsed.tools.map(toolName) : []
+      const reached = (calls: ReturnType<typeof inRequest>, answer?: true) =>
+        guard && folder
+          ? calls.filter(c => c.name !== REFUSED_TOOL).flatMap(c => (why => (why ? [{ name: c.name, why }] : []))(refusal(c, folder, guard.policy, answer && offered)))
+          : []
+      const breach = parsed ? reached(inRequest(parsed))[0]?.why : undefined
+      const upstreamResponse = breach ? Response.json({}, { status: 451 }) : await fetch(target, { method: request.method, headers, body: rawBody })
       const outHeaders = new Headers(upstreamResponse.headers)
       for (const name of ['content-encoding', 'content-length', 'transfer-encoding']) outHeaders.delete(name)
       const errorText = upstreamResponse.status >= 400 ? (await upstreamResponse.clone().text()).replace(/\s+/g, ' ').slice(0, 240) : undefined
-      const response = new Response(upstreamResponse.body, { status: upstreamResponse.status, statusText: upstreamResponse.statusText, headers: outHeaders })
+      const answer = guard && !breach ? await upstreamResponse.text() : undefined
+      const refused = answer === undefined ? [] : reached(inAnswer(answer), true)
+      const outside = refused.map(r => r.why).join('; ') || undefined
+      const { status, statusText } = upstreamResponse
+      const body = refused.length
+        ? renamed(
+            answer!,
+            refused.map(r => r.name)
+          )
+        : answer
+      const unsafe = refused.length > 0 && reached(inAnswer(body!), true).length > 0
+      const response = unsafe ? Response.json(REFUSED, { status: 400 }) : new Response(body ?? upstreamResponse.body, { status, statusText, headers: outHeaders })
       if (parsed && (url.pathname.includes('/messages') || url.pathname.includes('/chat/completions') || url.pathname.includes('/responses'))) {
         const extracted = extractSystem(parsed)
         records.push({
@@ -86,10 +120,13 @@ export function startWireCaptureProxy(upstreamBaseUrl: string) {
           model: typeof parsed.model === 'string' ? parsed.model : '',
           ...extracted,
           toolCount: Array.isArray(parsed.tools) ? parsed.tools.length : 0,
-          toolNames: Array.isArray(parsed.tools) ? parsed.tools.map(toolName) : [],
+          toolNames: offered,
           hasDateLine: JSON.stringify(parsed.messages ?? parsed.input ?? '').includes('[LilBot date: '),
           status: response.status,
           ...(errorText ? { error: errorText } : {}),
+          ...(stated ? { folder: stated } : {}),
+          ...(outside ? { outside } : {}),
+          ...(breach ? { breach } : {}),
           elapsedMs: Date.now() - start
         })
       }
@@ -155,31 +192,3 @@ export async function sendPromptTurn(server: RestartServer, botId: string, chatI
     .join('')
   return { finished: finished?.data, reply }
 }
-
-/** Runs the real deploy rollback hook on one temporary `dev-` profile against the dev Hermes, then asks Hermes itself
- *  how it lists the prompt plug-in (`enabled`, `disabled`, `not enabled`, or absent). */
-export async function rollBackPromptPlugin(profileId: string) {
-  if (!profileId.startsWith('dev-')) throw new Error(`Refusing to touch non-dev profile: ${profileId}`)
-  const env = Object.entries({ LILBOT_ENV: 'development', HERMES_HOME: process.env.HERMES_HOME, LILBOT_HERMES_BIN: process.env.LILBOT_HERMES_BIN, PATH: process.env.PATH })
-  const printed = env
-    .filter(([, value]) => value)
-    .map(([key, value]) => `"${key}=${value}"`)
-    .join(' ')
-  const rolled = await rollbackHook.rollback({ profiles: [profileId], printedEnvironment: printed, runCommand: (args, timeout, given) => command(args, undefined, timeout, given) })
-  const listed = Bun.spawnSync([process.env.LILBOT_HERMES_BIN ?? 'hermes', '-p', profileId, 'plugins', 'list', '--plain', '--no-bundled'], { env: process.env }).stdout.toString()
-  return { rolled, row: listed.split('\n').find(line => line.includes('lilbot-prompt-v1')) ?? 'absent' }
-}
-
-const ACCOUNT_STOP = /\b403\b|disabled in this account|violation of terms|unknown provider/i
-
-/** Throws at once on any 403, account message or unknown-provider answer since record `from`, or in a failed turn. */
-export function stopOnAccountProblem(records: CapturedRequest[], from = 0, finished?: { type?: string; message?: string; text?: string }) {
-  const bad = records.slice(from).find(r => r.status === 403 || ACCOUNT_STOP.test(r.error ?? ''))
-  const text = finished?.type === 'error' ? `${finished.message ?? ''} ${finished.text ?? ''}` : ''
-  if (bad || ACCOUNT_STOP.test(text))
-    throw new Error(`Stopped: upstream refused with an account or 403 answer (${bad ? `HTTP ${bad.status} ${bad.error ?? ''}`.trim() : text.trim().slice(0, 120)}).`)
-}
-
-/** Every captured request answered 200 and carried exactly `prompt` as its system prompt, with no stock engine text. */
-export const exact = (wire: CapturedRequest[], prompt: string) =>
-  wire.length > 0 && wire.every(r => r.status === 200 && r.systemText === prompt && findForbiddenStockSnippets(r.systemText).length === 0)

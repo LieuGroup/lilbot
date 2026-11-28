@@ -3,7 +3,8 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { HermesEngine } from '../server/engines/hermes/hermes-engine'
-import { type CapturedRequest, exact, stopOnAccountProblem } from './prompt-wire-proxy'
+import type { CapturedRequest } from './prompt-wire-proxy'
+import { exact, stopOnAccountProblem } from './wire-verdicts'
 import type { RestartServer } from './restart-server'
 
 type Turn = (s: RestartServer, botId: string, chatId: string, text: string) => Promise<{ finished: any; reply: string; wire: CapturedRequest[] }>

@@ -44,8 +44,10 @@ let client: Awaited<ReturnType<typeof checkClient>> | undefined
 let db: Database | undefined
 const call = (method: string, params = {}) => client!.call(method, params)
 const testBots = () => (db?.query('SELECT id, engine_bot_id FROM bots').all() ?? []) as { id: string; engine_bot_id: string }[]
-const guard = () => assertInside(testBots(), [root, join(process.env.HOME ?? '', 'lilbot-dev')], workspaces)
-/** Waits for `ok`; stops the check at once if a test bot's tool call names a path outside its area. */
+/** The scenarios read and write their own files and give evidence with `cat` and the absolute path. */
+const GUARD = { roots: [workspaces], programs: ['cat', 'ls', 'head', 'wc', 'grep', 'stat', 'echo', 'pwd'] }
+const guard = () => assertInside(testBots(), GUARD, workspaces)
+/** Waits for `ok`; stops the check at once if a test bot made a tool call the live check guard refuses. */
 const until = <T>(read: () => Promise<T> | T, ok: (value: T) => boolean, label: string, timeout = 400_000, interval = 1000): Promise<T> =>
   waitFor(() => (guard(), read()), ok, { label, timeout, interval })
 const settled = (itemId: string) =>
