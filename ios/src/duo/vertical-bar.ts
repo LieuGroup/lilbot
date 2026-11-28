@@ -6,18 +6,11 @@ export const DUO_VERTICAL_ITEM_PREFIX = 'lilbot.duo.vertical.'
 export const DUO_AVATAR_TEST_ID = `${DUO_VERTICAL_ITEM_PREFIX}bot-avatar`
 
 export type VerticalBarEdge = 'leading' | 'trailing' | null
-export type VerticalBarActionId = 'bot-avatar' | 'sidebar-toggle' | 'bot-menu' | 'new-bot' | 'search-bots' | 'drop-work' | 'add-check-override'
+export type VerticalBarActionId = 'bot-avatar' | 'sidebar-toggle' | 'bot-menu' | 'new-bot' | 'search-bots' | 'drop-work' | 'add-check-override' | 'search-memory' | 'add-fact' | 'pause-fact' | 'forget-fact'
 export type VerticalBarPriority = 'high' | 'standard' | 'low'
-export type DuoStripScreen =
-  | 'folded-roster'
-  | 'folded-chat'
-  | 'folded-details'
-  | 'unfolded-split'
-  | 'unfolded-portrait'
-  | 'work-board-checks'
-  | 'work-item'
-  | 'work-split'
-export type VerticalBarSFSymbol = 'sidebar.left' | 'ellipsis' | 'plus' | 'magnifyingglass' | 'trash'
+/** `memory`: Settings > Memory (Search, Add a fact); `memory-fact`: an opened fact (Pause or Resume, Forget). */
+export type DuoStripScreen = 'folded-roster' | 'folded-chat' | 'folded-details' | 'unfolded-split' | 'unfolded-portrait' | 'work-board-checks' | 'work-item' | 'work-split' | 'memory' | 'memory-fact'
+export type VerticalBarSFSymbol = 'sidebar.left' | 'ellipsis' | 'plus' | 'magnifyingglass' | 'trash' | 'pause' | 'play'
 
 export type VerticalBarSlotSpec =
   | {
@@ -59,7 +52,9 @@ export const DUO_VERTICAL_BAR_TABLE: Record<DuoStripScreen, readonly VerticalBar
   'work-split': [
     { id: 'drop-work', kind: 'button', sfSymbol: 'trash', priority: 'high', defaultLabel: 'Drop item' },
     { id: 'add-check-override', kind: 'button', sfSymbol: 'plus', priority: 'standard', defaultLabel: 'Add bot check level' }
-  ]
+  ],
+  memory: [{ id: 'search-memory', kind: 'button', sfSymbol: 'magnifyingglass', priority: 'high', defaultLabel: 'Search memory' }, { id: 'add-fact', kind: 'button', sfSymbol: 'plus', priority: 'high', defaultLabel: 'Add a fact' }],
+  'memory-fact': [{ id: 'pause-fact', kind: 'button', sfSymbol: 'pause', priority: 'high', defaultLabel: 'Pause' }, { id: 'forget-fact', kind: 'button', sfSymbol: 'trash', priority: 'high', defaultLabel: 'Forget' }]
 }
 
 export interface VerticalBarButtonHandler {
@@ -69,6 +64,8 @@ export interface VerticalBarButtonHandler {
   accessibilityHint?: string
   disabled?: boolean
   selected?: boolean
+  /** Per-item symbol and tint over the table's (Resume's play symbol on a paused fact; Forget in red). */
+  sfSymbol?: VerticalBarSFSymbol; tintColor?: string
 }
 
 export interface VerticalBarCustomHandler {
@@ -162,9 +159,9 @@ export function buildDuoVerticalBarItems(input: {
       label,
       accessibilityLabel: label,
       ...(handler.accessibilityHint ? { accessibilityHint: handler.accessibilityHint } : {}),
-      icon: { type: 'sfSymbol', name: slot.sfSymbol },
+      icon: { type: 'sfSymbol', name: handler.sfSymbol ?? slot.sfSymbol },
       visibilityPriority: slot.priority,
-      ...(input.tintColor ? { tintColor: input.tintColor } : {}),
+      ...(handler.tintColor || input.tintColor ? { tintColor: handler.tintColor ?? input.tintColor } : {}),
       ...(handler.disabled !== undefined ? { disabled: handler.disabled } : {}),
       ...(handler.selected !== undefined ? { selected: handler.selected } : {}),
       onPress: handler.onPress

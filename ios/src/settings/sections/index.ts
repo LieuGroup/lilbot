@@ -6,5 +6,6 @@
 import type { SettingsSectionDefinition } from '../sections'
 import { computersSettingsSection } from './computers-section'
 import { generalSettingsSection } from './general-section'
+import { memorySettingsSection } from './memory-section'
 
-export const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [computersSettingsSection, generalSettingsSection]
+export const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [computersSettingsSection, memorySettingsSection, generalSettingsSection]
