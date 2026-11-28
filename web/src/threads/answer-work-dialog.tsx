@@ -9,7 +9,8 @@ import { answerWork } from './thread-store'
 
 const footButton = 'h-8 rounded-lg px-3 text-[13px]/[18px] font-medium'
 
-/** Lets Oscar answer a worker or delegated task's `needs_oscar` question directly from the dock or opened view. */
+/** Lets Oscar answer a worker or delegated task's `needs_oscar` question directly from the dock or opened view. A long
+ *  title stops at two lines (the whole of it on hover); a long question scrolls inside, so the field and buttons stay put. */
 export default function AnswerWorkDialog({ work, title, onClose }: { work: WorkSummary; title: string; onClose: () => void }) {
   const [answer, setAnswer] = useState('')
   const [sending, setSending] = useState(false)
@@ -32,9 +33,13 @@ export default function AnswerWorkDialog({ work, title, onClose }: { work: WorkS
   return (
     <Dialog open onOpenChange={open => !open && !sending && onClose()}>
       <DialogContent showCloseButton={false} className="w-[calc(100%-2rem)] max-w-[440px] gap-4 rounded-2xl bg-card p-5 sm:max-w-[440px]">
-        <div className="flex flex-col gap-1.5">
-          <DialogTitle className="text-base/[22px] font-semibold tracking-[-0.01em]">{title}</DialogTitle>
-          <DialogDescription className="text-[13px]/5 text-foreground">{work.question || 'This task is waiting for your answer.'}</DialogDescription>
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <DialogTitle title={title} className="line-clamp-2 text-base/[22px] font-semibold tracking-[-0.01em] break-words">
+            {title}
+          </DialogTitle>
+          <DialogDescription className="max-h-52 overflow-y-auto overscroll-contain text-[13px]/5 break-words whitespace-pre-wrap text-foreground">
+            {work.question || 'This task is waiting for your answer.'}
+          </DialogDescription>
         </div>
         <Textarea
           value={answer}
