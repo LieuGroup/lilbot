@@ -46,3 +46,13 @@ export const isShowTool = (name: string) => SHOW_TOOL_NAMES.has(name)
 
 /** What search finds for an item: its caption and its file name. */
 export const shownSearchText = (file: { caption?: string; name: string }) => [file.caption, file.name].filter(Boolean).join(' ')
+
+/** Why a shown file is drawn as a plain line, from the route's answer to a HEAD: 413 past its limit, 200 there but not
+ *  drawable here (a clip in a codec this browser does not play), anything else gone. */
+export type ShownProblem = 'gone' | 'too_large' | 'not_drawable'
+export const shownProblem = (status: number): ShownProblem => (status === 413 ? 'too_large' : status === 200 ? 'not_drawable' : 'gone')
+export function shownProblemText(problem: ShownProblem, limit: string, botName?: string) {
+  if (problem === 'too_large') return `Too large to show here (limit ${limit})`
+  if (problem === 'not_drawable') return "Can't be shown here"
+  return `No longer in ${botName || 'the bot'}'s folder`
+}
