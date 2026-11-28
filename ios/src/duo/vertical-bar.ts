@@ -11,6 +11,7 @@ export type VerticalBarPriority = 'high' | 'standard' | 'low'
 export type DuoStripScreen =
   | 'folded-roster'
   | 'folded-chat'
+  | 'folded-chat-short'
   | 'folded-details'
   | 'unfolded-split'
   | 'unfolded-portrait'
@@ -45,6 +46,7 @@ export const DUO_VERTICAL_BAR_TABLE: Record<DuoStripScreen, readonly VerticalBar
     { id: 'bot-avatar', kind: 'custom', priority: 'high', defaultLabel: 'Bot options' },
     { id: 'bot-menu', kind: 'button', sfSymbol: 'ellipsis', priority: 'high', defaultLabel: 'Bot options' }
   ],
+  'folded-chat-short': [{ id: 'bot-menu', kind: 'button', sfSymbol: 'ellipsis', priority: 'high', defaultLabel: 'Bot options' }],
   'folded-details': [{ id: 'bot-menu', kind: 'button', sfSymbol: 'ellipsis', priority: 'high', defaultLabel: 'Bot options' }],
   'unfolded-split': [
     { id: 'bot-avatar', kind: 'custom', priority: 'high', defaultLabel: 'Bot options' },
@@ -119,10 +121,12 @@ export function duoAvatarAccessibilityLabel(input: { name: string; running: bool
   return [input.name, input.running ? 'working' : '', input.unread ? 'unread' : ''].filter(Boolean).join(', ')
 }
 
-/** Maps the live surface and compact Chat focus into the Duo strip table key (null on ordinary iPhone/iPad). */
-export function resolveDuoStripScreen(input: { surface: SurfaceKind; chatFocused: boolean }): DuoStripScreen | null {
+/** Maps the live surface, compact Chat focus and window height into the Duo strip table key (null on ordinary iPhone/iPad).
+ *  Folded chat in a window under 560 pt (landscape, 466) has no room for the avatar: one ••• carries "Bot details" instead. */
+export function resolveDuoStripScreen(input: { surface: SurfaceKind; chatFocused: boolean; windowHeight?: number }): DuoStripScreen | null {
   if (input.surface === 'duo-unfolded-landscape') return 'unfolded-split'
-  if (input.surface === 'duo-folded') return input.chatFocused ? 'folded-chat' : 'folded-roster'
+  if (input.surface === 'duo-folded' && !input.chatFocused) return 'folded-roster'
+  if (input.surface === 'duo-folded') return (input.windowHeight ?? Infinity) < 560 ? 'folded-chat-short' : 'folded-chat'
   if (input.surface === 'duo-unfolded-portrait') return 'unfolded-portrait'
   return null
 }

@@ -1,7 +1,7 @@
 /** One bot's conversation screen: header, transcript (with history paging and exact scroll restore),
  *  and Round 4 resting-vs-typing composer with live keyboard & safe-area clearance. */
 import { type ComponentRef, type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
-import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native'
+import { KeyboardAvoidingView, Platform, Pressable, useWindowDimensions, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { Attachment } from '../../../shared/attachment-schema'
 import type { Bot } from '../../../shared/bot-schema'
@@ -61,6 +61,7 @@ export function ChatScreen({ bot, hideHeader = false, headerLeading, showNewSess
 
   // Measure the avoiding container's live window origin so KeyboardAvoidingView clears the keyboard accurately
   // under both opaque native Stack headers and split-pane top safe-area padding across iPhone, Duo, and iPad.
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions()
   const rootRef = useRef<ComponentRef<typeof View>>(null)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
   const handleLayout = useCallback(() => {
@@ -69,6 +70,10 @@ export function ChatScreen({ bot, hideHeader = false, headerLeading, showNewSess
       setKeyboardOffset(prev => (Math.abs(prev - next) >= 1 ? next : prev))
     })
   }, [])
+
+  useEffect(() => {
+    handleLayout()
+  }, [handleLayout, hideHeader, windowHeight, windowWidth])
 
   const statusLine = resolveChatStatusLine({
     connected,

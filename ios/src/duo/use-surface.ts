@@ -15,13 +15,17 @@ export interface LiveSurfaceState {
 export function useLiveSurface(): LiveSurfaceState {
   const { width, height } = useWindowDimensions()
   const insets = useSafeAreaInsets()
+  const verticalBarEdge = useVerticalBarEdge()
+  const isPad = Platform.OS === 'ios' && Platform.isPad
   const metrics: WindowMetrics = {
     width,
     height,
     safeAreaLeft: insets.left,
     safeAreaRight: insets.right,
     safeAreaTop: insets.top,
-    safeAreaBottom: insets.bottom
+    safeAreaBottom: insets.bottom,
+    verticalBarEdge,
+    isPad
   }
   const nextSurface = classifySurface(metrics)
   const [surface, setSurface] = useState<SurfaceKind>(nextSurface)

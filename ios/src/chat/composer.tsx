@@ -19,7 +19,7 @@ import { composerInputMaxHeight, DYNAMIC_TYPE_CAPS } from '../ui/dynamic-type'
 import { PlusIcon, SendIcon } from '../ui/icon'
 import { useTheme } from '../ui/theme'
 import { MOBILE_SCALE } from '../ui/tokens'
-import { COMPOSER_REST_PLACEHOLDER, composerActionState, isComposerExpanded } from './composer-state'
+import { COMPOSER_REST_PLACEHOLDER, composerActionState, composerChromeSpacing, isComposerExpanded } from './composer-state'
 import { useChatStore } from './store'
 
 export interface ComposerProps {
@@ -39,7 +39,7 @@ const AX_FOCUS_OVERLAY_MIN_SCALE = 1.35
 
 export function Composer({ botId, botName, context, ready, running, model, bottomInset = 0, onSend, onStop, onOpenModelPicker }: ComposerProps) {
   const theme = useTheme()
-  const { fontScale } = useWindowDimensions()
+  const { fontScale, height: viewportHeight } = useWindowDimensions()
   const screenReaderEnabled = useScreenReaderEnabled()
   const chatScale = MOBILE_SCALE.chat
   const text = useChatStore(state => state.slots[botId]?.draft ?? '')
@@ -62,7 +62,7 @@ export function Composer({ botId, botName, context, ready, running, model, botto
   const stagedTotal = staged.files.length + (staged.leftOut > 0 ? 1 : 0) + (staged.pickerError ? 1 : 0)
   const expanded = isComposerExpanded({ focused, draft: text, stagedCount: stagedTotal, screenReaderEnabled })
   const action = composerActionState({ ready, running, draft: text, readyAttachments: staged.ready.length, uploadingAttachments: staged.busy })
-  const paddingBottom = keyboardOpen ? 12 : Math.max(12, bottomInset)
+  const chrome = composerChromeSpacing({ viewportHeight, expanded, keyboardOpen, bottomInset })
   const btnSize = chatScale.composerActionSize
 
   const submit = () => {
@@ -135,13 +135,13 @@ export function Composer({ botId, botName, context, ready, running, model, botto
     borderRadius: expanded ? 24 : chatScale.composerRadius,
     borderWidth: 1,
     borderColor: theme.border,
-    paddingTop: expanded ? 12 : 9,
+    paddingTop: chrome.cardPaddingTop,
     paddingHorizontal: expanded ? 14 : 10,
-    paddingBottom: expanded ? 10 : 9
+    paddingBottom: chrome.cardPaddingBottom
   }
 
   return (
-    <View style={{ alignItems: 'center', paddingHorizontal: 14, paddingTop: 4, paddingBottom }}>
+    <View style={{ alignItems: 'center', paddingHorizontal: 14, paddingTop: chrome.outerPaddingTop, paddingBottom: chrome.outerPaddingBottom }}>
       <View testID={expanded ? 'composer-expanded' : 'composer-resting'} style={pillStyle}>
         {expanded ? <ComposerAttachments staged={staged} /> : null}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: expanded ? 0 : 10 }}>
@@ -162,7 +162,7 @@ export function Composer({ botId, botName, context, ready, running, model, botto
               onSubmitEditing={submit}
               blurOnSubmit={false}
               maxFontSizeMultiplier={DYNAMIC_TYPE_CAPS.composerInput}
-              style={{ maxHeight: composerInputMaxHeight(fontScale), paddingHorizontal: 0, paddingVertical: 0, fontFamily: 'Inter_400Regular', ...chatScale.composerInput, color: theme.foreground }}
+              style={{ maxHeight: composerInputMaxHeight(fontScale, viewportHeight), paddingHorizontal: 0, paddingVertical: 0, fontFamily: 'Inter_400Regular', ...chatScale.composerInput, color: theme.foreground }}
             />
             {!expanded && ready && fontScale >= AX_FOCUS_OVERLAY_MIN_SCALE ? (
               <Pressable accessible={false} onPress={() => inputRef.current?.focus()} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} />
@@ -171,7 +171,7 @@ export function Composer({ botId, botName, context, ready, running, model, botto
           {!expanded ? actionButton : null}
         </View>
         {expanded ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: btnSize, marginTop: 10, gap: 6 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: btnSize, marginTop: chrome.toolbarMarginTop, gap: 6 }}>
             {attachButton}
             <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', flexWrap: fontScale >= 1.35 ? 'wrap' : 'nowrap', alignItems: 'center', gap: 6 }}>
               {model}

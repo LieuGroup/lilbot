@@ -7,19 +7,20 @@ export type RootTab = 'bots' | 'work' | 'settings'
 export interface WindowMetrics {
   width: number
   height: number
-  /** Live UIKit leading inset (e.g. rotated iPhone Dynamic Island). */
+  /** Live UIKit leading inset (e.g. rotated iPhone Dynamic Island or leading Duo vertical strip). */
   safeAreaLeft?: number
   /** Live UIKit trailing inset; overrides the fallback rail width once measured on simulator/device. */
   safeAreaRight?: number
   safeAreaTop?: number
   safeAreaBottom?: number
+  /** Live iOS 27.1+ `UITraitCollection.verticalBarEdge`: set only when UIKit draws the Duo's 84 pt vertical strip. */
+  verticalBarEdge?: 'leading' | 'trailing' | null
+  /** `Platform.isPad`, so iPad Split View / Slide Over windows never classify as Duo surfaces. */
+  isPad?: boolean
 }
 
-/** Single source of truth for iPhone Duo geometry constants.
- *  Confirmed on folded iPhone Duo (hardware + Xcode 27.2 Simulator): foldedWidth (466), foldedHeight (678),
- *  railWidth (84), topInset (0), and homeBarHeight (34).
- *  All unfolded dimensions, live safe-area insets, creaseWidth, and transient hinge sizes stay unconfirmed until measured unfolded.
- *  Live UIKit safeAreaInsets and window metrics override these at runtime whenever present. */
+/** iPhone Duo geometry, measured on the Xcode 27.2 simulator: folded 466x678 / 678x466 (84 pt strip on either side),
+ *  unfolded 951x669 (strip) and 669x951 (horizontal bars). Live insets and verticalBarEdge win at runtime. */
 export const UNCONFIRMED_DUO_METRICS = {
   foldedWidth: 466,
   foldedHeight: 678,
@@ -45,9 +46,10 @@ export const UNCONFIRMED_DUO_METRICS = {
   minUnfoldedLandscapeHeight: 500,
   minUnfoldedPortraitWidth: 600,
   maxUnfoldedPortraitHeight: 1050,
-  foldedMinWidth: 430,
+  foldedMinShortEdge: 450,
   foldedMaxWidth: 510,
   foldedMinHeight: 500,
+  foldedMaxLongEdge: 720,
   foldedMaxAspect: 1.65,
   padMinLongEdge: 1000,
   padMinShortEdge: 740,
@@ -57,27 +59,50 @@ export const UNCONFIRMED_DUO_METRICS = {
   chatInspectorRatio: 505 / 867
 } as const
 
-/** Transient hinge-motion window sizes observed during Duo fold/unfold (466x562, 951x553 [UNCONFIRMED UNTIL SIMULATOR]). */
+/** Transient hinge-motion window sizes observed during Duo fold/unfold (466x562, 562x466, 951x553). */
 export function isTransientDuoSize(width: number, height: number): boolean {
   const m = UNCONFIRMED_DUO_METRICS
-  const foldedBand = Math.abs(width - m.foldedWidth) <= m.transientFoldedWidthTolerance && height >= m.transientFoldedHeightMin && height <= m.transientFoldedHeightMax
+  const shortEdge = Math.min(width, height)
+  const longEdge = Math.max(width, height)
+  const foldedBand =
+    Math.abs(shortEdge - m.foldedWidth) <= m.transientFoldedWidthTolerance &&
+    longEdge >= m.transientFoldedHeightMin &&
+    longEdge <= m.transientFoldedHeightMax
   const unfoldedBand =
-    Math.abs(width - m.unfoldedLandscapeWidth) <= m.transientUnfoldedWidthTolerance && height >= m.transientUnfoldedHeightMin && height <= m.transientUnfoldedHeightMax
+    Math.abs(width - m.unfoldedLandscapeWidth) <= m.transientUnfoldedWidthTolerance &&
+    height >= m.transientUnfoldedHeightMin &&
+    height <= m.transientUnfoldedHeightMax
   return foldedBand || unfoldedBand
 }
 
-/** Classify window dimensions + insets into phone, duo-folded, duo-unfolded (landscape/portrait), or pad.
- *  Checks iPads in both orientations first and requires minimum height on Duo landscape so rotated phones stay `phone`. */
-export function classifySurface({ width, height, safeAreaRight = 0 }: WindowMetrics): SurfaceKind {
+/** iPads first (by size or `isPad`), then unfolded Duo, then folded Duo in either orientation (by `verticalBarEdge`
+ *  or orientation-invariant geometry; ordinary iPhones have a short edge <= 440 and aspect >= 1.77). */
+export function classifySurface({
+  width,
+  height,
+  safeAreaLeft = 0,
+  safeAreaRight = 0,
+  verticalBarEdge = null,
+  isPad = false
+}: WindowMetrics): SurfaceKind {
   const m = UNCONFIRMED_DUO_METRICS
   const longEdge = Math.max(width, height)
   const shortEdge = Math.min(width, height)
   if (longEdge >= m.padMinLongEdge && shortEdge >= m.padMinShortEdge) return 'pad'
+  if (isPad) {
+    return width >= m.minUnfoldedLandscapeWidth && height >= m.minUnfoldedLandscapeHeight ? 'pad' : 'phone'
+  }
   if (width >= m.minUnfoldedLandscapeWidth && width > height && height >= m.minUnfoldedLandscapeHeight) return 'duo-unfolded-landscape'
   if (width >= m.minUnfoldedPortraitWidth && height > width && height < m.maxUnfoldedPortraitHeight) return 'duo-unfolded-portrait'
-  const hasTrailingRail = safeAreaRight >= m.minRailInset && height >= m.minUnfoldedLandscapeHeight
-  const foldedAspect = width >= m.foldedMinWidth && width <= m.foldedMaxWidth && height >= m.foldedMinHeight && height / Math.max(width, 1) < m.foldedMaxAspect
-  if (hasTrailingRail || foldedAspect) return 'duo-folded'
+  if (verticalBarEdge === 'leading' || verticalBarEdge === 'trailing') return 'duo-folded'
+  const hasPortraitRail = Math.max(safeAreaLeft, safeAreaRight) >= m.minRailInset && height >= m.minUnfoldedLandscapeHeight
+  const foldedGeometry =
+    shortEdge >= m.foldedMinShortEdge &&
+    shortEdge <= m.foldedMaxWidth &&
+    longEdge >= m.foldedMinHeight &&
+    longEdge <= m.foldedMaxLongEdge &&
+    longEdge / Math.max(shortEdge, 1) < m.foldedMaxAspect
+  if (hasPortraitRail || foldedGeometry) return 'duo-folded'
   return 'phone'
 }
 
@@ -126,10 +151,14 @@ export function computeShellLayout(
   const safeAreaLeft = Math.max(0, metrics.safeAreaLeft ?? 0)
   const safeAreaRight = Math.max(0, metrics.safeAreaRight ?? 0)
   const hasSideStrip = surface === 'duo-folded' || surface === 'duo-unfolded-landscape'
-  const railWidth = hasSideStrip ? (safeAreaRight >= m.minRailInset ? safeAreaRight : m.railWidth) : 0
+  const leadingByInset = safeAreaLeft >= m.minRailInset && safeAreaRight < m.minRailInset
+  const stripEdge = hasSideStrip ? (metrics.verticalBarEdge ?? (leadingByInset ? 'leading' : 'trailing')) : null
+  const edgeInset = stripEdge === 'leading' ? safeAreaLeft : safeAreaRight
+  const railWidth = hasSideStrip ? (edgeInset >= m.minRailInset ? edgeInset : m.railWidth) : 0
   const horizontalPadding = { left: safeAreaLeft, right: safeAreaRight }
-  const trailingReserved = hasSideStrip ? Math.max(railWidth, safeAreaRight) : safeAreaRight
-  const usableWidth = Math.max(0, metrics.width - safeAreaLeft - trailingReserved)
+  const leftReserved = stripEdge === 'leading' ? Math.max(railWidth, safeAreaLeft) : safeAreaLeft
+  const rightReserved = stripEdge === 'trailing' ? Math.max(railWidth, safeAreaRight) : safeAreaRight
+  const usableWidth = Math.max(0, metrics.width - leftReserved - rightReserved)
   const splitMode = surface === 'duo-unfolded-landscape' || surface === 'pad'
   const inspectorOpen = !!options.inspectorOpen
   const sidebarOpen = options.sidebarOpen ?? !inspectorOpen

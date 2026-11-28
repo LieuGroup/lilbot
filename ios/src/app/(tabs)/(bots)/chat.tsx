@@ -90,9 +90,10 @@ export default function CompactChatRoute() {
     }
   }, [bot, bots.length, isFocused, layout.splitMode, navigation])
 
+  const stripScreen = resolveDuoStripScreen({ surface, chatFocused: true, windowHeight: metrics.height })
   const openBotMenu = useCallback(() => {
-    if (bot) openMenu(bot.id)
-  }, [bot, openMenu])
+    if (bot) openMenu(bot.id, { withDetails: stripScreen === 'folded-chat-short' })
+  }, [bot, openMenu, stripScreen])
   const openWorkItem = useCallback(
     (itemId: string) => {
       router.push({ pathname: '/(tabs)/(work)/item', params: { itemId } })
@@ -107,7 +108,6 @@ export default function CompactChatRoute() {
 
   const backVisible = shouldShowNativeBack(surface, screenReaderEnabled)
   const hideDuoHeader = shouldHideDuoChatHeader({ surface, verticalBarEdge, hasBot: bot !== null })
-  const stripScreen = resolveDuoStripScreen({ surface, chatFocused: true })
   const verticalBarItems = useMemo(
     () =>
       hideDuoHeader && bot
