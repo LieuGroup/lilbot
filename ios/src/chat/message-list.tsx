@@ -6,6 +6,7 @@ import type { Avatar } from '../../../shared/avatar'
 import type { ChatView } from '../../../shared/client/chat/chat-state'
 import { LoadingEarlier } from '../history/history-marks'
 import { useOlderHistory } from '../history/use-older-history'
+import { CheckpointRefusalSlot } from '../memory/checkpoint-refusal-card'
 import { ArrowDownIcon } from '../ui/chat-icons'
 import { SparklesIcon } from '../ui/icon'
 import { AppText } from '../ui/text'
@@ -26,11 +27,13 @@ export interface MessageListProps {
   chat: ChatView
   statusLine?: ChatStatusLine | null
   emptyHint?: string
+  sendSeq?: number
+  onNewChat?: () => void
   onChangeModel: () => void
   renderToolItem?: RenderToolItem
 }
 
-export function MessageList({ botId, botName, botAvatar, deviceId, chat, statusLine = null, emptyHint, onChangeModel, renderToolItem }: MessageListProps) {
+export function MessageList({ botId, botName, botAvatar, deviceId, chat, statusLine = null, emptyHint, sendSeq = 0, onNewChat, onChangeModel, renderToolItem }: MessageListProps) {
   const theme = useTheme()
   const isDark = useColorScheme() === 'dark'
   const { width: viewportWidth } = useWindowDimensions()
@@ -77,7 +80,12 @@ export function MessageList({ botId, botName, botAvatar, deviceId, chat, statusL
         maxToRenderPerBatch={10}
         scrollEventThrottle={64}
         contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: CONTENT_PADDING_VERTICAL, gap: ROW_GAP, flexGrow: 1, justifyContent: rows.length === 0 ? 'center' : 'flex-end' }}
-        ListHeaderComponent={visibleStatus ? <ConversationStatusRow status={visibleStatus} centered={rows.length === 0} /> : undefined}
+        ListHeaderComponent={
+          <>
+            {visibleStatus ? <ConversationStatusRow status={visibleStatus} centered={rows.length === 0} /> : null}
+            {onNewChat ? <CheckpointRefusalSlot botId={botId} chatId={chat.chatId} sendSeq={sendSeq} deviceId={deviceId} onNewChat={onNewChat} /> : null}
+          </>
+        }
         ListEmptyComponent={
           !visibleStatus && emptyHint ? (
             <AppText testID="chat-empty-hint" style={{ ...MOBILE_SCALE.chat.message, textAlign: 'center' }} color={theme.mutedForeground}>
