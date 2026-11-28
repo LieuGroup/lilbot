@@ -87,10 +87,13 @@ export class ShownService {
   async content(botId: string, id: string) {
     const row = this.deps.exists(botId) ? this.deps.store.get(botId, id) : null
     if (!row) throw refuse('item_not_found', 'This item does not exist.')
-    const file = await openWorkspaceFile(this.deps.root(botId), row.path)
+    const tooLarge = (size: unknown) => Object.assign(refuse('file_too_large', `This ${WORD[row.kind]} is now larger than LilBot shows.`), { size })
+    const file = await openWorkspaceFile(this.deps.root(botId), row.path).catch(error => {
+      throw error instanceof LilBotError && error.code === 'file_too_large' ? tooLarge((error as { size?: unknown }).size) : error
+    })
     if (file.stat.size > SHOW_LIMITS.bytes[row.kind]) {
       await file.handle.close()
-      throw refuse('file_too_large', `This ${WORD[row.kind]} is now larger than LilBot shows.`)
+      throw tooLarge(file.stat.size)
     }
     return { handle: file.handle, size: file.stat.size, mime: row.mime, name: row.name }
   }

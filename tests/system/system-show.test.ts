@@ -125,3 +125,11 @@ test('the call is matched to the conversation that started it; one nobody report
   await f.call('b1', 'lilbot_show', args, false)
   expect(f.history.page('b1').items.find(row => row.item.kind === 'shown')?.sessionId).toBe('b1-reported')
 })
+
+test('the tool tells a bot that an HTML page is shown with its scripts off, in words that never name the owner', async () => {
+  const f = systemFixture({ show: true })
+  const tool = f.tools.find(t => t.name === 'lilbot_show')
+  expect(tool?.description).toContain('its scripts never run')
+  expect(tool?.description).toContain('static')
+  expect(tool?.description).not.toContain('Oscar')
+})

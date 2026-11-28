@@ -64,7 +64,12 @@ test('a file gone from the folder, grown past its limit, or another bot or item 
   expect((await get({}, '/api/shown/b1/nope')).status).toBe(404)
   expect((await get({}, `/api/shown/b1/${id}`, 'POST')).status).toBe(405)
   await truncate(join(f.workspaces.pathFor('b1'), 'clip.mp4'), SHOW_LIMITS.bytes.video + 1)
-  expect((await get()).status).toBe(413)
+  const large = await get({}, undefined, 'HEAD')
+  // Its size now, for the fallback line ("212 MB, limit 50 MB"); the 50 MiB cap and the per-kind limit both send it.
+  expect([large.status, large.headers.get('x-lilbot-file-size')]).toEqual([413, String(SHOW_LIMITS.bytes.video + 1)])
+  await truncate(join(f.workspaces.pathFor('b1'), 'clip.mp4'), 60 * 1024 * 1024)
+  const capped = await get({}, undefined, 'HEAD')
+  expect([capped.status, capped.headers.get('x-lilbot-file-size')]).toEqual([413, String(60 * 1024 * 1024)])
   await rm(join(f.workspaces.pathFor('b1'), 'clip.mp4'))
   expect((await get()).status).toBe(404)
 })
@@ -91,7 +96,8 @@ test('a shown file, or its folder, replaced by a link to outside the bot folder 
 test('an image grown past the image limit (20 MiB, under the general 50 MiB cap) answers 413', async () => {
   const { f, get } = await shownVideo('paywall.png', Buffer.from('89504e470d0a1a0a', 'hex'))
   await truncate(join(f.workspaces.pathFor('b1'), 'paywall.png'), SHOW_LIMITS.bytes.image + 1)
-  expect((await get()).status).toBe(413)
+  const large = await get({}, undefined, 'HEAD')
+  expect([large.status, large.headers.get('x-lilbot-file-size')]).toEqual([413, String(SHOW_LIMITS.bytes.image + 1)])
 })
 
 test("a deleted bot's item is not served, though its row is still there", async () => {

@@ -17,8 +17,11 @@ export async function shownRoute(request: Request, hosts: Set<string>, shown: Pi
   try {
     file = await shown.content(decodeURIComponent(parts[3]), decodeURIComponent(parts[4]))
   } catch (error) {
-    const large = (error as { code?: unknown }).code === 'file_too_large'
-    return new Response(large ? 'Too large to show' : 'File missing or unavailable', { status: large ? 413 : 404, headers: { 'Cache-Control': 'no-store' } })
+    const { code, size } = error as { code?: unknown; size?: unknown }
+    const large = code === 'file_too_large'
+    // The file's size now, so the fallback line can say "212 MB, limit 50 MB" (artboard 27, A4).
+    const headers: Record<string, string> = { 'Cache-Control': 'no-store', ...(large && typeof size === 'number' ? { 'X-LilBot-File-Size': String(size) } : {}) }
+    return new Response(large ? 'Too large to show' : 'File missing or unavailable', { status: large ? 413 : 404, headers })
   }
   const headers: Record<string, string> = { ...downloadHeaders(file.name, file.mime), 'Accept-Ranges': 'bytes' }
   const range = parseRange(request.headers.get('range'), file.size)

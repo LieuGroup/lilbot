@@ -45,7 +45,20 @@ Short summaries are in `AGENTS.md` under "Library and chat attachments"; screen 
 - `/api/shown/<bot>/<id>` re-opens the saved path through `openWorkspaceFile` (no links, inside the folder), refuses a
   file grown past its kind's limit (413) or gone (404), and answers one `bytes=` range with 206 so video seeks. Same
   Host/Origin guard and download headers (`Content-Disposition: attachment`, `CSP: sandbox`) as the Library route; an
-  HTML page is never rendered from it on LilBot's origin.
+  HTML page is never rendered from it on LilBot's origin. A too-large answer carries the file's size now in
+  `X-LilBot-File-Size`, so the line says "212 MB, limit 50 MB" (artboard 27, A4).
+- The web draws an HTML page as the Library preview does: it fetches the text and puts it in an iframe with `sandbox=""`
+  (no permissions: no scripts, forms, pop-ups, top navigation or same origin) and `srcDoc`, under the shared head in
+  `web/src/ui/page-document.ts` (a `default-src 'none'` policy allowing only inline styles and data: images and fonts,
+  then `<base target="_blank">`). The page's own address is never framed or opened. **A page's scripts never run**, so
+  bots are told to show static pages; the frame cannot report its height, so it is a fixed 192 px tall (artboard 27,
+  A3) at the reply's width (at most 420) and scrolls inside. A gone or too-large page draws the plain fallback line,
+  with the file's name and why, never the caption (A4).
+- Known gap (#336 review, open): the frame may still navigate itself. One click on a link with `target="_self"` (or an
+  `<area>` or SVG `<a>`) sends a GET to the page's chosen address and draws that page inside the frame (Chrome 156).
+  The response stays sealed (opaque origin, no scripts, no access to LilBot), but the click reaches the network.
+  `<base target="_blank">` only covers links with no target. The Library preview has the same gap.
+  `bun run check:page-sandbox` fails on it until it is closed.
 - Routine and webhook transcripts drop `shown` items. A deleted bot's rows go with it.
 
 ## Chat attachments (`server/attachments/`)

@@ -3,6 +3,7 @@ import Markdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { LibraryItem } from '../../../shared/library-schema'
 import { messageOf } from '../app/lilbot-socket'
+import { SandboxedPage } from '../ui/sandboxed-page'
 
 /** Pages over this size open as a download instead. */
 const PREVIEW_BYTES = 2 * 1024 * 1024
@@ -17,11 +18,7 @@ const components: Components = {
     </a>
   )
 }
-// An HTML page goes into a frame with no permissions at all (no scripts, forms, pop-ups or same origin), and this policy,
-// first in its head, refuses every request but inline styles and embedded images. The first <base> sends links to a new
-// window, which the frame may not open.
-const POLICY = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:"
-const frameHead = `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${POLICY}"><base target="_blank"><style>body{margin:20px;font:15px/1.55 Inter,system-ui,sans-serif;color:#1b1c1f;background:#fff}</style>`
+// An HTML page goes into the shared sandboxed frame (`ui/sandboxed-page.tsx`).
 
 /** A page (.md or .html) read from its download address and shown on a sheet. */
 export function PagePreview({ item, markdown }: { item: LibraryItem; markdown: boolean }) {
@@ -60,7 +57,7 @@ export function PagePreview({ item, markdown }: { item: LibraryItem; markdown: b
             </Markdown>
           </div>
         ) : (
-          <iframe title={item.title} sandbox="" srcDoc={frameHead + text} referrerPolicy="no-referrer" className="size-full bg-white" />
+          <SandboxedPage title={item.title} text={text} className="size-full bg-white" />
         )}
       </div>
     </div>
