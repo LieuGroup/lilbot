@@ -18,6 +18,35 @@ LilBot never summarises. The short version is in `AGENTS.md` under "Conversation
   the main session is refused). It previews without `--yes` and reads `LILBOT_DATA_DIR`.
 - `bun live-checks/history-benchmark.ts` uses a synthetic 5,000-row dev copy, never production data.
 
+## Which sessions are the conversation
+
+- LilBot records only the bot's own conversation (`history/history-owned.ts`, migration 46): sessions it opened as the
+  bot's main conversation (new, resumed or after an engine switch), the sessions the bot already had before LilBot first
+  listed it (its one-time import of earlier history; a session with no start time is never adopted), and their
+  compression continuations. A session started anywhere else, such as a chat held in the engine's own apps, is never
+  imported, journalled, searched, shown as activity or unread, or reviewed for memory (`ChatKind` `outside`), whatever
+  the engine lists. Sessions already in a copy at the upgrade are kept; an excluded session is never the conversation.
+
+## Where each item sits
+
+- An item sits where Oscar first saw it (`history/history-sent.ts`). The engine keeps everything in the order it
+  happened except a message sent while the bot was busy (a hidden turn, a reply still running), which it writes when it
+  starts on it. So an imported message moves up past exactly the rows LilBot first showed after he sent it, decided by
+  the journal's event order alone: a reply's first words, a tool's start, a placed message's send. No time from the
+  engine's clock is compared with the journal's, so no clock difference or coincidence changes the order; LilBot's own
+  rows (shown files, sign-in cards, thread and work lines) carry LilBot's time like the send. A reply whose turn end is
+  not yet journalled counts as the open turn's only when it begins with every word that turn has journalled since its last start or tool, and the engine wrote it no earlier than the open turn's start, less a 5 s clock allowance (a check that only rules a reply out and never orders two rows). Every lookup is an index seek (migration 46 indexes the journal by event
+  type, by a finished turn's row, by a sent message's text and by a tool's id), and a message passes at most 500 rows, so
+  placing does not grow with the history. Opening a chat reads the newest engine page (since #87: the importer pages
+  oldest first, so this is how a reopened chat shows what happened while LilBot was not
+  watching); a row already stored is neither placed again nor rewritten unless its item changed. The web and phone apps put a message into the conversation the moment it is sent, marked as
+  waiting until the engine starts on it; the engine's echo of it adds nothing.
+- Known limits, both the same as before this rule:
+  - A row an earlier release already stored in the wrong place (a message sent while busy, stored below the reply that
+    showed after it) stays there. Stored rows are never moved, and nothing kept for them shows what really happened.
+  - When LilBot was not running while a hidden reply's first words showed, or missed that turn's end and a later turn has
+    already started, the journal has nothing to compare, so the message keeps the engine's place below that reply.
+
 ## Hidden sessions and compression lineage
 
 - Attachment metadata and thread references are merged at the HTTP edge; a thread's private transcript is never

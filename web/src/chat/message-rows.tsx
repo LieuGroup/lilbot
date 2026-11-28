@@ -2,7 +2,7 @@ import { memo, type ReactNode, useMemo, useRef } from 'react'
 
 import { MessageScrollerItem } from '@/ui/message-scroller'
 import type { Avatar } from '../../../shared/avatar'
-import type { MessageItem, ViewItem } from '../../../shared/client/chat/chat-state'
+import type { MessageItem, UserItem, ViewItem } from '../../../shared/client/chat/chat-state'
 import { type ReplyActions, replyActions } from '../../../shared/client/chat/reply-actions'
 import { dayKey } from '../history/history-labels'
 import { DateLine, SessionDivider, StartMarker } from '../history/history-marks'
@@ -39,6 +39,8 @@ interface MessageRowsProps {
   /** Whether a turn is running right now, and where its items begin in `items`. */
   running: boolean
   turnStart: number | null
+  /** `ChatView.queued`: messages drawn as waiting for the bot. */
+  queued: readonly UserItem[]
 }
 
 /** One message row. Memoised with its item, so a streamed chunk, a reloaded transcript or an earlier
@@ -51,6 +53,7 @@ const ChatRow = memo(function ChatRow({
   botId,
   inTurn,
   beforeTool,
+  queued,
   copyText,
   usage
 }: {
@@ -60,6 +63,7 @@ const ChatRow = memo(function ChatRow({
   botId: string
   inTurn: boolean
   beforeTool: boolean
+  queued: boolean
   /** The reply's words when this row carries its actions; plain values, so the memo holds while other rows stream. */
   copyText: string | null
   usage?: ReplyActions['usage']
@@ -67,7 +71,7 @@ const ChatRow = memo(function ChatRow({
   return (
     // A task drawn in its batch's card leaves its own row empty: hidden, so it takes no gap.
     <MessageScrollerItem messageId={String(position)} scrollAnchor={anchor} className="empty:hidden">
-      <ChatItem item={item} botId={botId} inTurn={inTurn} beforeTool={beforeTool} actions={copyText === null ? null : { text: copyText, usage }} />
+      <ChatItem item={item} botId={botId} inTurn={inTurn} beforeTool={beforeTool} queued={queued} actions={copyText === null ? null : { text: copyText, usage }} />
     </MessageScrollerItem>
   )
 })
@@ -89,7 +93,7 @@ function newestDivider(items: ViewItem[]) {
 }
 
 /** The conversation's rows: the start marker, day lines, session dividers and messages. */
-export function MessageRows({ botId, botName, avatar, items, first, drawFrom, start, load, running, turnStart }: MessageRowsProps) {
+export function MessageRows({ botId, botName, avatar, items, first, drawFrom, start, load, running, turnStart, queued }: MessageRowsProps) {
   const loaded = useRef(loadedTranscript(first, items.length, load))
   loaded.current = updateLoaded(loaded.current, first, items.length, load)
   const newest = newestDivider(items)
@@ -116,6 +120,7 @@ export function MessageRows({ botId, botName, avatar, items, first, drawFrom, st
         botId={botId}
         inTurn={inTurn}
         beforeTool={beforeTool}
+        queued={item.kind === 'user' && queued.includes(item)}
         copyText={actions.get(index)?.text ?? null}
         usage={actions.get(index)?.usage}
       />

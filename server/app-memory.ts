@@ -5,6 +5,7 @@ import type { CheckpointChoice, MemoryCheckpointRefusal } from '../shared/memory
 import type { EventFrame } from '../shared/protocol'
 import type { BotService } from './bots/bot-service'
 import type { BotStore } from './bots/bot-store'
+import type { ChatKind } from './bots/hidden-chats'
 import type { EngineRegistry } from './engines/engine-registry'
 import { createEngineApi, type EngineApiOptions } from './http/engine-api'
 import { createPreCompressCheckpoint } from './http/history-api'
@@ -94,7 +95,7 @@ export function createMemory(
     checkpointRefusals,
     reviewModel: settings.model ?? null,
     isReview: (chat: string) => reviewer?.isReview(chat) ?? false,
-    conversationHooks: (chatKind: (botId: string, chatId: string) => 'conversation' | 'lilbot' | 'unknown') => ({
+    conversationHooks: (chatKind: ChatKind) => ({
       onTurnCompleted: (botId: string, chatId: string, userText: string, assistantText: string) => {
         if ((chatKind(botId, chatId) ?? 'conversation') === 'conversation' && !(reviewer?.isReview(chatId) ?? false))
           reviewer?.record(botId, chatId, withoutInjectedContext(withoutWebhookNotes(userText)).slice(0, 20_000), assistantText.slice(0, 20_000))

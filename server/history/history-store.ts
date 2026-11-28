@@ -4,37 +4,32 @@ import type { HistoryItem, HistoryPage, SessionReason } from '../../shared/histo
 import { LilBotError } from '../../shared/lilbot-error'
 import { isShowTool, shownSearchText } from '../../shared/shown-rules'
 import { HistoryMetaStore } from './history-meta-store'
+import { HistoryOwnership } from './history-owned'
 import { HistoryPreviewStore } from './history-preview'
 import { type HistorySearchMatch, searchHistory } from './history-search'
+import { placeMessage } from './history-sent'
 import { pruneSupersededJournalRows } from './history-tail'
 
-interface HistorySession {
-  bot: string
-  id: string
-  at: number
-  cursor: string | null
-  complete: number
-}
+type HistorySession = { bot: string; id: string; at: number; cursor: string | null; complete: number }
 type StoredRow = { id: string; at: number; position: number; item: string }
-export interface HistoryRow {
-  id: string
-  at: number
-  order: number
-  item: ChatItem
-}
+export type HistoryRow = { id: string; at: number; order: number; item: ChatItem }
 
 /** SQL guard: the row is inserted or counted only while its session is not excluded, atomically with the statement. */
 const notExcluded = (bot: string, session: string) => `NOT EXISTS (SELECT 1 FROM history_exclusions x WHERE x.bot=${bot} AND x.session=${session})`
 
+const HISTORY_TABLES = 'items sessions events imports exclusions previews owned adoption sent'.split(' ').map(name => `history_${name}`)
+
 /** SQLite owns stable display rows and an event journal written before forwarding each live event. */
 export class HistoryStore {
   readonly meta: HistoryMetaStore
+  readonly owned: HistoryOwnership
   private previews: HistoryPreviewStore
   constructor(
     readonly db: Database,
     onPreviewChanged?: (botId: string) => void
   ) {
     this.meta = new HistoryMetaStore(db)
+    this.owned = new HistoryOwnership(db)
     this.previews = new HistoryPreviewStore(db, onPreviewChanged)
   }
   preview = (bot: string) => this.previews.get(bot)
@@ -58,10 +53,13 @@ export class HistoryStore {
     if (this.excluded(bot, session)) return false
     const enriched = this.meta.mergeRows(bot, session, rows)
     pruneSupersededJournalRows(this.db, bot, session, enriched)
+    // A stored row is written again only when its item changed, so re-reading unchanged rows touches no index or search entry.
     const insert = this.db.query(`INSERT INTO history_items(bot,session,id,at,position,item,text) VALUES(?,?,?,?,?,?,?)
-        ON CONFLICT(bot,id) DO UPDATE SET item=excluded.item,text=excluded.text`)
-    for (const row of enriched) {
-      if (row.item.kind === 'tool' && isShowTool(row.item.name)) continue
+        ON CONFLICT(bot,id) DO UPDATE SET item=excluded.item,text=excluded.text WHERE item IS NOT excluded.item`)
+    for (const given of enriched) {
+      if (given.item.kind === 'tool' && isShowTool(given.item.name)) continue
+      // Each row is stored before the next is placed: a message moves only past rows already stored.
+      const row = placeMessage(this.db, bot, session, given)
       const text = 'text' in row.item ? row.item.text : row.item.kind === 'shown' ? shownSearchText(row.item.file) : ''
       insert.run(bot, session, row.id, row.at, row.order, JSON.stringify(row.item), text)
     }
@@ -191,8 +189,7 @@ export class HistoryStore {
   }
   forget(bot: string) {
     this.db.transaction(() => {
-      for (const table of ['history_items', 'history_sessions', 'history_events', 'history_imports', 'history_exclusions', 'history_previews'])
-        this.db.query(`DELETE FROM ${table} WHERE bot=?`).run(bot)
+      for (const table of HISTORY_TABLES) this.db.query(`DELETE FROM ${table} WHERE bot=?`).run(bot)
       this.meta.forget(bot)
     })()
     this.previews.forget(bot)

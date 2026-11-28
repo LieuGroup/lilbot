@@ -97,6 +97,7 @@ export class HistoryService {
             if (Date.now() - value.listed > 30_000) {
               const listed = await value.source.list()
               if (this.stale(bot.id, gen) || !this.allowed(bot.id, '')) return
+              this.store.owned.adoptEarlier(bot.id, listed)
               value.known = new Set(listed.map(s => s.id))
               for (const session of listed) if (this.allowed(bot.id, session.id)) this.store.session(bot.id, session.id, session.at)
               this.store.discovered(bot.id)

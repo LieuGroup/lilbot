@@ -85,9 +85,7 @@ async function prepareMemory(onFailed: (id: string) => void) {
 }
 
 engines.onBotsChanged(botsChanged)
-bots.watchActivity(event => {
-  if (!services.hiddenChat(event.botId, event.chatId)) activity.observe(event)
-}, activity.cursor)
+services.watchActivity()
 const DIST = join(import.meta.dir, '..', 'dist')
 const helperCfg = helperSettings(process.env, PORT, ACCESS?.host, computers.auth.serverKey.fingerprint)
 const downloads = new HelperDownloads(join(DATA_DIR, 'helper-downloads'), helperCfg, privateDownloadOrigin(process.env, PORT))

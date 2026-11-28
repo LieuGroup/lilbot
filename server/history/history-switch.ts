@@ -140,6 +140,7 @@ export async function prepareSwitchHistory(
                 if (!dirtyMap.size) deps.dirty.delete(previous.id)
               }
               const now = Date.now()
+              deps.store.owned.own(previous.id, newChatId)
               deps.store.session(previous.id, newChatId, now)
               deps.store.divider(previous.id, newChatId, now, reason)
             })

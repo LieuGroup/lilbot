@@ -103,6 +103,7 @@ export class BotConversations {
     const options = fresh ? { workspace, reasoningEffort, onEffort, onContext } : { workspace, requireExisting, omitMessages: useHistory, reasoningEffort, onEffort, onContext }
     const chat = await this.runtimes.engineFor(bot).openChat(bot.engineBotId, fresh ? null : (chatId ?? main), options, event)
     id = chat.snapshot.chatId
+    if (useHistory) this.history?.store.owned.own(botId, id)
     turn.running = turn.running || chat.snapshot.running
     const tracked = this.active.get(botId) ?? new Set<OpenTurn>()
     tracked.add(turn)

@@ -52,6 +52,8 @@ test('createAppServices excludes memory-review sessions from own-conversation ch
     await services.bots.createBot({ name: 'Review Bot', function: 'Testing', instructions: '' })
     const [bot] = services.store.list()
     const token = engineToken(join(dir, 'data'))
+    // `main-chat-1` stands for the bot's main conversation, which LilBot opened.
+    services.threads.store.db.query("INSERT INTO history_owned(bot,session,reason,at) VALUES(?,'main-chat-1','opened',0)").run(bot.id)
 
     // Without tools/list discovery on the scoped review MCP endpoint, /engine/history/save fails closed (never 200).
     const dropped = await services.engineApi(

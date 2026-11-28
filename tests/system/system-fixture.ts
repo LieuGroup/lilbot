@@ -103,7 +103,7 @@ export function systemFixture({ t3Enabled = false, show: showEnabled = false, ma
   const reviewChats = new Set<string>()
   const ownChat = (chat: string) =>
     routineStore.isRoutineChat(chat) || threadStore.isInternal(chat) || webhookStore.isWebhookChat(chat) || work.work.checks.isCheckChat(chat) || reviewChats.has(chat)
-  const hiddenChat = hiddenChats(chatKinds(rootOf, ownChat))
+  const hiddenChat = hiddenChats(chatKinds(rootOf, ownChat, () => true))
   const historyService = new HistoryService(
     history,
     {} as BotEngine,

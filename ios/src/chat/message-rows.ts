@@ -1,5 +1,5 @@
 /** Pure FlatList row builder for the inverted transcript: emits StartMarker, DateLines, SessionDividers,
- *  messages (with inTurn / beforeTool flags for TurnActions), and queued items using invariant keys
+ *  messages (with inTurn / beforeTool flags for TurnActions, and queued for one still waiting for the bot) using invariant keys
  *  (`id:<historyId>` or `pos:<first+index>`) so prepending older history pages never shifts existing keys. */
 import type { ChatView, MessageItem, ViewItem } from '../../../shared/client/chat/chat-state'
 import { dayKey } from '../../../shared/client/history/history-labels'
@@ -53,19 +53,7 @@ export function buildTranscriptRows(view: Pick<ChatView, 'items' | 'queued' | 'f
     }
     const inTurn = running && turnStart !== null && index >= turnStart
     const beforeTool = items[index + 1]?.kind === 'tool'
-    chronological.push({ kind: 'message', key: stableId, item, queued: false, inTurn, beforeTool })
-  }
-
-  for (let i = 0; i < queued.length; i++) {
-    const message = queued[i]
-    chronological.push({
-      kind: 'message',
-      key: `queued-${message.messageId ?? i}`,
-      item: message as MessageItem,
-      queued: true,
-      inTurn: false,
-      beforeTool: false
-    })
+    chronological.push({ kind: 'message', key: stableId, item, queued: item.kind === 'user' && queued.includes(item), inTurn, beforeTool })
   }
 
   return chronological.reverse()
